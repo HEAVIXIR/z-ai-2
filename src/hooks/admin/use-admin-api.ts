@@ -228,3 +228,23 @@ export function useHealth() {
     refetchInterval: 15_000,
   });
 }
+
+// ---- Metrics explorer ---------------------------------------------------
+export type MetricsRange = '1h' | '6h' | '24h' | '7d';
+
+export function useMetrics(metric: string, range: MetricsRange) {
+  return useQuery({
+    queryKey: ['admin', 'metrics', metric, range],
+    queryFn: () => fetch(`${BASE}/metrics?metric=${encodeURIComponent(metric)}&range=${range}`).then(jsonOrThrow),
+    refetchInterval: 30_000,
+  });
+}
+
+// ---- User activity (for detail drawer) ----------------------------------
+export function useUserActivity(userId: string | null, limit = 20) {
+  return useQuery({
+    queryKey: ['admin', 'users', userId, 'activity'],
+    queryFn: () => fetch(`${BASE}/users/${userId}/activity?limit=${limit}`).then(jsonOrThrow),
+    enabled: !!userId,
+  });
+}

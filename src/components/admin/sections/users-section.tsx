@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Eye,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -64,6 +65,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser, type UserFilters } from '@/hooks/admin/use-admin-api';
 import { RoleBadge, StatusBadge, initials, avatarGradient, EmptyState } from '../ui-helpers';
+import { UserDetailDrawer } from '../user-detail-drawer';
 import { cn } from '@/lib/utils';
 
 type User = {
@@ -167,8 +169,18 @@ function CreateUserDialog({ trigger }: { trigger: React.ReactNode }) {
   );
 }
 
-function EditUserDialog({ user, trigger }: { user: User; trigger: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+function EditUserDialog({ user, trigger, externalOpen, externalOnOpenChange }: {
+  user: User;
+  trigger: React.ReactNode;
+  externalOpen?: boolean;
+  externalOnOpenChange?: (v: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (externalOnOpenChange) externalOnOpenChange(v);
+    setInternalOpen(v);
+  };
   const [name, setName] = React.useState(user.name ?? '');
   const [role, setRole] = React.useState(user.role);
   const [status, setStatus] = React.useState(user.status);
@@ -195,7 +207,7 @@ function EditUserDialog({ user, trigger }: { user: User; trigger: React.ReactNod
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit user</DialogTitle>
@@ -239,8 +251,18 @@ function EditUserDialog({ user, trigger }: { user: User; trigger: React.ReactNod
   );
 }
 
-function DeleteUserDialog({ user, trigger }: { user: User; trigger: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+function DeleteUserDialog({ user, trigger, externalOpen, externalOnOpenChange }: {
+  user: User;
+  trigger: React.ReactNode;
+  externalOpen?: boolean;
+  externalOnOpenChange?: (v: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (externalOnOpenChange) externalOnOpenChange(v);
+    setInternalOpen(v);
+  };
   const deleteUser = useDeleteUser();
 
   async function handleDelete() {
@@ -255,7 +277,7 @@ function DeleteUserDialog({ user, trigger }: { user: User; trigger: React.ReactN
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete user?</AlertDialogTitle>
@@ -287,6 +309,12 @@ export function UsersSection() {
   const [page, setPage] = useQueryState('page', '1');
   const [sort, setSort] = useQueryState('sort', 'createdAt');
   const [order, setOrder] = useQueryState('order', 'desc');
+  const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [editTarget, setEditTarget] = React.useState<User | null>(null);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<User | null>(null);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const filters: UserFilters = {
     page: parseInt(page, 10),
@@ -299,6 +327,16 @@ export function UsersSection() {
   };
 
   const { data, isLoading, isFetching, error } = useUsers(filters);
+
+  // Sync selectedUser with the latest data (so drawer shows fresh status after edits)
+  React.useEffect(() => {
+    if (selectedUser && data?.items) {
+      const updated = data.items.find((u: User) => u.id === selectedUser.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedUser)) {
+        setSelectedUser(updated);
+      }
+    }
+  }, [data, selectedUser]);
 
   function toggleSort(field: string) {
     if (sort === field) {
@@ -408,11 +446,20 @@ export function UsersSection() {
                   </TableRow>
                 ) : (
                   data?.items?.map((user: User) => (
-                    <TableRow key={user.id} className="group">
+                    <TableRow
+                      key={user.id}
+                      className="group cursor-pointer transition-colors hover:bg-muted/40"
+                      onClick={() => { setSelectedUser(user); setDrawerOpen(true); }}
+                    >
                       <TableCell className="py-2">
                         <div className="flex items-center gap-2">
                           <UserAvatar name={user.name} email={user.email} />
-                          <span className="text-xs font-medium">{user.name ?? '—'}</span>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium">{user.name ?? '—'}</span>
+                            {user.lastLoginAt && (
+                              <span className="text-[9px] text-muted-foreground">last seen {new Date(user.lastLoginAt).toLocaleDateString()}</span>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-2 font-mono text-xs">{user.email}</TableCell>
@@ -421,7 +468,7 @@ export function UsersSection() {
                       <TableCell className="py-2 text-xs text-muted-foreground">
                         {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'never'}
                       </TableCell>
-                      <TableCell className="py-2 text-right">
+                      <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="size-7 opacity-60 group-hover:opacity-100">
@@ -429,6 +476,9 @@ export function UsersSection() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-40 text-xs">
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedUser(user); setDrawerOpen(true); }}>
+                              <Eye className="size-3.5" /> View details
+                            </DropdownMenuItem>
                             <EditUserDialog user={user} trigger={
                               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                                 <Pencil className="size-3.5" /> Edit
@@ -480,6 +530,37 @@ export function UsersSection() {
           )}
         </CardContent>
       </Card>
+
+      {/* User detail drawer (right-side) */}
+      <UserDetailDrawer
+        user={selectedUser}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onEdit={(u) => { setEditTarget(u); setEditOpen(true); setDrawerOpen(false); }}
+        onDelete={(u) => { setDeleteTarget(u); setDeleteOpen(true); setDrawerOpen(false); }}
+      />
+
+      {/* Externally-controlled edit dialog (for drawer 'Edit' action) */}
+      {editTarget && (
+        <EditUserDialog
+          user={editTarget}
+          trigger={null}
+          externalOpen={editOpen}
+          externalOnOpenChange={(v) => { setEditOpen(v); if (!v) setEditTarget(null); }}
+          key={`edit-${editTarget.id}`}
+        />
+      )}
+
+      {/* Externally-controlled delete dialog (for drawer 'Delete' action) */}
+      {deleteTarget && (
+        <DeleteUserDialog
+          user={deleteTarget}
+          trigger={null}
+          externalOpen={deleteOpen}
+          externalOnOpenChange={(v) => { setDeleteOpen(v); if (!v) setDeleteTarget(null); }}
+          key={`del-${deleteTarget.id}`}
+        />
+      )}
     </div>
   );
 }
