@@ -1,6 +1,6 @@
-// HEAVIX - Prisma schema
-// Phase 12: Admin Control Plane Foundation
-// Database: PostgreSQL 17 (user-space install)
+// HEAVIX — Industrial heavy-machinery marketplace
+// PostgreSQL production schema (migrated from SQLite per ADR-001)
+// 113 models total — received from user across 5 parts (2026-09-23)
 
 generator client {
   provider      = "prisma-client-js"
@@ -12,174 +12,2209 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================
-// Core Identity & Access (Phase 1 baseline, retained)
-// ============================================================
-model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  name        String?
-  // Phase 12: Admin Control Plane fields
-  role        UserRole @default(MEMBER)
-  status      UserStatus @default(ACTIVE)
-  avatarUrl   String?
-  lastLoginAt DateTime?
-  lastLoginIp String?
-  // Soft delete support
-  deletedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ════════════════════════════════════════════════════════════
+// BRAND CATALOG OS
+// ════════════════════════════════════════════════════════════
 
-  posts       Post[]
-  auditLogs   AuditLog[]
-  adminSessions AdminSession[]
-
-  @@index([role])
-  @@index([status])
-  @@index([deletedAt])
-}
-
-enum UserRole {
-  SUPER_ADMIN
-  ADMIN
-  MODERATOR
-  MEMBER
-  GUEST
-}
-
-enum UserStatus {
-  ACTIVE
-  SUSPENDED
-  PENDING
-  INVITED
-  DELETED
-}
-
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
-
-  @@index([authorId])
-  @@index([published])
-}
-
-// ============================================================
-// Phase 12: Admin Control Plane models
-// ============================================================
-
-/// Role-based access control. Roles are configurable (not just an enum)
-/// so admins can define custom roles with custom permission sets.
-model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique
+model Brand {
+  id          String    @id @default(cuid())
+  name        String
+  nameEn      String?
+  shortName   String?
+  slug        String    @unique
+  logoUrl     String?
+  website     String?
+  country     String?
   description String?
-  // JSON array of permission codenames, e.g. ["users.read", "users.write", "settings.write"]
-  permissions String[]
-  isSystem    Boolean  @default(false) // system roles cannot be deleted
-  color       String? // hex color for UI badges, e.g. "#ef4444"
+  featured    Boolean   @default(false)
+  active      Boolean   @default(true)
+  status      String    @default("ACTIVE")
+  type        String?
+  verification String   @default("UNVERIFIED")
+  parentBrandId String?
+  parentBrand   Brand?    @relation("BrandParent", fields: [parentBrandId], references: [id], onDelete: SetNull)
+  childBrands   Brand[]   @relation("BrandParent")
+  brandFamilyId String?
+  brandFamily   BrandFamily? @relation(fields: [brandFamilyId], references: [id], onDelete: SetNull)
+  priceObservations PriceObservation[]
+  manufacturer  String?
+  foundedYear   Int?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  categories  BrandCategory[]
+  domains     BrandDomain[]
+  media       BrandMedia[]
+  seo         BrandSEO?
+  display     BrandDisplay?
+  models      ProductModel[]
+  products    Product[]
+  listings    Listing[]
+  aliases     BrandAlias[]
+  industries  BrandIndustry[]
+}
+
+model BrandAlias {
+  id              String  @id @default(cuid())
+  brandId         String
+  brand           Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  value           String
+  normalizedValue String
+  language        String  @default("fa")
+  type            String  @default("COMMON")
+  confidence      Int     @default(80)
+  createdAt       DateTime @default(now())
+  @@unique([brandId, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model BrandFamily {
+  id          String  @id @default(cuid())
+  name        String
+  nameEn      String?
+  slug        String  @unique
+  description String?
+  logoUrl     String?
+  website     String?
+  country     String?
+  sortOrder   Int     @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  @@index([isSystem])
+  brands      Brand[]
 }
 
-/// Audit log of admin actions. Append-only (no updates / deletes).
-model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
-  actorEmail String? // denormalised for resilience if user is deleted
-  action     String   // e.g. "user.create", "feature_flag.toggle", "setting.update"
-  resource   String?  // e.g. "User", "FeatureFlag"
-  resourceId String?
-  // JSON blob for before/after diff or extra context
-  metadata   Json?
-  ip         String?
-  userAgent  String?
-  status     String   @default("success") // success | failure | warning
+model BrandIndustry {
+  id        String  @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  industry  String
+  @@unique([brandId, industry])
+  @@index([industry])
+}
+
+model Industry {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  nameFa    String
+  nameEn    String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+}
+
+model BrandCategory {
+  id        String  @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  categoryId String
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@unique([brandId, categoryId])
+}
+
+model BrandDomain {
+  id        String  @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  domain    String
+  @@unique([brandId, domain])
+}
+
+model BrandMedia {
+  id        String  @id @default(cuid())
+  brandId   String
+  brand     Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  type      String
+  url       String
+  title     String?
+  sortOrder Int     @default(0)
+}
+
+model BrandSEO {
+  id             String  @id @default(cuid())
+  brandId        String  @unique
+  brand          Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  metaTitle      String?
+  metaDescription String?
+  keywords       String?
+  ogImage        String?
+}
+
+model BrandDisplay {
+  id              String  @id @default(cuid())
+  brandId         String  @unique
+  brand           Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  showOnHomepage  Boolean @default(true)
+  showInFooter    Boolean @default(false)
+  accentColor     String?
+  displayOrder    Int     @default(0)
+}
+
+// ════════════════════════════════════════════════════════════
+// TAXONOMY — Category tree + Dynamic Attributes
+// ════════════════════════════════════════════════════════════
+
+model Category {
+  id          String     @id @default(cuid())
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryTree")
+  name        String
+  nameEn      String?
+  slug        String     @unique
+  icon        String?
+  imageUrl    String?
+  description String?
+  domain      String?
+  layer       String     @default("CATALOG")
+  taxPath     String?
+  featured    Boolean    @default(false)
+  active      Boolean    @default(true)
+  showOnHome  Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  level       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  listings    Listing[]
+  attributes  CategoryAttribute[]
+  brands      BrandCategory[]
+  modelCategories ModelCategory[]
+  models      ProductModel[]
+  products    Product[]
+  appIndustries CategoryApplicationIndustry[]
+  priceObservations PriceObservation[]
+}
+
+model TransactionType {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  icon        String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  listings    Listing[]
+}
+
+model ServiceType {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  icon        String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  icon        String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  featured    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HomeCategoryConfig {
+  id                  String   @id @default("main")
+  homeCategoryGeneration Int   @default(1)
+  homeCategoryParentId String?
+  updatedAt           DateTime @updatedAt
+}
+
+model ApplicationIndustry {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  nameFa    String
+  nameEn    String?
+  icon      String?
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  categories CategoryApplicationIndustry[]
+}
+
+model CategoryApplicationIndustry {
+  id        String  @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  applicationIndustryId String
+  applicationIndustry   ApplicationIndustry @relation(fields: [applicationIndustryId], references: [id], onDelete: Cascade)
+  @@unique([categoryId, applicationIndustryId])
+}
+
+// ════════════════════════════════════════════════════════════
+// LOCATION
+// ════════════════════════════════════════════════════════════
+
+model Country {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  nameEn    String?
+  code      String? @unique
+  phoneCode String?
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+  provinces Province[]
+  listings  Listing[]
+}
+
+model Province {
+  id        String  @id @default(cuid())
+  countryId String
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  name      String
+  nameEn    String?
+  code      String?
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+  cities    City[]
+  listings  Listing[] @relation("ListingProvince")
+  @@unique([countryId, name])
+}
+
+model City {
+  id         String  @id @default(cuid())
+  provinceId String
+  province   Province @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  name       String
+  nameEn     String?
+  latitude   Float?
+  longitude  Float?
+  sortOrder  Int     @default(0)
   createdAt  DateTime @default(now())
-
-  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-
-  @@index([actorId])
-  @@index([action])
-  @@index([resource])
-  @@index([createdAt])
+  listings   Listing[] @relation("ListingCity")
+  branches   CompanyBranch[]
+  @@unique([provinceId, name])
 }
 
-/// Feature flags for runtime toggles. Value is string for flexibility
-/// (boolean: "true"/"false", or variant: "blue", "v2", etc.)
+// ════════════════════════════════════════════════════════════
+// DYNAMIC ATTRIBUTES
+// ════════════════════════════════════════════════════════════
+
+model AttributeDefinition {
+  id          String   @id @default(cuid())
+  key         String?  @unique
+  name        String
+  nameEn      String?
+  labelFa     String?
+  labelEn     String?
+  type        String
+  unit        String?
+  required    Boolean  @default(false)
+  filterable  Boolean  @default(false)
+  searchable  Boolean  @default(false)
+  sortable    Boolean  @default(false)
+  visibleOnCard   Boolean @default(false)
+  visibleOnDetail Boolean @default(true)
+  seoRelevant Boolean  @default(false)
+  aiRelevant  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+  options     AttributeOption[]
+  categories  CategoryAttribute[]
+  values      ListingAttributeValue[]
+}
+
+model AttributeOption {
+  id          String   @id @default(cuid())
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  value       String
+  label       String?
+  sortOrder   Int      @default(0)
+}
+
+model CategoryAttribute {
+  id          String   @id @default(cuid())
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  required    Boolean  @default(false)
+  filterable  Boolean  @default(false)
+  searchable  Boolean  @default(false)
+  sortable    Boolean  @default(false)
+  displayOrder Int     @default(0)
+  @@unique([categoryId, attributeId])
+}
+
+model ListingAttributeValue {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  textValue    String?
+  numberValue  Float?
+  booleanValue Boolean?
+  dateValue    DateTime?
+  optionId     String?
+  unit         String?
+  sourceType   String?
+  confidence   Float?
+  sourceReference String?
+  verifiedAt   DateTime?
+  verifiedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([listingId, attributeId])
+  @@index([attributeId])
+}
+
+// ════════════════════════════════════════════════════════════
+// PRODUCT MODELS + GENERATIONS
+// ════════════════════════════════════════════════════════════
+
+model ProductModel {
+  id            String         @id @default(cuid())
+  brandId       String
+  brand         Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name          String
+  nameEn        String?
+  slug          String
+  description   String?
+  categoryId    String?
+  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  status        String         @default("ACTIVE")
+  sortOrder     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  modelCategories ModelCategory[]
+  generations   Generation[]
+  listings      Listing[]
+  products      Product[]
+  @@unique([brandId, slug])
+}
+
+model ModelCategory {
+  id        String  @id @default(cuid())
+  modelId   String
+  model     ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  categoryId String
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@unique([modelId, categoryId])
+}
+
+model Generation {
+  id          String       @id @default(cuid())
+  modelId     String
+  model       ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  name        String
+  nameEn      String?
+  slug        String
+  description String?
+  yearFrom    Int?
+  yearTo      Int?
+  status      String       @default("ACTIVE")
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@unique([modelId, slug])
+}
+
+// ════════════════════════════════════════════════════════════
+// LISTINGS
+// ════════════════════════════════════════════════════════════
+
+model Listing {
+  id           String         @id @default(cuid())
+  slug         String         @unique
+  title        String
+  description  String?
+  shortDesc    String?
+  price        BigInt?
+  priceType    String         @default("NEGOTIABLE")
+  listingType  String         @default("SALE")
+  condition    String?
+  province     String?
+  city         String?
+  year         Int?
+  workingHours Int?
+  status       String         @default("PUBLISHED")
+  featured     Boolean        @default(false)
+  verified     Boolean        @default(false)
+  showInLatest Boolean        @default(true)
+  viewCount    Int            @default(0)
+  favoriteCount Int           @default(0)
+  publishedAt  DateTime?
+  expiresAt    DateTime?
+  soldAt       DateTime?
+  sellerPhone  String?
+  sellerName   String?
+  sourceUrl    String?
+  sourceSite   String?
+  adminNotes   String?
+  rentalPeriod          String?
+  deposit               BigInt?
+  minimumRentalPeriod   Int?
+  operatorIncluded      Boolean   @default(false)
+  fuelIncluded          Boolean   @default(false)
+  transportIncluded     Boolean   @default(false)
+  availabilityStart     DateTime?
+  availabilityEnd       DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  brandId      String?
+  brand        Brand?         @relation(fields: [brandId], references: [id])
+  categoryId   String?
+  category     Category?      @relation(fields: [categoryId], references: [id])
+  modelId      String?
+  model        ProductModel?  @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  sellerId     String?
+  seller       User?          @relation("UserListings", fields: [sellerId], references: [id], onDelete: SetNull)
+  companyId    String?
+  company      Company?       @relation("CompanyListings", fields: [companyId], references: [id], onDelete: SetNull)
+  productId        String?
+  product          Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  transactionTypeId String?
+  transactionType   TransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+  countryId      String?
+  country        Country?  @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId     String?
+  provinceRel    Province? @relation("ListingProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  cityId         String?
+  cityRel        City?     @relation("ListingCity", fields: [cityId], references: [id], onDelete: SetNull)
+  images       ListingImage[]
+  favorites    Favorite[]
+  leads        Lead[]
+  offers       ListingOffer[]
+  rejections   ListingRejection[]
+  dealRooms    DealRoom[]
+  inspections  Inspection[]
+  transportRequests TransportRequest[]
+  auctions     Auction[]
+  passport     MachinePassport?
+  attributeValues ListingAttributeValue[]
+  socialReels   SocialReel[]
+  machines     Machine[]
+  priceRecords PriceRecord[]
+  priceObservations PriceObservation[]
+  priceEstimates    PriceEstimate[]
+  priceOverrides    PriceOverride[]
+  recommendations UserRecommendation[] @relation("ListingRecommendations")
+  comparisonItems ComparisonItem[]
+  conversations Conversation[]
+  moderationLogs ModerationLog[]
+  reviews        Review[]
+  deals          Deal[]
+}
+
+model ListingImage {
+  id        String   @id @default(cuid())
+  listingId String
+  url       String
+  alt       String?
+  isPrimary Boolean  @default(false)
+  sortOrder Int      @default(0)
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+// ════════════════════════════════════════════════════════════
+// BUY REQUESTS (HEAVIX Wanted)
+// ════════════════════════════════════════════════════════════
+
+model BuyRequest {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String?
+  brandPref   String?
+  transaction String   @default("SALE")
+  budgetMin   BigInt?
+  budgetMax   BigInt?
+  city        String?
+  province    String?
+  deadline    String?
+  status      String   @default("ACTIVE")
+  verified    Boolean  @default(false)
+  viewCount   Int      @default(0)
+  requesterName  String?
+  requesterPhone String?
+  adminNotes  String?
+  publishedAt DateTime? @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String?
+  user        User?     @relation("UserRequests", fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// ════════════════════════════════════════════════════════════
+// SAVED SEARCH + ALERTS
+// ════════════════════════════════════════════════════════════
+
+model SavedSearch {
+  id          String   @id @default(cuid())
+  name        String
+  query       String?
+  categorySlug String?
+  brandSlug   String?
+  minPrice    BigInt?
+  maxPrice    BigInt?
+  condition   String?
+  city        String?
+  notifyEmail Boolean  @default(true)
+  notifyPush  Boolean  @default(false)
+  lastNotifiedAt DateTime?
+  matchCount  Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String?
+  user        User?    @relation("UserSavedSearches", fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// ════════════════════════════════════════════════════════════
+// WISHLIST / FAVORITES
+// ════════════════════════════════════════════════════════════
+
+model Favorite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String?
+  user      User?    @relation("UserFavorites", fields: [userId], references: [id], onDelete: SetNull)
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  @@unique([userId, listingId])
+}
+
+// ════════════════════════════════════════════════════════════
+// LEADS
+// ════════════════════════════════════════════════════════════
+
+model Lead {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  leadType    String
+  viewerPhone String?
+  viewerName  String?
+  note        String?
+  createdAt   DateTime @default(now())
+}
+
+// ════════════════════════════════════════════════════════════
+// KNOWLEDGE / ARTICLES
+// ════════════════════════════════════════════════════════════
+
+model Article {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  excerpt     String?
+  content     String
+  category    String   @default("GUIDE")
+  tags        String?
+  coverImage  String?
+  status      String   @default("PUBLISHED")
+  viewCount   Int      @default(0)
+  publishedAt DateTime? @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  authorId    String?
+  author      User?    @relation("UserArticles", fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+// ════════════════════════════════════════════════════════════
+// FOLLOW BRAND / CATEGORY
+// ════════════════════════════════════════════════════════════
+
+model Follow {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserFollows", fields: [userId], references: [id], onDelete: Cascade)
+  followType  String
+  targetId    String
+  createdAt   DateTime @default(now())
+  @@unique([userId, followType, targetId])
+}
+
+// ════════════════════════════════════════════════════════════
+// HOT SEARCH
+// ════════════════════════════════════════════════════════════
+
+model HotSearch {
+  id        String   @id @default(cuid())
+  term      String
+  link      String?
+  count     Int      @default(0)
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ════════════════════════════════════════════════════════════
+// SITE WIDGETS
+// ════════════════════════════════════════════════════════════
+
+model SiteWidget {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  title     String
+  content   String
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// AI KNOWLEDGE BASE
+// ════════════════════════════════════════════════════════════
+
+model KnowledgeEntry {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  title         String
+  key           String
+  value         String
+  unit          String?
+  source        String   @default("HEAVIX")
+  sourceUrl     String?
+  sourceRef     String?
+  verified      Boolean  @default(false)
+  verifiedBy    String?
+  verifiedAt    DateTime?
+  aiSuggested   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([entityType, entityId, key])
+}
+
+// ════════════════════════════════════════════════════════════
+// AI GATEWAY LOG
+// ════════════════════════════════════════════════════════════
+
+model AIGatewayLog {
+  id          String   @id @default(cuid())
+  taskType    String
+  model       String
+  input       String?
+  output      String?
+  latencyMs   Int?
+  tokensUsed  Int?
+  cost        Float?
+  success     Boolean  @default(true)
+  error       String?
+  userId      String?
+  createdAt   DateTime @default(now())
+  @@index([taskType])
+  @@index([userId, taskType, createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// AI BUDGET (singleton)
+// ════════════════════════════════════════════════════════════
+
+model AIBudget {
+  id              String    @id @default("main")
+  dailyLimitUsd   Float     @default(10.0)
+  monthlyLimitUsd Float     @default(200.0)
+  dailySpendUsd   Float     @default(0.0)
+  monthlySpendUsd Float     @default(0.0)
+  dailyResetAt    DateTime?
+  monthlyResetAt  DateTime?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// AI TASK POLICY
+// ════════════════════════════════════════════════════════════
+
+model AITaskPolicy {
+  id              String   @id @default(cuid())
+  taskType        String   @unique
+  allowedRoles    String
+  hourlyLimit     Int      @default(30)
+  dailyLimit      Int      @default(100)
+  maxInputChars   Int      @default(5000)
+  maxOutputTokens Int      @default(2000)
+  model           String   @default("default")
+  timeoutMs       Int      @default(30000)
+  costCeilingUsd  Float    @default(0.05)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// LAUNCH PHASE TRACKER
+// ════════════════════════════════════════════════════════════
+
+model LaunchPhase {
+  id          String   @id @default(cuid())
+  phase       Int      @unique
+  title       String
+  description String?
+  targetValue Int
+  currentValue Int     @default(0)
+  status      String   @default("PENDING")
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// DEMAND SIGNAL
+// ════════════════════════════════════════════════════════════
+
+model DemandSignal {
+  id          String   @id @default(cuid())
+  query       String
+  category    String?
+  brand       String?
+  city        String?
+  resultCount Int      @default(0)
+  intent      String?
+  convertedToRequest Boolean @default(false)
+  createdAt   DateTime @default(now())
+  @@index([query])
+}
+
+// ════════════════════════════════════════════════════════════
+// RFQ — Request For Quote
+// ════════════════════════════════════════════════════════════
+
+model RFQ {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  machineType String?
+  brandPref   String?
+  quantity    Int      @default(1)
+  specJson    String?
+  budgetMin   BigInt?
+  budgetMax   BigInt?
+  location    String?
+  deadline    DateTime?
+  terms       String?
+  status      String   @default("OPEN")
+  buyerName   String?
+  buyerPhone  String
+  buyerEmail  String?
+  buyerId     String?
+  buyer       User?    @relation("UserRFQs", fields: [buyerId], references: [id], onDelete: SetNull)
+  adminNotes  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  quotes      RFQQuote[]
+  @@index([status])
+}
+
+model RFQQuote {
+  id          String   @id @default(cuid())
+  rfqId       String
+  rfq         RFQ      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  sellerName  String
+  sellerPhone String
+  sellerEmail String?
+  sellerId    String?
+  seller      User?    @relation("UserRFQQuotes", fields: [sellerId], references: [id], onDelete: SetNull)
+  unitPrice   BigInt
+  totalPrice  BigInt
+  deliveryTime String?
+  notes       String?
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  @@index([rfqId])
+}
+
+// ════════════════════════════════════════════════════════════
+// AUCTION ENGINE
+// ════════════════════════════════════════════════════════════
+
+model Auction {
+  id            String    @id @default(cuid())
+  listingId     String
+  listing       Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  startPrice    BigInt
+  reservePrice  BigInt?
+  minIncrement  BigInt
+  startDate     DateTime
+  endDate       DateTime
+  status        String    @default("SCHEDULED")
+  winnerId      String?
+  winnerName    String?
+  winningBid    BigInt?
+  inspectionReport String?
+  adminNotes    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  bids          AuctionBid[]
+  @@index([status])
+}
+
+model AuctionBid {
+  id          String   @id @default(cuid())
+  auctionId   String
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderName  String
+  bidderPhone String
+  bidderId    String?
+  bidder      User?    @relation("UserAuctionBids", fields: [bidderId], references: [id], onDelete: SetNull)
+  amount      BigInt
+  isWinning   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  @@index([auctionId])
+}
+
+// ════════════════════════════════════════════════════════════
+// INDUSTRIAL PERSIAN DICTIONARY
+// ════════════════════════════════════════════════════════════
+
+model IndustrialTerm {
+  id          String   @id @default(cuid())
+  canonical   String
+  entityType  String?
+  entityId    String?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  aliases     TermAlias[]
+}
+
+model TermAlias {
+  id          String   @id @default(cuid())
+  termId      String
+  term        IndustrialTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  alias       String
+  aliasType   String   @default("SYNONYM")
+  @@unique([termId, alias])
+}
+
+// ════════════════════════════════════════════════════════════
+// FEATURE FLAGS
+// ════════════════════════════════════════════════════════════
+
 model FeatureFlag {
   id          String   @id @default(cuid())
-  key         String   @unique // e.g. "new_dashboard_v2"
-  name        String
+  key         String   @unique
+  label       String
   description String?
-  enabled     Boolean  @default(false)
-  value       String?  // optional variant value
-  // Audience targeting: "all" | "admins" | "internal" | JSON list of user IDs
-  audience    String   @default("all")
-  updatedAt   DateTime @updatedAt
+  enabled     Boolean  @default(true)
+  rolloutPct  Int      @default(100)
   createdAt   DateTime @default(now())
-
-  @@index([enabled])
-  @@index([key])
+  updatedAt   DateTime @updatedAt
 }
 
-/// System settings - key/value configuration with type info.
-model SystemSetting {
+// ════════════════════════════════════════════════════════════
+// COMPANY CLAIM
+// ════════════════════════════════════════════════════════════
+
+model CompanyClaim {
   id          String   @id @default(cuid())
-  key         String   @unique // e.g. "site.name", "email.from", "limits.maxUploadMb"
-  value       String   // stored as text, parsed by type
-  type        SettingType
-  description String?
-  isSecret    Boolean  @default(false) // secrets are masked in UI
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation("UserCompanyClaims", fields: [userId], references: [id], onDelete: SetNull)
+  claimantName String
+  claimantPhone String
+  claimantEmail String?
+  claimantRole String?
+  evidence    String?
+  status      String   @default("PENDING")
+  adminNotes  String?
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+}
+
+// ════════════════════════════════════════════════════════════
+// LISTING OFFERS / BIDDING
+// ════════════════════════════════════════════════════════════
+
+model ListingOffer {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  offerAmount BigInt
+  message     String?
+  status      String   @default("PENDING")
+  counterAmount BigInt?
+  buyerName   String?
+  buyerPhone  String
+  buyerEmail  String?
+  buyerId     String?
+  buyer       User?    @relation("UserOffers", fields: [buyerId], references: [id], onDelete: SetNull)
+  sellerNote  String?
+  respondedAt DateTime?
+  createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@index([listingId])
+}
+
+// ════════════════════════════════════════════════════════════
+// LISTING REJECTION CHAT
+// ════════════════════════════════════════════════════════════
+
+model ListingRejection {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reason      String
+  reasonLabel String?
+  adminNote   String
+  status      String   @default("OPEN")
+  messages    RejectionMessage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([listingId])
+}
+
+model RejectionMessage {
+  id          String   @id @default(cuid())
+  rejectionId String
+  rejection   ListingRejection @relation(fields: [rejectionId], references: [id], onDelete: Cascade)
+  senderRole  String
+  senderName  String?
+  message     String
   createdAt   DateTime @default(now())
 }
 
-enum SettingType {
-  STRING
-  NUMBER
-  BOOLEAN
-  JSON
-  URL
-  EMAIL
+// ════════════════════════════════════════════════════════════
+// NOTIFICATION ENGINE
+// ════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  data      String?
+  createdAt DateTime @default(now())
+  @@index([userId])
 }
 
-/// Admin login sessions for tracking active sessions.
+// ════════════════════════════════════════════════════════════
+// REFERRAL PROGRAM
+// ════════════════════════════════════════════════════════════
+
+model Referral {
+  id          String   @id @default(cuid())
+  referrerId  String
+  referrer    User     @relation("UserReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referralCode String  @unique @default(cuid())
+  referredEmail String?
+  referredMobile String?
+  referredUserId String?
+  status      String   @default("PENDING")
+  reward      String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+}
+
+// ════════════════════════════════════════════════════════════
+// FOUNDING SELLERS
+// ════════════════════════════════════════════════════════════
+
+model FoundingSeller {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation("UserFoundingStatus", fields: [userId], references: [id], onDelete: Cascade)
+  badgeType String   @default("FOUNDING")
+  benefits  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// ════════════════════════════════════════════════════════════
+// SUBSCRIPTION PLANS + PREMIUM SUBSCRIPTIONS
+// ════════════════════════════════════════════════════════════
+
+model SubscriptionPlan {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  nameFa          String
+  nameEn          String?
+  description     String?
+  priceMonthly    BigInt   @default(0)
+  priceYearly     BigInt?
+  currency        String   @default("IRR")
+  featuredCredits Int      @default(0)
+  analyticsAccess Boolean  @default(false)
+  aiAssistantAccess Boolean @default(false)
+  priorityLeads   Boolean  @default(false)
+  companyPage     Boolean  @default(false)
+  maxListings     Int      @default(0)
+  maxImages       Int      @default(8)
+  verifiedBadge   Boolean  @default(false)
+  supportLevel    String?
+  sortOrder       Int      @default(0)
+  active          Boolean  @default(true)
+  popular         Boolean  @default(false)
+  featuresJson    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PremiumSubscription {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation("UserPremium", fields: [userId], references: [id], onDelete: Cascade)
+  plan        String    @default("BASIC")
+  status      String    @default("ACTIVE")
+  startedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  featuredCredits Int   @default(0)
+  analyticsAccess Boolean @default(false)
+  aiAssistantAccess Boolean @default(false)
+  priorityLeads   Boolean @default(false)
+  companyPage     Boolean @default(false)
+  amount      BigInt?
+  paymentRef  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// MACHINE PASSPORT
+// ════════════════════════════════════════════════════════════
+
+model MachinePassport {
+  id          String   @id @default(cuid())
+  listingId   String   @unique
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  serialNumber String?
+  inspectionDate DateTime?
+  inspectionResult String?
+  events      PassportEvent[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PassportEvent {
+  id          String   @id @default(cuid())
+  passportId  String
+  passport    MachinePassport @relation(fields: [passportId], references: [id], onDelete: Cascade)
+  eventType   String
+  title       String
+  description String?
+  date        DateTime
+  performedBy String?
+  createdAt   DateTime @default(now())
+}
+
+// ════════════════════════════════════════════════════════════
+// COMPANY PAGES
+// ════════════════════════════════════════════════════════════
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  coverImage  String?
+  website     String?
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  province    String?
+  verified    Boolean  @default(false)
+  premium     Boolean  @default(false)
+  status      String   @default("ACTIVE")
+  metaTitle       String?
+  metaDescription String?
+  viewCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]   @relation("CompanyUsers")
+  listings    Listing[] @relation("CompanyListings")
+  claims      CompanyClaim[]
+  documents     CompanyDocument[]
+  branches      CompanyBranch[]
+  verifications CompanyVerification[]
+  partners       CompanyPartner[] @relation("CompanyPartners")
+  partnerOf      CompanyPartner[] @relation("CompanyPartnerOf")
+  avgRating      Float?
+  reviewCount    Int      @default(0)
+  reviews        Review[]
+}
+
+// ════════════════════════════════════════════════════════════
+// COMPANY NETWORK
+// ════════════════════════════════════════════════════════════
+
+model CompanyPartner {
+  id            String    @id @default(cuid())
+  companyId     String
+  company       Company   @relation("CompanyPartners", fields: [companyId], references: [id], onDelete: Cascade)
+  partnerId     String
+  partner       Company   @relation("CompanyPartnerOf", fields: [partnerId], references: [id], onDelete: Cascade)
+  status        String    @default("PENDING")
+  requestedAt   DateTime  @default(now())
+  acceptedAt    DateTime?
+  notes         String?
+  @@unique([companyId, partnerId])
+  @@index([companyId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+// ════════════════════════════════════════════════════════════
+// COMPANY VERIFICATION LIFECYCLE
+// ════════════════════════════════════════════════════════════
+
+model CompanyDocument {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type        String
+  url         String
+  status      String   @default("PENDING")
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model CompanyBranch {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  address     String?
+  cityId      String?
+  city        City?    @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  phone       String?
+  isHeadquarters Boolean @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model CompanyVerification {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status      String   @default("PENDING")
+  verificationType String @default("BUSINESS")
+  submittedAt DateTime @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  notes       String?
+  evidence    String?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedBy   String?
+  revokeReason String?
+  @@index([companyId])
+  @@index([status])
+}
+
+// ════════════════════════════════════════════════════════════
+// DEAL ROOM
+// ════════════════════════════════════════════════════════════
+
+model DealRoom {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId     String?
+  buyer       User?    @relation("DealRoomBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  sellerId    String?
+  seller      User?    @relation("DealRoomSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  buyerPhone  String
+  sellerPhone String?
+  status      String   @default("OPEN")
+  buyerConfirmed Boolean @default(false)
+  sellerConfirmed Boolean @default(false)
+  agreedPrice BigInt?
+  lastMessageAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  messages    DealMessage[]
+  documents   DealDocument[]
+  review      Review?
+  @@index([listingId])
+}
+
+model DealMessage {
+  id        String   @id @default(cuid())
+  dealRoomId String
+  dealRoom  DealRoom @relation(fields: [dealRoomId], references: [id], onDelete: Cascade)
+  senderRole String
+  senderName String?
+  message   String
+  attachmentUrl String?
+  createdAt DateTime @default(now())
+}
+
+model DealDocument {
+  id          String   @id @default(cuid())
+  dealRoomId  String
+  dealRoom    DealRoom @relation(fields: [dealRoomId], references: [id], onDelete: Cascade)
+  type        String
+  url         String
+  uploadedBy  String?
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  @@index([dealRoomId])
+}
+
+// ════════════════════════════════════════════════════════════
+// INSPECTION
+// ════════════════════════════════════════════════════════════
+
+model Inspection {
+  id              String   @id @default(cuid())
+  listingId       String
+  listing         Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  dealRoomId      String?
+  requestedBy     String
+  inspectorId     String?
+  status          String   @default("REQUESTED")
+  scheduledDate   DateTime?
+  completedAt     DateTime?
+  checklist       String?
+  score           Float?
+  reportUrl       String?
+  photos          String?
+  notes           String?
+  price           BigInt?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([listingId])
+  @@index([status])
+}
+
+// ════════════════════════════════════════════════════════════
+// TRANSPORT REQUEST
+// ════════════════════════════════════════════════════════════
+
+model TransportRequest {
+  id              String   @id @default(cuid())
+  listingId       String?
+  listing         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  dealRoomId      String?
+  origin          String
+  destination     String
+  cargoType       String?
+  cargoWeight     Float?
+  cargoLength     Float?
+  cargoWidth      Float?
+  cargoHeight     Float?
+  vehicleType     String?
+  loadingDate     DateTime?
+  deliveryDate    DateTime?
+  status          String   @default("REQUESTED")
+  quotedPrice     BigInt?
+  carrierName     String?
+  carrierPhone    String?
+  trackingCode    String?
+  notes           String?
+  requestedBy     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([status])
+}
+
+// ════════════════════════════════════════════════════════════
+// CMS — Homepage Sections, Hero, Settings, Menu
+// ════════════════════════════════════════════════════════════
+
+model HomePageSection {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  subtitle    String?
+  description String?
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  config      String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HeroConfig {
+  id              String   @id @default("main")
+  badge           String?
+  title1          String?
+  highlight       String?
+  subtitle        String?
+  buttonText      String?
+  buttonLink      String?
+  secondBtnText   String?
+  secondBtnLink   String?
+  slide1          String?
+  slide2          String?
+  slide3          String?
+  cardServicesImg String?
+  cardFeaturedImg String?
+  cardExclusiveImg String?
+  cardServicesListingId  String?
+  cardFeaturedListingId  String?
+  cardExclusiveListingId String?
+  animationType   String?
+  statsWidth      String?
+  cardHeight      String?
+  cardWidth       String?
+  titleFontSize   String?
+  badgeAlign      String?
+  titleAlign      String?
+  highlightAlign  String?
+  subtitleAlign   String?
+  buttonAlign     String?
+  statsWidthCustom    String?
+  statsPaddingCustom  String?
+  statsGapCustom      String?
+  cardWidthCustom     String?
+  cardHeightCustom    String?
+  cardGapCustom       String?
+  cardRadiusCustom    String?
+  titleFontSizeCustom String?
+  subtitleFontSizeCustom String?
+  badgeFontSizeCustom String?
+  buttonPaddingYCustom String?
+  buttonPaddingXCustom String?
+  heroMinHeightCustom String?
+  contentMaxWidthCustom String?
+  contentGapCustom    String?
+  slideOpacityCustom  String?
+  slideIntervalCustom String?
+  overlayColorCustom  String?
+}
+
+model SiteSettings {
+  id                String   @id @default("main")
+  about             String?
+  phone             String?
+  email             String?
+  address           String?
+  workingHours      String?
+  copyright         String?
+  newsletterEnabled Boolean  @default(true)
+  logoUrl           String?
+  footerLogoUrl     String?
+  logoText          String?
+  logoHeight        Int?     @default(80)
+  footerLogoHeight  Int?     @default(48)
+  showPersianName   Boolean  @default(true)
+  logoPosition      String?  @default("right")
+  footerLogoPosition String? @default("center")
+  footerHeavixLogoUrl  String?
+  footerMekanixLogoUrl String?
+  footerAriaLogoUrl    String?
+  sellIn7DaysPrepaymentAmount BigInt?
+  sellIn7DaysCommissionRate  Float?
+  verifiedSectionTitle       String?
+  verifiedSectionSubtitle    String?
+  verifiedSectionLimit       Int?
+  verifiedSectionAnimation   String?
+  verifiedSectionVerifiedOnly Boolean?
+  trustedBrandsTitle         String?
+  trustedBrandsSubtitle      String?
+  trustedBrandsDescription   String?
+  trustedBrandsLimit         Int?
+  trustedBrandsTickerSpeed   Int?
+  logoAnimationDurationMs    Int?     @default(10000)
+  compareVisibleAttributeIds String?
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  title       String
+  href        String?
+  icon        String?
+  order       Int      @default(0)
+  parentId    String?
+  openInNew   Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// USERS + AUTH
+// ════════════════════════════════════════════════════════════
+
+model User {
+  id             String   @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String   @unique
+  mobile         String   @unique
+  passwordHash   String
+  userType       String   @default("INDIVIDUAL")
+  role           String   @default("BUYER")
+  status         String   @default("PENDING")
+  emailVerified  Boolean  @default(false)
+  mobileVerified Boolean  @default(false)
+  companyName    String?
+  lastLoginAt    DateTime?
+  verificationDeadline DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  listings       Listing[] @relation("UserListings")
+  requests       BuyRequest[] @relation("UserRequests")
+  savedSearches  SavedSearch[] @relation("UserSavedSearches")
+  favorites      Favorite[] @relation("UserFavorites")
+  articles       Article[] @relation("UserArticles")
+  follows        Follow[] @relation("UserFollows")
+  offers         ListingOffer[] @relation("UserOffers")
+  notifications  Notification[] @relation("UserNotifications")
+  referrals      Referral[] @relation("UserReferrals")
+  foundingStatus FoundingSeller? @relation("UserFoundingStatus")
+  premium        PremiumSubscription? @relation("UserPremium")
+  payments       Payment[] @relation("UserPayments")
+  companyId      String?
+  company        Company?  @relation("CompanyUsers", fields: [companyId], references: [id], onDelete: SetNull)
+  dealRoomsAsBuyer  DealRoom[] @relation("DealRoomBuyer")
+  dealRoomsAsSeller DealRoom[] @relation("DealRoomSeller")
+  rfqs              RFQ[] @relation("UserRFQs")
+  rfqQuotes         RFQQuote[] @relation("UserRFQQuotes")
+  auctionBids       AuctionBid[] @relation("UserAuctionBids")
+  companyClaims     CompanyClaim[] @relation("UserCompanyClaims")
+  sessions       Session[]
+  verificationCodes VerificationCode[]
+  userRoles      UserRole[]
+  recommendations UserRecommendation[] @relation("UserRecommendations")
+  conversations1 Conversation[] @relation("ConvParticipant1")
+  conversations2 Conversation[] @relation("ConvParticipant2")
+  sentMessages   Message[]   @relation("MessageSender")
+  avgRating      Float?
+  reviewCount    Int      @default(0)
+  reviewsReceived Review[] @relation("SellerReviews")
+  reviewsWritten  Review[] @relation("ReviewAuthor")
+  dealsAsBuyer    Deal[] @relation("DealBuyer")
+  dealsAsSeller   Deal[] @relation("DealSeller")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 model AdminSession {
-  id         String   @id @default(cuid())
-  userId     String
-  token      String   @unique
-  ip         String?
-  userAgent  String?
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime @default(now())
-
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  username  String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
   @@index([expiresAt])
 }
 
-/// System health metrics snapshots (kept short-retention).
-/// Populated by a periodic metrics collector.
-model SystemMetric {
-  id         String   @id @default(cuid())
-  metric     String   // e.g. "users.total", "requests.per_min", "db.connections"
-  value      Float
-  unit       String?
-  labels     Json?    // optional dimension labels
-  createdAt  DateTime @default(now())
+model VerificationCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String
+  type      String   @default("MOBILE")
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
 
-  @@index([metric])
+// ════════════════════════════════════════════════════════════
+// LEGACY
+// ════════════════════════════════════════════════════════════
+
+model Setting {
+  key   String @id
+  value String
+}
+
+// ════════════════════════════════════════════════════════════
+// SOCIAL MEDIA REELS
+// ════════════════════════════════════════════════════════════
+
+model SocialReel {
+  id            String   @id @default(cuid())
+  listingId     String
+  listing       Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  platform      String
+  videoUrl      String?
+  thumbnailUrl  String?
+  duration      Int      @default(5)
+  status        String   @default("PENDING")
+  prompt        String?
+  taskId        String?
+  caption       String?
+  hashtags      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([listingId])
+  @@index([status])
+  @@index([platform])
+}
+
+// ════════════════════════════════════════════════════════════
+// AUDIT LOG (append-only)
+// ════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  actorType   String   @default("USER")
+  action      String
+  entityType  String
+  entityId    String?
+  beforeJson  String?
+  afterJson   String?
+  ip          String?
+  userAgent   String?
+  requestId   String?
+  reason      String?
+  createdAt   DateTime @default(now())
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
   @@index([createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// RBAC (Role / Permission / RolePermission / UserRole)
+// ════════════════════════════════════════════════════════════
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+  createdAt   DateTime @default(now())
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  resource    String
+  roles       RolePermission[]
+  createdAt   DateTime @default(now())
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  role         Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@unique([roleId, permissionId])
+}
+
+model UserRole {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@unique([userId, roleId])
+}
+
+// ════════════════════════════════════════════════════════════
+// CATALOG ENTITIES (Product / Machine / Part / Attachment)
+// ════════════════════════════════════════════════════════════
+
+model Product {
+  id            String   @id @default(cuid())
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  brandId       String?
+  brand         Brand?   @relation(fields: [brandId], references: [id])
+  modelId       String?
+  model         ProductModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  canonicalName String
+  slug          String   @unique
+  status        String   @default("ACTIVE")
+  description   String?
+  source        String?
+  confidence    Float?
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  listings      Listing[]
+  machines      Machine[]
+  parts         Part[]
+  attachments   Attachment[]
+  priceRecords  PriceRecord[]
+  @@index([categoryId])
+  @@index([brandId])
+}
+
+model Machine {
+  id            String   @id @default(cuid())
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  listingId     String?
+  listing       Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  serialNumber  String?
+  manufactureYear Int?
+  hours         Int?
+  condition     String?
+  ownershipHistory String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([productId])
+}
+
+model Part {
+  id            String   @id @default(cuid())
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  partNumber    String?
+  oemNumber     String?
+  condition     String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([productId])
+}
+
+model Attachment {
+  id            String   @id @default(cuid())
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  attachmentType String?
+  capacity      String?
+  condition     String?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([productId])
+}
+
+model CompatibilityEdge {
+  id              String   @id @default(cuid())
+  sourceEntityType String
+  sourceEntityId   String
+  targetEntityType String
+  targetEntityId   String
+  relationType     String
+  confidence       Float?
+  source           String?
+  verified         Boolean @default(false)
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  createdAt        DateTime @default(now())
+  @@unique([sourceEntityType, sourceEntityId, targetEntityType, targetEntityId, relationType])
+  @@index([sourceEntityType, sourceEntityId])
+  @@index([targetEntityType, targetEntityId])
+}
+
+// ════════════════════════════════════════════════════════════
+// PRICE INTELLIGENCE
+// ════════════════════════════════════════════════════════════
+
+model PriceRecord {
+  id          String   @id @default(cuid())
+  listingId   String?
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  brandId     String?
+  price       Float
+  currency    String   @default("IRR")
+  year        Int?
+  condition   String?
+  recordedAt  DateTime @default(now())
+  source      String   @default("LISTING")
+  @@index([productId])
+  @@index([categoryId, brandId])
+  @@index([recordedAt])
+}
+
+model SearchQuery {
+  id          String   @id @default(cuid())
+  query       String
+  normalizedQuery String
+  resultCount Int      @default(0)
+  userId      String?
+  ip          String?
+  categorySlug String?
+  brandSlug   String?
+  hasResults  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([normalizedQuery])
+  @@index([createdAt])
+  @@index([hasResults])
+}
+
+// ════════════════════════════════════════════════════════════
+// AI AGENTS PLATFORM
+// ════════════════════════════════════════════════════════════
+
+model AIAgent {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  taskType    String
+  config      String?
+  active      Boolean  @default(true)
+  lastRunAt   DateTime?
+  lastStatus  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// OPPORTUNITY ENGINE
+// ════════════════════════════════════════════════════════════
+
+model Opportunity {
+  id          String   @id @default(cuid())
+  type        String
+  entityType  String
+  entityId    String?
+  title       String
+  description String?
+  score       Float
+  metadata    String?
+  status      String   @default("NEW")
+  createdAt   DateTime @default(now())
+  @@index([type, status])
+  @@index([createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// ADVANCED SEO AUTOMATION
+// ════════════════════════════════════════════════════════════
+
+model SEOMetadata {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  metaTitle     String?
+  metaDescription String?
+  keywords      String?
+  canonicalUrl  String?
+  ogImage       String?
+  ogTitle       String?
+  ogDescription String?
+  structuredData String?
+  robotsIndex   Boolean  @default(true)
+  robotsFollow  Boolean  @default(true)
+  sitemapPriority Float @default(0.5)
+  sitemapChangeFreq String @default("weekly")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([entityType, entityId])
+  @@index([entityType])
+}
+
+// ════════════════════════════════════════════════════════════
+// RECOMMENDATION ENGINE
+// ════════════════════════════════════════════════════════════
+
+model UserRecommendation {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation("UserRecommendations", fields: [userId], references: [id], onDelete: Cascade)
+  listingId   String
+  listing     Listing   @relation("ListingRecommendations", fields: [listingId], references: [id], onDelete: Cascade)
+  reason      String
+  score       Float     @default(0)
+  dismissed   Boolean   @default(false)
+  clickedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  @@unique([userId, listingId, reason])
+  @@index([userId, createdAt])
+  @@index([userId, dismissed])
+}
+
+// ════════════════════════════════════════════════════════════
+// SITE STATS
+// ════════════════════════════════════════════════════════════
+
+model SiteStat {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  labelFa     String
+  labelEn     String?
+  metric      String
+  customValue String?
+  icon        String?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// SELL IN 7 DAYS
+// ════════════════════════════════════════════════════════════
+
+model SellIn7DaysApplication {
+  id               String   @id @default(cuid())
+  trackingCode     String   @unique
+  sellerName       String
+  sellerMobile     String
+  sellerEmail      String?
+  deviceName       String
+  categoryId       String?
+  brandId          String?
+  modelName        String?
+  year             Int?
+  workingHours     Int?
+  condition        String?
+  province         String?
+  city             String?
+  expectedPrice    BigInt?
+  description      String?
+  prepaymentPaid   Boolean  @default(false)
+  prepaymentAmount BigInt?
+  status           String   @default("PENDING_PREPAYMENT")
+  currentStep      Int      @default(1)
+  inspectionDate   DateTime?
+  valuationPrice   BigInt?
+  salePrice        BigInt?
+  commissionAmount BigInt?
+  soldAt           DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  @@index([status])
+  @@index([sellerMobile])
+}
+
+// ════════════════════════════════════════════════════════════
+// PRICE ESTIMATION ENGINE
+// ════════════════════════════════════════════════════════════
+
+model PriceObservation {
+  id              String   @id @default(cuid())
+  listingId       String?
+  listing         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  productId       String?
+  brandId         String?
+  brand           Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  categoryId      String?
+  category        Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  modelId         String?
+  askingPrice     BigInt?
+  estimatedPrice  Float?
+  priceLower      Float?
+  priceUpper      Float?
+  currency        String   @default("IRR")
+  normalizedPrice Float?
+  source          String   @default("LISTING")
+  sourceType      String?
+  observedAt      DateTime @default(now())
+  market          String?
+  quality         String   @default("MEDIUM")
+  status          String   @default("ACTIVE")
+  confidence      String?
+  comparableCount Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+  @@index([brandId, categoryId])
+  @@index([modelId])
+  @@index([observedAt])
+}
+
+model PriceEstimate {
+  id              String   @id @default(cuid())
+  listingId       String?
+  listing         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  estimatedPrice  Float
+  priceLower      Float
+  priceUpper      Float
+  confidence      String   @default("MEDIUM")
+  comparableCount Int      @default(0)
+  dataFreshness   String?
+  mainDrivers     String?
+  warnings        String?
+  modelVersion    String   @default("v1.0")
+  createdAt       DateTime @default(now())
+  @@index([listingId])
+}
+
+model PriceOverride {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  originalEstimate Float
+  overridePrice    Float
+  reason      String
+  overriddenBy String?
+  overriddenAt DateTime @default(now())
+  @@index([listingId])
+}
+
+// ════════════════════════════════════════════════════════════
+// MACHINE COMPARISON ENGINE
+// ════════════════════════════════════════════════════════════
+
+model ComparisonSession {
+  id              String   @id @default(cuid())
+  userId          String?
+  name            String?
+  shareToken      String?  @unique
+  shareExpiresAt  DateTime?
+  status          String   @default("ACTIVE")
+  aiSummary       String?
+  aiSummaryAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  items           ComparisonItem[]
+}
+
+model ComparisonItem {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     ComparisonSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  listingId   String?
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  productId   String?
+  brandId     String?
+  modelId     String?
+  sortOrder   Int      @default(0)
+  @@index([sessionId])
+}
+
+// ════════════════════════════════════════════════════════════
+// DIRECT MESSAGING
+// ════════════════════════════════════════════════════════════
+
+model Conversation {
+  id               String    @id @default(cuid())
+  listingId        String?
+  listing          Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  participant1Id   String
+  participant1     User      @relation("ConvParticipant1", fields: [participant1Id], references: [id], onDelete: Cascade)
+  participant2Id   String
+  participant2     User      @relation("ConvParticipant2", fields: [participant2Id], references: [id], onDelete: Cascade)
+  lastMessageAt    DateTime?
+  lastMessagePreview String?
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  messages         Message[]
+  @@unique([participant1Id, participant2Id, listingId])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  body           String
+  attachmentUrl  String?
+  read           Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// ANALYTICS + MODERATION
+// ════════════════════════════════════════════════════════════
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  eventType   String
+  userId      String?
+  listingId   String?
+  categoryId  String?
+  brandId     String?
+  query       String?
+  page        String?
+  referrer    String?
+  ip          String?
+  userAgent   String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+  @@index([eventType])
+  @@index([userId])
+  @@index([listingId])
+  @@index([createdAt])
+}
+
+model ModerationLog {
+  id          String   @id @default(cuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  action      String
+  reason      String?
+  riskScore   Float?
+  flaggedIssues String?
+  moderatorId String?
+  createdAt   DateTime @default(now())
+  @@index([listingId])
+  @@index([action])
+}
+
+// ════════════════════════════════════════════════════════════
+// PAYMENT + LEDGER
+// ════════════════════════════════════════════════════════════
+
+model Payment {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation("UserPayments", fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId  String?
+  orderId         String?
+  order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  amount          BigInt
+  currency        String    @default("IRR")
+  type            String
+  status          String    @default("PENDING")
+  gateway         String?
+  providerReference String?
+  trackingCode    String?
+  idempotencyKey  String?   @unique
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([userId])
+  @@index([status])
+  @@index([orderId])
+}
+
+// ════════════════════════════════════════════════════════════
+// REVIEWS + RATINGS
+// ════════════════════════════════════════════════════════════
+
+model Review {
+  id              String   @id @default(cuid())
+  authorId        String
+  author          User     @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  companyId       String?
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sellerId        String?
+  seller          User?    @relation("SellerReviews", fields: [sellerId], references: [id], onDelete: Cascade)
+  dealRoomId      String?  @unique
+  dealRoom        DealRoom? @relation(fields: [dealRoomId], references: [id], onDelete: SetNull)
+  dealId          String?  @unique
+  deal            Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  orderId         String?
+  listingId       String?
+  listing         Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  rating          Int
+  title           String?
+  body            String
+  verifiedDeal    Boolean  @default(false)
+  sellerResponse   String?
+  sellerRespondedAt DateTime?
+  status          String   @default("PENDING")
+  adminNotes      String?
+  moderatedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([companyId, status])
+  @@index([sellerId, status])
+  @@index([status])
+}
+
+// ════════════════════════════════════════════════════════════
+// ORDERS / DEALS / TRANSACTIONS (Phase 9)
+// ════════════════════════════════════════════════════════════
+
+model Deal {
+  id              String    @id @default(cuid())
+  dealNumber      String    @unique
+  sourceType      String
+  sourceId        String
+  buyerId         String?
+  buyer           User?     @relation("DealBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  sellerId        String?
+  seller          User?     @relation("DealSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  listingId       String?
+  listing         Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  agreedAmount    BigInt?
+  currency        String    @default("IRR")
+  transactionType String    @default("SALE")
+  status          String    @default("DRAFT")
+  agreedAt        DateTime?
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  order           Order?
+  disputes        Dispute[]
+  review          Review?
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([status])
+}
+
+model Order {
+  id              String    @id @default(cuid())
+  orderNumber     String    @unique
+  dealId          String    @unique
+  deal            Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  titleSnapshot   String
+  priceSnapshot   BigInt
+  currencySnapshot String   @default("IRR")
+  sellerSnapshot  String?
+  buyerSnapshot   String?
+  quantity        Int       @default(1)
+  status          String    @default("PENDING")
+  commissionRate  Float?
+  commissionAmount BigInt?
+  sellerAmount    BigInt?
+  confirmedAt     DateTime?
+  fulfilledAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  payments        Payment[]
+  disputes        Dispute[]
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([status])
+}
+
+model Dispute {
+  id              String    @id @default(cuid())
+  dealId          String?
+  deal            Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status          String    @default("OPEN")
+  reason          String
+  description     String?
+  evidence        String?
+  openedBy        String
+  openedAt        DateTime  @default(now())
+  resolution      String?
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@index([dealId])
+  @@index([orderId])
+  @@index([status])
 }

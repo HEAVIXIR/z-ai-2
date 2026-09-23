@@ -1,0 +1,185 @@
+// HEAVIX - Prisma schema
+// Phase 12: Admin Control Plane Foundation
+// Database: PostgreSQL 17 (user-space install)
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Core Identity & Access (Phase 1 baseline, retained)
+// ============================================================
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  // Phase 12: Admin Control Plane fields
+  role        UserRole @default(MEMBER)
+  status      UserStatus @default(ACTIVE)
+  avatarUrl   String?
+  lastLoginAt DateTime?
+  lastLoginIp String?
+  // Soft delete support
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts       Post[]
+  auditLogs   AuditLog[]
+  adminSessions AdminSession[]
+
+  @@index([role])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  MEMBER
+  GUEST
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  INVITED
+  DELETED
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([published])
+}
+
+// ============================================================
+// Phase 12: Admin Control Plane models
+// ============================================================
+
+/// Role-based access control. Roles are configurable (not just an enum)
+/// so admins can define custom roles with custom permission sets.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  // JSON array of permission codenames, e.g. ["users.read", "users.write", "settings.write"]
+  permissions String[]
+  isSystem    Boolean  @default(false) // system roles cannot be deleted
+  color       String? // hex color for UI badges, e.g. "#ef4444"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isSystem])
+}
+
+/// Audit log of admin actions. Append-only (no updates / deletes).
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String? // denormalised for resilience if user is deleted
+  action     String   // e.g. "user.create", "feature_flag.toggle", "setting.update"
+  resource   String?  // e.g. "User", "FeatureFlag"
+  resourceId String?
+  // JSON blob for before/after diff or extra context
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  status     String   @default("success") // success | failure | warning
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+/// Feature flags for runtime toggles. Value is string for flexibility
+/// (boolean: "true"/"false", or variant: "blue", "v2", etc.)
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "new_dashboard_v2"
+  name        String
+  description String?
+  enabled     Boolean  @default(false)
+  value       String?  // optional variant value
+  // Audience targeting: "all" | "admins" | "internal" | JSON list of user IDs
+  audience    String   @default("all")
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([enabled])
+  @@index([key])
+}
+
+/// System settings - key/value configuration with type info.
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "site.name", "email.from", "limits.maxUploadMb"
+  value       String   // stored as text, parsed by type
+  type        SettingType
+  description String?
+  isSecret    Boolean  @default(false) // secrets are masked in UI
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+enum SettingType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  URL
+  EMAIL
+}
+
+/// Admin login sessions for tracking active sessions.
+model AdminSession {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  ip         String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+/// System health metrics snapshots (kept short-retention).
+/// Populated by a periodic metrics collector.
+model SystemMetric {
+  id         String   @id @default(cuid())
+  metric     String   // e.g. "users.total", "requests.per_min", "db.connections"
+  value      Float
+  unit       String?
+  labels     Json?    // optional dimension labels
+  createdAt  DateTime @default(now())
+
+  @@index([metric])
+  @@index([createdAt])
+}
