@@ -241,3 +241,90 @@ Unresolved / risks:
 - Visual screenshot verification of the new features is blocked by the 4GB cgroup OOM issue (Chrome + Next.js dev server together exceed the limit). The features are verified via HTML content + API responses instead.
 - Auth remains a placeholder (`getAdminContext` attributes actions to the seeded super-admin). A later phase must add real session/JWT auth.
 - The platform auto-commits via checkpoint between agent runs (commits 5fca907, 3e4d187 appeared between my Phase 12 and Phase 12.1 commits). This is expected platform behavior.
+
+---
+Task ID: PHASE-13-SCHEMA
+Agent: Main Orchestrator (Z.ai Code)
+Task: Receive the real HEAVIX Prisma schema from the user (pasted in chat across 5 parts — gateway file delivery was broken), assemble it, and push to PostgreSQL.
+
+Work Log:
+- User pasted the complete HEAVIX Prisma schema directly in chat messages (not as file attachments — gateway file delivery has been broken all session). Received across 5 parts:
+  - Part 1: Brand Catalog (Brand, BrandAlias, BrandFamily, BrandIndustry, Industry, BrandCategory, BrandDomain, BrandMedia, BrandSEO, BrandDisplay) + Taxonomy (Category, TransactionType, ServiceType, Service, HomeCategoryConfig, ApplicationIndustry, CategoryApplicationIndustry) + Location (Country, Province, City) + Attributes (AttributeDefinition, AttributeOption, CategoryAttribute, ListingAttributeValue) + Product Models (ProductModel, ModelCategory, Generation) + Listing (truncated) = 28 models
+  - Part 2: Listing (complete) + ListingImage + BuyRequest + SavedSearch + Favorite + Lead + Article + Follow + HotSearch + SiteWidget + KnowledgeEntry = 11 models
+  - Part 3: AIGatewayLog + AIBudget + AITaskPolicy + LaunchPhase + DemandSignal + RFQ + RFQQuote + Auction + AuctionBid + IndustrialTerm + TermAlias + FeatureFlag + CompanyClaim + ListingOffer + ListingRejection + RejectionMessage + Notification + Referral + FoundingSeller + SubscriptionPlan + PremiumSubscription + MachinePassport + PassportEvent = 23 models
+  - Part 4: Company + CompanyPartner + CompanyDocument + CompanyBranch + CompanyVerification + DealRoom + DealMessage + DealDocument + Inspection + TransportRequest + HomePageSection + HeroConfig + SiteSettings + MenuItem + User + Session + AdminSession + VerificationCode + Setting + SocialReel + AuditLog = 21 models
+  - Part 5 (final, user said "تمام"): Role + Permission + RolePermission + UserRole + Product + Machine + Part + Attachment + CompatibilityEdge + PriceRecord + SearchQuery + AIAgent + Opportunity + SEOMetadata + UserRecommendation + SiteStat + SellIn7DaysApplication + PriceObservation + PriceEstimate + PriceOverride + ComparisonSession + ComparisonItem + Conversation + Message + AnalyticsEvent + ModerationLog + Payment + Review + Deal + Order + Dispute = 31 models
+
+- Total: 113 models across 5 parts. This is the REAL HEAVIX schema — an industrial heavy-machinery marketplace (not the standard admin-control-plane guess from Phase 12).
+
+- Assembled the complete schema into prisma/schema.prisma:
+  - 2220 lines total
+  - Changed `provider` from `"sqlite"` (original) to `"postgresql"` (production)
+  - Added `binaryTargets = ["native", "debian-openssl-3.0.x"]`
+  - Preserved all user's original model definitions, comments, and section headers
+  - Backed up the old Phase 12 schema to `prisma/schema.prisma.phase12-backup`
+
+- Key differences from Phase 12 (4 models will be REPLACED):
+  1. `User`: HEAVIX has firstName/lastName/mobile(unique)/passwordHash/userType/role=ADMIN|SELLER|BUYER/status=PENDING/emailVerified/mobileVerified/verificationDeadline + 20+ relations. Phase 12 had name/email/role=SUPER_ADMIN|ADMIN|MODERATOR|MEMBER|GUEST/status=ACTIVE|SUSPENDED|PENDING|INVITED|DELETED.
+  2. `AuditLog`: HEAVIX has actorType/beforeJson/afterJson/requestId/reason. Phase 12 had actorEmail/metadata/status.
+  3. `AdminSession`: HEAVIX uses tokenHash (SHA-256) + username. Phase 12 had raw token + ip + userAgent + revokedAt.
+  4. `FeatureFlag`: HEAVIX has rolloutPct (percentage rollout). Phase 12 had audience + value.
+
+- Ran `bunx prisma db push --accept-data-loss --force-reset`:
+  - Database successfully reset (dropped 8 Phase 12 tables + all seed data)
+  - All 113 HEAVIX tables created in PostgreSQL
+  - Verified via `information_schema.tables`: 113 tables in `public` schema ✓
+  - Prisma Client regenerated for the 113-model schema (571ms)
+
+- Tables created include: AIAgent, AIBudget, AIGatewayLog, AITaskPolicy, AdminSession, AnalyticsEvent, ApplicationIndustry, Article, Attachment, AttributeDefinition, AttributeOption, Auction, AuctionBid, AuditLog, Brand, BrandAlias, BrandCategory, BrandDisplay, BrandDomain, BrandFamily, BrandIndustry, BrandMedia, BrandSEO, BuyRequest, Category, CategoryApplicationIndustry, CategoryAttribute, City, Company, CompanyBranch, CompanyClaim, CompanyDocument, CompanyPartner, CompanyVerification, ComparisonItem, ComparisonSession, Condition (enum), Conversation, Country, Deal, DealDocument, DealMessage, DealRoom, DemandSignal, Dispute, Attachment, Favorite, FeatureFlag, Follow, Generation, HeroConfig, HomeCategoryConfig, HomePageSection, HotSearch, IndustrialTerm, Inspection, KnowledgeEntry, Lead, Listing, ListingAttributeValue, ListingImage, ListingOffer, ListingRejection, Machine, MachinePassport, MenuItem, Message, ModelCategory, ModerationLog, Notification, Order, Opportunity, Part, PassportEvent, Payment, Permission, PriceEstimate, PriceObservation, PriceOverride, PriceRecord, PremiumSubscription, Product, ProductModel, Province, RFQ, RFQQuote, RejectionMessage, Review, Role, RolePermission, SavedSearch, SEOMetadata, SearchQuery, SellIn7DaysApplication, Service, ServiceType, Session, Setting, SiteSettings, SiteStat, SiteWidget, SocialReel, SubscriptionPlan, TermAlias, TransactionType, TransportRequest, User, UserRecommendation, UserRole, VerificationCode, CompatibilityEdge
+
+- Git commit `95cca6c`: "feat: HEAVIX Phase 13 — Real schema integration (113 models)" — 2 files changed, 2339 insertions, 119 deletions.
+- Backup: `download/heavix-backup-stage4-phase13-schema.zip` (238 KB — schema + src + scripts + config only, excludes node_modules).
+
+Stage Summary:
+- ✅ Real HEAVIX schema (113 models) received from user via chat paste (gateway file delivery broken).
+- ✅ Assembled into `prisma/schema.prisma` (2220 lines, provider=postgresql, binaryTargets set).
+- ✅ All 113 tables created in PostgreSQL via `db:push --force-reset`.
+- ✅ Prisma Client regenerated.
+- ✅ Git committed + backup zip created.
+
+What HEAVIX actually is (revealed by the schema):
+A full industrial heavy-machinery marketplace with:
+- Brand catalog OS (brands, families, aliases, industries, media, SEO, display)
+- Taxonomy tree (categories with materialized paths, transaction types, service types, application industries)
+- Location hierarchy (country → province → city)
+- Dynamic attributes (typed attribute definitions with provenance + verification status)
+- Product models + generations (Brand → Model → Generation)
+- Listings (the core entity — sale/rent/wanted, with rental fields, location, transaction type)
+- Buy requests, saved searches, favorites, leads
+- Knowledge articles + AI knowledge base
+- RFQ (B2B procurement) + quotes
+- Auction engine with bids
+- Industrial Persian dictionary (synonym/alias mapping for search)
+- Company pages with verification lifecycle, documents, branches, partner network
+- Deal rooms with messages + documents
+- Inspections + transport requests
+- CMS (homepage sections, hero config, site settings, menu items)
+- Users + auth (User, Session, AdminSession with tokenHash, VerificationCode)
+- RBAC (Role, Permission, RolePermission, UserRole — 4-table RBAC)
+- Catalog entities (Product, Machine, Part, Attachment, CompatibilityEdge)
+- Price intelligence (PriceRecord, PriceObservation, PriceEstimate, PriceOverride)
+- AI gateway (AIGatewayLog, AIBudget, AITaskPolicy, AIAgent)
+- Opportunity engine + SEO automation
+- Recommendation engine (UserRecommendation)
+- Comparison engine (ComparisonSession, ComparisonItem)
+- Direct messaging (Conversation, Message)
+- Analytics + moderation (AnalyticsEvent, ModerationLog)
+- Payments + ledger (Payment)
+- Reviews + ratings (Review)
+- Phase 9 commerce (Deal, Order, Dispute)
+- Subscriptions (SubscriptionPlan, PremiumSubscription)
+- Growth (Referral, FoundingSeller, SellIn7DaysApplication)
+- Machine passports (MachinePassport, PassportEvent)
+- Social media reels (SocialReel)
+- Audit log (append-only, with beforeJson/afterJson)
+- Feature flags (with rolloutPct for canary deployment)
+- Launch phase tracker
+- Demand signal + search query logging
+
+Next step (Phase 13.5): The Phase 12 admin dashboard (admin-shell, 6 sections, 8 API endpoints) references the OLD Phase 12 model fields. It will break until adapted to the real HEAVIX schema. The API endpoints need updating to use the real User (firstName/lastName/mobile), real AuditLog (actorType/beforeJson), etc. A HEAVIX-specific seed script also needs writing.
