@@ -14,6 +14,8 @@ import {
   Sun,
   Menu,
   X,
+  Command as CommandIcon,
+  LineChart,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +30,9 @@ import { RolesSection } from './sections/roles-section';
 import { AuditLogsSection } from './sections/audit-logs-section';
 import { FeatureFlagsSection } from './sections/feature-flags-section';
 import { SettingsSection } from './sections/settings-section';
+import { MetricsSection } from './sections/metrics-section';
+import { CommandPalette, type CommandAction } from './command-palette';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type SectionKey =
   | 'overview'
@@ -35,7 +40,8 @@ type SectionKey =
   | 'roles'
   | 'audit-logs'
   | 'feature-flags'
-  | 'settings';
+  | 'settings'
+  | 'metrics';
 
 const NAV: { key: SectionKey; label: string; icon: React.ComponentType<{ className?: string }>; desc: string }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard, desc: 'System dashboard & live metrics' },
@@ -43,6 +49,7 @@ const NAV: { key: SectionKey; label: string; icon: React.ComponentType<{ classNa
   { key: 'roles', label: 'Roles', icon: ShieldCheck, desc: 'RBAC: roles & permissions' },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText, desc: 'Append-only admin activity' },
   { key: 'feature-flags', label: 'Feature Flags', icon: Flag, desc: 'Runtime feature toggles' },
+  { key: 'metrics', label: 'Metrics', icon: LineChart, desc: 'System metrics explorer' },
   { key: 'settings', label: 'Settings', icon: SettingsIcon, desc: 'System configuration' },
 ];
 
@@ -138,9 +145,63 @@ function Brand() {
 export function AdminShell() {
   const [section, setSection] = React.useState<SectionKey>('overview');
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [cmdOpen, setCmdOpen] = React.useState(false);
   const active = NAV.find((n) => n.key === section)!;
 
+  // Cmd+K / Ctrl+K to open command palette
+  React.useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+      // Quick nav: g then o/u/r/a/f/m/s (vim-style)
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Build dynamic command actions based on current section
+  const cmdActions: CommandAction[] = React.useMemo(() => [
+    {
+      id: 'act-create-user',
+      label: 'Create new user',
+      description: 'Open the create-user dialog',
+      icon: Users,
+      shortcut: 'N U',
+      keywords: ['add', 'invite', 'member'],
+      run: () => setSection('users'),
+    },
+    {
+      id: 'act-create-flag',
+      label: 'Create feature flag',
+      description: 'Open the create-flag dialog',
+      icon: Flag,
+      shortcut: 'N F',
+      keywords: ['toggle', 'experiment', 'rollout'],
+      run: () => setSection('feature-flags'),
+    },
+    {
+      id: 'act-create-role',
+      label: 'Create custom role',
+      description: 'Open the create-role dialog',
+      icon: ShieldCheck,
+      keywords: ['rbac', 'permission'],
+      run: () => setSection('roles'),
+    },
+    {
+      id: 'act-toggle-theme',
+      label: 'Toggle theme',
+      description: 'Switch between light and dark',
+      icon: Sun,
+      shortcut: '⌘⇧L',
+      keywords: ['dark', 'light', 'mode'],
+      run: () => { /* handled by ThemeToggle */ document.querySelector('[aria-label=\'Toggle theme\']')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); },
+    },
+  ], []);
+
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex min-h-screen w-full bg-background text-foreground">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
@@ -198,6 +259,23 @@ export function AdminShell() {
           </div>
           <div className="ml-auto flex items-center gap-2">
             <HealthIndicator />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCmdOpen(true)}
+                  className="hidden h-8 gap-2 border-border/60 bg-muted/30 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:flex"
+                >
+                  <CommandIcon className="size-3.5" />
+                  <span>Command</span>
+                  <kbd className="ml-1 rounded border border-border/60 bg-background/80 px-1 py-0 font-mono text-[9px]">⌘K</kbd>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Quick navigation & actions
+              </TooltipContent>
+            </Tooltip>
             <ThemeToggle />
             <Separator orientation="vertical" className="hidden h-6 md:block" />
             <div className="hidden items-center gap-2 md:flex">
@@ -227,6 +305,7 @@ export function AdminShell() {
               {section === 'roles' && <RolesSection />}
               {section === 'audit-logs' && <AuditLogsSection />}
               {section === 'feature-flags' && <FeatureFlagsSection />}
+              {section === 'metrics' && <MetricsSection />}
               {section === 'settings' && <SettingsSection />}
             </motion.div>
           </AnimatePresence>
@@ -235,12 +314,20 @@ export function AdminShell() {
         {/* Footer (sticky) */}
         <footer className="mt-auto flex h-9 items-center justify-between border-t bg-background px-4 text-[11px] text-muted-foreground md:px-6">
           <span>
-            HEAVIX · Phase 12 Foundation ·{' '}
+            HEAVIX · Phase 12.1 ·{' '}
             <span className="text-foreground/70">{active.label}</span>
           </span>
-          <span className="font-mono">v0.12.0</span>
+          <span className="font-mono">v0.12.1 · ⌘K</span>
         </footer>
       </div>
+
+      <CommandPalette
+        open={cmdOpen}
+        onOpenChange={setCmdOpen}
+        onNavigate={(s) => setSection(s as SectionKey)}
+        actions={cmdActions}
+      />
     </div>
+    </TooltipProvider>
   );
 }
