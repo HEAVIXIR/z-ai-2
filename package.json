@@ -11,6 +11,7 @@
     "db:generate": "./scripts/with-env.sh prisma generate",
     "db:migrate": "./scripts/with-env.sh prisma migrate dev",
     "db:reset": "./scripts/with-env.sh prisma migrate reset",
+    "db:seed": "./scripts/with-env.sh bun run scripts/seed.ts",
     "pg:start": "./scripts/pg-start.sh",
     "pg:stop": "./scripts/pg-stop.sh",
     "pg:status": "./scripts/pg-status.sh"
