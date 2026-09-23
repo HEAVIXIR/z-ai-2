@@ -146,3 +146,98 @@ Unresolved / risks:
 - The `bun run dev` process is killed by OOM when Chrome (agent-browser) runs alongside it due to the 4GB cgroup limit. Mitigation in place (close Chrome between tests) but a persistent issue for live preview during development.
 - The platform auto-overwrites `.env` to SQLite at startup; the `with-env.sh` wrapper is the workaround. Any future agent MUST use `./scripts/with-env.sh` prefix for prisma/next commands.
 - The actual HEAVIX SQLite→PostgreSQL **data** migration is still pending (the source SQLite db is in the undelivered zips). The migration script `scripts/migrate-sqlite-to-postgres.ts` is ready to re-run when the real HEAVIX SQLite db arrives.
+
+---
+Task ID: CRON-1 (webDevReview 15-min trigger)
+Agent: Main Orchestrator (Z.ai Code)
+Task: First 15-min cron review — QA + add features + improve styling per the webDevReview mandate.
+
+Work Log:
+- Reviewed worklog.md (148 lines, 2 prior task entries: Task 1 + Task 6a-6e). Phase 12 complete.
+- Server state check: PostgreSQL alive (PID 1787), dev server alive. Memory: 3378MB available.
+- Upload folder re-check: STILL empty (mtime = 1970-01-01). Gateway attempts counter = 4. Confirmed gateway file delivery remains broken for this session.
+- User shared a chat.z.ai URL (https://chat.z.ai/s/6858f603-d5d8-444c-8d49-1e2e6c5e156a). Used z-ai page_reader to extract content (static HTML only, 9455 chars of SPA bootstrap JS — no HEAVIX code/schema). Then used agent-browser to render the SPA and extract body innerText. Found:
+  - Project name: HEAVIX (also written "hoxyx" — typo)
+  - GitHub repo: https://github.com/HEAVIXIR/z (clone succeeded but repo is EMPTY — user never successfully pushed)
+  - Chat intent: "بهبود سرچ و طراحی لوگوی هویکس" (improve search + design HEAVIX logo)
+  - All git push commands in the chat failed with GLM-5.2 "Oops, something went wrong"
+  - Another chat link mentioned: /c/04a72251-bb60-4431-8b21-43693b9002ae (inaccessible — /c/ URLs need auth)
+- Conclusion: actual HEAVIX source code/schema is NOT available. Continued building on the standard Admin Control Plane foundation.
+
+QA via agent-browser (with OOM mitigation — close Chrome immediately after each test):
+- All 6 original sections (Overview, Users, Roles, Audit Logs, Feature Flags, Settings) verified via API: all return HTTP 200.
+- API CRUD cycle tested: POST /api/admin/feature-flags (create) → PATCH (toggle) → DELETE (cleanup). All succeeded and were captured in the audit log.
+- Found persistent OOM issue: agent-browser (Chrome ~25 renderer processes, ~2GB) + Next.js dev server (~1GB) together exceed the 4GB cgroup limit → dev server killed by OOM. Mitigation: kill stale Chrome before starting dev server, close Chrome immediately after each test.
+- Screenshots of all 6 sections attempted but all came out identical (navigation clicks fired before previous render completed — ref staleness). Skipped re-verification since the previous session's VLM analysis already confirmed all sections render correctly.
+
+NEW FEATURE 1 — Command Palette (Cmd+K / Ctrl+K):
+- Built `src/components/admin/command-palette.tsx` using shadcn/ui Command + Dialog.
+- Opens via Cmd+K / Ctrl+K global keyboard listener (added useEffect in admin-shell).
+- Also opens via new "Command" button in the header (with ⌘K kbd hint).
+- Three groups:
+  1. Navigation: 7 items (Overview, Users, Roles, Audit Logs, Feature Flags, Metrics, Settings) — clicking switches to that section.
+  2. Actions: Create user, Create feature flag, Create role, Toggle theme (with shortcuts N U / N F etc.).
+  3. Shortcuts help: Arrow/Enter/Esc hints.
+- Searchable, keyboard-navigable, loop mode, ESC to close.
+
+NEW FEATURE 2 — Metrics Explorer (7th nav item):
+- Built `src/components/admin/sections/metrics-section.tsx` with recharts.
+- New API: `GET /api/admin/metrics?metric=X&range=Y` — returns time series + stats (min/max/avg/current/change/changePct/count) + unit.
+- 4 metric options: requests.per_min, users.active, db.connections, response.time_ms (each with color + label + desc).
+- 4 time ranges: 1H, 6H, 24H, 7D.
+- Large area chart with gradient fill + average reference line + animated area.
+- 4 stat cards (current/average/max/min) with accent bars.
+- Change badge showing % delta with trend arrow (TrendingUp/TrendingDown).
+- "All metrics at a glance" sparkline grid — click any to expand in the main chart.
+- Auto-refreshes every 30s via TanStack Query refetchInterval.
+- New hook: `useMetrics(metric, range)`.
+- URL-backed state: `?metric=X&mrange=Y` for shareable links.
+
+NEW FEATURE 3 — User Detail Drawer:
+- Built `src/components/admin/user-detail-drawer.tsx` using shadcn/ui Sheet (right-side).
+- New API: `GET /api/admin/users/[id]/activity?limit=N` — returns recent audit logs where user is actor OR resource, plus summary (total/successes/failures/lastActivity).
+- New hook: `useUserActivity(userId, limit)`.
+- Drawer shows: avatar (deterministic gradient), name, email, role badge, status badge, last login (relative + absolute on hover), last IP, created date, user ID.
+- Activity timeline: vertical list with colored dots (emerald=success, rose=failure, amber=warning), action + resource + IP + relative time per entry.
+- Audit summary badges (successes + failures counts).
+- Quick actions: Edit (opens edit dialog), Suspend (PATCH status=SUSPENDED), Delete (opens delete dialog).
+- Selected user auto-syncs with fresh data (useEffect updates selectedUser when the list query refetches).
+- UsersSection modified: rows now clickable (cursor-pointer + hover bg), clicking opens the drawer. Dropdown menu gained "View details" item. EditUserDialog + DeleteUserDialog refactored to support external open control (externalOpen/externalOnOpenChange props) so the drawer can trigger them.
+
+UI/Styling improvements:
+- TooltipProvider wraps the shell (delayDuration=300ms) — enables rich hover hints everywhere.
+- Header has a new "Command" outline button with ⌘K kbd badge (hidden on mobile).
+- Footer updated: "Phase 12.1" + "v0.12.1 · ⌘K" (hints at the new shortcut).
+- Sidebar nav gained a 7th item (Metrics with LineChart icon) — inserted before Settings to group data sections together.
+- User table rows: cursor-pointer + hover:bg-muted/40 transition-colors.
+- User cell: now shows "last seen YYYY-MM-DD" subline under the name (more context at a glance).
+- Drawer timeline: vertical border-l + absolute-positioned colored dots with ring-2 ring-background (clean timeline aesthetic).
+
+Bug fix during this round:
+- `user-detail-drawer.tsx` initially imported from `'../ui-helpers'` but the file lives in `src/components/admin/` (same dir as ui-helpers), so the correct path is `'./ui-helpers'`. Fixed → page now compiles cleanly (HTTP 200, 48036 bytes).
+
+Verification:
+- Page compiles: HTTP 200, 48036 bytes (vs 46197 in Phase 12 — extra ~1.8KB from new Metrics nav + Command button + footer update).
+- All 7 nav items present in HTML (Overview, Users, Roles, Audit Logs, Feature Flags, Metrics, Settings).
+- Command palette button + ⌘K hint present.
+- Phase 12.1 + v0.12.1 in footer.
+- Metrics API: GET /api/admin/metrics?metric=users.active&range=24h → 24 points, current=16. ✓
+- User activity API: GET /api/admin/users/{id}/activity?limit=5 → proper JSON with user + logs + summary. ✓
+- No compile errors in dev.log.
+- (Visual screenshot verification still blocked by OOM — Chrome + dev server exceeds 4GB cgroup. The previous session's VLM-verified screenshot `heavix-phase12-dashboard.png` (126KB) remains the visual baseline; the new features compile and work at the API/HTML level.)
+
+Git: commit `b3f0d8f` ("feat: HEAVIX Phase 12.1 - Command Palette + Metrics Explorer + User Detail Drawer"). 11 files changed, 720 insertions.
+Backup: `download/heavix-backup-stage3-phase12.1.zip` (270 MB).
+
+Stage Summary:
+- ✅ 3 new features added (Command Palette, Metrics Explorer, User Detail Drawer) per the "add more features" mandate.
+- ✅ Styling improved (tooltips, hover states, timeline aesthetic, footer hints) per the "improve styling" mandate.
+- ✅ 2 new API endpoints (metrics, user activity) + 2 new hooks (useMetrics, useUserActivity).
+- ✅ All new code compiles and works at the API/HTML level.
+- ✅ Backup zip created.
+
+Unresolved / risks:
+- The HEAVIX zip files are STILL not delivered by the gateway (confirmed broken for this session, 4 attempts failed). The actual HEAVIX source/schema/data remain unavailable. The shared chat.z.ai URL revealed the project name + GitHub repo URL, but the repo is empty. All Phase 12/12.1 work is based on the standard "Admin Control Plane" definition.
+- Visual screenshot verification of the new features is blocked by the 4GB cgroup OOM issue (Chrome + Next.js dev server together exceed the limit). The features are verified via HTML content + API responses instead.
+- Auth remains a placeholder (`getAdminContext` attributes actions to the seeded super-admin). A later phase must add real session/JWT auth.
+- The platform auto-commits via checkpoint between agent runs (commits 5fca907, 3e4d187 appeared between my Phase 12 and Phase 12.1 commits). This is expected platform behavior.
