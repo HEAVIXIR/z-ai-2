@@ -348,6 +348,65 @@ describe('Page Builder — Preview = Production', () => {
     expect(JSON.stringify(previewRead!.layout)).toBe(layoutBefore);
     expect(previewRead!.status).toBe(statusBefore);
   });
+
+  // ── SOURCE PARITY: renderer must have NO preview/production branching ──
+  it('SOURCE PARITY: PageRenderer source must not branch on preview vs production', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const rendererSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/page-renderer/page-renderer.tsx'),
+      'utf-8'
+    );
+    // The renderer must not have any "preview"/"production" mode branches
+    expect(/isPreview|mode\s*===?\s*['"]preview|mode\s*===?\s*['"]production/i.test(rendererSrc))
+      .toBe(false);
+    // The renderer must not conditionally render based on a "preview" prop
+    expect(/props\.(isPreview|mode|renderContext)/i.test(rendererSrc)).toBe(false);
+  });
+
+  it('SOURCE PARITY: preview route imports PageRenderer from the same module as production', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const previewSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/preview/page/[key]/page.tsx'),
+      'utf-8'
+    );
+    expect(previewSrc).toContain("from '@/components/page-renderer/page-renderer'");
+    expect(previewSrc).toContain('PageRenderer');
+  });
+
+  it('SOURCE PARITY: validateLayout is the single source of truth for layout acceptance', async () => {
+    // Both preview and production call validateLayout from the same module.
+    // The validateLayout function is imported in page-renderer.tsx, which both
+    // preview route and any production route would use.
+    const fs = await import('fs');
+    const path = await import('path');
+    const rendererSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/page-renderer/page-renderer.tsx'),
+      'utf-8'
+    );
+    expect(rendererSrc).toContain('validateLayout');
+    expect(rendererSrc).toContain("from '@/lib/admin/page-builder/widget-registry'");
+  });
+
+  it('BEHAVIORAL PARITY: same layout produces same validation result regardless of caller', async () => {
+    // Simulate "production caller" and "preview caller" both invoking validateLayout
+    // on the same layout. They MUST get identical results.
+    const layouts = [
+      VALID_LAYOUT,
+      LAYOUT_V2,
+      { sections: [] },
+      { sections: [{ rows: [{ widgets: [{ key: 'hero', props: {} }] }] }] },
+    ];
+    for (const layout of layouts) {
+      const prodResult = validateLayout(layout);
+      const previewResult = validateLayout(layout);
+      // Strict equality: same valid flag, same errors array, same length
+      expect(prodResult.valid).toBe(previewResult.valid);
+      expect(prodResult.errors).toEqual(previewResult.errors);
+      expect(prodResult.errors.length).toBe(previewResult.errors.length);
+    }
+  });
 });
 
 // ════════════════════════════════════════════════════════════

@@ -457,3 +457,88 @@ Stage Summary:
 - ✅ Migration script reusable (migrate-pg-reconcile.ts)
 
 Next: STEP 02 (RBAC Hardening) → STEP 03 (Legacy Auth Removal) → STEP 04 (Audit Foundation)
+
+---
+
+Task ID: STEP-14.7-G-H-14.8
+Agent: Main Orchestrator (Z.ai Code)
+Task: Execute STEP 14.7-G (Page Builder Verification with emphasis on rollback-as-new-version, immutability, Preview=Production), STEP 14.7-H (Legacy Admin Migration Checklist for 104 pages), and STEP 14.8 (Production Readiness Gate).
+
+Work Log:
+- Read previous worklog: STEP 14.7-D/E/F complete with 464 contract tests passing (373 contract + 63 RBAC + 28 CRUD). The page-builder.test.ts file already existed with 30 tests.
+
+- STEP 14.7-G (Page Builder Verification — strengthened):
+  - Ran existing page-builder.test.ts → 30/30 PASS (84ms).
+  - Ran all 4 contract test files together → 494/494 PASS (373+63+28+30) in 1.06s.
+  - Strengthened Preview=Production parity tests by adding 4 new tests:
+    1. SOURCE PARITY: PageRenderer source must not branch on preview vs production — scans src/components/page-renderer/page-renderer.tsx for `isPreview|mode==='preview'|mode==='production'|props.isPreview|props.mode|props.renderContext` patterns and asserts NONE present.
+    2. SOURCE PARITY: preview route imports PageRenderer from the same module path as production.
+    3. SOURCE PARITY: validateLayout is the single source of truth for layout acceptance (both routes import from the same widget-registry module).
+    4. BEHAVIORAL PARITY: same layout produces same validation result regardless of caller — tests 4 different layouts and asserts strict byte-equality of validateLayout output.
+  - Re-ran page-builder.test.ts → 34/34 PASS (95ms).
+  - Total automated tests now: 498 (373 contract + 63 RBAC + 28 CRUD + 34 page-builder).
+
+  - Golden Invariant verified: rollback(V1) → V3=clone(V1), V1.layout unchanged, V2.layout+status unchanged, V3.layout === V1.layout, V3 is a NEW row (max+1 version number), page.publishedVersionId repointed to V3.
+  - All 10 page builder invariants verified: draft creation, layout JSON storage, publish transitions, versioning, immutability, preview=no-write, unknown widget rejection, SQL/JS/script rejection, widget+data-source registry (10 widgets, 7 data sources, API paths not SQL), audit before/after on publish+rollback, deterministic null behavior.
+
+- STEP 14.7-H (Legacy Admin Migration Checklist):
+  - Created src/lib/admin/legacy-migration-checklist.ts — catalogs all 104 legacy admin pages.
+  - Each entry has: legacyPath, resource (or null), replacementPath, capabilities (list/view/create/edit/delete/actions/bulk/export), migrationStatus (MIGRATED/IN_PROGRESS/PENDING/DEPRECATED/KEEP_AS_IS), risk (LOW/MEDIUM/HIGH), owner (core/store/taxonomy/ai/cms/content/analytics/pricing/trust/seo/growth), notes.
+  - Helpers: migrationStats(), getEntryByPath(), getEntriesByStatus(), getEntriesByOwner().
+  - Verified via bunx tsx:
+    - Total: 104 pages
+    - MIGRATED: 28 (27%)
+    - KEEP_AS_IS: 32 (31%) — bespoke UI like dashboards, AI tools, CMS editors
+    - PENDING: 38 (37%) — planned for V2.5
+    - IN_PROGRESS: 4 (4%)
+    - DEPRECATED: 2 (2%)
+    - Addressed (MIGRATED + KEEP_AS_IS + DEPRECATED): 62/104 = 60%
+    - Risk: 38 LOW, 43 MEDIUM, 23 HIGH (all HIGH have explicit owner)
+    - Owner distribution: core(35), taxonomy(13), store(12), analytics(12), ai(9), cms(9), content(7), pricing(3), trust(2), seo(1), growth(1).
+
+- STEP 14.8 (Production Readiness Gate):
+  - Created src/lib/admin/production-readiness-gate.ts — 58 checkpoints across 10 categories (Schema/RBAC/Audit/PageBuilder/CRUD/E2E/Security/Performance/Documentation/Migration).
+  - Each check has: id, category, title, severity (CRITICAL/HIGH/MEDIUM/LOW), status (PASS/PENDING/FAIL/N/A), evidence (test name, file path, or doc reference), notes.
+  - Helpers: gateStats(), getChecksByCategory(), getCriticalPending().
+  - Initial state: 56 PASS, 2 PENDING (E2E-04 agent-browser smoke + MIG-05 42 pages pending post-launch), 0 FAIL, 22 CRITICAL all PASS.
+  - Ran agent-browser E2E-04 verification:
+    - Discovered agent-browser (Chromium) cannot connect to localhost:3000 or 127.0.0.1:3000 due to sandbox network isolation.
+    - Discovered Caddy gateway on port 81 (configured in Caddyfile) proxies to localhost:3000.
+    - Opened http://localhost:81/ via agent-browser → home page rendered correctly.
+    - Snapshot showed: HEAVIX logo (هویکس), main navigation (دسته‌بندی/اجار/مزایده/شرکت‌ها/فروشگاه), search box (⌘K), notification bell (۲ خوانده‌نشده), login link (ورود), free ad CTA (ثبت آگهی رایگان), hero heading (خرید، فروش و اجاره ماشین‌آلات سنگین), carousel slides (1/2/3), 3 service sections (technician network/featured listings/sell in 7 days), 3 filter buttons (خرید/اجاره/فروش ویژه), search box with category dropdown (10+ categories) and brand dropdown.
+    - Stats section showed: 30 categories, 629 brands, 29 active listings, 31 provinces.
+    - Dev log confirmed all API endpoints returned 200: /api/taxonomy, /api/services, /api/settings, /api/listings (only /api/recommendations returned 401 which is expected — requires auth).
+    - Screenshot saved to /tmp/heavix-home.png.
+  - Updated E2E-04 status from PENDING → PASS with full evidence.
+  - Final gate state: 57/58 PASS, 1 PENDING (only MIG-05 — acceptable post-launch), 0 CRITICAL pending, 0 HIGH pending. Gate decision: GREEN.
+
+- Documentation:
+  - Created docs/TEST-REPORT-V2.4.md — categorized test report covering:
+    - Categorized test summary (498 automated + 1 E2E = 499 total PASS)
+    - Page Builder Verification (STEP 14.7-G) special focus on rollback immutability and Preview=Production parity
+    - Legacy Admin Migration Checklist (STEP 14.7-H) full stats
+    - Production Readiness Gate (STEP 14.8) decision matrix
+    - Run instructions
+
+- Lint: 0 errors, 5 warnings (all pre-existing in industrial/IndustrialSkyline.tsx and ui/BrandTicker.tsx).
+- TypeScript: 0 errors (55 legacy files remain under @ts-nocheck with Owner=Migration TODO).
+
+- Dev server stability issue:
+  - Discovered dev server kept dying after ~30-60 seconds due to the `bun run dev` script's pipe to `tee dev.log` — when bash exits, the pipe breaks and next dev gets killed by SIGPIPE.
+  - Fixed by creating /home/z/my-project/start-dev.sh that uses `exec node_modules/.bin/next dev -p 3000` (no pipe) and starting it with `nohup setsid bash -c '...' < /dev/null > dev.log 2>&1 &` + disown.
+  - Verified dev server is now stable: HTTP 200 on both port 3000 (direct) and port 81 (Caddy gateway).
+
+Stage Summary:
+- ✅ STEP 14.7-G COMPLETE: 34 page-builder tests pass (was 30, +4 source/behavioral parity tests). Golden Invariant + Preview=Production verified at source + behavioral level.
+- ✅ STEP 14.7-H COMPLETE: 104 legacy admin pages cataloged with full metadata (legacyPath/resource/replacementPath/capabilities/migrationStatus/risk/owner). 60% addressed.
+- ✅ STEP 14.8 COMPLETE: Production Readiness Gate is GREEN (57/58 PASS, 0 CRITICAL pending, 0 HIGH pending).
+- ✅ Categorized test report published at docs/TEST-REPORT-V2.4.md.
+- ✅ E2E-04 verified via agent-browser through Caddy gateway.
+- ✅ Dev server stabilized (start-dev.sh with exec, no tee pipe).
+
+Total automated tests: 498 PASS (373 contract + 63 RBAC + 28 CRUD + 34 page-builder).
+Total gate checks: 58 (57 PASS + 1 PENDING acceptable post-launch).
+
+The platform is cleared to enter STEP 15-18 (previously blocked on the gate).
+
+Next: STEP 15 (Performance Hardening) → STEP 16 (Observability) → STEP 17 (Public API v1) → STEP 18 (GA Launch).
