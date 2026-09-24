@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+// STEP 6B.2: Redirected from price-intelligence.ts to price-history-engine.ts
+// (canonical module reading from PriceObservation, not PriceRecord)
 import {
   getPriceStats,
   getPriceHistory,
   getPriceSuggestions,
   detectOutliers,
-} from "@/lib/price-intelligence";
+} from "@/lib/price-history-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

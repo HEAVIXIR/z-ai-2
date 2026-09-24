@@ -107,50 +107,16 @@ function computeStats(values: number[]): Omit<PriceStats, "currency"> {
 
 /* ─────────── Public API ─────────── */
 
-/**
- * Extract the price from a Listing and persist a PriceRecord.
- *
- * Idempotent-ish: we don't dedupe here (each scrape / re-publish
- * creates a fresh record so we can track price history). Callers
- * that want to avoid double-recording can check the most-recent
- * record before calling.
- *
- * Skips listings with no price, or with priceType CALL_FOR_PRICE
- * (no usable number). Resolves categoryId / brandId / productId /
- * year / condition from the listing itself.
- */
-export async function recordPriceFromListing(listingId: string): Promise<void> {
-  const listing = await db.listing.findUnique({
-    where: { id: listingId },
-    select: {
-      id: true,
-      price: true,
-      priceType: true,
-      year: true,
-      condition: true,
-      brandId: true,
-      categoryId: true,
-      productId: true,
-    },
-  });
-  if (!listing) return;
-  if (!listing.price) return;
-  if (listing.priceType === "CALL_FOR_PRICE") return;
-
-  await db.priceRecord.create({
-    data: {
-      listingId: listing.id,
-      productId: listing.productId ?? null,
-      categoryId: listing.categoryId ?? null,
-      brandId: listing.brandId ?? null,
-      price: Number(listing.price),
-      currency: "IRR",
-      year: listing.year ?? null,
-      condition: listing.condition ?? null,
-      source: "LISTING",
-    },
-  });
-}
+// STEP 6B.2: recordPriceFromListing REMOVED.
+// This was the only writer to the PriceRecord table. Per the 6A
+// reconciliation audit, it had 0 callers (dead code). The canonical
+// price observation writer is recordObservation() in price-engine.ts,
+// which writes to PriceObservation (the canonical model).
+// All 4 readers below (getPriceStats, getPriceHistory, detectOutliers,
+// getPriceSuggestions) are now superseded by the canonical versions
+// in src/lib/price-history-engine.ts. This module is kept only as
+// dead code for reference — it will be removed in Phase 4 (schema drop)
+// after tests are updated in Phase 3.
 
 /**
  * Compute aggregate price stats over PriceRecord rows.

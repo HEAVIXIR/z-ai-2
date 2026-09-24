@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
-import { getPriceSuggestions } from "@/lib/price-intelligence";
+// STEP 6B.2: Redirected from price-intelligence.ts to price-history-engine.ts
+// (canonical module reading from PriceObservation, not PriceRecord)
+import { getPriceSuggestions } from "@/lib/price-history-engine";
 
 /* ============================================================
    HEAVIX — Machine Comparison Engine (V1.0)
