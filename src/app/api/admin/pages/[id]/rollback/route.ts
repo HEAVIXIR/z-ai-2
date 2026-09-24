@@ -1,11 +1,13 @@
 /**
- * HEAVIX — STEP 14: Rollback Page Version
+ * HEAVIX — STEP 14.5: Rollback (FIXED — creates NEW version, never overwrites)
  * POST /api/admin/pages/:id/rollback
  *
- * Body: { versionId: "..." }
+ * V2.3: Rollback creates a NEW version with the same layout as the target.
+ * The old published version is archived, not deleted.
+ * The target version itself is NOT modified (immutable).
  *
- * V2.3: Rollback publishes a PREVIOUS version. Never deletes anything.
- * V2.3: Audit required.
+ * V2.3: Audit required (before/after/reason).
+ * V2.3: Cache invalidation after rollback.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -13,6 +15,7 @@ import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
+import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -28,39 +31,57 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null);
   if (!body?.versionId) return NextResponse.json({ error: 'versionId required' }, { status: 400 });
 
-  // Fetch target version
+  // 1. Fetch the target version (the one to rollback TO)
   const targetVersion = await db.adminPageVersion.findUnique({ where: { id: body.versionId } });
   if (!targetVersion || targetVersion.pageId !== pageId) {
     return NextResponse.json({ error: 'Version not found' }, { status: 404 });
   }
 
-  // Fetch current page
+  // 2. Fetch current page
   const page = await db.adminPage.findUnique({ where: { id: pageId } });
   if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 });
 
-  const previousVersionId = page.publishedVersionId;
+  const previousPublishedVersionId = page.publishedVersionId;
+  const previousVersion = previousPublishedVersionId
+    ? await db.adminPageVersion.findUnique({ where: { id: previousPublishedVersionId } })
+    : null;
 
-  // Archive current published version
-  if (previousVersionId && previousVersionId !== body.versionId) {
+  // 3. Get the latest version number
+  const latestVersion = await db.adminPageVersion.findFirst({
+    where: { pageId },
+    orderBy: { version: 'desc' },
+  });
+  const newVersionNumber = (latestVersion?.version ?? 0) + 1;
+
+  // 4. Create a NEW version with the same layout as the target (V2.3: immutable, never overwrite)
+  const newVersion = await db.adminPageVersion.create({
+    data: {
+      pageId,
+      version: newVersionNumber,
+      status: 'PUBLISHED',
+      layout: targetVersion.layout, // copy layout from target version
+      changeLog: `Rollback to version ${targetVersion.version}`,
+      createdBy: user.id,
+      publishedAt: new Date(),
+      publishedBy: user.id,
+    },
+  });
+
+  // 5. Archive the current published version (if exists and different)
+  if (previousPublishedVersionId && previousPublishedVersionId !== body.versionId) {
     await db.adminPageVersion.update({
-      where: { id: previousVersionId },
+      where: { id: previousPublishedVersionId },
       data: { status: 'ARCHIVED' },
     });
   }
 
-  // Re-publish the target version
-  await db.adminPageVersion.update({
-    where: { id: body.versionId },
-    data: { status: 'PUBLISHED', publishedAt: new Date(), publishedBy: user.id },
-  });
-
-  // Update page
+  // 6. Update page to point to the new version
   await db.adminPage.update({
     where: { id: pageId },
-    data: { publishedVersionId: body.versionId, updatedBy: user.id },
+    data: { publishedVersionId: newVersion.id, status: 'PUBLISHED', updatedBy: user.id },
   });
 
-  // Audit
+  // 7. Audit (before/after/reason)
   const h = await headers();
   await logAudit({
     actorId: user.id,
@@ -68,15 +89,35 @@ export async function POST(req: NextRequest, { params }: Params) {
     action: 'page.rollback',
     entityType: 'AdminPage',
     entityId: pageId,
-    before: { publishedVersionId: previousVersionId },
-    after: { publishedVersionId: body.versionId, version: targetVersion.version },
-    reason: body.reason || `Rolled back to version ${targetVersion.version}`,
+    before: {
+      publishedVersionId: previousPublishedVersionId,
+      publishedVersion: previousVersion?.version,
+    },
+    after: {
+      publishedVersionId: newVersion.id,
+      publishedVersion: newVersionNumber,
+      rolledBackFrom: targetVersion.version,
+    },
+    reason: body.reason || `Rolled back to version ${targetVersion.version} (created as v${newVersionNumber})`,
     ip: h.get('x-forwarded-for') || null,
     userAgent: h.get('user-agent') || null,
   });
 
+  // 8. Cache invalidation
+  if (page.slug) {
+    revalidatePath(`/${page.slug}`);
+    revalidatePath('/');
+  }
+  revalidatePath(`/admin/pages/${pageId}`);
+
   return NextResponse.json({
     ok: true,
-    data: { pageId, publishedVersionId: body.versionId, version: targetVersion.version, rolledBack: true },
+    data: {
+      pageId,
+      newVersionId: newVersion.id,
+      newVersionNumber,
+      rolledBackFrom: targetVersion.version,
+      status: 'PUBLISHED',
+    },
   });
 }

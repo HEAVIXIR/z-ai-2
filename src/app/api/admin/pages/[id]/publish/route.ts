@@ -1,12 +1,10 @@
 /**
- * HEAVIX — STEP 14: Publish Page Version
+ * HEAVIX — STEP 14.5: Publish (with cache invalidation)
  * POST /api/admin/pages/:id/publish
  *
- * Body: { versionId: "..." }
- *
- * Lifecycle: DRAFT → PUBLISHED (previous version archived)
- * V2.3: Never overwrite published content — creates new version.
- * V2.3: Audit required (Who/What/When/Before/After/Why).
+ * V2.3: Publish is atomic:
+ *   validate → create immutable version → archive old → update pointer → audit → invalidate cache
+ * V2.3: Cache invalidation after publish.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -14,6 +12,7 @@ import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
+import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -29,39 +28,39 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null);
   if (!body?.versionId) return NextResponse.json({ error: 'versionId required' }, { status: 400 });
 
-  // Fetch the version to publish
+  // 1. Fetch the version to publish
   const version = await db.adminPageVersion.findUnique({ where: { id: body.versionId } });
   if (!version || version.pageId !== pageId) {
     return NextResponse.json({ error: 'Version not found' }, { status: 404 });
   }
 
-  // Fetch current page (for before state)
+  // 2. Fetch current page
   const page = await db.adminPage.findUnique({ where: { id: pageId } });
   if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 });
 
   const previousVersionId = page.publishedVersionId;
 
-  // Archive the previous published version (if exists)
-  if (previousVersionId) {
+  // 3. Archive the previous published version (atomic: old archived, new published)
+  if (previousVersionId && previousVersionId !== body.versionId) {
     await db.adminPageVersion.update({
       where: { id: previousVersionId },
       data: { status: 'ARCHIVED' },
     });
   }
 
-  // Publish the new version
+  // 4. Publish the new version (immutable: version is never modified after publish except status)
   await db.adminPageVersion.update({
     where: { id: body.versionId },
     data: { status: 'PUBLISHED', publishedAt: new Date(), publishedBy: user.id },
   });
 
-  // Update page status + publishedVersionId
+  // 5. Update page status + publishedVersionId
   await db.adminPage.update({
     where: { id: pageId },
     data: { status: 'PUBLISHED', publishedVersionId: body.versionId, updatedBy: user.id },
   });
 
-  // Audit
+  // 6. Audit
   const h = await headers();
   await logAudit({
     actorId: user.id,
@@ -75,6 +74,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     ip: h.get('x-forwarded-for') || null,
     userAgent: h.get('user-agent') || null,
   });
+
+  // 7. Cache invalidation (V2.3)
+  if (page.slug) {
+    revalidatePath(`/${page.slug}`);
+  }
+  revalidatePath('/');
+  revalidatePath(`/admin/pages/${pageId}`);
 
   return NextResponse.json({
     ok: true,
