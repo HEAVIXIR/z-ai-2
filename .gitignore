@@ -74,3 +74,4 @@ heavixselectedfile*.zip
 # Phase 12 backup (replaced by real HEAVIX app)
 src/app.phase12-backup/
 
+db/backups/
