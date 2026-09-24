@@ -53,24 +53,33 @@ describe('Machine Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.entityType).toBe('Machine');
   });
 
-  // Documented 16-B gaps (still ❌ in matrix)
-  it('M8: machines has NO detailTabs (documented 16-B gap, acknowledged V2.4 read-only)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 6 — ADDED missing config sections (was 16-B gap)
+  it('M8: machines now has detailTabs (16-C pass 6 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('M9: machines has NO relations field (documented 16-B gap)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('M9: machines now has relations (16-C pass 6 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('M10: machines has NO actions field (documented 16-B gap)', () => {
-    expect(cfg.actions).toBeUndefined();
+  it('M10: machines now has actions (16-C pass 6 added)', () => {
+    expect(cfg.actions).toBeDefined();
+    expect(cfg.actions?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('M11: machines has NO bulkActions field (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('M11: machines now has bulkActions (16-C pass 6 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('M12: machines has NO permissions.export (documented 16-B gap)', () => {
-    expect(cfg.permissions.export).toBeUndefined();
+  it('M12: machines now has permissions.export set (16-C pass 6 added)', () => {
+    expect(cfg.permissions.export).toBeDefined();
+    expect(cfg.permissions.export).toBe('machine.read');
+  });
+
+  it('M13: machines permissions.read uses canonical machine.read (16-C pass 6 fix)', () => {
+    expect(cfg.permissions.read).toBe('machine.read');
   });
 });

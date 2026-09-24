@@ -47,29 +47,41 @@ describe('Part Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.entityType).toBe('Part');
   });
 
-  // Documented 16-B gaps (still ❌ in matrix, intentionally NOT yet fixed)
-  it('PT7: parts has NO filters field (documented 16-B gap)', () => {
-    // 16-B Dim 8 = ❌ for parts. Acknowledged debt, not a regression.
-    expect(cfg.filters).toBeUndefined();
+  // 16-C pass 6 — ADDED missing config sections (was 16-B gap)
+  it('PT7: parts now has filters field (16-C pass 6 added)', () => {
+    // 16-B Dim 8 was ❌; pass 6 added 2 filters (status, condition)
+    expect(cfg.filters).toBeDefined();
+    expect(cfg.filters?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('PT8: parts has NO detailTabs field (documented 16-B gap)', () => {
-    // 16-B Dim 13 = ❌ for parts. Acknowledged debt.
-    expect(cfg.detailTabs).toBeUndefined();
+  it('PT8: parts now has detailTabs (16-C pass 6 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('PT9: parts has NO relations field (documented 16-B gap)', () => {
-    // 16-B Dim 14 = ❌ for parts. Acknowledged debt.
-    expect(cfg.relations).toBeUndefined();
+  it('PT9: parts now has relations (16-C pass 6 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('PT10: parts has NO bulkActions field (documented 16-B gap)', () => {
-    // 16-B Dim 16 = ❌ for parts. Acknowledged debt.
-    expect(cfg.bulkActions).toBeUndefined();
+  it('PT10: parts now has bulkActions (16-C pass 6 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('PT11: parts has NO permissions.export (documented 16-B gap)', () => {
-    // 16-B Dim 17 was ❌; post 16-C pass 1, canExport uses map entry 'parts' → 'part.read'
-    expect(cfg.permissions.export).toBeUndefined();
+  it('PT11: parts now has permissions.export set (16-C pass 6 added)', () => {
+    expect(cfg.permissions.export).toBeDefined();
+    expect(cfg.permissions.export).toBe('part.read');
+  });
+
+  it('PT12: parts permissions.read uses canonical part.read (16-C pass 6 fix)', () => {
+    expect(cfg.permissions.read).toBe('part.read');
+  });
+
+  it('PT13: parts has 2 actions (delete + activate, 16-C pass 6 added)', () => {
+    expect(cfg.actions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.actions ?? []).map(a => a.key);
+    expect(keys).toContain('delete');
+    expect(keys).toContain('activate');
   });
 });

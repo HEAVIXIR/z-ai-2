@@ -94,8 +94,9 @@ export const partConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/parts',
 
   permissions: {
-    read: 'product.read', create: 'product.create',
-    update: 'product.update', delete: 'product.delete',
+    read: 'part.read', create: 'part.update',
+    update: 'part.update', delete: 'part.delete',
+    export: 'part.read',
   },
 
   columns: [
@@ -104,6 +105,18 @@ export const partConfig: AdminResourceConfig = {
     { key: 'condition', label: 'وضعیت', type: 'badge', filterable: true },
     { key: 'status', label: 'فعال', type: 'badge', sortable: true, filterable: true },
     { key: 'createdAt', label: 'تاریخ ایجاد', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'INACTIVE', label: 'غیرفعال' },
+    ]},
+    { key: 'condition', label: 'وضعیت قطعه', type: 'select', options: [
+      { value: 'NEW', label: 'نو' },
+      { value: 'USED', label: 'کارکرده' },
+      { value: 'REFURBISHED', label: 'بازسازی‌شده' },
+    ]},
   ],
 
   defaultSort: { field: 'createdAt', order: 'desc' },
@@ -125,7 +138,22 @@ export const partConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'product.delete', type: 'confirm', variant: 'destructive' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'part.delete', type: 'confirm', variant: 'destructive' },
+    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'part.update', type: 'confirm' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-delete', label: 'حذف گروهی', icon: 'Trash2', permission: 'part.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'قطعات انتخاب‌شده حذف شوند؟' },
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'CheckCircle', permission: 'part.update', type: 'confirm' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'محصول مرتبط', resource: 'products', filterField: 'partId' },
   ],
 
   audit: { enabled: true, entityType: 'Part', actions: ['part.update', 'part.delete'] },
@@ -411,8 +439,9 @@ export const machineConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/machines',
 
   permissions: {
-    read: 'product.read', create: 'product.create',
-    update: 'product.update', delete: 'product.delete',
+    read: 'machine.read', create: 'machine.update',
+    update: 'machine.update', delete: 'machine.update',
+    export: 'machine.read',
   },
 
   columns: [
@@ -429,6 +458,12 @@ export const machineConfig: AdminResourceConfig = {
       { value: 'ACTIVE', label: 'فعال' },
       { value: 'SOLD', label: 'فروخته‌شده' },
       { value: 'ARCHIVED', label: 'بایگانی' },
+    ]},
+    { key: 'condition', label: 'وضعیت دستگاه', type: 'select', options: [
+      { value: 'NEW', label: 'نو' },
+      { value: 'EXCELLENT', label: 'عالی' },
+      { value: 'GOOD', label: 'خوب' },
+      { value: 'FAIR', label: 'متوسط' },
     ]},
   ],
 
@@ -450,6 +485,26 @@ export const machineConfig: AdminResourceConfig = {
       { value: 'ACTIVE', label: 'فعال' }, { value: 'SOLD', label: 'فروخته' },
     ],
       permissions: { read: 'machine.read', write: 'machine.update' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'passport', label: 'پاسپورت دستگاه', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'پاسپورت دستگاه', resource: 'machine-passports', filterField: 'machineId' },
+  ],
+
+  actions: [
+    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'machine.update', type: 'confirm' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'machine.update', type: 'confirm', variant: 'destructive' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'CheckCircle', permission: 'machine.update', type: 'confirm' },
+    { key: 'bulk-archive', label: 'بایگانی گروهی', icon: 'Archive', permission: 'machine.update', type: 'confirm' },
   ],
 
   audit: { enabled: true, entityType: 'Machine', actions: ['machine.update'] },
