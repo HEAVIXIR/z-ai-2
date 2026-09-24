@@ -15,8 +15,10 @@
  */
 
 import { db } from '@/lib/db';
+import { revalidateTag } from 'next/cache';
 import { can } from '@/lib/authorization';
 import { auditMutation } from '@/lib/audit-foundation';
+import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 import { registry } from './resource-registry';
 import type { AdminResourceConfig, AdminAction } from './types';
 
@@ -231,6 +233,20 @@ export async function executeAction(
         throw new Error(`No handler for action "${actionKey}"`);
       },
     );
+
+    // STEP 15-B.5.4-C.2-P2: Invalidate Homepage cache for affected resources.
+    // Single insertion point covers ALL 8 action handlers (publish, unpublish,
+    // feature, unfeature, verify, suspend, activate, delete) for ALL resources.
+    // Only fires for resources with Homepage impact (listings, brands, buy-requests).
+    // Other resources → getHomepageCacheTags returns [] → no revalidation.
+    const cacheTags = getHomepageCacheTags(resourceKey);
+    for (const tag of cacheTags) {
+      try { revalidateTag(tag, 'default'); } catch (e) {
+        // Per Cache Contract §11: invalidation failure must not block the mutation.
+        // The mutation already succeeded — log and continue.
+        console.error(`[action-engine] revalidateTag('${tag}') failed for ${resourceKey}.${actionKey}:`, e);
+      }
+    }
 
     return {
       success: true,
