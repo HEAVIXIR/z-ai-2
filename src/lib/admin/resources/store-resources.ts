@@ -43,9 +43,12 @@ export const productConfig: AdminResourceConfig = {
   searchFields: ['canonicalName', 'slug', 'description'],
 
   fields: [
-    { key: 'canonicalName', label: 'نام محصول', type: 'text', required: true },
-    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'canonicalName', visible: false },
-    { key: 'description', label: 'توضیحات', type: 'textarea' },
+    { key: 'canonicalName', label: 'نام محصول', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 200, message: 'نام محصول باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'canonicalName', visible: false,
+      validation: { maxLength: 220, message: 'اسلاگ نباید بیش از ۲۲۰ نویسه باشد' } },
+    { key: 'description', label: 'توضیحات', type: 'textarea',
+      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'ACTIVE', label: 'فعال' }, { value: 'DRAFT', label: 'پیش‌نویس' },
       { value: 'INACTIVE', label: 'غیرفعال' }, { value: 'ARCHIVED', label: 'بایگانی' },
@@ -53,7 +56,8 @@ export const productConfig: AdminResourceConfig = {
     { key: 'source', label: 'منبع', type: 'select', options: [
       { value: 'MANUAL', label: 'دستی' }, { value: 'AI_SUGGESTED', label: 'AI' },
     ]},
-    { key: 'sortOrder', label: 'ترتیب نمایش', type: 'number', defaultValue: 0 },
+    { key: 'sortOrder', label: 'ترتیب نمایش', type: 'number', defaultValue: 0,
+      validation: { min: 0, message: 'ترتیب نمایش باید عدد نامنفی باشد' } },
   ],
 
   detailTabs: [
@@ -105,8 +109,10 @@ export const partConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['partNumber', 'oemNumber'],
 
   fields: [
-    { key: 'partNumber', label: 'شماره قطعه', type: 'text' },
-    { key: 'oemNumber', label: 'شماره OEM', type: 'text' },
+    { key: 'partNumber', label: 'شماره قطعه', type: 'text',
+      validation: { maxLength: 100, message: 'شماره قطعه نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'oemNumber', label: 'شماره OEM', type: 'text',
+      validation: { maxLength: 100, message: 'شماره OEM نباید بیش از ۱۰۰ نویسه باشد' } },
     { key: 'condition', label: 'وضعیت', type: 'select', options: [
       { value: 'NEW', label: 'نو' }, { value: 'USED', label: 'کارکرده' },
       { value: 'REFURBISHED', label: 'بازسازی‌شده' },
@@ -169,18 +175,24 @@ export const orderConfig: AdminResourceConfig = {
 
   fields: [
     { key: 'orderNumber', label: 'شماره سفارش', type: 'text', required: true },
-    { key: 'titleSnapshot', label: 'عنوان', type: 'text', required: true },
-    { key: 'priceSnapshot', label: 'مبلغ', type: 'currency', required: true },
-    { key: 'currencySnapshot', label: 'ارز', type: 'text', defaultValue: 'IRR' },
-    { key: 'quantity', label: 'تعداد', type: 'number', defaultValue: 1 },
+    { key: 'titleSnapshot', label: 'عنوان', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 200, message: 'عنوان باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+    { key: 'priceSnapshot', label: 'مبلغ', type: 'currency', required: true,
+      validation: { min: 0, message: 'مبلغ باید عدد نامنفی باشد' } },
+    { key: 'currencySnapshot', label: 'ارز', type: 'text', defaultValue: 'IRR',
+      validation: { pattern: '^(IRR|USD|EUR)', message: 'ارز باید یکی از IRR، USD یا EUR باشد' } },
+    { key: 'quantity', label: 'تعداد', type: 'number', defaultValue: 1,
+      validation: { min: 1, max: 10000, message: 'تعداد باید بین ۱ تا ۱۰,۰۰۰ باشد' } },
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'PENDING', label: 'در انتظار' },
       { value: 'CONFIRMED', label: 'تأییدشده' },
       { value: 'PROCESSING', label: 'در حال پردازش' },
       { value: 'COMPLETED', label: 'تکمیل‌شده' },
     ]},
-    { key: 'commissionRate', label: 'نرخ کارمزد %', type: 'number' },
-    { key: 'notes', label: 'یادداشت', type: 'textarea' },
+    { key: 'commissionRate', label: 'نرخ کارمزد %', type: 'number',
+      validation: { min: 0, max: 100, message: 'نرخ کارمزد باید بین ۰ تا ۱۰۰ درصد باشد' } },
+    { key: 'notes', label: 'یادداشت', type: 'textarea',
+      validation: { maxLength: 2000, message: 'یادداشت نباید بیش از ۲,۰۰۰ نویسه باشد' } },
   ],
 
   detailTabs: [
@@ -271,9 +283,11 @@ export const paymentConfig: AdminResourceConfig = {
       { value: 'MANUAL', label: 'دستی' },
     ]},
     { key: 'trackingCode', label: 'کد پیگیری', type: 'text',
-      validation: { maxLength: 100, message: 'کد پیگیری نباید بیش از ۱۰۰ نویسه باشد' } },
+      validation: { maxLength: 100, message: 'کد پیگیری نباید بیش از ۱۰۰ نویسه باشد' },
+      permissions: { read: 'payment.read', write: 'payment.manage' } },
     { key: 'idempotencyKey', label: 'کلید Idempotency', type: 'text', visible: false,
-      validation: { maxLength: 64, message: 'کلید Idempotency نباید بیش از ۶۴ نویسه باشد' } },
+      validation: { maxLength: 64, message: 'کلید Idempotency نباید بیش از ۶۴ نویسه باشد' },
+      permissions: { read: 'payment.manage', write: 'payment.manage' } },
   ],
 
   detailTabs: [
@@ -330,16 +344,28 @@ export const companyConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['name', 'slug', 'city', 'phone', 'email'],
 
   fields: [
-    { key: 'name', label: 'نام شرکت', type: 'text', required: true },
-    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'name', visible: false },
-    { key: 'description', label: 'توضیحات', type: 'textarea' },
+    { key: 'name', label: 'نام شرکت', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 200, message: 'نام شرکت باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'name', visible: false,
+      validation: { maxLength: 220, message: 'اسلاگ نباید بیش از ۲۲۰ نویسه باشد' } },
+    { key: 'description', label: 'توضیحات', type: 'textarea',
+      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
     { key: 'logoUrl', label: 'لوگو', type: 'media' },
-    { key: 'website', label: 'وب‌سایت', type: 'text' },
-    { key: 'phone', label: 'تلفن', type: 'text' },
-    { key: 'email', label: 'ایمیل', type: 'text' },
-    { key: 'address', label: 'آدرس', type: 'textarea' },
-    { key: 'city', label: 'شهر', type: 'text' },
-    { key: 'province', label: 'استان', type: 'text' },
+    { key: 'website', label: 'وب‌سایت', type: 'text',
+      validation: { pattern: '^https?://.+', message: 'وب‌سایت باید با http:// یا https:// شروع شود' } },
+    { key: 'phone', label: 'تلفن', type: 'text',
+      validation: { pattern: '^0\\d{10}$', message: 'تلفن باید ۱۱ رقم و با ۰ شروع شود (مثال: 02112345678)' },
+      permissions: { read: 'company.read', write: 'company.update' } },
+    { key: 'email', label: 'ایمیل', type: 'text',
+      validation: { pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', message: 'فرمت ایمیل نامعتبر است (مثال: info@company.ir)' },
+      permissions: { read: 'company.read', write: 'company.update' } },
+    { key: 'address', label: 'آدرس', type: 'textarea',
+      validation: { maxLength: 500, message: 'آدرس نباید بیش از ۵۰۰ نویسه باشد' },
+      permissions: { read: 'company.read', write: 'company.update' } },
+    { key: 'city', label: 'شهر', type: 'text',
+      validation: { maxLength: 100, message: 'شهر نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'province', label: 'استان', type: 'text',
+      validation: { maxLength: 100, message: 'استان نباید بیش از ۱۰۰ نویسه باشد' } },
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'ACTIVE', label: 'فعال' }, { value: 'INACTIVE', label: 'غیرفعال' },
     ]},
@@ -407,9 +433,12 @@ export const machineConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['serialNumber'],
 
   fields: [
-    { key: 'serialNumber', label: 'شماره سریال', type: 'text' },
-    { key: 'manufactureYear', label: 'سال ساخت', type: 'number' },
-    { key: 'hours', label: 'ساعت کارکرد', type: 'number' },
+    { key: 'serialNumber', label: 'شماره سریال', type: 'text',
+      validation: { minLength: 3, maxLength: 100, message: 'شماره سریال باید بین ۳ تا ۱۰۰ نویسه باشد' } },
+    { key: 'manufactureYear', label: 'سال ساخت', type: 'number',
+      validation: { min: 1950, max: 2100, message: 'سال ساخت باید بین ۱۹۵۰ تا ۲۱۰۰ باشد' } },
+    { key: 'hours', label: 'ساعت کارکرد', type: 'number',
+      validation: { min: 0, max: 100000, message: 'ساعت کارکرد باید بین ۰ تا ۱۰۰,۰۰۰ باشد' } },
     { key: 'condition', label: 'وضعیت دستگاه', type: 'select', options: [
       { value: 'NEW', label: 'نو' }, { value: 'EXCELLENT', label: 'عالی' },
       { value: 'GOOD', label: 'خوب' }, { value: 'FAIR', label: 'متوسط' },

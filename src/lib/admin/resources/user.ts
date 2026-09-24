@@ -69,7 +69,8 @@ export const userConfig: AdminResourceConfig = {
         message: 'موبایل باید با ۰۹ شروع و ۱۱ رقم باشد (مثال: 09123456789)',
       } },
     { key: 'passwordHash', label: 'رمز عبور', type: 'password', helpText: 'فقط هنگام ایجاد کاربر جدید',
-      validation: { minLength: 8, maxLength: 128, message: 'رمز عبور باید حداقل ۸ نویسه باشد' } },
+      validation: { minLength: 8, maxLength: 128, message: 'رمز عبور باید حداقل ۸ نویسه باشد' },
+      permissions: { read: 'admin.dashboard.read', write: 'user.update' } },
     { key: 'userType', label: 'نوع کاربر', type: 'select', options: [
       { value: 'INDIVIDUAL', label: 'حقیقی' },
       { value: 'COMPANY', label: 'حقوقی' },
