@@ -1634,3 +1634,45 @@ Files produced:
 Next: 15-B.5.4 (ISR/Cache — evaluate design from 15-B.4.5 with page-level TTFB measurement).
 This is the ONLY remaining optimization that could produce measurable TTFB improvement,
 because ISR eliminates the entire server-side render for cached requests.
+
+---
+
+Task ID: STEP-15-B-5-4-A
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.5.4-A — ISR Evidence Freeze. Extract ALL Homepage queries, ALL mutation routes, existing revalidation, shared dependencies. NO code changes — pure evidence extraction.
+
+Work Log:
+- Extracted 35 Homepage Prisma queries (24 direct in page.tsx + 11 in site-stats.ts via getActiveStats).
+- Extracted ~40 mutation routes across 12 data categories:
+  - Brand: 12 routes
+  - Category: 8 routes
+  - Listing: 7 routes
+  - Settings: 1 route
+  - HomePageSection: 4 home API routes
+  - HeroConfig: 1 route
+  - BuyRequest: 4 routes
+  - Article: 4 routes
+  - HotSearch: 2 routes
+  - Universal Resource API: 2 routes (covers ALL 18 resources)
+- Mapped existing revalidation: ONLY Page Builder has revalidatePath (3 calls on publish + 3 on rollback). 0 revalidateTag calls in entire codebase.
+- Identified CRITICAL gap: ~38 mutation routes have ZERO revalidation hooks.
+- Identified BIGGEST gap: Universal Resource API (/api/admin/resources/[resource]) handles mutations for ALL 18 resources but has ZERO invalidation calls.
+- Proposed 12 granular cache tags + 1 nuclear tag: home, home:listings, home:brands, home:categories, home:settings, home:sections, home:hero, home:cat-config, home:requests, home:articles, home:hot-searches, home:stats.
+- Identified Tier 3 design challenge: Q5/Q6/Q7 (featured/verified/latest listings) have HIGH freshness — must NOT be cached. But Next.js ISR caches ENTIRE page output. 3 approaches proposed for 15-B.5.4-B Cache Contract.
+- Mapped mutation → tag → affected queries for all 12 data categories.
+- All 3 pages currently force-dynamic (home, sell-in-7-days, preview).
+
+No code changes made. No revalidate added. No revalidateTag added. Baseline preserved.
+
+Files produced:
+- docs/verification/STEP-15-B-5-4-A-ISR-EVIDENCE-FREEZE.md (8 sections, 345 lines)
+
+Commit 8fc7b8a pushed to GitHub (f907da5..8fc7b8a main -> main).
+Verified sync: ✅ IN SYNC.
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (unchanged).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Next: 15-B.5.4-B (Cache Contract — define TTL + tag + invalidation per data category, resolve Tier 3 design challenge).
