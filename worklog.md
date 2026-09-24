@@ -642,3 +642,76 @@ Next: STEP 15 (Performance Hardening) is now unblocked. V2.5 follow-up list:
 1. Clear the 52 Class B @ts-nocheck files per their acceptance criteria.
 2. Register the 27 new resources identified in 14.8-F.
 3. Execute the 27 MIGRATE_TO_RESOURCE page migrations.
+
+---
+
+Task ID: STEP-15-A
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-A — Performance Baseline. Pure measurement, no optimizations, no new features, no @ts-nocheck removal, no architecture changes. Per user: "ابتدا فقط اندازه‌گیری و ثبت Evidence؛ بعد بر اساس داده واقعی تصمیم می‌گیریم چه چیزی ارزش بهینه‌سازی دارد."
+
+Work Log:
+- Restarted dev server (sandbox kills it after 1-3 requests due to memory pressure).
+- Discovered dev server takes 13-20s to compile home page (cold), then dies. Switched to production standalone server (node .next/standalone/server.js) — Ready in 377ms.
+- Wrote `scripts/measure-baseline.sh` — single-shot measurement script that starts server, hits 33 URLs (9 public pages + 6 public APIs + 18 admin Universal APIs) with 5 sequential hits each, captures TTFB + total time + size.
+- Ran baseline: all 33 URLs returned expected HTTP codes (200 for public, 401 for admin). All admin APIs uniformly return 401 in 1-3ms — auth gate short-circuits before any DB query (excellent).
+- Captured Core Web Vitals via agent-browser (headless Chromium through Caddy port 81):
+  - Home `/`: TTFB 343ms, FCP 740ms, CLS 0, DOM load 696ms, page load 698ms, 25 resources, 1MB total transfer (HTML compressed from 731KB → 146KB = 5x compression)
+  - /listings: TTFB 150ms, FCP 656ms, CLS 0, 18 resources, 148KB
+  - /brands: TTFB 214ms, FCP 424ms, CLS 0, 17 resources, 4.8KB
+  - LCP=null for all (no dominant LCP element; headless session too short)
+- Inspected bundle sizes:
+  - 149 JS chunks total, 4.1MB combined
+  - Largest chunk: 225KB (2e9c5333...)
+  - No separate CSS files (inlined)
+  - Total .next: 642MB, standalone: 308MB
+- Counted Prisma DB queries per page (static analysis):
+  - Home: 23 db.* queries (findMany/findUnique/count), 0 fetch() calls
+  - /listings: 8 db.* queries, 0 fetch() calls
+  - /brands: 4 db.* queries, 0 fetch() calls
+- Ran PostgreSQL EXPLAIN ANALYZE on 5 key queries:
+  1. listings.findMany (status=PUBLISHED, limit 8): 0.132ms — Seq Scan
+  2. brands.findMany (active=true, limit 50): 0.269ms — Seq Scan of 629 rows
+  3. category.findMany (active, parentId null, layer=CATALOG): 0.120ms — Seq Scan, 92% rows rejected by filter
+  4. listing.count (PUBLISHED): 0.106ms — Seq Scan to count
+  5. listing+images JOIN: 0.191ms — Hash Right Join (ListingImage empty)
+- Inventoried index coverage for 22 tables. Found 4 CRITICAL tables with insufficient indexes:
+  - Listing: only pkey + slug (no index on status, createdAt, brandId, categoryId, featured, verified)
+  - Brand: only pkey + slug (no index on active, name)
+  - Category: only pkey + slug (no index on active, parentId, layer, sortOrder)
+  - BuyRequest: only pkey
+  - ListingImage: only pkey (N+1 risk if include is removed)
+- Observed cache behavior:
+  - /api/taxonomy: 39ms cold → 2ms warm (large delta — Next.js default cache working)
+  - /api/listings?limit=8: 10ms → 5ms (small delta — DB hit each time?)
+  - Home page re-renders server-side on every request (no ISR)
+- Wrote `docs/verification/STEP-15-PERFORMANCE-BASELINE.md` (10 sections, 493 lines) with full baseline data:
+  1. Executive summary
+  2. HTTP response time baseline (33 URLs)
+  3. Core Web Vitals
+  4. Bundle sizes
+  5. Database performance (queries per page + EXPLAIN ANALYZE + index coverage)
+  6. Cache behavior
+  7. Findings to address in 15-B/C/D
+  8. Regression gate preview (15-E)
+  9. Frozen snapshot reproduction commands
+  10. Conclusion
+
+Stage Summary:
+- ✅ 15-A complete: pure measurement baseline established.
+- ✅ All measurements frozen at git commit e2bb29d.
+- ✅ No optimizations applied (per user policy).
+- ✅ No indexes added (per user policy: "هیچ index جدیدی صرفاً بر اساس حدس اضافه نشود").
+- ✅ No @ts-nocheck files touched (kept on separate V2.5 debt track).
+- ✅ Gate remains GREEN (73/74).
+- ✅ Production build remains exit 0.
+
+Key data-driven candidates identified for 15-B:
+1. Index coverage on Listing/Brand/Category/BuyRequest/ListingImage tables (Seq Scan everywhere — will degrade as data grows).
+2. Home page fires 23 Prisma queries per render (batching opportunity).
+3. Home page is re-rendered server-side on every request (no ISR — revalidate candidate).
+
+Files produced:
+- docs/verification/STEP-15-PERFORMANCE-BASELINE.md
+- scripts/measure-baseline.sh (reusable)
+
+Next: 15-B (Database Performance) — analyze actual slow queries in production, add indexes only where EXPLAIN ANALYZE proves benefit, batch home page queries via Promise.all.
