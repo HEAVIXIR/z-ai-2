@@ -1008,3 +1008,80 @@ Stage Summary:
 - ✅ Backup server still running on port 8765 (downloads via http://localhost:81/?XTransformPort=8765)
 - ✅ Dev server still running on port 3000 (preview via Preview Panel)
 - ✅ Gate remains GREEN (73/74 PASS)
+
+---
+
+Task ID: STEP-15-B-4-1
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.4.1 — Apply ONLY the proven Brand.name index (from 15-B.2), measure before/after, verify no regression. Per user policy: each change applied independently, regression check, revert if regression.
+
+Work Log:
+- Captured BASELINE (before) measurements:
+  - B3 query (SELECT * FROM "Brand" WHERE active=true ORDER BY name ASC LIMIT 24 OFFSET 0):
+    - Median exec: 0.220ms (5 runs: 0.226, 0.226, 0.220, 0.203, 0.199)
+    - Scan type: Seq Scan
+  - HTTP TTFB on /brands: 0.078975s (5 runs via Caddy gateway)
+  - Contract tests: 498/498 PASS (exit 0)
+  - Total indexes: 285 (Brand had 2: pkey + slug_key)
+
+- Added @@index([name]) to Brand model in prisma/schema.prisma (declarative, NOT raw SQL).
+  Documented the proof: 3.41× improvement in 15-B.2 simulation, scan switch Seq Scan → Index Scan, sort memory 34kB → 0.
+
+- Applied migration via `bunx prisma db push` — exit 0, Prisma Client regenerated to v6.19.2.
+  Verified: Brand_name_idx created (btree on name), total indexes 285 → 286 (exactly +1).
+
+- Captured AFTER measurements:
+  - B3 query median exec: 0.080ms (5 runs: 0.111, 0.080, 0.070, 0.067, 0.090)
+  - Scan type: Index Scan using Brand_name_idx
+  - Sort memory: 0 (no sort needed — index is already ordered)
+  - Improvement ratio: 2.75× (≥2× threshold met)
+  - HTTP TTFB on /brands: 0.078399s (5 runs) — ratio 1.01× (within noise, expected since DB is 1.75% of TTFB per 15-A)
+
+- Regression gate (all PASS):
+  - Contract tests: 498/498 PASS (exit 0) ✓
+  - TSC: 0 errors (exit 0) ✓
+  - Lint: needed cleanup first (see commit 1 below), then 0 errors, 5 pre-existing warnings ✓
+  - Production build: exit 0, 52s, 569MB artifact ✓
+  - Total index count: 286 (matches expected +1) ✓
+  - No surprise side effects (Brand indexes: 2 → 3 exactly) ✓
+
+- Pre-existing cleanup required (committed separately, BEFORE the index change):
+  - .next-dev-backup/ directory (180MB) was accidentally committed by the cron-triggered auto-commit
+    (commit b298cf2 during 14.8-B smoke tests). It contained compiled JS chunks with require()/module
+    references flagged by ESLint (744 errors). This was NOT a regression from the Brand.name index change.
+  - Fix: added .next-dev-backup/** + .next-standalone/** + tool-results/** to eslint.config.mjs ignores
+    + added .next-dev-backup/ to .gitignore + git rm -r .next-dev-backup/ (180MB freed).
+  - After cleanup: lint errors 744 → 0 (5 pre-existing warnings remain).
+
+- Committed 2 separate commits (clean history):
+  1. 12937b0 chore(cleanup): remove stale .next-dev-backup/ (180MB freed, 744 lint errors → 0)
+  2. 385eac8 perf(15-B.4.1): apply Brand.name index (PROVEN in 15-B.2 with 3.41× improvement)
+
+- Pushed to GitHub: `23416aa..385eac8 main -> main` — both commits now on GitHub.
+
+Acceptance criteria for Brand.name index:
+- ✅ ≥2× improvement: 2.75× (0.220ms → 0.080ms)
+- ✅ Index Scan used (planner switched Seq Scan → Index Scan using Brand_name_idx)
+- ✅ No test regression: 498/498 PASS
+- ✅ No build regression: exit 0
+- ✅ No TSC regression: 0 errors
+- ✅ No lint regression: 0 errors (after cleanup)
+- ✅ Acceptance: ACCEPT (no revert needed)
+
+Stage Summary:
+- ✅ 15-B.4.1 complete: Brand.name index applied via Prisma schema (declarative), verified with before/after measurement.
+- ✅ DB-level improvement: 2.75× faster on /brands production query (B3).
+- ✅ HTTP TTFB unchanged (1.01× — within noise) — expected per 15-A finding that DB is 1.75% of TTFB.
+- ✅ All regression checks pass: tests, TSC, lint, production build.
+- ✅ Pushed to GitHub (commits 12937b0 + 385eac8).
+- ✅ Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+- ✅ Total indexes: 286 (was 285, +1 Brand_name_idx).
+- ✅ No other candidate applied — count aggregate, Promise.all, ISR remain deferred to 15-B.4.3/4/5.
+
+Files produced/modified:
+- prisma/schema.prisma: added @@index([name]) to Brand model with proof documentation
+- eslint.config.mjs: added .next-dev-backup/** + .next-standalone/** + tool-results/** to ignores
+- .gitignore: added .next-dev-backup/
+- Removed: .next-dev-backup/ directory (180MB freed)
+
+Next: 15-B.4.2 (production query re-measure on the full 28-query inventory with the new index) → 15-B.4.3 (count aggregate experiment with before/after measurement) → 15-B.4.4 (Promise.all experiment) → 15-B.4.5 (ISR/cache experiment) → 15-B.5 (full regression + re-measure).
