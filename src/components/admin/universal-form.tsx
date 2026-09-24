@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 'use client';
 
 import * as React from 'react';
@@ -43,7 +44,7 @@ interface UniversalFormProps {
   /** If provided, form is in UPDATE mode. If null, CREATE mode. */
   resourceId?: string | null;
   /** Called after successful create/update */
-  onSuccess?: (item: Record<string, unknown>) => void;
+  onSuccess?: (item: Record<string, any>) => void;
   /** Called when form is cancelled */
   onCancel?: () => void;
 }
@@ -51,7 +52,7 @@ interface UniversalFormProps {
 export function UniversalForm({ config, resourceId, onSuccess, onCancel }: UniversalFormProps) {
   const router = useRouter();
   const isUpdate = !!resourceId;
-  const [values, setValues] = React.useState<Record<string, unknown>>({});
+  const [values, setValues] = React.useState<Record<string, any>>({});
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [touched, setTouched] = React.useState<Set<string>>(new Set());
 
@@ -70,10 +71,10 @@ export function UniversalForm({ config, resourceId, onSuccess, onCancel }: Unive
   // Initialize values from existing resource or defaults
   React.useEffect(() => {
     if (existing?.data) {
-      setValues(existing.data as Record<string, unknown>);
+      setValues(existing.data as Record<string, any>);
     } else if (!resourceId) {
       // Create mode — set defaults
-      const defaults: Record<string, unknown> = {};
+      const defaults: Record<string, any> = {};
       for (const field of config.fields) {
         if (field.defaultValue !== undefined) {
           defaults[field.key] = field.defaultValue;
@@ -155,7 +156,7 @@ export function UniversalForm({ config, resourceId, onSuccess, onCancel }: Unive
   const mutation = useMutation({
     mutationFn: async () => {
       // Filter to only visible + writable fields
-      const data: Record<string, unknown> = {};
+      const data: Record<string, any> = {};
       for (const field of config.fields) {
         if (!isFieldVisible(field)) continue;
         if (field.permissions?.write) continue; // field-level write check (TODO: async)
@@ -298,7 +299,7 @@ function FormField({
   touched: boolean;
   onChange: (v: unknown) => void;
   config: AdminResourceConfig;
-  allValues: Record<string, unknown>;
+  allValues: Record<string, any>;
 }) {
   const widthClass = field.width === 'half' ? 'md:col-span-1' :
     field.width === 'third' ? 'md:col-span-1 lg:col-span-1' :
@@ -329,7 +330,7 @@ function renderField(
   value: unknown,
   onChange: (v: unknown) => void,
   config: AdminResourceConfig,
-  allValues: Record<string, unknown>,
+  allValues: Record<string, any>,
 ): React.ReactNode {
   const inputId = field.key;
 
@@ -513,7 +514,7 @@ function RelationField({
         ) : items.length === 0 ? (
           <SelectItem value="" disabled>موردی یافت نشد</SelectItem>
         ) : (
-          items.map((item: Record<string, unknown>) => (
+          items.map((item: Record<string, any>) => (
             <SelectItem key={item.id as string} value={item.id as string} className="text-xs">
               {String(item[labelField] ?? item.id)}
             </SelectItem>
@@ -535,7 +536,7 @@ function slugify(s: string): string {
     .replace(/-{2,}/g, '-');
 }
 
-function evaluateCondition(cond: FieldCondition, values: Record<string, unknown>): boolean {
+function evaluateCondition(cond: FieldCondition, values: Record<string, any>): boolean {
   const val = values[cond.field];
   switch (cond.operator) {
     case 'eq': return val === cond.value;

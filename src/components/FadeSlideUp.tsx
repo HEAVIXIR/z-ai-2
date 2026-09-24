@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";

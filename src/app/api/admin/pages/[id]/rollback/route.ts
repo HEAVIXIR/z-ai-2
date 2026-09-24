@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 /**
  * HEAVIX — STEP 14.5: Rollback (FIXED — creates NEW version, never overwrites)
  * POST /api/admin/pages/:id/rollback

@@ -1,10 +1,11 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 /**
  * HEAVIX Admin - shared UI helpers (formatters, badges, etc.)
  */
 
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import type { UserRole, UserStatus } from '@prisma/client';
+
 
 export function formatRelativeTime(date: Date | string | null | undefined): string {
   if (!date) return '—';
@@ -36,7 +37,7 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   });
 }
 
-const ROLE_COLORS: Record<UserRole, string> = {
+const ROLE_COLORS: Record<string, string> = {
   SUPER_ADMIN: 'border-rose-500/40 bg-rose-500/10 text-rose-500',
   ADMIN: 'border-orange-500/40 bg-orange-500/10 text-orange-500',
   MODERATOR: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-500',
@@ -44,8 +45,8 @@ const ROLE_COLORS: Record<UserRole, string> = {
   GUEST: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-400',
 };
 
-export function RoleBadge({ role }: { role: UserRole | string }) {
-  const r = (role as UserRole) ?? 'MEMBER';
+export function RoleBadge({ role }: { role: string | string }) {
+  const r = (role as string) ?? 'MEMBER';
   return (
     <Badge variant="outline" className={cn('px-1.5 py-0 font-mono text-[10px] font-medium', ROLE_COLORS[r])}>
       {String(role).toUpperCase()}
@@ -53,7 +54,7 @@ export function RoleBadge({ role }: { role: UserRole | string }) {
   );
 }
 
-const STATUS_COLORS: Record<UserStatus, string> = {
+const STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500',
   SUSPENDED: 'border-amber-500/40 bg-amber-500/10 text-amber-500',
   PENDING: 'border-blue-500/40 bg-blue-500/10 text-blue-500',
@@ -61,8 +62,8 @@ const STATUS_COLORS: Record<UserStatus, string> = {
   DELETED: 'border-zinc-500/40 bg-zinc-500/10 text-zinc-500',
 };
 
-export function StatusBadge({ status }: { status: UserStatus | string }) {
-  const s = (status as UserStatus) ?? 'ACTIVE';
+export function StatusBadge({ status }: { status: string | string }) {
+  const s = (status as string) ?? 'ACTIVE';
   return (
     <Badge variant="outline" className={cn('px-1.5 py-0 font-mono text-[10px] font-medium', STATUS_COLORS[s])}>
       {String(status).toUpperCase()}

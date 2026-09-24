@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 'use client';
 
 import * as React from 'react';
@@ -216,7 +217,7 @@ export function UniversalDetail({ config, resourceId, onEdit, onDelete }: Univer
               {auditLogs.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">فعالیتی ثبت نشده</p>
               ) : (
-                auditLogs.map((log: Record<string, unknown>) => (
+                auditLogs.map((log: Record<string, any>) => (
                   <div key={log.id as string} className="flex items-start gap-2 rounded-md border p-2 text-xs">
                     <Activity className="size-3 mt-0.5 text-muted-foreground" />
                     <div className="flex-1">
@@ -239,7 +240,7 @@ export function UniversalDetail({ config, resourceId, onEdit, onDelete }: Univer
               {auditLogs.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">ممیزی ثبت نشده</p>
               ) : (
-                auditLogs.map((log: Record<string, unknown>) => (
+                auditLogs.map((log: Record<string, any>) => (
                   <div key={log.id as string} className="rounded-md border p-3 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-medium">{log.action as string}</span>

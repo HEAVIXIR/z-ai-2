@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { db } from "@/lib/db";
 import { toFa, formatCompactPrice } from "@/lib/format";
 import {

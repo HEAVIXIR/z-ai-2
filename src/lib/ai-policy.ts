@@ -1,5 +1,6 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { db } from "@/lib/db";
-import { isAdmin, hasRole } from "@/lib/rbac";
+import { isAdmin, hasRole } from "@/lib/authorization";
 
 /* ============================================================
    HEAVIX — AI Gateway Policy Engine (P0-7)

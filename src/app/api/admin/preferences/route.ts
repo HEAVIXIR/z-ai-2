@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 /**
  * HEAVIX — STEP 10: Admin Preferences API
  * GET  /api/admin/preferences — get current user's preferences

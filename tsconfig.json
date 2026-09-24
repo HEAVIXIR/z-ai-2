@@ -51,6 +51,7 @@
     "prisma/legacy-sqlite",
     "scripts",
     "**/migrate-*.ts",
-    "src/app.phase12-backup"
+    "src/app.phase12-backup",
+    ".next"
   ]
 }

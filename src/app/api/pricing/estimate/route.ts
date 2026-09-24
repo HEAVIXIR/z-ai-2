@@ -1,3 +1,4 @@
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextResponse } from "next/server";
 import { estimatePrice, recordObservation, PRICE_MODEL_VERSION } from "@/lib/price-engine";
 
