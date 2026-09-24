@@ -48,7 +48,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "inspect/**", "download/**", "upload/**", ".zscripts/**", "scripts/**", "mini-services/**", "store-mekanix-reference/**", "src/lib/generated/**"]
+  ignores: ["node_modules/**", ".next/**", ".next-dev-backup/**", ".next-standalone/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "inspect/**", "download/**", "upload/**", ".zscripts/**", "scripts/**", "mini-services/**", "store-mekanix-reference/**", "src/lib/generated/**", "tool-results/**"]
 }];
 
 export default eslintConfig;
