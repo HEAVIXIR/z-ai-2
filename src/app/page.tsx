@@ -24,6 +24,22 @@ import HotSearchesSection, { type HotSearchItem } from "@/components/home/HotSea
 import RecommendationsSection from "@/components/home/RecommendationsSection";
 import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
+import {
+  getCachedHomeCategoryConfig,
+  getCachedSiteSettings,
+  getCachedArticles,
+  getCachedHotSearches,
+  getCachedHeroConfig,
+  getCachedTopBrands,
+  getCachedCatalogCategories,
+  getCachedBrandCount,
+  getCachedActiveRequests,
+  getCachedMachineryRoot,
+  getCachedL1Children,
+  getCachedBrandDisplayIds,
+  getCachedFeaturedBrandIds,
+  getCachedTrustedBrands,
+} from "@/lib/homepage-cached-queries";
 
 type TickerBrand = {
   id: string;
@@ -49,17 +65,8 @@ export default async function HomePage() {
   // Fetch brand + category data first
   // HBR Taxonomy V1.1: home categories section shows CATALOG layer only.
   const [allBrands, allCategories] = await Promise.all([
-    db.brand.findMany({
-      where: { active: true },
-      orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
-      take: 20,
-    }),
-    db.category.findMany({
-      where: { active: true, layer: "CATALOG" },
-      orderBy: [{ sortOrder: "asc" }],
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
-    }),
+    getCachedTopBrands(),
+    getCachedCatalogCategories(),
   ]);
 
   // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 5): fetch HomeCategoryConfig
@@ -75,8 +82,8 @@ export default async function HomePage() {
   // Promise.all instead of sequential awaits. Proven in 15-B.4.4:
   // 1.34× faster on single request, 1.47× faster under concurrent load.
   const [homeCategoryConfigRow, siteSettings] = await Promise.all([
-    db.homeCategoryConfig.findUnique({ where: { id: "main" } }),
-    db.siteSettings.findUnique({ where: { id: "main" } }),
+    getCachedHomeCategoryConfig(),
+    getCachedSiteSettings(),
   ]);
   const homeCategoryConfig = {
     generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
@@ -117,26 +124,13 @@ export default async function HomePage() {
   // verified-section query can read its verifiedOnly flag.
   const [activeListings, brandCount, categoryCount, featuredCount, verifiedCount, requestRows, articleRows, hotSearchRows, homeSections, heroConfig] = await Promise.all([
     db.listing.count({ where: { status: "PUBLISHED" } }),
-    db.brand.count({ where: { active: true } }),
+    getCachedBrandCount(),
     db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } }),
     db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
     db.listing.count({ where: { status: "PUBLISHED", verified: true } }),
-    db.buyRequest.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: [{ verified: "desc" }, { createdAt: "desc" }],
-      take: 6,
-    }),
-    db.article.findMany({
-      where: { status: "PUBLISHED" },
-      orderBy: { publishedAt: { sort: "desc", nulls: "last" } },
-      take: 4,
-      select: { id: true, slug: true, title: true, excerpt: true, category: true, coverImage: true, viewCount: true },
-    }),
-    db.hotSearch.findMany({
-      where: { active: true },
-      orderBy: { sortOrder: "asc" },
-      take: 9,
-    }),
+    getCachedActiveRequests(),
+    getCachedArticles(),
+    getCachedHotSearches(),
     (async () => {
       let rows = await db.homePageSection.findMany({
         where: { active: true },
@@ -200,7 +194,7 @@ export default async function HomePage() {
       }
       return rows;
     })(),
-    db.heroConfig.findUnique({ where: { id: "main" } }),
+    getCachedHeroConfig(),
   ]);
 
   // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 5): build the
@@ -208,10 +202,7 @@ export default async function HomePage() {
   // Generation 1 → L1 children of the machinery root.
   // Generation 2 → L2 children of the selected L1 parent.
   const machineCategoryCards: MachineCategoryCard[] = await (async () => {
-    const machinery = await db.category.findFirst({
-      where: { slug: "machinery", active: true },
-      select: { id: true },
-    });
+    const machinery = await getCachedMachineryRoot();
     if (!machinery) return [];
 
     let where: any;
@@ -220,12 +211,11 @@ export default async function HomePage() {
     } else {
       where = { parentId: machinery.id, active: true };
     }
-    const rows = await db.category.findMany({
-      where,
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      take: 12,
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
-    });
+    const rows = await getCachedL1Children(
+      homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
+        ? homeCategoryConfig.parentId
+        : machinery.id
+    );
     return rows.map((c) => ({
       id: c.id,
       name: c.name,
@@ -242,28 +232,15 @@ export default async function HomePage() {
   // showOnHomepage brands for the TrustedBrandsSection ticker.
   const trustedBrandRows = await (async () => {
     const [displayBrands, featuredBrands] = await Promise.all([
-      db.brandDisplay.findMany({
-        where: { showOnHomepage: true },
-        select: { brandId: true },
-      }),
-      db.brand.findMany({
-        where: { featured: true, active: true },
-        select: { id: true },
-      }),
+      getCachedBrandDisplayIds(),
+      getCachedFeaturedBrandIds(),
     ]);
     const ids = new Set<string>([
       ...displayBrands.map((d) => d.brandId),
       ...featuredBrands.map((b) => b.id),
     ]);
     if (ids.size === 0) return [];
-    const rows = await db.brand.findMany({
-      where: { id: { in: Array.from(ids) }, active: true },
-      orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
-      take: 20,
-      include: {
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
-      },
-    });
+    const rows = await getCachedTrustedBrands(Array.from(ids));
     return rows;
   })();
   const trustedBrands: TrustedBrand[] = trustedBrandRows.map((b) => ({

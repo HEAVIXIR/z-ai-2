@@ -32,6 +32,7 @@ export const HOMEPAGE_CACHE_TAGS = {
   catConfig: 'home:cat-config',
   articles: 'home:articles',
   hotSearches: 'home:hot-searches',
+  stats: 'home:stats',
 } as const;
 
 // ── Resource key → tag array mapping (for Universal API / Action Engine) ──

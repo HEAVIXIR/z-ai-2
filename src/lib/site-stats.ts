@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import { METRIC_OPTIONS, type StatMetric } from "@/lib/site-stats-metrics";
+import {
+  getCachedSiteStats,
+  getCachedCategoryCount,
+  getCachedProvinceCount,
+} from "@/lib/homepage-cached-queries";
 
 // Re-export for server-side convenience (API route imports from here).
 export { METRIC_OPTIONS, type StatMetric };
@@ -61,14 +66,14 @@ export async function computeMetricCount(
 
   switch (metric) {
     case "categories":
-      return db.category.count({ where: { parentId: null, active: true } });
+      return getCachedCategoryCount();
     case "brands":
       return db.brand.count({ where: { active: true } });
     case "listings":
     case "listings_published":
       return db.listing.count({ where: { status: "PUBLISHED" } });
     case "provinces":
-      return db.province.count();
+      return getCachedProvinceCount();
     case "models":
       return db.productModel.count();
     case "companies":
@@ -109,10 +114,7 @@ export async function computeStatValue(
 export async function getActiveStats(
   precomputed?: { listings?: number; brands?: number; categories?: number },
 ): Promise<ComputedStat[]> {
-  const rows = await db.siteStat.findMany({
-    where: { active: true },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-  });
+  const rows = await getCachedSiteStats();
 
   if (rows.length === 0) return [];
 
