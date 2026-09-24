@@ -227,6 +227,7 @@ export const paymentConfig: AdminResourceConfig = {
     { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
     { key: 'gateway', label: 'درگاه', type: 'badge', filterable: true, visible: false },
     { key: 'trackingCode', label: 'کد پیگیری', type: 'text', visible: false },
+    { key: 'providerReference', label: 'مرجع درگاه', type: 'text', visible: false },
     { key: 'paidAt', label: 'پرداخت', type: 'date', sortable: true },
     { key: 'createdAt', label: 'تاریخ ایجاد', type: 'date', sortable: true },
   ],
