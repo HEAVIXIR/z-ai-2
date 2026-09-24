@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
@@ -161,6 +161,23 @@ const MIN_ITEMS = 2;
 const MAX_ITEMS = 5;
 
 export default function ComparePage() {
+  // STEP 14.8-B: Next.js 16 requires useSearchParams() to be wrapped in
+  // <Suspense> for static export to succeed. The actual page logic lives
+  // in ComparePageInner below; this wrapper just provides the boundary.
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#0b0b0b] text-white/40">
+          <div className="animate-pulse text-sm">در حال بارگذاری…</div>
+        </div>
+      }
+    >
+      <ComparePageInner />
+    </Suspense>
+  );
+}
+
+function ComparePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const shareToken = searchParams.get("share");

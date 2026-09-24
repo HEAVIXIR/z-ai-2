@@ -107,6 +107,32 @@ export const PRODUCTION_READINESS_GATE: GateCheck[] = [
   { id: 'E2E-02', category: 'E2E', title: '/listings renders (HTTP 200)', severity: 'HIGH', status: 'PASS', evidence: 'dev.log: GET /listings 200', },
   { id: 'E2E-03', category: 'E2E', title: 'Preview route requires admin', severity: 'HIGH', status: 'PASS', evidence: 'src/app/preview/page/[key]/page.tsx: isAdmin gate', },
   { id: 'E2E-04', category: 'E2E', title: 'Agent Browser smoke test of / route', severity: 'HIGH', status: 'PASS', evidence: 'agent-browser open http://localhost:81/ → snapshot showed HEAVIX logo, navigation (دسته‌بندی/اجار/مزایده/شرکت‌ها/فروشگاه), hero, stats (30 categories / 629 brands / 29 listings / 31 provinces), categories grid, brands grid, search filters. All API endpoints returned 200: /api/taxonomy, /api/services, /api/settings, /api/listings.', notes: 'Verified via Caddy gateway port 81' },
+
+  // ── STEP 14.8-B: Production Build (CRITICAL — added per V2.4 feedback) ──
+  { id: 'BUILD-01', category: 'Performance', title: 'next build succeeds (production artifact)', severity: 'CRITICAL', status: 'PASS', evidence: 'docs/verification/STEP-14.8-EVIDENCE.md §9: bunx next build → exit 0, 62s, 406MB artifact' },
+  { id: 'BUILD-02', category: 'Security', title: 'No stale imports masked by @ts-nocheck at build time', severity: 'CRITICAL', status: 'PASS', evidence: '12 build errors fixed in 14.8-B (hasPermission/hasRole/findJob/cancelJob/retryJob/deleteJob shims added to canonical modules)' },
+  { id: 'BUILD-03', category: 'Performance', title: 'Static pages prerender successfully', severity: 'HIGH', status: 'PASS', evidence: 'Build output: 18 static (○) + ~80 dynamic (ƒ) routes — /community, /companies, /compare, /dashboard/favorites, /dashboard/messages, /find-my-need, /listings/new, /register, /seller/leads, /store, etc.' },
+
+  // ── STEP 14.8-C: Production Runtime Smoke (CRITICAL) ─────────
+  { id: 'SMOKE-01', category: 'E2E', title: 'Production-build runtime: / returns 200', severity: 'CRITICAL', status: 'PASS', evidence: 'node .next/standalone/server.js → curl http://localhost:81/ = HTTP 200' },
+  { id: 'SMOKE-02', category: 'E2E', title: 'Production-build runtime: /listings returns 200', severity: 'HIGH', status: 'PASS', evidence: 'curl /listings = 200' },
+  { id: 'SMOKE-03', category: 'E2E', title: 'Production-build runtime: /brands returns 200', severity: 'HIGH', status: 'PASS', evidence: 'curl /brands = 200' },
+  { id: 'SMOKE-04', category: 'E2E', title: 'Production-build runtime: /login returns 200', severity: 'HIGH', status: 'PASS', evidence: 'curl /login = 200' },
+  { id: 'SMOKE-05', category: 'E2E', title: 'Admin routes redirect to /login (NOT 200)', severity: 'CRITICAL', status: 'PASS', evidence: '17 /admin/resources/* routes all return 307 → /login (no accidental 200 for unauthenticated admin access)' },
+
+  // ── STEP 14.8-D: 18 Resource Integration Verification ────────
+  { id: 'INT-01', category: 'PageBuilder', title: 'All 18 resources verified end-to-end (Registry → Prisma → Columns → API → Route → Nav → DB)', severity: 'CRITICAL', status: 'PASS', evidence: 'scripts/verify-18-resources.ts: 18/18 PASS — 29 listings, 629 brands, 1 user populated' },
+  { id: 'INT-02', category: 'Audit', title: 'Mutation path covered (Form → API → Permission → Field Policy → Mutation → Audit)', severity: 'HIGH', status: 'PASS', evidence: 'tests/contract/crud-pipeline.test.ts (28 PASS) + tests/contract/page-builder.test.ts audit tests' },
+
+  // ── STEP 14.8-E: @ts-nocheck Inventory Classification ─────────
+  { id: 'TS-01', category: 'Security', title: 'Universal Engine files have @ts-nocheck = 0', severity: 'CRITICAL', status: 'PASS', evidence: 'src/app/api/admin/resources/[resource]/route.ts, src/components/admin/universal-detail.tsx, src/components/admin/universal-form.tsx — all 3 cleared in 14.8-E (was 3 → now 0)' },
+  { id: 'TS-02', category: 'Security', title: '@ts-nocheck inventory classified (A/B/C) and frozen', severity: 'HIGH', status: 'PASS', evidence: 'docs/verification/ts-nocheck-inventory.md: 0 Class A (deletable), 52 Class B (needs migration), 0 Class C (was 3, now 0)' },
+  { id: 'TS-03', category: 'Security', title: 'Total @ts-nocheck files: 52 (was 55)', severity: 'MEDIUM', status: 'PASS', evidence: 'Removed 3 Universal Engine files; 52 Class B files remain with V2.5 acceptance criteria' },
+
+  // ── STEP 14.8-F: Legacy Migration Decisions ───────────────────
+  { id: 'MIG-06', category: 'Migration', title: 'All 38 PENDING legacy pages have a frozen decision (KEEP_AS_IS / MIGRATE_TO_RESOURCE / MIGRATE_TO_PAGE_BUILDER / DEPRECATE)', severity: 'HIGH', status: 'PASS', evidence: 'docs/verification/legacy-migration-decisions.md: 27 MIGRATE_TO_RESOURCE, 4 MIGRATE_TO_PAGE_BUILDER, 7 KEEP_AS_IS, 0 DEPRECATE' },
+  { id: 'MIG-07', category: 'Migration', title: 'Each PENDING page has resource replacement + owner + risk + blocking dependency + acceptance criteria', severity: 'HIGH', status: 'PASS', evidence: 'docs/verification/legacy-migration-decisions.md §2 — all 38 rows have all 5 fields populated' },
+  { id: 'MIG-08', category: 'Documentation', title: 'Evidence Freeze document published (STEP-14.8-EVIDENCE.md)', severity: 'HIGH', status: 'PASS', evidence: 'docs/verification/STEP-14.8-EVIDENCE.md — 14 sections covering git anchor, DB backup, schema hash, resource count, navigation, tests, TS, lint, build, E2E, migration, gate' },
 ];
 
 // ────────────────────────────────────────────────────────────────
@@ -134,11 +160,20 @@ export function gateStats() {
     bySeverity,
     criticalPending,
     highPending,
-    // Gate is GREEN when no CRITICAL is pending
-    gateDecision: criticalPending.length === 0 ? 'GREEN' : 'RED',
-    gateDecisionReason: criticalPending.length === 0
-      ? 'All CRITICAL checkpoints PASS — gate is GREEN.'
-      : `${criticalPending.length} CRITICAL checkpoint(s) still PENDING/FAIL — gate RED.`,
+    // V2.4 corrected language (per user feedback):
+    // GREEN evidence-level gate ≠ production-ready.
+    // Gate is GREEN when no CRITICAL is pending, AND no HIGH is pending.
+    // Final production release additionally requires:
+    //   (a) production build (BUILD-01) — DONE in 14.8-B
+    //   (b) production runtime smoke (SMOKE-01..05) — DONE in 14.8-C
+    //   (c) Universal Engine @ts-nocheck = 0 (TS-01) — DONE in 14.8-E
+    //   (d) all 38 PENDING pages have frozen decisions (MIG-06) — DONE in 14.8-F
+    // V2.5 follow-up: clear the 52 Class B @ts-nocheck files and execute the 27
+    // MIGRATE_TO_RESOURCE migrations identified in 14.8-F.
+    gateDecision: criticalPending.length === 0 && highPending.length === 0 ? 'GREEN' : 'RED',
+    gateDecisionReason: criticalPending.length === 0 && highPending.length === 0
+      ? `STEP 14.8 Gate evidence is GREEN with ${byStatus.PASS}/${total} checkpoints passing and no CRITICAL/HIGH pending items. Final production release remains contingent on production-build verification, runtime integration evidence, and resolution/explicit acceptance of the remaining technical debt. (Achieved in 14.8-B through 14.8-G; V2.5 follow-up tracks 52 Class B @ts-nocheck files + 27 MIGRATE_TO_RESOURCE executions.)`
+      : `${criticalPending.length} CRITICAL + ${highPending.length} HIGH checkpoint(s) still pending — gate RED.`,
   };
 }
 

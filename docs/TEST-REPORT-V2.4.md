@@ -204,6 +204,15 @@ bunx tsx -e "import { migrationStats } from './src/lib/admin/legacy-migration-ch
 - ✅ Page Builder golden invariant (rollback-as-new-version + immutability) verified at the database level.
 - ✅ Preview = Production parity verified at the source + behavioral level.
 - ✅ All 104 legacy admin pages cataloged with risk + owner.
-- ✅ Production readiness gate is GREEN — all 22 CRITICAL checkpoints PASS.
+- ✅ **Production build succeeds** (STEP 14.8-B): `next build` exit 0, 406MB artifact, 18 static + ~80 dynamic routes.
+- ✅ **Production runtime smoke** (STEP 14.8-C): 21/21 URLs pass (4 public pages = 200, 17 admin routes = 307 → /login).
+- ✅ **18 Resource Integration** (STEP 14.8-D): all 18 PASS — Registry → Prisma → Columns/Actions/Bulk → Universal API → Admin Route → DB.
+- ✅ **Universal Engine @ts-nocheck = 0** (STEP 14.8-E): 3 files cleared; 52 Class B legacy files remain with V2.5 acceptance criteria.
+- ✅ **38 PENDING legacy decisions frozen** (STEP 14.8-F): 27 MIGRATE_TO_RESOURCE, 4 MIGRATE_TO_PAGE_BUILDER, 7 KEEP_AS_IS.
+- ✅ Production readiness gate has 73/74 PASS, 0 CRITICAL pending, 0 HIGH pending.
 
-**The platform is cleared to enter STEP 15-18** (which were previously blocked on the gate).
+> **Corrected status language (per V2.4 user feedback):** "STEP 14.8 Gate evidence is GREEN with 73/74 checkpoints passing and no CRITICAL/HIGH pending items; final production release remains contingent on production-build verification (DONE), runtime integration evidence (DONE), and resolution/explicit acceptance of the remaining technical debt (52 Class B `@ts-nocheck` files + 27 MIGRATE_TO_RESOURCE executions tracked for V2.5 follow-up)."
+>
+> GREEN evidence-level gate ≠ production-ready. STEP 15 feature work is now unblocked because the production build + runtime smoke + integration verification have all been completed.
+
+**The platform is cleared to enter STEP 15-18** — with the explicit understanding that V2.5 must clear the 52 Class B `@ts-nocheck` files and execute the 27 MIGRATE_TO_RESOURCE migrations identified in 14.8-F.

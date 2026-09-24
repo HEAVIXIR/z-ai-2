@@ -1,4 +1,5 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// STEP 14.8-E: @ts-nocheck removed — Universal Engine must be type-safe.
+// (was: // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY)
 'use client';
 
 import * as React from 'react';

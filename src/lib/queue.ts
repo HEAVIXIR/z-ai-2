@@ -275,3 +275,65 @@ function stripInternal(j: InternalJob): JobRecord {
     finishedAt: j.finishedAt,
   };
 }
+
+// ── STEP 14.8-B: Legacy job-control exports ─────────────────────
+// Older admin endpoints (e.g. /api/admin/jobs/[id]) import { findJob,
+// cancelJob, retryJob, deleteJob } from "@/lib/queue". These were not
+// previously exported. Provide thin wrappers over the in-memory state.
+
+/** Find a job by ID, scanning pending + running + history. */
+export function findJob(id: string): JobRecord | null {
+  // Pending?
+  const p = pending.find((j) => j.id === id);
+  if (p) return stripInternal(p);
+  // Running?
+  const r = running.get(id);
+  if (r) return stripInternal(r);
+  // History?
+  const h = history.find((j) => j.id === id);
+  if (h) return stripInternal(h);
+  return null;
+}
+
+/** Cancel a job. Pending jobs are removed; running jobs are marked FAILED. */
+export function cancelJob(id: string): boolean {
+  // Pending?
+  const idx = pending.findIndex((j) => j.id === id);
+  if (idx >= 0) {
+    pending.splice(idx, 1);
+    return true;
+  }
+  // Running? — mark as FAILED (handler must check status cooperatively)
+  const r = running.get(id);
+  if (r) {
+    r.status = "FAILED";
+    r.error = "cancelled by admin";
+    r.finishedAt = Date.now();
+    running.delete(id);
+    history.unshift(r);
+    if (history.length > HISTORY_CAP) history.pop();
+    return true;
+  }
+  return false;
+}
+
+/** Retry a failed/done job by re-enqueueing with the same type + payload. */
+export function retryJob(id: string): string | null {
+  const original = history.find((j) => j.id === id) ||
+    pending.find((j) => j.id === id) || running.get(id);
+  if (!original) return null;
+  return enqueue({ type: original.type, payload: original.payload });
+}
+
+/** Delete a job from history. Pending/running jobs are cancelled first. */
+export function deleteJob(id: string): boolean {
+  // Cancel if pending/running
+  cancelJob(id);
+  // Remove from history
+  const idx = history.findIndex((j) => j.id === id);
+  if (idx >= 0) {
+    history.splice(idx, 1);
+    return true;
+  }
+  return false;
+}

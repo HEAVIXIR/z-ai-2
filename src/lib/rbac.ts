@@ -30,3 +30,17 @@ export {
 
 // Keep these for backward compat
 export { getUserPermissions, ForbiddenError } from '@/lib/rbac-legacy';
+
+// ── STEP 14.8-B: Legacy import shims ────────────────────────────
+// Older code imports { hasPermission } from "@/lib/rbac" — this is
+// the synchronous-looking async equivalent of the new can() function.
+// Re-export can under the legacy name so legacy @ts-nocheck files
+// continue to import cleanly during the migration window.
+//
+// Signature:  hasPermission(userId, permissionKey) → Promise<boolean>
+// Identical to:  can(userId, permissionKey)
+//
+// Migration target: replace `hasPermission` imports with `can` from
+// "@/lib/authorization" and remove this shim once all callers migrate.
+import { can as _can } from '@/lib/authorization';
+export const hasPermission = _can;

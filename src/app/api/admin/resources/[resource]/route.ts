@@ -1,4 +1,4 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// STEP 14.8-E: @ts-nocheck removed — Universal Engine must be type-safe.
 /**
  * HEAVIX — STEP 06: Universal Resource API
  *
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         user?.id ?? null,
         config.audit.actions.find(a => a.includes('.create')) || `${config.key}.create`,
         config.audit.entityType,
-        item.id,
+        String(item.id),
         body,
         'Created via Universal Resource API',
       );

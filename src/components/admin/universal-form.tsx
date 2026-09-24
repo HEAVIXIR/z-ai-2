@@ -1,4 +1,5 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// STEP 14.8-E: @ts-nocheck removed — Universal Engine must be type-safe.
+// (was: // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY)
 'use client';
 
 import * as React from 'react';
@@ -367,7 +368,7 @@ function renderField(
         <Input
           id={inputId}
           type="number"
-          value={value ?? ''}
+          value={(value as number | string | null | undefined) ?? ''}
           onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
           placeholder={field.placeholder}
           className="text-xs"
@@ -440,11 +441,11 @@ function renderField(
     case 'media':
       return (
         <div className="flex items-center gap-2 rounded-md border p-2">
-          {value && <img src={String(value)} alt="" className="size-8 rounded object-cover" />}
+          {value ? <img src={String(value)} alt="" className="size-8 rounded object-cover" /> : null}
           <Input
             id={inputId}
             type="text"
-            value={(value as string) ?? ''}
+            value={(value as string | null | undefined) ?? ''}
             onChange={e => onChange(e.target.value)}
             placeholder="URL تصویر"
             className="flex-1 text-xs"

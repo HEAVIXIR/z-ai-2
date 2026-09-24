@@ -229,3 +229,36 @@ export async function canExport(
   const perm = EXPORT_PERMISSIONS[resource] || `${resource}.read`;
   return can(userId, perm);
 }
+
+// ── STEP 14.8-B: Legacy shim — hasRole ─────────────────────────
+// Older code (e.g. src/lib/ai-policy.ts) imports { hasRole } from
+// "@/lib/authorization". The new RBAC model is permission-based, not
+// role-based, but during the migration window we provide a shim that
+// resolves "role" strings to canonical permission keys.
+//
+// Legacy signature:  hasRole(userId, roles: string | string[]) → Promise<boolean>
+// Returns true if the user has any of the listed "role" keys, where each
+// role key maps to a sentinel permission we treat as role membership.
+//
+// Migration target: replace `hasRole(userId, 'ADMIN')` with
+// `can(userId, 'admin.access')` and remove this shim.
+const ROLE_PERMISSION_MAP: Record<string, string> = {
+  ADMIN: 'admin.access',
+  SELLER: 'seller.access',
+  BUYER: 'buyer.access',
+  MODERATOR: 'moderator.access',
+  SUPPORT: 'support.access',
+};
+
+export async function hasRole(
+  userId: string | null | undefined,
+  roles: string | string[],
+): Promise<boolean> {
+  if (!userId) return false;
+  const roleList = Array.isArray(roles) ? roles : [roles];
+  for (const r of roleList) {
+    const perm = ROLE_PERMISSION_MAP[r] || `${r.toLowerCase()}.access`;
+    if (await can(userId, perm)) return true;
+  }
+  return false;
+}
