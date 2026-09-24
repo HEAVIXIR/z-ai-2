@@ -1439,3 +1439,86 @@ Status of STEP 15-B.4:
 
 Next: 15-B.5 (apply 15-B.4.3 count dedup + 15-B.4.4 Promise.all + evaluate ISR design
 with full regression + re-measure + page-level TTFB measurement).
+
+---
+
+Task ID: STEP-15-B-5-1
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.5.1 — Count Aggregation (Change 1 only). Eliminate 2 duplicate DB round-trips by passing pre-computed Q8 (activeListings) and Q9 (brandCount) to getActiveStats(). Micro-optimization at DB level, NOT TTFB improvement.
+
+Work Log:
+- Evidence Freeze: read full src/app/page.tsx (Phase 4 count queries lines 114-118 + getActiveStats call line 358) and src/lib/site-stats.ts (computeMetricCount lines 34-59 + getActiveStats lines 82-105 + computeStatValue lines 65-75).
+- Identified duplicate pairs:
+  - Q8 (page.tsx:114 listing.count PUBLISHED) ↔ Q21 (site-stats.ts:42 listing.count PUBLISHED) — EXACT DUPLICATE
+  - Q9 (page.tsx:115 brand.count active) ↔ Q22 (site-stats.ts:39 brand.count active) — EXACT DUPLICATE
+  - Q10 (page.tsx:116 category.count with layer='CATALOG') ↔ Q23 (site-stats.ts:37 category.count without layer) — NEAR-DUPLICATE (different predicates, different results: 23 vs 30)
+- Confirmed Q23 CANNOT be deduplicated (different predicate returns different result).
+- Confirmed Q24 (provinces) is unique (no Phase 4 equivalent).
+- Registered baseline: Q8=29 Q9=629 Q21=29 Q22=629 Q23=30 Q24=31.
+
+Changes made (2 files, 46 insertions, 9 deletions):
+1. src/lib/site-stats.ts:
+   - Added optional 'precomputed' parameter to computeMetricCount() signature
+   - When precomputed.listings is provided, metric 'listings'/'listings_published' returns it directly (skips DB query — eliminates Q21)
+   - When precomputed.brands is provided, metric 'brands' returns it directly (skips DB query — eliminates Q22)
+   - 'categories' NOT deduplicated (documented why: Q10 predicate differs from Q23)
+   - Updated computeStatValue() to accept and pass precomputed
+   - Updated getActiveStats() to accept and pass precomputed
+   - getAllStatsWithValues() unchanged (admin function, always fires all queries — backward compatible)
+
+2. src/app/page.tsx:
+   - Line 363: getActiveStats() → getActiveStats({ listings: activeListings, brands: brandCount })
+   - Passes Q8 result (29) and Q9 result (629) to getActiveStats, which uses them instead of re-firing Q21/Q22
+
+Query elimination:
+  BEFORE: Q8 + Q9 + Q21 + Q22 + Q23 + Q24 = 6 count queries per home render
+  AFTER:  Q8 + Q9 + Q23 + Q24          = 4 count queries per home render
+  Eliminated: Q21 + Q22 = 2 duplicate queries (0.257ms DB-level savings per render)
+
+Semantic verification:
+  Q8=29 (passed to getActiveStats) = Q21 was 29 ✅
+  Q9=629 (passed to getActiveStats) = Q22 was 629 ✅
+  Q23=30 (still fires, different predicate) ✅
+  Q24=31 (still fires, unique) ✅
+  getActiveStats output unchanged — same values, just fewer DB round-trips.
+
+Validation Gate (ALL GREEN):
+  1. tsc --noEmit: 0 errors ✅
+  2. eslint src/: 0 errors (5 pre-existing warnings) ✅
+  3. vitest run tests/contract/: 498/498 PASS ✅
+  4. next build: exit 0, 52s ✅
+  5. GET /: HTTP 200 ✅
+  6. GET /store: HTTP 200 ✅
+  7. Semantic verification: Q8=29 Q9=629 Q23=30 Q24=31 ✅
+
+Micro-optimization note (per user policy):
+  DB-level savings: ~0.257ms per home render (0.082ms Q21 + 0.175ms Q22)
+  This is a micro-optimization at the DB level, NOT a TTFB improvement.
+  Per 15-A: DB is 1.75% of warm TTFB (67ms). The 0.257ms savings is
+  invisible at the page level. This change reduces DB round-trips
+  from 6 to 4 count queries, not page render time.
+
+Scope locked (NOT changed in this step):
+  - Q12 (verifiedCount) — dead code, deferred to Phase 2
+  - Q10/Q11 — conditional-only, deferred to Phase 2
+  - Promise.all restructuring — deferred to 15-B.5.2
+  - $queryRaw FILTER aggregate — not pursued (user cautioned)
+  - ISR/cache — deferred to 15-B.5.4
+  - No new index, no schema change, no Redis, no materialized view
+
+Commit 0c77c79 pushed to GitHub (5189467..0c77c79 main -> main).
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (unchanged).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Stage Summary:
+- ✅ 15-B.5.1 complete: 2 duplicate DB queries eliminated (Q21 + Q22).
+- ✅ 6 count queries → 4 count queries per home render.
+- ✅ Semantics preserved (same results, fewer round-trips).
+- ✅ All validation gates green (TSC + lint + tests + build + smoke + semantic).
+- ✅ Micro-optimization at DB level (0.257ms), NOT TTFB improvement.
+- ✅ Pushed to GitHub.
+
+Next: 15-B.5.2 (Promise.all for Q3+Q4 — Phase 2 needless sequential).
