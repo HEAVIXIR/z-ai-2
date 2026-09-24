@@ -1,80 +1,140 @@
-/**
- * HEAVIX Admin - Feature flags
- * GET  /api/admin/feature-flags  - list all flags
- * POST /api/admin/feature-flags  - create a new flag
- */
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { isAuthenticated } from "@/lib/auth";
+import { parseBool, parseNumber } from "@/lib/api-helpers";
+import { requireAdmin } from "@/lib/admin-guard";
 
-import { db } from '@/lib/db';
-import { ok, fail, serverError, parseJsonBody, getAdminContext } from '@/lib/admin/response';
-import { audit } from '@/lib/admin/audit';
-import { Prisma } from '@prisma/client';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+/* ============================================================
+   /api/admin/feature-flags
+   GET  — list all flags (auto-seed defaults if empty)
+   POST — create or update a flag
+   ============================================================ */
 
-const VALID_AUDIENCES = ['all', 'admins', 'internal'];
+const DEFAULT_FLAGS: Array<{
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  rolloutPct: number;
+}> = [
+  {
+    key: "ENABLE_AI_SEARCH",
+    label: "جستجوی هوشمند AI",
+    description: "فعال‌سازی جستجوی مبتنی بر LLM برای کاربران",
+    enabled: true,
+    rolloutPct: 100,
+  },
+  {
+    key: "ENABLE_RFQ",
+    label: "سیستم درخواست خرید (RFQ)",
+    description: "امکان ثبت و مدیریت درخواست‌های خرید B2B",
+    enabled: true,
+    rolloutPct: 100,
+  },
+  {
+    key: "ENABLE_AUCTION",
+    label: "مزایده ماشین‌آلات",
+    description: "موتور مزایده برای آگهی‌های انتخاب‌شده",
+    enabled: false,
+    rolloutPct: 0,
+  },
+  {
+    key: "ENABLE_RENTAL",
+    label: "اجاره ماشین‌آلات",
+    description: "امکان ثبت آگهی اجاره به‌علاوه فیلتر اجاره",
+    enabled: true,
+    rolloutPct: 100,
+  },
+  {
+    key: "ENABLE_MARKET_INDEX",
+    label: "شاخص بازار",
+    description: "نمایش شاخص قیمت بازار و روندها",
+    enabled: true,
+    rolloutPct: 100,
+  },
+  {
+    key: "ENABLE_VOICE_SEARCH",
+    label: "جستجوی صوتی",
+    description: "جستجوی صوتی فارسی برای کاربران موبایل",
+    enabled: false,
+    rolloutPct: 0,
+  },
+];
+
+async function ensureSeeded() {
+  const count = await db.featureFlag.count();
+  if (count === 0) {
+    await db.featureFlag.createMany({
+      data: DEFAULT_FLAGS.map((f) => ({
+        key: f.key,
+        label: f.label,
+        description: f.description,
+        enabled: f.enabled,
+        rolloutPct: f.rolloutPct,
+      })),
+    });
+  }
+}
 
 export async function GET() {
+  const authed = await isAuthenticated();
+  if (!authed) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
+    await ensureSeeded();
     const flags = await db.featureFlag.findMany({
-      orderBy: [{ enabled: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: "asc" },
     });
-    return ok({ items: flags });
-  } catch (err) {
-    console.error('[api/admin/feature-flags GET] error:', err);
-    return serverError('Failed to list feature flags', String(err));
+    const stats = {
+      total: flags.length,
+      enabled: flags.filter((f) => f.enabled).length,
+      disabled: flags.filter((f) => !f.enabled).length,
+      partialRollout: flags.filter((f) => f.enabled && f.rolloutPct < 100).length,
+    };
+    return NextResponse.json({ success: true, data: flags, stats });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
+  const authed = await isAuthenticated();
+  if (!authed) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
-    const body = await parseJsonBody<{
-      key?: string;
-      name?: string;
-      description?: string | null;
-      enabled?: boolean;
-      value?: string | null;
-      audience?: string;
-    }>(req);
-
-    if (!body?.key || !body?.name) return fail('key and name are required', 400);
-    const key = body.key.trim();
-    const name = body.name.trim();
-    if (!/^[a-z][a-z0-9_.-]*$/i.test(key)) {
-      return fail('key must start with a letter and contain only [a-zA-Z0-9_.-]', 400);
+    const body = await req.json().catch(() => ({}));
+    const key = String(body.key ?? "").trim();
+    if (!key) {
+      return NextResponse.json({ error: "key is required" }, { status: 400 });
     }
-
-    const existing = await db.featureFlag.findUnique({ where: { key } });
-    if (existing) return fail(`flag with key "${key}" already exists`, 409);
-
-    const audience = body.audience && VALID_AUDIENCES.includes(body.audience)
-      ? body.audience
-      : 'all';
-
-    const flag = await db.featureFlag.create({
-      data: {
-        key,
-        name,
-        description: body.description?.trim() || null,
-        enabled: body.enabled ?? false,
-        value: body.value?.trim() || null,
-        audience,
-      },
+    const label = String(body.label ?? key).trim();
+    const description = body.description ? String(body.description) : null;
+    const enabled = parseBool(body.enabled);
+    const rolloutPct = parseNumber(body.rolloutPct);
+    const data = {
+      label,
+      description,
+      enabled,
+      rolloutPct: rolloutPct === null ? 100 : Math.max(0, Math.min(100, rolloutPct)),
+    };
+    const flag = await db.featureFlag.upsert({
+      where: { key },
+      create: { key, ...data },
+      update: data,
     });
-
-    const ctx = await getAdminContext();
-    await audit({
-      actorId: ctx.actorId,
-      actorEmail: ctx.actorEmail,
-      action: 'feature_flag.create',
-      resource: 'FeatureFlag',
-      resourceId: flag.id,
-      metadata: { key, name, enabled: flag.enabled, audience },
-    });
-
-    return ok(flag, { status: 201 });
-  } catch (err) {
-    console.error('[api/admin/feature-flags POST] error:', err);
-    return serverError('Failed to create feature flag', String(err));
+    return NextResponse.json({ success: true, data: flag });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }

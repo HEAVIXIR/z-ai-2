@@ -1,116 +1,197 @@
-/**
- * HEAVIX Admin - Users list & create
- * GET  /api/admin/users        - list with pagination, search, filters
- * POST /api/admin/users        - create a new user
- */
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { hashPassword } from "@/lib/password";
 
-import { db } from '@/lib/db';
-import { ok, fail, serverError, parseJsonBody, getAdminContext } from '@/lib/admin/response';
-import { audit } from '@/lib/admin/audit';
-import { Prisma, UserRole, UserStatus } from '@prisma/client';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+/* ============================================================
+   /api/admin/users — admin user management.
 
-const VALID_ROLES: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'MEMBER', 'GUEST'];
-const VALID_STATUSES: UserStatus[] = ['ACTIVE', 'SUSPENDED', 'PENDING', 'INVITED', 'DELETED'];
+   GET  (admin)  → list users with filters + counts
+   POST (admin)  → create a new user (admin-created)
+   ============================================================ */
 
+function serialize(u: any) {
+  return {
+    ...u,
+    passwordHash: undefined, // never leak
+    listingsCount: u._count?.listings ?? 0,
+    offersCount: u._count?.offers ?? 0,
+    requestsCount: u._count?.requests ?? 0,
+    _count: undefined,
+  };
+}
+
+/* GET /api/admin/users?q=&role=&status=&emailVerified=&sort=&limit=&offset= */
 export async function GET(req: Request) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const url = new URL(req.url);
-    const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get('pageSize') ?? '20', 10)));
-    const search = url.searchParams.get('search')?.trim() || '';
-    const roleFilter = url.searchParams.get('role') as UserRole | null;
-    const statusFilter = url.searchParams.get('status') as UserStatus | null;
-    const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
-    const sort = url.searchParams.get('sort') ?? 'createdAt';
-    const order = url.searchParams.get('order') === 'asc' ? 'asc' : 'desc';
+    const q = (url.searchParams.get("q") ?? "").trim();
+    const role = (url.searchParams.get("role") ?? "").trim();
+    const status = (url.searchParams.get("status") ?? "").trim();
+    const emailVerified = url.searchParams.get("emailVerified");
+    const mobileVerified = url.searchParams.get("mobileVerified");
+    const sort = url.searchParams.get("sort") ?? "createdAt";
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+    const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
 
-    const where: Prisma.UserWhereInput = {};
-    if (!includeDeleted) where.deletedAt = null;
-    if (search) {
+    const where: any = {};
+    if (q) {
       where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: q } },
+        { lastName: { contains: q } },
+        { email: { contains: q } },
+        { mobile: { contains: q } },
+        { companyName: { contains: q } },
       ];
     }
-    if (roleFilter && VALID_ROLES.includes(roleFilter)) where.role = roleFilter;
-    if (statusFilter && VALID_STATUSES.includes(statusFilter)) where.status = statusFilter;
+    if (role) where.userType = role.toUpperCase();
+    if (status) where.status = status.toUpperCase();
+    if (emailVerified === "true") where.emailVerified = true;
+    if (emailVerified === "false") where.emailVerified = false;
+    if (mobileVerified === "true") where.mobileVerified = true;
+    if (mobileVerified === "false") where.mobileVerified = false;
 
-    const [total, items] = await Promise.all([
-      db.user.count({ where }),
-      db.user.findMany({
+    const orderBy: any =
+      sort === "name"
+        ? [{ firstName: "asc" }, { lastName: "asc" }]
+        : sort === "lastLoginAt"
+          ? { lastLoginAt: "desc" }
+          : sort === "listings"
+            ? { listings: { _count: "desc" } }
+            : { createdAt: "desc" };
+
+    // SQLite doesn't support relation-based orderBy sugar for some operations;
+    // if "listings" sort was requested, fall back to in-memory sort.
+    let users: any[];
+    let total: number;
+    if (sort === "listings") {
+      total = await db.user.count({ where });
+      users = await db.user.findMany({
         where,
-        orderBy: sort === 'email'
-          ? { email: order }
-          : sort === 'name'
-            ? { name: order }
-            : sort === 'lastLoginAt'
-              ? { lastLoginAt: { sort: order, nulls: 'last' } }
-              : { createdAt: order },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-    ]);
+        include: {
+          _count: { select: { listings: true, offers: true, requests: true } },
+        },
+        take: 1000, // fetch then sort in-memory
+      });
+      users.sort(
+        (a, b) =>
+          (b._count?.listings ?? 0) - (a._count?.listings ?? 0) ||
+          a.firstName.localeCompare(b.firstName, "fa"),
+      );
+      users = users.slice(offset, offset + limit);
+    } else {
+      [users, total] = await Promise.all([
+        db.user.findMany({
+          where,
+          orderBy,
+          skip: offset,
+          take: limit,
+          include: {
+            _count: { select: { listings: true, offers: true, requests: true } },
+          },
+        }),
+        db.user.count({ where }),
+      ]);
+    }
 
-    return ok({
-      items,
-      pagination: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
-      },
+    return NextResponse.json({
+      success: true,
+      total,
+      data: users.map(serialize),
     });
-  } catch (err) {
-    console.error('[api/admin/users GET] error:', err);
-    return serverError('Failed to list users', String(err));
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }
 
+/* POST /api/admin/users — admin creates a user.
+   (P0-RBAC: requires user.suspend — covers role/status lifecycle operations) */
 export async function POST(req: Request) {
+  // Authorization: legacy admin-cookie path OR user session with `user.suspend`.
+  // The admin-cookie path is legacy (see src/app/admin/layout.tsx) and bypasses RBAC.
+  const adminCookieOk = await isAuthenticated();
+  const sessionUser = adminCookieOk ? null : await getCurrentUser();
+  if (!adminCookieOk && !sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (sessionUser && !(await hasPermission(sessionUser.id, "user.suspend"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'user.suspend'" },
+      { status: 403 },
+    );
+  }
   try {
-    const body = await parseJsonBody<{
-      email?: string;
-      name?: string | null;
-      role?: UserRole;
-      status?: UserStatus;
-    }>(req);
+    const body = await req.json().catch(() => ({}));
+    const firstName = String(body.firstName ?? "").trim();
+    const lastName = String(body.lastName ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const mobile = String(body.mobile ?? "").trim();
+    const password = String(body.password ?? "").trim();
 
-    if (!body?.email) return fail('email is required', 400);
-    const email = body.email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('invalid email format', 400);
+    if (!firstName || !lastName || !email || !mobile) {
+      return NextResponse.json(
+        { error: "نام، نام خانوادگی، ایمیل و موبایل الزامی هستند" },
+        { status: 400 },
+      );
+    }
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "رمز عبور باید حداقل ۶ نویسه باشد" },
+        { status: 400 },
+      );
+    }
 
-    const role: UserRole = body.role && VALID_ROLES.includes(body.role) ? body.role : 'MEMBER';
-    const status: UserStatus = body.status && VALID_STATUSES.includes(body.status) ? body.status : 'ACTIVE';
+    // Uniqueness check
+    const existing = await db.user.findFirst({
+      where: { OR: [{ email }, { mobile }] },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "ایمیل یا موبایل قبلاً ثبت شده است" },
+        { status: 409 },
+      );
+    }
 
-    // Check email uniqueness
-    const existing = await db.user.findUnique({ where: { email } });
-    if (existing) return fail(`email already exists: ${email}`, 409);
+    // P0-1: bcrypt-hash the password (cost 10). The previous base64
+    // obfuscation was NOT a hash and was trivially reversible — replaced.
+    const passwordHash = await hashPassword(password);
+
+    // P0-2: admin CAN set the role (admin-gated endpoint). Validate it
+    // against the allowed enum; default to BUYER. Public registration does
+    // NOT get this privilege.
+    const allowedRoles = ["ADMIN", "SELLER", "BUYER"];
+    const role = allowedRoles.includes(String(body.role ?? "").toUpperCase())
+      ? String(body.role).toUpperCase()
+      : "BUYER";
 
     const user = await db.user.create({
       data: {
+        firstName,
+        lastName,
         email,
-        name: body.name?.trim() || null,
+        mobile,
+        passwordHash,
+        userType: String(body.userType ?? "INDIVIDUAL").toUpperCase(),
         role,
-        status,
+        status: String(body.status ?? "ACTIVE").toUpperCase(),
+        companyName: body.companyName ? String(body.companyName) : null,
+        emailVerified: Boolean(body.emailVerified),
+        mobileVerified: Boolean(body.mobileVerified),
+      },
+      include: {
+        _count: { select: { listings: true, offers: true, requests: true } },
       },
     });
 
-    const ctx = await getAdminContext();
-    await audit({
-      actorId: ctx.actorId,
-      actorEmail: ctx.actorEmail,
-      action: 'user.create',
-      resource: 'User',
-      resourceId: user.id,
-      metadata: { email, role, status, name: body.name ?? null },
-    });
-
-    return ok(user, { status: 201 });
-  } catch (err) {
-    console.error('[api/admin/users POST] error:', err);
-    return serverError('Failed to create user', String(err));
+    return NextResponse.json({ success: true, data: serialize(user) });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }

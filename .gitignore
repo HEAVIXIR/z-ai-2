@@ -70,3 +70,7 @@ db/heavix-store-source.db
 # HEAVIX source zip files (downloaded from GitHub, extracted to /tmp)
 heavixselectedfile*.zip
 
+
+# Phase 12 backup (replaced by real HEAVIX app)
+src/app.phase12-backup/
+

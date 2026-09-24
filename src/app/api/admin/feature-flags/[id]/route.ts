@@ -1,102 +1,150 @@
-/**
- * HEAVIX Admin - Single feature flag operations
- * GET    /api/admin/feature-flags/[id]  - fetch one flag
- * PATCH  /api/admin/feature-flags/[id]  - update fields (also toggles)
- * DELETE /api/admin/feature-flags/[id]  - delete a flag
- */
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { isAuthenticated } from "@/lib/auth";
+import { parseBool, parseNumber } from "@/lib/api-helpers";
+import { logAudit } from "@/lib/audit";
+import { requireAdmin } from "@/lib/admin-guard";
 
-import { db } from '@/lib/db';
-import { ok, notFound, fail, serverError, parseJsonBody, getAdminContext } from '@/lib/admin/response';
-import { audit } from '@/lib/admin/audit';
-import { Prisma } from '@prisma/client';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+interface Params {
+  params: Promise<{ id: string }>;
+}
 
-const VALID_AUDIENCES = ['all', 'admins', 'internal'];
-
-type Params = { params: Promise<{ id: string }> };
+/* ============================================================
+   /api/admin/feature-flags/[id]
+   GET    — fetch a single flag
+   PATCH  — update key/label/description/enabled/rolloutPct
+   DELETE — delete flag (admin override; AuditLog)
+   ============================================================ */
 
 export async function GET(_req: Request, { params }: Params) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { id } = await params;
     const flag = await db.featureFlag.findUnique({ where: { id } });
-    if (!flag) return notFound('feature flag not found');
-    return ok(flag);
-  } catch (err) {
-    console.error('[api/admin/feature-flags/[id] GET] error:', err);
-    return serverError('Failed to fetch feature flag', String(err));
+    if (!flag) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, data: flag });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function PATCH(req: Request, { params }: Params) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { id } = await params;
+    const body = await req.json().catch(() => ({}));
     const existing = await db.featureFlag.findUnique({ where: { id } });
-    if (!existing) return notFound('feature flag not found');
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
-    const body = await parseJsonBody<{
-      name?: string;
-      description?: string | null;
-      enabled?: boolean;
-      value?: string | null;
-      audience?: string;
-    }>(req);
-    if (!body) return fail('invalid JSON body', 400);
+    const data: any = {};
 
-    const data: Prisma.FeatureFlagUpdateInput = {};
-    if (body.name !== undefined) data.name = body.name.trim();
-    if (body.description !== undefined) data.description = body.description?.trim() || null;
-    if (body.enabled !== undefined) data.enabled = body.enabled;
-    if (body.value !== undefined) data.value = body.value?.trim() || null;
-    if (body.audience !== undefined) {
-      if (!VALID_AUDIENCES.includes(body.audience)) return fail('invalid audience', 400);
-      data.audience = body.audience;
+    if (typeof body.key === "string" && body.key.trim()) {
+      const newKey = body.key.trim();
+      if (newKey !== existing.key) {
+        const clash = await db.featureFlag.findUnique({ where: { key: newKey } });
+        if (clash) {
+          return NextResponse.json(
+            { error: "کلید پرچم تکراری است." },
+            { status: 400 },
+          );
+        }
+        data.key = newKey;
+      }
+    }
+    if (typeof body.label === "string") {
+      data.label = body.label.trim() || existing.label;
+    }
+    if ("description" in body) {
+      data.description =
+        body.description === null || body.description === undefined
+          ? null
+          : String(body.description);
+    }
+    if ("enabled" in body) {
+      data.enabled = parseBool(body.enabled);
+    }
+    if ("rolloutPct" in body) {
+      const r = parseNumber(body.rolloutPct);
+      data.rolloutPct =
+        r === null ? 100 : Math.max(0, Math.min(100, Math.round(r)));
     }
 
     const updated = await db.featureFlag.update({ where: { id }, data });
 
-    const ctx = await getAdminContext();
-    await audit({
-      actorId: ctx.actorId,
-      actorEmail: ctx.actorEmail,
-      action: 'feature_flag.update',
-      resource: 'FeatureFlag',
-      resourceId: id,
-      metadata: {
-        before: { enabled: existing.enabled, value: existing.value, audience: existing.audience },
-        after: { enabled: updated.enabled, value: updated.value, audience: updated.audience },
+    await logAudit({
+      actorId: null,
+      actorType: "ADMIN",
+      action: "feature-flag.update",
+      entityType: "FeatureFlag",
+      entityId: id,
+      before: {
+        key: existing.key,
+        label: existing.label,
+        enabled: existing.enabled,
+        rolloutPct: existing.rolloutPct,
       },
+      after: {
+        key: updated.key,
+        label: updated.label,
+        enabled: updated.enabled,
+        rolloutPct: updated.rolloutPct,
+      },
+      reason: `به‌روزرسانی پرچم «${updated.key}»`,
     });
 
-    return ok(updated);
-  } catch (err) {
-    console.error('[api/admin/feature-flags/[id] PATCH] error:', err);
-    return serverError('Failed to update feature flag', String(err));
+    return NextResponse.json({ success: true, data: updated });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { id } = await params;
     const existing = await db.featureFlag.findUnique({ where: { id } });
-    if (!existing) return notFound('feature flag not found');
-
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     await db.featureFlag.delete({ where: { id } });
 
-    const ctx = await getAdminContext();
-    await audit({
-      actorId: ctx.actorId,
-      actorEmail: ctx.actorEmail,
-      action: 'feature_flag.delete',
-      resource: 'FeatureFlag',
-      resourceId: id,
-      metadata: { key: existing.key, name: existing.name },
+    await logAudit({
+      actorId: null,
+      actorType: "ADMIN",
+      action: "feature-flag.delete",
+      entityType: "FeatureFlag",
+      entityId: id,
+      before: {
+        key: existing.key,
+        label: existing.label,
+      },
+      reason: `حذف پرچم «${existing.key}»`,
     });
 
-    return ok({ id, deleted: true });
-  } catch (err) {
-    console.error('[api/admin/feature-flags/[id] DELETE] error:', err);
-    return serverError('Failed to delete feature flag', String(err));
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }

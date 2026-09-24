@@ -1,26 +1,30 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { ThemeProvider } from "@/components/admin/theme-provider";
-import { ReactQueryProvider } from "@/components/admin/react-query-provider";
+import MobileNav from "@/components/layout/MobileNav";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const VAZIRMATN_URL =
+  "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
 
 export const metadata: Metadata = {
-  title: "HEAVIX Admin Control Plane",
+  title: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
   description:
-    "HEAVIX - Admin Control Plane Foundation. Manage users, roles, feature flags, audit logs, and system settings.",
-  keywords: ["HEAVIX", "Admin", "Control Plane", "Dashboard"],
-  authors: [{ name: "HEAVIX" }],
+    "خرید، فروش و اجاره ماشین‌آلات سنگین: بیل مکانیکی، لودر، بلدوزر، گریدر، دامپ‌تراک، جرثقیل و قطعات یدکی. شبکه سراسری دیلرها و متخصصین.",
+  keywords: [
+    "ماشین آلات سنگین",
+    "بیل مکانیکی",
+    "لودر",
+    "بلدوزر",
+    "گریدر",
+    "دامپ تراک",
+    "جرثقیل",
+    "فروش ماشین آلات",
+    "اجاره ماشین آلات",
+    "قطعات یدکی",
+    "هویکس",
+    "HEAVIX",
+  ],
+  authors: [{ name: "آریا ماشین جم" }],
 };
 
 export default function RootLayout({
@@ -29,21 +33,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
-      >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
-          <ReactQueryProvider>
-            {children}
-            <Toaster />
-          </ReactQueryProvider>
-        </ThemeProvider>
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
+      <head>
+        <link href={VAZIRMATN_URL} rel="stylesheet" type="text/css" />
+      </head>
+      <body className="min-h-screen bg-[#0b0b0b] pb-16 text-white antialiased lg:pb-0">
+        {children}
+        <MobileNav />
+        <Toaster />
       </body>
     </html>
   );
