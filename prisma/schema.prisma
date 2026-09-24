@@ -2447,3 +2447,58 @@ model Dispute {
   @@index([orderId])
   @@index([status])
 }
+
+// ════════════════════════════════════════════════════════════
+// PHASE 12 — ADMIN CONTROL PLANE FOUNDATION
+// DB-driven admin navigation + user preferences.
+// Replaces the hard-coded MENU in AdminSidebarNav.tsx.
+// ════════════════════════════════════════════════════════════
+
+model AdminNavigationGroup {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  titleFa     String
+  titleEn     String?
+  icon        String?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  items       AdminNavigationItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AdminNavigationItem {
+  id            String   @id @default(cuid())
+  groupId       String?
+  group         AdminNavigationGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  key           String   @unique
+  titleFa       String
+  titleEn       String?
+  href          String
+  icon          String?
+  sortOrder     Int      @default(0)
+  permissionKey String?
+  featureFlag   String?
+  active        Boolean  @default(true)
+  openInNewTab  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([groupId])
+  @@index([active])
+}
+
+model AdminPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  theme             String   @default("system")
+  density           String   @default("comfortable")
+  locale            String   @default("fa")
+  timezone          String   @default("Asia/Tehran")
+  sidebarCollapsed  Boolean  @default(false)
+  pinnedItems       Json?
+  hiddenItems       Json?
+  dashboardLayout   Json?
+  defaultPageSize   Int      @default(25)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
