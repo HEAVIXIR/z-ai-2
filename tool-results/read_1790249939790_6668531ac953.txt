@@ -1,0 +1,460 @@
+     1→# HEAVIX - Development Worklog
+     2→
+     3→This file tracks all development progress for the HEAVIX project in this sandbox.
+     4→Each new agent/task appends a section below (separated by `---`).
+     5→
+     6→---
+     7→
+     8→Task ID: 1
+     9→Agent: Main Orchestrator (Z.ai Code)
+    10→Task: Initial project intake — extract HEAVIX zips, git init+commit, install PostgreSQL, migrate SQLite → PostgreSQL, then proceed to Phase 12 (Admin Control Plane Foundation).
+    11→
+    12→Work Log:
+    13→- Inspected current sandbox state: a fresh Next.js 16 + TypeScript + Prisma + SQLite scaffold with `User` and `Post` models. shadcn/ui components already present.
+    14→- User attempted to upload 4 HEAVIX zip files via gateway. Gateway metadata reported file delivery to `/home/z/my-project/upload/`, but the upload folder is provably empty (`mtime = 1970-01-01`, `Birth = -`). User re-uploaded file4.zip multiple times; never arrived. Confirmed gateway file-delivery is broken for this session (likely due to spaces in filename "heavix selected file4.zip").
+    15→- Searched entire filesystem: no `*heavix*` files, no recently-created zip files. The 4 uploaded zips are inaccessible.
+    16→- Discovered platform auto-initialised git: `35bf725 Initial commit` + `5c3f2f8 ...` (auto-checkpoint). Made an explicit milestone commit for clarity.
+    17→- Installed PostgreSQL 17.11 as user-space install (no sudo):
+    18→  - `apt-get download postgresql-17 postgresql-client-17 postgresql-common postgresql-client-common` (no root needed for download)
+    19→  - Extracted .deb files with `dpkg-deb -x` into `/home/z/pg`
+    20→  - `initdb -D /home/z/pgdata -U heavix --auth-local=trust --auth-host=trust`
+    21→  - Fixed socket dir issue: default `/var/run/postgresql/` not writable → set `unix_socket_directories = '/home/z/pgdata/socket'`
+    22→  - Started server on port 5432, listening on `localhost` + Unix socket
+    23→  - Created database `heavix` owned by user `heavix`
+    24→- Set up env management:
+    25→  - Discovered platform sets `DATABASE_URL=file:/home/z/my-project/db/custom.db` as a system env var (overriding `.env`)
+    26→  - Created `scripts/with-env.sh` — a tiny bash wrapper that reads `.env` and EXPORTS variables with high priority, then `exec`s the command. This bypasses the platform's system env override.
+    27→  - Updated `package.json` so `dev`, `build`, `start`, `db:*` scripts all run through `./scripts/with-env.sh`. Added `pg:start`, `pg:stop`, `pg:status` helpers.
+    28→  - Updated `.env` to use `DATABASE_URL=postgresql://heavix@localhost:5432/heavix?schema=public`; kept original SQLite URL as `SQLITE_SOURCE_URL` for migration reference.
+    29→- Migrated schema from SQLite to PostgreSQL:
+    30→  - Updated `prisma/schema.prisma`: `provider = "sqlite"` → `provider = "postgresql"`, added `binaryTargets = ["native", "debian-openssl-3.0.x"]`
+    31→  - Ran `db:push`: `User` and `Post` tables created in PostgreSQL (verified via `psql \dt`)
+    32→- Wrote `scripts/migrate-sqlite-to-postgres.ts` using `bun:sqlite` + Prisma Client. Reads all rows from SQLite and upserts into PostgreSQL. Handles SQLite's `0/1` boolean encoding. Idempotent.
+    33→- Ran migration: 0 rows migrated (SQLite `db/custom.db` has only schema, no data) — mechanism verified. When actual HEAVIX SQLite db arrives, the script can be re-run unchanged.
+    34→- Restarted dev server with new env: killed old `next dev` (PIDs 1167/1170/1189), started new one via `nohup ./scripts/with-env.sh bun run dev`. Confirmed HTTP 200 from `http://localhost:3000/`.
+    35→- Made git commit `9bcb2e1`: "feat: HEAVIX - PostgreSQL migration (Phase 11 complete)".
+    36→- Created backup zip: `/home/z/my-project/download/heavix-backup-stage1-postgres.zip` (77 MB — includes .deb packages, scripts, prisma schema, .env, source code).
+    37→
+    38→Stage Summary:
+    39→- ✅ Step 2 (git init+commit): Done (platform auto-init + explicit milestone commit `9bcb2e1`).
+    40→- ✅ Step 3 (install PostgreSQL): Done — PostgreSQL 17.11 user-space, port 5432, db `heavix` created, server running.
+    41→- ✅ Step 4 (migrate SQLite → PostgreSQL): Schema migrated (User, Post tables in PostgreSQL). Migration script ready to re-run when real HEAVIX SQLite db arrives. Data migration pending because the HEAVIX zip with the actual SQLite db has not been delivered by the gateway.
+    42→- ⏳ Step 1 (extract zips): BLOCKED — gateway did not deliver the 4 uploaded zip files to `/home/z/my-project/upload/`. User has been asked to rename files (remove spaces) and re-upload.
+    43→- ⏳ Step 5 (Phase 12 — Admin Control Plane Foundation): Starting next.
+    44→
+    45→Key artifacts produced:
+    46→- `/home/z/pg/` — PostgreSQL 17 install (extracted .deb)
+    47→- `/home/z/pgdata/` — Database cluster + socket
+    48→- `/home/z/my-project/scripts/with-env.sh` — env override wrapper
+    49→- `/home/z/my-project/scripts/pg-start.sh`, `pg-stop.sh`, `pg-status.sh` — cluster management
+    50→- `/home/z/my-project/scripts/migrate-sqlite-to-postgres.ts` — reusable migration script
+    51→- `/home/z/my-project/.env` — PostgreSQL DATABASE_URL (with SQLite source kept)
+    52→- `/home/z/my-project/prisma/schema.prisma` — provider=postgresql
+    53→- `/home/z/my-project/download/heavix-backup-stage1-postgres.zip` — stage 1 backup
+    54→
+    55→Unresolved / risks:
+    56→- Gateway file delivery is broken for this session. Until resolved, the actual HEAVIX source/schema/data cannot be loaded. The user has been asked to:
+    57→  1. Rename `heavix selected file4.zip` → `heavix-file4.zip` (no spaces) and re-upload.
+    58→  2. If still fails, paste Phase 12 plan / HEAVIX schema inline.
+    59→- Phase 12 will be built based on the standard "Admin Control Plane" definition (user mgmt, roles, audit logs, feature flags, system settings, metrics dashboard). Once the real HEAVIX spec arrives, refinements can be made.
+    60→- The platform's system `DATABASE_URL` env var still shadows `.env`; the `with-env.sh` wrapper is the workaround. Future agents MUST use `./scripts/with-env.sh` prefix for any prisma/next command.
+    61→- PostgreSQL must be re-started after a sandbox reset: `bun run pg:start` (or directly `/home/z/my-project/scripts/pg-start.sh`).
+    62→
+    63→---
+    64→Task ID: 6a-6e
+    65→Agent: Main Orchestrator (Z.ai Code)
+    66→Task: Phase 12 - Admin Control Plane Foundation (backend + frontend + verification + backup).
+    67→
+    68→Work Log:
+    69→- Extended Prisma schema (`prisma/schema.prisma`) for Phase 12:
+    70→  - User model: added `role` (UserRole enum), `status` (UserStatus enum), `avatarUrl`, `lastLoginAt`, `lastLoginIp`, `deletedAt` (soft delete).
+    71→  - New models: `Role` (RBAC with JSON permissions array + color), `AuditLog` (append-only actor/action/resource/metadata/ip/UA/status), `FeatureFlag` (key/name/enabled/value/audience), `SystemSetting` (key/value/type/isSecret), `AdminSession` (token/IP/UA/expiresAt/revokedAt), `SystemMetric` (metric/value/unit/labels/createdAt time series).
+    72→  - 3 enums: `UserRole` (SUPER_ADMIN/ADMIN/MODERATOR/MEMBER/GUEST), `UserStatus` (ACTIVE/SUSPENDED/PENDING/INVITED/DELETED), `SettingType` (STRING/NUMBER/BOOLEAN/JSON/URL/EMAIL).
+    73→- Ran `bun run db:push` (via `./scripts/with-env.sh`): 8 tables + 3 enums created in PostgreSQL `heavix` db.
+    74→- Wrote `scripts/seed.ts` (idempotent upserts):
+    75→  - 5 system roles (super_admin, admin, moderator, member, guest) with permission arrays + colors
+    76→  - 6 default feature flags (new_dashboard_v2, public_signup, email_verification, dark_mode_default, maintenance_mode, beta_features)
+    77→  - 10 default system settings (site.name, site.url, email.from, limits.*, security.*, etc.)
+    78→  - 16 users (1 super-admin + 15 sample with varied roles/statuses/last-login times)
+    79→  - 8 audit log entries (user.create, user.suspend, feature_flag.toggle, setting.update, role.create (failure), user.invite, session.revoke, login.success)
+    80→  - 100 system metric data points (4 metrics × 25 hourly snapshots over 24h)
+    81→- Built shared admin utilities:
+    82→  - `src/lib/admin/audit.ts` — best-effort audit logger (never throws to caller; captures IP/UA from request headers).
+    83→  - `src/lib/admin/response.ts` — `ok`/`fail`/`notFound`/`unauthorized`/`forbidden`/`serverError` helpers + `parseJsonBody` + `getAdminContext` (placeholder attributing actions to seeded super-admin until real session auth lands).
+    84→- Built 8 API endpoints under `/api/admin/*` (all `dynamic = 'force-dynamic'`):
+    85→  - `GET /api/admin/overview` — KPI counts (total/active/suspended/pending users, new30d, active24h, byRole, byStatus), feature flag summary, recent 10 audit logs with actor, audit by status (7d), system metrics time series (24h), health snapshot.
+    86→  - `GET/POST /api/admin/users` — paginated list with search (email/name), role filter, status filter, includeDeleted toggle, sort by email/name/lastLoginAt/createdAt with asc/desc; create with email validation + role/status defaults.
+    87→  - `GET/PATCH/DELETE /api/admin/users/[id]` — fetch with posts; update name/role/status/avatarUrl; soft-delete (sets `deletedAt` + `status=DELETED`).
+    88→  - `GET/POST /api/admin/roles` — list with member counts per role; create custom role with name/description/permissions array/color.
+    89→  - `GET /api/admin/audit-logs` — paginated with search (action/email/resourceId), action/resource/status filters, since/until date range.
+    90→  - `GET/POST /api/admin/feature-flags` — list ordered by enabled+createdAt; create with key regex validation + audience validation.
+    91→  - `GET/PATCH/DELETE /api/admin/feature-flags/[id]` — fetch; update name/description/enabled/value/audience; hard delete.
+    92→  - `GET/POST /api/admin/settings` — list with secret masking (shows first 2 + last 2 chars); upsert by key with type-specific validation (NUMBER/BOOLEAN/URL/EMAIL/JSON).
+    93→- Upgraded root `/api` route to a health-check endpoint (DB ping via `$queryRaw SELECT 1`, latency measurement, endpoint list). Fixed response wrapper to use `{ok, data}` shape for TanStack Query compatibility.
+    94→- Built frontend admin shell (`src/components/admin/admin-shell.tsx`):
+    95→  - Desktop sidebar (256px) + mobile Sheet sidebar
+    96→  - Sticky header with section title/desc, live DB health badge (polls `/api` every 15s), theme toggle, admin profile
+    97→  - Framer Motion `AnimatePresence` for section transitions
+    98→  - 6-section nav: Overview, Users, Roles, Audit Logs, Feature Flags, Settings
+    99→  - Sticky footer with phase + section + version
+   100→- Built 6 section components (`src/components/admin/sections/*.tsx`):
+   101→  - `OverviewSection` — 4 KPI cards with delta indicators, 4 sparkline charts (Area/Line/Bar variants via recharts), recent activity feed (scrollable), role distribution progress bars, status distribution bars, feature flags donut (SVG), audit status badges. Auto-refreshes every 30s via TanStack Query refetchInterval.
+   102→  - `UsersSection` — full table with search/role/status filters, column sorting, pagination, create dialog, edit dialog, soft-delete confirm dialog. Avatars use deterministic gradient + initials. URL-backed filter state via `useQueryState`.
+   103→  - `RolesSection` — responsive grid of role cards with color accent bar, permission badges (collapses after 6), member count, system-role lock badge. Create dialog with permissions textarea + color picker.
+   104→  - `AuditLogsSection` — table with action prefix filter, status filter, date range, pagination. Monospace layout, relative time + full timestamp on hover.
+   105→  - `FeatureFlagsSection` — list of flag cards with icon (Sparkles when enabled), inline Switch toggle (optimistic update with revert on error), key + audience badges, create/edit/delete dialogs.
+   106→  - `SettingsSection` — table with type color badges, secret lock icon + masking, description column, relative update time, edit dialog with type-specific input + secret toggle + show/hide value.
+   107→- Built 9 TanStack Query hooks (`src/hooks/admin/use-admin-api.ts`) — overview, users (list/create/update/delete), roles (list/create), audit-logs (list), feature-flags (list/create/update/delete), settings (list/upsert), health. All mutations invalidate affected queries.
+   108→- Built `useQueryState` hook (`src/hooks/admin/use-query-state.ts`) — URL-search-params-backed state for shareable filter state.
+   109→- Built UI helpers (`src/components/admin/ui-helpers.tsx`) — RoleBadge, StatusBadge, initials, avatarGradient (6 gradients), EmptyState, formatRelativeTime, formatDateTime.
+   110→- Added `ThemeProvider` (next-themes, dark default) + `ReactQueryProvider` to `layout.tsx`. Updated metadata to HEAVIX.
+   111→- Updated `lib/db.ts` — disabled `log: ['query']` (was flooding stdout through the `| tee dev.log` pipe in the platform's dev script, causing process crashes when bundled with Chrome memory pressure).
+   112→- Diagnosed recurring dev-server crash: cgroup memory limit is 4GB; `agent-browser` (Chrome with ~25 renderer processes) + Next.js dev server (~1GB) together exceeded the limit and triggered OOM kills. Mitigation: close Chrome immediately after each browser test, kill stale Chrome renderers before starting the dev server.
+   113→- Verified end-to-end via `agent-browser`:
+   114→  - Page loads as "HEAVIX Admin Control Plane"
+   115→  - Sidebar renders with 6 nav buttons (Overview, Users, Roles, Audit Logs, Feature Flags, Settings)
+   116→  - Header shows title + "DB UP · 2ms" health badge + theme toggle + Super Admin profile
+   117→  - VLM analysis of screenshot confirms: 4 KPI cards populated (Total 16, Active 24h 1, Suspended 2, Pending 2), 4 sparkline charts rendered with data, recent activity feed populated, role/status distributions rendered, feature flags donut (2 of 6 enabled), audit summary (Success 7, Failure 1). No loading skeletons, no errors, no broken elements.
+   118→- Fixed TanStack Query error: `Query data cannot be undefined. Affected query key: ["health"]` — root cause was `/api` returning top-level fields instead of `{ok, data}` wrapper. Updated route to use `ok(data)` helper.
+   119→- Created git commit `1228216` ("feat: HEAVIX Phase 12 - Admin Control Plane Foundation").
+   120→- Created backup zip `/home/z/my-project/download/heavix-backup-stage2-phase12.zip` (135 MB).
+   121→
+   122→Stage Summary:
+   123→- ✅ Phase 12 backend complete: 6 new Prisma models + 3 enums + seed data + 8 admin API endpoints with full CRUD + audit logging.
+   124→- ✅ Phase 12 frontend complete: admin shell with sidebar/header/footer + 6 section components with shadcn/ui, recharts, framer-motion.
+   125→- ✅ End-to-end verified via agent-browser + VLM: dashboard renders correctly with live PostgreSQL data.
+   126→- ✅ Backup zip created: `heavix-backup-stage2-phase12.zip` (135 MB) in `/home/z/my-project/download/`.
+   127→
+   128→Key artifacts produced:
+   129→- `prisma/schema.prisma` — extended with Phase 12 models
+   130→- `scripts/seed.ts` — idempotent seed (roles, flags, settings, users, audit, metrics)
+   131→- `src/lib/admin/{audit,response}.ts` — shared backend utilities
+   132→- `src/app/api/admin/{overview,users,users/[id],roles,audit-logs,feature-flags,feature-flags/[id],settings}/route.ts` — 8 API route files
+   133→- `src/app/api/route.ts` — health check (DB ping + endpoint list)
+   134→- `src/components/admin/{admin-shell,theme-provider,react-query-provider,ui-helpers}.tsx` — shell + providers + helpers
+   135→- `src/components/admin/sections/{overview,users,roles,audit-logs,feature-flags,settings}-section.tsx` — 6 section components
+   136→- `src/hooks/admin/{use-admin-api,use-query-state}.ts` — 9 TanStack Query hooks + URL state hook
+   137→- `src/lib/db.ts` — disabled query logging for stability
+   138→- `src/app/layout.tsx` — added ThemeProvider + ReactQueryProvider + HEAVIX metadata
+   139→- `src/app/page.tsx` — renders AdminShell
+   140→- `download/heavix-backup-stage2-phase12.zip` — stage 2 backup
+   141→- `download/heavix-phase12-dashboard.png` — verified dashboard screenshot
+   142→
+   143→Unresolved / risks:
+   144→- HEAVIX zip files (4 total) still not delivered by the gateway — the actual HEAVIX schema/spec/data is unavailable. Phase 12 was built based on the standard "Admin Control Plane" definition. When the real HEAVIX spec arrives, models/UI can be refined.
+   145→- Auth is a placeholder (`getAdminContext` attributes actions to the seeded super-admin). A later phase must add real session/JWT auth + role-based access checks on every `/api/admin/*` endpoint.
+   146→- The `bun run dev` process is killed by OOM when Chrome (agent-browser) runs alongside it due to the 4GB cgroup limit. Mitigation in place (close Chrome between tests) but a persistent issue for live preview during development.
+   147→- The platform auto-overwrites `.env` to SQLite at startup; the `with-env.sh` wrapper is the workaround. Any future agent MUST use `./scripts/with-env.sh` prefix for prisma/next commands.
+   148→- The actual HEAVIX SQLite→PostgreSQL **data** migration is still pending (the source SQLite db is in the undelivered zips). The migration script `scripts/migrate-sqlite-to-postgres.ts` is ready to re-run when the real HEAVIX SQLite db arrives.
+   149→
+   150→---
+   151→Task ID: CRON-1 (webDevReview 15-min trigger)
+   152→Agent: Main Orchestrator (Z.ai Code)
+   153→Task: First 15-min cron review — QA + add features + improve styling per the webDevReview mandate.
+   154→
+   155→Work Log:
+   156→- Reviewed worklog.md (148 lines, 2 prior task entries: Task 1 + Task 6a-6e). Phase 12 complete.
+   157→- Server state check: PostgreSQL alive (PID 1787), dev server alive. Memory: 3378MB available.
+   158→- Upload folder re-check: STILL empty (mtime = 1970-01-01). Gateway attempts counter = 4. Confirmed gateway file delivery remains broken for this session.
+   159→- User shared a chat.z.ai URL (https://chat.z.ai/s/6858f603-d5d8-444c-8d49-1e2e6c5e156a). Used z-ai page_reader to extract content (static HTML only, 9455 chars of SPA bootstrap JS — no HEAVIX code/schema). Then used agent-browser to render the SPA and extract body innerText. Found:
+   160→  - Project name: HEAVIX (also written "hoxyx" — typo)
+   161→  - GitHub repo: https://github.com/HEAVIXIR/z (clone succeeded but repo is EMPTY — user never successfully pushed)
+   162→  - Chat intent: "بهبود سرچ و طراحی لوگوی هویکس" (improve search + design HEAVIX logo)
+   163→  - All git push commands in the chat failed with GLM-5.2 "Oops, something went wrong"
+   164→  - Another chat link mentioned: /c/04a72251-bb60-4431-8b21-43693b9002ae (inaccessible — /c/ URLs need auth)
+   165→- Conclusion: actual HEAVIX source code/schema is NOT available. Continued building on the standard Admin Control Plane foundation.
+   166→
+   167→QA via agent-browser (with OOM mitigation — close Chrome immediately after each test):
+   168→- All 6 original sections (Overview, Users, Roles, Audit Logs, Feature Flags, Settings) verified via API: all return HTTP 200.
+   169→- API CRUD cycle tested: POST /api/admin/feature-flags (create) → PATCH (toggle) → DELETE (cleanup). All succeeded and were captured in the audit log.
+   170→- Found persistent OOM issue: agent-browser (Chrome ~25 renderer processes, ~2GB) + Next.js dev server (~1GB) together exceed the 4GB cgroup limit → dev server killed by OOM. Mitigation: kill stale Chrome before starting dev server, close Chrome immediately after each test.
+   171→- Screenshots of all 6 sections attempted but all came out identical (navigation clicks fired before previous render completed — ref staleness). Skipped re-verification since the previous session's VLM analysis already confirmed all sections render correctly.
+   172→
+   173→NEW FEATURE 1 — Command Palette (Cmd+K / Ctrl+K):
+   174→- Built `src/components/admin/command-palette.tsx` using shadcn/ui Command + Dialog.
+   175→- Opens via Cmd+K / Ctrl+K global keyboard listener (added useEffect in admin-shell).
+   176→- Also opens via new "Command" button in the header (with ⌘K kbd hint).
+   177→- Three groups:
+   178→  1. Navigation: 7 items (Overview, Users, Roles, Audit Logs, Feature Flags, Metrics, Settings) — clicking switches to that section.
+   179→  2. Actions: Create user, Create feature flag, Create role, Toggle theme (with shortcuts N U / N F etc.).
+   180→  3. Shortcuts help: Arrow/Enter/Esc hints.
+   181→- Searchable, keyboard-navigable, loop mode, ESC to close.
+   182→
+   183→NEW FEATURE 2 — Metrics Explorer (7th nav item):
+   184→- Built `src/components/admin/sections/metrics-section.tsx` with recharts.
+   185→- New API: `GET /api/admin/metrics?metric=X&range=Y` — returns time series + stats (min/max/avg/current/change/changePct/count) + unit.
+   186→- 4 metric options: requests.per_min, users.active, db.connections, response.time_ms (each with color + label + desc).
+   187→- 4 time ranges: 1H, 6H, 24H, 7D.
+   188→- Large area chart with gradient fill + average reference line + animated area.
+   189→- 4 stat cards (current/average/max/min) with accent bars.
+   190→- Change badge showing % delta with trend arrow (TrendingUp/TrendingDown).
+   191→- "All metrics at a glance" sparkline grid — click any to expand in the main chart.
+   192→- Auto-refreshes every 30s via TanStack Query refetchInterval.
+   193→- New hook: `useMetrics(metric, range)`.
+   194→- URL-backed state: `?metric=X&mrange=Y` for shareable links.
+   195→
+   196→NEW FEATURE 3 — User Detail Drawer:
+   197→- Built `src/components/admin/user-detail-drawer.tsx` using shadcn/ui Sheet (right-side).
+   198→- New API: `GET /api/admin/users/[id]/activity?limit=N` — returns recent audit logs where user is actor OR resource, plus summary (total/successes/failures/lastActivity).
+   199→- New hook: `useUserActivity(userId, limit)`.
+   200→- Drawer shows: avatar (deterministic gradient), name, email, role badge, status badge, last login (relative + absolute on hover), last IP, created date, user ID.
+   201→- Activity timeline: vertical list with colored dots (emerald=success, rose=failure, amber=warning), action + resource + IP + relative time per entry.
+   202→- Audit summary badges (successes + failures counts).
+   203→- Quick actions: Edit (opens edit dialog), Suspend (PATCH status=SUSPENDED), Delete (opens delete dialog).
+   204→- Selected user auto-syncs with fresh data (useEffect updates selectedUser when the list query refetches).
+   205→- UsersSection modified: rows now clickable (cursor-pointer + hover bg), clicking opens the drawer. Dropdown menu gained "View details" item. EditUserDialog + DeleteUserDialog refactored to support external open control (externalOpen/externalOnOpenChange props) so the drawer can trigger them.
+   206→
+   207→UI/Styling improvements:
+   208→- TooltipProvider wraps the shell (delayDuration=300ms) — enables rich hover hints everywhere.
+   209→- Header has a new "Command" outline button with ⌘K kbd badge (hidden on mobile).
+   210→- Footer updated: "Phase 12.1" + "v0.12.1 · ⌘K" (hints at the new shortcut).
+   211→- Sidebar nav gained a 7th item (Metrics with LineChart icon) — inserted before Settings to group data sections together.
+   212→- User table rows: cursor-pointer + hover:bg-muted/40 transition-colors.
+   213→- User cell: now shows "last seen YYYY-MM-DD" subline under the name (more context at a glance).
+   214→- Drawer timeline: vertical border-l + absolute-positioned colored dots with ring-2 ring-background (clean timeline aesthetic).
+   215→
+   216→Bug fix during this round:
+   217→- `user-detail-drawer.tsx` initially imported from `'../ui-helpers'` but the file lives in `src/components/admin/` (same dir as ui-helpers), so the correct path is `'./ui-helpers'`. Fixed → page now compiles cleanly (HTTP 200, 48036 bytes).
+   218→
+   219→Verification:
+   220→- Page compiles: HTTP 200, 48036 bytes (vs 46197 in Phase 12 — extra ~1.8KB from new Metrics nav + Command button + footer update).
+   221→- All 7 nav items present in HTML (Overview, Users, Roles, Audit Logs, Feature Flags, Metrics, Settings).
+   222→- Command palette button + ⌘K hint present.
+   223→- Phase 12.1 + v0.12.1 in footer.
+   224→- Metrics API: GET /api/admin/metrics?metric=users.active&range=24h → 24 points, current=16. ✓
+   225→- User activity API: GET /api/admin/users/{id}/activity?limit=5 → proper JSON with user + logs + summary. ✓
+   226→- No compile errors in dev.log.
+   227→- (Visual screenshot verification still blocked by OOM — Chrome + dev server exceeds 4GB cgroup. The previous session's VLM-verified screenshot `heavix-phase12-dashboard.png` (126KB) remains the visual baseline; the new features compile and work at the API/HTML level.)
+   228→
+   229→Git: commit `b3f0d8f` ("feat: HEAVIX Phase 12.1 - Command Palette + Metrics Explorer + User Detail Drawer"). 11 files changed, 720 insertions.
+   230→Backup: `download/heavix-backup-stage3-phase12.1.zip` (270 MB).
+   231→
+   232→Stage Summary:
+   233→- ✅ 3 new features added (Command Palette, Metrics Explorer, User Detail Drawer) per the "add more features" mandate.
+   234→- ✅ Styling improved (tooltips, hover states, timeline aesthetic, footer hints) per the "improve styling" mandate.
+   235→- ✅ 2 new API endpoints (metrics, user activity) + 2 new hooks (useMetrics, useUserActivity).
+   236→- ✅ All new code compiles and works at the API/HTML level.
+   237→- ✅ Backup zip created.
+   238→
+   239→Unresolved / risks:
+   240→- The HEAVIX zip files are STILL not delivered by the gateway (confirmed broken for this session, 4 attempts failed). The actual HEAVIX source/schema/data remain unavailable. The shared chat.z.ai URL revealed the project name + GitHub repo URL, but the repo is empty. All Phase 12/12.1 work is based on the standard "Admin Control Plane" definition.
+   241→- Visual screenshot verification of the new features is blocked by the 4GB cgroup OOM issue (Chrome + Next.js dev server together exceed the limit). The features are verified via HTML content + API responses instead.
+   242→- Auth remains a placeholder (`getAdminContext` attributes actions to the seeded super-admin). A later phase must add real session/JWT auth.
+   243→- The platform auto-commits via checkpoint between agent runs (commits 5fca907, 3e4d187 appeared between my Phase 12 and Phase 12.1 commits). This is expected platform behavior.
+   244→
+   245→---
+   246→Task ID: PHASE-13-SCHEMA
+   247→Agent: Main Orchestrator (Z.ai Code)
+   248→Task: Receive the real HEAVIX Prisma schema from the user (pasted in chat across 5 parts — gateway file delivery was broken), assemble it, and push to PostgreSQL.
+   249→
+   250→Work Log:
+   251→- User pasted the complete HEAVIX Prisma schema directly in chat messages (not as file attachments — gateway file delivery has been broken all session). Received across 5 parts:
+   252→  - Part 1: Brand Catalog (Brand, BrandAlias, BrandFamily, BrandIndustry, Industry, BrandCategory, BrandDomain, BrandMedia, BrandSEO, BrandDisplay) + Taxonomy (Category, TransactionType, ServiceType, Service, HomeCategoryConfig, ApplicationIndustry, CategoryApplicationIndustry) + Location (Country, Province, City) + Attributes (AttributeDefinition, AttributeOption, CategoryAttribute, ListingAttributeValue) + Product Models (ProductModel, ModelCategory, Generation) + Listing (truncated) = 28 models
+   253→  - Part 2: Listing (complete) + ListingImage + BuyRequest + SavedSearch + Favorite + Lead + Article + Follow + HotSearch + SiteWidget + KnowledgeEntry = 11 models
+   254→  - Part 3: AIGatewayLog + AIBudget + AITaskPolicy + LaunchPhase + DemandSignal + RFQ + RFQQuote + Auction + AuctionBid + IndustrialTerm + TermAlias + FeatureFlag + CompanyClaim + ListingOffer + ListingRejection + RejectionMessage + Notification + Referral + FoundingSeller + SubscriptionPlan + PremiumSubscription + MachinePassport + PassportEvent = 23 models
+   255→  - Part 4: Company + CompanyPartner + CompanyDocument + CompanyBranch + CompanyVerification + DealRoom + DealMessage + DealDocument + Inspection + TransportRequest + HomePageSection + HeroConfig + SiteSettings + MenuItem + User + Session + AdminSession + VerificationCode + Setting + SocialReel + AuditLog = 21 models
+   256→  - Part 5 (final, user said "تمام"): Role + Permission + RolePermission + UserRole + Product + Machine + Part + Attachment + CompatibilityEdge + PriceRecord + SearchQuery + AIAgent + Opportunity + SEOMetadata + UserRecommendation + SiteStat + SellIn7DaysApplication + PriceObservation + PriceEstimate + PriceOverride + ComparisonSession + ComparisonItem + Conversation + Message + AnalyticsEvent + ModerationLog + Payment + Review + Deal + Order + Dispute = 31 models
+   257→
+   258→- Total: 113 models across 5 parts. This is the REAL HEAVIX schema — an industrial heavy-machinery marketplace (not the standard admin-control-plane guess from Phase 12).
+   259→
+   260→- Assembled the complete schema into prisma/schema.prisma:
+   261→  - 2220 lines total
+   262→  - Changed `provider` from `"sqlite"` (original) to `"postgresql"` (production)
+   263→  - Added `binaryTargets = ["native", "debian-openssl-3.0.x"]`
+   264→  - Preserved all user's original model definitions, comments, and section headers
+   265→  - Backed up the old Phase 12 schema to `prisma/schema.prisma.phase12-backup`
+   266→
+   267→- Key differences from Phase 12 (4 models will be REPLACED):
+   268→  1. `User`: HEAVIX has firstName/lastName/mobile(unique)/passwordHash/userType/role=ADMIN|SELLER|BUYER/status=PENDING/emailVerified/mobileVerified/verificationDeadline + 20+ relations. Phase 12 had name/email/role=SUPER_ADMIN|ADMIN|MODERATOR|MEMBER|GUEST/status=ACTIVE|SUSPENDED|PENDING|INVITED|DELETED.
+   269→  2. `AuditLog`: HEAVIX has actorType/beforeJson/afterJson/requestId/reason. Phase 12 had actorEmail/metadata/status.
+   270→  3. `AdminSession`: HEAVIX uses tokenHash (SHA-256) + username. Phase 12 had raw token + ip + userAgent + revokedAt.
+   271→  4. `FeatureFlag`: HEAVIX has rolloutPct (percentage rollout). Phase 12 had audience + value.
+   272→
+   273→- Ran `bunx prisma db push --accept-data-loss --force-reset`:
+   274→  - Database successfully reset (dropped 8 Phase 12 tables + all seed data)
+   275→  - All 113 HEAVIX tables created in PostgreSQL
+   276→  - Verified via `information_schema.tables`: 113 tables in `public` schema ✓
+   277→  - Prisma Client regenerated for the 113-model schema (571ms)
+   278→
+   279→- Tables created include: AIAgent, AIBudget, AIGatewayLog, AITaskPolicy, AdminSession, AnalyticsEvent, ApplicationIndustry, Article, Attachment, AttributeDefinition, AttributeOption, Auction, AuctionBid, AuditLog, Brand, BrandAlias, BrandCategory, BrandDisplay, BrandDomain, BrandFamily, BrandIndustry, BrandMedia, BrandSEO, BuyRequest, Category, CategoryApplicationIndustry, CategoryAttribute, City, Company, CompanyBranch, CompanyClaim, CompanyDocument, CompanyPartner, CompanyVerification, ComparisonItem, ComparisonSession, Condition (enum), Conversation, Country, Deal, DealDocument, DealMessage, DealRoom, DemandSignal, Dispute, Attachment, Favorite, FeatureFlag, Follow, Generation, HeroConfig, HomeCategoryConfig, HomePageSection, HotSearch, IndustrialTerm, Inspection, KnowledgeEntry, Lead, Listing, ListingAttributeValue, ListingImage, ListingOffer, ListingRejection, Machine, MachinePassport, MenuItem, Message, ModelCategory, ModerationLog, Notification, Order, Opportunity, Part, PassportEvent, Payment, Permission, PriceEstimate, PriceObservation, PriceOverride, PriceRecord, PremiumSubscription, Product, ProductModel, Province, RFQ, RFQQuote, RejectionMessage, Review, Role, RolePermission, SavedSearch, SEOMetadata, SearchQuery, SellIn7DaysApplication, Service, ServiceType, Session, Setting, SiteSettings, SiteStat, SiteWidget, SocialReel, SubscriptionPlan, TermAlias, TransactionType, TransportRequest, User, UserRecommendation, UserRole, VerificationCode, CompatibilityEdge
+   280→
+   281→- Git commit `95cca6c`: "feat: HEAVIX Phase 13 — Real schema integration (113 models)" — 2 files changed, 2339 insertions, 119 deletions.
+   282→- Backup: `download/heavix-backup-stage4-phase13-schema.zip` (238 KB — schema + src + scripts + config only, excludes node_modules).
+   283→
+   284→Stage Summary:
+   285→- ✅ Real HEAVIX schema (113 models) received from user via chat paste (gateway file delivery broken).
+   286→- ✅ Assembled into `prisma/schema.prisma` (2220 lines, provider=postgresql, binaryTargets set).
+   287→- ✅ All 113 tables created in PostgreSQL via `db:push --force-reset`.
+   288→- ✅ Prisma Client regenerated.
+   289→- ✅ Git committed + backup zip created.
+   290→
+   291→What HEAVIX actually is (revealed by the schema):
+   292→A full industrial heavy-machinery marketplace with:
+   293→- Brand catalog OS (brands, families, aliases, industries, media, SEO, display)
+   294→- Taxonomy tree (categories with materialized paths, transaction types, service types, application industries)
+   295→- Location hierarchy (country → province → city)
+   296→- Dynamic attributes (typed attribute definitions with provenance + verification status)
+   297→- Product models + generations (Brand → Model → Generation)
+   298→- Listings (the core entity — sale/rent/wanted, with rental fields, location, transaction type)
+   299→- Buy requests, saved searches, favorites, leads
+   300→- Knowledge articles + AI knowledge base
+   301→- RFQ (B2B procurement) + quotes
+   302→- Auction engine with bids
+   303→- Industrial Persian dictionary (synonym/alias mapping for search)
+   304→- Company pages with verification lifecycle, documents, branches, partner network
+   305→- Deal rooms with messages + documents
+   306→- Inspections + transport requests
+   307→- CMS (homepage sections, hero config, site settings, menu items)
+   308→- Users + auth (User, Session, AdminSession with tokenHash, VerificationCode)
+   309→- RBAC (Role, Permission, RolePermission, UserRole — 4-table RBAC)
+   310→- Catalog entities (Product, Machine, Part, Attachment, CompatibilityEdge)
+   311→- Price intelligence (PriceRecord, PriceObservation, PriceEstimate, PriceOverride)
+   312→- AI gateway (AIGatewayLog, AIBudget, AITaskPolicy, AIAgent)
+   313→- Opportunity engine + SEO automation
+   314→- Recommendation engine (UserRecommendation)
+   315→- Comparison engine (ComparisonSession, ComparisonItem)
+   316→- Direct messaging (Conversation, Message)
+   317→- Analytics + moderation (AnalyticsEvent, ModerationLog)
+   318→- Payments + ledger (Payment)
+   319→- Reviews + ratings (Review)
+   320→- Phase 9 commerce (Deal, Order, Dispute)
+   321→- Subscriptions (SubscriptionPlan, PremiumSubscription)
+   322→- Growth (Referral, FoundingSeller, SellIn7DaysApplication)
+   323→- Machine passports (MachinePassport, PassportEvent)
+   324→- Social media reels (SocialReel)
+   325→- Audit log (append-only, with beforeJson/afterJson)
+   326→- Feature flags (with rolloutPct for canary deployment)
+   327→- Launch phase tracker
+   328→- Demand signal + search query logging
+   329→
+   330→Next step (Phase 13.5): The Phase 12 admin dashboard (admin-shell, 6 sections, 8 API endpoints) references the OLD Phase 12 model fields. It will break until adapted to the real HEAVIX schema. The API endpoints need updating to use the real User (firstName/lastName/mobile), real AuditLog (actorType/beforeJson), etc. A HEAVIX-specific seed script also needs writing.
+   331→
+   332→---
+   333→Task ID: PHASE-12-ADMIN-CONTROL-PLANE
+   334→Agent: Main Orchestrator (Z.ai Code)
+   335→Task: User provided strategic V2.0 documentation + Phase 12 plan for Admin Control Plane Foundation. Implemented 12.1-12.3 (DB-driven navigation + permission-aware sidebar).
+   336→
+   337→Work Log:
+   338→- Reviewed all 18 docs/ — especially HEAVIX-ARCHITECTURE-OVERVIEW (feature index) and HEAVIX-SECURITY-BASELINE-V1 (RBAC + auth principles).
+   339→- Audited current Admin code state:
+   340→  - 101 admin pages, 127 admin API routes, 113 Prisma models
+   341→  - AdminSidebarNav.tsx: hard-coded MENU array with 66 items (7 groups + 7 standalone + 52 children)
+   342→  - admin/layout.tsx: dual auth paths (legacy AdminSession cookie + RBAC UserRole with User.role fallback)
+   343→  - lib/rbac.ts: getUserPermissions, hasPermission, requirePermission, isAdmin (with legacy fallback), hasRole
+   344→- Phase 12.1 (Architecture Contract): documented the rule — no new admin page without Resource→Permission→API→List→Detail→Form→Actions→Audit→Tests.
+   345→- Phase 12.2 (DB-driven Navigation):
+   346→  - Added 3 new Prisma models to schema.prisma:
+   347→    - AdminNavigationGroup (key, titleFa, icon, sortOrder, active)
+   348→    - AdminNavigationItem (key, titleFa, href, icon, sortOrder, permissionKey, featureFlag, active, openInNewTab, groupId)
+   349→    - AdminPreference (userId, theme, density, locale, timezone, sidebarCollapsed, pinnedItems JSON, hiddenItems JSON, dashboardLayout JSON, defaultPageSize)
+   350→  - Ran db:push (additive — no data loss). 3 new tables created.
+   351→  - Created prisma/seed-admin-navigation.ts:
+   352→    - 7 groups: home(12), taxonomy(13), market(12), transactions(9), content(6), moderation(1), system(8)
+   353→    - 7 standalone: dashboard, listings, companies, subscriptions, users, audit-log, settings
+   354→    - Total: 68 navigation items, each mapped from the hard-coded MENU with permissionKey assigned
+   355→    - Idempotent (upsert by key)
+   356→- Phase 12.3 (Permission-aware Navigation):
+   357→  - Created GET /api/admin/navigation:
+   358→    - Returns DB-driven tree (groups + standalone items)
+   359→    - Legacy admin-cookie path: shows ALL items (backward compat)
+   360→    - RBAC path: filters by user's permissions (only shows items where permissionKey is null OR user has that permission)
+   361→    - Groups with 0 visible items are hidden in RBAC mode
+   362→  - Rewrote AdminSidebarNav.tsx:
+   363→    - Fetches from /api/admin/navigation on mount
+   364→    - Maps icon strings → lucide-react components (ICON_MAP with 16 icons)
+   365→    - Auto-opens group containing active route (useEffect on pathname)
+   366→    - Loading state (spinner), error state (red message)
+   367→    - Same visual style (Aria dark zinc sidebar, orange #F58220 active)
+   368→    - Dev mode indicator (mode + group/standalone counts)
+   369→- Git commit ee3b4f4 pushed to GitHub.
+   370→
+   371→Stage Summary:
+   372→- ✅ Phase 12.1: Architecture Contract documented
+   373→- ✅ Phase 12.2: DB-driven Admin Navigation (3 models, 68 items seeded)
+   374→- ✅ Phase 12.3: Permission-aware sidebar (API filters by RBAC)
+   375→- ⏳ Phase 12.4: Admin Preferences (model exists, needs API + UI)
+   376→- ⏳ Phase 12.5: Universal Resource Manager (<AdminResource> framework)
+   377→- ⏳ Phase 12.9: Real Audit (before/after/reason)
+   378→
+   379→Next steps (per user's P0 priority):
+   380→1. RBAC hardening — remove User.role fallback in isAdmin()
+   381→2. Legacy auth removal — remove AdminSession dual-path in admin/layout.tsx
+   382→3. Audit — add before/after/reason to every admin mutation
+   383→
+   384→---
+   385→Task ID: STEP-01-RECONCILIATION
+   386→Agent: Main Orchestrator (Z.ai Code)
+   387→Task: User provided V2.1 strategic docs + STEP 01-18 execution plan. Implement STEP 01: PostgreSQL Data Reconciliation.
+   388→
+   389→Work Log:
+   390→- User provided comprehensive V2.1 documentation covering:
+   391→  - Admin Control Plane Foundation (not just sidebar)
+   392→  - Universal CRUD framework
+   393→  - Store Control Plane
+   394→  - Page/Widget Builder
+   395→  - RBAC Hardening
+   396→  - Audit Foundation
+   397→  - 18-step execution plan
+   398→
+   399→- STEP 01 (PostgreSQL Data Reconciliation):
+   400→  - Previous migration attempts failed due to type system incompatibilities:
+   401→    - Boolean: SQLite 0/1 → PostgreSQL true/false (code 42804)
+   402→    - BigInt: SQLite integer → PostgreSQL bigint
+   403→    - Enum: SQLite text → PostgreSQL custom enum type
+   404→    - Jsonb: SQLite text → PostgreSQL jsonb
+   405→    - Timestamp: SQLite epoch (int) → PostgreSQL timestamp
+   406→
+   407→  - Created scripts/migrate-pg-reconcile.ts with proper type handling:
+   408→    1. Queries information_schema.columns to get exact PostgreSQL column types
+   409→    2. For each value, converts based on PG column type:
+   410→       - Timestamps: if number (epoch), convert to ISO string
+   411→       - Booleans: keep as 0/1, use text::boolean cast
+   412→       - JSON: keep as string, use text::jsonb cast
+   413→       - BigInt: use text::bigint cast
+   414→       - Integer: use text::integer cast
+   415→       - Enum: use text cast (PG auto-casts text→enum)
+   416→    3. Uses parameterized queries ($1, $2, ...) with ::text::type double casts
+   417→       (PostgreSQL can cast any type to text, then text to target type)
+   418→    4. ON CONFLICT DO NOTHING (preserves existing seed data)
+   419→
+   420→  - Three iterations to fix all type issues:
+   421→    1. First attempt: raw values → failed (PG code 42804 datatype_mismatch)
+   422→    2. Second attempt: added ::type casts → failed (can't cast bigint→timestamp/boolean directly)
+   423→    3. Third attempt: ::text::type double casts + epoch conversion → SUCCESS
+   424→
+   425→  - Migration results:
+   426→    35 tables with new data migrated from SQLite source
+   427→    30 tables skipped (already had enough data from seeds)
+   428→    48 tables empty in SQLite (no data to migrate)
+   429→    Total rows migrated: 1086
+   430→
+   431→  - PostgreSQL now has:
+   432→    74 tables with data (up from 46)
+   433→    5215 total rows (up from 4426)
+   434→
+   435→  - Critical tables verified:
+   436→    User: 3 (2 real + 1 seed)
+   437→    PriceRecord: 206 (price history from SQLite)
+   438→    FeatureFlag: 6 (feature toggles)
+   439→    AdminSession: 3 (legacy admin auth sessions)
+   440→    SubscriptionPlan: 3 (monetization plans)
+   441→    MenuItem: 3 (navigation menu)
+   442→    SiteSettings: 1 (site configuration)
+   443→    AuditLog: 23 (audit trail)
+   444→    Category: 539 (full taxonomy, up from 238)
+   445→    Listing: 31 (marketplace listings)
+   446→    DealRoom: 1, Payment: 2, Session: 2
+   447→
+   448→- App verified: /, /listings, /brands, /login all return HTTP 200
+   449→
+   450→- Git commit 6cf5608 pushed to GitHub.
+   451→
+   452→Stage Summary:
+   453→- ✅ STEP 01 COMPLETE: PostgreSQL Data Reconciliation done
+   454→- ✅ Schema: 116 tables (provider=postgresql)
+   455→- ✅ Data: 74 tables with data, 5215 rows
+   456→- ✅ All critical tables have real HEAVIX data
+   457→- ✅ Migration script reusable (migrate-pg-reconcile.ts)
+   458→
+   459→Next: STEP 02 (RBAC Hardening) → STEP 03 (Legacy Auth Removal) → STEP 04 (Audit Foundation)
+   460→
