@@ -1338,3 +1338,104 @@ Stage Summary:
 
 Next: 15-B.4.5 (ISR/cache experiment — DESIGN only, not APPLY). Then 15-B.5 (apply
 ACCEPTED changes from 15-B.4.3 + 15-B.4.4 with full regression + re-measure).
+
+---
+
+Task ID: STEP-15-B-4-5
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.4.5 — ISR/Cache Experiment Design. DESIGN ONLY — no code changes, no revalidate, no unstable_cache, no revalidateTag applied. TTLs and invalidation sources extracted directly from 15-B.3 ISR matrix and Page Builder implementation (no guesses). Also confirmed GitHub sync at start of step.
+
+Work Log:
+- First verified GitHub sync: found 1 local commit (58435e7 cron snapshot) not pushed. Pushed it: 323f044..58435e7 main -> main. Confirmed sync.
+
+- Extracted evidence from prior steps (no guesses):
+  1. ISR candidate matrix from 15-B.3 scripts/home-query-inventory.json (12 data types with freshness/mutability/invalidation)
+  2. Page Builder publish/rollback routes (existing revalidatePath model):
+     - src/app/api/admin/pages/[id]/publish/route.ts: revalidatePath('/'/'page.slug'/'/admin/pages/'pageId)
+     - src/app/api/admin/pages/[id]/rollback/route.ts: same 3 calls
+  3. Home page src/app/page.tsx:37 → export const dynamic = "force-dynamic" (no caching currently)
+  4. Mutation route audit: brand/category/listing/settings/home/* routes — NONE have revalidatePath/revalidateTag
+
+- Classified 12 home data types into 3 tiers:
+  - Tier 1 (nearly-constant, 7 queries): TTL 300-3600s — SiteSettings, HomePageSection, HeroConfig, HomeCategoryConfig, Articles, HotSearches, SiteStat config
+  - Tier 2 (semi-dynamic, 12 queries): TTL 60-600s + event invalidation — Brands, Categories, BuyRequests, live counts
+  - Tier 3 (real-time, 3 queries): No cache — Featured/Verified/Latest listings
+  - Cacheable: 19 of 24 steady-state queries (79%)
+
+- Built freshness budget per query (27 entries) with:
+  - Max acceptable staleness (from 15-B.3 freshness requirement)
+  - Proposed TTL (evidence-based, not guessed)
+  - Mutation must be immediately visible? (Tier 3 = Yes, Tier 1+2 = No)
+  - Invalidation trigger per data type
+
+- Mapped invalidation sources to mutation events (aligned with Page Builder model):
+  - Page Builder already calls revalidatePath('/') on publish/rollback ✅
+  - GAP identified: 12 mutation route groups have NO revalidatePath/revalidateTag ❌
+  - Required hooks documented for: brand, category, listing, settings, homePageSection, heroConfig, homeCategoryConfig, buyRequest, article, hotSearch, siteStat mutations
+  - Design principle: revalidateTag for fine-grained invalidation, revalidatePath('/') as fallback (already in Page Builder)
+
+- Defined correctness experiment scenarios (design — NOT executed):
+  1. Mutate → invalidate → request → verify fresh value
+  2. Publish V2 → invalidate → preview == production
+  3. Rollback V1 → invalidate → preview == production
+
+- Defined failure/rollback behavior:
+  - TTL is safety net; event invalidation is primary mechanism
+  - Stale allowed for Tier 1+2 (config, counts, taxonomy)
+  - NOT allowed for Tier 3 (featured/verified/latest listings)
+  - Per-mutation max stale window documented (60s for listings, 300s for brands, 3600s for settings)
+
+- Defined measurement plan (before APPLY, for 15-B.5):
+  - DB query count, DB execution time, cache hit/miss ratio, TTFB, correctness, invalidation latency, concurrent workload
+  - CRITICAL caveat: decision must be based on PAGE-LEVEL TTFB, not DB-level metrics
+  - From 15-A: DB is 1.75% of TTFB — even eliminating ALL DB queries saves only ~1.2ms
+  - ISR's real benefit: eliminates entire server-side render for cached requests → TTFB drops to network-only (~5-10ms) vs uncached 67ms
+
+- Defined decision criteria for 15-B.5 evaluation:
+  - ACCEPT: real page-level TTFB reduction + full correctness + acceptable freshness + no regression
+  - REJECT: TTFB reduction negligible OR correctness issues OR invalidation gaps
+  - INVESTIGATE: invalidation behavior uncertain OR cache hit ratio low
+
+- Key risk documented: 12 mutation route groups currently have NO revalidatePath/revalidateTag. Must add invalidation hooks BEFORE applying ISR, or users see stale data until TTL. This is why 15-B.4.5 is DESIGN ONLY.
+
+What this step did NOT do:
+- No code changes made (design document only)
+- No revalidate added to home page
+- No unstable_cache wrappers added
+- No revalidateTag calls added to mutation routes
+- No revalidatePath calls added (beyond what Page Builder already has)
+- No schema changes
+- No index additions
+- Baseline preserved (Brand_name_idx from 15-B.4.1 is only change in effect)
+
+Files produced:
+- docs/verification/STEP-15-B-4-5-ISR-CACHE-DESIGN.md (11 sections, 395 lines, design only)
+
+Commit 6fbcb76 pushed to GitHub (58435e7..6fbcb76 main -> main).
+Verified sync: ✅ IN SYNC — both at 6fbcb76.
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (unchanged).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Stage Summary:
+- ✅ 15-B.4.5 complete: ISR/Cache design document produced. DESIGN ONLY — no code applied.
+- ✅ All TTLs and invalidation sources extracted from evidence (15-B.3 ISR matrix + Page Builder implementation).
+- ✅ 3-tier classification: nearly-constant (7 queries), semi-dynamic (12 queries), real-time (3 queries).
+- ✅ Invalidation gap identified: 12 mutation route groups need revalidateTag hooks before ISR can be safely applied.
+- ✅ Correctness experiment scenarios defined (mutate→invalidate→verify, publish→invalidate→preview==production).
+- ✅ Failure/rollback behavior defined (TTL as safety net, stale allowed for Tier 1+2, not for Tier 3).
+- ✅ Measurement plan defined (page-level TTFB is the key metric, not DB-level).
+- ✅ Decision criteria defined for 15-B.5 evaluation.
+- ✅ GitHub synced.
+
+Status of STEP 15-B.4:
+✅ 15-B.4.1 Brand.name index — ACCEPT (applied)
+✅ 15-B.4.2 Re-measure 28 queries — ACCEPT (no regression)
+✅ 15-B.4.3 Count aggregate experiment — ACCEPT (deferred application)
+✅ 15-B.4.4 Promise.all experiment — ACCEPT (deferred application)
+✅ 15-B.4.5 ISR/cache experiment — DESIGN ONLY (not applied) ← COMPLETE
+
+Next: 15-B.5 (apply 15-B.4.3 count dedup + 15-B.4.4 Promise.all + evaluate ISR design
+with full regression + re-measure + page-level TTFB measurement).
