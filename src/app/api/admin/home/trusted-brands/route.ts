@@ -52,6 +52,9 @@ export async function GET() {
       listingCount: b._count.listings,
     }));
 
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[trusted-brands] revalidateTag failed:', e); }
+
     return NextResponse.json({
       config: {
         title: s?.trustedBrandsTitle ?? null,
@@ -163,6 +166,9 @@ export async function PUT(req: Request) {
         brandUpdateCount++;
       }
     }
+
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[trusted-brands] revalidateTag failed:', e); }
 
     return NextResponse.json({
       ok: true,

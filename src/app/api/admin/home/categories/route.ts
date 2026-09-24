@@ -37,6 +37,9 @@ export async function GET() {
         })
       : [];
 
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.catConfig, 'default'); } catch (e) { console.error('[home/categories] revalidateTag failed:', e); }
+
     return NextResponse.json({
       config: {
         generation: cfg.homeCategoryGeneration,
@@ -93,6 +96,9 @@ export async function PUT(req: Request) {
         homeCategoryParentId: generation === 2 ? parentId : null,
       },
     });
+
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.catConfig, 'default'); } catch (e) { console.error('[home/categories] revalidateTag failed:', e); }
 
     return NextResponse.json({
       ok: true,

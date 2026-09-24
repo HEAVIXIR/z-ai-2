@@ -58,6 +58,9 @@ export async function GET(req: Request) {
         roots.push(node);
       }
     });
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[taxonomy/categories] revalidateTag failed:', e); }
+
     return NextResponse.json({
       categories: roots,
       flat: all.map((c) => ({
@@ -151,6 +154,9 @@ export async function POST(req: Request) {
         },
       },
     });
+
+    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[taxonomy/categories] revalidateTag failed:', e); }
 
     return NextResponse.json({
       ok: true,

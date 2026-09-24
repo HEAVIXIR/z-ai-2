@@ -240,6 +240,9 @@ export async function POST(req: NextRequest) {
       }
 
       const total = await db.brand.count();
+      // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[brands-ai] revalidateTag failed:', e); }
+
       return NextResponse.json({
         ok: true,
         added,
@@ -263,6 +266,9 @@ export async function POST(req: NextRequest) {
         });
         updated++;
       }
+
+      // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[brands-ai] revalidateTag failed:', e); }
 
       return NextResponse.json({
         ok: true,
