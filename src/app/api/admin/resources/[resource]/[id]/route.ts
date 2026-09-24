@@ -7,12 +7,14 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import '@/lib/admin/resource-index';
 import { registry } from '@/lib/admin/resource-registry';
 import { getResource, updateResource, deleteResource } from '@/lib/admin/data-adapter';
 import { requireAdmin } from '@/lib/admin-guard';
 import { can } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
+import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +76,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       },
     );
 
+    // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
+    const cacheTags = getHomepageCacheTags(resourceKey);
+    for (const tag of cacheTags) {
+      try { revalidateTag(tag, 'default'); } catch (e) {
+        console.error(`[resources/${resourceKey}] revalidateTag('${tag}') failed:`, e);
+      }
+    }
+
     return NextResponse.json({ ok: true, data: result.result });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to update', details: (err as Error).message }, { status: 500 });
@@ -107,6 +117,14 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       before,
       'Deleted via Universal Resource API',
     );
+
+    // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
+    const cacheTags = getHomepageCacheTags(resourceKey);
+    for (const tag of cacheTags) {
+      try { revalidateTag(tag, 'default'); } catch (e) {
+        console.error(`[resources/${resourceKey}] revalidateTag('${tag}') failed:`, e);
+      }
+    }
 
     return NextResponse.json({ ok: true, data: { id, deleted: true } });
   } catch (err) {

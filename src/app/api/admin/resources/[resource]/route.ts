@@ -17,6 +17,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import '@/lib/admin/resource-index'; // ensures all resources are registered
 import { registry } from '@/lib/admin/resource-registry';
 import { parseQueryParams } from '@/lib/admin/query/query-builder';
@@ -25,6 +26,7 @@ import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
 import { auditCreate } from '@/lib/audit-foundation';
 import { can } from '@/lib/authorization';
+import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +139,18 @@ export async function POST(req: NextRequest, { params }: Params) {
         body,
         'Created via Universal Resource API',
       );
+    }
+
+    // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
+    // Only fires for resources that have Homepage impact (listings, brands, buy-requests).
+    // Other resources have no cache tags and are silently skipped.
+    const cacheTags = getHomepageCacheTags(resourceKey);
+    for (const tag of cacheTags) {
+      try { revalidateTag(tag, 'default'); } catch (e) {
+        // Per Cache Contract §11: invalidation failure must not block the mutation.
+        // Log but don't throw — the mutation already succeeded.
+        console.error(`[resources/${resourceKey}] revalidateTag('${tag}') failed:`, e);
+      }
     }
 
     return NextResponse.json({ ok: true, data: item }, { status: 201 });
