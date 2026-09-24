@@ -49,23 +49,24 @@ export default async function PriceIntelligencePage({
     }),
   ]);
 
-  // Build the where clause for PriceRecord aggregation
+  // STEP 6B.1: Ported from PriceRecord to PriceObservation (canonical model).
+  // Build the where clause for PriceObservation aggregation
   const priceWhere: any = {};
   if (categoryFilter) priceWhere.categoryId = categoryFilter;
   if (brandFilter) priceWhere.brandId = brandFilter;
   if (yearFilter && Number.isFinite(yearFilter)) priceWhere.year = yearFilter;
 
   // Per category+brand stats (top 30 by sample size)
-  const allStats = await db.priceRecord.groupBy({
+  const allStats = await db.priceObservation.groupBy({
     by: ["categoryId", "brandId"],
     where: {
       ...(categoryFilter ? { categoryId: categoryFilter } : {}),
       ...(brandFilter ? { brandId: brandFilter } : {}),
       ...(yearFilter && Number.isFinite(yearFilter) ? { year: yearFilter } : {}),
     },
-    _avg: { price: true },
-    _min: { price: true },
-    _max: { price: true },
+    _avg: { askingPrice: true },
+    _min: { askingPrice: true },
+    _max: { askingPrice: true },
     _count: true,
     orderBy: { _count: { id: "desc" } },
     take: 30,
@@ -96,9 +97,9 @@ export default async function PriceIntelligencePage({
     brandId: s.brandId,
     categoryName: s.categoryId ? catMap.get(s.categoryId)?.name ?? "—" : "—",
     brandName: s.brandId ? brandMap.get(s.brandId)?.name ?? "—" : "—",
-    avg: s._avg.price ? Number(s._avg.price) : null,
-    min: s._min.price ? Number(s._min.price) : null,
-    max: s._max.price ? Number(s._max.price) : null,
+    avg: s._avg.askingPrice ? Number(s._avg.askingPrice) : null,
+    min: s._min.askingPrice ? Number(s._min.askingPrice) : null,
+    max: s._max.askingPrice ? Number(s._max.askingPrice) : null,
     count: s._count,
   }));
 

@@ -270,35 +270,37 @@ export async function detectTrendingBrands(): Promise<NewOpportunityInput[]> {
    Detector 4 — PRICE_DROP
    ──────────────────────────────────────────────────────────── */
 export async function detectPriceDrops(): Promise<NewOpportunityInput[]> {
-  // Find listings that have at least 2 PriceRecord entries — the
-  // current price and a prior record — where current < prior * 0.9.
-  const listingsWithRecords = await db.listing.findMany({
+  // STEP 6B.1: Ported from PriceRecord to PriceObservation (canonical model).
+  // Find listings that have at least 2 PriceObservation entries — the
+  // current price and a prior observation — where current < prior * 0.9.
+  const listingsWithObs = await db.listing.findMany({
     where: {
       status: "PUBLISHED",
       price: { not: null },
-      priceRecords: { some: {} },
+      priceObservations: { some: {} },
     },
     select: {
       id: true,
       title: true,
       slug: true,
       price: true,
-      priceRecords: {
-        orderBy: { recordedAt: "desc" },
+      priceObservations: {
+        orderBy: { observedAt: "desc" },
         take: 5,
-        select: { id: true, price: true, recordedAt: true },
+        select: { id: true, askingPrice: true, observedAt: true },
       },
     },
     take: 500,
   });
 
   const out: NewOpportunityInput[] = [];
-  for (const l of listingsWithRecords) {
-    if (l.priceRecords.length < 2) continue;
+  for (const l of listingsWithObs) {
+    if (l.priceObservations.length < 2) continue;
     const current = Number(l.price);
     if (!current || current <= 0) continue;
-    // priceRecords are ordered desc — [0] is the latest, [1] is the prior.
-    const prior = l.priceRecords[1].price;
+    // priceObservations are ordered desc — [0] is the latest, [1] is the prior.
+    const priorObs = l.priceObservations[1];
+    const prior = priorObs.askingPrice ? Number(priorObs.askingPrice) : null;
     if (!prior || prior <= 0) continue;
     const ratio = current / prior;
     if (ratio >= PRICE_DROP_THRESHOLD) continue;
@@ -317,7 +319,7 @@ export async function detectPriceDrops(): Promise<NewOpportunityInput[]> {
         priorPrice: prior,
         ratio,
         dropPct,
-        priorRecordedAt: l.priceRecords[1].recordedAt,
+        priorObservedAt: priorObs.observedAt,
       }),
     });
   }

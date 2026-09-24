@@ -434,50 +434,12 @@ export async function estimatePrice(
     });
   }
 
-  // ── Fold in legacy PriceRecord observations (P2-22 intelligence
-  //    layer) when the new PriceObservation table is sparse. These
-  //    are real historical observations and widen the comparable
-  //    pool without fabricating prices.
-  try {
-    const recRows = await db.priceRecord.findMany({
-      where: {
-        brandId: target.brandId,
-        categoryId: target.categoryId,
-      },
-      select: {
-        id: true ,
-        listingId: true,
-        price: true,
-        year: true,
-        recordedAt: true,
-      },
-      take: MAX_COMPARABLES,
-      orderBy: { recordedAt: "desc" },
-    });
-    for (const r of recRows) {
-      if (!r.price) continue;
-      if (seenIds.has(r.id)) continue;
-      seenIds.add(r.id);
-      comps.push({
-        id: r.id,
-        title: "(سابقه بازار)",
-        slug: "",
-        price: Number(r.price),
-        year: r.year,
-        workingHours: null,
-        city: null,
-        observedAt: r.recordedAt,
-        similarity: computeSimilarity(target, {
-          year: r.year,
-          hours: null,
-          city: null,
-        }),
-      });
-    }
-  } catch {
-    // PriceRecord table should always exist, but if it doesn't we
-    // silently skip — non-fatal.
-  }
+  // ── STEP 6B.1: PriceRecord fold-in REMOVED.
+  // The legacy PriceRecord table is deprecated (canonical model is
+  // PriceObservation per PHASE-6A-RECONCILE). The PriceRecord writer
+  // (recordPriceFromListing) is dead code with 0 callers, so the table
+  // is empty — folding in its rows would yield zero comparables anyway.
+  // All comparable selection now uses PriceObservation exclusively.
 
   if (comps.length < 2) {
     return emptyEstimate([
