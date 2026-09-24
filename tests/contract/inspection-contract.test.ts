@@ -50,17 +50,23 @@ describe('Inspection Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.enabled).toBe(true);
   });
 
-  // Documented 16-B gaps (still ❌)
-  it('I8: inspections has NO detailTabs (documented 16-B gap)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 7 — ADDED missing config sections
+  it('I8: inspections now has detailTabs (16-C pass 7 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('I9: inspections has NO relations (documented 16-B gap)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('I9: inspections now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('I10: inspections has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('I10: inspections now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-schedule');
+    expect(keys).toContain('bulk-cancel');
   });
 
   it('I11: inspections permissions.read references inspection.read (post 16-C fix in PERMISSIONS array)', () => {

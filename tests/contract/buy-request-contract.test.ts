@@ -60,17 +60,23 @@ describe('BuyRequest Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.enabled).toBe(true);
   });
 
-  // Documented 16-B gaps
-  it('B10: buy-requests has NO detailTabs (documented 16-B gap)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 7 — ADDED missing config sections
+  it('B10: buy-requests now has detailTabs (16-C pass 7 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('B11: buy-requests has NO relations (documented 16-B gap)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('B11: buy-requests now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('B12: buy-requests has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('B12: buy-requests now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-verify');
+    expect(keys).toContain('bulk-close');
   });
 
   it('B13: buy-requests permissions.read references request.read (post 16-C fix)', () => {

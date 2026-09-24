@@ -61,17 +61,23 @@ describe('Dispute Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.actions).toContain('deal.manage');
   });
 
-  // Documented 16-B gaps
-  it('D10: disputes has NO detailTabs (documented 16-B gap)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 7 — ADDED missing config sections
+  it('D10: disputes now has detailTabs (16-C pass 7 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('D11: disputes has NO relations (documented 16-B gap — 16-B falsely claimed ✓)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('D11: disputes now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('D12: disputes has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('D12: disputes now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-review');
+    expect(keys).toContain('bulk-resolve');
   });
 
   it('D13: disputes permissions.read references deal.read (reuses deal.* perms)', () => {

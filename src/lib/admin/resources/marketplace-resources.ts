@@ -177,6 +177,11 @@ export const rfqConfig: AdminResourceConfig = {
     { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive' },
   ],
 
+  bulkActions: [
+    { key: 'bulk-close', label: 'بستن گروهی', icon: 'Lock', permission: 'rfq.manage', type: 'confirm', confirmMessage: 'درخواست‌های انتخاب‌شده بسته شوند؟' },
+    { key: 'bulk-delete', label: 'حذف گروهی', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive' },
+  ],
+
   audit: { enabled: true, entityType: 'RFQ', actions: ['rfq.manage'] },
   relations: [
     { label: 'پیشنهادها', resource: 'rfq-quotes', filterField: 'rfqId' },
@@ -248,6 +253,20 @@ export const offerConfig: AdminResourceConfig = {
   actions: [
     { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm' },
     { key: 'reject', label: 'رد', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-accept', label: 'پذیرش گروهی', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm', confirmMessage: 'پیشنهادهای انتخاب‌شده پذیرفته شوند؟' },
+    { key: 'bulk-reject', label: 'رد گروهی', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'آگهی مرتبط', resource: 'listings', filterField: 'offerId' },
   ],
 
   audit: { enabled: true, entityType: 'ListingOffer', actions: ['listing.update'] },
@@ -323,6 +342,10 @@ export const auctionConfig: AdminResourceConfig = {
     { key: 'cancel', label: 'لغو', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive' },
   ],
 
+  bulkActions: [
+    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive', confirmMessage: 'مزایده‌های انتخاب‌شده لغو شوند؟' },
+  ],
+
   audit: { enabled: true, entityType: 'Auction', actions: ['auction.manage'] },
   relations: [
     { label: 'پیشنهادها', resource: 'auction-bids', filterField: 'auctionId' },
@@ -390,6 +413,20 @@ export const inspectionConfig: AdminResourceConfig = {
     { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.read', type: 'confirm' },
     { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.read', type: 'confirm' },
     { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.read', type: 'confirm', variant: 'destructive' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-schedule', label: 'برنامه‌ریزی گروهی', icon: 'Calendar', permission: 'inspection.manage', type: 'confirm' },
+    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'inspection.manage', type: 'confirm', variant: 'destructive' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'معامله مرتبط', resource: 'deals', filterField: 'inspectionId' },
   ],
 
   audit: { enabled: true, entityType: 'Inspection', actions: ['inspection.read'] },
@@ -490,6 +527,20 @@ export const transportConfig: AdminResourceConfig = {
     { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.read', type: 'confirm', variant: 'destructive' },
   ],
 
+  bulkActions: [
+    { key: 'bulk-accept', label: 'پذیرش گروهی', icon: 'CheckCircle', permission: 'transport.manage', type: 'confirm' },
+    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'transport.manage', type: 'confirm', variant: 'destructive' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'معامله مرتبط', resource: 'deals', filterField: 'transportId' },
+  ],
+
   audit: { enabled: true, entityType: 'TransportRequest', actions: ['transport.read'] },
 };
 
@@ -550,6 +601,21 @@ export const disputeConfig: AdminResourceConfig = {
     { key: 'review', label: 'شروع بررسی', icon: 'Search', permission: 'deal.manage', type: 'confirm' },
     { key: 'resolve', label: 'حل اختلاف', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm' },
     { key: 'cancel', label: 'لغو', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-review', label: 'بررسی گروهی', icon: 'Search', permission: 'dispute.manage', type: 'confirm' },
+    { key: 'bulk-resolve', label: 'حل گروهی', icon: 'CheckCircle', permission: 'dispute.manage', type: 'confirm' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'معامله مرتبط', resource: 'deals', filterField: 'disputeId' },
+    { label: 'سفارش مرتبط', resource: 'orders', filterField: 'disputeId' },
   ],
 
   audit: { enabled: true, entityType: 'Dispute', actions: ['deal.manage'] },
@@ -623,6 +689,20 @@ export const buyRequestConfig: AdminResourceConfig = {
     { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.read', type: 'confirm' },
     { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.read', type: 'confirm' },
     { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.read', type: 'confirm', variant: 'destructive' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'ShieldCheck', permission: 'request.manage', type: 'confirm' },
+    { key: 'bulk-close', label: 'بستن گروهی', icon: 'Lock', permission: 'request.manage', type: 'confirm' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  relations: [
+    { label: 'پیشنهادهای مرتبط', resource: 'offers', filterField: 'buyRequestId' },
   ],
 
   audit: { enabled: true, entityType: 'BuyRequest', actions: ['request.read'] },

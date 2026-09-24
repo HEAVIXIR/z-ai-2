@@ -331,6 +331,15 @@ export const paymentConfig: AdminResourceConfig = {
     { key: 'verify', label: 'تأیید پرداخت', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm' },
   ],
 
+  bulkActions: [
+    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', confirmMessage: 'پرداخت‌های انتخاب‌شده تأیید شوند؟' },
+    { key: 'bulk-refund', label: 'بازگشت وجه گروهی', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه گروهی انجام شود؟ عملیات حساس.' },
+  ],
+
+  relations: [
+    { label: 'سفارش مرتبط', resource: 'orders', filterField: 'paymentId' },
+  ],
+
   audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage', 'payment.refund'] },
 };
 
@@ -578,6 +587,10 @@ export const reviewConfig: AdminResourceConfig = {
   bulkActions: [
     { key: 'bulk-publish', label: 'انتشار گروهی', icon: 'CheckCircle', permission: 'review.moderate', type: 'confirm' },
     { key: 'bulk-reject', label: 'رد گروهی', icon: 'X', permission: 'review.moderate', type: 'confirm', variant: 'destructive' },
+  ],
+
+  relations: [
+    { label: 'آگهی مرتبط', resource: 'listings', filterField: 'reviewId' },
   ],
 
   audit: { enabled: true, entityType: 'Review', actions: ['review.moderate'] },

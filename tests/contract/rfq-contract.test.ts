@@ -83,4 +83,13 @@ describe('RFQ Resource Contract (resource-specific invariants)', () => {
     expect(cfg.key).toBe('rfqs');
     expect(cfg.model).toBe('rFQ');
   });
+
+  // ── R14. 16-C pass 7 — added bulkActions ──────────────────
+  it('R14: now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-close');
+    expect(keys).toContain('bulk-delete');
+  });
 });

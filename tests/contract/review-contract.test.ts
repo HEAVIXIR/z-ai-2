@@ -126,4 +126,10 @@ describe('Review Resource Contract (resource-specific invariants)', () => {
     expect(actionEngine).toBeDefined();
     expect(typeof actionEngine.executeAction).toBe('function');
   });
+
+  // ── V16. 16-C pass 7 — added relations ────────────────────
+  it('V16: now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
+  });
 });

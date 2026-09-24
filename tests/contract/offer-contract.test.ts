@@ -64,22 +64,26 @@ describe('Offer Resource Contract (resource-specific invariants)', () => {
     expect(cfg.model).toBe('listingOffer');
   });
 
-  // Documented 16-B gaps (still ❌)
-  it('O10: offers has NO detailTabs (documented 16-B gap)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 7 — ADDED missing config sections
+  it('O10: offers now has detailTabs (16-C pass 7 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('O11: offers has NO relations field (documented 16-B gap)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('O11: offers now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('O12: offers has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('O12: offers now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-accept');
+    expect(keys).toContain('bulk-reject');
   });
 
   it('O13: offers has permissions.export set (reuses listing.read, post 16-C audit correction)', () => {
-    // 16-B audit reported offers had NO permissions.export, but actual config
-    // DOES set export='listing.read' (offers reuses listing.* perms). 16-B error.
     expect(cfg.permissions.export).toBeDefined();
     expect(cfg.permissions.export).toBe('listing.read');
   });

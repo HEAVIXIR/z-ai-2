@@ -65,14 +65,15 @@ describe('Auction Resource Contract (resource-specific invariants)', () => {
     expect(cfg.model).toBe('auction');
   });
 
-  // Documented 16-B gaps
-  it('A11: auctions has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  // 16-C pass 7 — added bulkActions
+  it('A11: auctions now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(1);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-cancel');
   });
 
   it('A12: auctions has permissions.export set (reuses auction.manage, post 16-C audit correction)', () => {
-    // 16-B audit reported auctions had NO permissions.export, but actual config
-    // DOES set export='auction.manage'. 16-B error.
     expect(cfg.permissions.export).toBeDefined();
     expect(cfg.permissions.export).toBe('auction.manage');
   });

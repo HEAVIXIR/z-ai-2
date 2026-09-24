@@ -62,16 +62,22 @@ describe('Transport Resource Contract (resource-specific invariants)', () => {
     expect(cfg.audit?.enabled).toBe(true);
   });
 
-  // Documented 16-B gaps
-  it('T10: transports has NO detailTabs (documented 16-B gap)', () => {
-    expect(cfg.detailTabs).toBeUndefined();
+  // 16-C pass 7 — ADDED missing config sections
+  it('T10: transports now has detailTabs (16-C pass 7 added)', () => {
+    expect(cfg.detailTabs).toBeDefined();
+    expect(cfg.detailTabs?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('T11: transports has NO relations (documented 16-B gap)', () => {
-    expect(cfg.relations).toBeUndefined();
+  it('T11: transports now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('T12: transports has NO bulkActions (documented 16-B gap)', () => {
-    expect(cfg.bulkActions).toBeUndefined();
+  it('T12: transports now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-accept');
+    expect(keys).toContain('bulk-cancel');
   });
 });

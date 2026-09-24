@@ -132,4 +132,18 @@ describe('Payment Resource Contract (resource-specific invariants)', () => {
   it('P15: audit.entityType should be "Payment"', () => {
     expect(cfg.audit?.entityType).toBe('Payment');
   });
+
+  // ── P16-P17. 16-C pass 7 — added bulkActions + relations ──
+  it('P16: now has bulkActions (16-C pass 7 added)', () => {
+    expect(cfg.bulkActions).toBeDefined();
+    expect(cfg.bulkActions?.length).toBeGreaterThanOrEqual(2);
+    const keys = (cfg.bulkActions ?? []).map(a => a.key);
+    expect(keys).toContain('bulk-verify');
+    expect(keys).toContain('bulk-refund');
+  });
+
+  it('P17: now has relations (16-C pass 7 added)', () => {
+    expect(cfg.relations).toBeDefined();
+    expect(cfg.relations?.length).toBeGreaterThanOrEqual(1);
+  });
 });
