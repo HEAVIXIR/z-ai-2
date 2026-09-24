@@ -773,3 +773,61 @@ Files produced:
 - scripts/explain-analyze.sh (reusable — runs all 28 EXPLAIN ANALYZE queries)
 
 Next: 15-B.2 (Index Hypotheses with simulated before/after — add index in transaction, EXPLAIN, rollback if no improvement) → 15-B.3 (Home Query Fan-out Analysis) → 15-B.4 (Apply ONLY proven improvements) → 15-B.5 (Regression + Re-measure).
+
+---
+
+Task ID: STEP-15-B-2
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.2 — Index Hypothesis Simulation. For each of 18 TBD candidates: EXPLAIN without index → CREATE INDEX temp → ANALYZE → EXPLAIN with index → DROP INDEX → compare. Acceptance: ≥2× improvement AND planner switched to Index Scan. No permanent indexes added. No schema changes.
+
+Work Log:
+- Verified pre-simulation baseline: 0 tmp_heavix_* indexes, 285 total indexes.
+- Wrote scripts/index-hypothesis-sim.sh — bash script that simulates all 18 candidates with rigorous before/after measurement using EXPLAIN (ANALYZE, BUFFERS), 5 runs per query, median execution time, planner scan type, shared buffers hit/read.
+- Ran the simulation. Captured full output to /tmp/index-hypothesis-results.txt.
+
+Results — 1 PROVEN, 17 NOT PROVEN:
+
+PROVEN (≥2× improvement AND planner switched to Index Scan):
+- B-H1: Brand.name — 0.317ms → 0.093ms = 3.41× improvement. Planner switched Seq Scan → Index Scan. Buffers hit 17 → 24. Saved 34kB sort memory per query. The /brands page asks for 24 rows ordered by name; with the index, PostgreSQL walks the index in name order and stops after 24 rows, skipping the Seq Scan + top-N heapsort of all 629 brands.
+
+NOT PROVEN — planner kept Seq Scan (correct choice at current data volume):
+- L-H1 to L-H8: 8 Listing candidates (29 rows). All stayed Seq Scan. Improvement 0.90×–1.22× (noise level).
+- B-H2: Brand composite (active, sortOrder, name). Stayed Seq Scan. 1.08× improvement.
+- C-H2 to C-H5: 4 Category candidates (295 rows). All stayed Seq Scan.
+- BR-H1 to BR-H3: 3 BuyRequest candidates (0 rows — table empty). All stayed Seq Scan.
+
+NOT PROVEN — used index but <2× improvement:
+- C-H1: Category.parentId — 0.10ms → 0.05ms = 1.85× improvement. Planner switched to Index Scan but fell short of the 2.0× threshold. Closest to PROVEN; re-test when Category > 2,000 rows.
+
+Already-decided candidates (NOT retested per user policy):
+- Brand.active → DO NOT ADD (100% selectivity — all 629 rows match the active filter, so an index would be useless).
+- Listing.categoryId → DO NOT ADD (no production query uses it for filter).
+- ListingImage.listingId → DEFERRED (table has 0 rows currently — can't measure improvement; structurally critical for N+1 prevention when listings have images).
+
+Verification:
+- Final cleanup check: 0 tmp_heavix_* indexes remain.
+- Total index count after simulation: 285 (matches pre-simulation baseline exactly).
+- No schema changes. No Prisma migration. No application code changes.
+- Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+
+Decision matrix recorded in docs/verification/STEP-15-B-2-INDEX-HYPOTHESES.md (7 sections, 556 lines):
+1. Method (rigorous 5-run median, EXPLAIN ANALYZE BUFFERS, ANALYZE table after index creation)
+2. Summary table — all 18 candidates with before/after/ratio/scan/decision
+3. The 1 PROVEN candidate (B-H1: Brand.name) — full EXPLAIN output before/after + explanation
+4. The 17 NOT PROVEN candidates — categorized by reason
+5. Conclusion (what was proven, what was not, total indexes unchanged)
+6. Verification commands (reproducible)
+7. Next steps (15-B.3 → 15-B.5)
+
+Stage Summary:
+- ✅ 15-B.2 complete: 18 candidates simulated, 1 PROVEN, 17 NOT PROVEN, 0 permanent indexes added.
+- ✅ User policy fully respected: no permanent indexes, no schema changes, no migrations.
+- ✅ Cleanup verified: 0 temp indexes left, total index count unchanged.
+- ✅ 1 candidate (B-H1: Brand.name) registered for 15-B.4 — will be applied only if 15-B.4 decides to proceed, only as a Prisma migration, only after 15-B.5 regression gate confirms no other query regresses.
+- ✅ Re-test triggers documented for when data grows past thresholds.
+
+Files produced:
+- docs/verification/STEP-15-B-2-INDEX-HYPOTHESES.md
+- scripts/index-hypothesis-sim.sh (reusable simulation)
+
+Next: 15-B.3 (Home Query Fan-out Analysis — identify independent queries, duplicates, ISR candidates with freshness requirements) → 15-B.4 (Apply ONLY proven improvements — B-H1 only, with regression gate) → 15-B.5 (Regression + Re-measure).
