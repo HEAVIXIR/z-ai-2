@@ -50,6 +50,63 @@ export interface AdminField {
   visible?: boolean;
   // For slug fields: auto-generate from another field
   slugFrom?: string;
+
+  // STEP 07 — V2.2 enhancements:
+
+  /** Conditional visibility: show this field only when conditions are met */
+  conditions?: FieldCondition[];
+
+  /** Validation rules */
+  validation?: FieldValidation;
+
+  /** Field-level permissions (separate from resource-level) */
+  permissions?: {
+    read?: string;   // permission key needed to READ this field
+    write?: string;  // permission key needed to WRITE this field
+  };
+
+  /** Field group (for visual grouping in the form) */
+  group?: string;
+
+  /** Width: full | half | third */
+  width?: 'full' | 'half' | 'third';
+
+  /** Dependency: auto-populate options based on another field's value */
+  dependsOn?: {
+    field: string;        // the controlling field
+    // When controlling field equals this value, show/update options
+    value?: unknown;
+    // API to fetch options when dependency changes
+    apiPath?: string;
+  };
+}
+
+// ── Conditional field visibility ───────────────────────────
+export interface FieldCondition {
+  /** The field to check */
+  field: string;
+  /** The operator */
+  operator: 'eq' | 'neq' | 'in' | 'notNull' | 'isNull' | 'gt' | 'lt';
+  /** The value to compare against */
+  value?: unknown;
+}
+
+// ── Field validation ────────────────────────────────────────
+export interface FieldValidation {
+  /** Minimum length for text fields */
+  minLength?: number;
+  /** Maximum length for text fields */
+  maxLength?: number;
+  /** Minimum value for number fields */
+  min?: number;
+  /** Maximum value for number fields */
+  max?: number;
+  /** Regex pattern for text fields */
+  pattern?: string;
+  /** Custom validation message */
+  message?: string;
+  /** Validate function name (server-side) */
+  validator?: string;
 }
 
 // ── Action definition (custom actions like publish, suspend) ─
