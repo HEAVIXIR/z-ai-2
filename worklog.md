@@ -5909,3 +5909,629 @@ The danger is **runtime breakage** (not data loss): the 6 live PriceRecord reade
 
 Both are 6F scope (Admin Review / Override), not 6B scope.
 Canonical flow (create → persist → read-back) works correctly.
+
+---
+
+Task ID: PHASE-6C-1
+Agent: Explore (Comparable Evidence-Only Auditor)
+Task: PHASE 6C.1 — Comparable Evidence-Only Inventory. Read-only audit of all Comparable-related models, writers, readers, vocabularies, and parallel implementations to determine the canonical Comparable layer and produce a reconciliation plan for 6C. NO code changes, NO schema changes, NO migrations, NO refactors.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` lines 5711-5911 (6A-RECONCILE-CONSOLIDATED + 6B.6 runtime verification gate).
+- Confirmed 2 deferred 6B gaps: (1) `POST /api/pricing/estimate` does NOT pass `listingId` → PriceObservation rows are brand-level (listingId NULL); (2) `POST /api/pricing/estimate` has no `logAudit()` call → 0 AuditLog entries. Both explicitly noted as 6F scope (Admin Review / Override), NOT 6B and NOT 6C.
+- Read `prisma/schema.prisma` lines 2060-2180 to inventory the 5 Comparable-related models (PriceObservation, PriceEstimate, PriceOverride, ComparisonSession, ComparisonItem).
+- Searched `prisma/schema.prisma` for `^model Comparable` and `^model Adjustment` — **NEITHER exists**. Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:64, 66`, both are PLANNED for 6C but not yet implemented.
+- Searched `prisma/schema.prisma` for `\b(year|condition)\b\s+(Int|String)` — confirmed `PriceObservation` has NO `year` and NO `condition` field (lines 2061-2094, 22 fields total). `SellIn7DaysApplication` (line 2034, 2036) and `Listing` (lines 453, 456) and `Product` (lines 1791, 1806) and others DO have these fields, but not PriceObservation.
+- Grepped `src/` for `\.(priceObservation|priceEstimate|priceOverride|comparisonSession|comparisonItem)\.(create|createMany|upsert|update|updateMany|delete|deleteMany)` — found 14 writer call sites.
+- Grepped `src/` for `\.(priceEstimate|priceObservation|priceOverride|comparisonSession|comparisonItem)\.(findMany|findUnique|findFirst|count|aggregate|groupBy)` — found 15 reader call sites.
+- Grepped repo-wide for `priceEstimate` — confirmed only 1 writer (`prisma/seed-price-observations.ts:127`) and 0 runtime readers in `src/`.
+- Read each Comparable-related API route in full:
+  - `src/app/api/pricing/estimate/route.ts` (95 lines, GET+POST, calls `estimatePrice` + `recordObservation`)
+  - `src/app/api/pricing/history/route.ts` (47 lines, GET, calls `getPriceHistory` from `price-history-engine.ts`)
+  - `src/app/api/pricing/health/route.ts` (35 lines, GET, calls `getPriceHealth`)
+  - `src/app/api/price-estimate/route.ts` (63 lines, legacy @ts-nocheck, GET only, references non-existent `estimate.currency`)
+  - `src/app/api/price-intelligence/route.ts` (100 lines, GET multi-action: stats|history|suggestions|outliers)
+  - `src/app/api/price-history/route.ts` (46 lines, GET, calls `getPriceHistory`)
+  - `src/app/api/ai-price-intelligence/route.ts` (102 lines, GET, **competes with `/api/pricing/health`** — verdict: `UNDERPRICED|FAIR|OVERPRICED`, queries Listing directly, does NOT call `estimatePrice`, does NOT read PriceObservation)
+  - `src/app/api/ai-price-suggestion/route.ts` (127 lines, POST, LLM-augmented, queries Listing directly)
+  - `src/app/api/admin/pricing/observations/route.ts` (44 lines, admin GET list)
+  - `src/app/api/admin/pricing/override/route.ts` (59 lines, admin POST create)
+  - `src/app/api/admin/compare/route.ts` (110 lines, GET list + PUT update siteSettings)
+  - `src/app/api/admin/compare/[id]/route.ts` (124 lines, GET + DELETE + PATCH)
+  - `src/app/api/compare/route.ts` (131 lines, POST create + GET legacy ad-hoc)
+  - `src/app/api/compare/[id]/route.ts` (143 lines, GET + DELETE + PATCH)
+  - `src/app/api/compare/[id]/items/route.ts` (40 lines, POST add)
+  - `src/app/api/compare/[id]/items/[itemId]/route.ts` (26 lines, DELETE remove)
+  - `src/app/api/compare/[id]/ai-summary/route.ts` (25 lines, POST generate)
+  - `src/app/api/compare/shared/[token]/route.ts` (43 lines, GET shared session)
+- Read `src/lib/price-engine.ts` (873 lines) — `estimatePrice()` at L174, `recordObservation()` at L674, `createOverride()` at L720, `listObservations()` at L791, `listOverrides()` at L853, `getPriceHealth()` at L584.
+- Read `src/lib/price-history-engine.ts` (401 lines) — `getPriceStats()` at L126, `getPriceHistory()` at L169, `detectOutliers()` at L276, `getPriceSuggestions()` at L354.
+- Read `src/lib/compare-engine.ts` (933 lines) — `createSession()` at L186, `addItem()` at L218, `removeItem()` at L258, `getComparisonData()` at L277, `getDifferencesOnly()` at L701, `getSessionByShareToken()` at L710, `generateAISummary()` at L739, `listSessionsForAdmin()` at L865, `archiveSession()` at L902, `renameSession()` at L912, `refreshShareToken()` at L922.
+- Read `src/lib/opportunity-engine.ts` (446 lines) — `detectPriceDrops()` at L272 reads `Listing.priceObservations` reverse relation (per 6B.1 port). Note: stale comment at L15-16 still says "uses PriceRecord" — should be updated.
+- Read `src/app/admin/pricing/page.tsx` (43 lines, SSR — fetches categories + brands + `listOverrides(100)`).
+- Read `src/app/admin/pricing/PricingEngineClient.tsx` (1293 lines) — 4-tab admin UI (Estimates, Observations, Overrides, History). Fetches /api/pricing/estimate, /api/pricing/health, /api/admin/pricing/observations, /api/admin/pricing/override, /api/pricing/history, /api/listings. Confirmed at L825-845: Overrides tab fabricates new rows client-side (`id: "new-" + Date.now()`, `originalEstimate: 0`).
+- Read `src/app/admin/price-intelligence/page.tsx` (223 lines, @ts-nocheck SSR) — **L57 and L65 pass `year: yearFilter` to `db.priceObservation.groupBy()` but PriceObservation has NO `year` field → runtime Prisma error when year filter is set**.
+- Read `src/app/admin/price-intelligence/PriceIntelligenceClient.tsx` (411 lines, client UI) — fetches `/api/price-intelligence?action=history` and `?action=suggestions`.
+- Read `src/components/listings/PriceIntelligence.tsx` (175 lines) — calls `/api/ai-price-intelligence?listingId=X`, verdict vocab: `UNDERPRICED | FAIR | OVERPRICED`. **ORPHAN — confirmed NOT imported anywhere in `src/`**.
+- Read `src/components/listings/PriceEstimateCard.tsx` (288 lines) — calls `/api/pricing/estimate` + `/api/pricing/health`, verdict vocab: `IN_RANGE | BELOW_RANGE | ABOVE_RANGE | INSUFFICIENT`. **ACTIVE — imported by `src/app/listings/[slug]/page.tsx:15`**.
+- Read `src/components/listings/CompareButton.tsx` (96 lines) — pushes listingId to localStorage and navigates to `/compare`. **ACTIVE — imported by `src/app/listings/[slug]/page.tsx:15`**.
+- Read `src/app/compare/page.tsx` (978 lines, client) — canonical compare UI. Calls /api/compare, /api/compare/[id], /api/compare/shared/[token], /api/compare/[id]/items, /api/compare/[id]/items/[itemId], /api/compare/[id]/ai-summary, /api/listings.
+- Read `src/app/admin/compare/page.tsx` (664 lines, client) — admin compare overview. Calls /api/admin/compare, /api/admin/compare/[id].
+- Read `tests/phase6-price-compare.test.ts` (193 lines) — Phase 6 test suite. Confirms (a) PriceObservation model exists, (b) estimatePrice exported from price-engine.ts, (c) getPriceHistory exported from price-history-engine.ts (canonical), (d) PriceEstimate model exists, (e) PriceOverride model + createOverride function exported. No verdict-vocabulary assertions.
+- Confirmed `src/lib/price-intelligence.ts` is GONE (per STEP 6B.2 comment in `compare-engine.ts:3-4` and `api/price-intelligence/route.ts:2`). Only legacy references in worklog/docs.
+- Confirmed `src/components/compare/ComparePageClient.tsx` exists but is ORPHAN (no importers — Grep for `ComparePageClient` returned only the file itself).
+- Ran DB row count query (Step 5): all 5 Comparable models return **0 rows** (PriceObservation=0, PriceEstimate=0, PriceOverride=0, ComparisonSession=0, ComparisonItem=0). Same as 6A baseline — no data drift in 6B.
+- Confirmed `prisma/legacy-sqlite/schema.prisma` lines 2057-2158 are byte-identical to `prisma/schema.prisma` lines 2061-2158 for all 5 Comparable models — no Postgres vs SQLite drift.
+- Verified API route disk reality vs 6A inventory: `/api/admin/pricing/observations/[id]`, `/api/admin/pricing/estimates`, `/api/admin/pricing/estimates/[id]`, `/api/admin/pricing/health` do NOT exist on disk — only the 2 collection-level routes exist (`/api/admin/pricing/observations` GET + `/api/admin/pricing/override` POST).
+
+Stage Summary:
+
+# PHASE 6C.1 — Comparable Evidence-Only Inventory
+
+## Summary
+
+| Metric | Value |
+|---|---|
+| Total Comparable-related models in schema | **5** (PriceObservation, PriceEstimate, PriceOverride, ComparisonSession, ComparisonItem) |
+| Spec'd-but-missing models (6A DoD §6C) | **2** (`Comparable`, `Adjustment` — neither exists in `prisma/schema.prisma`) |
+| Total writers across all 5 models | **14 call sites** (live: 12, seed-only: 1 for PriceEstimate, fabricated-UI: 1 in PricingEngineClient) |
+| Total readers across all 5 models | **15 call sites** + 5 reverse-relation traversals (Listing/Brand/Category → PriceObservation; Listing → ComparisonItem; Listing → PriceEstimate; Listing → PriceOverride) |
+| DB row counts (all 5 models) | **0 / 0 / 0 / 0 / 0** — all empty (no data drift since 6A baseline) |
+| Canonical candidate | **PriceObservation (model) + price-engine.ts:estimatePrice (comparable selection logic, in-memory) + price-history-engine.ts (readers)** — NO new `Comparable` model needed if 6C adopts this layer |
+| Reconciliation path | Reuse PriceObservation as canonical Comparable entity; extract `comparable-engine.ts` as a refactor of `estimatePrice`'s comparable-selection phase (lines 174-544); retire `PriceEstimate` (0 readers, 1 seed-only writer); unify verdict vocabulary to `IN_RANGE \| BELOW_RANGE \| ABOVE_RANGE \| INSUFFICIENT`; archive or redirect `/api/ai-price-intelligence` + delete orphan `PriceIntelligence.tsx` |
+| Live "Comparable" engine | `price-engine.ts:estimatePrice` (L174-544) — returns in-memory `EstimateResult.comparables` array (L73-82, L533-542). NOT persisted to a separate Comparable table. |
+
+---
+
+## §1. Existing Models (5 in schema + 2 spec'd-but-missing)
+
+### 1.1 PriceObservation (CANONICAL — keep)
+
+- **Location:** `prisma/schema.prisma:2061-2094` (34 lines including comments + indexes)
+- **Field count:** 22 columns (incl. 4 relation fields)
+- **Fields:**
+  | Field | Type | Notes |
+  |---|---|---|
+  | id | String @id @default(cuid()) | primary key |
+  | listingId | String? | nullable FK to Listing |
+  | listing | Listing? @relation onDelete:SetNull | outbound |
+  | productId | String? | bare (NO FK relation — 6A.2 §9 finding) |
+  | brandId | String? | nullable FK to Brand |
+  | brand | Brand? @relation onDelete:SetNull | outbound |
+  | categoryId | String? | nullable FK to Category |
+  | category | Category? @relation onDelete:SetNull | outbound |
+  | modelId | String? | bare (NO FK relation — references ProductModel.id implicitly) |
+  | askingPrice | BigInt? | canonical price field (matches Listing.price BigInt) |
+  | estimatedPrice | Float? | computed estimate (transient cache) |
+  | priceLower | Float? | p25 / widened lower bound |
+  | priceUpper | Float? | p75 / widened upper bound |
+  | currency | String @default("IRR") | |
+  | normalizedPrice | Float? | Toman-normalized price |
+  | source | String @default("LISTING") | vocab: LISTING \| MANUAL \| AI_ESTIMATE \| EXTERNAL |
+  | sourceType | String? | vocab: HEAVIX \| DIVAR \| SHEYPOOR \| OTHER |
+  | observedAt | DateTime @default(now()) | canonical timestamp |
+  | market | String? | vocab: IRAN \| REGIONAL |
+  | quality | String @default("MEDIUM") | vocab: HIGH \| MEDIUM \| LOW |
+  | status | String @default("ACTIVE") | vocab: ACTIVE \| FLAGGED \| EXCLUDED |
+  | confidence | String? | vocab: HIGH \| MEDIUM \| LOW \| INSUFFICIENT |
+  | comparableCount | Int? | denormalized count of comparables used |
+  | notes | String? | free-text |
+  | createdAt | DateTime @default(now()) | |
+- **Indexes:** `@@index([brandId, categoryId])` (L2091), `@@index([modelId])` (L2092), `@@index([observedAt])` (L2093)
+- **Unique constraints:** NONE — 6A.2 §10 recommended `@@unique([listingId, observedAt])` or `@@unique([brandId, categoryId, modelId, observedAt, source])` to prevent seed re-run duplicates — NOT applied.
+- **Missing fields per 6B.1.1 recommendation:** `year Int?` and `condition String?` were recommended to be added BEFORE porting readers (6A.2 §8) — **NOT applied**. This causes runtime Prisma errors in `price-history-engine.ts:135, 294, 362-363` and `admin/price-intelligence/page.tsx:57, 65` when year/condition filters are set.
+
+### 1.2 PriceEstimate (DEPRECATED candidate — orphan at runtime)
+
+- **Location:** `prisma/schema.prisma:2096-2111` (16 lines)
+- **Field count:** 11 columns (incl. 1 relation field)
+- **Fields:**
+  | Field | Type | Notes |
+  |---|---|---|
+  | id | String @id @default(cuid()) | |
+  | listingId | String? | nullable FK to Listing |
+  | listing | Listing? @relation onDelete:SetNull | outbound |
+  | estimatedPrice | Float | non-null (computed) |
+  | priceLower | Float | non-null |
+  | priceUpper | Float | non-null |
+  | confidence | String @default("MEDIUM") | vocab: HIGH \| MEDIUM \| LOW \| INSUFFICIENT |
+  | comparableCount | Int @default(0) | non-null |
+  | dataFreshness | String? | vocab: FRESH \| RECENT \| STALE |
+  | mainDrivers | String? | JSON-encoded string array |
+  | warnings | String? | JSON-encoded string array |
+  | modelVersion | String @default("v1.0") | |
+  | createdAt | DateTime @default(now()) | |
+- **Indexes:** `@@index([listingId])` (L2110)
+- **Unique constraints:** NONE
+- **Writers:** ONLY `prisma/seed-price-observations.ts:127` (seed script). **0 runtime writers in `src/`** — `recordObservation()` does NOT persist a PriceEstimate, only a PriceObservation. PriceEstimate was designed to persist estimate output but the design was abandoned; the seed is the only consumer.
+- **Readers:** 0 runtime readers in `src/`. Only seed reads back via `db.priceEstimate.count()` at `seed-price-observations.ts:158` and `db.priceEstimate.groupBy({ by: ["confidence"] })` at `seed-price-observations.ts:163`. **No admin UI, no API, no service ever reads this table at runtime.**
+- **DB rows:** 0 (empty since baseline).
+
+### 1.3 PriceOverride (active — keep, extend)
+
+- **Location:** `prisma/schema.prisma:2113-2123` (11 lines)
+- **Field count:** 8 columns (incl. 1 relation field)
+- **Fields:**
+  | Field | Type | Notes |
+  |---|---|---|
+  | id | String @id @default(cuid()) | |
+  | listingId | String | NON-nullable FK to Listing (Cascade delete) |
+  | listing | Listing @relation onDelete:Cascade | outbound |
+  | originalEstimate | Float | snapshot of estimate at override time |
+  | overridePrice | Float | the override price |
+  | reason | String | admin reason (min 3 chars enforced by createOverride) |
+  | overriddenBy | String? | bare string (default "ADMIN" in price-engine.ts:751) — NO FK to User (6A.2 finding) |
+  | overriddenAt | DateTime @default(now()) | |
+- **Indexes:** `@@index([listingId])` (L2122)
+- **Unique constraints:** NONE
+- **Audit hook:** `price-engine.ts:755-775` calls `logAudit({ action: "pricing.override", entityType: "PriceOverride", ... })` — ONLY writer in the Comparable domain that has an audit hook.
+- **DB rows:** 0 (empty since baseline).
+
+### 1.4 ComparisonSession (active — keep, extend)
+
+- **Location:** `prisma/schema.prisma:2133-2145` (13 lines)
+- **Field count:** 9 columns (incl. 1 relation field)
+- **Fields:**
+  | Field | Type | Notes |
+  |---|---|---|
+  | id | String @id @default(cuid()) | |
+  | userId | String? | bare string — NO FK to User (6A.2 finding) |
+  | name | String? | user-given name |
+  | shareToken | String? @unique | URL-safe 24-char base64url |
+  | shareExpiresAt | DateTime? | optional expiry |
+  | status | String @default("ACTIVE") | vocab: ACTIVE \| ARCHIVED |
+  | aiSummary | String? | cached LLM summary |
+  | aiSummaryAt | DateTime? | when summary was last generated |
+  | createdAt | DateTime @default(now()) | |
+  | updatedAt | DateTime @updatedAt | |
+  | items | ComparisonItem[] | reverse-only relation |
+- **Indexes:** NONE beyond the `@unique` on `shareToken` (which auto-creates a unique index)
+- **Unique constraints:** `shareToken` is `@unique`
+- **DB rows:** 0 (empty since baseline).
+
+### 1.5 ComparisonItem (active — keep, extend)
+
+- **Location:** `prisma/schema.prisma:2147-2158` (12 lines)
+- **Field count:** 8 columns (incl. 1 relation field)
+- **Fields:**
+  | Field | Type | Notes |
+  |---|---|---|
+  | id | String @id @default(cuid()) | |
+  | sessionId | String | NON-nullable FK to ComparisonSession (Cascade) |
+  | session | ComparisonSession @relation onDelete:Cascade | outbound |
+  | listingId | String? | nullable FK to Listing (SetNull) |
+  | listing | Listing? @relation onDelete:SetNull | outbound |
+  | productId | String? | bare (NO FK to Product) |
+  | brandId | String? | bare (NO FK to Brand) |
+  | modelId | String? | bare (NO FK to ProductModel) |
+  | sortOrder | Int @default(0) | display order |
+- **Indexes:** `@@index([sessionId])` (L2157)
+- **Unique constraints:** NONE — 6A.2 finding: missing `@@unique([sessionId, listingId])` to prevent duplicate items in the same session (dedup is enforced in JS by `addItem()` at `compare-engine.ts:235-238`, NOT by DB).
+- **Missing snapshot fields per 6A.2 finding:** no `titleSnapshot`, `priceSnapshot`, `imageSnapshot` columns — if a listing is deleted (SetNull fires) the ComparisonItem row remains but loses its display data.
+- **DB rows:** 0 (empty since baseline).
+
+### 1.6 Spec'd-but-missing models (per Phase 6 DoD §6C)
+
+Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:60-69`:
+
+| # | Model | Purpose | 6C DoD? | Disk Status |
+|---|---|---|---|---|
+| 1 | `Comparable` | Comparable entity registry (canonical Comparable Listing model) | YES (6C) | ❌ NOT in schema.prisma |
+| 2 | `Adjustment` | Price adjustment records (used by Comparable Engine) | YES (6C) | ❌ NOT in schema.prisma |
+
+Per `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:147` — spec also names a `PriceComparable` model (different name, same intent). Neither `Comparable` nor `PriceComparable` exists in `prisma/schema.prisma`.
+
+---
+
+## §2. Writers (14 call sites — 13 live + 1 seed-only)
+
+### 2.1 PriceObservation writers (2 sites — 1 live + 1 seed)
+
+| # | File:Line | Function | Trigger | Live? |
+|---|---|---|---|---|
+| 1 | `src/lib/price-engine.ts:685` | `recordObservation()` → `db.priceObservation.create()` | `POST /api/pricing/estimate` (route.ts:63) — public, called by `PriceEstimateCard.tsx` (frontend) + `PricingEngineClient.tsx` (admin Estimates tab) | ✅ LIVE (but listingId always NULL — see §9) |
+| 2 | `prisma/seed-price-observations.ts:80` | inline `db.priceObservation.create()` | Manual seed script (`bunx tsx prisma/seed-price-observations.ts`) | 🟡 SEED (manual) |
+
+### 2.2 PriceEstimate writers (1 site — seed-only)
+
+| # | File:Line | Function | Trigger | Live? |
+|---|---|---|---|---|
+| 1 | `prisma/seed-price-observations.ts:127` | inline `db.priceEstimate.create()` | Manual seed script (Phase 2 of seed) | 🟡 SEED (manual) — **NO runtime writers, NO runtime readers → orphan at runtime** |
+
+### 2.3 PriceOverride writers (1 site — live, audited)
+
+| # | File:Line | Function | Trigger | Live? |
+|---|---|---|---|---|
+| 1 | `src/lib/price-engine.ts:745` | `createOverride()` → `db.priceOverride.create()` + `logAudit()` at L755 | `POST /api/admin/pricing/override` (route.ts:43) — admin auth required, called by `PricingEngineClient.tsx:806` (Overrides tab form) | ✅ LIVE + AUDITED via `logAudit()` |
+
+### 2.4 ComparisonSession writers (8 sites — all live)
+
+| # | File:Line | Function/Route | Trigger | Live? |
+|---|---|---|---|---|
+| 1 | `src/lib/compare-engine.ts:196` | `createSession()` → `db.comparisonSession.create()` | `POST /api/compare` (route.ts:31) | ✅ LIVE |
+| 2 | `src/lib/compare-engine.ts:811` | `generateAISummary()` → `db.comparisonSession.update({ aiSummary, aiSummaryAt })` | `POST /api/compare/[id]/ai-summary` (route.ts:18) | ✅ LIVE |
+| 3 | `src/lib/compare-engine.ts:903` | `archiveSession()` → `db.comparisonSession.update({ status: "ARCHIVED" })` | (exported, called by admin route below) | ✅ LIVE (indirect) |
+| 4 | `src/lib/compare-engine.ts:913` | `renameSession()` → `db.comparisonSession.update({ name })` | (exported) | 🟡 exported but NO direct caller — public API uses inline update at `api/compare/[id]/route.ts:122` |
+| 5 | `src/lib/compare-engine.ts:927` | `refreshShareToken()` → `db.comparisonSession.update({ shareToken, shareExpiresAt })` | (exported) | 🟡 exported but NO direct caller — public API uses inline update at `api/compare/[id]/route.ts:108-114` |
+| 6 | `src/app/api/compare/[id]/route.ts:79` | DELETE handler → `db.comparisonSession.update({ status: "ARCHIVED" })` | `DELETE /api/compare/[id]` (public) | ✅ LIVE (duplicates `archiveSession`) |
+| 7 | `src/app/api/compare/[id]/route.ts:122` | PATCH handler → `db.comparisonSession.update({ name \| shareToken \| shareExpiresAt })` | `PATCH /api/compare/[id]` (public) | ✅ LIVE (duplicates `renameSession` + `refreshShareToken`) |
+| 8 | `src/app/api/admin/compare/[id]/route.ts:81` | DELETE handler → `db.comparisonSession.update({ status: "ARCHIVED" })` | `DELETE /api/admin/compare/[id]` (admin auth) | ✅ LIVE (duplicates public archive) |
+| 9 | `src/app/api/admin/compare/[id]/route.ts:112` | PATCH handler → `db.comparisonSession.update({ name })` | `PATCH /api/admin/compare/[id]` (admin auth) | ✅ LIVE (duplicates public rename) |
+
+**Duplicate-update concern:** `archiveSession`, `renameSession`, `refreshShareToken` are exported from `compare-engine.ts:902-932` but NOT called by the API routes — the routes inline the same logic. Either the helpers should be removed (dead code) or the routes should call them (de-duplicate).
+
+### 2.5 ComparisonItem writers (3 sites — all live)
+
+| # | File:Line | Function/Route | Trigger | Live? |
+|---|---|---|---|---|
+| 1 | `src/lib/compare-engine.ts:241` | `addItem()` → `db.comparisonItem.create()` | `POST /api/compare/[id]/items` (route.ts:33) | ✅ LIVE |
+| 2 | `src/app/api/compare/route.ts:47` | inline `db.comparisonItem.create()` (when POST `/api/compare` body includes `listingIds[]`) | `POST /api/compare` (route.ts:31) | ✅ LIVE (creates items inline during session bootstrap) |
+| 3 | `src/lib/compare-engine.ts:259` | `removeItem()` → `db.comparisonItem.deleteMany({ id, sessionId })` | `DELETE /api/compare/[id]/items/[itemId]` (route.ts:18) | ✅ LIVE (delete) |
+
+---
+
+## §3. Readers + Consumers (15 direct call sites + 5 reverse-relation traversals)
+
+### 3.1 PriceObservation readers (8 direct sites + 4 reverse-relation traversals)
+
+| # | File:Line | Function | Operation | Route/UI consumer |
+|---|---|---|---|---|
+| 1 | `src/lib/price-engine.ts:275` | `estimatePrice()` — comparable selection (active listings + active observations) | `findMany` (filter: brandId+categoryId+ACTIVE+askingPrice-not-null, take=60) | `GET /api/pricing/estimate`, `POST /api/pricing/estimate`, `getPriceHealth()` (transitive) → `PriceEstimateCard.tsx`, `PricingEngineClient.tsx` Estimates tab |
+| 2 | `src/lib/price-engine.ts:807` | `listObservations()` — admin list with filters | `findMany` + `include: { listing, brand, category }` | `GET /api/admin/pricing/observations` → `PricingEngineClient.tsx` Observations tab |
+| 3 | `src/lib/price-engine.ts:818` | `listObservations()` — count for pagination | `count` | same as #2 |
+| 4 | `src/lib/price-history-engine.ts:138` | `getPriceStats()` — aggregate stats | `findMany` (filter: productId+categoryId+brandId+year — **`year` field does NOT exist on PriceObservation → runtime Prisma error if year set**) | `GET /api/price-intelligence?action=stats` |
+| 5 | `src/lib/price-history-engine.ts:187` | `getPriceHistory()` — monthly timeseries + PUBLISHED listings fold-in | `findMany` (filter: observedAt+brandId+categoryId+modelId+productId, take=2000) | `GET /api/price-history`, `GET /api/pricing/history`, `GET /api/price-intelligence?action=history` |
+| 6 | `src/lib/price-history-engine.ts:296` | `detectOutliers()` — Tukey-fence outlier detection | `findMany` (filter: categoryId+brandId+year — **`year` runtime Prisma error if listing has year**) | `GET /api/price-intelligence?action=outliers` |
+| 7 | `src/lib/price-history-engine.ts:365` | `getPriceSuggestions()` — seller price range | `findMany` (filter: categoryId+brandId+year+condition — **`year` + `condition` runtime Prisma error if set**) | `GET /api/price-intelligence?action=suggestions` → `PriceIntelligenceClient.tsx` (admin) |
+| 8 | `src/app/admin/price-intelligence/page.tsx:60` | SSR `groupBy` for stats table | `groupBy` by `[categoryId, brandId]` + `_avg/_min/_max/_count` on `askingPrice` (filter: categoryId+brandId+year — **`year` runtime Prisma error if year set at L65**) | `/admin/price-intelligence` (admin SSR) |
+
+**Reverse-relation traversals (Listing → PriceObservation):**
+
+| # | File:Line | Function | Operation | Notes |
+|---|---|---|---|---|
+| R1 | `src/lib/opportunity-engine.ts:287` | `detectPriceDrops()` — reads `Listing.priceObservations` (orderBy observedAt desc, take=5) | `db.listing.findMany({ where: { priceObservations: { some: {} } }, select: { priceObservations: {...} } })` | Ported in 6B.1 from PriceRecord. **Will return 0 rows when listingId is NULL on observations** (the 6B.6 design gap) — see §9. |
+
+**Brand/Category reverse relations (declared but NOT traversed at runtime in src/):**
+- `Brand.priceObservations PriceObservation[]` at `schema.prisma:37` — declared but no `db.brand.findUnique({ include: { priceObservations } })` in src/.
+- `Category.priceObservations PriceObservation[]` at `schema.prisma:193` — declared but no `db.category.findUnique({ include: { priceObservations } })` in src/.
+- `Listing.priceObservations PriceObservation[]` at `schema.prisma:519` — traversed only by `opportunity-engine.ts:287`.
+
+### 3.2 PriceEstimate readers (0 runtime sites + 1 reverse-relation declaration)
+
+| # | File:Line | Operation | Notes |
+|---|---|---|---|
+| R2 | `prisma/schema.prisma:520` | `Listing.priceEstimates PriceEstimate[]` | declared but NO `db.listing.findUnique({ include: { priceEstimates } })` in src/ |
+
+**No runtime readers in `src/`. The only "readers" are in the seed script itself:** `db.priceEstimate.count()` at `seed-price-observations.ts:158` and `db.priceEstimate.groupBy({ by: ["confidence"] })` at `seed-price-observations.ts:163`. These run AFTER the seed writes — they are not runtime read paths.
+
+### 3.3 PriceOverride readers (1 direct site + 1 reverse-relation declaration)
+
+| # | File:Line | Function | Operation | Route/UI consumer |
+|---|---|---|---|---|
+| 1 | `src/lib/price-engine.ts:854` | `listOverrides()` — admin list | `findMany` (orderBy overriddenAt desc, take ≤500, include listing) | `src/app/admin/pricing/page.tsx:32` (SSR call) → `PricingEngineClient.tsx` Overrides tab |
+| R3 | `prisma/schema.prisma:521` | `Listing.priceOverrides PriceOverride[]` | declared but NOT traversed at runtime in src/ |
+
+### 3.4 ComparisonSession readers (5 direct sites)
+
+| # | File:Line | Function/Route | Operation | Notes |
+|---|---|---|---|---|
+| 1 | `src/lib/compare-engine.ts:223` | `addItem()` — verify session exists + ACTIVE | `findUnique` (select id+status+items) | called by POST /api/compare/[id]/items |
+| 2 | `src/lib/compare-engine.ts:278` | `getComparisonData()` — fetch session + items + listings + brands + categories + models + images | `findUnique` with deep nested `include` | called by GET /api/compare/[id], GET /api/admin/compare/[id] (transitively), POST /api/compare/[id]/ai-summary, GET /api/compare/shared/[token] |
+| 3 | `src/lib/compare-engine.ts:714` | `getSessionByShareToken()` — public shared session lookup | `findUnique({ where: { shareToken } })` | called by GET /api/compare/shared/[token] |
+| 4 | `src/lib/compare-engine.ts:880` | `listSessionsForAdmin()` — admin list | `findMany` (orderBy updatedAt desc, take ≤200, include _count items) | called by GET /api/admin/compare |
+| 5 | `src/app/api/compare/[id]/route.ts:23` | GET handler — fetch session metadata | `findUnique` (select id+name+status+shareToken+shareExpiresAt+createdAt+updatedAt+aiSummary+aiSummaryAt+userId) | public route |
+| 6 | `src/app/api/admin/compare/[id]/route.ts:23` | GET handler — fetch session + items for admin detail view | `findUnique` (select session fields + items: { orderBy sortOrder, select id+listingId+productId+brandId+modelId+sortOrder }) | admin route |
+
+### 3.5 ComparisonItem readers (0 direct + 2 include traversals)
+
+| # | File:Line | Function/Route | Operation | Notes |
+|---|---|---|---|---|
+| 1 | `src/lib/compare-engine.ts:282-293` | `getComparisonData()` — `ComparisonSession.items` include with deep nested Listing→Brand→Category→Model→images | included via `findUnique({ include: { items: { include: { listing: {...} } } } })` on session | called by all 4 getComparisonData entry points |
+| 2 | `src/app/api/admin/compare/[id]/route.ts:36-46` | GET handler — `items` include (lighter: only id+listingId+productId+brandId+modelId+sortOrder) | included via session findUnique | admin route |
+| R4 | `prisma/schema.prisma:525` | `Listing.comparisonItems ComparisonItem[]` | declared but NOT traversed at runtime in src/ |
+
+### 3.6 Test consumers
+
+| # | File:Line | Assertion | Notes |
+|---|---|---|---|
+| 1 | `tests/phase6-price-compare.test.ts:24` | `schema.includes("model PriceObservation")` | structural check |
+| 2 | `tests/phase6-price-compare.test.ts:40-48` | PriceObservation model has `source`, `sourceType`, `askingPrice`, `observedAt` | structural check |
+| 3 | `tests/phase6-price-compare.test.ts:64-66` | `price-history-engine.ts` exports `getPriceHistory` | structural check |
+| 4 | `tests/phase6-price-compare.test.ts:80` | `schema.includes("model PriceEstimate")` | structural check — **would still pass if PriceEstimate model is dropped, as long as the string "model PriceEstimate" is removed from the test** (port to PriceObservation-only test would be needed first) |
+| 5 | `tests/phase6-price-compare.test.ts:90` | `schema.includes("confidence")` | structural — passes against any model that has `confidence` |
+| 6 | `tests/phase6-price-compare.test.ts:162` | `schema.includes("PriceOverride")` | structural |
+| 7 | `tests/phase6-price-compare.test.ts:167` | `price-engine.ts` exports `createOverride` | structural |
+| 8 | `tests/phase6-price-compare.test.ts:127, 132` | `schema.includes("model ComparisonSession")`, `"model ComparisonItem"` | structural |
+| 9 | `tests/phase6-price-compare.test.ts:101, 106, 111` | `compare-engine.ts` exports `createSession`, `getComparisonData`, `getDifferencesOnly` | structural |
+| 10 | `tests/phase6-price-compare.test.ts:117-119` | `compare-engine.ts` contains strings `"LISTING"`, `"PRODUCT"`, `"MODEL"` | structural |
+| 11 | `tests/phase6-price-compare.test.ts:174-189` | DB has ≥2 PUBLISHED listings with prices, ≥2 brands | data-dependent (assumes seed listings exist) |
+
+---
+
+## §4. Vocabulary + Field Semantics Comparison
+
+### 4.1 Verdict vocabulary conflicts (4 competing systems)
+
+| # | Vocab | Source | Used by | Status |
+|---|---|---|---|---|
+| 1 | `IN_RANGE \| BELOW_RANGE \| ABOVE_RANGE \| INSUFFICIENT` | `price-engine.ts:45-49` (`PriceHealthStatus`) | `/api/pricing/health`, `PriceEstimateCard.tsx:41`, `PricingEngineClient.tsx:55, 114-119` | ✅ **CANONICAL** (per 6A-RECONCILE Phase 6 decision) |
+| 2 | `UNDERPRICED \| FAIR \| OVERPRICED` | `api/ai-price-intelligence/route.ts:71-73` (hard-coded 15% thresholds, no INSUFFICIENT case) | `PriceIntelligence.tsx:14` (orphan component) | ❌ **LEGACY** — competes with canonical, hard-coded thresholds, no INSUFFICIENT case |
+| 3 | `HIGH \| MEDIUM \| LOW \| INSUFFICIENT` | `price-engine.ts:43` (`ConfidenceLevel`) — used by `EstimateResult.confidence`, `PriceHealthResult.confidence`, persisted to `PriceObservation.confidence` and `PriceEstimate.confidence` | All price-engine consumers | ✅ **CANONICAL confidence** (separate axis from verdict) |
+| 4 | `UNDERPRICED_LISTING \| HIGH_DEMAND_LOW_SUPPLY \| TRENDING_BRAND \| PRICE_DROP \| NEW_TREND` | `opportunity-engine.ts:31-36` (`OpportunityType`) | `db.opportunity.findMany()` (Opportunity model — separate domain) | 🟡 Separate domain — `UNDERPRICED_LISTING` is a type-name, not a verdict vocabulary per se. Low conflict risk but worth noting. |
+
+### 4.2 Field name + type conflicts
+
+| # | Conflict | Field A | Field B | Resolution path |
+|---|---|---|---|---|
+| 1 | Asking-price type | `PriceObservation.askingPrice BigInt?` (L2072) | `Listing.price BigInt` (consistent — both BigInt) | ✅ No conflict (consistent BigInt) |
+| 2 | Override-price type | `PriceOverride.overridePrice Float` (L2118) + `originalEstimate Float` (L2117) | `Listing.price BigInt` + `PriceObservation.askingPrice BigInt` | ⚠️ Type mismatch — Float vs BigInt. Float loses precision above 2^53 (~9 quadrillion IRR). Acceptable for IRR magnitude but architecturally inconsistent. |
+| 3 | Estimated-price type | `PriceObservation.estimatedPrice Float?` (L2073) | `PriceEstimate.estimatedPrice Float` (L2100, non-null) | ⚠️ Same Float type, but nullability differs. PriceObservation allows null (when estimate failed); PriceEstimate requires non-null (which is why seed skips INSUFFICIENT cases at L122-124). |
+| 4 | Confidence nullability | `PriceObservation.confidence String?` (L2087, nullable) | `PriceEstimate.confidence String @default("MEDIUM")` (L2103, non-null w/ default) | ⚠️ Semantically same vocab; nullability differs. PriceObservation allows null confidence (when source=LISTING and no estimate was run). |
+| 5 | ComparableCount nullability | `PriceObservation.comparableCount Int?` (L2088) | `PriceEstimate.comparableCount Int @default(0)` (L2104) | ⚠️ Same as #4. |
+| 6 | ListingId nullability | `PriceObservation.listingId String?` (L2063, nullable — see §9) | `PriceOverride.listingId String` (L2115, NON-nullable) + `ComparisonItem.listingId String?` (L2151, nullable) | ⚠️ Different nullability per model. PriceOverride requires a listingId (can't override without a listing); PriceObservation allows brand-level observations. |
+| 7 | ProductId bare vs FK | `PriceObservation.productId String?` (L2065, bare) + `ComparisonItem.productId String?` (L2153, bare) | `Listing.productId String?` (FK to Product — `Product.listings` at L1778) | ⚠️ 6A.2 §9 finding — PriceObservation has NO FK to Product. `Product` model at L1753 has `priceRecords PriceRecord[]` (legacy, removed in 6B) but no `priceObservations PriceObservation[]` reverse field. Needs a forward+reverse relation add. |
+| 8 | Year/condition missing | `Listing.year Int?` (L456) + `Listing.condition String?` (L453) | `PriceObservation` has NO `year` and NO `condition` field | ⚠️ **RUNTIME BUG** — `price-history-engine.ts:135, 294, 362-363` and `admin/price-intelligence/page.tsx:57, 65` pass `where.year` and `where.condition` to Prisma queries against PriceObservation. Prisma will throw "Unknown arg `year`" / "Unknown arg `condition`" at runtime when filters are set. Per 6A.2 §8, this was a 6B.1.1 pre-port requirement — **NOT applied**. |
+| 9 | Timestamp vocab | `PriceObservation.observedAt DateTime` (L2082) | `PriceOverride.overriddenAt DateTime` (L2121), `ComparisonSession.createdAt/updatedAt` | ✅ Different concepts; no conflict (each model has its own semantic timestamp). |
+| 10 | Currency field | `PriceObservation.currency String @default("IRR")` (L2076) | `PriceEstimate` has NO `currency` field; `PriceOverride` has NO `currency` field; `ComparisonSession` has NO `currency` field | ⚠️ PriceObservation is the only model with currency. PriceEstimate/PriceOverride implicitly use IRR but don't model it. The legacy `/api/price-estimate/route.ts:47` references `estimate.currency` (which doesn't exist on `EstimateResult` interface at price-engine.ts:62-83) — silently falls back to `"IRR"` via `\|\|`. |
+
+### 4.3 Semantic overlaps
+
+| # | Overlap | Models/Services | Reconciliation recommendation |
+|---|---|---|---|
+| 1 | PriceObservation ↔ PriceEstimate | Both store an estimate output. PriceObservation has `estimatedPrice/priceLower/priceUpper/confidence/comparableCount` (L2073-2088) AND `askingPrice` (L2072); PriceEstimate has the same plus `dataFreshness/mainDrivers/warnings/modelVersion` (L2105-2108) but NO `askingPrice`. | **Drop PriceEstimate** — it's an orphan at runtime (0 readers, 1 seed writer). Its richer fields (`dataFreshness/mainDrivers/warnings/modelVersion`) should be ported into PriceObservation if persistence of full EstimateResult is desired. |
+| 2 | `/api/ai-price-intelligence` ↔ `/api/pricing/health` | Both return a verdict for a listing. `/api/ai-price-intelligence` returns `{verdict, stats, diff, message}` (Listing-only, hard-coded 15% thresholds); `/api/pricing/health` returns `{status, askingPrice, estimatedLower, estimatedUpper, estimatedPrice, confidence, deviationPct}` (calls `estimatePrice`, spec-compliant). | **Retire `/api/ai-price-intelligence`** — redirect to `/api/pricing/health`, delete orphan `PriceIntelligence.tsx` component (only caller). |
+| 3 | `/api/ai-price-suggestion` ↔ `/api/price-intelligence?action=suggestions` | Both return a seller price range. `/api/ai-price-suggestion` returns `{min, max, suggested, samples, confidence}` (Listing-only, LLM-augmented); `/api/price-intelligence?action=suggestions` returns `{suggestedMin, suggestedMax, suggestedAvg, confidence, sampleSize}` (PriceObservation-based). | **Decide canonical** — `/api/price-intelligence?action=suggestions` reads from PriceObservation (canonical model). `/api/ai-price-suggestion` is LLM-augmented. Could merge: PriceObservation-based baseline + LLM augmentation layer. |
+| 4 | `/api/price-estimate` ↔ `/api/pricing/estimate` | Both call `estimatePrice` from price-engine.ts. `/api/price-estimate` is legacy @ts-nocheck GET-only; `/api/pricing/estimate` is canonical GET+POST with `recordObservation` side-effect. | **Retire `/api/price-estimate`** — redirect to `/api/pricing/estimate`. |
+| 5 | `/api/price-history` ↔ `/api/pricing/history` ↔ `/api/price-intelligence?action=history` | All 3 call `getPriceHistory` from price-history-engine.ts (after 6B.5 redirect). `/api/price-history` returns `{history: [...]}`; `/api/pricing/history` returns `{months: N, points: [...]}`; `/api/price-intelligence?action=history` returns `{action: "history", points: [...]}`. | ⚠️ **Response shape divergence** — same engine, 3 different response wrappers. Consider unifying to a single canonical route (`/api/pricing/history`) + deprecating the others. |
+
+### 4.4 Name collisions
+
+| # | Collision | Resolved? | Notes |
+|---|---|---|---|
+| 1 | `getPriceHistory` (was in both `price-engine.ts` and `price-intelligence.ts`) | ✅ Resolved in 6B.5 | `price-engine.ts:666-670` has only a tombstone comment ("STEP 6B.5: getPriceHistory REMOVED"). Canonical location is now `src/lib/price-history-engine.ts:169`. `price-intelligence.ts` module was removed entirely (per 6B.2). All 3 API routes (`/api/price-history`, `/api/pricing/history`, `/api/price-intelligence?action=history`) import from the canonical module. |
+| 2 | `PriceIntelligence` (component name) | ⚠️ Partial | Two files share the name: `src/components/listings/PriceIntelligence.tsx` (orphan) and `src/app/admin/price-intelligence/PriceIntelligenceClient.tsx` (admin). The orphan component calls `/api/ai-price-intelligence` (different route than the admin which calls `/api/price-intelligence`). Different services, different verdict vocab — confusing. |
+| 3 | `estimatePrice` (single function) | ✅ No collision | Only defined in `price-engine.ts:174`. Called by 4 routes + 1 transitive (`getPriceHealth` at L613). |
+
+---
+
+## §5. DB Row Inventory (Step 5 — live query)
+
+| Model | Live count | Notes |
+|---|---|---|
+| `PriceObservation` | **0** | (6B.6 cleanup restored to 0; 6A baseline was 0; 6B.6 created + deleted 1 row during runtime E2E test) |
+| `PriceEstimate` | **0** | (No live writer; only seed would populate; seed not run) |
+| `PriceOverride` | **0** | (No admin override submitted) |
+| `ComparisonSession` | **0** | (No user has created a comparison session — `POST /api/compare` not exercised) |
+| `ComparisonItem` | **0** | (Same — no sessions → no items) |
+
+**Implication for 6C:** All 5 tables are EMPTY. Schema reshuffling (drop, rename, add fields, add indexes, add unique constraints, add relations) can be done with **zero data-loss risk**. The 6C agent can freely:
+- Drop PriceEstimate (orphan)
+- Add `year Int?` + `condition String?` to PriceObservation (6B.1.1 deferred gap)
+- Add `@@unique([listingId, observedAt])` or `@@unique([brandId, categoryId, modelId, observedAt, source])` to PriceObservation (6A.2 §10 deferred)
+- Add `Product.priceObservations PriceObservation[]` reverse field + FK on PriceObservation.productId (6A.2 §9 deferred)
+- Add `@@unique([sessionId, listingId])` to ComparisonItem
+- Add `User` FK on `ComparisonSession.userId` and `PriceOverride.overriddenBy`
+- Add snapshot fields to ComparisonItem (`titleSnapshot`, `priceSnapshot`, `imageSnapshot`)
+
+---
+
+## §6. Duplicate/Parallel Implementations
+
+### 6.1 Orphan components (no importers in `src/`)
+
+| # | File | Lines | Status | Why orphan |
+|---|---|---|---|---|
+| 1 | `src/components/listings/PriceIntelligence.tsx` | 175 | ❌ ORPHAN | Grep `from "@/components/listings/PriceIntelligence"` returns 0 matches in `src/`. The component calls `/api/ai-price-intelligence` (the only runtime caller of that route besides a hint string in `/api/ai-gateway/route.ts:179`). Uses non-canonical verdict vocab `UNDERPRICED \| FAIR \| OVERPRICED`. |
+| 2 | `src/components/compare/ComparePageClient.tsx` | 394 | ❌ ORPHAN | Grep `ComparePageClient` returns 1 file (the file itself). No importers. The canonical compare page is `src/app/compare/page.tsx` (978 lines, uses different component structure). |
+
+### 6.2 Competing price verdict routes
+
+| # | Route | Verdict vocab | Engine | Spec-aligned? |
+|---|---|---|---|---|
+| 1 | `/api/pricing/health` (canonical) | `IN_RANGE \| BELOW_RANGE \| ABOVE_RANGE \| INSUFFICIENT` | `price-engine.ts:getPriceHealth` → calls `estimatePrice` → reads PriceObservation + PUBLISHED Listings | ✅ Yes — spec §10 |
+| 2 | `/api/ai-price-intelligence` (legacy) | `UNDERPRICED \| FAIR \| OVERPRICED` | inline `db.listing.findMany` (Listing-only, hard-coded ±15% thresholds, NO INSUFFICIENT case) | ❌ No — hard-coded thresholds, no spec basis, no PriceObservation |
+
+### 6.3 Competing price suggestion routes
+
+| # | Route | Engine | Reads from |
+|---|---|---|---|
+| 1 | `/api/price-intelligence?action=suggestions` (canonical) | `price-history-engine.ts:getPriceSuggestions` | PriceObservation (canonical model) |
+| 2 | `/api/ai-price-suggestion` (LLM-augmented) | inline `db.listing.findMany` + LLM refinement | Listing only (does NOT read PriceObservation) |
+
+### 6.4 Competing price estimate routes
+
+| # | Route | Method | Engine | Side-effects |
+|---|---|---|---|---|
+| 1 | `/api/pricing/estimate` (canonical) | GET + POST | `price-engine.ts:estimatePrice` | POST calls `recordObservation()` (writes PriceObservation) |
+| 2 | `/api/price-estimate` (legacy) | GET only | `price-engine.ts:estimatePrice` | None — does NOT call `recordObservation()`; references non-existent `estimate.currency` (silently `"IRR"`) |
+
+### 6.5 Competing admin UIs
+
+| # | Admin UI | Engine | Reads from |
+|---|---|---|---|
+| 1 | `/admin/pricing` (canonical — 4 tabs: Estimates, Observations, Overrides, History) | `price-engine.ts` + `price-history-engine.ts` (via fetch) | PriceObservation, PriceOverride, Listing, Brand, Category |
+| 2 | `/admin/price-intelligence` (legacy — 1 page: stats + outliers + history + suggestions) | `price-history-engine.ts` (via SSR `groupBy` + fetch) | PriceObservation (groupBy on `askingPrice`) + Listing (for outlier computation) — **runtime Prisma error if year filter set** |
+
+### 6.6 Embedded comparable logic (no separate `comparable-engine.ts`)
+
+- Comparable selection is EMBEDDED in `price-engine.ts:estimatePrice` (lines 174-544, 370 lines of comparable-selection + statistics + drivers + warnings + similarity computation).
+- Spec'd `comparable-engine.ts` (per `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:156` and `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:121`) **does NOT exist on disk** — Glob `**/comparable-engine.ts` returns 0 results.
+- Per spec at `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:137`, an endpoint `GET /api/pricing/comparables/:listingId` is spec'd but **does NOT exist on disk** — only `/api/pricing/estimate` and `/api/pricing/health` exist.
+- The `EstimateResult.comparables` array (price-engine.ts:73-82, 533-542) is returned to callers but **NEVER persisted** to a separate table — it lives only in the API response.
+
+### 6.7 PricingEngineClient Overrides tab fabrication (6A.2 confirmed unchanged)
+
+- `PricingEngineClient.tsx:825-845` — after submitting a new override via `POST /api/admin/pricing/override`, the UI does NOT re-fetch the overrides list (because `GET /api/admin/pricing/overrides` does NOT exist on disk). Instead, it fabricates a row client-side:
+  - `id: "new-" + Date.now()` (fake ID)
+  - `originalEstimate: 0` (always zero — UI doesn't have the real original estimate)
+  - `overriddenBy: "ADMIN"` (hard-coded string)
+  - `overriddenAt: new Date().toISOString()` (client clock)
+- This is a 6F scope item per 6A inventory §100 (`GET /api/admin/pricing/overrides` missing route — 6F).
+
+---
+
+## §7. Canonical Candidate Determination
+
+### 7.1 Recommendation
+
+**Canonical Comparable layer = PriceObservation (model) + price-engine.ts:estimatePrice (comparable selection) + price-history-engine.ts (readers).**
+
+**No new `Comparable` model is needed** if 6C adopts this layer. The Comparable entity IS a PriceObservation row — each observation IS a comparable data point with brandId/categoryId/modelId/listingId/askingPrice/observedAt/source/sourceType/confidence/comparableCount.
+
+### 7.2 Rationale (8 evidence-based reasons)
+
+1. **Live writer exists** — `recordObservation()` at `price-engine.ts:685` writes PriceObservation rows via `POST /api/pricing/estimate`. This is the only live writer for any price-comparable data in the system.
+2. **Live readers exist** — 8 reader call sites in `src/` (price-engine.ts:275 + price-history-engine.ts:138/187/296/365 + admin SSR groupBy + opportunity-engine.ts:287). All other models have ≤1 reader.
+3. **Schema is rich** — 22 fields cover: identity (listingId/productId/brandId/categoryId/modelId), price (askingPrice BigInt, estimatedPrice Float, priceLower/priceUpper, normalizedPrice), provenance (source, sourceType, observedAt, market, quality, status, confidence, comparableCount, notes), audit (createdAt).
+4. **Type consistency with Listing** — `askingPrice BigInt?` matches `Listing.price BigInt`. (PriceOverride.overridePrice Float is the inconsistent one — Float — but that's a 6F concern.)
+5. **Reverse relations declared** — Listing.priceObservations (L519), Brand.priceObservations (L37), Category.priceObservations (L193). The relation graph is in place.
+6. **Spec-aligned** — `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:32` pipeline: "Raw Market Data → Comparable Selection → Feature Normalization → Price Estimation → Confidence → Explanation". PriceObservation stores the Raw Market Data (each row IS a comparable). `estimatePrice` does Comparable Selection in-memory.
+7. **Both tables empty** — 0 rows means zero data-loss risk if we add fields, indexes, unique constraints, or relations.
+8. **6A-RECONCILE already chose PriceObservation as canonical** for the price data foundation (worklog:5753). Comparable is a derivative use of the same data — there's no reason to invent a parallel model.
+
+### 7.3 Why a new `Comparable` model is NOT recommended (per evidence)
+
+Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:64`, the 6A DoD spec'd a `Comparable` model. But evidence shows:
+
+| Question | Evidence-based answer |
+|---|---|
+| Does a Comparable entity have attributes that PriceObservation lacks? | **No** — PriceObservation already has listingId/productId/brandId/categoryId/modelId/askingPrice/observedAt/source/sourceType/confidence/comparableCount/notes. A separate Comparable model would duplicate these fields. |
+| Does Comparable have a different lifecycle than PriceObservation? | **No** — both are persisted observations of market prices. The only difference is the in-memory `EstimateResult.comparables` array, which is a transient projection (not a separate entity). |
+| Would a Comparable model enable new queries that PriceObservation can't? | **No** — any "find comparables for listing X" query is `db.priceObservation.findMany({ where: { brandId, categoryId, askingPrice: { not: null }, status: "ACTIVE" } })` (which is what `estimatePrice` already does at L275-290). |
+| Would a Comparable model decouple estimate computation from raw observations? | **Possibly** — if comparables were curated/snapshotted separately from raw observations, a Comparable model could store "this row was used as a comparable for estimate Y at time T". But this is a provenance/audit concern, not a primary entity — it could be a `ComparableUsage` relation on PriceObservation, not a separate model. |
+
+### 7.4 Why a new `Adjustment` model is NOT recommended (per evidence)
+
+Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:66`, the 6A DoD spec'd an `Adjustment` model for "price adjustment records (used by Comparable Engine)". But evidence shows:
+
+- `PriceOverride` already serves this purpose: `originalEstimate Float`, `overridePrice Float`, `reason String`, `overriddenBy String?`, `overriddenAt DateTime`.
+- The "adjustment" concept is "admin manually overrides an estimate". `createOverride()` at `price-engine.ts:720-778` already implements this with full audit (`logAudit({ action: "pricing.override", ... })`).
+- If "Adjustment" means something different (e.g., automated price adjustments based on condition/year/hours factors), that logic lives in `estimatePrice`'s `computeSimilarity()` at L563-580 — it's an in-memory computation, not a persisted entity.
+
+**Recommendation:** Either drop the `Adjustment` model from 6C DoD (use PriceOverride), or rename PriceOverride → Adjustment during 6C if the broader term is preferred. Don't create both.
+
+### 7.5 Reconciliation path (high-level — 6C implementer will detail)
+
+1. **Drop `PriceEstimate`** (orphan — 0 readers, 1 seed-only writer, 0 rows). Port its richer fields (`dataFreshness/mainDrivers/warnings/modelVersion`) into PriceObservation if estimate persistence is desired. Update `tests/phase6-price-compare.test.ts:80, 88-91` to remove PriceEstimate assertions.
+2. **Add `year Int?` + `condition String?` to PriceObservation** (deferred 6B.1.1 — fixes runtime Prisma errors in `price-history-engine.ts:135, 294, 362-363` and `admin/price-intelligence/page.tsx:57, 65`).
+3. **Add `@@unique([brandId, categoryId, modelId, observedAt, source])` to PriceObservation** (deferred 6A.2 §10 — prevents seed re-run duplicates).
+4. **Add `Product.priceObservations PriceObservation[]` reverse field + FK on PriceObservation.productId** (deferred 6A.2 §9).
+5. **Extract `comparable-engine.ts`** as a refactor of `price-engine.ts:estimatePrice` lines 174-544 (comparable selection + statistics + similarity). Public API: `selectComparables(target): Promise<Comparable[]>` + `computeEstimate(comparables): EstimateResult`. `price-engine.estimatePrice` becomes a thin orchestrator: `selectComparables` → `computeEstimate` → return. This satisfies the 6A DoD for a `comparable-engine.ts` module without inventing a new model.
+6. **Add `GET /api/pricing/comparables/:listingId`** route (spec'd at `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:137`) — returns the in-memory `EstimateResult.comparables` array for a listing.
+7. **Retire `/api/ai-price-intelligence`** (legacy verdict route) — redirect to `/api/pricing/health`. Delete orphan `PriceIntelligence.tsx` component.
+8. **Retire `/api/price-estimate`** (legacy GET-only route) — redirect to `/api/pricing/estimate`.
+9. **Unify verdict vocabulary** to `IN_RANGE \| BELOW_RANGE \| ABOVE_RANGE \| INSUFFICIENT` (canonical). Remove `UNDERPRICED \| FAIR \| OVERPRICED` from the runtime codebase.
+10. **Decide on `/api/ai-price-suggestion` vs `/api/price-intelligence?action=suggestions`** — merge or retire one.
+11. **Unify response shape for price history** (`/api/price-history` vs `/api/pricing/history` vs `/api/price-intelligence?action=history` — 3 different wrappers for the same `getPriceHistory` call).
+12. **De-duplicate ComparisonSession update helpers** — `archiveSession/renameSession/refreshShareToken` exported at `compare-engine.ts:902-932` are duplicated by inline updates in the API routes. Either call the helpers from the routes or remove the helpers.
+13. **Add `User` FK on `ComparisonSession.userId` and `PriceOverride.overriddenBy`** (6A.2 finding).
+14. **Add `@@unique([sessionId, listingId])` to ComparisonItem** (6A.2 finding — dedup is currently JS-enforced at `compare-engine.ts:235-238`).
+15. **Add snapshot fields to ComparisonItem** (`titleSnapshot`, `priceSnapshot`, `imageSnapshot`) so the comparison table doesn't lose data when a listing is deleted (SetNull fires) — 6A.2 finding.
+
+### 7.6 Conflicts that must be resolved BEFORE 6C implementation can begin
+
+| # | Conflict | Resolution needed before | Risk if unresolved |
+|---|---|---|---|
+| 1 | `PriceObservation` missing `year` + `condition` fields | Any 6C code that filters comparables by year/condition | Runtime Prisma errors in ported readers (already broken — see §4.2 #8) |
+| 2 | `PriceEstimate` is orphan (0 readers, 1 seed writer) | 6C decision to drop or repurpose | Seed script will keep populating an unread table |
+| 3 | Verdict vocab `UNDERPRICED/FAIR/OVERPRICED` in `/api/ai-price-intelligence` + `PriceIntelligence.tsx` | 6C verdict unification | Two competing verdicts returned to UI for the same listing |
+| 4 | `price-engine.ts:estimatePrice` is 370 lines of mixed concerns (selection + stats + similarity + drivers + warnings) | 6C `comparable-engine.ts` extraction | Refactor risk if extraction is not careful |
+| 5 | `/api/price-estimate` references `estimate.currency` which doesn't exist | Any 6C cleanup of legacy routes | Silent `"IRR"` fallback masks the bug; route is @ts-nocheck so TS won't catch it |
+
+---
+
+## §8. Reconciliation Plan (ordered — 6C implementer to detail)
+
+Per §7.5 above. Key principles:
+
+1. **No data loss** — all 5 tables are empty (verified §5), so any schema change is safe.
+2. **No new model** — adopt PriceObservation as the canonical Comparable entity. Extract `comparable-engine.ts` as a refactor (not a new model).
+3. **Fix runtime bugs first** — `year/condition` Prisma errors are already live; 6C must add these fields BEFORE any comparable selection code uses them.
+4. **Retire orphans before adding new code** — `PriceEstimate` (orphan model), `PriceIntelligence.tsx` (orphan component), `/api/ai-price-intelligence` (semi-orphan route), `/api/price-estimate` (legacy @ts-nocheck route), `ComparePageClient.tsx` (orphan component) should all be removed BEFORE the 6C implementation layer is added on top.
+5. **Preserve the audit hook** — `createOverride()` at `price-engine.ts:755-775` is the ONLY Comparable-domain writer with an audit hook. Any 6C refactor must preserve this.
+6. **De-duplicate before extending** — the 5 `db.comparisonSession.update` sites in compare-engine.ts:811/903/913/927 vs api/compare/[id]/route.ts:79/122 vs api/admin/compare/[id]/route.ts:81/112 should be consolidated to call the helpers (or the helpers should be removed) before any new session-mutation logic is added.
+
+---
+
+## §9. Deferred Gaps from 6B (confirmed 6F scope — NOT to be silently fixed in 6C)
+
+These 2 gaps were identified at 6B.6 runtime verification (worklog lines 5877, 5886, 5900, 5902, 5907-5908) and explicitly deferred to **6F scope** (Admin Review / Override phase). They appear in this 6C.1 inventory as **dependency/evidence only** — 6C must NOT silently fix them.
+
+### 9.1 Gap #1 — `listingId` is NULL on observations created by POST /api/pricing/estimate
+
+- **Evidence:** `POST /api/pricing/estimate` (route.ts:62-80) calls `recordObservation({ brandId, categoryId, modelId, askingPrice: null, source: "AI_ESTIMATE", ... })` but does NOT pass `listingId`. The body of `recordObservation()` at `price-engine.ts:685-710` defaults `listingId: params.listingId ?? null` → always NULL for POST /api/pricing/estimate calls.
+- **Impact:** `Listing.priceObservations` reverse relation (schema.prisma:519) returns 0 observations for the listing being estimated. `opportunity-engine.ts:detectPriceDrops()` at L287 (`priceObservations: { some: {} }`) won't match these observations.
+- **Why deferred to 6F:** The POST route is a public raw-params estimate (no listingId in body — the body has brandId+categoryId+year+condition+city). To pass listingId, the route would need to accept an optional `listingId` in the body and the UI would need to send it. This is an Admin Review / Override concern (6F), not a 6C Comparable selection concern.
+- **6C interaction:** If 6C introduces a `GET /api/pricing/comparables/:listingId` endpoint, it should fetch comparables BY listingId (read existing observations where listingId = X) — but with listingId always NULL on AI_ESTIMATE observations, this filter would return 0 AI_ESTIMATE observations for any listing. 6C must NOT silently fix this by adding listingId to the POST route — that's 6F scope. Instead, 6C should document this limitation and either (a) read by brandId+categoryId (which IS populated) or (b) flag the listingId gap as a 6F dependency in the comparables endpoint.
+
+### 9.2 Gap #2 — No `logAudit()` call on POST /api/pricing/estimate
+
+- **Evidence:** `POST /api/pricing/estimate` (route.ts:46-94) calls `estimatePrice()` (read-only) and `recordObservation()` (write-side, non-fatal). It does NOT call `logAudit()`. So PriceObservation rows created via this route have NO AuditLog entry.
+- **Impact:** Cannot audit-trace who requested an estimate and when. The 6B.6 runtime test created observation `cmug5qlr0001covjmx27e69vs` with 0 corresponding AuditLog entries.
+- **Why deferred to 6F:** Audit hooks for public read+write routes are an Admin Review / Override concern (6F), not a 6C Comparable selection concern.
+- **6C interaction:** If 6C persists comparable selections (e.g., snapshot of which listings were used as comparables for an estimate), this snapshot write should be audited — but the audit hook for the underlying estimate request remains 6F scope. 6C must NOT silently add `logAudit()` to POST /api/pricing/estimate.
+
+### 9.3 Other deferred items (mentioned in 6A inventory but not 6B-deferred — listed for completeness)
+
+| # | Item | Deferred to | Notes |
+|---|---|---|---|
+| 1 | `GET /api/admin/pricing/overrides` (list route — UI fabricates rows because it's missing) | 6F | Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:100`. 6C must NOT silently add this route. |
+| 2 | `PATCH /api/admin/pricing/overrides/[id]` (revert override) | 6F | Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:101`. |
+| 3 | `DELETE /api/admin/pricing/overrides/[id]` (delete override) | 6F | Per same source. |
+| 4 | `PATCH /api/admin/pricing/observations/[id]` (flag/exclude observation) | 6B (per 6A.2 inventory) — but route still NOT on disk | Per `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md:99`. The 6B phase did NOT add this route. 6C should NOT silently add it — confirm with orchestrator whether this is 6B-late or 6F scope. |
+| 5 | `GET /api/admin/pricing/observations/[id]` (single-item fetch) | Unknown | 6A.2 inventory row 2 claimed it existed but it does NOT exist on disk. 6C should NOT silently add it. |
+| 6 | `GET /api/admin/pricing/estimates` + `[id]` (admin estimates routes) | Unknown | 6A.2 inventory rows 3-4 claimed they existed but they do NOT exist on disk. 6C should NOT silently add them. |
+
+---
+
+## §10. What This Audit Did NOT Do (constraints honored)
+
+- ❌ Did NOT write any code.
+- ❌ Did NOT modify any file (especially NOT `prisma/schema.prisma`).
+- ❌ Did NOT create any Schema / API / migration / model.
+- ❌ Did NOT refactor or optimize anything.
+- ❌ Did NOT silently fix the 2 deferred 6B gaps (listingId NULL + no AuditLog on POST /api/pricing/estimate) — registered as 6F scope only.
+- ❌ Did NOT silently fix the 6A inventory errors (missing `/api/admin/pricing/observations/[id]`, `/api/admin/pricing/estimates`, `/api/admin/pricing/health` routes) — registered as evidence only.
+- ❌ Did NOT silently fix the runtime Prisma errors in `price-history-engine.ts:135/294/362-363` and `admin/price-intelligence/page.tsx:57/65` (year/condition fields missing on PriceObservation) — registered as evidence only.
+- ❌ Did NOT silently add `year Int?` / `condition String?` to PriceObservation (deferred 6B.1.1 item — registered as a 6C pre-requisite).
+- ❌ Did NOT silently drop PriceEstimate or any other model.
+- ❌ Did NOT silently retire `/api/ai-price-intelligence`, `/api/price-estimate`, `PriceIntelligence.tsx`, or `ComparePageClient.tsx`.
+- ❌ Did NOT run any migrations or seed scripts.
+- ✅ ONLY read files and extracted evidence (file path + line number for every claim).
+- ✅ Ran ONE read-only DB count query (Step 5) — `db.priceObservation.count()` etc. — purely SELECT, no writes.
+
+---
+
+## Stage Summary
+
+- ✅ PHASE 6C.1 — Comparable Evidence-Only Inventory COMPLETE (this entry).
+- ✅ Control Plane baseline preserved — NO code changes, NO schema changes, NO migrations.
+- ✅ Canonical candidate: **PriceObservation (model) + price-engine.ts:estimatePrice (comparable selection, in-memory) + price-history-engine.ts (readers)**.
+- ✅ Reconciliation path documented (§7.5 — 15 ordered recommendations).
+- ✅ Risk: LOW (all 5 tables empty — zero data-loss risk for any schema reshape).
+- ✅ 2 deferred 6B gaps (listingId NULL + no AuditLog on POST /api/pricing/estimate) confirmed as **6F scope** — NOT to be silently fixed in 6C.
+- ✅ 5 runtime Prisma error sites identified (year/condition fields missing on PriceObservation) — registered as 6C pre-requisite, NOT silently fixed.
+- ✅ 4 orphan/legacy components + routes identified for retirement (PriceIntelligence.tsx, ComparePageClient.tsx, /api/ai-price-intelligence, /api/price-estimate) — registered as 6C cleanup candidates, NOT silently retired.
+
+## Next Steps
+
+```
+✅ PHASE 6A — Price/Compare Inventory Audit ← COMPLETE (3 sub-audits)
+✅ PHASE 6A-RECONCILE — PriceRecord ↔ PriceObservation Decision ← COMPLETE
+✅ PHASE 6B — Price Observation + History ← COMPLETE (6 sub-phases + 6B.6 runtime gate)
+✅ PHASE 6C.1 — Comparable Evidence-Only Inventory ← COMPLETE (this entry)
+🔵 PHASE 6C — Comparable Engine ← NEXT (build with reconciliation plan)
+   - 6C Phase 1: Add year/condition fields to PriceObservation (pre-requisite — fixes 5 runtime Prisma error sites)
+   - 6C Phase 2: Add unique constraint + Product reverse-relation to PriceObservation (6A.2 §9 + §10 deferred)
+   - 6C Phase 3: Drop PriceEstimate model (orphan — 0 readers, 1 seed writer); port its richer fields into PriceObservation if estimate persistence is desired
+   - 6C Phase 4: Extract comparable-engine.ts from price-engine.ts:estimatePrice (refactor, not new model)
+   - 6C Phase 5: Add GET /api/pricing/comparables/:listingId route (spec'd at HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md:137)
+   - 6C Phase 6: Retire /api/ai-price-intelligence + PriceIntelligence.tsx (orphan component) + /api/price-estimate (legacy @ts-nocheck route) + ComparePageClient.tsx (orphan component)
+   - 6C Phase 7: Unify verdict vocabulary to IN_RANGE | BELOW_RANGE | ABOVE_RANGE | INSUFFICIENT (canonical)
+   - 6C Phase 8: De-duplicate ComparisonSession update helpers (archiveSession/renameSession/refreshShareToken)
+   - 6C Phase 9: Add User FK on ComparisonSession.userId + PriceOverride.overriddenBy (6A.2 finding)
+   - 6C Phase 10: Add @@unique([sessionId, listingId]) + snapshot fields to ComparisonItem (6A.2 finding)
+   - 6C Phase 11: Update tests/phase6-price-compare.test.ts to remove PriceEstimate assertions (Phase 3 drop)
+   - 6C Phase 12: Smoke + runtime E2E (mirror 6B.6 pattern)
+```
+
