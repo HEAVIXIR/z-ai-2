@@ -66,17 +66,22 @@ export default async function HomePage() {
   // so MachineCategoriesSection can decide which generation (L1 or L2) to
   // render. Falls back to { generation: 1, parentId: null } when no config
   // row exists yet (admin hasn't visited /admin/home/categories).
-  const homeCategoryConfigRow = await db.homeCategoryConfig.findUnique({
-    where: { id: "main" },
-  });
+  //
+  // FIX-ANIMATIONS-BRANDS — fetch SiteSettings early so the verified
+  // section query can respect the admin's verifiedOnly toggle.
+  //
+  // STEP 15-B.5.2: Q3 (homeCategoryConfig) and Q4 (siteSettings) are
+  // independent — neither depends on the other's output. Run via
+  // Promise.all instead of sequential awaits. Proven in 15-B.4.4:
+  // 1.34× faster on single request, 1.47× faster under concurrent load.
+  const [homeCategoryConfigRow, siteSettings] = await Promise.all([
+    db.homeCategoryConfig.findUnique({ where: { id: "main" } }),
+    db.siteSettings.findUnique({ where: { id: "main" } }),
+  ]);
   const homeCategoryConfig = {
     generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
     parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
   };
-
-  // FIX-ANIMATIONS-BRANDS — fetch SiteSettings early so the verified
-  // section query can respect the admin's verifiedOnly toggle.
-  const siteSettings = await db.siteSettings.findUnique({ where: { id: "main" } });
 
   // Fetch listing data
   // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
