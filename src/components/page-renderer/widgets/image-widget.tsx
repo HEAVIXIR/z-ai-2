@@ -1,5 +1,5 @@
 'use client';
-export default function ImageWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function ImageWidget({ props }: { props: Record<string, any>; data?: any }) {
   const src = String(props.src || '');
   if (!src) return null;
   return (

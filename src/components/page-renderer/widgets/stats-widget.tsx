@@ -1,6 +1,6 @@
 'use client';
-export default function StatsWidget({ props, data }: { props: Record<string, unknown>; data?: unknown }) {
-  const stats = (data as Record<string, unknown>) || {};
+export default function StatsWidget({ props, data }: { props: Record<string, any>; data?: any }) {
+  const stats = (data as Record<string, any>) || {};
   const items = Object.entries(stats).filter(([k]) => k !== 'id' && k !== 'createdAt' && k !== 'updatedAt');
   return (
     <div>

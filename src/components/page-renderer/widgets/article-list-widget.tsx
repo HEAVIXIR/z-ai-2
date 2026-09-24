@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
-export default function ArticleListWidget({ props, data }: { props: Record<string, unknown>; data?: unknown }) {
-  const items = (data as Record<string, unknown>[]) || [];
+export default function ArticleListWidget({ props, data }: { props: Record<string, any>; data?: any }) {
+  const items = (data as Record<string, any>[]) || [];
   const limit = Number(props.limit) || 6;
   return (
     <div>

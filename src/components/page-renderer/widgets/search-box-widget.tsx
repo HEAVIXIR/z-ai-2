@@ -1,5 +1,5 @@
 'use client';
-export default function SearchBoxWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function SearchBoxWidget({ props }: { props: Record<string, any>; data?: any }) {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="flex gap-2 rounded-lg border bg-white p-2 shadow-sm">

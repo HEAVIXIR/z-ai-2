@@ -1,5 +1,5 @@
 'use client';
-export default function RichTextWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function RichTextWidget({ props }: { props: Record<string, any>; data?: any }) {
   return (
     <div className="prose prose-sm max-w-none">
       {props.title && <h2 className="mb-2 font-bold">{props.title}</h2>}

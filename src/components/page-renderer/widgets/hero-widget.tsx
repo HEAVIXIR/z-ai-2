@@ -1,5 +1,5 @@
 'use client';
-export default function HeroWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function HeroWidget({ props }: { props: Record<string, any>; data?: any }) {
   return (
     <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-800 p-8 md:p-12">
       {props.backgroundImage && (

@@ -25,7 +25,7 @@ import ArticleListWidget from './widgets/article-list-widget';
 import TrustBadgesWidget from './widgets/trust-badges-widget';
 
 // Widget key → React component mapper
-const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<string, unknown>; data?: unknown }>> = {
+const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<string, any>; data?: any }>> = {
   hero: HeroWidget,
   'listing-grid': ListingGridWidget,
   'category-grid': CategoryGridWidget,

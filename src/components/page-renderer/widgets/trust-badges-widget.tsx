@@ -1,5 +1,5 @@
 'use client';
-export default function TrustBadgesWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function TrustBadgesWidget({ props }: { props: Record<string, any>; data?: any }) {
   let badges: { title?: string; icon?: string }[] = [];
   try { badges = typeof props.badges === 'string' ? JSON.parse(props.badges) : (props.badges as any[]) || []; } catch {}
   return (

@@ -1,5 +1,5 @@
 'use client';
-export default function CtaWidget({ props }: { props: Record<string, unknown>; data?: unknown }) {
+export default function CtaWidget({ props }: { props: Record<string, any>; data?: any }) {
   return (
     <div className="rounded-xl bg-gradient-to-r from-[#F58220] to-orange-600 p-8 text-center text-white">
       {props.title && <h2 className="mb-2 text-xl font-bold">{props.title}</h2>}
