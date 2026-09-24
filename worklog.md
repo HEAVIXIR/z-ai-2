@@ -1702,3 +1702,1050 @@ Next: 15-B.5.4-C.1 (Mutation→Cache Tag Mapping freeze)
 
 No code changes made. Baseline preserved.
 Commit + push + sync: ✅
+
+---
+
+Task ID: STEP-16-B-A
+Agent: Explore (Resources 1-5 Auditor)
+Task: STEP 16-B-A — Completion Matrix Audit for Resources 1-5 (listings, brands, users, products, parts). Evidence Freeze step — NO code changes, read-only audit. For each resource, verify 20 dimensions from actual source code with file:line evidence. Per user policy: distinguish generic infrastructure (✅ at engine level) from resource-specific wiring (must be verified per resource). Do NOT trust 16-A summary — verify from source.
+
+Work Log:
+- Read worklog.md tail (last 200 lines) for context.
+- Read docs/verification/STEP-16-A-REPOSITORY-INVENTORY.md (the 16-A evidence freeze doc).
+- Read src/lib/admin/types.ts (AdminResourceConfig + FieldValidation + AdminField.permissions schema).
+- Read src/lib/admin/resources/listing.ts (121 lines, full).
+- Read src/lib/admin/resources/brand.ts (103 lines, full).
+- Read src/lib/admin/resources/user.ts (111 lines, full).
+- Read src/lib/admin/resources/store-resources.ts lines 1-488 (covers productConfig, partConfig, orderConfig, paymentConfig, companyConfig, machineConfig, reviewConfig).
+- Read src/lib/admin/resource-index.ts (33 lines) — verified all 18 resources registered, listings=ln 19, brands=ln 20, users=ln 21, products+parts=ln 23.
+- Read src/lib/authorization/permissions.ts (227 lines) — verified permission constants for listing/brand/user/product; NO `part.*` permissions exist (parts config uses `product.*` permissions).
+- Read src/lib/admin/field-policy.ts (108 lines) — generic infra: 3 functions applyFieldPolicy/applyFieldWritePolicy/filterReadableFieldsAsync. All check `field.permissions?.read/write` per field. Resource-specific evidence requires the config to set field.permissions — checked all 5 configs, NONE set field-level permissions.
+- Read src/lib/admin/data-adapter.ts (141 lines) — getPrismaModel uses `config.model.charAt(0).toLowerCase() + config.model.slice(1)` → matches `db[modelKey]`. Generic infra.
+- Read src/lib/admin/action-engine.ts (274 lines) — 8 registered handlers: publish, unpublish, feature, unfeature, verify, suspend, activate, delete. NO `verify-email` handler registered (gap for user.ts).
+- Read src/lib/admin/bulk-export-engine.ts (282 lines) — executeExport uses `canExport(ctx.userId, resourceKey)` from authorization/index.ts:215-231 which has internal EXPORT_PERMISSIONS map (listing/user/product/brand/order/payment/audit explicitly mapped; others fall back to `${resource}.read` which fails for parts).
+- Read src/lib/admin/audit.ts (87 lines) — logAudit writes to AuditLog table. Generic infra.
+- Read src/app/api/admin/resources/[resource]/route.ts (165 lines) — universal GET (list) + POST (create). Real file, no @ts-nocheck.
+- Read src/app/api/admin/resources/[resource]/[id]/route.ts (134 lines) — universal GET/PATCH/DELETE single. Real file.
+- Read prisma/schema.prisma relevant models (Brand ln 17, Listing ln 444, User ln 1548, Product ln 1754, Part ln 1802) — verified all column.key fields map to real Prisma model fields.
+- Listed src/app/api/admin/ — confirmed legacy route files exist for: /api/admin/listings (route.ts + [id]/route.ts), /api/admin/users (route.ts + [id]/route.ts), /api/admin/products (route.ts + [id]/route.ts), /api/admin/parts (route.ts + [id]/route.ts). NO file at /api/admin/taxonomy/brands (brands apiBase is a dead path).
+- Listed tests/contract/ — confirmed 4 test files: rbac-matrix.test.ts, crud-pipeline.test.ts, resource-contract.test.ts (generic, covers all 18), page-builder.test.ts. NO dedicated test file for any of the 5 resources.
+- Listed tests/integration/ — only auth.test.ts. NO resource-specific integration test for listings/brands/users/products/parts.
+- Verified universal-form.tsx (ln 168-169), universal-table.tsx (ln 54), universal-detail.tsx (ln 50) all use `/api/admin/resources/${config.key}` — NOT `config.apiBase`. So apiBase is decorative (unused by universal engine); actual API path is the universal route.
+- Read docs/verification/STEP-14.8-EVIDENCE.md §10.2 smoke matrix — confirmed runtime smoke for all 5 resources: `/admin/resources/{listings,brands,products,users,parts}` all return 307 → /login (correct auth redirect).
+- Read dev.log (48 lines) — confirmed runtime hit `GET /api/listings?limit=8 200 in 496ms` (line 18) for listings.
+
+Critical findings (per-resource, per-dimension):
+
+# STEP 16-B-A Audit Report (Resources 1-5)
+
+## R1: listings
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:19 `registerResource(listingConfig)` |
+| 2 | Config | ✅ | listing.ts:3-10 (key/titleFa/titleEn/icon/model/apiBase/adminPath all set) |
+| 3 | Permission/RBAC | ✅ | listing.ts:12-18 (read/create/update/delete/export='listing.export'); permissions.ts:57-63 has all 7 listing.* permission constants |
+| 4 | Field Policy | ⚠️ | listing.ts:55-87 NONE of 15 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49 |
+| 5 | API | ✅ | listing.ts:9 `apiBase='/api/admin/listings'` real file at src/app/api/admin/listings/route.ts; ALSO universal route at src/app/api/admin/resources/[resource]/route.ts |
+| 6 | Service | ✅ | listing.ts:8 `model='listing'` → prisma/schema.prisma:444 `model Listing`; data-adapter.ts:30-37 getPrismaModel uses `db[modelKey]` |
+| 7 | Table | ✅ | listing.ts:20-32 11 columns; all keys (title/status/listingType/price/condition/city/year/viewCount/featured/verified/createdAt) match Listing model fields in schema.prisma:444-534 |
+| 8 | Filters | ✅ | listing.ts:34-48 filters[] has 4 items (status/listingType/featured/verified) |
+| 9 | Sorting | ✅ | listing.ts:50 `defaultSort: { field: 'createdAt', order: 'desc' }`; 7 columns have sortable:true |
+| 10 | Pagination | ✅ | listing.ts:51 `pageSize: 25` |
+| 11 | Form | ✅ | listing.ts:55-87 fields[] has 15 items |
+| 12 | Validation | ❌ | listing.ts:55-87 NONE of 15 fields has `validation: { minLength/maxLength/min/max/pattern/... }` set (only `required: true` on title at ln 56). FieldValidation type at types.ts:95-110 is unused for listings |
+| 13 | Detail | ✅ | listing.ts:89-95 detailTabs[] has 5 tabs (overview/attributes/media/activity/audit) |
+| 14 | Relations | ✅ | listing.ts:116-119 relations[] has 2 items. NOTE: referenced resource keys `'listing-images'` and `'offers'` — `'listing-images'` is NOT in registry (only `'offers'` is, as listingOffer per marketplace-resources.ts) |
+| 15 | Actions | ⚠️ | listing.ts:97-102 actions[] has 4 items (publish/feature/verify/delete) BUT none have `apiPath`. action-engine.ts:97-165 has registered handlers for all 4 action keys so they'd work, but no apiPath per dimension criterion |
+| 16 | Bulk | ✅ | listing.ts:104-108 bulkActions[] has 3 items (bulk-publish/bulk-feature/bulk-delete) |
+| 17 | Export | ✅ | listing.ts:17 `permissions.export='listing.export'`; bulk-export-engine.ts:189-281 executeExport generic via registry; authorization/index.ts:220 canExport map has explicit `listing: 'listing.export'` resource-specific entry |
+| 18 | Audit | ✅ | listing.ts:110-114 `audit.enabled=true; entityType='Listing'; actions[4]=['listing.publish','listing.update','listing.delete','listing.moderate']` |
+| 19 | Tests | ⚠️ | NO dedicated test file for listings in tests/contract/ or tests/integration/ (glob `tests/**/listing*.test.ts` returns no match). Only generic coverage in tests/contract/resource-contract.test.ts (373 tests across all 18, no per-resource isolation) |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:306 `/admin/resources/listings → 307 → /login` smoke ✅; dev.log:18 `GET /api/listings?limit=8 200 in 496ms` runtime hit |
+
+**R1 Verdict summary:** 16 ✅ / 3 ⚠️ / 1 ❌
+
+## R2: brands
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:20 `registerResource(brandConfig)` |
+| 2 | Config | ✅ | brand.ts:3-10 all 5 fields set |
+| 3 | Permission/RBAC | ✅ | brand.ts:12-18 (read/create/update/delete/export='brand.read'); permissions.ts:72-76 has all 5 brand.* permission constants |
+| 4 | Field Policy | ⚠️ | brand.ts:50-70 NONE of 14 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts |
+| 5 | API | ✅ | brand.ts:9 `apiBase='/api/admin/taxonomy/brands'` is a DEAD path (no file at that route — `src/app/api/admin/taxonomy/` directory does not exist), BUT universal route at `src/app/api/admin/resources/[resource]/route.ts` serves brands via registry. Universal-form/table/detail components use `/api/admin/resources/${config.key}` NOT `config.apiBase` (universal-table.tsx:54, universal-form.tsx:168-169, universal-detail.tsx:50), so apiBase is decorative. ✅ via universal route, but note apiBase config is misleading. |
+| 6 | Service | ✅ | brand.ts:8 `model='brand'` → prisma/schema.prisma:17 `model Brand`; data-adapter.ts:30-37 uses `db.brand` |
+| 7 | Table | ✅ | brand.ts:20-30 9 columns; all keys (name/slug/country/status/verification/featured/active/foundedYear/createdAt) match Brand model fields in schema.prisma:17-61 |
+| 8 | Filters | ✅ | brand.ts:32-43 filters[] has 4 items (status/verification/featured/country) |
+| 9 | Sorting | ✅ | brand.ts:45 `defaultSort: { field: 'name', order: 'asc' }`; 7 sortable columns |
+| 10 | Pagination | ✅ | brand.ts:46 `pageSize: 50` |
+| 11 | Form | ✅ | brand.ts:50-70 fields[] has 14 items |
+| 12 | Validation | ❌ | brand.ts:50-70 NONE of 14 fields has `validation: { ... }` set (only `required: true` on name at ln 51). FieldValidation type at types.ts:95-110 is unused for brands |
+| 13 | Detail | ✅ | brand.ts:72-79 detailTabs[] has 6 tabs (overview/aliases/models/media/seo/audit) |
+| 14 | Relations | ✅ | brand.ts:98-101 relations[] has 2 items. NOTE: referenced resource keys `'brand-aliases'` and `'product-models'` are NOT registered resource keys (not in resource-index.ts:19-29). Universal-detail would call `/api/admin/resources/brand-aliases?brandId=X` → 404. |
+| 15 | Actions | ⚠️ | brand.ts:81-85 actions[] has 3 items (verify/feature/delete) BUT none have `apiPath`. action-engine.ts:130-136 has `verify` handler; action-engine.ts:114-120 has `feature` handler; action-engine.ts:154-165 has `delete` handler — all 3 work via registered handlers |
+| 16 | Bulk | ✅ | brand.ts:87-90 bulkActions[] has 2 items (bulk-verify/bulk-feature) |
+| 17 | Export | ✅ | brand.ts:17 `permissions.export='brand.read'`; authorization/index.ts:226 canExport map has explicit `brand: 'brand.read'` resource-specific entry |
+| 18 | Audit | ✅ | brand.ts:92-96 `audit.enabled=true; entityType='Brand'; actions[3]=['brand.update','brand.delete','brand.publish']` |
+| 19 | Tests | ⚠️ | NO dedicated test file for brands (glob `tests/**/brand*.test.ts` matches only `tests/unit/brand-alias.test.ts` which tests the BrandAlias model, NOT the brand admin resource). Only generic coverage in resource-contract.test.ts |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:307 `/admin/resources/brands → 307 → /login` smoke ✅ |
+
+**R2 Verdict summary:** 16 ✅ / 3 ⚠️ / 1 ❌
+
+## R3: users
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:21 `registerResource(userConfig)` |
+| 2 | Config | ✅ | user.ts:3-10 all 5 fields set |
+| 3 | Permission/RBAC | ✅ | user.ts:12-18 (read/create/update/delete/export='user.read'); permissions.ts:43-47 has all 5 user.* permission constants (read/create/update/delete/suspend). NOTE: `user.export` not in permissions.ts (config falls back to `user.read` for export) |
+| 4 | Field Policy | ⚠️ | user.ts:56-81 NONE of 12 fields has `permissions: { read, write }` set — even sensitive fields like `passwordHash` (ln 61) and `role` (ln 66) lack field-level permission gating. Only generic infra in field-policy.ts |
+| 5 | API | ✅ | user.ts:9 `apiBase='/api/admin/users'` real file at src/app/api/admin/users/route.ts (legacy); ALSO universal route at src/app/api/admin/resources/[resource]/route.ts |
+| 6 | Service | ✅ | user.ts:8 `model='user'` → prisma/schema.prisma:1548 `model User`; data-adapter.ts:30-37 uses `db.user` |
+| 7 | Table | ✅ | user.ts:20-32 11 columns; all keys (firstName/lastName/email/mobile/role/status/emailVerified/mobileVerified/companyName/lastLoginAt/createdAt) match User model fields in schema.prisma:1548-1604 |
+| 8 | Filters | ✅ | user.ts:34-49 filters[] has 4 items (role/status/emailVerified/mobileVerified) |
+| 9 | Sorting | ✅ | user.ts:51 `defaultSort: { field: 'createdAt', order: 'desc' }`; 7 sortable columns |
+| 10 | Pagination | ✅ | user.ts:52 `pageSize: 25` |
+| 11 | Form | ✅ | user.ts:56-81 fields[] has 12 items |
+| 12 | Validation | ❌ | user.ts:56-81 NONE of 12 fields has `validation: { ... }` set. CRITICAL: `email` (ln 59) has no pattern validation; `mobile` (ln 60) has no pattern validation; `passwordHash` (ln 61) has no minLength. FieldValidation type at types.ts:95-110 is unused for users |
+| 13 | Detail | ✅ | user.ts:83-88 detailTabs[] has 4 tabs (overview/listings/activity/audit) |
+| 14 | Relations | ✅ | user.ts:107-109 relations[] has 1 item (listings via sellerId). `'listings'` IS a registered resource key (resource-index.ts:19) |
+| 15 | Actions | ⚠️ | user.ts:90-95 actions[] has 4 items (suspend/activate/verify-email/delete) NONE have `apiPath`. CRITICAL RUNTIME GAP: `verify-email` action key (ln 93) has NO registered handler in action-engine.ts:97-165 — only 8 handlers registered (publish/unpublish/feature/unfeature/verify/suspend/activate/delete). action-engine.ts:224-234 would throw `Error: No handler for action "verify-email"` at runtime. The other 3 (suspend/activate/delete) have handlers. |
+| 16 | Bulk | ✅ | user.ts:97-99 bulkActions[] has 1 item (bulk-suspend) |
+| 17 | Export | ✅ | user.ts:17 `permissions.export='user.read'`; authorization/index.ts:221 canExport map has explicit `user: 'user.read'` entry (comment notes "user.export not yet defined — use user.read for now") |
+| 18 | Audit | ✅ | user.ts:101-105 `audit.enabled=true; entityType='User'; actions[4]=['user.create','user.update','user.delete','user.suspend']` |
+| 19 | Tests | ⚠️ | NO dedicated test file for users (glob `tests/**/user*.test.ts` returns no match). Only generic coverage in resource-contract.test.ts. Note: tests/unit/rbac.test.ts exists but tests RBAC infra not users-resource. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:312 `/admin/resources/users → 307 → /login` smoke ✅ |
+
+**R3 Verdict summary:** 16 ✅ / 3 ⚠️ / 1 ❌
+
+## R4: products
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:23 `registerResource(productConfig)` |
+| 2 | Config | ✅ | store-resources.ts:3-10 all 5 fields set |
+| 3 | Permission/RBAC | ✅ | store-resources.ts:12-16 (read/create/update/delete/export='product.read'); permissions.ts:66-69 has all 4 product.* permission constants (read/create/update/delete) |
+| 4 | Field Policy | ⚠️ | store-resources.ts:45-57 NONE of 6 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts |
+| 5 | API | ✅ | store-resources.ts:9 `apiBase='/api/admin/products'` real file at src/app/api/admin/products/route.ts (legacy); ALSO universal route at src/app/api/admin/resources/[resource]/route.ts |
+| 6 | Service | ✅ | store-resources.ts:8 `model='product'` → prisma/schema.prisma:1754 `model Product`; data-adapter.ts:30-37 uses `db.product` |
+| 7 | Table | ✅ | store-resources.ts:18-28 9 columns; all keys (canonicalName/slug/status/description/source/confidence/verifiedAt/sortOrder/createdAt) match Product model fields in schema.prisma:1754-1781 |
+| 8 | Filters | ✅ | store-resources.ts:30-39 filters[] has 2 items (status/source) |
+| 9 | Sorting | ✅ | store-resources.ts:41 `defaultSort: { field: 'createdAt', order: 'desc' }`; 7 sortable columns |
+| 10 | Pagination | ✅ | store-resources.ts:42 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:45-57 fields[] has 6 items |
+| 12 | Validation | ❌ | store-resources.ts:45-57 NONE of 6 fields has `validation: { ... }` set (only `required: true` on canonicalName at ln 46). FieldValidation type at types.ts:95-110 is unused for products |
+| 13 | Detail | ✅ | store-resources.ts:59-64 detailTabs[] has 4 tabs (overview/machines/parts/audit) |
+| 14 | Relations | ✅ | store-resources.ts:76-79 relations[] has 2 items (machines/parts). Both `'machines'` and `'parts'` ARE registered resource keys (resource-index.ts:23-25) |
+| 15 | Actions | ⚠️ | store-resources.ts:66-69 actions[] has 2 items (verify/delete) NONE have `apiPath`. action-engine.ts:130-136 has `verify` handler; action-engine.ts:154-165 has `delete` handler — both work via registered handlers |
+| 16 | Bulk | ✅ | store-resources.ts:71-73 bulkActions[] has 1 item (bulk-delete) |
+| 17 | Export | ✅ | store-resources.ts:15 `permissions.export='product.read'`; authorization/index.ts:225 canExport map has explicit `product: 'product.read'` resource-specific entry |
+| 18 | Audit | ✅ | store-resources.ts:75 `audit.enabled=true; entityType='Product'; actions[3]=['product.create','product.update','product.delete']` |
+| 19 | Tests | ⚠️ | NO dedicated test file for products (glob `tests/**/product*.test.ts` returns no match). Only generic coverage in resource-contract.test.ts |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:308 `/admin/resources/products → 307 → /login` smoke ✅ |
+
+**R4 Verdict summary:** 16 ✅ / 3 ⚠️ / 1 ❌
+
+## R5: parts
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:23 `registerResource(partConfig)` |
+| 2 | Config | ✅ | store-resources.ts:82-89 all 5 fields set (key/titleFa/titleEn/icon/model/apiBase/adminPath) |
+| 3 | Permission/RBAC | ⚠️ | store-resources.ts:91-94 has read/create/update/delete set BUT NO `export` permission. Also: parts uses `product.read/create/update/delete` (not `part.*`) — permissions.ts has NO `part.*` constants (search confirms). 4 of 5 RBAC fields set. |
+| 4 | Field Policy | ⚠️ | store-resources.ts:107-117 NONE of 4 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts |
+| 5 | API | ✅ | store-resources.ts:88 `apiBase='/api/admin/parts'` real file at src/app/api/admin/parts/route.ts (legacy); ALSO universal route at src/app/api/admin/resources/[resource]/route.ts |
+| 6 | Service | ✅ | store-resources.ts:87 `model='part'` → prisma/schema.prisma:1802 `model Part`; data-adapter.ts:30-37 uses `db.part` |
+| 7 | Table | ✅ | store-resources.ts:96-102 5 columns; all keys (partNumber/oemNumber/condition/status/createdAt) match Part model fields in schema.prisma:1802-1813 |
+| 8 | Filters | ❌ | store-resources.ts:82-124 partConfig has NO `filters` field at all (only columns/defaultSort/pageSize/searchable/searchFields/fields/actions/audit). 16-A row 5 claimed parts had Audit ✓ Relations ✓ — Relations is WRONG. |
+| 9 | Sorting | ✅ | store-resources.ts:104 `defaultSort: { field: 'createdAt', order: 'desc' }`; 3 sortable columns |
+| 10 | Pagination | ✅ | store-resources.ts:105 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:107-117 fields[] has 4 items |
+| 12 | Validation | ❌ | store-resources.ts:107-117 NONE of 4 fields has `validation: { ... }` set. FieldValidation type at types.ts:95-110 is unused for parts |
+| 13 | Detail | ❌ | store-resources.ts:82-124 partConfig has NO `detailTabs` field |
+| 14 | Relations | ❌ | store-resources.ts:82-124 partConfig has NO `relations` field. 16-A row 5 claimed "✓" for Relations — INCORRECT (16-A summary contradicts source). |
+| 15 | Actions | ⚠️ | store-resources.ts:119-121 actions[] has 1 item (delete) NO `apiPath`. action-engine.ts:154-165 has `delete` handler — works via registered handler |
+| 16 | Bulk | ❌ | store-resources.ts:82-124 partConfig has NO `bulkActions` field |
+| 17 | Export | ❌ | store-resources.ts:91-94 NO `permissions.export` set; authorization/index.ts:219-227 canExport map has NO `parts` entry → fallback at ln 229 `${resource}.read`=`'parts.read'` which is NOT a real permission in permissions.ts → executeExport would throw `Forbidden: export permission required for "parts"` at runtime |
+| 18 | Audit | ✅ | store-resources.ts:123 `audit.enabled=true; entityType='Part'; actions[2]=['part.update','part.delete']`. NOTE: `'part.update'` and `'part.delete'` are NOT in permissions.ts (only `product.*`) — these audit action labels would never match a real permission check. |
+| 19 | Tests | ⚠️ | NO dedicated test file for parts (glob `tests/**/part*.test.ts` returns no match). Only generic coverage in resource-contract.test.ts |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:320 `/admin/resources/parts → 307 → /login` smoke ✅ |
+
+**R5 Verdict summary:** 10 ✅ / 4 ⚠️ / 6 ❌
+
+## Cross-resource notes
+
+### Critical gaps (sorted by severity)
+
+1. **R5 parts is significantly incomplete** — 6 ❌ dimensions (Filters, Validation, Detail, Relations, Bulk, Export) + 4 ⚠️. The parts config at store-resources.ts:82-124 is missing entire config sections (`filters`, `detailTabs`, `relations`, `bulkActions`, `permissions.export`). This is the worst-configured resource of the 5 audited. **Runtime export of parts would fail** at authorization/index.ts:200 (`Forbidden: export permission required for "parts"`).
+
+2. **R3 users has a runtime-broken action** — `verify-email` action (user.ts:93) has NO registered handler in action-engine.ts:97-165 (only 8 handlers: publish/unpublish/feature/unfeature/verify/suspend/activate/delete). Calling this action at runtime would throw `Error: No handler for action "verify-email"` per action-engine.ts:233. **Runtime gap, not just config debt.**
+
+3. **All 5 resources have ZERO field-level validation rules** (dimension 12 = ❌ across all 5). The `FieldValidation` interface (types.ts:95-110) supports `minLength/maxLength/min/max/pattern/message/validator` but NONE of the 5 resource configs use it. Critical missing validation: user.ts:59 `email` has no pattern; user.ts:60 `mobile` has no pattern; user.ts:61 `passwordHash` has no minLength; listing.ts:56 `title` only `required:true`. Generic infra exists, resource-specific config absent.
+
+4. **All 5 resources have ZERO field-level permissions** (dimension 4 = ⚠️ across all 5). The `AdminField.permissions` interface (types.ts:62-66) supports per-field read/write permission gating but NONE of the 5 configs set it. Critical for `user.ts:61 passwordHash` (should restrict read to admins) and `user.ts:66 role` (should restrict write to admins).
+
+5. **All 5 resources have ZERO actions with `apiPath`** (dimension 15 = ⚠️ across all 5). The actions rely entirely on action-engine registered handlers. For listings/brands/products/parts this works (all action keys have handlers). For users, `verify-email` is broken (see #2). The dimension criterion "at least one action with apiPath" is technically failed by all 5.
+
+6. **All 5 resources have NO dedicated test file** (dimension 19 = ⚠️ across all 5). All covered only by generic `tests/contract/resource-contract.test.ts` which runs the SAME invariant tests across all 18 resources. No per-resource isolation. The 498-test count is generic evidence, NOT resource-specific evidence per user policy.
+
+### Resource-by-resource summary
+
+| Resource | ✅ | ⚠️ | ❌ | Headline gap |
+|---|---:|---:|---:|---|
+| R1 listings | 16 | 3 | 1 | No field validation (12) |
+| R2 brands | 16 | 3 | 1 | No field validation (12); apiBase dead path |
+| R3 users | 16 | 3 | 1 | `verify-email` action has no handler (15); no validation on email/mobile (12) |
+| R4 products | 16 | 3 | 1 | No field validation (12) |
+| R5 parts | 10 | 4 | 6 | Missing filters/detailTabs/relations/bulkActions/export (8,13,14,16,17); 16-A summary contradicts source |
+
+### 16-A summary errors (parts)
+- 16-A row 5 claimed parts had "Columns=134" — actual is 5 columns (store-resources.ts:96-102). The 134 number is unclear (possibly file line count confusion).
+- 16-A row 5 claimed parts had "Relations ✓" — actual is ❌ (no `relations` field in partConfig at all).
+- User warned "do NOT trust the 16-A summary; verify from source" — confirmed necessary.
+
+### Patterns observed
+- **Generic infra is robust**: data-adapter, action-engine, bulk-export-engine, field-policy, audit log — all type-safe (0 @ts-nocheck per 16-A §3.1), all working.
+- **Resource configs are inconsistent in depth**: listings/brands/users/products have full config (filters+detailTabs+relations+bulkActions+export); parts has half-config.
+- **Field-level security is uniformly absent**: no field permissions, no field validation — across all 5 resources. This is a systemic gap, not per-resource.
+- **Action handlers are uniform but not action-key-complete**: action-engine registers 8 generic handlers; users has 4 actions, 3 of 4 map to handlers; 1 (`verify-email`) is orphaned.
+- **Export wiring is split**: `permissions.export` is set in 4 of 5 (exception: parts). `canExport` map at authorization/index.ts:219-227 has explicit entries for listing/user/order/payment/audit/product/brand — but NOT parts. Parts falls back to `${resource}.read`=`'parts.read'` which is not a real permission.
+
+### No code changes made
+This was an Evidence Freeze step. No files were modified. The only file modified is worklog.md (this append).
+
+Stage Summary:
+- ✅ Audited 5 resources × 20 dimensions = 100 verdicts.
+- ✅ R1 listings: 16 ✅ / 3 ⚠️ / 1 ❌ (validation gap).
+- ✅ R2 brands: 16 ✅ / 3 ⚠️ / 1 ❌ (validation gap; apiBase dead path).
+- ✅ R3 users: 16 ✅ / 3 ⚠️ / 1 ❌ (validation gap; verify-email action broken at runtime).
+- ✅ R4 products: 16 ✅ / 3 ⚠️ / 1 ❌ (validation gap).
+- ✅ R5 parts: 10 ✅ / 4 ⚠️ / 6 ❌ (parts is significantly incomplete — missing filters/detailTabs/relations/bulkActions/exportPermission; 16-A summary contradicts source on Relations and Columns count).
+- ✅ Cross-resource systemic gaps identified: ZERO field validation across all 5; ZERO field permissions across all 5; ZERO apiPath on any action across all 5; NO dedicated per-resource test file for any of 5.
+- ✅ 16-A inventory errors for parts confirmed (Relations claim false; Columns count wrong).
+- ✅ Verified from source, not from 16-A summary.
+
+Next: STEP 16-B-B (Resources 6-10 audit) or STEP 16-C (Gap + Debt Audit using these findings).
+
+---
+
+Task ID: STEP-16-B-B
+Agent: Explore (Resources 6-10 Auditor)
+Task: STEP 16-B-B — Completion Matrix Audit for Resources 6-10 (orders, payments, companies, machines, reviews). Evidence Freeze step — NO code changes, read-only audit. For each resource, verify 20 dimensions from actual source code with file:line evidence. Per user policy: distinguish generic infrastructure (✅ at engine level) from resource-specific wiring (must be verified per resource). Do NOT trust 16-A summary — verify from source. Do NOT duplicate STEP-16-B-A scope (resources 1-5 already audited).
+
+Work Log:
+- Read worklog.md tail (lines 1700-1923) for context — confirmed STEP-16-B-A completed and appended its report (resources 1-5). No concurrent-write conflict; safe to append my section.
+- Read docs/verification/STEP-16-A-REPOSITORY-INVENTORY.md (full 234-line evidence-freeze doc). 16-A claims ALL 18 resources have Registry✓ / Columns✓ / Permissions✓ / Audit✓; 16 of 18 have Relations (inspections/transports/buy-requests do not). 16-A row 5 (parts) had Columns=134 — 16-B-A confirmed this was wrong (actual = 5 columns).
+- Read src/lib/admin/types.ts (full 209 lines) — AdminResourceConfig schema; FieldValidation (types.ts:95-110) supports minLength/maxLength/min/max/pattern/message/validator; AdminField.permissions (types.ts:62-66) supports per-field read/write.
+- Read src/lib/admin/resources/store-resources.ts (full 488 lines) — contains productConfig (3-80), partConfig (82-124), orderConfig (126-206), paymentConfig (208-286), companyConfig (288-369), machineConfig (371-419), reviewConfig (421-487).
+- Read src/lib/admin/resource-index.ts (33 lines) — verified resource registration order; orderConfig/paymentConfig/companyConfig/machineConfig/reviewConfig all registered on lines 23/24/24/24/25.
+- Read src/lib/authorization/permissions.ts (227 lines) — PERMISSIONS array has order.read/order.update/order.manage (ln 85-87), payment.read/payment.manage/payment.refund (ln 90-92), company.read/create/update/delete/verify (ln 50-54), review.read/review.moderate (ln 99-100). NO `machine.*` permissions (machines reuse product.*). NO `order.create` permission. NO `payment.read.export`. NO `review.export`.
+- Read src/lib/authorization/index.ts (265 lines) — canExport map at ln 219-227 has SINGULAR keys (listing/user/order/payment/audit/product/brand) but bulk-export-engine calls with PLURAL resource keys; this mismatch causes runtime failure for ALL exports (cross-resource systemic gap).
+- Read src/lib/admin/data-adapter.ts (141 lines) — getPrismaModel uses `config.model.charAt(0).toLowerCase() + config.model.slice(1)` → matches db[modelKey]. Generic infra; all 5 of my resources map to real Prisma models (verified below).
+- Read src/lib/admin/action-engine.ts (274 lines) — 8 registered handlers: publish (ln 98-104), unpublish (106-112), feature (114-120), unfeature (122-128), verify (130-136), suspend (138-144), activate (146-152), delete (154-165). NONE of these match `confirm`, `cancel`, `refund`, `reject`, `hide` action keys used by my 5 resources.
+- Read src/lib/admin/bulk-export-engine.ts (282 lines) — executeExport at ln 189-281 calls `canExport(ctx.userId, resourceKey)` (line 199). Generic infra; resource-specific wiring depends on canExport map + config.permissions.export.
+- Read src/lib/admin/audit.ts (87 lines) — logAudit writes to AuditLog table. Generic infra.
+- Read src/app/api/admin/resources/[resource]/route.ts (165 lines) — universal GET (list) + POST (create). Real file, no @ts-nocheck (verified at line 1 comment).
+- Read src/app/api/admin/resources/[resource]/[id]/route.ts (134 lines) — universal GET/PATCH/DELETE single. Real file.
+- Read src/app/api/admin/resources/[resource]/export/route.ts (64 lines) — universal GET export; passes `resourceKey` (plural, from URL param) to executeExport → canExport.
+- Read prisma/schema.prisma model Company (ln 1178-1216), Machine (ln 1784-1799), Payment (ln 2274-2296), Review (ln 2304-2344), Order (ln 2398-2431) — verified all column.keys map to real Prisma model fields.
+- Listed src/app/api/admin/ — confirmed legacy route files exist for: /api/admin/payments/route.ts, /api/admin/companies/route.ts + /api/admin/companies/[id]/route.ts (plus [id]/verifications, [id]/documents, [id]/branches), /api/admin/machines/route.ts + [id]/route.ts, /api/admin/reviews/route.ts + [id]/route.ts. NO file at /api/admin/orders (orders apiBase is universal path /api/admin/resources/orders).
+- Listed tests/contract/ — confirmed 4 test files: rbac-matrix.test.ts, crud-pipeline.test.ts, resource-contract.test.ts (generic, 373 tests across all 18), page-builder.test.ts. NO dedicated test file for any of my 5 resources.
+- Listed tests/ root — found phase9-orders-deals.test.ts and phase10-reviews-reputation.test.ts (these test Phase 9/10 SCHEMA domain, NOT admin-resource contract). Verified by reading their headers — they read schema.prisma strings, do not import admin configs.
+- Read tests/contract/resource-contract.test.ts:29-225 — confirmed it runs same invariants per resource (registry/key/title/model/apiBase/adminPath/permissions read-create-update-delete/columns≥1/fields≥1/audit/unique keys/valid types). DOES NOT test filters, validation, detail tabs, relations, bulkActions, or actions apiPath per resource.
+- Read docs/verification/STEP-14.8-EVIDENCE.md §10.2 smoke matrix (lines 298-322) — confirmed 21 URLs tested; 17 are admin resource URLs. `/admin/resources/orders` (ln 309), `/admin/resources/payments` (ln 313), `/admin/resources/machines` (ln 321), `/admin/resources/reviews` (ln 322) all → 307 → /login ✅. CRITICAL GAP: `/admin/resources/companies` is NOT in the smoke matrix — companies has NO runtime URL smoke evidence.
+- Read docs/verification/STEP-14.8-EVIDENCE.md §12.5 (lines 425-453) — 18-resource integration verification: all 5 of my resources show PASS, but this is integration check (Registry→Model→Columns→API files→Route), NOT runtime URL smoke.
+- Read dev.log (48 lines) — only listings runtime hit (`GET /api/listings?limit=8 200 in 496ms` at line 18). NO orders/payments/companies/machines/reviews runtime hits in dev.log.
+- Verified universal-table.tsx, universal-form.tsx, universal-detail.tsx do NOT use `config.apiBase` (grep returned no matches in src/components/admin/). Universal components use `/api/admin/resources/${config.key}`. So apiBase is decorative.
+
+Critical findings (per-resource, per-dimension):
+
+# STEP 16-B-B Audit Report (Resources 6-10)
+
+## R6: orders
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:23 `registerResource(orderConfig)` (3rd in store batch) |
+| 2 | Config | ✅ | store-resources.ts:126-133 (key='orders'/titleFa='سفارش‌ها'/titleEn='Orders'/icon='ShoppingCart'/model='order'/apiBase='/api/admin/resources/orders'/adminPath='/admin/resources/orders' all set) |
+| 3 | Permission/RBAC | ✅ | store-resources.ts:135-139 (read='order.read'/create='order.update'/update='order.update'/delete='order.manage'/export='order.read' all set); permissions.ts:85-87 has order.read/order.update/order.manage. NOTE: NO `order.create` permission — config reuses 'order.update' for create (workaround, not gap). All 5 RBAC fields set, all values exist. |
+| 4 | Field Policy | ⚠️ | store-resources.ts:170-184 NONE of 8 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49. |
+| 5 | API | ✅ | store-resources.ts:132 `apiBase='/api/admin/resources/orders'` (universal route, real file at src/app/api/admin/resources/[resource]/route.ts). NO legacy /api/admin/orders file. Universal components use `/api/admin/resources/${config.key}` not `config.apiBase` so apiBase is decorative. |
+| 6 | Service | ✅ | store-resources.ts:131 `model='order'` → prisma/schema.prisma:2398 `model Order`; data-adapter.ts:30-37 uses `db.order`. |
+| 7 | Table | ✅ | store-resources.ts:141-154 12 columns; all keys (orderNumber/titleSnapshot/priceSnapshot/currencySnapshot/quantity/status/commissionRate/commissionAmount/sellerAmount/confirmedAt/completedAt/createdAt) match Order model fields in schema.prisma:2398-2431. |
+| 8 | Filters | ✅ | store-resources.ts:156-165 filters[] has 1 item (status with 6 options). |
+| 9 | Sorting | ✅ | store-resources.ts:167 `defaultSort: { field: 'createdAt', order: 'desc' }`; 6 sortable columns. |
+| 10 | Pagination | ✅ | store-resources.ts:168 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:170-184 fields[] has 8 items |
+| 12 | Validation | ❌ | store-resources.ts:170-184 NONE of 8 fields has `validation: {...}` set (only `required: true` on orderNumber/titleSnapshot/priceSnapshot at ln 171-173). FieldValidation type at types.ts:95-110 is unused for orders. Critical: no min/max on `quantity` (ln 175), no pattern on `currencySnapshot` (ln 174). |
+| 13 | Detail | ✅ | store-resources.ts:186-191 detailTabs[] has 4 tabs (overview/payments/disputes/audit) |
+| 14 | Relations | ✅ | store-resources.ts:203-205 relations[] has 1 item (payments via orderId). `'payments'` IS a registered resource key (resource-index.ts:24). |
+| 15 | Actions | ⚠️ | store-resources.ts:193-196 actions[] has 2 items (confirm, cancel) NONE have `apiPath`. CRITICAL RUNTIME GAP: action-engine.ts:97-165 has NO `confirm` or `cancel` handler (only 8 handlers: publish/unpublish/feature/unfeature/verify/suspend/activate/delete). action-engine.ts:233 would throw `Error: No handler for action "confirm"` / `"cancel"` at runtime. |
+| 16 | Bulk | ✅ | store-resources.ts:198-200 bulkActions[] has 1 item (bulk-confirm). |
+| 17 | Export | ⚠️ | store-resources.ts:138 `permissions.export='order.read'` set ✅. BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'orders')` (PLURAL resource key); authorization/index.ts:219-227 EXPORT_PERMISSIONS map has `order` (SINGULAR) key — NO match for `'orders'` → fallback at ln 229 `${resource}.read`=`'orders.read'` which is NOT in PERMISSIONS array (only `order.read` singular exists) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "orders"` at runtime. **Config OK, runtime broken due to singular/plural mismatch.** |
+| 18 | Audit | ✅ | store-resources.ts:202 `audit: { enabled: true, entityType: 'Order', actions: ['order.update', 'order.manage'] }` — all 3 fields set, both action labels exist as permissions. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for orders in tests/contract/ or tests/integration/ (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts (373 tests, same invariants per resource, no per-resource isolation). tests/phase9-orders-deals.test.ts exists but tests Phase 9 SCHEMA (Deal/Order domain field strings), NOT admin-resource contract — does not import orderConfig. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:309 `/admin/resources/orders → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). |
+
+**R6 Verdict summary:** 13 ✅ / 6 ⚠️ / 1 ❌
+
+## R7: payments
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:24 `registerResource(paymentConfig)` |
+| 2 | Config | ✅ | store-resources.ts:208-215 (key='payments'/titleFa='پرداخت‌ها'/titleEn='Payments'/icon='CreditCard'/model='payment'/apiBase='/api/admin/payments'/adminPath='/admin/resources/payments' all set) |
+| 3 | Permission/RBAC | ✅ | store-resources.ts:217-221 (read='payment.read'/create='payment.manage'/update='payment.manage'/delete='payment.manage'/export='payment.read' all set); permissions.ts:90-92 has payment.read/payment.manage/payment.refund. All 5 RBAC fields set, all values exist. NOTE: NO `payment.create`/`payment.update`/`payment.delete` permissions — config reuses 'payment.manage' for all mutation perms (workaround, not gap). |
+| 4 | Field Policy | ⚠️ | store-resources.ts:253-273 NONE of 7 fields has `permissions: { read, write }` set — even sensitive fields like `trackingCode` (ln 271), `providerReference` (col ln 230), `idempotencyKey` (ln 272) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | store-resources.ts:214 `apiBase='/api/admin/payments'` real legacy file at src/app/api/admin/payments/route.ts; ALSO universal route at src/app/api/admin/resources/[resource]/route.ts. Universal components use `/api/admin/resources/${config.key}` not `config.apiBase`. |
+| 6 | Service | ✅ | store-resources.ts:213 `model='payment'` → prisma/schema.prisma:2274 `model Payment`; data-adapter.ts:30-37 uses `db.payment`. |
+| 7 | Table | ✅ | store-resources.ts:223-233 9 columns; all keys (amount/currency/type/status/gateway/trackingCode/providerReference/paidAt/createdAt) match Payment model fields in schema.prisma:2274-2296. |
+| 8 | Filters | ✅ | store-resources.ts:235-248 filters[] has 2 items (status with 4 options, type with 4 options). |
+| 9 | Sorting | ✅ | store-resources.ts:250 `defaultSort: { field: 'createdAt', order: 'desc' }`; 3 sortable columns. |
+| 10 | Pagination | ✅ | store-resources.ts:251 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:253-273 fields[] has 7 items |
+| 12 | Validation | ❌ | store-resources.ts:253-273 NONE of 7 fields has `validation: {...}` set (only `required: true` on amount at ln 254). Critical: no pattern validation on `trackingCode` (ln 271), no min on `amount` (ln 254, BigInt currency). FieldValidation type at types.ts:95-110 is unused for payments. |
+| 13 | Detail | ✅ | store-resources.ts:275-278 detailTabs[] has 2 tabs (overview/audit). Minimal but populated. |
+| 14 | Relations | ❌ | store-resources.ts:208-286 paymentConfig has NO `relations` field at all (only columns/filters/defaultSort/pageSize/searchable/searchFields/fields/detailTabs/actions/audit/permissions). 16-A row 7 claimed payments had Relations ✓ — INCORRECT (16-A summary contradicts source). |
+| 15 | Actions | ⚠️ | store-resources.ts:280-283 actions[] has 2 items (refund, verify) NONE have `apiPath`. CRITICAL RUNTIME GAPS: (a) action-engine.ts:97-165 has NO `refund` handler → would throw `Error: No handler for action "refund"` at runtime; (b) `verify` handler EXISTS (action-engine.ts:130-136) but writes `{ verified: true, verification: 'VERIFIED' }` — Payment model (schema.prisma:2274-2296) has NO `verified` field and NO `verification` field → Prisma would throw `PrismaClientValidationError: Unknown arg `verified` in data` at runtime. |
+| 16 | Bulk | ❌ | store-resources.ts:208-286 paymentConfig has NO `bulkActions` field. 16-A row 7 marked Bulk as `–` (acknowledged missing). |
+| 17 | Export | ⚠️ | store-resources.ts:220 `permissions.export='payment.read'` set ✅. BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'payments')` (PLURAL); authorization/index.ts:219-227 EXPORT_PERMISSIONS map has `payment` (SINGULAR) — NO match for `'payments'` → fallback `'payments.read'` NOT in PERMISSIONS (only `payment.read` singular) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "payments"` at runtime. **Config OK, runtime broken due to singular/plural mismatch.** |
+| 18 | Audit | ✅ | store-resources.ts:285 `audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage', 'payment.refund'] }` — all 3 fields set, both action labels exist as permissions. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for payments (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for payments. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:313 `/admin/resources/payments → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). |
+
+**R7 Verdict summary:** 12 ✅ / 6 ⚠️ / 2 ❌
+
+## R8: companies
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:24 `registerResource(companyConfig)` |
+| 2 | Config | ✅ | store-resources.ts:288-295 (key='companies'/titleFa='شرکت‌ها'/titleEn='Companies'/icon='Building2'/model='company'/apiBase='/api/admin/companies'/adminPath='/admin/resources/companies' all set) |
+| 3 | Permission/RBAC | ✅ | store-resources.ts:297-301 (read='company.read'/create='company.create'/update='company.update'/delete='company.delete'/export='company.read' all set); permissions.ts:50-54 has all 5 company.* permission constants (read/create/update/delete/verify). All 5 RBAC fields set, all values exist. |
+| 4 | Field Policy | ⚠️ | store-resources.ts:328-344 NONE of 13 fields has `permissions: { read, write }` set — even sensitive fields like `email` (ln 335), `phone` (ln 334), `address` (ln 336) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | store-resources.ts:294 `apiBase='/api/admin/companies'` real legacy file at src/app/api/admin/companies/route.ts AND src/app/api/admin/companies/[id]/route.ts (plus [id]/verifications, [id]/documents, [id]/branches sub-routes); ALSO universal route at src/app/api/admin/resources/[resource]/route.ts. |
+| 6 | Service | ✅ | store-resources.ts:293 `model='company'` → prisma/schema.prisma:1178 `model Company`; data-adapter.ts:30-37 uses `db.company`. |
+| 7 | Table | ✅ | store-resources.ts:303-314 11 columns; all keys (name/slug/verified/premium/status/city/phone/email/viewCount/avgRating/createdAt) match Company model fields in schema.prisma:1178-1216. |
+| 8 | Filters | ✅ | store-resources.ts:317-323 filters[] has 3 items (status/verified/premium). |
+| 9 | Sorting | ✅ | store-resources.ts:325 `defaultSort: { field: 'name', order: 'asc' }`; 6 sortable columns. |
+| 10 | Pagination | ✅ | store-resources.ts:326 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:328-344 fields[] has 13 items |
+| 12 | Validation | ❌ | store-resources.ts:328-344 NONE of 13 fields has `validation: {...}` set (only `required: true` on name at ln 329). Critical: `email` (ln 335) has no pattern validation; `phone` (ln 334) has no pattern validation; `website` (ln 333) has no pattern validation. FieldValidation type at types.ts:95-110 is unused for companies. |
+| 13 | Detail | ✅ | store-resources.ts:346-353 detailTabs[] has 6 tabs (overview/branches/verifications/partners/reviews/audit). Most complete of my 5. |
+| 14 | Relations | ✅ | store-resources.ts:365-368 relations[] has 2 items (company-branches via companyId, company-verifications via companyId). ⚠️ RUNTIME GAP: `'company-branches'` and `'company-verifications'` are NOT registered resource keys (not in resource-index.ts:18-29 — only `'companies'` is, not the sub-resources). Universal-detail would call `/api/admin/resources/company-branches?companyId=X` → 404. Per literal criterion (relations[] populated) = ✅, but runtime would 404 on the relation fetch. Note: detailTabs also references `'branches'`, `'verifications'`, `'partners'`, `'reviews'` keys — only `'reviews'` is a registered resource key. |
+| 15 | Actions | ⚠️ | store-resources.ts:355-358 actions[] has 2 items (verify, delete) NONE have `apiPath`. RUNTIME GAP: `verify` handler (action-engine.ts:130-136) writes `{ verified: true, verification: 'VERIFIED' }` — Company model has `verified Boolean @default(false)` (schema.prisma:1191) ✅ but NO `verification` field (schema.prisma:1178-1216) → Prisma would throw `PrismaClientValidationError: Unknown arg `verification` in data` at runtime. `delete` handler (action-engine.ts:154-165) works. |
+| 16 | Bulk | ✅ | store-resources.ts:360-362 bulkActions[] has 1 item (bulk-verify). authorization/index.ts:197-204 BULK_PERMISSION_MAP has `bulk-verify: 'company.verify'` ✅ — wired correctly. |
+| 17 | Export | ⚠️ | store-resources.ts:300 `permissions.export='company.read'` set ✅. BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'companies')` (PLURAL); authorization/index.ts:219-227 EXPORT_PERMISSIONS map has NO `'company'` OR `'companies'` entry → fallback `'companies.read'` NOT in PERMISSIONS (only `company.read` singular) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "companies"` at runtime. **Config OK, runtime broken — no map entry AND singular/plural mismatch.** |
+| 18 | Audit | ✅ | store-resources.ts:364 `audit: { enabled: true, entityType: 'Company', actions: ['company.update', 'company.verify', 'company.delete'] }` — all 3 fields set, all action labels exist as permissions. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for companies (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for companies. |
+| 20 | Runtime | ⚠️ | CRITICAL GAP: `/admin/resources/companies` is NOT in the STEP-14.8-EVIDENCE.md §10.2 smoke matrix (lines 298-322 — 21 URLs total, 17 admin resource URLs, but `'companies'` is missing). §12.5 integration verification (line 434) shows PASS for the integration chain (Registry→Model→Columns→API files→Route), but that is not a runtime URL smoke. dev.log has no companies runtime hits. **Resource-specific runtime URL smoke evidence MISSING.** |
+
+**R8 Verdict summary:** 13 ✅ / 6 ⚠️ / 1 ❌
+
+## R9: machines
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:24 `registerResource(machineConfig)` |
+| 2 | Config | ✅ | store-resources.ts:371-378 (key='machines'/titleFa='ماشین‌آلات'/titleEn='Machines'/icon='Truck'/model='machine'/apiBase='/api/admin/machines'/adminPath='/admin/resources/machines' all set) |
+| 3 | Permission/RBAC | ⚠️ | store-resources.ts:380-383 has read/create/update/delete set BUT NO `export` permission. Also: machines uses `product.read/create/update/delete` (not `machine.*`) — permissions.ts has NO `machine.*` constants (only `product.*` at ln 66-69). 4 of 5 RBAC fields set, export missing. Same pattern as parts (R5). |
+| 4 | Field Policy | ⚠️ | store-resources.ts:405-416 NONE of 5 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts. |
+| 5 | API | ✅ | store-resources.ts:377 `apiBase='/api/admin/machines'` real legacy file at src/app/api/admin/machines/route.ts AND src/app/api/admin/machines/[id]/route.ts; ALSO universal route at src/app/api/admin/resources/[resource]/route.ts. |
+| 6 | Service | ✅ | store-resources.ts:376 `model='machine'` → prisma/schema.prisma:1784 `model Machine`; data-adapter.ts:30-37 uses `db.machine`. |
+| 7 | Table | ✅ | store-resources.ts:385-392 6 columns; all keys (serialNumber/manufactureYear/hours/condition/status/createdAt) match Machine model fields in schema.prisma:1784-1799. |
+| 8 | Filters | ✅ | store-resources.ts:394-400 filters[] has 1 item (status with 3 options). |
+| 9 | Sorting | ✅ | store-resources.ts:402 `defaultSort: { field: 'createdAt', order: 'desc' }`; 4 sortable columns. |
+| 10 | Pagination | ✅ | store-resources.ts:403 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:405-416 fields[] has 5 items |
+| 12 | Validation | ❌ | store-resources.ts:405-416 NONE of 5 fields has `validation: {...}` set (not even `required: true` on any field). Critical: `serialNumber` (ln 406) has no minLength/pattern; `manufactureYear` (ln 407) has no min/max (should be 1900-current year); `hours` (ln 408) has no min (should be ≥0). FieldValidation type at types.ts:95-110 is unused for machines. |
+| 13 | Detail | ❌ | store-resources.ts:371-419 machineConfig has NO `detailTabs` field. 16-A row 9 did not claim detailTabs for machines. |
+| 14 | Relations | ❌ | store-resources.ts:371-419 machineConfig has NO `relations` field. 16-A row 9 marked Relations as `–` (acknowledged missing). |
+| 15 | Actions | ❌ | store-resources.ts:371-419 machineConfig has NO `actions` field. 16-A row 9 marked Actions as `–` (acknowledged missing — "machines are read-only in V2.4" per STEP-14.8-EVIDENCE.md:452). |
+| 16 | Bulk | ❌ | store-resources.ts:371-419 machineConfig has NO `bulkActions` field. 16-A row 9 marked Bulk as `–`. |
+| 17 | Export | ❌ | store-resources.ts:380-383 NO `permissions.export` set; authorization/index.ts:219-227 EXPORT_PERMISSIONS map has NO `'machine'`/`'machines'` entry → fallback `'machines.read'` NOT in PERMISSIONS (no `machine.*` perms exist; machines reuse `product.read` singular) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "machines"` at runtime. |
+| 18 | Audit | ✅ | store-resources.ts:418 `audit: { enabled: true, entityType: 'Machine', actions: ['machine.update'] }`. NOTE: `'machine.update'` is NOT in PERMISSIONS array (only `product.update` exists, machines reuse it) — audit action label would never match a real permission check. Per literal criterion (all 3 audit fields set) = ✅. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for machines (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for machines. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:321 `/admin/resources/machines → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). |
+
+**R9 Verdict summary:** 10 ✅ / 3 ⚠️ / 5 ❌
+
+## R10: reviews
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:25 `registerResource(reviewConfig)` |
+| 2 | Config | ✅ | store-resources.ts:421-428 (key='reviews'/titleFa='نظرات'/titleEn='Reviews'/icon='Star'/model='review'/apiBase='/api/admin/resources/reviews'/adminPath='/admin/resources/reviews' all set) |
+| 3 | Permission/RBAC | ⚠️ | store-resources.ts:430-433 has read/create/update/delete set BUT NO `export` permission. All values exist in permissions.ts:99-100 (review.read, review.moderate). 4 of 5 RBAC fields set, export missing. |
+| 4 | Field Policy | ⚠️ | store-resources.ts:458-468 NONE of 5 fields has `permissions: { read, write }` set — even `body` (ln 461, user-generated content) and `verifiedDeal` (ln 467, moderation flag) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | store-resources.ts:427 `apiBase='/api/admin/resources/reviews'` (universal route, real file at src/app/api/admin/resources/[resource]/route.ts). Legacy files also exist at src/app/api/admin/reviews/route.ts AND src/app/api/admin/reviews/[id]/route.ts (separate from universal path). Universal components use `/api/admin/resources/${config.key}` not `config.apiBase`. |
+| 6 | Service | ✅ | store-resources.ts:426 `model='review'` → prisma/schema.prisma:2304 `model Review`; data-adapter.ts:30-37 uses `db.review`. |
+| 7 | Table | ✅ | store-resources.ts:435-443 7 columns; all keys (rating/title/body/verifiedDeal/status/sellerResponse/createdAt) match Review model fields in schema.prisma:2304-2344. |
+| 8 | Filters | ✅ | store-resources.ts:445-453 filters[] has 2 items (status with 4 options, verifiedDeal boolean). |
+| 9 | Sorting | ✅ | store-resources.ts:455 `defaultSort: { field: 'createdAt', order: 'desc' }`; 3 sortable columns. |
+| 10 | Pagination | ✅ | store-resources.ts:456 `pageSize: 25` |
+| 11 | Form | ✅ | store-resources.ts:458-468 fields[] has 5 items |
+| 12 | Validation | ❌ | store-resources.ts:458-468 NONE of 5 fields has `validation: {...}` set (only `required: true` on rating at ln 459 and body at ln 461). CRITICAL: `rating` (ln 459) is `Int // 1..5` per schema.prisma:2324 but field config has NO `validation: { min: 1, max: 5 }` — user could submit rating=999. FieldValidation type at types.ts:95-110 is unused for reviews. |
+| 13 | Detail | ✅ | store-resources.ts:470-473 detailTabs[] has 2 tabs (overview/audit). Minimal but populated. |
+| 14 | Relations | ❌ | store-resources.ts:421-487 reviewConfig has NO `relations` field. 16-A row 10 claimed Reviews had Relations ✓ — INCORRECT (16-A summary contradicts source; reviewConfig has no relations field). |
+| 15 | Actions | ⚠️ | store-resources.ts:475-479 actions[] has 3 items (publish, reject, hide) NONE have `apiPath`. CRITICAL RUNTIME GAPS: (a) `publish` handler (action-engine.ts:98-104) writes `{ status: 'PUBLISHED', publishedAt: new Date() }` — Review model has `status` field ✅ but NO `publishedAt` field (schema.prisma:2304-2344) → Prisma would throw `PrismaClientValidationError: Unknown arg `publishedAt` in data` at runtime; (b) `reject` and `hide` have NO registered handlers in action-engine.ts:97-165 → would throw `Error: No handler for action "reject"` / `"hide"` at runtime. |
+| 16 | Bulk | ✅ | store-resources.ts:481-484 bulkActions[] has 2 items (bulk-publish, bulk-reject). NOTE: authorization/index.ts:197-204 BULK_PERMISSION_MAP has `bulk-publish: 'listing.publish'` (not `'review.moderate'`!) — bulk-publish on reviews would check `'listing.publish'` permission, which is wrong resource. bulk-reject has no map entry → falls back to action name itself. |
+| 17 | Export | ❌ | store-resources.ts:430-433 NO `permissions.export` set; authorization/index.ts:219-227 EXPORT_PERMISSIONS map has NO `'review'`/`'reviews'` entry → fallback `'reviews.read'` NOT in PERMISSIONS (only `review.read` singular) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "reviews"` at runtime. |
+| 18 | Audit | ✅ | store-resources.ts:486 `audit: { enabled: true, entityType: 'Review', actions: ['review.moderate'] }` — all 3 fields set, action label exists as permission. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for reviews in tests/contract/ or tests/integration/. tests/phase10-reviews-reputation.test.ts exists but tests Phase 10 SCHEMA (Review model field strings), NOT admin-resource contract — does not import reviewConfig. Only generic coverage in tests/contract/resource-contract.test.ts. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:322 `/admin/resources/reviews → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). |
+
+**R10 Verdict summary:** 11 ✅ / 5 ⚠️ / 4 ❌
+
+## Cross-resource notes
+
+### Critical gaps (sorted by severity)
+
+1. **R9 machines is significantly incomplete** — 5 ❌ dimensions (Detail, Relations, Actions, Bulk, Export) + 3 ⚠️. The machines config at store-resources.ts:371-419 is missing entire config sections (`detailTabs`, `relations`, `actions`, `bulkActions`, `permissions.export`). Acknowledged in STEP-14.8-EVIDENCE.md:452 ("machines are read-only in V2.4") but this means machines cannot be moderated, exported, or drilled into via detail tabs. Combined with R5 parts (16-B-A) — both catalog sub-resources are under-configured.
+
+2. **R7 payments is missing Relations and Bulk** — 2 ❌ (Relations, Bulk) + 6 ⚠️. paymentConfig at store-resources.ts:208-286 has no `relations` field (16-A row 7 claimed Relations ✓ — INCORRECT) and no `bulkActions` field. Acknowledged in STEP-14.8-EVIDENCE.md:433 (Bulk marked `–`). Critical: payments are financial records and have no bulk refund capability — significant operational gap for admin moderation.
+
+3. **R10 reviews is missing Relations and Export** — 4 ❌ dimensions (Validation, Relations, Export, plus action runtime gaps). reviewConfig at store-resources.ts:421-487 has no `relations` field (16-A row 10 claimed Relations ✓ — INCORRECT). 16-A summary errors confirmed for payments (Relations claim false) and reviews (Relations claim false).
+
+4. **R6 orders has runtime-broken actions** — `confirm` and `cancel` action keys (store-resources.ts:194-195) have NO registered handlers in action-engine.ts:97-165 (only 8 handlers: publish/unpublish/feature/unfeature/verify/suspend/activate/delete). action-engine.ts:233 would throw `Error: No handler for action "confirm"` / `"cancel"` at runtime. **Runtime gap, not just config debt.**
+
+5. **R7 payments has runtime-broken actions** — `refund` action (store-resources.ts:281) has NO handler → throws at runtime; `verify` action (store-resources.ts:282) handler EXISTS (action-engine.ts:130-136) but writes `{ verified: true, verification: 'VERIFIED' }` — Payment model has NO `verified` and NO `verification` fields (schema.prisma:2274-2296) → Prisma would throw `PrismaClientValidationError: Unknown arg` at runtime. **Both payment actions broken at runtime.**
+
+6. **R8 companies has runtime-broken `verify` action** — `verify` handler writes `{ verified: true, verification: 'VERIFIED' }` — Company has `verified Boolean` field ✅ but NO `verification` field (schema.prisma:1178-1216) → Prisma throws at runtime. `delete` handler works. Plus relations refer to unregistered resource keys (`company-branches`, `company-verifications`) → universal-detail would 404 on relation fetch.
+
+7. **R10 reviews has runtime-broken actions** — `publish` handler writes `{ status: 'PUBLISHED', publishedAt: new Date() }` — Review has `status` field ✅ but NO `publishedAt` field (schema.prisma:2304-2344) → Prisma throws at runtime. `reject` and `hide` have NO handlers → throw `Error: No handler for action "reject"/"hide"` at runtime. **All 3 review actions broken at runtime.**
+
+8. **All 5 resources have ZERO field-level validation rules** (dimension 12 = ❌ across all 5). The `FieldValidation` interface (types.ts:95-110) supports `minLength/maxLength/min/max/pattern/message/validator` but NONE of the 5 resource configs use it. Critical missing validation: orders `quantity` (ln 175) has no min; payments `amount` (ln 254, BigInt currency) has no min; companies `email` (ln 335) has no pattern; machines `manufactureYear` (ln 407) has no min/max; **reviews `rating` (ln 459) is `Int // 1..5` per schema but config has no `validation: { min: 1, max: 5 }` — user could submit rating=999**. Generic infra exists (types.ts:95-110), resource-specific config absent.
+
+9. **All 5 resources have ZERO field-level permissions** (dimension 4 = ⚠️ across all 5). The `AdminField.permissions` interface (types.ts:62-66) supports per-field read/write permission gating but NONE of the 5 configs set it. Critical for payments `trackingCode`/`providerReference`/`idempotencyKey` (financial reconciliation fields) and companies `email`/`phone`/`address` (PII).
+
+10. **All 5 resources have ZERO actions with `apiPath`** (dimension 15 = ⚠️ for 4 resources, ❌ for machines). The actions rely entirely on action-engine registered handlers. For orders (`confirm`/`cancel`), payments (`refund`), reviews (`reject`/`hide`) — handlers are MISSING entirely. For payments (`verify`), companies (`verify`), reviews (`publish`) — handlers exist but write fields that don't exist on the Prisma model → Prisma throws. Only companies `delete` action works correctly. The dimension criterion "at least one action with apiPath" is technically failed by all 5.
+
+11. **Export wiring is SYSTEMICALLY BROKEN across all 5 of my resources AND across 16-B-A's 5 resources** — `canExport(userId, resourceKey)` at authorization/index.ts:215-231 receives the PLURAL resource key from bulk-export-engine.ts:199 (e.g. `'orders'`, `'payments'`, `'companies'`, `'machines'`, `'reviews'`). The EXPORT_PERMISSIONS map at authorization/index.ts:219-227 has SINGULAR keys (`listing`, `user`, `order`, `payment`, `audit`, `product`, `brand`). NONE of the plural resource keys match the singular map keys. The fallback at ln 229 `${resource}.read` produces strings like `'orders.read'`, `'payments.read'`, `'companies.read'`, `'machines.read'`, `'reviews.read'` — NONE of which are in the PERMISSIONS array (which has `order.read`, `payment.read`, `company.read`, `review.read` singular; no `machine.*` at all). Result: **executeExport throws `Forbidden: export permission required for "{resource}"` at runtime for ALL 5 of my resources AND likely for ALL 18 resources** (including 16-B-A's R1 listings — 16-B-A marked it ✅ but the singular/plural mismatch means even listings export would fail at runtime). This is a Class A systemic runtime gap, not per-resource config debt.
+
+12. **R8 companies has NO runtime URL smoke evidence** — STEP-14.8-EVIDENCE.md §10.2 smoke matrix has 21 URLs but `/admin/resources/companies` is NOT among them. 16 of 18 resources are smoke-tested at the URL level; companies (and one other — likely a sub-resource) are not. dev.log has no companies runtime hits. §12.5 integration verification (line 434) shows PASS but that is integration chain check (Registry→Model→Columns→API files→Route), NOT runtime URL smoke. Resource-specific runtime smoke evidence is MISSING.
+
+13. **16-A inventory errors confirmed** — 16-A row 7 (payments) marked Relations ✓ — actual is ❌ (no `relations` field in paymentConfig at store-resources.ts:208-286). 16-A row 10 (reviews) marked Relations ✓ — actual is ❌ (no `relations` field in reviewConfig at store-resources.ts:421-487). 16-A row 8 (companies) marked Columns=69 — actual is 11 columns (store-resources.ts:303-314). The "Columns=69/97/119/135/38" numbers in 16-A §1 appear to be file line counts, not column counts. **User warning "do NOT trust the 16-A summary; verify from source" — confirmed necessary again.**
+
+### Resource-by-resource summary
+
+| Resource | ✅ | ⚠️ | ❌ | Headline gap |
+|---|---:|---:|---:|---|
+| R6 orders | 13 | 6 | 1 | No field validation (12); `confirm`/`cancel` actions have no handler (15); export runtime broken (17) |
+| R7 payments | 12 | 6 | 2 | No field validation (12); no relations (14); no bulk (16); `refund`/`verify` actions broken at runtime (15); export runtime broken (17) |
+| R8 companies | 13 | 6 | 1 | No field validation (12); `verify` action writes non-existent field (15); export runtime broken (17); NO runtime URL smoke (20) |
+| R9 machines | 10 | 3 | 5 | Missing detailTabs/relations/actions/bulkActions/exportPermission (13,14,15,16,17); no field validation (12); no machine.* permissions (3) |
+| R10 reviews | 11 | 5 | 4 | No field validation (12, critical: rating has no min/max); no relations (14); no export (17); all 3 actions broken at runtime (15) |
+
+### Patterns observed
+
+- **Generic infra is robust**: data-adapter, action-engine, bulk-export-engine, field-policy, audit log — all type-safe (0 @ts-nocheck per 16-A §3.1), all working at the engine level. But "engine works" ≠ "each resource wired correctly".
+- **Resource configs are inconsistent in depth**: companies has 6 detail tabs (most complete); machines has none. Orders/payments have actions+bulk but action keys are orphaned from handlers. Reviews has 3 actions+2 bulk but all 3 action handlers are broken at runtime.
+- **Field-level security is uniformly absent**: no field permissions, no field validation — across all 5 of my resources AND 16-B-A's 5. This is a systemic gap (10/10 resources so far).
+- **Action handler coverage is sparse**: action-engine registers 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) — but my 5 resources use 6 action keys NOT in that list (confirm, cancel, refund, reject, hide, plus verify-on-Payment/Company/Review which have handler-Prisma-model-mismatch). Of 12 total action invocations across my 5 resources: 1 works correctly (companies `delete`), 4 throw "No handler" (orders confirm+cancel, payments refund, reviews reject+hide), 4 throw Prisma validation errors (payments verify, companies verify, reviews publish — though publish handler exists, it writes a non-existent `publishedAt` field; plus reviews bulk actions have wrong perm map). The action layer is significantly under-built for these 5 resources.
+- **Export wiring has a singular/plural key mismatch**: EXPORT_PERMISSIONS map uses singular keys but bulk-export-engine calls with plural resource keys → fallback to non-existent permission → all exports fail at runtime. This affects ALL 18 resources, not just my 5.
+- **Bulk action permission map (BULK_PERMISSION_MAP) has resource leaks**: `bulk-verify` maps to `company.verify` (correct for companies), but `bulk-publish` maps to `listing.publish` (would be wrong if applied to reviews — reviews bulk-publish at store-resources.ts:482 would check `listing.publish` permission, not `review.moderate`).
+- **16-A summary errors confirmed for 3 of 5 of my resources**: payments Relations claim (false), reviews Relations claim (false), companies Columns count (wrong). 16-A's "All 18 have Audit ✓" was correct for my 5.
+
+### No code changes made
+This was an Evidence Freeze step. No files were modified. The only file modified is worklog.md (this append).
+
+Stage Summary:
+- ✅ Audited 5 resources × 20 dimensions = 100 verdicts.
+- ✅ R6 orders: 13 ✅ / 6 ⚠️ / 1 ❌ (validation gap; confirm/cancel actions have no handler; export runtime broken via singular/plural mismatch).
+- ✅ R7 payments: 12 ✅ / 6 ⚠️ / 2 ❌ (validation gap; no relations; no bulk; refund+verify actions broken at runtime; export runtime broken).
+- ✅ R8 companies: 13 ✅ / 6 ⚠️ / 1 ❌ (validation gap; verify action writes non-existent field; export runtime broken; NO runtime URL smoke — companies NOT in STEP-14.8 §10.2 smoke matrix).
+- ✅ R9 machines: 10 ✅ / 3 ⚠️ / 5 ❌ (machines is significantly incomplete — missing detailTabs/relations/actions/bulkActions/exportPermission; no field validation; no machine.* permissions, reuses product.*).
+- ✅ R10 reviews: 11 ✅ / 5 ⚠️ / 4 ❌ (validation gap critical: rating has no min/max though schema says 1..5; no relations; no export; all 3 actions broken at runtime — publish handler writes non-existent `publishedAt` field; reject+hide have no handler).
+- ✅ Cross-resource systemic gaps identified: ZERO field validation across all 5; ZERO field permissions across all 5; ZERO apiPath on any action across all 5; NO dedicated per-resource contract test file for any of 5; EXPORT_PERMISSIONS singular/plural mismatch affects ALL 18 resources (cross-cutting with 16-B-A's R1-R5); action-engine has only 8 generic handlers, my 5 resources use 6 action keys NOT in that list.
+- ✅ 16-A inventory errors confirmed: payments Relations claim (false), reviews Relations claim (false), companies Columns count (69 ≠ actual 11 — likely file line count confusion).
+- ✅ Verified from source, not from 16-A summary.
+
+Next: STEP 16-B-C (Resources 11-15: deals/rfqs/offers/auctions/inspections) OR STEP 16-B-D (Resources 16-18: transports/disputes/buy-requests) OR STEP 16-C (Gap + Debt Audit using these findings — 52 @ts-nocheck files + 38 PENDING migrations).
+
+---
+
+Task ID: STEP-16-B-C
+Agent: Explore (Resources 11-14 Auditor)
+Task: STEP 16-B-C — Completion Matrix Audit for Resources 11-14 (deals, rfqs, offers, auctions). Evidence Freeze step — NO code changes, read-only audit. For each resource, verify 20 dimensions from actual source code with file:line evidence. Per user policy: distinguish generic infrastructure (✅ at engine level) from resource-specific wiring (must be verified per resource). Do NOT trust 16-A summary — verify from source. Do NOT duplicate STEP-16-B-A scope (R1-R5) or STEP-16-B-B scope (R6-R10) — both already appended their reports.
+
+Work Log:
+- Read worklog.md tail (lines 1700-2154) for context — confirmed STEP-16-B-A (R1-R5) at ln 1708-1923 and STEP-16-B-B (R6-R10) at ln 1927-2154 are both appended. No concurrent-write conflict; safe to append my section.
+- Read docs/verification/STEP-16-A-REPOSITORY-INVENTORY.md (full 234-line evidence-freeze doc). 16-A claims ALL 18 resources have Registry✓ / Columns✓ / Permissions✓ / Audit✓; 16 of 18 have Relations (inspections/transports/buy-requests do not). 16-A row 11 (deals) claimed Columns=202, row 12 (rfqs) Columns=176, row 13 (offers) Columns=146 + Relations ✓, row 14 (auctions) Columns=126 — all need verification from source.
+- Read src/lib/admin/types.ts (full 209 lines) — AdminResourceConfig schema; FieldValidation (types.ts:95-110) supports minLength/maxLength/min/max/pattern/message/validator; AdminField.permissions (types.ts:62-66) supports per-field read/write.
+- Read src/lib/admin/resources/marketplace-resources.ts (full 551 lines) — contains dealConfig (7-93), rfqConfig (95-163), offerConfig (165-221), auctionConfig (223-290) [my scope]; plus inspectionConfig (292-349), transportConfig (351-433), disputeConfig (435-490), buyRequestConfig (492-551) [outside scope, R15-R18 — for STEP-16-B-D].
+- Read src/lib/admin/resource-index.ts (32 lines) — verified all 18 resources registered: deals=ln 27, rfqs=ln 27, offers=ln 27, auctions=ln 28.
+- Read src/lib/authorization/permissions.ts (226 lines) — verified permission constants: deal.read/deal.manage (ln 95-96), rfq.read/rfq.manage (ln 103-104), auction.manage (ln 151) all exist. NO `offer.*` constants — offers config reuses `listing.read/listing.update` (ln 57, 59). NO `auction.read`/`auction.create` etc — only `auction.manage`.
+- Read src/lib/admin/field-policy.ts (107 lines) — generic infra: 3 functions applyFieldPolicy/applyFieldWritePolicy/filterReadableFieldsAsync. All check `field.permissions?.read/write` per field. Resource-specific evidence requires the config to set field.permissions — checked all 4 configs, NONE set field-level permissions.
+- Read src/lib/admin/data-adapter.ts (140 lines) — getPrismaModel uses `config.model.charAt(0).toLowerCase() + config.model.slice(1)` → matches `db[modelKey]`. Verified: deals→db.deal (model Deal at schema.prisma:2354), rfqs→db.rFQ (model RFQ at schema.prisma:834; Prisma accessor is `rFQ` — matches), offers→db.listingOffer (model ListingOffer at schema.prisma:998), auctions→db.auction (model Auction at schema.prisma:890).
+- Read src/lib/admin/action-engine.ts (273 lines) — 8 registered handlers: publish, unpublish, feature, unfeature, verify, suspend, activate, delete. NONE of my 4 resources' action keys (deals: confirm/cancel, rfqs: close/delete, offers: accept/reject, auctions: start/end/cancel) match these 8 — except rfqs `delete` which DOES have a handler. 8 of 9 action invocations across my 4 resources would throw `Error: No handler for action "..."` at runtime per action-engine.ts:233.
+- Read src/lib/admin/bulk-export-engine.ts (281 lines) — executeExport uses `canExport(ctx.userId, resourceKey)` from authorization/index.ts:215-231 which has internal EXPORT_PERMISSIONS map (listing/user/order/payment/audit/product/brand explicitly mapped with SINGULAR keys; others fall back to `${resource}.read` which produces PLURAL.read strings not in PERMISSIONS array). The bulk-export-engine.ts:108-118 executeBulkAction delegates to executeAction per item — bulk-cancel would call executeAction(actionKey='cancel') → no handler → throws per item.
+- Read src/lib/admin/audit.ts (86 lines) — logAudit writes to AuditLog table. Generic infra.
+- Read src/app/api/admin/resources/[resource]/route.ts (164 lines) — universal GET (list) + POST (create). Real file, no @ts-nocheck.
+- Read src/app/api/admin/resources/[resource]/[id]/route.ts (133 lines) — universal GET/PATCH/DELETE single. Real file.
+- Read src/lib/authorization/index.ts (264 lines) — confirmed: canExport map (ln 219-227) has 7 SINGULAR keys (`listing`, `user`, `order`, `payment`, `audit`, `product`, `brand`); BULK_PERMISSION_MAP (ln 197-204) has 6 keys (`bulk-delete`, `bulk-publish`, `bulk-suspend`, `bulk-verify`, `bulk-archive`, `bulk-export`) — `bulk-cancel` (which deals uses) is NOT in this map → falls back to action name itself = `'bulk-cancel'` permission string which is NOT in PERMISSIONS array → canBulkAction returns false → executeBulkAction falls back to hasPerm check on actionConfig.permission (works for ADMIN with `deal.manage`).
+- Read prisma/schema.prisma relevant models (Deal ln 2354-2394, RFQ ln 834-863, ListingOffer ln 998-1016, Auction ln 890-915) — verified all column.key fields map to real Prisma model fields. Also confirmed: NONE of Deal/RFQ/ListingOffer/Auction has `deletedAt` field — `delete` action handler (action-engine.ts:154-165) checks `if (item.deletedAt !== undefined)` → falls through to `model.delete` (hard delete) for all 4 → works ✅ for rfqs `delete` action.
+- Listed src/app/api/admin/ — confirmed legacy route files exist for: /api/admin/auctions/route.ts AND /api/admin/auctions/[id]/route.ts (for auctions apiBase). NO legacy file at /api/admin/deals (deals uses universal only). NO file at /api/admin/rfqs (singular /api/admin/rfq/route.ts exists for public marketplace — DIFFERENT from admin). NO file at /api/admin/offers (/api/admin/offers-all/route.ts exists but is a different resource). Public routes at /api/deals/route.ts, /api/rfq/route.ts, /api/auctions/route.ts, /api/offers/route.ts exist (public marketplace, NOT admin resource manager).
+- Listed tests/contract/ — confirmed 4 test files: rbac-matrix.test.ts, crud-pipeline.test.ts, resource-contract.test.ts (generic, covers all 18), page-builder.test.ts. NO dedicated test file for any of my 4 resources. Grep `dealConfig|rfqConfig|offerConfig|auctionConfig` in tests/ returned no matches. tests/phase9-orders-deals.test.ts exists but tests Phase 9 SCHEMA (Deal model field strings) and PUBLIC API routes (`/api/deals/route.ts`), NOT admin-resource contract — does not import dealConfig. tests/phase7-rfq-matching.test.ts tests Phase 7 RFQ schema/matching, NOT admin-resource contract.
+- Verified universal-detail.tsx:195-206 — relations tab renders a LINK `${config.adminPath}?rel=${rel.resource}&field=${rel.filterField}&value=${resourceId}` — does NOT fetch related items via the relation.resource key directly. So relation keys like `rfq-quotes`/`auction-bids` (NOT registered) do not cause immediate API errors, but the link would load the PARENT resource list page (rfqs/auctions) with `?rel=...` query string — broken UX, not broken API.
+- Read docs/verification/STEP-14.8-EVIDENCE.md §10.2 smoke matrix — confirmed runtime smoke for all 4 of my resources: `/admin/resources/{deals,rfqs,offers,auctions}` all return 307 → /login (correct auth redirect). ln 310, 311, 314, 317.
+- Read dev.log (48 lines) — confirmed NO runtime hits for /api/admin/resources/{deals,rfqs,offers,auctions} or /api/admin/auctions in the dev log. Only generic traffic (`/`, `/api/listings`, `/api/requests`, etc.) — no resource-specific CRUD smoke for my 4 resources.
+
+Critical findings (per-resource, per-dimension):
+
+# STEP 16-B-C Audit Report (Resources 11-14)
+
+## R11: deals
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:27 `registerResource(dealConfig)` |
+| 2 | Config | ✅ | marketplace-resources.ts:7-14 (key='deals'/titleFa='معاملات'/titleEn='Deals'/icon='Handshake'/model='deal'/apiBase='/api/admin/resources/deals'/adminPath='/admin/resources/deals' all set) |
+| 3 | Permission/RBAC | ✅ | marketplace-resources.ts:16 (read/create/update/delete/export='deal.read'/'deal.manage'/'deal.manage'/'deal.manage'/'deal.read'); permissions.ts:95-96 has both `deal.*` permission constants. All 5 RBAC fields set, all values exist in PERMISSIONS. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:51-70 NONE of 7 fields has `permissions: { read, write }` set — even `agreedAmount` (ln 58, financial) and `notes` (ln 69) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | marketplace-resources.ts:13 `apiBase='/api/admin/resources/deals'` (universal route, real file at src/app/api/admin/resources/[resource]/route.ts). Public marketplace API also exists at src/app/api/deals/route.ts + [id]/route.ts (separate, not admin). |
+| 6 | Service | ✅ | marketplace-resources.ts:12 `model='deal'` → prisma/schema.prisma:2354 `model Deal`; data-adapter.ts:30-37 getPrismaModel returns `db.deal` (matches Prisma accessor for `model Deal`). |
+| 7 | Table | ✅ | marketplace-resources.ts:18-29 10 columns; all keys (dealNumber/sourceType/agreedAmount/currency/transactionType/status/agreedAt/confirmedAt/completedAt/createdAt) match Deal model fields in schema.prisma:2354-2394. |
+| 8 | Filters | ✅ | marketplace-resources.ts:31-46 filters[] has 2 items (status with 7 options, sourceType with 3 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:48 `defaultSort: { field: 'createdAt', order: 'desc' }`; 6 sortable columns. |
+| 10 | Pagination | ✅ | marketplace-resources.ts:49 `pageSize: 25` |
+| 11 | Form | ✅ | marketplace-resources.ts:51-70 fields[] has 7 items |
+| 12 | Validation | ❌ | marketplace-resources.ts:51-70 NONE of 7 fields has `validation: { minLength/maxLength/min/max/pattern/... }` set (only `required: true` on dealNumber at ln 52). CRITICAL: `agreedAmount` (ln 58, BigInt currency) has no min; `currency` (ln 59) has no pattern. FieldValidation type at types.ts:95-110 is unused for deals. |
+| 13 | Detail | ✅ | marketplace-resources.ts:72-77 detailTabs[] has 4 tabs (overview/order/disputes/audit). |
+| 14 | Relations | ✅ | marketplace-resources.ts:89-92 relations[] has 2 items (orders via dealId, disputes via dealId). Both `'orders'` and `'disputes'` ARE registered resource keys (resource-index.ts:23, 29). |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:79-82 actions[] has 2 items (confirm, cancel) NONE have `apiPath`. CRITICAL RUNTIME GAPS: (a) `confirm` action key has NO registered handler in action-engine.ts:97-165 (only 8 handlers: publish/unpublish/feature/unfeature/verify/suspend/activate/delete) → action-engine.ts:233 would throw `Error: No handler for action "confirm"` at runtime; (b) `cancel` action key has NO handler either → throws `Error: No handler for action "cancel"` at runtime. Both deal actions broken at runtime. |
+| 16 | Bulk | ✅ | marketplace-resources.ts:84-86 bulkActions[] has 1 item (bulk-cancel). NOTE: bulk-cancel calls executeAction with actionKey='cancel' → no handler → would throw "No handler for action 'cancel'" per item at runtime (per bulk-export-engine.ts:108-118 + action-engine.ts:233). Per literal criterion (bulkActions populated) = ✅, but runtime broken. Also: authorization/index.ts:197-204 BULK_PERMISSION_MAP has NO `'bulk-cancel'` entry → falls back to action name itself `'bulk-cancel'` which is NOT in PERMISSIONS → canBulkAction returns false → fallback to hasPerm check on actionConfig.permission='deal.manage' (works for ADMIN). |
+| 17 | Export | ❌ | marketplace-resources.ts:16 `permissions.export='deal.read'` (config ✅ set); BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'deals')` (plural) — authorization/index.ts:219-227 EXPORT_PERMISSIONS map has SINGULAR keys (no `'deals'` entry) → fallback `'deals.read'` (plural) NOT in PERMISSIONS array (only `'deal.read'` singular at permissions.ts:95) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "deals"` at runtime. Config has export perm; engine wiring broken at runtime per systemic singular/plural mismatch. |
+| 18 | Audit | ✅ | marketplace-resources.ts:88 `audit.enabled=true; entityType='Deal'; actions[2]=['deal.manage', 'deal.read']` — all 3 fields set, both action labels exist as real permissions in permissions.ts:95-96. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for deals. Grep `dealConfig` in tests/ returns no match. tests/phase9-orders-deals.test.ts exists but tests Phase 9 schema (Deal model field strings) and PUBLIC API routes (`/api/deals/route.ts`), NOT admin-resource contract — does not import dealConfig. Only generic coverage in tests/contract/resource-contract.test.ts (373 tests across all 18, no per-resource isolation). |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:310 `/admin/resources/deals → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). dev.log has NO runtime hits for /api/admin/resources/deals. |
+
+**R11 Verdict summary:** 13 ✅ / 4 ⚠️ / 3 ❌
+
+## R12: rfqs
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:27 `registerResource(rfqConfig)` |
+| 2 | Config | ✅ | marketplace-resources.ts:95-102 (key='rfqs'/titleFa='درخواست‌های خرید (RFQ)'/titleEn='RFQ'/icon='FileText'/model='rFQ'/apiBase='/api/admin/resources/rfqs'/adminPath='/admin/resources/rfqs' all set) |
+| 3 | Permission/RBAC | ✅ | marketplace-resources.ts:104 (read/create/update/delete/export='rfq.read'/'rfq.manage'/'rfq.manage'/'rfq.manage'/'rfq.read'); permissions.ts:103-104 has both `rfq.*` permission constants. All 5 RBAC fields set, all values exist in PERMISSIONS. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:129-146 NONE of 14 fields has `permissions: { read, write }` set — even PII fields `buyerName` (ln 143), `buyerPhone` (ln 144), `buyerEmail` (ln 145) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | marketplace-resources.ts:101 `apiBase='/api/admin/resources/rfqs'` (universal route, real file at src/app/api/admin/resources/[resource]/route.ts). Public marketplace API also exists at src/app/api/rfq/route.ts + [id]/route.ts (singular — separate from admin). NOTE: legacy admin route would be at /api/admin/rfqs/ but no file there (only /api/admin/rfq singular exists for public). |
+| 6 | Service | ✅ | marketplace-resources.ts:100 `model='rFQ'` → prisma/schema.prisma:834 `model RFQ`; Prisma client accessor is `db.rFQ` (Prisma convention: lowercase first letter of model name); data-adapter.ts:30-37 getPrismaModel returns `'rFQ'` (matches). 16-A §12.5 row 12 confirmed `rFQ` model match. |
+| 7 | Table | ✅ | marketplace-resources.ts:106-117 10 columns; all keys (title/machineType/quantity/budgetMin/budgetMax/status/buyerName/buyerPhone/deadline/createdAt) match RFQ model fields in schema.prisma:834-863. |
+| 8 | Filters | ✅ | marketplace-resources.ts:119-124 filters[] has 1 item (status with 4 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:126 `defaultSort: { field: 'createdAt', order: 'desc' }`; 5 sortable columns. |
+| 10 | Pagination | ✅ | marketplace-resources.ts:127 `pageSize: 25` |
+| 11 | Form | ✅ | marketplace-resources.ts:129-146 fields[] has 14 items |
+| 12 | Validation | ❌ | marketplace-resources.ts:129-146 NONE of 14 fields has `validation: { minLength/maxLength/min/max/pattern/... }` set (only `required: true` on title at ln 130 and buyerPhone at ln 144). CRITICAL: `buyerPhone` (ln 144) has no pattern; `buyerEmail` (ln 145) has no pattern; `quantity` (ln 134) has no min (should be ≥1); `budgetMin`/`budgetMax` (ln 135-136, BigInt) have no min. FieldValidation type at types.ts:95-110 is unused for rfqs. |
+| 13 | Detail | ✅ | marketplace-resources.ts:148-152 detailTabs[] has 3 tabs (overview/quotes/audit). |
+| 14 | Relations | ✅ | marketplace-resources.ts:160-162 relations[] has 1 item (rfq-quotes via rfqId). CAVEAT: `'rfq-quotes'` is NOT a registered resource key (not in resource-index.ts:19-29). universal-detail.tsx:195-206 renders relation as a LINK (`${config.adminPath}?rel=rfq-quotes&field=rfqId&value=...`) — clicking would load the PARENT rfqs list with `?rel=rfq-quotes` query, NOT a quotes list. Broken UX, not broken API. Per literal criterion (relations populated) = ✅ with caveat. |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:154-157 actions[] has 2 items (close, delete) NONE have `apiPath`. MIXED RUNTIME: (a) `close` action key has NO registered handler in action-engine.ts:97-165 → throws `Error: No handler for action "close"` at runtime; (b) `delete` action key HAS handler (action-engine.ts:154-165) — RFQ model has NO `deletedAt` field (schema.prisma:834-863) → handler falls through to `model.delete` (hard delete) → works ✅. 1 of 2 actions works at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:95-163 rfqConfig has NO `bulkActions` field. 16-A row 12 marked Bulk `–` (acknowledged missing). |
+| 17 | Export | ❌ | marketplace-resources.ts:104 `permissions.export='rfq.read'` (config ✅ set); BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'rfqs')` (plural) — authorization/index.ts:219-227 EXPORT_PERMISSIONS map has SINGULAR keys (no `'rfqs'` entry) → fallback `'rfqs.read'` (plural) NOT in PERMISSIONS array (only `'rfq.read'` singular at permissions.ts:103) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "rfqs"` at runtime. |
+| 18 | Audit | ✅ | marketplace-resources.ts:159 `audit.enabled=true; entityType='RFQ'; actions[1]=['rfq.manage']` — all 3 fields set, action label exists as real permission. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for rfqs. Grep `rfqConfig` in tests/ returns no match. tests/phase7-rfq-matching.test.ts exists but tests Phase 7 RFQ schema/matching, NOT admin-resource contract — does not import rfqConfig. rbac-matrix.test.ts:152 tests that SELLER has 'rfq.manage' permission — NOT admin-resource contract. Only generic coverage in tests/contract/resource-contract.test.ts. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:311 `/admin/resources/rfqs → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). dev.log has NO runtime hits for /api/admin/resources/rfqs. |
+
+**R12 Verdict summary:** 13 ✅ / 4 ⚠️ / 3 ❌
+
+## R13: offers
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:27 `registerResource(offerConfig)` |
+| 2 | Config | ✅ | marketplace-resources.ts:165-172 (key='offers'/titleFa='پیشنهادها'/titleEn='Offers'/icon='Tag'/model='listingOffer'/apiBase='/api/admin/resources/offers'/adminPath='/admin/resources/offers' all set) |
+| 3 | Permission/RBAC | ⚠️ | marketplace-resources.ts:174 (read/create/update/delete/export='listing.read'/'listing.read'/'listing.update'/'listing.update'/'listing.read'); permissions.ts:57-63 has all `listing.*` permission constants. All 5 RBAC fields set, all values exist in PERMISSIONS. BUT: offers config uses `listing.*` permissions instead of `offer.*` — there are NO `offer.*` constants in permissions.ts (search confirms). 4 of 5 RBAC use `listing.read` (over-permissive: listing.read grants full offer read access to anyone with listing.read, which is most roles). Config-wise all set; semantically over-permissive. Marked ⚠️. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:200-213 NONE of 8 fields has `permissions: { read, write }` set — even PII fields `buyerName` (ln 209), `buyerPhone` (ln 210), `buyerEmail` (ln 211) and financial field `offerAmount` (ln 201) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | marketplace-resources.ts:171 `apiBase='/api/admin/resources/offers'` (universal route, real file at src/app/api/admin/resources/[resource]/route.ts). Public marketplace API also exists at src/app/api/offers/route.ts + [id]/route.ts (separate, not admin). Legacy admin /api/admin/offers-all/route.ts + [id]/route.ts exists but is a different resource (offers-all, not offers). |
+| 6 | Service | ✅ | marketplace-resources.ts:170 `model='listingOffer'` → prisma/schema.prisma:998 `model ListingOffer`; Prisma client accessor is `db.listingOffer`; data-adapter.ts:30-37 getPrismaModel returns `'listingOffer'` (matches). |
+| 7 | Table | ✅ | marketplace-resources.ts:176-186 9 columns; all keys (offerAmount/message/status/counterAmount/buyerName/buyerPhone/sellerNote/respondedAt/createdAt) match ListingOffer model fields in schema.prisma:998-1016. |
+| 8 | Filters | ✅ | marketplace-resources.ts:188-195 filters[] has 1 item (status with 4 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:197 `defaultSort: { field: 'createdAt', order: 'desc' }`; 3 sortable columns. |
+| 10 | Pagination | ✅ | marketplace-resources.ts:198 `pageSize: 25` |
+| 11 | Form | ✅ | marketplace-resources.ts:200-213 fields[] has 8 items |
+| 12 | Validation | ❌ | marketplace-resources.ts:200-213 NONE of 8 fields has `validation: { minLength/maxLength/min/max/pattern/... }` set (only `required: true` on offerAmount at ln 201 and buyerPhone at ln 210). CRITICAL: `offerAmount` (ln 201, BigInt currency) has no min; `buyerPhone` (ln 210) has no pattern; `buyerEmail` (ln 211) has no pattern. FieldValidation type at types.ts:95-110 is unused for offers. |
+| 13 | Detail | ❌ | marketplace-resources.ts:165-221 offerConfig has NO `detailTabs` field. 16-A row 13 did not claim detailTabs for offers. |
+| 14 | Relations | ❌ | marketplace-resources.ts:165-221 offerConfig has NO `relations` field. 16-A row 13 claimed Relations ✓ — INCORRECT (16-A summary contradicts source; offerConfig has no relations field). |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:215-218 actions[] has 2 items (accept, reject) NONE have `apiPath`. CRITICAL RUNTIME GAPS: (a) `accept` action key has NO registered handler in action-engine.ts:97-165 → throws `Error: No handler for action "accept"` at runtime; (b) `reject` action key has NO handler either → throws `Error: No handler for action "reject"` at runtime. Both offer actions broken at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:165-221 offerConfig has NO `bulkActions` field. 16-A row 13 marked Bulk `–` (acknowledged missing). |
+| 17 | Export | ❌ | marketplace-resources.ts:174 `permissions.export='listing.read'` (config ✅ set); BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'offers')` (plural) — authorization/index.ts:219-227 EXPORT_PERMISSIONS map has SINGULAR keys (no `'offers'` entry) → fallback `'offers.read'` (plural) NOT in PERMISSIONS array → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "offers"` at runtime. |
+| 18 | Audit | ✅ | marketplace-resources.ts:220 `audit.enabled=true; entityType='ListingOffer'; actions[1]=['listing.update']` — all 3 fields set, action label exists as real permission. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for offers. Grep `offerConfig` in tests/ returns no match. Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for offers. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:317 `/admin/resources/offers → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). dev.log has NO runtime hits for /api/admin/resources/offers. |
+
+**R13 Verdict summary:** 11 ✅ / 4 ⚠️ / 5 ❌
+
+## R14: auctions
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:28 `registerResource(auctionConfig)` |
+| 2 | Config | ✅ | marketplace-resources.ts:223-230 (key='auctions'/titleFa='مزایده‌ها'/titleEn='Auctions'/icon='Gavel'/model='auction'/apiBase='/api/admin/auctions'/adminPath='/admin/resources/auctions' all set) |
+| 3 | Permission/RBAC | ⚠️ | marketplace-resources.ts:232 (read/create/update/delete/export='auction.manage' for ALL 5); permissions.ts:151 has the `auction.manage` permission constant. All 5 RBAC fields set, value exists in PERMISSIONS. BUT: ALL 5 RBAC fields use `'auction.manage'` — there is only ONE `auction.*` permission in permissions.ts (no `auction.read`, `auction.create`, etc.). Means: read/create/update/delete/export all require `auction.manage`. Anyone with `auction.manage` can do anything; anyone without it can do nothing. Over-permissive for ADMIN-only operations (no granular read for SELLER/BUYER roles — ROLE_PERMISSIONS at permissions.ts:160-216 has NO `auction.*` entries for non-ADMIN roles). Config-wise all set; semantically over-permissive. Marked ⚠️. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:259-272 NONE of 8 fields has `permissions: { read, write }` set — even financial fields `startPrice` (ln 262), `reservePrice` (ln 263), `minIncrement` (ln 264) and PII `winnerName` (ln 240, in columns) lack field-level permission gating. Only generic infra in field-policy.ts. |
+| 5 | API | ✅ | marketplace-resources.ts:229 `apiBase='/api/admin/auctions'` real legacy file at src/app/api/admin/auctions/route.ts AND src/app/api/admin/auctions/[id]/route.ts; ALSO universal route at src/app/api/admin/resources/[resource]/route.ts. Universal components use `/api/admin/resources/${config.key}` not `config.apiBase` (universal-table.tsx:54, universal-form.tsx:168-169, universal-detail.tsx:50), so apiBase is decorative. ✅ via universal route AND legacy file. Public marketplace API also exists at src/app/api/auctions/route.ts + [id]/route.ts. |
+| 6 | Service | ✅ | marketplace-resources.ts:228 `model='auction'` → prisma/schema.prisma:890 `model Auction`; data-adapter.ts:30-37 getPrismaModel returns `'auction'` (matches `db.auction`). |
+| 7 | Table | ✅ | marketplace-resources.ts:234-245 10 columns; all keys (title/startPrice/reservePrice/minIncrement/status/winnerName/winningBid/startDate/endDate/createdAt) match Auction model fields in schema.prisma:890-915. |
+| 8 | Filters | ✅ | marketplace-resources.ts:247-254 filters[] has 1 item (status with 4 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:256 `defaultSort: { field: 'createdAt', order: 'desc' }`; 5 sortable columns. |
+| 10 | Pagination | ✅ | marketplace-resources.ts:257 `pageSize: 25` |
+| 11 | Form | ✅ | marketplace-resources.ts:259-272 fields[] has 8 items |
+| 12 | Validation | ❌ | marketplace-resources.ts:259-272 NONE of 8 fields has `validation: { minLength/maxLength/min/max/pattern/... }` set (only `required: true` on title/startPrice/startDate/endDate). CRITICAL: `startPrice` (ln 262, BigInt currency) has no min; `reservePrice` (ln 263) has no min; `minIncrement` (ln 264) has no min; `startDate`/`endDate` (ln 265-266) have no date-range validation. FieldValidation type at types.ts:95-110 is unused for auctions. |
+| 13 | Detail | ✅ | marketplace-resources.ts:274-278 detailTabs[] has 3 tabs (overview/bids/audit). |
+| 14 | Relations | ✅ | marketplace-resources.ts:287-289 relations[] has 1 item (auction-bids via auctionId). CAVEAT: `'auction-bids'` is NOT a registered resource key (not in resource-index.ts:19-29). universal-detail.tsx:195-206 renders relation as a LINK — clicking would load the PARENT auctions list with `?rel=auction-bids` query, NOT a bids list. Broken UX, not broken API. Per literal criterion (relations populated) = ✅ with caveat. |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:280-284 actions[] has 3 items (start, end, cancel) NONE have `apiPath`. CRITICAL RUNTIME GAPS: ALL 3 action keys (`start`, `end`, `cancel`) have NO registered handler in action-engine.ts:97-165 (only 8 handlers: publish/unpublish/feature/unfeature/verify/suspend/activate/delete) → action-engine.ts:233 would throw `Error: No handler for action "start"` / `"end"` / `"cancel"` at runtime. All 3 auction actions broken at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:223-290 auctionConfig has NO `bulkActions` field. 16-A row 14 marked Bulk `–` (acknowledged missing). |
+| 17 | Export | ❌ | marketplace-resources.ts:232 `permissions.export='auction.manage'` (config ✅ set); BUT bulk-export-engine.ts:199 calls `canExport(ctx.userId, 'auctions')` (plural) — authorization/index.ts:219-227 EXPORT_PERMISSIONS map has SINGULAR keys (no `'auctions'` entry) → fallback `'auctions.read'` (plural) NOT in PERMISSIONS array (only `'auction.manage'` exists) → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "auctions"` at runtime. |
+| 18 | Audit | ✅ | marketplace-resources.ts:286 `audit.enabled=true; entityType='Auction'; actions[1]=['auction.manage']` — all 3 fields set, action label exists as real permission. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for auctions. Grep `auctionConfig` in tests/ returns no match. Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for auctions. |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:314 `/admin/resources/auctions → 307 → /login` smoke ✅ (auth-redirect only; no CRUD smoke). dev.log has NO runtime hits for /api/admin/resources/auctions or /api/admin/auctions. |
+
+**R14 Verdict summary:** 12 ✅ / 4 ⚠️ / 4 ❌
+
+## Cross-resource notes
+
+### Critical gaps (sorted by severity)
+
+1. **R13 offers is the most incomplete** of the 4 — 5 ❌ dimensions (Validation, Detail, Relations, Bulk, Export). offerConfig at marketplace-resources.ts:165-221 is missing entire config sections (`detailTabs`, `relations`, `bulkActions`) AND has runtime-broken export AND no field validation. 16-A row 13 claimed Relations ✓ — INCORRECT (offerConfig has no relations field). Also: offers uses `listing.*` permissions instead of `offer.*` (no `offer.*` constants in permissions.ts) — over-permissive reuse. Public marketplace /api/offers/route.ts exists but is separate from admin manager.
+
+2. **R14 auctions has all 3 actions broken at runtime** — `start`, `end`, `cancel` action keys (marketplace-resources.ts:280-284) have NO handlers in action-engine.ts:97-165 → throws at runtime. Plus no bulkActions, no field validation, runtime-broken export. Also: ALL 5 RBAC permissions use `auction.manage` (only `auction.*` permission in permissions.ts) — no granular read/create/update/delete — over-permissive (anyone with `auction.manage` can do everything; anyone without can do nothing; NO non-ADMIN role has `auction.manage` per ROLE_PERMISSIONS at permissions.ts:160-216).
+
+3. **R11 deals has both actions broken at runtime** — `confirm` and `cancel` action keys (marketplace-resources.ts:80-81) have NO handlers → throws at runtime. Plus: `bulk-cancel` (ln 85) calls `executeAction(actionKey='cancel')` → broken per item at runtime. deals has full config coverage (filters, detailTabs, relations, actions, bulkActions, audit) BUT the action layer is broken at runtime. Relations ✓ (both orders and disputes ARE registered).
+
+4. **R12 rfqs has mixed runtime for actions** — `close` action (ln 155) has NO handler → throws at runtime; `delete` action (ln 156) HAS handler (action-engine.ts:154-165) and RFQ model has NO `deletedAt` field (schema.prisma:834-863) → handler falls through to `model.delete` (hard delete) → works ✅. 1 of 2 actions works at runtime. Plus: no bulkActions, no field validation, runtime-broken export. Relations ✓ but `rfq-quotes` key is NOT registered → broken UX (link loads parent rfqs list page, not quotes list).
+
+5. **All 4 resources have ZERO field-level validation rules** (dimension 12 = ❌ across all 4). The `FieldValidation` interface (types.ts:95-110) supports `minLength/maxLength/min/max/pattern/message/validator` but NONE of the 4 configs use it. Critical missing validation: deals `agreedAmount` (BigInt, no min); rfqs `buyerPhone`/`buyerEmail` (no pattern); rfqs `quantity` (Int, no min); rfqs `budgetMin`/`budgetMax` (BigInt, no min); offers `offerAmount` (BigInt, no min); offers `buyerPhone`/`buyerEmail` (no pattern); auctions `startPrice`/`reservePrice`/`minIncrement` (BigInt, no min); auctions `startDate`/`endDate` (no date range validation). Generic infra exists, resource-specific config absent. **Continues systemic gap from R1-R10 (10/10 prior resources also had ❌ for validation) — now 14/14.**
+
+6. **All 4 resources have ZERO field-level permissions** (dimension 4 = ⚠️ across all 4). The `AdminField.permissions` interface (types.ts:62-66) supports per-field read/write permission gating but NONE of the 4 configs set it. Critical for: rfqs PII fields (buyerName/buyerPhone/buyerEmail); offers PII fields (buyerName/buyerPhone/buyerEmail); auctions PII `winnerName`; deals financial `agreedAmount`. **Continues systemic gap from R1-R10 (10/10 prior resources also had ⚠️ for field permissions) — now 14/14.**
+
+7. **All 4 resources have ZERO actions with `apiPath`** (dimension 15 = ⚠️ for all 4). The actions rely entirely on action-engine registered handlers. Of 9 total action invocations across my 4 resources: 1 works correctly (rfqs `delete`); 8 throw "No handler" at runtime (deals confirm+cancel, deals bulk-cancel, rfqs close, offers accept+reject, auctions start+end+cancel). action-engine registers 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) — designed for content/catalog moderation. My 4 marketplace resources use 5 action keys NOT in that list (confirm, cancel, close, accept, reject, start, end) — designed for transaction lifecycle (deal confirmation, RFQ closure, offer acceptance, auction start/end). The action engine is structurally mismatched with marketplace transaction flows. **Continues systemic gap from R1-R10 — now 14/14.**
+
+8. **Export wiring is SYSTEMICALLY BROKEN across all 4 of my resources AND across 16-B-A's 5 AND 16-B-B's 5** — `canExport(userId, resourceKey)` at authorization/index.ts:215-231 receives the PLURAL resource key from bulk-export-engine.ts:199 (e.g. `'deals'`, `'rfqs'`, `'offers'`, `'auctions'`). The EXPORT_PERMISSIONS map at authorization/index.ts:219-227 has SINGULAR keys (`listing`, `user`, `order`, `payment`, `audit`, `product`, `brand`). NONE of the plural resource keys match the singular map keys. The fallback at ln 229 `${resource}.read` produces strings like `'deals.read'`, `'rfqs.read'`, `'offers.read'`, `'auctions.read'` — NONE of which are in the PERMISSIONS array (which has `deal.read`, `rfq.read`, `auction.manage` singular; NO `offer.*` at all). Result: **executeExport throws `Forbidden: export permission required for "{resource}"` at runtime for ALL 4 of my resources AND for ALL 18 resources total** (including 16-B-A's R1 listings — 16-B-A marked it ✅ but the singular/plural mismatch means even listings export would fail at runtime; 16-B-B cross-resource note #11 confirmed this). This is a Class A systemic runtime gap, not per-resource config debt.
+
+9. **16-A inventory errors confirmed for my 4 resources**:
+   - 16-A row 11 (deals) claimed Columns=202 — actual is 10 columns (marketplace-resources.ts:18-29). The 202 number is unclear (possibly file line count confusion or Prisma model field count).
+   - 16-A row 12 (rfqs) claimed Columns=176 — actual is 10 columns (marketplace-resources.ts:106-117).
+   - 16-A row 13 (offers) claimed Relations ✓ — actual is ❌ (no `relations` field in offerConfig at marketplace-resources.ts:165-221). 16-A summary contradicts source.
+   - 16-A row 14 (auctions) claimed Columns=126 — actual is 10 columns (marketplace-resources.ts:234-245).
+   - **User warning "do NOT trust the 16-A summary; verify from source" — confirmed necessary once again for 4 of 4 of my resources.**
+
+10. **3 of 4 resources have relations pointing to unregistered resource keys** — rfqs → `rfq-quotes` (not in resource-index.ts:19-29), auctions → `auction-bids` (not in registry). Only deals → `orders`+`disputes` uses registered keys. universal-detail.tsx:195-206 renders relation as a LINK with the relation.resource as a query parameter, so non-registered relation keys do not throw immediate API errors — they cause broken UX (link loads the PARENT resource list page with `?rel=...` query, not a related-items list). This is the same pattern as 16-B-A's R1 listings (`'listing-images'` not registered) and R2 brands (`'brand-aliases'`/`'product-models'` not registered).
+
+11. **All 4 resources have only generic contract tests** (dimension 19 = ⚠️ for all 4). tests/contract/resource-contract.test.ts runs the SAME 373 invariant tests across all 18 resources. No per-resource isolation. tests/phase9-orders-deals.test.ts (deals) and tests/phase7-rfq-matching.test.ts (rfqs) exist but test schema/public-API, NOT admin-resource contract. The 498-test count is generic evidence, NOT resource-specific evidence per user policy. **Continues pattern from R1-R10 — now 14/14.**
+
+### Resource-by-resource summary
+
+| Resource | ✅ | ⚠️ | ❌ | Headline gap |
+|---|---:|---:|---:|---|
+| R11 deals | 13 | 4 | 3 | No field validation (12); `confirm`/`cancel` actions + `bulk-cancel` broken at runtime (15); export runtime broken (17) |
+| R12 rfqs | 13 | 4 | 3 | No field validation (12); no bulk (16); `close` action broken at runtime (15); export runtime broken (17); relation `rfq-quotes` not registered (14 caveat) |
+| R13 offers | 11 | 4 | 5 | No field validation (12); no detailTabs (13); no relations (14); no bulk (16); both `accept`/`reject` actions broken at runtime (15); export runtime broken (17); 16-A Relations claim false |
+| R14 auctions | 12 | 4 | 4 | No field validation (12); no bulk (16); all 3 actions (`start`/`end`/`cancel`) broken at runtime (15); export runtime broken (17); all 5 RBAC fields use `auction.manage` (no granular perms) |
+
+### Patterns observed
+
+- **Marketplace CP resources are config-incomplete vs Store resources**: Of 4 marketplace CP resources audited, only deals (R11) has full config coverage (filters+detailTabs+relations+actions+bulkActions+audit). rfqs (R12) lacks bulkActions; offers (R13) lacks detailTabs/relations/bulkActions; auctions (R14) lacks bulkActions. This is the worst-configured cluster of resources audited so far (R1-R10 averaged ~13 ✅ per resource; R11-R14 average 12.25 ✅ per resource).
+- **Action handler coverage is structurally mismatched with marketplace transaction flows**: action-engine registers 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) — designed for content/catalog moderation (listings, brands, users, products, parts, machines, reviews, companies). My 4 marketplace resources use 7 action keys NOT in that list (confirm, cancel, close, accept, reject, start, end) — designed for transaction lifecycle (deal confirmation, RFQ closure, offer acceptance, auction lifecycle). The action engine was built for content moderation and has not been extended for transaction workflows. Only the generic `delete` action key (used by rfqs) maps to a handler.
+- **Field-level security is uniformly absent**: no field permissions, no field validation — across all 4 of my resources AND all 10 prior resources (R1-R10). This is a systemic gap (14/14 resources so far).
+- **Export wiring has a singular/plural key mismatch**: EXPORT_PERMISSIONS map uses singular keys but bulk-export-engine calls with plural resource keys → fallback to non-existent permission → all exports fail at runtime. This affects ALL 18 resources, not just my 4. (16-B-A cross-resource note + 16-B-B cross-resource note #11 + this report's note #8)
+- **Relations point to non-registered keys for 3 of 4**: rfqs → `rfq-quotes`, auctions → `auction-bids` — NOT registered. universal-detail renders these as broken links to parent list pages. This is the same pattern as 16-B-A's R1 listings and R2 brands — relations point to keys that don't exist in the registry, causing broken UX. The pattern across 14 resources: only ~50% of relations use registered resource keys.
+- **16-A inventory errors confirmed for 4 of 4 of my resources**: 3 of 4 had wrong Column counts (deals=202≠10, rfqs=176≠10, auctions=126≠10 — likely file line counts or model field counts, not column counts); offers Relations claim was false (16-A marked ✓, actual is ❌). 16-A's "All 18 have Audit ✓" was correct for my 4.
+
+### No code changes made
+This was an Evidence Freeze step. No files were modified. The only file modified is worklog.md (this append).
+
+Stage Summary:
+- ✅ Audited 4 resources × 20 dimensions = 80 verdicts.
+- ✅ R11 deals: 13 ✅ / 4 ⚠️ / 3 ❌ (validation gap; confirm/cancel/bulk-cancel actions broken at runtime; export runtime broken via singular/plural mismatch).
+- ✅ R12 rfqs: 13 ✅ / 4 ⚠️ / 3 ❌ (validation gap; no bulk; close action broken at runtime, delete works; export runtime broken; relation `rfq-quotes` not registered).
+- ✅ R13 offers: 11 ✅ / 4 ⚠️ / 5 ❌ (offers is the most incomplete of 4 — missing detailTabs/relations/bulkActions; validation gap; both accept/reject actions broken at runtime; export runtime broken; 16-A Relations claim false).
+- ✅ R14 auctions: 12 ✅ / 4 ⚠️ / 4 ❌ (validation gap; no bulk; all 3 start/end/cancel actions broken at runtime; export runtime broken; all 5 RBAC fields use single `auction.manage` permission — over-permissive, no granular perms).
+- ✅ Cross-resource systemic gaps identified: ZERO field validation across all 4 (continues pattern from R1-R10 — now 14/14); ZERO field permissions across all 4 (14/14); ZERO apiPath on any action across all 4 (14/14); 9 total action invocations, 8 throw "No handler" at runtime (only rfqs `delete` works); NO dedicated per-resource contract test file for any of 4 (14/14); EXPORT_PERMISSIONS singular/plural mismatch affects ALL 18 resources (cross-cutting with 16-B-A's R1-R5 and 16-B-B's R6-R10); action-engine has 8 generic handlers but marketplace CP resources use 7 transaction-lifecycle action keys NOT in that list.
+- ✅ 16-A inventory errors confirmed: deals Columns count (202≠10), rfqs Columns count (176≠10), auctions Columns count (126≠10) — all 3 likely file line/model field counts not column counts; offers Relations claim (false — no relations field in offerConfig).
+- ✅ Verified from source, not from 16-A summary.
+
+Next: STEP 16-B-D (Resources 15-18: inspections/transports/disputes/buy-requests) OR STEP 16-C (Gap + Debt Audit using these findings — 52 @ts-nocheck files + 38 PENDING migrations).
+
+---
+
+Task ID: STEP-16-B-D
+Agent: Explore (Resources 15-18 Auditor)
+Task: STEP 16-B-D — Completion Matrix Audit for Resources 15-18 (inspections, transports, disputes, buy-requests). Evidence Freeze step — NO code changes, read-only audit. For each resource, verify 20 dimensions from actual source code with file:line evidence. Per user policy: distinguish generic infrastructure (✅ at engine level) from resource-specific wiring (must be verified per resource). Do NOT trust 16-A summary — verify from source. Critical systemic gaps already confirmed by 16-B-A/B/C: (a) field validation = ❌ for all 14 prior resources (no `validation: {}` set); (b) field permissions = ⚠️ for all 14 (no `permissions: { read, write }` on fields); (c) actions lack `apiPath` for all 14 — rely on action-engine handlers but use action keys NOT in the registered list; (d) EXPORT_PERMISSIONS map uses SINGULAR keys but canExport is called with PLURAL keys → exports broken for ALL 18 resources at runtime.
+
+Work Log:
+- Read worklog.md tail (last 400 lines) for 16-B-A/B/C context and prior findings.
+- Read docs/verification/STEP-16-A-REPOSITORY-INVENTORY.md lines 1-50 — confirmed 16-A inventory table for resources 15-18 + the "16 of 18 have Relations" claim.
+- Read src/lib/admin/types.ts (209 lines) — verified AdminResourceConfig schema (key/titleFa/titleEn/icon/model/apiBase/adminPath/permissions/columns/filters/defaultSort/pageSize/fields/detailTabs/actions/bulkActions/audit/searchable/searchFields/relations), FieldValidation interface (minLength/maxLength/min/max/pattern/message/validator), AdminField.permissions ({ read, write }).
+- Read src/lib/admin/resources/marketplace-resources.ts (551 lines, full) — verified all 4 of my resource configs: inspectionConfig (ln 292-349), transportConfig (ln 351-433), disputeConfig (ln 435-490), buyRequestConfig (ln 492-551). Cross-checked with grep for `relations:|detailTabs:|bulkActions:|apiPath:|validation:` — confirmed NONE of these appear in lines 292-551 (only `permissions: { ... }` resource-level blocks appear at ln 301, 360, 444, 501).
+- Read src/lib/admin/resource-index.ts (33 lines) — verified all 18 resources registered; inspectionConfig=ln 28, transportConfig=ln 28, disputeConfig=ln 29, buyRequestConfig=ln 29 (in marketplace CP batch).
+- Read src/lib/authorization/permissions.ts (227 lines) — verified PERMISSIONS array (34-155) and ROLE_PERMISSIONS (160-216). CRITICAL FINDING: 'inspection.read', 'transport.read', 'request.read' are NOT in PERMISSIONS array — only `auction.manage`, `deal.read`, `deal.manage`, `rfq.read`, `rfq.manage`, `review.read`, `review.moderate` exist for marketplace CP. Disputes permissions ('deal.read', 'deal.manage') DO exist ✅. Inspections/transports/buy-requests permission constants are non-existent → can() returns false at runtime for everyone (including ADMIN).
+- Read src/lib/authorization/index.ts (264 lines) — verified canExport() (ln 215-231) + EXPORT_PERMISSIONS map (ln 219-227). Map has 7 SINGULAR keys: listing, user, order, payment, audit, product, brand. NONE of my 4 plural keys ('inspections', 'transports', 'disputes', 'buy-requests') match → fallback `${resource}.read` produces non-existent permission strings → canExport returns false → executeExport throws at runtime for all 4.
+- Read src/lib/admin/field-policy.ts (108 lines) — generic infra: 3 functions. Resource-specific evidence requires the config to set field.permissions — checked all 4 configs, NONE set field-level permissions.
+- Read src/lib/admin/data-adapter.ts (141 lines) — getPrismaModel uses `config.model.charAt(0).toLowerCase() + config.model.slice(1)` → matches `db[modelKey]`. Generic infra.
+- Read src/lib/admin/action-engine.ts (274 lines) — 8 registered handlers: publish, unpublish, feature, unfeature, verify, suspend, activate, delete (ln 97-165). CRITICAL for my 4: inspections uses `schedule`/`complete`/`cancel` (NONE registered → 0/3 work); transports uses `accept`/`deliver`/`cancel` (NONE registered → 0/3 work); disputes uses `review`/`resolve`/`cancel` (NONE registered → 0/3 work); buy-requests uses `verify`/`close`/`delete` (`verify` registered BUT writes invalid `verification` field → Prisma throws; `close` not registered → throws; `delete` registered → works via hard delete since BuyRequest has no `deletedAt` field → 1/3 works).
+- Read src/lib/admin/bulk-export-engine.ts (282 lines) — executeExport (ln 189-281) calls `canExport(ctx.userId, resourceKey)` at ln 199 with the PLURAL resource key → fails for all 4 of my resources per singular/plural mismatch.
+- Read src/lib/admin/audit.ts (87 lines) — logAudit writes to AuditLog table. Generic infra.
+- Read src/app/api/admin/resources/[resource]/route.ts (165 lines) — universal GET (list) at ln 36 + POST (create) at ln 106. Real file, no @ts-nocheck. Calls `can(user?.id, readPerm)` at ln 55 → for inspections/transports/buy-requests, can() returns false (perm not seeded in DB) → 403 for everyone.
+- Read src/app/api/admin/resources/[resource]/[id]/route.ts (134 lines) — universal GET/PATCH/DELETE single. Real file, no @ts-nocheck.
+- Read prisma/schema.prisma relevant models: BuyRequest (ln 550-574), Inspection (ln 1352-1372), TransportRequest (ln 1378-1403), Dispute (ln 2434-2457). Verified all column.key fields map to real Prisma model fields for all 4 configs.
+- Read src/components/admin/universal-table.tsx:54 — confirmed it calls `/api/admin/resources/${config.key}` NOT `config.apiBase`. So apiBase is decorative for inspections/transports/buy-requests (legacy route files exist at /api/admin/inspections/route.ts:91, /api/admin/transport/route.ts:79, /api/admin/requests/route.ts:120 but are bypassed by universal UI). Disputes apiBase='/api/admin/resources/disputes' matches universal route pattern ✅.
+- Read prisma/seed-admin-navigation.ts:79-82 — confirmed 'inspection.read'/'transport.read'/'request.read' are referenced as permissionKey strings for nav menu items, BUT seed-admin-navigation.ts does NOT create Permission records (only stores strings in AdminNavigationItem table).
+- Read prisma/seed-permission-matrix.ts (uses PERMISSIONS array from src/lib/authorization/permissions.ts which excludes inspection/transport/request perms) + prisma/seed-rbac.ts (has 20+ hardcoded perms, none for inspection/transport/request). Result: 'inspection.read'/'transport.read'/'request.read' are NEVER seeded into DB Permission table → can() returns false at runtime.
+- Listed tests/contract/ — confirmed 4 test files: rbac-matrix.test.ts, crud-pipeline.test.ts, resource-contract.test.ts (generic, covers all 18), page-builder.test.ts. NO dedicated test file for any of my 4 resources.
+- Searched tests/ for 'inspection|transport|dispute|buyRequest|buy-request' — only phase5-trust.test.ts:96-97 (db.inspection.count schema check), phase7-rfq-matching.test.ts:12-31 (db.buyRequest schema check), phase9-orders-deals.test.ts:84-187 (Dispute model schema check + legacy /api/orders/[id]/disputes route check). NONE are admin-resource contract tests.
+- Read docs/verification/STEP-14.8-EVIDENCE.md:313-320 — confirmed runtime smoke: /admin/resources/inspections→307/login ✅, /admin/resources/disputes→307/login ✅, /admin/resources/transportRequests→307/login (WRONG URL — should be `transports`), /admin/resources/buyRequests→307/login (WRONG URL — should be `buy-requests`).
+- Read docs/verification/STEP-15-PERFORMANCE-BASELINE.md:83-86 — confirmed API smoke: /api/admin/resources/inspections→401 ✅, /api/admin/resources/transports→401 ✅, /api/admin/resources/disputes→401 ✅, /api/admin/resources/buy-requests→401 ✅ (all auth-required only; no admin-authed CRUD smoke).
+- Read dev.log (48 lines) — no admin-resource CRUD smoke for any of my 4 resources; only generic app usage logged.
+
+Critical findings (per-resource, per-dimension):
+
+# STEP 16-B-D Audit Report (Resources 15-18)
+
+## R15: inspections
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:28 `registerResource(inspectionConfig)` (in marketplace CP batch on ln 27-29) |
+| 2 | Config | ✅ | marketplace-resources.ts:293-299 (key='inspections'/titleFa='کارشناسی'/titleEn='Inspections'/icon='Search'/model='inspection'/apiBase='/api/admin/inspections'/adminPath='/admin/resources/inspections' all set) |
+| 3 | Permission/RBAC | ⚠️ | marketplace-resources.ts:301 has all 5 fields set to 'inspection.read'. CRITICAL: 'inspection.read' is NOT in PERMISSIONS array (authorization/permissions.ts:34-155) — only `auction.manage`, `deal.*`, `rfq.*` exist for marketplace CP. seed-rbac.ts + seed-permission-matrix.ts do NOT seed 'inspection.read' into DB Permission table → can() returns false at runtime for ALL users (including ADMIN) → universal API GET /api/admin/resources/inspections returns 403 Forbidden for everyone. Per literal criterion (all 5 RBAC fields set) = ⚠️ (config has fields but value is non-existent permission). |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:327-340 NONE of 8 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49. |
+| 5 | API | ✅ | Universal route at src/app/api/admin/resources/[resource]/route.ts:36 (GET) + :106 (POST); universal-table.tsx:54 calls `/api/admin/resources/${config.key}` NOT config.apiBase. config.apiBase='/api/admin/inspections' is decorative (legacy file at src/app/api/admin/inspections/route.ts:91 exists but is bypassed by universal UI). |
+| 6 | Service | ✅ | marketplace-resources.ts:297 `model='inspection'` → prisma/schema.prisma:1352 `model Inspection`; data-adapter.ts:30-37 uses `db.inspection` via getPrismaModel. |
+| 7 | Table | ✅ | marketplace-resources.ts:303-312 8 columns (status/requestedBy/inspectorId/scheduledDate/completedAt/score/price/createdAt); all match Inspection model fields in schema.prisma:1352-1372. 16-A row 15 claimed Columns=101 — INCORRECT (actual is 8). |
+| 8 | Filters | ✅ | marketplace-resources.ts:314-322 filters[] has 1 item (status with 5 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:324 `defaultSort: { field: 'createdAt', order: 'desc' }`; 5 sortable columns (status/scheduledDate/completedAt/score/createdAt). |
+| 10 | Pagination | ✅ | marketplace-resources.ts:325 `pageSize: 25`. |
+| 11 | Form | ✅ | marketplace-resources.ts:327-340 8 fields populated (requestedBy/inspectorId/status/scheduledDate/score/reportUrl/price/notes). |
+| 12 | Validation | ❌ | marketplace-resources.ts:327-340 NONE of 8 fields has `validation: {...}` set (only `required: true` on requestedBy at ln 328). Critical: no min/max on `score` (Float, label claims 0-100 but no validation), no min on `price` (BigInt currency). FieldValidation type at types.ts:95-110 is unused for inspections. **Continues systemic gap from R1-R14 — now 15/15.** |
+| 13 | Detail | ❌ | marketplace-resources.ts:292-349 inspectionConfig has NO `detailTabs` field at all. 16-A row 15 marked Detail as `—` (acknowledged missing). |
+| 14 | Relations | ❌ | marketplace-resources.ts:292-349 inspectionConfig has NO `relations` field at all. 16-A row 15 correctly marked Relations as `—`. |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:342-346 actions[] has 3 items (schedule/complete/cancel) NONE have `apiPath`. CRITICAL RUNTIME: action-engine.ts:97-165 has NO `schedule`/`complete`/`cancel` handlers → ALL 3 actions throw `Error: No handler for action "..."` at runtime. 0/3 actions work at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:292-349 inspectionConfig has NO `bulkActions` field. 16-A row 15 marked Bulk as `—`. |
+| 17 | Export | ❌ | marketplace-resources.ts:301 `permissions.export='inspection.read'` set BUT: (a) authorization/index.ts:219-227 EXPORT_PERMISSIONS map has NO `'inspections'` entry (uses singular 'listing'/'user'/etc.) → canExport(userId, 'inspections') falls back to `'inspections.read'` (non-existent) → returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "inspections"` at runtime; (b) 'inspection.read' itself is not in PERMISSIONS array — even if singular key worked, no user has the permission. DOUBLE BROKEN. |
+| 18 | Audit | ✅ | marketplace-resources.ts:348 `audit: { enabled: true, entityType: 'Inspection', actions: ['inspection.read'] }`. NOTE: 'inspection.read' NOT in PERMISSIONS array — audit action label would never match a real permission check at runtime. Per literal criterion (all 3 audit fields set) = ✅. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for inspections (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts (runs same 27 invariants per resource across all 18). NO phase file for inspections. tests/phase5-trust.test.ts:96-97 only checks `db.inspection.count()` exists — schema-only, not admin-resource contract. **Continues systemic gap from R1-R14 — now 15/15.** |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:315 `/admin/resources/inspections → 307 → /login` smoke ✅ (auth-redirect only). STEP-15-PERFORMANCE-BASELINE.md:83 `/api/admin/resources/inspections → 401` smoke ✅ (auth-required only; no admin-authed CRUD smoke). NOTE: at runtime with admin auth, GET would return 403 because 'inspection.read' is not in PERMISSIONS — auth-redirect smoke does NOT verify the resource actually works for ADMIN. |
+
+**R15 Verdict summary:** 9 ✅ / 5 ⚠️ / 6 ❌
+
+## R16: transports
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:28 `registerResource(transportConfig)` (in marketplace CP batch). |
+| 2 | Config | ✅ | marketplace-resources.ts:352-358 (key='transports'/titleFa='حمل‌ونقل'/titleEn='Transport'/icon='Truck'/model='transportRequest'/apiBase='/api/admin/transport'/adminPath='/admin/resources/transports' all set) |
+| 3 | Permission/RBAC | ⚠️ | marketplace-resources.ts:360 has all 5 fields set to 'transport.read'. CRITICAL: 'transport.read' is NOT in PERMISSIONS array (authorization/permissions.ts:34-155). seed-rbac.ts + seed-permission-matrix.ts do NOT seed 'transport.read' into DB → can() returns false at runtime for ALL users (including ADMIN) → universal API GET /api/admin/resources/transports returns 403 Forbidden for everyone. Per literal criterion (all 5 RBAC fields set) = ⚠️. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:397-424 NONE of 17 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49. PII fields `carrierPhone` (ln 420) and `requestedBy` (ln 422) exposed without field-level protection. |
+| 5 | API | ✅ | Universal route at src/app/api/admin/resources/[resource]/route.ts:36 (GET) + :106 (POST); universal-table.tsx:54 calls `/api/admin/resources/${config.key}`. config.apiBase='/api/admin/transport' is decorative (legacy file at src/app/api/admin/transport/route.ts:79 exists but is bypassed). |
+| 6 | Service | ✅ | marketplace-resources.ts:356 `model='transportRequest'` → prisma/schema.prisma:1378 `model TransportRequest`; data-adapter.ts:30-37 uses `db.transportRequest` via getPrismaModel. |
+| 7 | Table | ✅ | marketplace-resources.ts:362-375 12 columns (origin/destination/cargoType/cargoWeight/vehicleType/status/quotedPrice/carrierName/trackingCode/loadingDate/deliveryDate/createdAt); all match TransportRequest model fields in schema.prisma:1378-1403. 16-A row 16 claimed Columns=81 — INCORRECT (actual is 12; 81 is close to transportConfig line range 351-433=83 lines, so 16-A confused line range with column count). |
+| 8 | Filters | ✅ | marketplace-resources.ts:377-392 filters[] has 2 items (status with 6 options + vehicleType with 4 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:394 `defaultSort: { field: 'createdAt', order: 'desc' }`; 6 sortable columns (status/quotedPrice/loadingDate/deliveryDate/createdAt + origin via filterable). |
+| 10 | Pagination | ✅ | marketplace-resources.ts:395 `pageSize: 25`. |
+| 11 | Form | ✅ | marketplace-resources.ts:397-424 17 fields populated (origin/destination/cargoType/cargoWeight/cargoLength/cargoWidth/cargoHeight/vehicleType/loadingDate/deliveryDate/status/quotedPrice/carrierName/carrierPhone/trackingCode/requestedBy/notes). |
+| 12 | Validation | ❌ | marketplace-resources.ts:397-424 NONE of 17 fields has `validation: {...}` set (only `required: true` on origin/destination/requestedBy at ln 398/399/422). Critical: no min on `cargoWeight` (Float), no min on `quotedPrice` (BigInt currency), no pattern on `trackingCode` (free-text), no pattern on `carrierPhone` (PII), no min/max on `cargoLength`/`cargoWidth`/`cargoHeight` (Float dimensions). **Continues systemic gap from R1-R15 — now 16/16.** |
+| 13 | Detail | ❌ | marketplace-resources.ts:351-433 transportConfig has NO `detailTabs` field. 16-A row 16 marked Detail as `—`. |
+| 14 | Relations | ❌ | marketplace-resources.ts:351-433 transportConfig has NO `relations` field. 16-A row 16 correctly marked Relations as `—`. |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:426-430 actions[] has 3 items (accept/deliver/cancel) NONE have `apiPath`. CRITICAL RUNTIME: action-engine.ts:97-165 has NO `accept`/`deliver`/`cancel` handlers → ALL 3 actions throw `Error: No handler for action "..."` at runtime. 0/3 actions work at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:351-433 transportConfig has NO `bulkActions` field. 16-A row 16 marked Bulk as `—`. |
+| 17 | Export | ❌ | marketplace-resources.ts:360 `permissions.export='transport.read'` set BUT: (a) EXPORT_PERMISSIONS map at authorization/index.ts:219-227 has NO `'transports'` entry → fallback `'transports.read'` (non-existent) → 403 for everyone; (b) 'transport.read' itself is not in PERMISSIONS array. DOUBLE BROKEN. |
+| 18 | Audit | ✅ | marketplace-resources.ts:432 `audit: { enabled: true, entityType: 'TransportRequest', actions: ['transport.read'] }`. NOTE: 'transport.read' NOT in PERMISSIONS array. Per literal criterion = ✅. |
+| 19 | Tests | ⚠️ | NO dedicated contract test file for transports (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. NO phase file for transports. **Continues systemic gap from R1-R15 — now 16/16.** |
+| 20 | Runtime | ✅ | docs/verification/STEP-15-PERFORMANCE-BASELINE.md:84 `/api/admin/resources/transports → 401` smoke ✅ (auth-redirect only). NOTE: STEP-14.8-EVIDENCE.md:316 tested `/admin/resources/transportRequests` (WRONG URL — should be `transports`) → that test was against an UNREGISTERED key (would return 307 because Next.js falls through to the universal `/admin/resources/[resource]` route which redirects to /login when no auth — so the test passed for the wrong reason). Only the API 401 smoke used the correct URL. |
+
+**R16 Verdict summary:** 9 ✅ / 5 ⚠️ / 6 ❌
+
+## R17: disputes
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:29 `registerResource(disputeConfig)` (in marketplace CP batch). |
+| 2 | Config | ✅ | marketplace-resources.ts:436-442 (key='disputes'/titleFa='اختلافات'/titleEn='Disputes'/icon='AlertTriangle'/model='dispute'/apiBase='/api/admin/resources/disputes'/adminPath='/admin/resources/disputes' all set). apiBase MATCHES universal route pattern ✅ (no legacy file). |
+| 3 | Permission/RBAC | ✅ | marketplace-resources.ts:444 has read='deal.read'/create='deal.manage'/update='deal.manage'/delete='deal.manage'/export='deal.read'. ALL values exist in PERMISSIONS array (authorization/permissions.ts:95-96: 'deal.read', 'deal.manage'). All 5 RBAC fields set. NOTE: disputes REUSES deal.* permissions (no dispute.* constants exist in PERMISSIONS array) — over-permissive but values exist ✅. This is the ONLY resource of my 4 with all permission constants actually seeded in DB. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:470-481 NONE of 6 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49. PII field `openedBy` (ln 480) and financial `resolution` (ln 478) exposed without field-level protection. |
+| 5 | API | ✅ | Universal route at src/app/api/admin/resources/[resource]/route.ts:36 (GET) + :106 (POST); universal-table.tsx:54 calls `/api/admin/resources/${config.key}`. config.apiBase='/api/admin/resources/disputes' MATCHES universal route pattern ✅ (no decorative-only apiBase here). |
+| 6 | Service | ✅ | marketplace-resources.ts:440 `model='dispute'` → prisma/schema.prisma:2434 `model Dispute`; data-adapter.ts:30-37 uses `db.dispute` via getPrismaModel. |
+| 7 | Table | ✅ | marketplace-resources.ts:446-456 9 columns (reason/description/status/openedBy/resolution/resolvedBy/openedAt/resolvedAt/createdAt); all match Dispute model fields in schema.prisma:2434-2457. 16-A row 17 claimed Columns=181 — INCORRECT (actual is 9; 181 is unclear — not column count, not line range, not model field count). |
+| 8 | Filters | ✅ | marketplace-resources.ts:458-465 filters[] has 1 item (status with 4 options). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:467 `defaultSort: { field: 'createdAt', order: 'desc' }`; 4 sortable columns (status/openedAt/resolvedAt/createdAt). |
+| 10 | Pagination | ✅ | marketplace-resources.ts:468 `pageSize: 25`. |
+| 11 | Form | ✅ | marketplace-resources.ts:470-481 6 fields populated (reason/description/status/resolution/evidence/openedBy). |
+| 12 | Validation | ❌ | marketplace-resources.ts:470-481 NONE of 6 fields has `validation: {...}` set (only `required: true` on reason at ln 471 and openedBy at ln 480). Critical: no length validation on `reason` (short string primary identifier), no pattern on `openedBy` (free-text userId), no schema validation on `evidence` (JSON type, no validator). **Continues systemic gap from R1-R16 — now 17/17.** |
+| 13 | Detail | ❌ | marketplace-resources.ts:435-490 disputeConfig has NO `detailTabs` field at all. 16-A row 17 marked Detail as `—` (acknowledged missing). |
+| 14 | Relations | ❌ | marketplace-resources.ts:435-490 disputeConfig has NO `relations` field at all. 16-A row 17 claimed Relations ✓ — INCORRECT (16-A summary contradicts source). User warning "do NOT trust 16-A summary" — confirmed necessary for disputes. (Dispute model HAS `dealId` and `orderId` foreign keys in schema.prisma:2436/2438 — relations COULD be defined pointing to deals/orders, but they are NOT defined in the config.) |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:483-487 actions[] has 3 items (review/resolve/cancel) NONE have `apiPath`. CRITICAL RUNTIME: action-engine.ts:97-165 has NO `review`/`resolve`/`cancel` handlers → ALL 3 actions throw `Error: No handler for action "..."` at runtime. 0/3 actions work at runtime. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:435-490 disputeConfig has NO `bulkActions` field. |
+| 17 | Export | ❌ | marketplace-resources.ts:444 `permissions.export='deal.read'` set AND 'deal.read' EXISTS in PERMISSIONS array, BUT: authorization/index.ts:219-227 EXPORT_PERMISSIONS map has NO `'disputes'` entry → canExport(userId, 'disputes') falls back to `'disputes.read'` (non-existent in PERMISSIONS — 'deal.read' is the actual perm) → returns false → executeExport throws `Forbidden: export permission required for "disputes"` at runtime. SINGLE BROKEN (not double — 'deal.read' exists but the map lacks a 'disputes'→'deal.read' entry). |
+| 18 | Audit | ✅ | marketplace-resources.ts:489 `audit: { enabled: true, entityType: 'Dispute', actions: ['deal.manage'] }`. 'deal.manage' IS in PERMISSIONS array (permissions.ts:96). All 3 audit fields set ✅. The most correctly-configured audit of my 4. |
+| 19 | Tests | ⚠️ | NO dedicated admin-resource contract test file for disputes (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. tests/phase9-orders-deals.test.ts:84-90 only checks Dispute model exists in schema + has dealId/orderId/status/evidence (schema-only, not admin-resource contract). tests/phase9-orders-deals.test.ts:135-187 checks `/api/orders/[id]/disputes` legacy route exists (separate from admin manager — public buyer-facing disputes route, not the admin universal resource). **Continues systemic gap from R1-R16 — now 17/17.** |
+| 20 | Runtime | ✅ | docs/verification/STEP-14.8-EVIDENCE.md:318 `/admin/resources/disputes → 307 → /login` smoke ✅ (auth-redirect only). STEP-15-PERFORMANCE-BASELINE.md:85 `/api/admin/resources/disputes → 401` smoke ✅ (auth-redirect only). At runtime with admin auth, GET /api/admin/resources/disputes would return 200 OK (since 'deal.read' IS in PERMISSIONS and ADMIN has it via [...PERMISSIONS] at permissions.ts:161). **This is the ONLY resource of my 4 that actually works for read at runtime** — the other 3 (inspections/transports/buy-requests) return 403 because their permission constants ('inspection.read'/'transport.read'/'request.read') are not seeded in DB. |
+
+**R17 Verdict summary:** 10 ✅ / 4 ⚠️ / 6 ❌
+
+## R18: buy-requests
+| # | Dimension | Verdict | Evidence |
+|---:|---|---|---|
+| 1 | Registry | ✅ | resource-index.ts:29 `registerResource(buyRequestConfig)` (in marketplace CP batch). |
+| 2 | Config | ✅ | marketplace-resources.ts:493-499 (key='buy-requests'/titleFa='درخواست‌های خرید'/titleEn='Buy Requests'/icon='ShoppingBag'/model='buyRequest'/apiBase='/api/admin/requests'/adminPath='/admin/resources/buy-requests' all set). NOTE: key uses DASH ('buy-requests') not camelCase — unique among all 18 resources. |
+| 3 | Permission/RBAC | ⚠️ | marketplace-resources.ts:501 has all 5 fields set to 'request.read'. CRITICAL: 'request.read' is NOT in PERMISSIONS array (authorization/permissions.ts:34-155). seed-admin-navigation.ts:82 references 'request.read' as permissionKey for nav menu, but it was never seeded into DB Permission table → can() returns false at runtime for ALL users (including ADMIN) → universal API GET /api/admin/resources/buy-requests returns 403 Forbidden for everyone. Per literal criterion (all 5 RBAC fields set) = ⚠️. |
+| 4 | Field Policy | ⚠️ | marketplace-resources.ts:526-542 NONE of 13 fields has `permissions: { read, write }` set; only generic infra in field-policy.ts:25-49. PII fields `requesterName` (ln 540) and `requesterPhone` (ln 541) exposed without field-level protection. |
+| 5 | API | ✅ | Universal route at src/app/api/admin/resources/[resource]/route.ts:36 (GET) + :106 (POST); universal-table.tsx:54 calls `/api/admin/resources/${config.key}`. config.apiBase='/api/admin/requests' is decorative (legacy file at src/app/api/admin/requests/route.ts:120 + [id]/route.ts:85 exists but is bypassed by universal UI). |
+| 6 | Service | ✅ | marketplace-resources.ts:497 `model='buyRequest'` → prisma/schema.prisma:550 `model BuyRequest`; data-adapter.ts:30-37 uses `db.buyRequest` via getPrismaModel. |
+| 7 | Table | ✅ | marketplace-resources.ts:503-514 10 columns (title/category/brandPref/budgetMin/budgetMax/city/status/verified/viewCount/createdAt); all match BuyRequest model fields in schema.prisma:550-574. 16-A row 18 claimed Columns=28 — INCORRECT (actual is 10; 28 is unclear — possibly a count of fields in BuyRequest model, but model has ~16 fields, doesn't match either). |
+| 8 | Filters | ✅ | marketplace-resources.ts:516-521 filters[] has 2 items (status with 2 options + verified boolean). |
+| 9 | Sorting | ✅ | marketplace-resources.ts:523 `defaultSort: { field: 'createdAt', order: 'desc' }`; 4 sortable columns (title/status/viewCount/createdAt). |
+| 10 | Pagination | ✅ | marketplace-resources.ts:524 `pageSize: 25`. |
+| 11 | Form | ✅ | marketplace-resources.ts:526-542 13 fields populated (title/description/category/brandPref/budgetMin/budgetMax/city/province/deadline/status/verified/requesterName/requesterPhone). |
+| 12 | Validation | ❌ | marketplace-resources.ts:526-542 NONE of 13 fields has `validation: {...}` set (only `required: true` on title at ln 527). Critical: no min/max on `budgetMin`/`budgetMax` (BigInt currency), no pattern on `requesterPhone` (PII), no length validation on `title`, no validation on `deadline` (free-text String field, not DateTime — should be date-range validated). **Continues systemic gap from R1-R17 — now 18/18.** |
+| 13 | Detail | ❌ | marketplace-resources.ts:492-551 buyRequestConfig has NO `detailTabs` field. 16-A row 18 marked Detail as `—`. |
+| 14 | Relations | ❌ | marketplace-resources.ts:492-551 buyRequestConfig has NO `relations` field. 16-A row 18 correctly marked Relations as `—`. |
+| 15 | Actions | ⚠️ | marketplace-resources.ts:544-548 actions[] has 3 items (verify/close/delete) NONE have `apiPath`. MIXED RUNTIME: (a) `verify` handler EXISTS (action-engine.ts:130-136) but writes `{ verified: true, verification: 'VERIFIED' }` — BuyRequest model (schema.prisma:550-574) HAS `verified Boolean` field (ln 563) BUT has NO `verification` field → Prisma would throw `PrismaClientValidationError: Unknown arg `verification` in data` at runtime. (b) `close` has NO handler → throws `Error: No handler for action "close"` at runtime. (c) `delete` handler EXISTS (action-engine.ts:154-165) and works — handler checks `item.deletedAt !== undefined`; BuyRequest has NO `deletedAt` field → before.findUnique won't include it → `item.deletedAt` is undefined → falls through to `model.delete({ where: { id } })` hard delete ✅ but irreversible. 1 of 3 actions works at runtime (delete), 1 throws Prisma error (verify), 1 throws No-handler (close). BEST of my 4 resources for action runtime — only one with ANY working action. |
+| 16 | Bulk | ❌ | marketplace-resources.ts:492-551 buyRequestConfig has NO `bulkActions` field. 16-A row 18 marked Bulk as `—`. |
+| 17 | Export | ❌ | marketplace-resources.ts:501 `permissions.export='request.read'` set BUT: (a) EXPORT_PERMISSIONS map at authorization/index.ts:219-227 has NO `'buy-requests'` entry (note: the key has a DASH — even if a map entry existed, the lookup `EXPORT_PERMISSIONS['buy-requests']` would need that exact dash-key) → fallback `'buy-requests.read'` (non-existent) → 403 for everyone; (b) 'request.read' itself is not in PERMISSIONS array. DOUBLE BROKEN. |
+| 18 | Audit | ✅ | marketplace-resources.ts:550 `audit: { enabled: true, entityType: 'BuyRequest', actions: ['request.read'] }`. NOTE: 'request.read' NOT in PERMISSIONS array — audit action label would never match a real permission check at runtime. Per literal criterion = ✅. |
+| 19 | Tests | ⚠️ | NO dedicated admin-resource contract test file for buy-requests (grep returns no match). Only generic coverage in tests/contract/resource-contract.test.ts. tests/phase7-rfq-matching.test.ts:12-31 only checks `db.buyRequest.count()` exists + has data (schema-only, not admin-resource contract). **Continues systemic gap from R1-R17 — now 18/18.** |
+| 20 | Runtime | ✅ | docs/verification/STEP-15-PERFORMANCE-BASELINE.md:86 `/api/admin/resources/buy-requests → 401` smoke ✅ (auth-redirect only). NOTE: STEP-14.8-EVIDENCE.md:319 tested `/admin/resources/buyRequests` (WRONG URL — should be `buy-requests` with dash) → that test was against an UNREGISTERED key (would return 307 because Next.js falls through to the universal `/admin/resources/[resource]` route which redirects to /login when no auth — so the test passed for the wrong reason). Only the API 401 smoke used the correct URL. |
+
+**R18 Verdict summary:** 9 ✅ / 5 ⚠️ / 6 ❌
+
+## Cross-resource notes
+
+### Critical gaps (sorted by severity)
+
+1. **R17 disputes is the most correctly-configured of the 4** — 10 ✅ / 4 ⚠️ / 6 ❌. It is the ONLY resource of my 4 where: (a) all 5 RBAC permission values ('deal.read'/'deal.manage') actually exist in PERMISSIONS array and are seeded in DB → universal API GET /api/admin/resources/disputes returns 200 OK for ADMIN at runtime (the other 3 return 403); (b) audit.actions value ('deal.manage') IS in PERMISSIONS array (the other 3 use non-existent permission constants in audit.actions); (c) apiBase MATCHES universal route pattern ('/api/admin/resources/disputes') — the other 3 have decorative apiBase values pointing to legacy routes that the universal UI bypasses. However, disputes still has: no field validation, no field permissions, no detailTabs, no relations (16-A wrongly claimed relations ✓), no bulkActions, all 3 actions (review/resolve/cancel) broken at runtime, export broken at runtime due to singular/plural mismatch. Reuses deal.* permissions (over-permissive).
+
+2. **R15/R16/R18 (inspections/transports/buy-requests) are READ-BLOCKED AT RUNTIME for ALL users including ADMIN** — this is a NEW critical gap not flagged in 16-B-A/B/C. Their permission constants ('inspection.read', 'transport.read', 'request.read') are NOT in the canonical PERMISSIONS array (authorization/permissions.ts:34-155). At runtime, can() calls getUserPermissions() (rbac-legacy.ts:20) which queries the DB RolePermission table joined with Permission table. Since seed-permission-matrix.ts uses the PERMISSIONS array (which excludes these 3 constants) and seed-rbac.ts has 20+ hardcoded perms (none for inspection/transport/request), these permission keys are NEVER seeded into the DB Permission table. Result: can(userId, 'inspection.read') returns false for ALL users (including ADMIN via [...PERMISSIONS] at permissions.ts:161 — but [...PERMISSIONS] only spreads the array which doesn't include 'inspection.read'). Universal API route at src/app/api/admin/resources/[resource]/route.ts:55 `can(user?.id, readPerm)` returns false → returns 403 Forbidden for everyone. **This is worse than the export singular/plural bug — it's a complete read-block for 3 of my 4 resources.** 16-A row 15/16/18 marked Permissions ✓ for all 3 — TECHNICALLY TRUE per literal criterion (all 5 RBAC fields set) but the values are non-existent permission constants, so the resources are non-functional at runtime.
+
+3. **All 4 resources have ZERO field-level validation rules** (dimension 12 = ❌ across all 4). The `FieldValidation` interface (types.ts:95-110) supports `minLength/maxLength/min/max/pattern/message/validator` but NONE of the 4 configs use it. Critical missing validation: inspections `score` (Float, label claims 0-100 but no validation; inspections `price` (BigInt, no min); transports `cargoWeight`/`cargoLength`/`cargoWidth`/`cargoHeight` (Float dimensions, no min/max); transports `quotedPrice` (BigInt, no min); transports `trackingCode` (free-text, no pattern); transports `carrierPhone` (PII, no pattern); disputes `reason` (short string primary identifier, no length validation); disputes `openedBy` (free-text userId, no pattern); disputes `evidence` (JSON, no validator); buy-requests `budgetMin`/`budgetMax` (BigInt, no min/max); buy-requests `requesterPhone` (PII, no pattern); buy-requests `deadline` (free-text String, not DateTime — should be date-range validated). Generic infra exists, resource-specific config absent. **Continues systemic gap from R1-R14 (14/14 prior resources also had ❌ for validation) — now 18/18.**
+
+4. **All 4 resources have ZERO field-level permissions** (dimension 4 = ⚠️ across all 4). The `AdminField.permissions` interface (types.ts:62-66) supports per-field read/write permission gating but NONE of the 4 configs set it. Critical for: transports PII fields `carrierPhone` (ln 420) and `requestedBy` (ln 422); disputes PII `openedBy` (ln 480) and financial `resolution` (ln 478); buy-requests PII `requesterName` (ln 540) and `requesterPhone` (ln 541); inspections `inspectorId` (ln 329, should be admin-only). **Continues systemic gap from R1-R14 — now 18/18.**
+
+5. **All 4 resources have ZERO actions with `apiPath`** (dimension 15 = ⚠️ for all 4). The actions rely entirely on action-engine registered handlers. Of 12 total action invocations across my 4 resources: 1 works correctly (buy-requests `delete` — hard delete since BuyRequest has no `deletedAt` field); 1 throws Prisma validation error (buy-requests `verify` — writes `verification` field that doesn't exist on BuyRequest model); 10 throw "No handler" at runtime (inspections schedule/complete/cancel, transports accept/deliver/cancel, disputes review/resolve/cancel, buy-requests close). action-engine registers 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) — designed for content/catalog moderation (listings, brands, users, products, parts, machines, reviews, companies). My 4 marketplace CP resources use 8 action keys NOT in that list (schedule, complete, cancel, accept, deliver, review, resolve, close) — designed for transaction lifecycle (inspection lifecycle, transport lifecycle, dispute lifecycle, buy-request lifecycle). The action engine is structurally mismatched with marketplace transaction flows. **Continues systemic gap from R1-R14 — now 18/18.** Only buy-requests `delete` works (1/12 = 8% action success rate); disputes/inspections/transports have 0/9 = 0% action success rate.
+
+6. **Export wiring is SYSTEMICALLY BROKEN across all 4 of my resources** — `canExport(userId, resourceKey)` at authorization/index.ts:215-231 receives the PLURAL resource key from bulk-export-engine.ts:199 (e.g. `'inspections'`, `'transports'`, `'disputes'`, `'buy-requests'`). The EXPORT_PERMISSIONS map at authorization/index.ts:219-227 has SINGULAR keys (`listing`, `user`, `order`, `payment`, `audit`, `product`, `brand`). NONE of my 4 plural resource keys match the singular map keys. The fallback at ln 229 `${resource}.read` produces strings like `'inspections.read'`, `'transports.read'`, `'disputes.read'`, `'buy-requests.read'` — NONE of which are in the PERMISSIONS array. Result: **executeExport throws `Forbidden: export permission required for "{resource}"` at runtime for ALL 4 of my resources**. For inspections/transports/buy-requests, the bug is DOUBLE: (a) plural→singular mismatch → fallback; (b) fallback permission string non-existent AND the config.permissions.export value itself non-existent. For disputes, the bug is SINGLE: (a) plural→singular mismatch → fallback; (b) config.permissions.export value ('deal.read') DOES exist in PERMISSIONS but the EXPORT_PERMISSIONS map lacks a 'disputes'→'deal.read' entry. **This affects ALL 18 resources total** (cross-cutting with 16-B-A's R1-R5 + 16-B-B's R6-R10 + 16-B-C's R11-R14). Class A systemic runtime gap.
+
+7. **All 4 of my resources lack `detailTabs`, `relations`, AND `bulkActions`** (dimensions 13/14/16 = ❌ for all 4). Of the 4, only disputes (R17) had 16-A claim relations existed (16-A row 17 Relations=✓) — but source code at marketplace-resources.ts:435-490 shows NO `relations` field in disputeConfig. The Dispute Prisma model HAS `dealId` and `orderId` foreign keys (schema.prisma:2436/2438) that COULD be exposed as relations pointing to deals/orders, but the config does NOT define them. 16-A's relations claim for disputes was FALSE. 16-A correctly noted relations missing for inspections/transports/buy-requests. Net: 16-A's "16 of 18 have Relations" claim is WRONG by 2 — the actual count is **13 of 18 have Relations** (R1-R12 + R14 auctions = 13; R13 offers + R15 inspections + R16 transports + R17 disputes + R18 buy-requests = 5 do NOT).
+
+8. **16-A inventory errors confirmed for ALL 4 of my resources**:
+   - 16-A row 15 (inspections) claimed Columns=101 — actual is 8 columns (marketplace-resources.ts:303-312). 16-A's 101 is wrong (unclear source — not column count, not line range, not model field count).
+   - 16-A row 16 (transports) claimed Columns=81 — actual is 12 columns (marketplace-resources.ts:362-375). 16-A's 81 is wrong (close to transportConfig line range 351-433=83 lines, so 16-A may have confused line range with column count).
+   - 16-A row 17 (disputes) claimed Columns=181 AND Relations=✓ — actual is 9 columns AND NO relations field (marketplace-resources.ts:435-490). 16-A's 181 is wrong (unclear source); 16-A's Relations ✓ is FALSE (source has no relations field in disputeConfig). User warning "do NOT trust 16-A summary" — confirmed necessary for disputes (the most wrong of my 4: 2 wrong cells).
+   - 16-A row 18 (buy-requests) claimed Columns=28 — actual is 10 columns (marketplace-resources.ts:503-514). 16-A's 28 is wrong (unclear source — possibly field count or partial line count).
+   - **User warning "do NOT trust the 16-A summary; verify from source" — confirmed necessary once again for 4 of 4 of my resources.** Across all 18 resources (R1-R18) audited by 16-B-A/B/C/D, 16-A column counts were wrong for at least: R11 deals (202≠10), R12 rfqs (176≠10), R13 offers (146≠9), R14 auctions (126≠10), R15 inspections (101≠8), R16 transports (81≠12), R17 disputes (181≠9), R18 buy-requests (28≠10). At minimum 8 of 18 (44%) had wrong Column counts in 16-A summary; the actual count of wrong claims is likely higher (16-A's "16 of 18 have Relations" is also false — actual is 13/18).
+
+9. **All 4 resources have only generic contract tests** (dimension 19 = ⚠️ for all 4). tests/contract/resource-contract.test.ts runs the SAME 27 invariant tests across all 18 resources (×18 + 4 cross-resource = 490 total, with possible test count variance). No per-resource isolation. tests/phase5-trust.test.ts:96-97 (inspections) and tests/phase7-rfq-matching.test.ts:12-31 (buy-requests) exist but test schema/seed data presence, NOT admin-resource contract. tests/phase9-orders-deals.test.ts:84-187 (disputes) checks Dispute schema + legacy `/api/orders/[id]/disputes` route (public buyer-facing, NOT admin universal resource). No phase file for transports. The 490-test count is generic evidence, NOT resource-specific evidence per user policy. **Continues pattern from R1-R14 — now 18/18.**
+
+10. **3 of 4 runtime smoke tests used WRONG URLs in STEP-14.8-EVIDENCE.md**:
+    - STEP-14.8-EVIDENCE.md:316 tested `/admin/resources/transportRequests` (camelCase, WRONG) instead of `/admin/resources/transports` (the actual registered key at marketplace-resources.ts:352).
+    - STEP-14.8-EVIDENCE.md:319 tested `/admin/resources/buyRequests` (camelCase, WRONG) instead of `/admin/resources/buy-requests` (the actual registered key at marketplace-resources.ts:493, with DASH).
+    - These tests passed (307→/login) because Next.js falls through to the universal `/admin/resources/[resource]/page.tsx` route, which calls `registry.get(resourceKey)`; for unregistered keys, the page does `redirect('/admin/dashboard')` (line 13 of page.tsx), and since the request is unauthenticated, the redirect target triggers another redirect to /login. So the smoke test passed for the WRONG reason (auth-fallback chain), not because the correct resource was tested.
+    - Only STEP-15-PERFORMANCE-BASELINE.md:83-86 tested the correct API URLs (`/api/admin/resources/inspections`, `/api/admin/resources/transports`, `/api/admin/resources/disputes`, `/api/admin/resources/buy-requests`) → all returned 401 (auth-required = correct).
+    - STEP-14.8-EVIDENCE.md:315 (inspections) and :318 (disputes) used correct URLs.
+    - **Net: dimension 20 (Runtime) is ✅ for all 4 by the convention established in 16-B-A/B/C (auth-redirect smoke counts as runtime ✅)**, BUT the smoke is thin (auth-redirect only; no admin-authed CRUD smoke; AND for inspections/transports/buy-requests, even an admin-authed request would return 403 because the permission constants don't exist in DB).
+
+### Resource-by-resource summary
+
+| Resource | ✅ | ⚠️ | ❌ | Headline gap |
+|---|---:|---:|---:|---|
+| R15 inspections | 9 | 5 | 6 | Read-blocked at runtime (perm 'inspection.read' not seeded in DB → 403 for everyone including ADMIN); no field validation (12); no detailTabs/relations/bulkActions (13/14/16); all 3 actions (schedule/complete/cancel) broken at runtime — 0/3 work (15); export runtime broken (17); audit uses non-existent perm constant (18 caveat) |
+| R16 transports | 9 | 5 | 6 | Read-blocked at runtime (perm 'transport.read' not seeded in DB → 403 for everyone including ADMIN); no field validation (12); no detailTabs/relations/bulkActions (13/14/16); all 3 actions (accept/deliver/cancel) broken at runtime — 0/3 work (15); export runtime broken (17); audit uses non-existent perm constant (18 caveat); PII carrierPhone/requestedBy unprotected (4) |
+| R17 disputes | 10 | 4 | 6 | Most correctly-configured of 4 (only one with perms existing in DB → 200 OK at runtime for ADMIN); no field validation (12); no detailTabs/relations/bulkActions (13/14/16); all 3 actions (review/resolve/cancel) broken at runtime — 0/3 work (15); export runtime broken via singular/plural mismatch (17); 16-A Relations claim FALSE; reuses deal.* perms (over-permissive but values exist) |
+| R18 buy-requests | 9 | 5 | 6 | Read-blocked at runtime (perm 'request.read' not seeded in DB → 403 for everyone including ADMIN); no field validation (12); no detailTabs/relations/bulkActions (13/14/16); mixed actions runtime — 1/3 works (delete hard-delete), 1 throws Prisma error (verify writes invalid `verification` field), 1 throws No-handler (close) (15); export runtime broken (17); audit uses non-existent perm constant (18 caveat); PII requesterPhone unprotected (4) |
+
+### Patterns observed
+
+- **Marketplace CP resources R15-R18 are config-incomplete vs Store resources AND marketplace CP resources R11-R14**: Of 4 marketplace CP resources audited here, NONE have `detailTabs`, `relations`, OR `bulkActions`. This is even worse than R11-R14 (which had at least deals with detailTabs/relations/bulkActions/audit, rfqs with detailTabs/relations, auctions with detailTabs/relations). R15-R18 average 9.25 ✅ per resource (vs R11-R14 average 12.25 ✅ per resource; vs R1-R10 average ~13 ✅ per resource). The marketplace CP resources are progressively less configured as we move from deal lifecycle (R11-R14) to auxiliary resources (R15-R18).
+- **3 of 4 marketplace CP resources (R15/R16/R18) are READ-BLOCKED AT RUNTIME for ALL users including ADMIN** — this is a NEW critical finding not flagged in 16-B-A/B/C. The permission constants ('inspection.read', 'transport.read', 'request.read') are NOT in the canonical PERMISSIONS array (authorization/permissions.ts:34-155) AND are NOT seeded into the DB Permission table (seed-rbac.ts has 20+ perms, none for inspection/transport/request; seed-permission-matrix.ts uses PERMISSIONS array which excludes these). At runtime, can() returns false → universal API returns 403 Forbidden for everyone. The auth-redirect smoke (307→/login for page, 401 for API) passes because it tests unauthenticated requests; but with admin auth, GET /api/admin/resources/inspections returns 403 (not 200). This means the inspections/transports/buy-requests admin pages would render the table shell but the API call would fail with 403 → empty table with error toast. The user-facing admin pages for these 3 resources are NON-FUNCTIONAL at runtime.
+- **Only R17 disputes actually works for read at runtime** — because disputes reuses 'deal.read'/'deal.manage' permission constants which ARE in PERMISSIONS array and ARE seeded in DB. ADMIN has them via `[...PERMISSIONS]` at permissions.ts:161. So GET /api/admin/resources/disputes returns 200 OK for ADMIN. This is the ONLY resource of my 4 where the admin page would actually display data.
+- **Action handler coverage is structurally mismatched with marketplace transaction flows (continued from R11-R14)**: action-engine registers 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) — designed for content/catalog moderation (listings, brands, users, products, parts, machines, reviews, companies). My 4 marketplace CP resources use 8 action keys NOT in that list (schedule, complete, cancel, accept, deliver, review, resolve, close) — designed for transaction lifecycle (inspection lifecycle, transport lifecycle, dispute lifecycle, buy-request lifecycle). The action engine was built for content moderation and has not been extended for transaction workflows. Only the generic `delete` action key (used by buy-requests) maps to a handler — and it works because BuyRequest has no `deletedAt` field so the handler falls through to hard delete. The `verify` action key (used by buy-requests) DOES map to a handler but writes a `verification` field that doesn't exist on BuyRequest → Prisma throws. **Continues systemic gap from R1-R14 — now 18/18.**
+- **Field-level security is uniformly absent (continued from R1-R14)**: no field permissions, no field validation — across all 4 of my resources AND all 14 prior resources. This is a systemic gap (18/18 resources so far). Critical PII fields exposed without protection: transports `carrierPhone`/`requestedBy`; disputes `openedBy`; buy-requests `requesterName`/`requesterPhone`. Critical financial fields without validation: inspections `price`/`score`; transports `quotedPrice`/`cargoWeight`/dimensions; disputes `evidence` (JSON); buy-requests `budgetMin`/`budgetMax`.
+- **Export wiring has a singular/plural key mismatch (continued from R1-R14)**: EXPORT_PERMISSIONS map uses singular keys but bulk-export-engine calls with plural resource keys → fallback to non-existent permission → all exports fail at runtime. This affects ALL 18 resources, not just my 4. For my 4, the bug is compounded: inspections/transports/buy-requests use non-existent permission constants EVEN in the singular form; disputes uses 'deal.read' which exists but the map lacks a 'disputes'→'deal.read' entry. (16-B-A cross-resource note + 16-B-B cross-resource note #11 + 16-B-C cross-resource note #8 + this report's note #6)
+- **16-A inventory errors confirmed for 4 of 4 of my resources**: ALL 4 had wrong Column counts (inspections=101≠8, transports=81≠12, disputes=181≠9, buy-requests=28≠10 — all 4 numbers are unclear source, possibly line-range/partial-count confusion); disputes also had a false Relations claim (16-A marked ✓ but source has no relations field in disputeConfig). 16-A's "All 18 have Audit ✓" was correct for my 4. 16-A's "16 of 18 have Relations" is FALSE — actual count is 13/18 (R1-R12 + R14 = 13; R13 offers + R15 inspections + R16 transports + R17 disputes + R18 buy-requests = 5 do NOT have relations). Across all 18 resources, 16-A column counts were wrong for at least 8 of 18 (R11-R18) — the actual error rate is likely higher (16-B-A/B/C may have found more for R1-R10).
+- **3 of 4 runtime smoke tests in STEP-14.8-EVIDENCE.md used WRONG URLs**: transports tested as `transportRequests` (camelCase, wrong — actual key is `transports`); buy-requests tested as `buyRequests` (camelCase, wrong — actual key is `buy-requests` with DASH). These tests passed (307→/login) for the wrong reason — auth-fallback chain through universal `/admin/resources/[resource]/page.tsx` which redirects unregistered keys to `/admin/dashboard` then to `/login`. Only STEP-15-PERFORMANCE-BASELINE.md:83-86 tested the correct API URLs. The 307 smoke for transports and buy-requests is technically a false positive — it doesn't actually verify the resource works.
+- **All 4 of my resources use apiBase values that DON'T match the universal route pattern** (except disputes): inspections apiBase='/api/admin/inspections' (legacy file exists but bypassed); transports apiBase='/api/admin/transport' (legacy file exists but bypassed); buy-requests apiBase='/api/admin/requests' (legacy file exists but bypassed). Only disputes apiBase='/api/admin/resources/disputes' MATCHES the universal route pattern. The universal-table.tsx:54 calls `/api/admin/resources/${config.key}` NOT `config.apiBase` — so apiBase is purely decorative for 3 of my 4 resources. This is a config-debt issue (not a runtime bug since the universal UI bypasses apiBase entirely) but it's misleading.
+
+### No code changes made
+This was an Evidence Freeze step. No files were modified. The only file modified is worklog.md (this append).
+
+Stage Summary:
+- ✅ Audited 4 resources × 20 dimensions = 80 verdicts.
+- ✅ R15 inspections: 9 ✅ / 5 ⚠️ / 6 ❌ (read-blocked at runtime — 'inspection.read' not in PERMISSIONS array nor seeded in DB → 403 for everyone including ADMIN; no field validation; no detailTabs/relations/bulkActions; all 3 actions (schedule/complete/cancel) broken at runtime — 0/3 work; export runtime broken; audit uses non-existent perm constant).
+- ✅ R16 transports: 9 ✅ / 5 ⚠️ / 6 ❌ (read-blocked at runtime — 'transport.read' not in PERMISSIONS array nor seeded in DB → 403 for everyone including ADMIN; no field validation; no detailTabs/relations/bulkActions; all 3 actions (accept/deliver/cancel) broken at runtime — 0/3 work; export runtime broken; PII carrierPhone/requestedBy unprotected).
+- ✅ R17 disputes: 10 ✅ / 4 ⚠️ / 6 ❌ (MOST correctly-configured of 4 — only one with all 5 RBAC perms existing in DB → 200 OK at runtime for ADMIN; no field validation; no detailTabs/relations/bulkActions; all 3 actions (review/resolve/cancel) broken at runtime — 0/3 work; export runtime broken via singular/plural mismatch; 16-A Relations claim FALSE; reuses deal.* perms).
+- ✅ R18 buy-requests: 9 ✅ / 5 ⚠️ / 6 ❌ (read-blocked at runtime — 'request.read' not in PERMISSIONS array nor seeded in DB → 403 for everyone including ADMIN; no field validation; no detailTabs/relations/bulkActions; mixed actions runtime — 1/3 works (delete hard-delete), 1 throws Prisma error (verify writes invalid `verification` field), 1 throws No-handler (close); export runtime broken; PII requesterPhone unprotected).
+- ✅ Cross-resource systemic gaps identified: ZERO field validation across all 4 (continues pattern from R1-R14 — now 18/18); ZERO field permissions across all 4 (18/18); ZERO apiPath on any action across all 4 (18/18); 12 total action invocations, only 1 works at runtime (buy-requests delete = 8% success rate); NO dedicated per-resource contract test file for any of 4 (18/18); EXPORT_PERMISSIONS singular/plural mismatch affects ALL 18 resources (cross-cutting with 16-B-A's R1-R5 + 16-B-B's R6-R10 + 16-B-C's R11-R14); action-engine has 8 generic handlers but my 4 marketplace CP resources use 8 transaction-lifecycle action keys NOT in that list (schedule/complete/cancel/accept/deliver/review/resolve/close).
+- ✅ NEW CRITICAL FINDING (not flagged in 16-B-A/B/C): 3 of 4 of my resources (R15 inspections, R16 transports, R18 buy-requests) are READ-BLOCKED AT RUNTIME for ALL users including ADMIN because their permission constants ('inspection.read', 'transport.read', 'request.read') are NOT in the canonical PERMISSIONS array (authorization/permissions.ts:34-155) and are NOT seeded into the DB Permission table. Universal API returns 403 Forbidden for everyone. The auth-redirect smoke (307→/login for page, 401 for API) PASSES because it tests unauthenticated requests; but with admin auth, GET returns 403 (not 200). Only R17 disputes works for read at runtime because it reuses 'deal.read'/'deal.manage' which DO exist in PERMISSIONS array and ARE seeded in DB.
+- ✅ 16-A inventory errors confirmed for ALL 4 of my resources: ALL 4 had wrong Column counts (inspections=101≠8, transports=81≠12, disputes=181≠9, buy-requests=28≠10); disputes ALSO had a false Relations claim (16-A marked ✓ but source has no relations field). 16-A's "16 of 18 have Relations" is FALSE — actual count is 13/18 (R1-R12 + R14 = 13 have relations; R13 offers + R15 inspections + R16 transports + R17 disputes + R18 buy-requests = 5 do NOT).
+- ✅ 3 of 4 runtime smoke tests in STEP-14.8-EVIDENCE.md used WRONG URLs: transports tested as `transportRequests` (camelCase, wrong — actual key is `transports`); buy-requests tested as `buyRequests` (camelCase, wrong — actual key is `buy-requests` with DASH). These tests passed (307→/login) for the wrong reason (auth-fallback chain through universal page route). Only STEP-15-PERFORMANCE-BASELINE.md:83-86 tested the correct API URLs.
+- ✅ Verified from source, not from 16-A summary. ALL 4 configs (inspectionConfig/transportConfig/disputeConfig/buyRequestConfig) read in full from marketplace-resources.ts:292-551.
+
+Next: STEP 16-C (Gap + Debt Audit using 16-B-A/B/C/D findings — 52 @ts-nocheck files + 38 PENDING migrations + 18/18 field validation gap + 18/18 field permissions gap + 14/18 action runtime broken + 3/18 read-blocked at runtime (inspections/transports/buy-requests) + 18/18 export singular/plural mismatch + 5/18 missing relations).
+
+---
+
+Task ID: STEP-16-B-CONSOLIDATED
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 16-B — Consolidate per-resource audits from STEP-16-B-A/B/C/D into the final 18×20 Completion Matrix. Evidence Freeze — NO code changes, read-only consolidation only.
+
+Work Log:
+- Verified all 4 sub-audits (16-B-A: R1-R5, 16-B-B: R6-R10, 16-B-C: R11-R14, 16-B-D: R15-R18) are appended to worklog.md.
+- Extracted per-cell verdicts (20 cells × 18 resources = 360 cells) directly from the verdict column of each per-resource table in worklog.md using awk.
+- Re-tallied counts per resource AND per dimension using Python script — confirmed sub-agent summary headers had minor count drift (e.g., agent reported "R9: 10/3/5" but actual cells show 11/3/6); trusted the cell-level data extracted from worklog itself.
+- Cross-validated that 238 ✅ + 65 ⚠️ + 57 ❌ = 360 cells (18 × 20 dimensions) ✓.
+
+## STEP 16-B — Final 18×20 Completion Matrix
+
+> **Per user principle:** "Generic infrastructure exists ≠ Resource-specific completion is proven"
+> **498 contract tests ≠ 18 × complete resource runtime verification**
+> Cells are marked per resource-specific evidence only, not per generic-infra existence.
+
+### Matrix
+
+Legend: `✅` Evidence found (resource-specific implementation/wiring) | `⚠️` Gap (partial OR generic-infra-only without resource-specific config) | `❌` Missing (capability does not exist for this resource) | `—` not evaluated
+
+| # | Resource | 1 Reg | 2 Cfg | 3 RBAC | 4 FldPol | 5 API | 6 Svc | 7 Tbl | 8 Flt | 9 Srt | 10 Pg | 11 Fm | 12 Val | 13 Det | 14 Rel | 15 Act | 16 Bulk | 17 Exp | 18 Aud | 19 Tst | 20 Rt | Total |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | listings | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ✅ | **16/3/1** |
+| 2 | brands | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ✅ | **16/3/1** |
+| 3 | users | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ✅ | **16/3/1** |
+| 4 | products | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ✅ | **16/3/1** |
+| 5 | parts | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **10/4/6** |
+| 6 | orders | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ✅ | ⚠️ | ✅ | **15/4/1** |
+| 7 | payments | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ⚠️ | ❌ | ⚠️ | ✅ | ⚠️ | ✅ | **13/4/3** |
+| 8 | companies | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | **14/5/1** |
+| 9 | machines | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **11/3/6** |
+| 10 | reviews | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ⚠️ | ✅ | ❌ | ✅ | ⚠️ | ✅ | **13/4/3** |
+| 11 | deals | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ✅ | ❌ | ✅ | ⚠️ | ✅ | **15/3/2** |
+| 12 | rfqs | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **14/3/3** |
+| 13 | offers | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **11/4/5** |
+| 14 | auctions | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **13/4/3** |
+| 15 | inspections | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **11/4/5** |
+| 16 | transports | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **11/4/5** |
+| 17 | disputes | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **12/3/5** |
+| 18 | buy-requests | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⚠️ | ✅ | **11/4/5** |
+
+### Per-resource totals (sorted by completeness)
+
+| # | Resource | ✅ | ⚠️ | ❌ | Score | Tier |
+|---:|---|---:|---:|---:|---:|---|
+| 1 | listings | 16 | 3 | 1 | 80% | 🥇 Best |
+| 2 | brands | 16 | 3 | 1 | 80% | 🥇 Best |
+| 3 | users | 16 | 3 | 1 | 80% | 🥇 Best |
+| 4 | products | 16 | 3 | 1 | 80% | 🥇 Best |
+| 6 | orders | 15 | 4 | 1 | 75% | 🥈 Good |
+| 11 | deals | 15 | 3 | 2 | 75% | 🥈 Good |
+| 8 | companies | 14 | 5 | 1 | 70% | 🥈 Good |
+| 12 | rfqs | 14 | 3 | 3 | 70% | 🥈 Good |
+| 7 | payments | 13 | 4 | 3 | 65% | 🥉 Fair |
+| 10 | reviews | 13 | 4 | 3 | 65% | 🥉 Fair |
+| 14 | auctions | 13 | 4 | 3 | 65% | 🥉 Fair |
+| 17 | disputes | 12 | 3 | 5 | 60% | 🥉 Fair |
+| 9 | machines | 11 | 3 | 6 | 55% | ⚠️ Gap-heavy |
+| 13 | offers | 11 | 4 | 5 | 55% | ⚠️ Gap-heavy |
+| 15 | inspections | 11 | 4 | 5 | 55% | ⚠️ Gap-heavy |
+| 16 | transports | 11 | 4 | 5 | 55% | ⚠️ Gap-heavy |
+| 18 | buy-requests | 11 | 4 | 5 | 55% | ⚠️ Gap-heavy |
+| 5 | parts | 10 | 4 | 6 | 50% | ⚠️ Gap-heavy |
+
+### Per-dimension totals (sorted by gap severity)
+
+| Dim | Dimension | ✅ | ⚠️ | ❌ | Systemic pattern |
+|---:|---|---:|---:|---:|---|
+| 1 | Registry | 18 | 0 | 0 | ✅ All 18 registered in `resource-index.ts` |
+| 2 | Config | 18 | 0 | 0 | ✅ All 18 configs fully populated |
+| 5 | API | 18 | 0 | 0 | ✅ All 18 served by universal `/api/admin/resources/[resource]` route |
+| 6 | Service | 18 | 0 | 0 | ✅ All 18 model names map to real Prisma models in `schema.prisma` |
+| 7 | Table | 18 | 0 | 0 | ✅ All 18 column.key arrays match real Prisma model fields |
+| 9 | Sorting | 18 | 0 | 0 | ✅ All 18 have `defaultSort` OR sortable columns |
+| 10 | Pagination | 18 | 0 | 0 | ✅ All 18 have `pageSize` set |
+| 11 | Form | 18 | 0 | 0 | ✅ All 18 have `fields[]` populated |
+| 18 | Audit | 18 | 0 | 0 | ✅ All 18 have `audit.enabled=true` + entityType + actions (BUT 4/18 action labels point to non-existent permissions — see systemic gap #6) |
+| 8 | Filters | 17 | 0 | 1 | ❌ parts has NO `filters` field (16-A row 5 false) |
+| 3 | Permission/RBAC | 10 | 8 | 0 | ⚠️ 8/18 resources reference permission constants NOT in `PERMISSIONS` array NOR seeded in DB → universal API GET returns 403 Forbidden for ALL users including ADMIN at runtime (inspections, transports, buy-requests, parts, machines, reviews, offers, auctions) |
+| 20 | Runtime | 17 | 1 | 0 | ⚠️ Only auth-redirect smoke (307→/login or 401); NO admin-authenticated CRUD runtime smoke for ANY of 18 resources |
+| 14 | Relations | 9 | 0 | 9 | ❌ 9/18 have NO `relations` field (parts, payments, reviews, offers, inspections, transports, disputes, buy-requests — plus 1 more). 16-A's "16 of 18 have Relations" claim was WRONG by 7. |
+| 13 | Detail | 11 | 0 | 7 | ❌ 7/18 have NO `detailTabs` field (parts, machines, offers, inspections, transports, disputes, buy-requests) |
+| 16 | Bulk | 8 | 0 | 10 | ❌ 10/18 have NO `bulkActions` field |
+| 4 | Field Policy | 0 | 18 | 0 | ⚠️ ZERO resources set `fields[].permissions` (field-level read/write gating). Generic infra exists in `field-policy.ts` but no resource uses it. Critical for: `user.passwordHash`, `payment.trackingCode`, `payment.idempotencyKey`, `company.email`, `company.phone`, `transport.carrierPhone`, `buy-request.requesterPhone` |
+| 15 | Actions | 0 | 17 | 1 | ⚠️ ZERO resources set `actions[].apiPath`. All 17 with actions rely on action-engine's 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete). Marketplace transaction-lifecycle action keys (confirm/cancel/refund/close/accept/reject/start/end/schedule/complete/deliver/review/resolve/hide) have NO handlers → throw `Error: No handler for action "..."` at runtime. |
+| 19 | Tests | 0 | 18 | 0 | ⚠️ ZERO resources have a dedicated contract test file. All 18 share the same 373 generic tests in `resource-contract.test.ts` (27 invariants × 18 resources). User's warning "498 contract tests ≠ 18 × complete resource runtime verification" — confirmed: 0/18 have resource-specific test files. |
+| 17 | Export | 4 | 3 | 11 | ❌ SYSTEMIC BUG: `canExport(userId, resourceKey)` is called with PLURAL resource keys but `EXPORT_PERMISSIONS` map uses SINGULAR keys → 14/18 resources' exports throw `Forbidden: export permission required for "{resource}"` at runtime. Only listings/brands/users/products work (singular keys mapped). |
+| 12 | Validation | 0 | 0 | 18 | ❌ SYSTEMIC GAP: ZERO resources set `fields[].validation` (FieldValidation interface `minLength/maxLength/min/max/pattern/validator` is unused). Critical: `review.rating` has no min/max (schema says Int // 1..5); `payment.amount` has no min (BigInt currency); `user.email` has no pattern; `user.mobile` has no pattern; `deal.agreedAmount` has no min; `auction.startingBid` has no min. |
+
+### Grand Total
+
+| Status | Count | % | Notes |
+|---|---:|---:|---|
+| ✅ Evidence found | **238** | **66.1%** | Resource-specific implementation verified from source |
+| ⚠️ Gap (partial / generic-only) | **65** | **18.1%** | Capability exists in generic infra but missing resource-specific config/wiring |
+| ❌ Missing | **57** | **15.8%** | Capability does not exist for this resource |
+| **Total** | **360** | 100% | 18 resources × 20 dimensions |
+
+## Top 7 systemic findings (cross-cutting — affect multiple/all resources)
+
+1. **🚨 CRITICAL: Field Validation (Dim 12) = ❌ for ALL 18/18** — `FieldValidation` interface (`types.ts:95-110`) supports `minLength/maxLength/min/max/pattern/validator/message` but ZERO of 18 configs use it. User-critical impact: `review.rating` (schema says `Int // 1..5`) has no `validation: { min: 1, max: 5 }` → user could submit rating=999. `payment.amount` (BigInt) has no min → user could submit negative amount. `user.email` has no pattern → invalid emails accepted.
+
+2. **🚨 CRITICAL: Permission Constants Not Seeded (Dim 3) = ⚠️ for 8/18** — Resources: parts, machines, reviews, offers, auctions, inspections, transports, buy-requests. Their `permissions.read/create/...` values (`part.*`, `machine.*`, `review.*`, `inspection.read`, `transport.read`, `request.read`, `auction.manage`, etc.) are NOT in the canonical `PERMISSIONS` array (`authorization/permissions.ts:34-155`) AND NOT seeded into the DB Permission table by `seed-rbac.ts` / `seed-permission-matrix.ts` → at runtime, `can()` returns false → universal API GET returns **403 Forbidden for ALL users including ADMIN**. Disputes is the ONLY marketplace CP resource that actually works for read at runtime (reuses `deal.read`/`deal.manage` which ARE seeded).
+
+3. **🚨 CRITICAL: Export Singular/Plural Mismatch (Dim 17) = ❌ for 11/18** — `canExport(userId, resourceKey)` at `authorization/index.ts:215-231` receives PLURAL resource keys (`'orders'`, `'payments'`, `'companies'`, etc.) from `bulk-export-engine.ts:199`. The `EXPORT_PERMISSIONS` map at `authorization/index.ts:219-227` has SINGULAR keys (`listing`, `user`, `order`, `payment`, `audit`, `product`, `brand` — only 7 entries). Result: 11/18 resources fall through to `${resource}.read` fallback → produces strings like `'orders.read'`, `'payments.read'` → NONE of which are in PERMISSIONS array → canExport returns false even for ADMIN → executeExport throws `Forbidden: export permission required for "{resource}"` at runtime. **Class A systemic runtime bug.**
+
+4. **⚠️ HIGH: Action Handlers Missing (Dim 15) = ⚠️ for 17/18** — Action engine (`action-engine.ts:97-165`) registers only 8 generic handlers (publish/unpublish/feature/unfeature/verify/suspend/activate/delete) tuned for content/catalog moderation. Marketplace transaction-lifecycle action keys used by marketplace resources (`confirm`, `cancel`, `refund`, `close`, `accept`, `reject`, `start`, `end`, `schedule`, `complete`, `deliver`, `review`, `resolve`, `hide`, `verify-email`) have NO registered handlers → action-engine.ts:233 throws `Error: No handler for action "..."` at runtime. Also: existing `verify` handler writes `{ verified: true, verification: 'VERIFIED' }` but `Payment`/`Company`/`BuyRequest` models have no `verification` field → Prisma throws `PrismaClientValidationError`. Of ~30 action invocations across 18 resources, ~12 throw "No handler" at runtime, ~4 throw Prisma validation errors. Only ~10 actions work at runtime.
+
+5. **⚠️ HIGH: Field-Level Permissions Absent (Dim 4) = ⚠️ for ALL 18/18** — `AdminField.permissions` (`types.ts:62-66`) supports per-field `read`/`write` gating. NONE of 18 configs set it. Generic infra `field-policy.ts` (3 functions) exists but is fed `null` for `field.permissions` on every field → effectively a no-op for PII protection. Critical exposures: `user.passwordHash` field is rendered without field-level protection; `payment.trackingCode`/`idempotencyKey`/`providerReference` (financial reconciliation fields) exposed; `company.email`/`phone`/`address` (PII) exposed; `transport.carrierPhone` (PII) exposed; `buy-request.requesterName`/`requesterPhone` (PII) exposed.
+
+6. **⚠️ HIGH: Per-Resource Test Coverage Absent (Dim 19) = ⚠️ for ALL 18/18** — User warning "498 contract tests ≠ 18 × complete resource runtime verification" — confirmed. All 18 resources share generic `resource-contract.test.ts` (373 tests = 27 invariants × 18 resources). Zero per-resource test files exist. `tests/phase9-orders-deals.test.ts`, `tests/phase10-reviews-reputation.test.ts`, `tests/phase7-rfq-matching.test.ts`, `tests/phase5-trust.test.ts` test SCHEMA strings or PUBLIC marketplace API routes, NOT admin-resource contract.
+
+7. **⚠️ HIGH: Audit Action Labels Point to Non-Existent Permissions (Dim 18)** — Audit is configured ✅ for all 18 (audit.enabled=true), BUT for 4 of 18 (inspections, transports, buy-requests, parts/machines audit labels use `part.update`/`machine.update`/`inspection.read`/`transport.read`/`request.read` which are NOT in PERMISSIONS array → audit action labels would never match a real permission check. The audit log writes happen, but the `entityType/actions` config is partially fictional — audit records would be created but no permission check would ever resolve them.
+
+## 16-A Inventory Errors Confirmed (User warning "do NOT trust 16-A summary" — verified necessary)
+
+| 16-A Row | Claim | Actual | Severity |
+|---|---|---|---|
+| 4 products Columns=153 | FALSE | 9 columns in `productConfig.columns` | Medium — 16-A confused file line count with column count |
+| 5 parts Columns=134 | FALSE | 5 columns | Medium |
+| 5 parts Relations=✓ | FALSE | NO `relations` field at all | High — was used as evidence in 16-A §1 |
+| 7 payments Relations=✓ | FALSE | NO `relations` field | High |
+| 8 companies Columns=69 | FALSE | 11 columns | Medium |
+| 9 machines Columns=135 | FALSE | 6 columns | Medium |
+| 10 reviews Columns=38 | FALSE | 7 columns | Medium |
+| 10 reviews Relations=✓ | FALSE | NO `relations` field | High |
+| 11 deals Columns=202 | FALSE | 10 columns | Medium |
+| 12 rfqs Columns=176 | FALSE | 10 columns | Medium |
+| 13 offers Columns=146 | FALSE | 10 columns | Medium |
+| 13 offers Relations=✓ | FALSE | NO `relations` field | High |
+| 14 auctions Columns=126 | FALSE | 10 columns | Medium |
+| 15 inspections Columns=101 | FALSE | 8 columns | Medium |
+| 16 transports Columns=81 | FALSE | 12 columns (81 ≈ line range of transportConfig, not column count) | Medium |
+| 17 disputes Columns=181 | FALSE | 9 columns | Medium |
+| 17 disputes Relations=✓ | FALSE | NO `relations` field (16-A summary §1 said "16 of 18 have Relations" — actual is **9 of 18**) | High — count was off by 7 |
+| 18 buy-requests Columns=28 | FALSE | 10 columns | Medium |
+
+**Pattern:** 16-A §1 "Columns" numbers appear to be file line counts or model field counts, NOT actual `columns[]` array lengths. 16-A §1 "Relations ✓" was wrong for 5 of 18 (parts, payments, reviews, offers, disputes) — actual missing count is 9 of 18, not 2.
+
+## Resource completeness verdict (per completion-policy)
+
+| Tier | Resources | Verdict |
+|---|---|---|
+| 🥇 Best (80% = 16/20) | listings, brands, users, products | NOT COMPLETE — 1 ❌ each (field validation gap = ❌ Dim 12), 3 ⚠️ each (field policy, actions, tests) |
+| 🥈 Good (70-75%) | orders, deals, companies, rfqs | NOT COMPLETE — 1-2 ❌ each, 3-5 ⚠️ each |
+| 🥉 Fair (60-65%) | payments, reviews, auctions, disputes | NOT COMPLETE — 3-5 ❌ each |
+| ⚠️ Gap-heavy (50-55%) | parts, machines, offers, inspections, transports, buy-requests | SIGNIFICANTLY INCOMPLETE — 5-6 ❌ each (missing detailTabs/relations/bulkActions/exportPermission entirely) |
+
+**Completion verdict: 0 of 18 resources are COMPLETE per the user's 3-principle completion policy:**
+> "هیچ‌وقت صرفاً به خاطر وجود Schema/API یک Domain را Complete اعلام نکنیم"
+> (Never declare a domain complete merely because Schema/API exists)
+
+## Stage Summary
+
+- ✅ STEP 16-B COMPLETE: Audited 18 resources × 20 dimensions = 360 cells, each with file:line evidence traced from source.
+- ✅ Per-resource verdict totals: 238 ✅ / 65 ⚠️ / 57 ❌ (66.1% / 18.1% / 15.8%).
+- ✅ Per-dimension verdict totals: 9 dimensions ALL ✅ (Registry, Config, API, Service, Table, Sorting, Pagination, Form, Audit); 1 dimension mixed (Filters: 17✅/1❌); 1 dimension mixed (Permission/RBAC: 10✅/8⚠️); 3 dimensions mostly ⚠️ (Field Policy 0✅/18⚠️, Actions 0✅/17⚠️/1❌, Tests 0✅/18⚠️); 4 dimensions heavy ❌ (Validation 0✅/0⚠️/18❌, Relations 9✅/0⚠️/9❌, Bulk 8✅/0⚠️/10❌, Export 4✅/3⚠️/11❌).
+- ✅ 7 systemic cross-cutting findings identified (see above).
+- ✅ 16-A inventory errors confirmed for 12+ rows (Columns count was uniformly wrong; Relations count was wrong by 7).
+- ✅ Per user completion policy: **0 of 18 resources are COMPLETE** — even top-tier listings/brands/users/products still have 1 ❌ (Dim 12 validation) + 3 ⚠️ each.
+- ✅ No code changes made — Evidence Freeze preserved.
+- ✅ Worklog.md appended with 4 sub-audits (16-B-A through 16-B-D) before this consolidation.
+
+## Next Steps (for 16-C)
+
+```
+✅ 16-A Repository Inventory ← COMPLETE
+✅ 16-B Completion Matrix ← COMPLETE (this step, 18×20 cells)
+🔵 16-C Gap + Debt Audit (NEXT) — using systemic findings from 16-B:
+   - Fix Class A: singular/plural mismatch in canExport (Dim 17)
+   - Fix Class A: add 8 missing permission constants to PERMISSIONS array + DB seed (Dim 3)
+   - Fix Class A: add FieldValidation to all 18 resources (Dim 12) — critical for review.rating/payment.amount/user.email
+   - Fix Class B: register 8 marketplace transaction-lifecycle action handlers in action-engine.ts (Dim 15)
+   - Fix Class B: fix verify handler to not write `verification` field (Payment/Company/BuyRequest Prisma mismatch)
+   - Fix Class C: per-resource contract test files (Dim 19)
+   - Fix Class C: 9 resources missing relations, 7 missing detailTabs, 10 missing bulkActions
+🔵 16-D Runtime Verification (post-16-C) — actual CRUD smoke per resource with admin auth
+🔵 16-E GREEN/YELLOW/RED (final verdict)
+```
+
+**Important note for 16-C:** This matrix has 65 ⚠️ + 57 ❌ = 122 cells that need remediation. The 7 systemic findings alone, if fixed, would close ~84 cells (Dim 3 × 8, Dim 4 × 18, Dim 12 × 18, Dim 15 × 17, Dim 17 × 14, Dim 19 × 18 ≈ 93 cells). 16-C should prioritize systemic fixes (high-leverage) over per-resource config additions (low-leverage).
+
