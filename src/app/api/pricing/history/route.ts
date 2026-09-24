@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getPriceHistory } from "@/lib/price-engine";
+// STEP 6B.5: Redirected from price-engine.ts to price-history-engine.ts (canonical)
+import { getPriceHistory } from "@/lib/price-history-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

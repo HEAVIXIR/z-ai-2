@@ -45,9 +45,10 @@ export interface PriceStats {
 }
 
 export interface PriceHistoryPoint {
-  month: string; // YYYY-MM (Gregorian)
-  avgPrice: number | null;
+  month: string; // YYYY-MM (Gregorian, gap-filled)
+  medianPrice: number | null;
   count: number;
+  range: [number, number] | null;
 }
 
 export interface OutlierResult {
@@ -151,53 +152,112 @@ export async function getPriceStats(params: {
 }
 
 /**
- * Monthly timeseries of average price + sample count.
+ * Monthly timeseries of median price + range + count.
  *
  * `months` (default 12) caps how far back we look. Each point is
- * keyed by `YYYY-MM` (Gregorian — Jalali conversion is the UI's
- * responsibility). Empty months are skipped (not zero-filled) so
- * the chart only shows months with real data.
+ * keyed by `YYYY-MM` (Gregorian). Months with no data are gap-filled
+ * with {medianPrice: null, count: 0, range: null} so charts show
+ * continuous timeline.
  *
- * NOTE: reads observedAt (not recordedAt) from PriceObservation.
+ * STEP 6B.5: Ported from price-engine.ts to price-history-engine.ts
+ * (canonical module). This richer version (median + range + gap-fill
+ * + PUBLISHED listings fold-in) replaces the simpler avg-only version.
+ *
+ * Reads askingPrice (BigInt) from PriceObservation + price (BigInt)
+ * from PUBLISHED Listings. Both are converted to Number for stats.
  */
 export async function getPriceHistory(params: {
+  brandId?: string | null;
+  categoryId?: string | null;
+  modelId?: string | null;
   productId?: string;
-  categoryId?: string;
-  brandId?: string;
   months?: number;
 }): Promise<PriceHistoryPoint[]> {
-  const months = Math.min(36, Math.max(1, params.months ?? 12));
+  const months = Math.max(1, Math.min(36, params.months ?? 12));
   const since = new Date();
   since.setMonth(since.getMonth() - months);
 
-  const where: Record<string, unknown> = { observedAt: { gte: since } };
-  if (params.productId) where.productId = params.productId;
-  if (params.categoryId) where.categoryId = params.categoryId;
-  if (params.brandId) where.brandId = params.brandId;
+  // ── 1. Fetch PriceObservation rows (canonical) ──
+  const obsWhere: Record<string, unknown> = { observedAt: { gte: since } };
+  if (params.brandId) obsWhere.brandId = params.brandId;
+  if (params.categoryId) obsWhere.categoryId = params.categoryId;
+  if (params.modelId) obsWhere.modelId = params.modelId;
+  if (params.productId) obsWhere.productId = params.productId;
 
-  const rows = await db.priceObservation.findMany({
-    where,
+  const obs = await db.priceObservation.findMany({
+    where: obsWhere,
     select: { askingPrice: true, observedAt: true },
+    take: 2000,
+    orderBy: { observedAt: "asc" },
   });
 
-  const buckets = new Map<string, number[]>();
-  for (const r of rows) {
-    const n = bigIntToNumber(r.askingPrice);
-    if (n === null) continue;
-    const d = r.observedAt;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const arr = buckets.get(key) ?? [];
-    arr.push(n);
-    buckets.set(key, arr);
+  // ── 2. Also fold in PUBLISHED listings whose createdAt falls in window ──
+  // These are first-class price observations too.
+  const listingWhere: Record<string, unknown> = {
+    status: "PUBLISHED",
+    price: { not: null },
+    createdAt: { gte: since },
+  };
+  if (params.brandId) listingWhere.brandId = params.brandId;
+  if (params.categoryId) listingWhere.categoryId = params.categoryId;
+  if (params.modelId) listingWhere.modelId = params.modelId;
+
+  const listings = await db.listing.findMany({
+    where: listingWhere,
+    select: { price: true, createdAt: true },
+    take: 2000,
+    orderBy: { createdAt: "asc" },
+  });
+
+  // ── 3. Bucket by month ──
+  type Bucket = { prices: number[] };
+  const buckets = new Map<string, Bucket>();
+  const ensure = (k: string): Bucket => {
+    const b = buckets.get(k);
+    if (b) return b;
+    const nb: Bucket = { prices: [] };
+    buckets.set(k, nb);
+    return nb;
+  };
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+  for (const o of obs) {
+    if (!o.askingPrice) continue;
+    ensure(keyOf(o.observedAt)).prices.push(Number(o.askingPrice));
+  }
+  for (const l of listings) {
+    if (!l.price) continue;
+    ensure(keyOf(l.createdAt)).prices.push(Number(l.price));
   }
 
-  return Array.from(buckets.entries())
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([month, vals]) => ({
-      month,
-      avgPrice: vals.reduce((s, v) => s + v, 0) / vals.length,
-      count: vals.length,
-    }));
+  // ── 4. Build gap-filled sorted list ──
+  const out: PriceHistoryPoint[] = [];
+  const cursor = new Date(since);
+  cursor.setDate(1);
+  cursor.setHours(0, 0, 0, 0);
+  const now = new Date();
+  while (cursor <= now) {
+    const key = keyOf(cursor);
+    const b = buckets.get(key);
+    if (b && b.prices.length > 0) {
+      const sorted = b.prices.sort((a, b2) => a - b2);
+      const med = median(sorted) ?? null;
+      const min = sorted[0] ?? null;
+      const max = sorted[sorted.length - 1] ?? null;
+      out.push({
+        month: key,
+        medianPrice: med,
+        count: sorted.length,
+        range:
+          min != null && max != null ? ([min, max] as [number, number]) : null,
+      });
+    } else {
+      out.push({ month: key, medianPrice: null, count: 0, range: null });
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
 }
 
 /**

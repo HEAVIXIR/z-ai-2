@@ -59,8 +59,9 @@ describe("Phase 6 — Price Intelligence + Compare Tests", () => {
       expect(content).toContain("export async function estimatePrice");
     });
 
-    it("should export getPriceHistory function", () => {
-      const content = fs.readFileSync("src/lib/price-engine.ts", "utf8");
+    it("should export getPriceHistory function (canonical: price-history-engine.ts)", () => {
+      // STEP 6B.5: Ported from price-engine.ts to price-history-engine.ts (canonical)
+      const content = fs.readFileSync("src/lib/price-history-engine.ts", "utf8");
       expect(content).toContain("export async function getPriceHistory");
     });
 
