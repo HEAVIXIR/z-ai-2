@@ -18,48 +18,15 @@ import { db } from "../src/lib/db";
 async function main() {
   console.log("=== PHASE 5: INTELLIGENCE SEED ===\n");
 
-  // ── 1. Add more PriceRecords for price intelligence ──
-  console.log("1. Seeding PriceRecords...");
-  
-  const listings = await db.listing.findMany({ 
-    where: { status: "PUBLISHED", price: { not: null } },
-    take: 10,
-    include: { brand: { select: { name: true } } },
-  });
-  
-  let priceCount = 0;
-  for (const listing of listings) {
-    // Create historical price observations (3 per listing)
-    for (let i = 0; i < 3; i++) {
-      const basePrice = Number(listing.price);
-      const variation = 0.95 + (i * 0.025); // 0.95, 0.975, 1.0
-      const observedPrice = BigInt(Math.floor(basePrice * variation));
-      const monthsAgo = i + 1;
-      const observedAt = new Date();
-      observedAt.setMonth(observedAt.getMonth() - monthsAgo);
-      
-      const existing = await db.priceRecord.findFirst({
-        where: { listingId: listing.id, recordedAt: observedAt },
-      });
-      if (!existing) {
-        await db.priceRecord.create({
-          data: {
-            listingId: listing.id,
-            price: Number(observedPrice),
-            source: i === 0 ? "MARKET_SURVEY" : i === 1 ? "AI_ESTIMATE" : "ADMIN",
-            recordedAt: observedAt,
-            condition: listing.condition || "USED",
-            year: listing.year,
-          },
-        });
-        priceCount++;
-      }
-    }
-  }
-  console.log(`  ✓ ${priceCount} price records created`);
+  // STEP 6B.4: PriceRecord seeding section REMOVED.
+  // PriceRecord model was dropped from schema. Canonical model is
+  // PriceObservation (seeded via price-engine recordObservation).
+  // The 3 PriceObservation fields (askingPrice BigInt, observedAt,
+  // sourceType) replace the old PriceRecord fields (price Float,
+  // recordedAt, source).
 
   // ── 2. Seed Opportunities ──
-  console.log("\n2. Seeding Opportunities...");
+  console.log("1. Seeding Opportunities...");
   
   const opportunities = [
     { title: "افزایش تقاضای بیل مکانیکی در تهران", type: "HIGH_DEMAND_LOW_SUPPLY", entityType: "Category", score: 0.85, description: "تقاضای بالای بیل مکانیکی با عرضه محدود در منطقه تهران" },

@@ -515,7 +515,6 @@ model Listing {
   attributeValues ListingAttributeValue[]
   socialReels   SocialReel[]
   machines     Machine[]
-  priceRecords PriceRecord[]
   // P2-PRICE-ENGINE — HEAVIX Price Estimation Engine (additive)
   priceObservations PriceObservation[]
   priceEstimates    PriceEstimate[]
@@ -1775,7 +1774,6 @@ model Product {
   machines      Machine[]
   parts         Part[]
   attachments   Attachment[]
-  priceRecords  PriceRecord[]
   @@index([categoryId])
   @@index([brandId])
 }
@@ -1854,26 +1852,14 @@ model CompatibilityEdge {
 // ════════════════════════════════════════════════════════════
 
 // P2-22 — Price Intelligence: track every observed price for a
-// Listing / Product / Category+Brand combo so the analytics layer
-// can compute averages, history, outliers and seller suggestions.
-model PriceRecord {
-  id          String   @id @default(cuid())
-  listingId   String?
-  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  productId   String?
-  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  categoryId  String?
-  brandId     String?
-  price       Float
-  currency    String   @default("IRR")
-  year        Int?
-  condition   String?
-  recordedAt  DateTime @default(now())
-  source      String   @default("LISTING") // LISTING | MANUAL | AI_ESTIMATE
-  @@index([productId])
-  @@index([categoryId, brandId])
-  @@index([recordedAt])
-}
+// STEP 6B.4: PriceRecord model REMOVED.
+// Canonical model is PriceObservation (see below). PriceRecord had:
+// - 0 live writers (recordPriceFromListing was dead code, removed in 6B.2)
+// - 0 active readers (all ported to price-history-engine.ts in 6B.1)
+// - 0 test dependencies (all ported to PriceObservation in 6B.3)
+// - 0 rows in DB (verified by live query before drop)
+// The reverse-relations `priceRecords PriceRecord[]` on Listing and
+// Product were also removed.
 
 // P2-23 — Demand Engine: every public search query is logged so
 // the demand layer can surface zero-result queries, popular searches
