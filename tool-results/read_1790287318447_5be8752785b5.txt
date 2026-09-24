@@ -1,0 +1,978 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
+     4→import Link from "next/link";
+     5→import { useRouter, useSearchParams } from "next/navigation";
+     6→import Header from "@/components/layout/Header";
+     7→import Footer from "@/components/layout/Footer";
+     8→import { useToast } from "@/hooks/use-toast";
+     9→import {
+    10→  Search,
+    11→  X,
+    12→  Check,
+    13→  AlertCircle,
+    14→  ArrowLeft,
+    15→  Plus,
+    16→  GitCompare,
+    17→  Loader2,
+    18→  Sparkles,
+    19→  Save,
+    20→  Share2,
+    21→  AlertTriangle,
+    22→  Info,
+    23→  Trash2,
+    24→  ListFilter,
+    25→} from "lucide-react";
+    26→import { toFa } from "@/lib/format";
+    27→
+    28→/* ============================================================
+    29→   /compare — HEAVIX Machine Comparison Engine (V1.0)
+    30→   docs/HEAVIX-MACHINE-COMPARISON-SPEC-V1.0.md
+    31→
+    32→   Flow:
+    33→     • If ?share=TOKEN is present → load the shared session
+    34→       (read-only) and render it.
+    35→     • Otherwise → client-side session:
+    36→         - Search listings via /api/listings
+    37→         - Add → POST /api/compare (creates session lazily on
+    38→           first add), then POST /api/compare/[id]/items
+    39→         - Remove → DELETE /api/compare/[id]/items/[itemId]
+    40→         - "تفاوت‌ها فقط" toggle (rows where isDifferent = true)
+    41→         - "خلاصه هوش مصنوعی" → POST /api/compare/[id]/ai-summary
+    42→         - "ذخیره مقایسه" → PATCH /api/compare/[id] { name }
+    43→         - "اشتراک‌گذاری" → copies ${origin}/compare?share=TOKEN
+    44→
+    45→   Min 2 items, max 5 items. Dark theme, RTL, responsive.
+    46→   ============================================================ */
+    47→
+    48→type CategoryInfo = { id: string; name: string };
+    49→
+    50→type PriceRange = {
+    51→  min: number | null;
+    52→  max: number | null;
+    53→  avg: number | null;
+    54→  currency: string;
+    55→  confidence: "HIGH" | "MEDIUM" | "LOW";
+    56→  sampleSize: number;
+    57→};
+    58→
+    59→type Cell = {
+    60→  itemId: string;
+    61→  display: string;
+    62→  raw: string | null;
+    63→  unit?: string | null;
+    64→  normalized: string;
+    65→  provenance?: {
+    66→    source?: string | null;
+    67→    confidence?: number | null;
+    68→    verifiedAt?: string | null;
+    69→    sourceReference?: string | null;
+    70→  };
+    71→};
+    72→
+    73→type Row = {
+    74→  key: string;
+    75→  label: string;
+    76→  category: "fixed" | "attribute";
+    77→  unit?: string | null;
+    78→  cells: Cell[];
+    79→  isDifferent: boolean;
+    80→  isPrice?: boolean;
+    81→  priceRanges?: PriceRange[];
+    82→};
+    83→
+    84→type ItemData = {
+    85→  id: string;
+    86→  sortOrder: number;
+    87→  type: string;
+    88→  title: string;
+    89→  slug?: string | null;
+    90→  image?: string | null;
+    91→  categoryId?: string | null;
+    92→  categoryName?: string | null;
+    93→  brandName?: string | null;
+    94→  modelName?: string | null;
+    95→  year?: number | null;
+    96→  city?: string | null;
+    97→  province?: string | null;
+    98→  listingId?: string | null;
+    99→};
+   100→
+   101→type ComparisonData = {
+   102→  items: ItemData[];
+   103→  rows: Row[];
+   104→  attributes: string[];
+   105→  differences: string[];
+   106→  crossCategoryWarning: boolean;
+   107→  categories: CategoryInfo[];
+   108→};
+   109→
+   110→type Session = {
+   111→  id: string;
+   112→  name: string | null;
+   113→  shareToken: string | null;
+   114→  shareExpiresAt: string | null;
+   115→  aiSummary: string | null;
+   116→  aiSummaryAt: string | null;
+   117→};
+   118→
+   119→type SearchResult = {
+   120→  id: string;
+   121→  slug: string;
+   122→  title: string;
+   123→  price: string | null;
+   124→  priceType: string;
+   125→  condition: string | null;
+   126→  city: string | null;
+   127→  year: number | null;
+   128→  workingHours: number | null;
+   129→  brand?: { name: string; nameEn: string | null; country: string | null } | null;
+   130→  category?: { name: string; icon: string | null } | null;
+   131→  images?: { url: string }[];
+   132→};
+   133→
+   134→const PRICE_TYPE_LABELS: Record<string, string> = {
+   135→  NEGOTIABLE: "توافقی",
+   136→  FIXED: "مقطوع",
+   137→  CALL_FOR_PRICE: "تماس بگیرید",
+   138→  AUCTION: "مزایده",
+   139→};
+   140→
+   141→const CONDITION_LABELS: Record<string, string> = {
+   142→  NEW: "نو",
+   143→  USED: "کارکرده",
+   144→  REFURBISHED: "بازسازی‌شده",
+   145→  FOR_PARTS: "قطعات",
+   146→};
+   147→
+   148→const SOURCE_LABELS: Record<string, string> = {
+   149→  SELLER_INPUT: "فروشنده",
+   150→  SELLER_INPUT_LOWERCASE: "فروشنده",
+   151→  MANUFACTURER_DOCUMENT: "کاتالوگ سازنده",
+   152→  AI_EXTRACTION: "استخراج AI",
+   153→  AI_INFERENCE: "استنباط AI",
+   154→  ADMIN_VERIFIED: "تأیید کارشناس",
+   155→  IMPORTED: "واردشده",
+   156→};
+   157→
+   158→const SESSION_KEY = "heavix:compare:sessionId";
+   159→const PENDING_KEY = "heavix:compare:pendingListingIds";
+   160→const MIN_ITEMS = 2;
+   161→const MAX_ITEMS = 5;
+   162→
+   163→export default function ComparePage() {
+   164→  // STEP 14.8-B: Next.js 16 requires useSearchParams() to be wrapped in
+   165→  // <Suspense> for static export to succeed. The actual page logic lives
+   166→  // in ComparePageInner below; this wrapper just provides the boundary.
+   167→  return (
+   168→    <Suspense
+   169→      fallback={
+   170→        <div className="flex min-h-screen items-center justify-center bg-[#0b0b0b] text-white/40">
+   171→          <div className="animate-pulse text-sm">در حال بارگذاری…</div>
+   172→        </div>
+   173→      }
+   174→    >
+   175→      <ComparePageInner />
+   176→    </Suspense>
+   177→  );
+   178→}
+   179→
+   180→function ComparePageInner() {
+   181→  const router = useRouter();
+   182→  const searchParams = useSearchParams();
+   183→  const shareToken = searchParams.get("share");
+   184→  const isReadOnly = Boolean(shareToken);
+   185→  const { toast } = useToast();
+   186→
+   187→  const [sessionId, setSessionId] = useState<string | null>(null);
+   188→  const [session, setSession] = useState<Session | null>(null);
+   189→  const [data, setData] = useState<ComparisonData | null>(null);
+   190→  const [loading, setLoading] = useState(true);
+   191→  const [differencesOnly, setDifferencesOnly] = useState(false);
+   192→  const [aiSummary, setAiSummary] = useState<string | null>(null);
+   193→  const [aiLoading, setAiLoading] = useState(false);
+   194→  const [saving, setSaving] = useState(false);
+   195→  const [shareCopied, setShareCopied] = useState(false);
+   196→  const [saveName, setSaveName] = useState("");
+   197→  const [showSaveDialog, setShowSaveDialog] = useState(false);
+   198→
+   199→  // ── Search state ──
+   200→  const [search, setSearch] = useState("");
+   201→  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+   202→  const [searching, setSearching] = useState(false);
+   203→  const [showResults, setShowResults] = useState(false);
+   204→  const searchDebounce = useRef<NodeJS.Timeout | null>(null);
+   205→
+   206→  /* ── Load session (shared or local) ── */
+   207→  const loadSession = useCallback(async (id: string) => {
+   208→    setLoading(true);
+   209→    try {
+   210→      const res = await fetch(`/api/compare/${id}`, { cache: "no-store" });
+   211→      if (res.status === 404 || res.status === 410) {
+   212→        // Session gone — drop the stale localStorage id and start fresh.
+   213→        if (typeof window !== "undefined") localStorage.removeItem(SESSION_KEY);
+   214→        setSessionId(null);
+   215→        setSession(null);
+   216→        setData(null);
+   217→        setLoading(false);
+   218→        return;
+   219→      }
+   220→      if (!res.ok) throw new Error("خطا در بارگذاری مقایسه");
+   221→      const json = await res.json();
+   222→      setSession(json.session);
+   223→      setData(json.data);
+   224→      setAiSummary(json.session?.aiSummary ?? null);
+   225→    } catch (err: any) {
+   226→      toast({
+   227→        title: "خطا",
+   228→        description: err?.message ?? "خطا در بارگذاری مقایسه",
+   229→        variant: "destructive",
+   230→      });
+   231→    } finally {
+   232→      setLoading(false);
+   233→    }
+   234→  }, [toast]);
+   235→
+   236→  const loadShared = useCallback(async (token: string) => {
+   237→    setLoading(true);
+   238→    try {
+   239→      const res = await fetch(`/api/compare/shared/${token}`, { cache: "no-store" });
+   240→      if (!res.ok) {
+   241→        toast({
+   242→          title: "لینک نامعتبر",
+   243→          description: "لینک اشتراک‌گذاری نامعتبر یا منقضی است.",
+   244→          variant: "destructive",
+   245→        });
+   246→        setLoading(false);
+   247→        return;
+   248→      }
+   249→      const json = await res.json();
+   250→      setSession({
+   251→        id: json.session.id,
+   252→        name: json.session.name,
+   253→        shareToken: token,
+   254→        shareExpiresAt: json.session.shareExpiresAt,
+   255→        aiSummary: null,
+   256→        aiSummaryAt: null,
+   257→      });
+   258→      setData(json.data);
+   259→      setAiSummary(null);
+   260→    } catch {
+   261→      toast({
+   262→        title: "خطا",
+   263→        description: "خطا در بارگذاری مقایسهٔ اشتراک‌گذاری‌شده",
+   264→        variant: "destructive",
+   265→      });
+   266→    } finally {
+   267→      setLoading(false);
+   268→    }
+   269→  }, [toast]);
+   270→
+   271→  useEffect(() => {
+   272→    if (shareToken) {
+   273→      loadShared(shareToken);
+   274→      return;
+   275→    }
+   276→    // Pick up pending listing IDs (set by the Compare button on the
+   277→    // listing detail page) and add them to the session before rendering.
+   278→    let pendingIds: string[] = [];
+   279→    if (typeof window !== "undefined") {
+   280→      try {
+   281→        const raw = localStorage.getItem(PENDING_KEY);
+   282→        if (raw) {
+   283→          pendingIds = JSON.parse(raw);
+   284→          if (!Array.isArray(pendingIds)) pendingIds = [];
+   285→          pendingIds = pendingIds.filter((x) => typeof x === "string").slice(0, MAX_ITEMS);
+   286→          localStorage.removeItem(PENDING_KEY);
+   287→        }
+   288→      } catch {
+   289→        /* ignore */
+   290→      }
+   291→    }
+   292→
+   293→    // Try to resume an existing local session.
+   294→    const savedId =
+   295→      typeof window !== "undefined" ? localStorage.getItem(SESSION_KEY) : null;
+   296→
+   297→    if (pendingIds.length > 0) {
+   298→      // Create a fresh session with the pending listings pre-populated.
+   299→      (async () => {
+   300→        setLoading(true);
+   301→        try {
+   302→          const res = await fetch("/api/compare", {
+   303→            method: "POST",
+   304→            headers: { "Content-Type": "application/json" },
+   305→            body: JSON.stringify({ name: null, listingIds: pendingIds }),
+   306→          });
+   307→          if (!res.ok) throw new Error("خطا در ایجاد جلسهٔ مقایسه");
+   308→          const json = await res.json();
+   309→          const newId = json.session.id as string;
+   310→          setSessionId(newId);
+   311→          setSession(json.session);
+   312→          if (typeof window !== "undefined") {
+   313→            localStorage.setItem(SESSION_KEY, newId);
+   314→          }
+   315→          await loadSession(newId);
+   316→        } catch {
+   317→          setLoading(false);
+   318→        }
+   319→      })();
+   320→      return;
+   321→    }
+   322→
+   323→    if (savedId) {
+   324→      loadSession(savedId);
+   325→    } else {
+   326→      setLoading(false);
+   327→    }
+   328→  }, [shareToken, loadShared, loadSession]);
+   329→
+   330→  /* ── Search ── */
+   331→  const doSearch = useCallback(
+   332→    (q: string) => {
+   333→      setSearch(q);
+   334→      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+   335→      if (q.trim().length < 2) {
+   336→        setSearchResults([]);
+   337→        setShowResults(false);
+   338→        return;
+   339→      }
+   340→      setSearching(true);
+   341→      searchDebounce.current = setTimeout(async () => {
+   342→        try {
+   343→          const res = await fetch(`/api/listings?q=${encodeURIComponent(q)}&limit=10`);
+   344→          const json = await res.json();
+   345→          if (json.success !== false) {
+   346→            setSearchResults((json.data || json.listings || []).slice(0, 8));
+   347→            setShowResults(true);
+   348→          }
+   349→        } catch {
+   350→          /* ignore */
+   351→        } finally {
+   352→          setSearching(false);
+   353→        }
+   354→      }, 250);
+   355→    },
+   356→    [],
+   357→  );
+   358→
+   359→  /* ── Add listing (creates session lazily on first add) ── */
+   360→  const ensureSession = useCallback(async (): Promise<string | null> => {
+   361→    if (sessionId) return sessionId;
+   362→    try {
+   363→      const res = await fetch("/api/compare", {
+   364→        method: "POST",
+   365→        headers: { "Content-Type": "application/json" },
+   366→        body: JSON.stringify({ name: null }),
+   367→      });
+   368→      if (!res.ok) throw new Error("خطا در ایجاد جلسهٔ مقایسه");
+   369→      const json = await res.json();
+   370→      const newId = json.session.id as string;
+   371→      setSessionId(newId);
+   372→      setSession(json.session);
+   373→      if (typeof window !== "undefined") {
+   374→        localStorage.setItem(SESSION_KEY, newId);
+   375→      }
+   376→      return newId;
+   377→    } catch (err: any) {
+   378→      toast({
+   379→        title: "خطا",
+   380→        description: err?.message ?? "خطا در ایجاد جلسهٔ مقایسه",
+   381→        variant: "destructive",
+   382→      });
+   383→      return null;
+   384→    }
+   385→  }, [sessionId, toast]);
+   386→
+   387→  const addListing = useCallback(
+   388→    async (l: SearchResult) => {
+   389→      // Cap check
+   390→      if ((data?.items.length ?? 0) >= MAX_ITEMS) {
+   391→        toast({
+   392→          title: "حداکثر موارد",
+   393→          description: `حداکثر ${toFa(MAX_ITEMS)} مورد قابل مقایسه است.`,
+   394→          variant: "destructive",
+   395→        });
+   396→        return;
+   397→      }
+   398→      // Dedupe
+   399→      if (data?.items.some((i) => i.listingId === l.id)) {
+   400→        toast({ title: "تکراری", description: "این آگهی قبلاً اضافه شده است." });
+   401→        return;
+   402→      }
+   403→      const id = await ensureSession();
+   404→      if (!id) return;
+   405→      try {
+   406→        const res = await fetch(`/api/compare/${id}/items`, {
+   407→          method: "POST",
+   408→          headers: { "Content-Type": "application/json" },
+   409→          body: JSON.stringify({ listingId: l.id }),
+   410→        });
+   411→        if (!res.ok) {
+   412→          const j = await res.json().catch(() => ({}));
+   413→          throw new Error(j.error ?? "خطا در افزودن مورد");
+   414→        }
+   415→        setSearch("");
+   416→        setSearchResults([]);
+   417→        setShowResults(false);
+   418→        await loadSession(id);
+   419→      } catch (err: any) {
+   420→        toast({
+   421→          title: "خطا",
+   422→          description: err?.message ?? "خطا در افزودن مورد",
+   423→          variant: "destructive",
+   424→        });
+   425→      }
+   426→    },
+   427→    [data, ensureSession, loadSession, toast],
+   428→  );
+   429→
+   430→  const removeItem = useCallback(
+   431→    async (itemId: string) => {
+   432→      if (!sessionId) return;
+   433→      try {
+   434→        await fetch(`/api/compare/${sessionId}/items/${itemId}`, {
+   435→          method: "DELETE",
+   436→        });
+   437→        await loadSession(sessionId);
+   438→      } catch (err: any) {
+   439→        toast({
+   440→          title: "خطا",
+   441→          description: err?.message ?? "خطا در حذف مورد",
+   442→          variant: "destructive",
+   443→        });
+   444→      }
+   445→    },
+   446→    [sessionId, loadSession, toast],
+   447→  );
+   448→
+   449→  /* ── AI summary ── */
+   450→  const generateSummary = useCallback(async () => {
+   451→    if (!sessionId) return;
+   452→    setAiLoading(true);
+   453→    try {
+   454→      const res = await fetch(`/api/compare/${sessionId}/ai-summary`, {
+   455→        method: "POST",
+   456→      });
+   457→      if (!res.ok) {
+   458→        const j = await res.json().catch(() => ({}));
+   459→        throw new Error(j.error ?? "خطا در تولید خلاصه");
+   460→      }
+   461→      const json = await res.json();
+   462→      setAiSummary(json.summary);
+   463→    } catch (err: any) {
+   464→      toast({
+   465→        title: "خطا",
+   466→        description: err?.message ?? "خطا در تولید خلاصهٔ هوش مصنوعی",
+   467→        variant: "destructive",
+   468→      });
+   469→    } finally {
+   470→      setAiLoading(false);
+   471→    }
+   472→  }, [sessionId, toast]);
+   473→
+   474→  /* ── Save (name + ensure share token) ── */
+   475→  const saveComparison = useCallback(async () => {
+   476→    if (!sessionId) return;
+   477→    setSaving(true);
+   478→    try {
+   479→      const res = await fetch(`/api/compare/${sessionId}`, {
+   480→        method: "PATCH",
+   481→        headers: { "Content-Type": "application/json" },
+   482→        body: JSON.stringify({
+   483→          name: saveName.trim() || null,
+   484→          refreshShareToken: !session?.shareToken,
+   485→        }),
+   486→      });
+   487→      if (!res.ok) throw new Error("خطا در ذخیره");
+   488→      const json = await res.json();
+   489→      setSession((prev) =>
+   490→        prev
+   491→          ? {
+   492→              ...prev,
+   493→              name: json.session.name,
+   494→              shareToken: json.session.shareToken,
+   495→              shareExpiresAt: json.session.shareExpiresAt,
+   496→            }
+   497→          : prev,
+   498→      );
+   499→      setShowSaveDialog(false);
+   500→      toast({ title: "ذخیره شد", description: "مقایسه ذخیره و لینک اشتراک‌گذاری آماده است." });
+   501→    } catch (err: any) {
+   502→      toast({
+   503→        title: "خطا",
+   504→        description: err?.message ?? "خطا در ذخیره",
+   505→        variant: "destructive",
+   506→      });
+   507→    } finally {
+   508→      setSaving(false);
+   509→    }
+   510→  }, [sessionId, saveName, session, toast]);
+   511→
+   512→  /* ── Share ── */
+   513→  const shareLink = useMemo(() => {
+   514→    if (!session?.shareToken) return null;
+   515→    const origin = typeof window !== "undefined" ? window.location.origin : "";
+   516→    return `${origin}/compare?share=${session.shareToken}`;
+   517→  }, [session?.shareToken]);
+   518→
+   519→  const copyShareLink = useCallback(async () => {
+   520→    if (!shareLink) return;
+   521→    try {
+   522→      await navigator.clipboard.writeText(shareLink);
+   523→      setShareCopied(true);
+   524→      setTimeout(() => setShareCopied(false), 2500);
+   525→      toast({ title: "لینک کپی شد", description: "لینک مقایسه در کلیپ‌بورد ذخیره شد." });
+   526→    } catch {
+   527→      toast({
+   528→        title: "خطا",
+   529→        description: "کپی لینک ناموفق بود.",
+   530→        variant: "destructive",
+   531→      });
+   532→    }
+   533→  }, [shareLink, toast]);
+   534→
+   535→  /* ── Reset / new comparison ── */
+   536→  const startNew = useCallback(() => {
+   537→    if (typeof window !== "undefined") localStorage.removeItem(SESSION_KEY);
+   538→    setSessionId(null);
+   539→    setSession(null);
+   540→    setData(null);
+   541→    setAiSummary(null);
+   542→    setSearch("");
+   543→    setSearchResults([]);
+   544→    setShowResults(false);
+   545→    router.push("/compare");
+   546→  }, [router]);
+   547→
+   548→  /* ── Filtered rows (differences-only mode) ── */
+   549→  const visibleRows = useMemo(() => {
+   550→    if (!data) return [];
+   551→    if (!differencesOnly) return data.rows;
+   552→    return data.rows.filter((r) => r.isDifferent);
+   553→  }, [data, differencesOnly]);
+   554→
+   555→  const itemCount = data?.items.length ?? 0;
+   556→  const canCompare = itemCount >= MIN_ITEMS;
+   557→  const canSave = itemCount >= MIN_ITEMS && !isReadOnly;
+   558→
+   559→  /* ── Render ── */
+   560→  return (
+   561→    <div className="site-theme flex min-h-screen flex-col bg-[#0b0b0b]">
+   562→      <Header categories={[]} />
+   563→      <main className="flex-1 pt-28">
+   564→        <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+   565→          {/* ── Header ── */}
+   566→          <div className="mb-8 flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-end">
+   567→            <div>
+   568→              <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F58220]/15">
+   569→                <GitCompare className="h-7 w-7 text-[#F58220]" />
+   570→              </div>
+   571→              <h1 className="text-3xl font-black text-white lg:text-4xl">
+   572→                {isReadOnly ? "مقایسهٔ اشتراک‌گذاری‌شده" : "موتور مقایسه ماشین‌آلات"}
+   573→              </h1>
+   574→              <p className="mt-2 text-sm text-white/50">
+   575→                {toFa(MIN_ITEMS)} تا {toFa(MAX_ITEMS)} آگهی را کنار هم بگذارید و تفاوت‌ها را ببینید.
+   576→              </p>
+   577→            </div>
+   578→            {session?.name && (
+   579→              <div className="rounded-2xl border border-white/10 bg-[#111] px-4 py-2 text-xs text-white/60">
+   580→                <span className="text-white/40">نام مقایسه:</span>{" "}
+   581→                <span className="font-bold text-white">{session.name}</span>
+   582→              </div>
+   583→            )}
+   584→          </div>
+   585→
+   586→          {/* ── Cross-category warning ── */}
+   587→          {data?.crossCategoryWarning && data.categories.length > 1 && (
+   588→            <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] p-4">
+   589→              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+   590→              <div>
+   591→                <p className="text-sm font-bold text-amber-200">
+   592→                  هشدار: موارد از دسته‌های متفاوت هستند
+   593→                </p>
+   594→                <p className="mt-1 text-xs text-amber-200/70">
+   595→                  موارد انتخاب‌شده از دسته‌های زیر هستند:{" "}
+   596→                  {data.categories.map((c) => c.name).join("، ")}.
+   597→                  مقایسهٔ Cross-category ممکن است معنادار نباشد.
+   598→                </p>
+   599→              </div>
+   600→            </div>
+   601→          )}
+   602→
+   603→          {/* ── Search bar (hidden in read-only mode) ── */}
+   604→          {!isReadOnly && (
+   605→            <div className="relative mx-auto mb-8 max-w-2xl">
+   606→              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#111] p-1.5">
+   607→                <Search className="mr-2 h-4 w-4 text-white/30" />
+   608→                <input
+   609→                  value={search}
+   610→                  onChange={(e) => doSearch(e.target.value)}
+   611→                  placeholder="جستجوی آگهی برای افزودن به مقایسه — عنوان، برند..."
+   612→                  className="h-10 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
+   613→                  disabled={itemCount >= MAX_ITEMS}
+   614→                />
+   615→                {searching && <Loader2 className="h-4 w-4 animate-spin text-[#F58220]" />}
+   616→                {itemCount >= MAX_ITEMS && (
+   617→                  <span className="px-2 text-[10px] text-white/40">سقف {toFa(MAX_ITEMS)} مورد</span>
+   618→                )}
+   619→              </div>
+   620→              {showResults && searchResults.length > 0 && (
+   621→                <div className="absolute z-30 mt-2 max-h-96 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0e0e0e] shadow-2xl">
+   622→                  {searchResults.map((l) => {
+   623→                    const alreadyAdded = data?.items.some((i) => i.listingId === l.id);
+   624→                    const disabled = alreadyAdded || itemCount >= MAX_ITEMS;
+   625→                    return (
+   626→                      <button
+   627→                        key={l.id}
+   628→                        onClick={() => addListing(l)}
+   629→                        disabled={disabled}
+   630→                        className="flex w-full items-center gap-3 border-b border-white/5 px-4 py-3 text-right transition hover:bg-white/5 disabled:opacity-30"
+   631→                      >
+   632→                        <div className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/5">
+   633→                          {l.images?.[0]?.url ? (
+   634→                            <img
+   635→                              src={l.images[0].url}
+   636→                              alt=""
+   637→                              className="h-full w-full object-cover"
+   638→                            />
+   639→                          ) : (
+   640→                            <span className="text-lg">{l.category?.icon ?? "🚜"}</span>
+   641→                          )}
+   642→                        </div>
+   643→                        <div className="min-w-0 flex-1">
+   644→                          <p className="truncate text-sm font-bold text-white">{l.title}</p>
+   645→                          <p className="text-[11px] text-white/40">
+   646→                            {l.brand?.name ?? "—"} · {l.city ?? "—"} ·{" "}
+   647→                            {l.year ? toFa(l.year) : "—"}
+   648→                          </p>
+   649→                        </div>
+   650→                        {alreadyAdded ? (
+   651→                          <Check className="h-4 w-4 text-emerald-400" />
+   652→                        ) : (
+   653→                          <Plus className="h-4 w-4 text-[#F58220]" />
+   654→                        )}
+   655→                      </button>
+   656→                    );
+   657→                  })}
+   658→                </div>
+   659→              )}
+   660→              {showResults && searchResults.length === 0 && !searching && (
+   661→                <div className="absolute z-30 mt-2 w-full rounded-2xl border border-white/10 bg-[#0e0e0e] p-4 text-center text-xs text-white/40">
+   662→                  موردی یافت نشد
+   663→                </div>
+   664→              )}
+   665→            </div>
+   666→          )}
+   667→
+   668→          {/* ── Action bar ── */}
+   669→          {canCompare && (
+   670→            <div className="mb-6 flex flex-wrap items-center gap-3">
+   671→              {/* Differences-only toggle */}
+   672→              {!isReadOnly && (
+   673→                <button
+   674→                  onClick={() => setDifferencesOnly((v) => !v)}
+   675→                  className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition ${
+   676→                    differencesOnly
+   677→                      ? "border-[#F58220] bg-[#F58220]/10 text-[#F58220]"
+   678→                      : "border-white/10 bg-[#111] text-white/60 hover:border-white/20"
+   679→                  }`}
+   680→                >
+   681→                  <ListFilter className="h-4 w-4" />
+   682→                  {differencesOnly ? "نمایش همه" : "تفاوت‌ها فقط"}
+   683→                </button>
+   684→              )}
+   685→
+   686→              <div className="mr-auto flex flex-wrap items-center gap-2">
+   687→                {/* AI summary */}
+   688→                {!isReadOnly && (
+   689→                  <button
+   690→                    onClick={generateSummary}
+   691→                    disabled={aiLoading}
+   692→                    className="inline-flex items-center gap-2 rounded-xl border border-[#F58220]/40 bg-[#F58220]/10 px-4 py-2 text-xs font-bold text-[#F58220] transition hover:bg-[#F58220]/15 disabled:opacity-50"
+   693→                  >
+   694→                    {aiLoading ? (
+   695→                      <Loader2 className="h-4 w-4 animate-spin" />
+   696→                    ) : (
+   697→                      <Sparkles className="h-4 w-4" />
+   698→                    )}
+   699→                    خلاصه هوش مصنوعی
+   700→                  </button>
+   701→                )}
+   702→
+   703→                {/* Save */}
+   704→                {canSave && (
+   705→                  <button
+   706→                    onClick={() => {
+   707→                      setSaveName(session?.name ?? "");
+   708→                      setShowSaveDialog(true);
+   709→                    }}
+   710→                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-2 text-xs font-bold text-white transition hover:border-white/20"
+   711→                  >
+   712→                    <Save className="h-4 w-4" />
+   713→                    ذخیره مقایسه
+   714→                  </button>
+   715→                )}
+   716→
+   717→                {/* Share */}
+   718→                {session?.shareToken && (
+   719→                  <button
+   720→                    onClick={copyShareLink}
+   721→                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/15"
+   722→                  >
+   723→                    {shareCopied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+   724→                    {shareCopied ? "کپی شد" : "اشتراک‌گذاری"}
+   725→                  </button>
+   726→                )}
+   727→
+   728→                {/* New (reset) */}
+   729→                {!isReadOnly && sessionId && (
+   730→                  <button
+   731→                    onClick={startNew}
+   732→                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#111] px-4 py-2 text-xs font-bold text-white/50 transition hover:border-red-500/30 hover:text-red-400"
+   733→                  >
+   734→                    <Trash2 className="h-4 w-4" />
+   735→                    مقایسهٔ جدید
+   736→                  </button>
+   737→                )}
+   738→              </div>
+   739→            </div>
+   740→          )}
+   741→
+   742→          {/* ── AI summary panel ── */}
+   743→          {aiSummary && (
+   744→            <div className="mb-6 rounded-3xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-6">
+   745→              <div className="mb-3 flex items-center gap-2">
+   746→                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F58220]/15">
+   747→                  <Sparkles className="h-4 w-4 text-[#F58220]" />
+   748→                </div>
+   749→                <h3 className="text-base font-black text-white">خلاصه هوش مصنوعی</h3>
+   750→              </div>
+   751→              <div className="whitespace-pre-line text-sm leading-7 text-white/75">
+   752→                {aiSummary}
+   753→              </div>
+   754→              <p className="mt-4 flex items-center gap-1 text-[10px] text-white/30">
+   755→                <Info className="h-3 w-3" />
+   756→                هویکس برنده اعلام نمی‌کند — تصمیم‌گیری با شماست.
+   757→              </p>
+   758→            </div>
+   759→          )}
+   760→
+   761→          {/* ── Loading state ── */}
+   762→          {loading ? (
+   763→            <div className="flex h-64 items-center justify-center">
+   764→              <Loader2 className="h-8 w-8 animate-spin text-[#F58220]" />
+   765→            </div>
+   766→          ) : /* ── Comparison table ── */
+   767→          canCompare && data ? (
+   768→            <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#111]">
+   769→              <div className="overflow-x-auto">
+   770→                <table className="w-full min-w-[700px] border-collapse">
+   771→                  <thead>
+   772→                    <tr className="border-b border-white/10">
+   773→                      <th className="sticky right-0 z-10 w-32 bg-[#111] px-4 py-4 text-right text-xs font-bold text-white/40">
+   774→                        مشخصه
+   775→                      </th>
+   776→                      {data.items.map((it) => (
+   777→                        <th key={it.id} className="px-4 py-4 text-center align-top">
+   778→                          <div className="mx-auto mb-2 flex h-16 w-24 items-center justify-center overflow-hidden rounded-xl bg-white/5">
+   779→                            {it.image ? (
+   780→                              <img
+   781→                                src={it.image}
+   782→                                alt={it.title}
+   783→                                className="h-full w-full object-cover"
+   784→                              />
+   785→                            ) : (
+   786→                              <span className="text-2xl">🚜</span>
+   787→                            )}
+   788→                          </div>
+   789→                          <Link
+   790→                            href={it.slug ? `/listings/${it.slug}` : "#"}
+   791→                            className="line-clamp-2 text-xs font-bold text-white hover:text-[#F58220]"
+   792→                          >
+   793→                            {it.title}
+   794→                          </Link>
+   795→                          {!isReadOnly && (
+   796→                            <button
+   797→                              onClick={() => removeItem(it.id)}
+   798→                              className="mt-2 inline-flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-[10px] text-red-400 transition hover:bg-red-500/20"
+   799→                            >
+   800→                              <X className="h-3 w-3" /> حذف
+   801→                            </button>
+   802→                          )}
+   803→                        </th>
+   804→                      ))}
+   805→                    </tr>
+   806→                  </thead>
+   807→                  <tbody>
+   808→                    {visibleRows.length === 0 ? (
+   809→                      <tr>
+   810→                        <td
+   811→                          colSpan={itemCount + 1}
+   812→                          className="px-4 py-12 text-center text-sm text-white/40"
+   813→                        >
+   814→                          {differencesOnly
+   815→                            ? "تفاوتی در موارد انتخاب‌شده یافت نشد."
+   816→                            : "هیچ ردیفی برای نمایش وجود ندارد."}
+   817→                        </td>
+   818→                      </tr>
+   819→                    ) : (
+   820→                      visibleRows.map((row, idx) => (
+   821→                        <tr
+   822→                          key={row.key}
+   823→                          className={
+   824→                            idx % 2 === 0 ? "bg-white/[0.02]" : "bg-transparent"
+   825→                          }
+   826→                        >
+   827→                          <td className="sticky right-0 z-10 bg-inherit px-4 py-3 text-xs font-bold text-white/50">
+   828→                            <div className="flex items-center gap-1.5">
+   829→                              {row.label}
+   830→                              {row.isDifferent && (
+   831→                                <span
+   832→                                  className="inline-block h-1.5 w-1.5 rounded-full bg-[#F58220]"
+   833→                                  title="مقدار در موارد متفاوت است"
+   834→                                />
+   835→                              )}
+   836→                            </div>
+   837→                          </td>
+   838→                          {row.cells.map((cell, cellIdx) => (
+   839→                            <td
+   840→                              key={cell.itemId}
+   841→                              className={`px-4 py-3 text-center align-top ${
+   842→                                row.isPrice ? "text-[#F58220]" : "text-sm text-white/80"
+   843→                              }`}
+   844→                            >
+   845→                              <div className="text-sm font-medium">
+   846→                                {cell.display || "—"}
+   847→                              </div>
+   848→                              {row.isPrice && row.priceRanges && row.priceRanges[cellIdx] && (
+   849→                                <PriceRangeInfo
+   850→                                  range={row.priceRanges[cellIdx]!}
+   851→                                />
+   852→                              )}
+   853→                              {cell.provenance &&
+   854→                                cell.provenance.source &&
+   855→                                cell.provenance.source !== "SELLER_INPUT" && (
+   856→                                  <div className="mt-1 text-[9px] text-emerald-300/70">
+   857→                                    {SOURCE_LABELS[cell.provenance.source] ??
+   858→                                      cell.provenance.source}
+   859→                                    {cell.provenance.confidence != null
+   860→                                      ? ` · ${toFa(Math.round(cell.provenance.confidence * 100))}٪`
+   861→                                      : ""}
+   862→                                  </div>
+   863→                                )}
+   864→                            </td>
+   865→                          ))}
+   866→                        </tr>
+   867→                      ))
+   868→                    )}
+   869→                    <tr className="border-t border-white/10">
+   870→                      <td className="bg-[#111] px-4 py-4"></td>
+   871→                      {data.items.map((it) => (
+   872→                        <td key={it.id} className="px-4 py-4 text-center">
+   873→                          {it.slug && (
+   874→                            <Link
+   875→                              href={`/listings/${it.slug}`}
+   876→                              className="inline-flex items-center gap-1 rounded-lg bg-[#F58220] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff8c38]"
+   877→                            >
+   878→                              مشاهده
+   879→                              <ArrowLeft className="h-3 w-3" />
+   880→                            </Link>
+   881→                          )}
+   882→                        </td>
+   883→                      ))}
+   884→                    </tr>
+   885→                  </tbody>
+   886→                </table>
+   887→              </div>
+   888→            </div>
+   889→          ) : (
+   890→            /* ── Empty state ── */
+   891→            <div className="rounded-3xl border border-dashed border-white/10 bg-[#111] p-12 text-center">
+   892→              <AlertCircle className="mx-auto mb-4 h-10 w-10 text-white/20" />
+   893→              <p className="text-sm text-white/40">
+   894→                حداقل {toFa(MIN_ITEMS)} آگهی برای مقایسه انتخاب کنید
+   895→              </p>
+   896→              <p className="mt-1 text-xs text-white/30">
+   897→                با جستجو در کادر بالا، آگهی‌ها را اضافه کنید
+   898→              </p>
+   899→            </div>
+   900→          )}
+   901→        </div>
+   902→      </main>
+   903→
+   904→      {/* ── Save dialog ── */}
+   905→      {showSaveDialog && (
+   906→        <div
+   907→          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+   908→          onClick={() => setShowSaveDialog(false)}
+   909→        >
+   910→          <div
+   911→            className="w-full max-w-md rounded-3xl border border-white/10 bg-[#111] p-6"
+   912→            onClick={(e) => e.stopPropagation()}
+   913→          >
+   914→            <h3 className="mb-4 text-lg font-black text-white">ذخیرهٔ مقایسه</h3>
+   915→            <label className="mb-1.5 block text-xs font-bold text-white/60">
+   916→              نام مقایسه (اختیاری)
+   917→            </label>
+   918→            <input
+   919→              type="text"
+   920→              value={saveName}
+   921→              onChange={(e) => setSaveName(e.target.value)}
+   922→              placeholder="مثلاً: بیل‌های CAT مدل ۳۲۰"
+   923→              className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-[#0b0b0b] px-3 text-sm text-white outline-none focus:border-[#F58220]"
+   924→              autoFocus
+   925→            />
+   926→            <p className="mb-4 text-[11px] leading-5 text-white/40">
+   927→              پس از ذخیره، یک لینک اشتراک‌گذاری عمومی تولید می‌شود که می‌توانید با دیگران
+   928→              به اشتراک بگذارید.
+   929→            </p>
+   930→            <div className="flex justify-end gap-2">
+   931→              <button
+   932→                onClick={() => setShowSaveDialog(false)}
+   933→                className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-white/60 transition hover:bg-white/5"
+   934→              >
+   935→                انصراف
+   936→              </button>
+   937→              <button
+   938→                onClick={saveComparison}
+   939→                disabled={saving}
+   940→                className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff8c38] disabled:opacity-50"
+   941→              >
+   942→                {saving ? (
+   943→                  <Loader2 className="h-4 w-4 animate-spin" />
+   944→                ) : (
+   945→                  <Save className="h-4 w-4" />
+   946→                )}
+   947→                ذخیره
+   948→              </button>
+   949→            </div>
+   950→          </div>
+   951→        </div>
+   952→      )}
+   953→
+   954→      <Footer />
+   955→    </div>
+   956→  );
+   957→}
+   958→
+   959→/* ── Helper component: per-item price range badge ── */
+   960→function PriceRangeInfo({ range }: { range: PriceRange }) {
+   961→  if (range.min == null || range.max == null) return null;
+   962→  return (
+   963→    <div className="mt-1 text-[10px] leading-4 text-white/40">
+   964→      بازه تخمین:{" "}
+   965→      <span className="text-white/60">
+   966→        {Number(range.min).toLocaleString("fa-IR")} –{" "}
+   967→        {Number(range.max).toLocaleString("fa-IR")} ت
+   968→      </span>
+   969→      {range.sampleSize > 0 && (
+   970→        <span className="text-white/30">
+   971→          {" "}
+   972→          (نمونه: {toFa(range.sampleSize)})
+   973→        </span>
+   974→      )}
+   975→    </div>
+   976→  );
+   977→}
+   978→
