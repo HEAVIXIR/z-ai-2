@@ -52,7 +52,8 @@ export const productConfig: AdminResourceConfig = {
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'ACTIVE', label: 'فعال' }, { value: 'DRAFT', label: 'پیش‌نویس' },
       { value: 'INACTIVE', label: 'غیرفعال' }, { value: 'ARCHIVED', label: 'بایگانی' },
-    ]},
+    ],
+      permissions: { read: 'product.read', write: 'product.update' } },
     { key: 'source', label: 'منبع', type: 'select', options: [
       { value: 'MANUAL', label: 'دستی' }, { value: 'AI_SUGGESTED', label: 'AI' },
     ]},
@@ -119,7 +120,8 @@ export const partConfig: AdminResourceConfig = {
     ]},
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'ACTIVE', label: 'فعال' }, { value: 'INACTIVE', label: 'غیرفعال' },
-    ]},
+    ],
+      permissions: { read: 'part.read', write: 'part.update' } },
   ],
 
   actions: [
@@ -190,7 +192,8 @@ export const orderConfig: AdminResourceConfig = {
       { value: 'COMPLETED', label: 'تکمیل‌شده' },
     ]},
     { key: 'commissionRate', label: 'نرخ کارمزد %', type: 'number',
-      validation: { min: 0, max: 100, message: 'نرخ کارمزد باید بین ۰ تا ۱۰۰ درصد باشد' } },
+      validation: { min: 0, max: 100, message: 'نرخ کارمزد باید بین ۰ تا ۱۰۰ درصد باشد' },
+      permissions: { read: 'order.read', write: 'order.manage' } },
     { key: 'notes', label: 'یادداشت', type: 'textarea',
       validation: { maxLength: 2000, message: 'یادداشت نباید بیش از ۲,۰۰۰ نویسه باشد' } },
   ],
@@ -445,7 +448,8 @@ export const machineConfig: AdminResourceConfig = {
     ]},
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'ACTIVE', label: 'فعال' }, { value: 'SOLD', label: 'فروخته' },
-    ]},
+    ],
+      permissions: { read: 'machine.read', write: 'machine.update' } },
   ],
 
   audit: { enabled: true, entityType: 'Machine', actions: ['machine.update'] },
@@ -499,8 +503,10 @@ export const reviewConfig: AdminResourceConfig = {
       { value: 'PENDING', label: 'در انتظار' },
       { value: 'PUBLISHED', label: 'منتشرشده' },
       { value: 'REJECTED', label: 'ردشده' },
-    ]},
-    { key: 'verifiedDeal', label: 'معامله تأییدشده', type: 'boolean' },
+    ],
+      permissions: { read: 'review.read', write: 'review.moderate' } },
+    { key: 'verifiedDeal', label: 'معامله تأییدشده', type: 'boolean',
+      permissions: { read: 'review.read', write: 'review.moderate' } },
   ],
 
   detailTabs: [

@@ -72,9 +72,12 @@ export const brandConfig: AdminResourceConfig = {
     { key: 'verification', label: 'تأیید', type: 'select', options: [
       { value: 'VERIFIED', label: 'تأییدشده' },
       { value: 'UNVERIFIED', label: 'تأییدنشده' },
-    ]},
-    { key: 'featured', label: 'ویژه', type: 'boolean' },
-    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true },
+    ],
+      permissions: { read: 'brand.read', write: 'brand.publish' } },
+    { key: 'featured', label: 'ویژه', type: 'boolean',
+      permissions: { read: 'brand.read', write: 'brand.update' } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
+      permissions: { read: 'brand.read', write: 'brand.update' } },
   ],
 
   detailTabs: [
