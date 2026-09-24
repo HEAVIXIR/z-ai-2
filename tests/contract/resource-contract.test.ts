@@ -222,4 +222,28 @@ describe('Cross-Resource Invariants', () => {
       expect(r.audit?.entityType).toBeTruthy();
     }
   });
+
+  // STEP 16-C pass 8 — Dim 15 (Actions) closure: all resources should have
+  // at least one action with apiPath set, AND all actions across all resources
+  // should have apiPath + apiMethod defined.
+  it('all 18 resources should have at least one action with apiPath (Dim 15 closure — 16-C pass 8)', () => {
+    for (const r of ALL_RESOURCES) {
+      const actions = r.actions ?? [];
+      expect(actions.length).toBeGreaterThan(0);
+      const withApiPath = actions.filter(a => a.apiPath);
+      expect(withApiPath.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('all actions across all 18 resources should have apiPath + apiMethod set', () => {
+    for (const r of ALL_RESOURCES) {
+      const actions = r.actions ?? [];
+      for (const a of actions) {
+        expect(a.apiPath).toBeDefined();
+        expect(a.apiPath).toMatch(/^\/api\/admin\/resources\//);
+        expect(a.apiMethod).toBeDefined();
+        expect(['POST', 'PATCH', 'DELETE']).toContain(a.apiMethod);
+      }
+    }
+  });
 });

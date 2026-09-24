@@ -90,9 +90,9 @@ export const brandConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'verify', label: 'تأیید برند', icon: 'ShieldCheck', permission: 'brand.publish', type: 'confirm', confirmMessage: 'این برند تأیید شود؟' },
-    { key: 'feature', label: 'ویژه کردن', icon: 'Star', permission: 'brand.update', type: 'confirm', confirmMessage: 'این برند ویژه شود؟' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'brand.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این برند حذف شود؟' },
+    { key: 'verify', label: 'تأیید برند', icon: 'ShieldCheck', permission: 'brand.publish', type: 'confirm', confirmMessage: 'این برند تأیید شود؟', apiPath: '/api/admin/resources/brands', apiMethod: 'PATCH' },
+    { key: 'feature', label: 'ویژه کردن', icon: 'Star', permission: 'brand.update', type: 'confirm', confirmMessage: 'این برند ویژه شود؟', apiPath: '/api/admin/resources/brands', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'brand.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این برند حذف شود؟', apiPath: '/api/admin/resources/brands', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [

@@ -102,6 +102,17 @@ describe('Listing Resource Contract (resource-specific invariants)', () => {
     expect(actionKeys).toContain('delete');
   });
 
+  // ── L8b. Actions have apiPath (16-C pass 8 — Dim 15 closure) ──
+  it('L8b: all 4 actions should have apiPath set (16-C pass 8 added)', () => {
+    const actions = cfg.actions ?? [];
+    expect(actions.length).toBeGreaterThan(0);
+    for (const a of actions) {
+      expect(a.apiPath).toBeDefined();
+      expect(a.apiPath).toMatch(/^\/api\/admin\/resources\/listings/);
+      expect(a.apiMethod).toBeDefined();
+    }
+  });
+
   // ── L9. Bulk actions ─────────────────────────────────────
   it('L9: should have bulkActions bulk-publish, bulk-feature, bulk-delete', () => {
     const bulkKeys = (cfg.bulkActions ?? []).map(a => a.key);

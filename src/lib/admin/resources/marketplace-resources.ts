@@ -82,8 +82,8 @@ export const dealConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'confirm', label: 'تأیید معامله', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm' },
-    { key: 'cancel', label: 'لغو معامله', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive' },
+    { key: 'confirm', label: 'تأیید معامله', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/deals', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو معامله', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/deals', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -173,8 +173,8 @@ export const rfqConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'close', label: 'بستن درخواست', icon: 'Lock', permission: 'rfq.manage', type: 'confirm' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive' },
+    { key: 'close', label: 'بستن درخواست', icon: 'Lock', permission: 'rfq.manage', type: 'confirm', apiPath: '/api/admin/resources/rfqs', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/rfqs', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
@@ -251,8 +251,8 @@ export const offerConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm' },
-    { key: 'reject', label: 'رد', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive' },
+    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm', apiPath: '/api/admin/resources/offers', apiMethod: 'PATCH' },
+    { key: 'reject', label: 'رد', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/offers', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -337,9 +337,9 @@ export const auctionConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'start', label: 'شروع مزایده', icon: 'Play', permission: 'auction.manage', type: 'confirm' },
-    { key: 'end', label: 'پایان مزایده', icon: 'Square', permission: 'auction.manage', type: 'confirm' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive' },
+    { key: 'start', label: 'شروع مزایده', icon: 'Play', permission: 'auction.manage', type: 'confirm', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
+    { key: 'end', label: 'پایان مزایده', icon: 'Square', permission: 'auction.manage', type: 'confirm', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -410,9 +410,9 @@ export const inspectionConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.read', type: 'confirm' },
-    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.read', type: 'confirm' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.read', type: 'confirm', variant: 'destructive' },
+    { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -522,9 +522,9 @@ export const transportConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'transport.read', type: 'confirm' },
-    { key: 'deliver', label: 'تحویل', icon: 'Package', permission: 'transport.read', type: 'confirm' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.read', type: 'confirm', variant: 'destructive' },
+    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+    { key: 'deliver', label: 'تحویل', icon: 'Package', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -598,9 +598,9 @@ export const disputeConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'review', label: 'شروع بررسی', icon: 'Search', permission: 'deal.manage', type: 'confirm' },
-    { key: 'resolve', label: 'حل اختلاف', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive' },
+    { key: 'review', label: 'شروع بررسی', icon: 'Search', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
+    { key: 'resolve', label: 'حل اختلاف', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -686,9 +686,9 @@ export const buyRequestConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.read', type: 'confirm' },
-    { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.read', type: 'confirm' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.read', type: 'confirm', variant: 'destructive' },
+    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+    { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [

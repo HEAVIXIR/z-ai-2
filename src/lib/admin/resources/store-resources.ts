@@ -69,8 +69,8 @@ export const productConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'product.update', type: 'confirm' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'product.delete', type: 'confirm', variant: 'destructive' },
+    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'product.update', type: 'confirm', apiPath: '/api/admin/resources/products', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'product.delete', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/products', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
@@ -138,8 +138,8 @@ export const partConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'part.delete', type: 'confirm', variant: 'destructive' },
-    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'part.update', type: 'confirm' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'part.delete', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/parts', apiMethod: 'DELETE' },
+    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'part.update', type: 'confirm', apiPath: '/api/admin/resources/parts', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -234,8 +234,8 @@ export const orderConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'confirm', label: 'تأیید', icon: 'CheckCircle', permission: 'order.update', type: 'confirm' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'order.manage', type: 'confirm', variant: 'destructive' },
+    { key: 'confirm', label: 'تأیید', icon: 'CheckCircle', permission: 'order.update', type: 'confirm', apiPath: '/api/admin/resources/orders', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'order.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/orders', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -327,8 +327,8 @@ export const paymentConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.' },
-    { key: 'verify', label: 'تأیید پرداخت', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm' },
+    { key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.', apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH' },
+    { key: 'verify', label: 'تأیید پرداخت', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -423,8 +423,8 @@ export const companyConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'verify', label: 'تأیید شرکت', icon: 'ShieldCheck', permission: 'company.verify', type: 'confirm' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'company.delete', type: 'confirm', variant: 'destructive' },
+    { key: 'verify', label: 'تأیید شرکت', icon: 'ShieldCheck', permission: 'company.verify', type: 'confirm', apiPath: '/api/admin/resources/companies', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'company.delete', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/companies', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
@@ -507,8 +507,8 @@ export const machineConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'machine.update', type: 'confirm' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'machine.update', type: 'confirm', variant: 'destructive' },
+    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'machine.update', type: 'confirm', apiPath: '/api/admin/resources/machines', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'machine.update', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/machines', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
@@ -579,9 +579,9 @@ export const reviewConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'publish', label: 'انتشار', icon: 'CheckCircle', permission: 'review.moderate', type: 'confirm' },
-    { key: 'reject', label: 'رد', icon: 'X', permission: 'review.moderate', type: 'confirm', variant: 'destructive' },
-    { key: 'hide', label: 'مخفی', icon: 'EyeOff', permission: 'review.moderate', type: 'confirm' },
+    { key: 'publish', label: 'انتشار', icon: 'CheckCircle', permission: 'review.moderate', type: 'confirm', apiPath: '/api/admin/resources/reviews', apiMethod: 'PATCH' },
+    { key: 'reject', label: 'رد', icon: 'X', permission: 'review.moderate', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/reviews', apiMethod: 'PATCH' },
+    { key: 'hide', label: 'مخفی', icon: 'EyeOff', permission: 'review.moderate', type: 'confirm', apiPath: '/api/admin/resources/reviews', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [

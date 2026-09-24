@@ -107,10 +107,10 @@ export const listingConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'publish', label: 'انتشار', icon: 'CheckCircle', permission: 'listing.publish', type: 'confirm', variant: 'default', confirmMessage: 'این آگهی منتشر شود؟' },
-    { key: 'feature', label: 'ویژه کردن', icon: 'Star', permission: 'listing.update', type: 'confirm', confirmMessage: 'این آگهی ویژه شود؟' },
-    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'listing.update', type: 'confirm', confirmMessage: 'این آگهی تأیید شود؟' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'listing.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این آگهی حذف شود؟ این عملیات قابل بازگشت نیست.' },
+    { key: 'publish', label: 'انتشار', icon: 'CheckCircle', permission: 'listing.publish', type: 'confirm', variant: 'default', confirmMessage: 'این آگهی منتشر شود؟', apiPath: '/api/admin/resources/listings', apiMethod: 'POST' },
+    { key: 'feature', label: 'ویژه کردن', icon: 'Star', permission: 'listing.update', type: 'confirm', confirmMessage: 'این آگهی ویژه شود؟', apiPath: '/api/admin/resources/listings', apiMethod: 'PATCH' },
+    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'listing.update', type: 'confirm', confirmMessage: 'این آگهی تأیید شود؟', apiPath: '/api/admin/resources/listings', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'listing.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این آگهی حذف شود؟ این عملیات قابل بازگشت نیست.', apiPath: '/api/admin/resources/listings', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [

@@ -101,10 +101,10 @@ export const userConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'suspend', label: 'تعلیق', icon: 'Ban', permission: 'user.suspend', type: 'confirm', variant: 'destructive', confirmMessage: 'این کاربر معلق شود؟' },
-    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'user.update', type: 'confirm', confirmMessage: 'این کاربر فعال شود؟' },
-    { key: 'verify-email', label: 'تأیید ایمیل', icon: 'Mail', permission: 'user.update', type: 'confirm', confirmMessage: 'ایمیل این کاربر تأیید شود؟' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'user.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این کاربر حذف شود؟' },
+    { key: 'suspend', label: 'تعلیق', icon: 'Ban', permission: 'user.suspend', type: 'confirm', variant: 'destructive', confirmMessage: 'این کاربر معلق شود؟', apiPath: '/api/admin/resources/users', apiMethod: 'PATCH' },
+    { key: 'activate', label: 'فعال‌سازی', icon: 'CheckCircle', permission: 'user.update', type: 'confirm', confirmMessage: 'این کاربر فعال شود؟', apiPath: '/api/admin/resources/users', apiMethod: 'PATCH' },
+    { key: 'verify-email', label: 'تأیید ایمیل', icon: 'Mail', permission: 'user.update', type: 'confirm', confirmMessage: 'ایمیل این کاربر تأیید شود؟', apiPath: '/api/admin/resources/users', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'user.delete', type: 'confirm', variant: 'destructive', confirmMessage: 'این کاربر حذف شود؟', apiPath: '/api/admin/resources/users', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
