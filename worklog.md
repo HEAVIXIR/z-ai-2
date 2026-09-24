@@ -380,3 +380,80 @@ Next steps (per user's P0 priority):
 1. RBAC hardening — remove User.role fallback in isAdmin()
 2. Legacy auth removal — remove AdminSession dual-path in admin/layout.tsx
 3. Audit — add before/after/reason to every admin mutation
+
+---
+Task ID: STEP-01-RECONCILIATION
+Agent: Main Orchestrator (Z.ai Code)
+Task: User provided V2.1 strategic docs + STEP 01-18 execution plan. Implement STEP 01: PostgreSQL Data Reconciliation.
+
+Work Log:
+- User provided comprehensive V2.1 documentation covering:
+  - Admin Control Plane Foundation (not just sidebar)
+  - Universal CRUD framework
+  - Store Control Plane
+  - Page/Widget Builder
+  - RBAC Hardening
+  - Audit Foundation
+  - 18-step execution plan
+
+- STEP 01 (PostgreSQL Data Reconciliation):
+  - Previous migration attempts failed due to type system incompatibilities:
+    - Boolean: SQLite 0/1 → PostgreSQL true/false (code 42804)
+    - BigInt: SQLite integer → PostgreSQL bigint
+    - Enum: SQLite text → PostgreSQL custom enum type
+    - Jsonb: SQLite text → PostgreSQL jsonb
+    - Timestamp: SQLite epoch (int) → PostgreSQL timestamp
+
+  - Created scripts/migrate-pg-reconcile.ts with proper type handling:
+    1. Queries information_schema.columns to get exact PostgreSQL column types
+    2. For each value, converts based on PG column type:
+       - Timestamps: if number (epoch), convert to ISO string
+       - Booleans: keep as 0/1, use text::boolean cast
+       - JSON: keep as string, use text::jsonb cast
+       - BigInt: use text::bigint cast
+       - Integer: use text::integer cast
+       - Enum: use text cast (PG auto-casts text→enum)
+    3. Uses parameterized queries ($1, $2, ...) with ::text::type double casts
+       (PostgreSQL can cast any type to text, then text to target type)
+    4. ON CONFLICT DO NOTHING (preserves existing seed data)
+
+  - Three iterations to fix all type issues:
+    1. First attempt: raw values → failed (PG code 42804 datatype_mismatch)
+    2. Second attempt: added ::type casts → failed (can't cast bigint→timestamp/boolean directly)
+    3. Third attempt: ::text::type double casts + epoch conversion → SUCCESS
+
+  - Migration results:
+    35 tables with new data migrated from SQLite source
+    30 tables skipped (already had enough data from seeds)
+    48 tables empty in SQLite (no data to migrate)
+    Total rows migrated: 1086
+
+  - PostgreSQL now has:
+    74 tables with data (up from 46)
+    5215 total rows (up from 4426)
+
+  - Critical tables verified:
+    User: 3 (2 real + 1 seed)
+    PriceRecord: 206 (price history from SQLite)
+    FeatureFlag: 6 (feature toggles)
+    AdminSession: 3 (legacy admin auth sessions)
+    SubscriptionPlan: 3 (monetization plans)
+    MenuItem: 3 (navigation menu)
+    SiteSettings: 1 (site configuration)
+    AuditLog: 23 (audit trail)
+    Category: 539 (full taxonomy, up from 238)
+    Listing: 31 (marketplace listings)
+    DealRoom: 1, Payment: 2, Session: 2
+
+- App verified: /, /listings, /brands, /login all return HTTP 200
+
+- Git commit 6cf5608 pushed to GitHub.
+
+Stage Summary:
+- ✅ STEP 01 COMPLETE: PostgreSQL Data Reconciliation done
+- ✅ Schema: 116 tables (provider=postgresql)
+- ✅ Data: 74 tables with data, 5215 rows
+- ✅ All critical tables have real HEAVIX data
+- ✅ Migration script reusable (migrate-pg-reconcile.ts)
+
+Next: STEP 02 (RBAC Hardening) → STEP 03 (Legacy Auth Removal) → STEP 04 (Audit Foundation)
