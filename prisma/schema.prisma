@@ -2502,3 +2502,24 @@ model AdminPreference {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+// ════════════════════════════════════════════════════════════
+// STEP 06 — ADMIN SAVED VIEWS
+// Personal / Team / System saved table views per resource.
+// Stores filter+sort+column config as JSON (NOT arbitrary SQL).
+// ════════════════════════════════════════════════════════════
+
+model AdminSavedView {
+  id          String   @id @default(cuid())
+  userId      String?  // null = SYSTEM scope
+  resourceKey String   // e.g., 'listings', 'brands'
+  name        String   // e.g., 'آگهی‌های منتظر بررسی'
+  scope       String   @default("PERSONAL") // PERSONAL | TEAM | SYSTEM
+  config      Json     // { filters, sort, columns, pageSize, density }
+  isDefault   Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([userId, resourceKey])
+  @@index([resourceKey, scope])
+}
