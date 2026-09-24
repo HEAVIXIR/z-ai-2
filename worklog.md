@@ -1159,3 +1159,101 @@ Next: 15-B.4.3 (Count Aggregate Experiment — merge 3 duplicate count pairs
 Q8↔Q21, Q9↔Q22, Q10↔Q23 into COUNT(*) FILTER aggregate, before/after
 measurement, accept only if real latency reduction observed AND no
 correctness regression).
+
+---
+
+Task ID: STEP-15-B-4-3
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.4.3 — Count Aggregate Experiment. Test 3 duplicate count pairs (Q8↔Q21, Q9↔Q22, Q10↔Q23) with combined aggregate. Before/after measurement. Decision gate: A=ACCEPT, B=REJECT, C=INVESTIGATE. No code changes — experiment only.
+
+Work Log:
+- Captured BEFORE measurements (6 individual count queries, 5 warm runs each, median):
+  - Q8 (Listing PUBLISHED): 0.078ms, result=29, buffers hit=3
+  - Q21 (Listing PUBLISHED — duplicate of Q8): 0.082ms, result=29, buffers hit=3
+  - Q9 (Brand active): 0.186ms, result=629, buffers hit=14
+  - Q22 (Brand active — duplicate of Q9): 0.175ms, result=629, buffers hit=14
+  - Q10 (Category CATALOG): 0.094ms, result=23, buffers hit=8
+  - Q23 (Category root — near-duplicate of Q10, omits layer filter): 0.104ms, result=30, buffers hit=8
+  - TOTAL BEFORE: 0.719ms, 50 buffer hits, 6 round-trips
+
+- Correctness verification:
+  - Q8 = Q21: both return 29 ✓ (true duplicates — identical predicate)
+  - Q9 = Q22: both return 629 ✓ (true duplicates — identical predicate)
+  - Q10 ≠ Q23: Q10 returns 23, Q23 returns 30 ⚠️ (near-duplicates — Q23 omits layer='CATALOG' filter)
+
+- Built 3 combined aggregate queries (AFTER):
+  - Q1 (replaces Q8+Q21): same SQL, just deduplicated
+  - Q2 (replaces Q9+Q22): same SQL, just deduplicated
+  - Q3 (replaces Q10+Q23): SELECT COUNT(*) FILTER (WHERE layer='CATALOG') AS q10_count, COUNT(*) AS q23_count FROM "Category" WHERE active=true AND "parentId" IS NULL — scans Category ONCE instead of TWICE
+
+- Captured AFTER measurements (3 combined queries, 5 warm runs each, median):
+  - Q1: 0.079ms, result=29, buffers hit=3
+  - Q2: 0.171ms, result=629, buffers hit=14
+  - Q3: 0.107ms, result=(23, 30), buffers hit=8
+  - TOTAL AFTER: 0.357ms, 25 buffer hits, 3 round-trips
+
+- Comparison:
+  - Query count: 6 → 3 (-50% round-trips)
+  - Total median exec: 0.719ms → 0.357ms = -0.362ms = -50.3%
+  - Total buffers hit: 50 → 25 = -50%
+  - Correctness: ALL 6 results match ✓
+  - No regression in related queries ✓
+  - Improvement is NOT noise (50.3% well above ±0.02ms noise threshold)
+
+- Decision gate applied:
+  - Correctness PASS ✓
+  - Latency materially lower (-50.3%) ✓
+  - Buffers lower (-50%) ✓
+  - SQL complexity justified (FILTER is standard PostgreSQL) ✓
+  - No semantic change ✓
+  - No regression ✓
+  - Improvement NOT just noise ✓
+
+Decision: A — ACCEPT (candidate proven)
+- The aggregate approach IS faster at the DB level (50.3% improvement)
+- All correctness checks pass
+- No regression
+- Per user policy: aggregate has real superiority → ACCEPT (not REJECT)
+
+Implementation recommendation (deferred to separate application step):
+- Approach 1 (LOWER RISK): code-level deduplication — pass Phase 4 count
+  results to getActiveStats() so it skips duplicate Q21/Q22/Q23 queries.
+  No $queryRaw needed. No SQL change. Just code flow change.
+  Saves 0.361ms (nearly identical to aggregate approach).
+- Approach 2 (HIGHER RISK): $queryRaw FILTER aggregate for Q3 (Category).
+  Loses Prisma type safety. Same savings. Not recommended.
+
+Important caveats:
+- DB-level improvement PROVEN (50.3%)
+- Page-level TTFB improvement NOT PROVEN (0.362ms is 0.46% of 78ms TTFB — invisible)
+  Consistent with 15-A finding: DB is 1.75% of TTFB.
+- Actual code application deferred to 15-B.5 or dedicated step
+  (this was an EXPERIMENT, not an application step)
+
+What this step did NOT do:
+- No code changes made (experiment only)
+- No schema changes
+- No index additions
+- No $queryRaw introduced
+- Baseline preserved (Brand_name_idx from 15-B.4.1 is only change in effect)
+
+Files produced:
+- docs/verification/STEP-15-B-4-3-COUNT-AGGREGATE-EXPERIMENT.md (8 sections, 209 lines)
+
+Commit 9e005dd pushed to GitHub (2c81f70..9e005dd main -> main).
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (unchanged — Brand_name_idx from 15-B.4.1 is only index added in 15-B).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Stage Summary:
+- ✅ 15-B.4.3 complete: Count aggregate experiment done, ACCEPT decision reached.
+- ✅ 50.3% DB-level improvement proven (0.362ms saved, 25 fewer buffer hits, 3 fewer round-trips).
+- ✅ All correctness checks pass (29, 629, 23, 30 all match).
+- ✅ No regression.
+- ✅ No code changes made (experiment only — application deferred).
+- ✅ Implementation recommendation: Approach 1 (code-level dedup, lower risk).
+
+Next: 15-B.4.4 (Promise.all experiment on Q3+Q4 Phase 2 — with DB load measurement,
+accept only if real wall-clock reduction AND no DB load increase).
