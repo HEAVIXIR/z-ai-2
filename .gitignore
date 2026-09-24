@@ -56,3 +56,13 @@ server.log
 download/*.zip
 download/*.png
 
+
+# HEAVIX backup schema files
+prisma/schema.prisma.my-version
+prisma/schema.prisma.phase12-backup
+
+# SQLite source databases (binary, available locally)
+db/*.db
+db/heavix-source.db
+db/heavix-store-source.db
+

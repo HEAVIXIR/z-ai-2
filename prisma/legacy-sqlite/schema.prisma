@@ -1,15 +1,16 @@
-// HEAVIX — Industrial heavy-machinery marketplace
-// PostgreSQL production schema (migrated from SQLite per ADR-001)
+// Legacy SQLite schema — used ONLY by scripts/migrate-sqlite-to-postgres.ts
+// to read data from db/custom.db and write to PostgreSQL.
+// Delete this file + the generated legacy-sqlite-client after migration is verified.
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/lib/generated/legacy-sqlite-client"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:/home/z/my-project/db/custom.db"
 }
-
 // ════════════════════════════════════════════════════════════
 // BRAND CATALOG OS
 // ════════════════════════════════════════════════════════════
@@ -522,7 +523,6 @@ model Listing {
   moderationLogs ModerationLog[]
   // REVIEW-01 — reviews anchored to this listing
   reviews        Review[]
-  deals          Deal[]
 }
 
 model ListingImage {
@@ -1269,20 +1269,12 @@ model CompanyVerification {
   id          String   @id @default(cuid())
   companyId   String
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  status      String   @default("PENDING") // PENDING | UNDER_REVIEW | VERIFIED | REJECTED | EXPIRED | REVOKED
-  verificationType String @default("BUSINESS") // PHONE | EMAIL | BUSINESS | DOCUMENT | INSPECTION
+  status      String   @default("PENDING") // PENDING | UNDER_REVIEW | VERIFIED | REJECTED
   submittedAt DateTime @default(now())
   reviewedAt  DateTime?
   reviewedBy  String?
   notes       String?
-  // PHASE-5: Evidence + Expiration + Revocation
-  evidence    String?  // JSON: [{ type, url, description }]
-  expiresAt   DateTime? // VERIFIED status can expire
-  revokedAt   DateTime?
-  revokedBy   String?
-  revokeReason String?
   @@index([companyId])
-  @@index([status])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1591,8 +1583,6 @@ model User {
   reviewCount    Int      @default(0)
   reviewsReceived Review[] @relation("SellerReviews")
   reviewsWritten  Review[] @relation("ReviewAuthor")
-  dealsAsBuyer    Deal[] @relation("DealBuyer")
-  dealsAsSeller   Deal[] @relation("DealSeller")
 }
 
 model Session {
@@ -2268,23 +2258,18 @@ model Payment {
   userId          String
   user            User      @relation("UserPayments", fields: [userId], references: [id], onDelete: Cascade)
   subscriptionId  String?
-  orderId         String?
-  order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   amount          BigInt
   currency        String    @default("IRR")
-  type            String    // SUBSCRIPTION | FEATURED_LISTING | PROMOTION | LEAD_FEE | INSPECTION_FEE | ORDER_PAYMENT | COMMISSION | REFUND
-  status          String    @default("PENDING") // PENDING | AUTHORIZED | PAID | FAILED | CANCELLED | REFUNDED
+  type            String    // SUBSCRIPTION | FEATURED_LISTING | PROMOTION | LEAD_FEE | INSPECTION_FEE
+  status          String    @default("PENDING") // PENDING | PAID | FAILED | REFUNDED
   gateway         String?   // ZARINPAL | PAYIR | MANUAL
-  providerReference String?
   trackingCode    String?
-  idempotencyKey  String?   @unique
   paidAt          DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([userId])
   @@index([status])
-  @@index([orderId])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2307,9 +2292,6 @@ model Review {
   // Optional context anchors
   dealRoomId      String?  @unique // one review per deal
   dealRoom        DealRoom? @relation(fields: [dealRoomId], references: [id], onDelete: SetNull)
-  dealId          String?  @unique // one review per deal (Phase 9 link)
-  deal            Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  orderId         String?  // optional order link
   listingId       String?
   listing         Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
@@ -2333,117 +2315,3 @@ model Review {
   @@index([companyId, status])
   @@index([sellerId, status])
   @@index([status])
-}
-
-// ════════════════════════════════════════════════════════════
-// PHASE 9 — ORDERS / DEALS / TRANSACTIONS
-// Per HEAVIX Master Execution Plan V3.0 Phase 9.
-// Closes the gap between DealRoom/Offer → Deal → Order → Transaction.
-// ════════════════════════════════════════════════════════════
-
-// Deal — created when an Offer or Quote is accepted.
-// Source can be a ListingOffer, RFQQuote, or DealRoom (AGREED).
-model Deal {
-  id              String    @id @default(cuid())
-  dealNumber      String    @unique
-  // Source
-  sourceType      String    // LISTING_OFFER | RFQ_QUOTE | DEAL_ROOM
-  sourceId        String    // ID of the originating offer/quote/dealroom
-  // Parties
-  buyerId         String?
-  buyer           User?     @relation("DealBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
-  sellerId        String?
-  seller          User?     @relation("DealSeller", fields: [sellerId], references: [id], onDelete: SetNull)
-  // Context
-  listingId       String?
-  listing         Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  // Terms
-  agreedAmount    BigInt?
-  currency        String    @default("IRR")
-  transactionType String    @default("SALE")
-  // Lifecycle: DRAFT → PENDING_CONFIRMATION → CONFIRMED → IN_PROGRESS → COMPLETED
-  // Terminal: CANCELLED, DISPUTED, EXPIRED
-  status          String    @default("DRAFT")
-  // Timestamps
-  agreedAt        DateTime?
-  confirmedAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  cancelReason    String?
-  // Metadata
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  // Relations
-  order           Order?
-  disputes        Dispute[]
-  review          Review?
-
-  @@index([buyerId])
-  @@index([sellerId])
-  @@index([listingId])
-  @@index([status])
-}
-
-// Order — business transaction created from a confirmed Deal.
-// Contains snapshots of key info (price, title) at time of creation.
-model Order {
-  id              String    @id @default(cuid())
-  orderNumber     String    @unique
-  dealId          String    @unique
-  deal            Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  // Snapshots (immutable at creation)
-  titleSnapshot   String
-  priceSnapshot   BigInt
-  currencySnapshot String   @default("IRR")
-  sellerSnapshot  String?
-  buyerSnapshot   String?
-  quantity        Int       @default(1)
-  // Lifecycle: PENDING → CONFIRMED → PROCESSING → FULFILLED → COMPLETED
-  // Terminal: CANCELLED
-  status          String    @default("PENDING")
-  // Commission
-  commissionRate  Float?    // percentage
-  commissionAmount BigInt?  // in currency
-  sellerAmount    BigInt?   // after commission
-  // Timestamps
-  confirmedAt     DateTime?
-  fulfilledAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  // Relations
-  payments        Payment[]
-  disputes        Dispute[]
-  // Metadata
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@index([status])
-}
-
-// Dispute — can be opened on a Deal or Order.
-model Dispute {
-  id              String    @id @default(cuid())
-  dealId          String?
-  deal            Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  orderId         String?
-  order           Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  // Lifecycle: OPEN → UNDER_REVIEW → RESOLVED | CANCELLED
-  status          String    @default("OPEN")
-  reason          String
-  description     String?
-  evidence        String?   // JSON: [{ type, url, description }]
-  openedBy        String    // userId
-  openedAt        DateTime  @default(now())
-  // Resolution
-  resolution      String?
-  resolvedBy      String?
-  resolvedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@index([dealId])
-  @@index([orderId])
-  @@index([status])
-}
