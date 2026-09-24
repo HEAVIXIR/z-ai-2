@@ -2523,3 +2523,69 @@ model AdminSavedView {
   @@index([userId, resourceKey])
   @@index([resourceKey, scope])
 }
+
+// ════════════════════════════════════════════════════════════
+// STEP 14 — PAGE / WIDGET BUILDER
+// Declarative JSON Schema for page layouts.
+// Versioning: Draft → Preview → Publish → Rollback.
+// NO arbitrary SQL/JS — only validated widget schemas + registry-based data sources.
+// ════════════════════════════════════════════════════════════
+
+model AdminPage {
+  id                  String   @id @default(cuid())
+  key                 String   @unique // immutable (e.g., "homepage", "category-excavator")
+  title               String             // changeable display title
+  slug                String?            // public URL slug
+  pageType            String   @default("CUSTOM") // HOME | LANDING | CATEGORY | BRAND | MODEL | CAMPAIGN | ARTICLE | CUSTOM
+  status              String   @default("DRAFT") // DRAFT | PUBLISHED | SCHEDULED | UNPUBLISHED | ARCHIVED
+  publishedVersionId  String?            // FK to AdminPageVersion (current live version)
+  scheduledPublishAt  DateTime?
+  scheduledUnpublishAt DateTime?
+  // SEO (integration contract — STEP 15 owns full SEO)
+  seoTitle            String?
+  seoDescription      String?
+  seoCanonical        String?
+  seoOgImage          String?
+  seoRobotsIndex      Boolean  @default(true)
+  seoRobotsFollow     Boolean  @default(true)
+  // Audit
+  createdBy           String?
+  updatedBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  versions            AdminPageVersion[]
+  @@index([pageType])
+  @@index([status])
+}
+
+model AdminPageVersion {
+  id          String   @id @default(cuid())
+  pageId      String
+  page        AdminPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  version     Int                  // version number (1, 2, 3...)
+  status      String   @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  // Validated JSON layout schema: { sections: [{ title, rows: [{ widgets: [{ key, props }] }] }] }
+  // NOT arbitrary code — only widget keys from the registry with validated props
+  layout      Json
+  changeLog   String?              // human-readable description of changes
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  publishedAt DateTime?
+  publishedBy String?
+  @@index([pageId])
+  @@index([status])
+  @@unique([pageId, version])
+}
+
+model AdminPageTemplate {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g., "homepage-default", "campaign-cta"
+  name        String
+  description String?
+  pageType    String   @default("CUSTOM")
+  layout      Json                 // template layout (cloneable, not directly publishable)
+  isSystem    Boolean  @default(true) // system templates are immutable
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
