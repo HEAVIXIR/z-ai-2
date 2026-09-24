@@ -52,3 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Backup zips are large — exclude from git (GitHub 100MB limit)
+download/*.zip
+download/*.png
+
