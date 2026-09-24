@@ -715,3 +715,61 @@ Files produced:
 - scripts/measure-baseline.sh (reusable)
 
 Next: 15-B (Database Performance) — analyze actual slow queries in production, add indexes only where EXPLAIN ANALYZE proves benefit, batch home page queries via Promise.all.
+
+---
+
+Task ID: STEP-15-B-1
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.1 — Production Query Inventory + complete EXPLAIN ANALYZE. Pure measurement — no indexes, no optimizations. Extract real Prisma queries from production code paths, translate to SQL, run EXPLAIN ANALYZE on each, build inventory.
+
+Work Log:
+- Searched all production code paths (src/app/, src/lib/, src/components/) for Prisma queries on the 5 target tables: Listing, Brand, Category, BuyRequest, ListingImage.
+- Extracted real query shapes from highest-traffic paths:
+  - Home page (src/app/page.tsx) — 23 queries
+  - Listings page (src/app/listings/page.tsx) — 8 queries
+  - Brands page (src/app/brands/page.tsx) — 4 queries
+  - Universal Resource API (src/lib/admin/data-adapter.ts) — list + count + get-by-id
+  - Public APIs (/api/listings, /api/taxonomy, /api/admin/requests, etc.)
+  - Admin routes (opportunity-radar, growth-engine, admin/requests, etc.)
+- Selected 28 representative queries covering all common patterns: WHERE filter, ORDER BY, JOIN, COUNT, pagination, EXISTS, groupBy, DELETE.
+- Wrote scripts/explain-analyze.sh — bash script that runs EXPLAIN ANALYZE on all 28 queries via psql.
+- Captured full EXPLAIN ANALYZE output to /tmp/explain-results.txt (629 lines).
+- Compiled docs/verification/STEP-15-B-1-QUERY-INVENTORY.md (11 sections, 499 lines):
+
+Key findings:
+1. **All 28 queries execute in <0.5ms with current data volume** (29 listings, 629 brands, 295 categories, 0 buy requests, 0 listing images).
+2. **3 queries use existing indexes** (filter by pkey or slug):
+   - L12: Listing_pkey (Universal API get-by-id)
+   - B5: Brand_pkey (home trusted brands — filters by id IN)
+   - C3: Category_slug_key (home machinery root — filters by slug='machinery')
+3. **25 queries use Seq Scan** — PostgreSQL correctly chooses Seq Scan for small tables because sequential read is faster than random I/O of index lookup.
+4. **No slow queries exist** — slowest is B6 at 0.458ms (taxonomy brands API).
+5. **BuyRequest and ListingImage tables are empty** (0 rows) — all queries return 0 in 0.03-0.09ms.
+6. **N+1 risk on ListingImage documented** — Prisma's `include: { images: { take: 1 } }` causes 1+N queries. Currently trivial (0 images), but will become a problem when listings have images.
+
+Built Index Candidate Matrix (Section 7) with 21 entries:
+- 2 marked "DO NOT add" (Brand.active — 100% selectivity = useless; Listing.categoryId — no production query uses it for filter)
+- 1 marked "CANDIDATE" (ListingImage.listingId — structurally critical for N+1 prevention, but deferred until table has data)
+- 18 marked "TBD" — to be decided in 15-B.2 based on simulated before/after
+
+Home Query Fan-out Analysis (Section 8):
+- 23 queries broken into 7 phases
+- 17 already parallelized via Promise.all
+- 2 unnecessarily sequential (Phase 2: homeCategoryConfig + siteSettings)
+- 3 legitimately sequential (Phase 5: parentId lookup; Phase 7: id-list lookup — both have data dependencies)
+- 1 conditional (homePageSection.createMany — runs once on first home render)
+
+No optimizations applied. No indexes added. Gate remains GREEN (73/74).
+
+Stage Summary:
+- ✅ 15-B.1 complete: Production Query Inventory + EXPLAIN ANALYZE for 28 queries across 5 target tables.
+- ✅ Pure measurement only (per user policy).
+- ✅ Index Candidate Matrix built — decisions deferred to 15-B.2.
+- ✅ Home Query Fan-out analyzed — batching/ISR candidates identified.
+- ✅ Verification commands documented (bash scripts/explain-analyze.sh).
+
+Files produced:
+- docs/verification/STEP-15-B-1-QUERY-INVENTORY.md (11 sections, 499 lines)
+- scripts/explain-analyze.sh (reusable — runs all 28 EXPLAIN ANALYZE queries)
+
+Next: 15-B.2 (Index Hypotheses with simulated before/after — add index in transaction, EXPLAIN, rollback if no improvement) → 15-B.3 (Home Query Fan-out Analysis) → 15-B.4 (Apply ONLY proven improvements) → 15-B.5 (Regression + Re-measure).
