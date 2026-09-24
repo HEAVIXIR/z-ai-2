@@ -34,4 +34,9 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$ENV_FILE"
 
 # Execute the rest of the command
+
+# HARDCODED OVERRIDE: Platform's start.sh overwrites .env with SQLite URL.
+# Always force PostgreSQL URL (user-space install at /home/z/pg).
+export DATABASE_URL='postgresql://heavix@localhost:5432/heavix?schema=public'
+
 exec "$@"
