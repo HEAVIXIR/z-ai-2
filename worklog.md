@@ -933,3 +933,49 @@ Acceptance criteria (16/16 met):
 ✅ Baseline preserved
 
 Next: 15-B.4 (Apply ONLY proven improvements — B-H1 Brand.name index from 15-B.2 + merge candidates + Promise.all Q3+Q4 + ISR with tag-based invalidation aligned to Page Builder). Each change measured before/after against 15-A baseline.
+
+---
+
+Task ID: BACKUPS-GITHUB-SYNC
+Agent: Main Orchestrator (Z.ai Code)
+Task: User requested backup download link + GitHub sync.
+
+Work Log:
+- Created comprehensive backup ZIP of project: download/heavix-backup-20260924-134642.zip (15MB, 1500 files)
+  Contents: src/, scripts/, prisma/, docs/, tests/, public/, package.json, tsconfig.json, next.config.ts, Caddyfile, worklog.md, dev.log, start-dev.sh, start-prod.sh, components.json, bun.lock
+  Excluded: node_modules/, .next/, .git/, tool-results/
+
+- GitHub push status: BLOCKED. Sandbox has no GitHub auth configured (no token, no .netrc, no .git-credentials, no gh CLI installed). 63 commits remain local-only.
+  Error: "fatal: could not read Username for 'https://github.com': No such device or address"
+
+- Created git bundle as alternative sync mechanism: download/heavix-git-bundle-20260924-134754.bundle (148MB, complete history)
+  Verified via `git bundle verify` — bundle is okay, contains refs/heads/main + HEAD, complete history.
+
+- Started HTTP server on port 8765 (with watchdog auto-restart) to serve download/ directory.
+- All files accessible via Caddy gateway on port 81 with XTransformPort=8765 query param:
+  - Browse index: http://localhost:81/?XTransformPort=8765
+  - Source ZIP:   http://localhost:81/heavix-backup-20260924-134642.zip?XTransformPort=8765
+  - Git Bundle:   http://localhost:81/heavix-git-bundle-20260924-134754.bundle?XTransformPort=8765
+
+- All download URLs verified to return HTTP 200 OK via gateway.
+
+- Updated download/index.html with browsable HTML listing both files + restore/sync instructions.
+
+- Updated .gitignore to exclude download/*.zip and download/*.bundle (build artifacts).
+
+Files committed:
+- ef68132: chore(backups): create downloadable backup server + git bundle
+- e2ae16a: chore: add download/*.bundle to .gitignore
+
+GitHub sync manual procedure (for user on a machine with GitHub access):
+  git clone https://github.com/HEAVIXIR/z-ai-2.git
+  cd z-ai-2
+  git fetch ../heavix-git-bundle-*.bundle main:latest-local
+  git log latest-local  # verify
+  git push origin latest-local:main
+
+Stage Summary:
+- ✅ Backup ZIP created (15MB) + downloadable via gateway
+- ✅ Git Bundle created (148MB, 63 commits) + downloadable via gateway
+- ⚠️  GitHub push not possible in sandbox (no auth) — git bundle provided as alternative
+- ✅ Index page at http://localhost:81/?XTransformPort=8765 lists all backups with restore instructions
