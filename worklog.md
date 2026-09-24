@@ -328,3 +328,55 @@ A full industrial heavy-machinery marketplace with:
 - Demand signal + search query logging
 
 Next step (Phase 13.5): The Phase 12 admin dashboard (admin-shell, 6 sections, 8 API endpoints) references the OLD Phase 12 model fields. It will break until adapted to the real HEAVIX schema. The API endpoints need updating to use the real User (firstName/lastName/mobile), real AuditLog (actorType/beforeJson), etc. A HEAVIX-specific seed script also needs writing.
+
+---
+Task ID: PHASE-12-ADMIN-CONTROL-PLANE
+Agent: Main Orchestrator (Z.ai Code)
+Task: User provided strategic V2.0 documentation + Phase 12 plan for Admin Control Plane Foundation. Implemented 12.1-12.3 (DB-driven navigation + permission-aware sidebar).
+
+Work Log:
+- Reviewed all 18 docs/ — especially HEAVIX-ARCHITECTURE-OVERVIEW (feature index) and HEAVIX-SECURITY-BASELINE-V1 (RBAC + auth principles).
+- Audited current Admin code state:
+  - 101 admin pages, 127 admin API routes, 113 Prisma models
+  - AdminSidebarNav.tsx: hard-coded MENU array with 66 items (7 groups + 7 standalone + 52 children)
+  - admin/layout.tsx: dual auth paths (legacy AdminSession cookie + RBAC UserRole with User.role fallback)
+  - lib/rbac.ts: getUserPermissions, hasPermission, requirePermission, isAdmin (with legacy fallback), hasRole
+- Phase 12.1 (Architecture Contract): documented the rule — no new admin page without Resource→Permission→API→List→Detail→Form→Actions→Audit→Tests.
+- Phase 12.2 (DB-driven Navigation):
+  - Added 3 new Prisma models to schema.prisma:
+    - AdminNavigationGroup (key, titleFa, icon, sortOrder, active)
+    - AdminNavigationItem (key, titleFa, href, icon, sortOrder, permissionKey, featureFlag, active, openInNewTab, groupId)
+    - AdminPreference (userId, theme, density, locale, timezone, sidebarCollapsed, pinnedItems JSON, hiddenItems JSON, dashboardLayout JSON, defaultPageSize)
+  - Ran db:push (additive — no data loss). 3 new tables created.
+  - Created prisma/seed-admin-navigation.ts:
+    - 7 groups: home(12), taxonomy(13), market(12), transactions(9), content(6), moderation(1), system(8)
+    - 7 standalone: dashboard, listings, companies, subscriptions, users, audit-log, settings
+    - Total: 68 navigation items, each mapped from the hard-coded MENU with permissionKey assigned
+    - Idempotent (upsert by key)
+- Phase 12.3 (Permission-aware Navigation):
+  - Created GET /api/admin/navigation:
+    - Returns DB-driven tree (groups + standalone items)
+    - Legacy admin-cookie path: shows ALL items (backward compat)
+    - RBAC path: filters by user's permissions (only shows items where permissionKey is null OR user has that permission)
+    - Groups with 0 visible items are hidden in RBAC mode
+  - Rewrote AdminSidebarNav.tsx:
+    - Fetches from /api/admin/navigation on mount
+    - Maps icon strings → lucide-react components (ICON_MAP with 16 icons)
+    - Auto-opens group containing active route (useEffect on pathname)
+    - Loading state (spinner), error state (red message)
+    - Same visual style (Aria dark zinc sidebar, orange #F58220 active)
+    - Dev mode indicator (mode + group/standalone counts)
+- Git commit ee3b4f4 pushed to GitHub.
+
+Stage Summary:
+- ✅ Phase 12.1: Architecture Contract documented
+- ✅ Phase 12.2: DB-driven Admin Navigation (3 models, 68 items seeded)
+- ✅ Phase 12.3: Permission-aware sidebar (API filters by RBAC)
+- ⏳ Phase 12.4: Admin Preferences (model exists, needs API + UI)
+- ⏳ Phase 12.5: Universal Resource Manager (<AdminResource> framework)
+- ⏳ Phase 12.9: Real Audit (before/after/reason)
+
+Next steps (per user's P0 priority):
+1. RBAC hardening — remove User.role fallback in isAdmin()
+2. Legacy auth removal — remove AdminSession dual-path in admin/layout.tsx
+3. Audit — add before/after/reason to every admin mutation
