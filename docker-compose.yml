@@ -1,0 +1,48 @@
+# Local PostgreSQL for development.
+# Start:  docker compose up -d
+# Then set in .env:
+#   DATABASE_URL="postgresql://heavix:heavix@localhost:5432/heavix?schema=public"
+#   STORE_DATABASE_URL="postgresql://heavix:heavix@localhost:5433/heavix_store?schema=public"
+#
+# Two separate Postgres instances (different ports) so the main
+# marketplace DB and the parts-store DB stay fully independent —
+# matches prisma/schema.prisma and prisma/store-schema.prisma.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heavix
+      POSTGRES_PASSWORD: heavix
+      POSTGRES_DB: heavix
+    ports:
+      - "5432:5432"
+    volumes:
+      - heavix_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heavix -d heavix"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  store-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heavix
+      POSTGRES_PASSWORD: heavix
+      POSTGRES_DB: heavix_store
+    ports:
+      - "5433:5432"
+    volumes:
+      - heavix_store_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heavix -d heavix_store"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  heavix_db_data:
+  heavix_store_db_data:
