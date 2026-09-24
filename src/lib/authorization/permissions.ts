@@ -148,10 +148,37 @@ export const PERMISSIONS = [
   'taxonomy.write',
 
   // Auction
+  'auction.read',
+  'auction.update',
   'auction.manage',
 
   // Settings
   'settings.manage',
+
+  // ── STEP 16-C FIX (Class A.2 — Dim 3 missing permission constants) ──
+  // 8 of 18 admin resources referenced permission constants that did NOT
+  // exist in this array NOR in the DB Permission table. At runtime, can()
+  // returned false → universal API GET returned 403 Forbidden for ALL
+  // users including ADMIN. The constants below complete the permission
+  // matrix so every resource has a canonical read permission.
+  // Affected resources: parts, machines, reviews, offers, auctions,
+  // inspections, transports, disputes, buy-requests.
+  'part.read',
+  'part.update',
+  'part.delete',
+  'machine.read',
+  'machine.update',
+  'review.publish',
+  'offer.read',
+  'offer.update',
+  'inspection.read',
+  'inspection.manage',
+  'transport.read',
+  'transport.manage',
+  'request.read',
+  'request.manage',
+  'dispute.read',
+  'dispute.manage',
 ] as const;
 
 export type PermissionKey = typeof PERMISSIONS[number];
@@ -167,11 +194,19 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'brand.read',
     'category.read',
     'product.read',
+    'part.read',                    // 16-C: parts sub-resource
+    'machine.read',                 // 16-C: machines sub-resource
     'company.read', 'company.update',
     'order.read',
     'deal.read', 'deal.manage',
     'review.read',
     'rfq.read', 'rfq.manage',
+    'offer.read', 'offer.update',   // 16-C: offers on listings
+    'auction.read',                 // 16-C: bidding access
+    'request.read',                 // 16-C: receive buy-requests
+    'dispute.read',                 // 16-C: involved in disputes
+    'inspection.read',              // 16-C: request inspections
+    'transport.read',               // 16-C: ship items
     'media.upload',
     'analytics.read',
   ],
@@ -182,11 +217,19 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'brand.read',
     'category.read',
     'product.read',
+    'part.read',                    // 16-C: parts catalog browse
+    'machine.read',                 // 16-C: machines catalog browse
     'company.read',
     'order.read',
     'deal.read',
     'review.read',
     'rfq.read',
+    'offer.read',                   // 16-C: make offers
+    'auction.read',                 // 16-C: bid in auctions
+    'request.read', 'request.manage', // 16-C: post buy-requests
+    'dispute.read',                 // 16-C: file disputes
+    'inspection.read',              // 16-C: view inspection reports
+    'transport.read',               // 16-C: track shipments
   ],
 
   MODERATOR: [
@@ -194,13 +237,22 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'listing.read', 'listing.moderate', 'listing.publish',
     'brand.read', 'brand.update',
     'category.read',
-    'review.read', 'review.moderate',
+    'review.read', 'review.moderate', 'review.publish',  // 16-C: publish reviews
     'user.read', 'user.suspend',
     'audit.read',
     'media.upload', 'media.manage',
     'taxonomy.read',
     'content.read',
     'analytics.read',
+    // 16-C: marketplace CP moderation
+    'part.read', 'part.update',
+    'machine.read', 'machine.update',
+    'offer.read', 'offer.update',
+    'auction.read', 'auction.update', 'auction.manage',
+    'inspection.read', 'inspection.manage',
+    'transport.read', 'transport.manage',
+    'request.read', 'request.manage',
+    'dispute.read', 'dispute.manage',
   ],
 
   SUPPORT: [
@@ -212,6 +264,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'order.read',
     'deal.read',
     'review.read',
+    // 16-C: support can view all marketplace CP resources
+    'part.read', 'machine.read', 'offer.read', 'auction.read',
+    'inspection.read', 'transport.read', 'request.read', 'dispute.read',
   ],
 };
 

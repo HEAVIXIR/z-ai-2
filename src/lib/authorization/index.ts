@@ -211,19 +211,55 @@ export async function canBulkAction(
 /**
  * Export permissions are separate from read permissions.
  * Reading a single record ≠ exporting thousands of records.
+ *
+ * STEP 16-C FIX (Class A.1 — Dim 17 singular/plural mismatch):
+ * The bulk-export-engine.ts:199 calls `canExport(userId, resourceKey)` with
+ * PLURAL resource keys (e.g. 'orders', 'payments', 'companies'), but the
+ * previous version of this map only had SINGULAR keys ('listing', 'user',
+ * 'order', 'payment', 'audit', 'product', 'brand') → 11 of 18 resources
+ * fell through to the `${resource}.read` fallback producing non-existent
+ * permission strings like 'orders.read' (only 'order.read' singular exists
+ * in PERMISSIONS array) → executeExport threw `Forbidden: export permission
+ * required for "{resource}"` at runtime.
+ *
+ * The fix below covers ALL 18 admin resources with BOTH singular and plural
+ * keys, mapping to the canonical permission defined in PERMISSIONS array.
+ * For resources that reuse another domain's permissions (parts/machines
+ * reuse product.*, offers reuse listing.*, disputes reuse deal.*), we map
+ * to the canonical permission of the reused domain.
  */
 export async function canExport(
   userId: string | null | undefined,
   resource: string,
 ): Promise<boolean> {
   const EXPORT_PERMISSIONS: Record<string, string> = {
+    // ── Singular form (legacy direct calls) ──
     listing: 'listing.export',
-    user: 'user.read', // user.export not yet defined — use user.read for now
+    user: 'user.read',
     order: 'order.read',
     payment: 'payment.read',
     audit: 'audit.read',
     product: 'product.read',
     brand: 'brand.read',
+    // ── Plural form (resource keys from bulk-export-engine.ts:199) ──
+    listings: 'listing.export',
+    brands: 'brand.read',
+    users: 'user.read',
+    products: 'product.read',
+    parts: 'part.read',            // parts has its own perm in 16-C
+    orders: 'order.read',
+    payments: 'payment.read',
+    companies: 'company.read',
+    machines: 'machine.read',     // machines has its own perm in 16-C
+    reviews: 'review.read',
+    deals: 'deal.read',
+    rfqs: 'rfq.read',
+    offers: 'offer.read',         // offers has its own perm in 16-C
+    auctions: 'auction.read',    // auctions has its own perm in 16-C
+    inspections: 'inspection.read',  // added in 16-C
+    transports: 'transport.read',     // added in 16-C
+    disputes: 'dispute.read',         // added in 16-C
+    'buy-requests': 'request.read',   // added in 16-C
   };
 
   const perm = EXPORT_PERMISSIONS[resource] || `${resource}.read`;

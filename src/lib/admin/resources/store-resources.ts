@@ -251,8 +251,10 @@ export const paymentConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['trackingCode', 'providerReference'],
 
   fields: [
-    { key: 'amount', label: 'مبلغ', type: 'currency', required: true },
-    { key: 'currency', label: 'ارز', type: 'text', defaultValue: 'IRR' },
+    { key: 'amount', label: 'مبلغ', type: 'currency', required: true,
+      validation: { min: 1000, message: 'مبلغ پرداخت باید حداقل ۱,۰۰۰ ریال باشد' } },
+    { key: 'currency', label: 'ارز', type: 'text', defaultValue: 'IRR',
+      validation: { pattern: '^(IRR|USD|EUR)$', message: 'ارز باید یکی از IRR، USD یا EUR باشد' } },
     { key: 'type', label: 'نوع', type: 'select', options: [
       { value: 'ORDER_PAYMENT', label: 'پرداخت سفارش' },
       { value: 'COMMISSION', label: 'کارمزد' },
@@ -268,8 +270,10 @@ export const paymentConfig: AdminResourceConfig = {
       { value: 'PAYIR', label: 'Pay.ir' },
       { value: 'MANUAL', label: 'دستی' },
     ]},
-    { key: 'trackingCode', label: 'کد پیگیری', type: 'text' },
-    { key: 'idempotencyKey', label: 'کلید Idempotency', type: 'text', visible: false },
+    { key: 'trackingCode', label: 'کد پیگیری', type: 'text',
+      validation: { maxLength: 100, message: 'کد پیگیری نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'idempotencyKey', label: 'کلید Idempotency', type: 'text', visible: false,
+      validation: { maxLength: 64, message: 'کلید Idempotency نباید بیش از ۶۴ نویسه باشد' } },
   ],
 
   detailTabs: [
@@ -456,9 +460,12 @@ export const reviewConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['title', 'body'],
 
   fields: [
-    { key: 'rating', label: 'امتیاز (۱-۵)', type: 'number', required: true },
-    { key: 'title', label: 'عنوان', type: 'text' },
-    { key: 'body', label: 'متن نظر', type: 'textarea', required: true },
+    { key: 'rating', label: 'امتیاز (۱-۵)', type: 'number', required: true,
+      validation: { min: 1, max: 5, message: 'امتیاز باید عدد صحیح بین ۱ تا ۵ باشد' } },
+    { key: 'title', label: 'عنوان', type: 'text',
+      validation: { maxLength: 200, message: 'عنوان نظر نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'body', label: 'متن نظر', type: 'textarea', required: true,
+      validation: { minLength: 10, maxLength: 5000, message: 'متن نظر باید بین ۱۰ تا ۵,۰۰۰ نویسه باشد' } },
     { key: 'status', label: 'وضعیت', type: 'select', options: [
       { value: 'PENDING', label: 'در انتظار' },
       { value: 'PUBLISHED', label: 'منتشرشده' },

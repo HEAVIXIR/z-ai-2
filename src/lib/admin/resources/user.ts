@@ -54,11 +54,22 @@ export const userConfig: AdminResourceConfig = {
   searchFields: ['firstName', 'lastName', 'email', 'mobile', 'companyName'],
 
   fields: [
-    { key: 'firstName', label: 'نام', type: 'text', required: true },
-    { key: 'lastName', label: 'نام خانوادگی', type: 'text', required: true },
-    { key: 'email', label: 'ایمیل', type: 'text', required: true, placeholder: 'user@example.com' },
-    { key: 'mobile', label: 'موبایل', type: 'text', required: true, placeholder: '09123456789' },
-    { key: 'passwordHash', label: 'رمز عبور', type: 'password', helpText: 'فقط هنگام ایجاد کاربر جدید' },
+    { key: 'firstName', label: 'نام', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50, message: 'نام باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'lastName', label: 'نام خانوادگی', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50, message: 'نام خانوادگی باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'email', label: 'ایمیل', type: 'text', required: true, placeholder: 'user@example.com',
+      validation: {
+        pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$',
+        message: 'فرمت ایمیل نامعتبر است (مثال: user@example.com)',
+      } },
+    { key: 'mobile', label: 'موبایل', type: 'text', required: true, placeholder: '09123456789',
+      validation: {
+        pattern: '^09\\d{9}$',
+        message: 'موبایل باید با ۰۹ شروع و ۱۱ رقم باشد (مثال: 09123456789)',
+      } },
+    { key: 'passwordHash', label: 'رمز عبور', type: 'password', helpText: 'فقط هنگام ایجاد کاربر جدید',
+      validation: { minLength: 8, maxLength: 128, message: 'رمز عبور باید حداقل ۸ نویسه باشد' } },
     { key: 'userType', label: 'نوع کاربر', type: 'select', options: [
       { value: 'INDIVIDUAL', label: 'حقیقی' },
       { value: 'COMPANY', label: 'حقوقی' },
@@ -75,7 +86,8 @@ export const userConfig: AdminResourceConfig = {
       { value: 'PENDING', label: 'در انتظار' },
       { value: 'SUSPENDED', label: 'معلق' },
     ]},
-    { key: 'companyName', label: 'نام شرکت', type: 'text' },
+    { key: 'companyName', label: 'نام شرکت', type: 'text',
+      validation: { maxLength: 200, message: 'نام شرکت نباید بیش از ۲۰۰ نویسه باشد' } },
     { key: 'emailVerified', label: 'ایمیل تأییدشده', type: 'boolean', defaultValue: false },
     { key: 'mobileVerified', label: 'موبایل تأییدشده', type: 'boolean', defaultValue: false },
   ],

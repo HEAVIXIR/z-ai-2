@@ -127,11 +127,45 @@ registerActionHandler('unfeature', async (item) => {
   });
 });
 
+// ── STEP 16-C FIX (Class B.2 — verify handler writes non-existent fields) ──
+// Previous version wrote `{ verified: true, verification: 'VERIFIED' }` for
+// every model, but only `Brand` has the `verification` enum field; only
+// `Company`/`BuyRequest`/`Listing` have the `verified` Boolean field. Payment
+// has neither — Prisma threw `PrismaClientValidationError: Unknown arg`.
+// Fix: model-aware writes. Different model → different field(s).
 registerActionHandler('verify', async (item) => {
   const model = (db as any)[getModelName(item.__model as string)];
+  const modelName = String(item.__model ?? '');
+  const updateData: Record<string, unknown> = {};
+
+  switch (modelName) {
+    case 'brand':
+      // Brand has `verification` enum (VERIFIED/UNVERIFIED) — no `verified` Boolean
+      updateData.verification = 'VERIFIED';
+      break;
+    case 'company':
+    case 'buyRequest':
+    case 'listing':
+      // These models have `verified Boolean` — no `verification` enum
+      updateData.verified = true;
+      break;
+    case 'user':
+      // User uses `emailVerified`/`mobileVerified` Boolean (different semantic)
+      // The `verify` action on users maps to email verification.
+      updateData.emailVerified = true;
+      break;
+    case 'payment':
+      // Payment has neither field — use status transition to mark as verified/paid
+      updateData.status = 'VERIFIED';
+      break;
+    default:
+      // Generic fallback: try setting `verified` Boolean first; if model doesn't
+      // have it, the caller's try/catch will surface the error.
+      updateData.verified = true;
+  }
   return await model.update({
     where: { id: item.id },
-    data: { verified: true, verification: 'VERIFIED' },
+    data: updateData,
   });
 });
 
@@ -162,6 +196,94 @@ registerActionHandler('delete', async (item) => {
   }
   await model.delete({ where: { id: item.id } });
   return { ...item, _deleted: true };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// STEP 16-C FIX (Class B.1 — marketplace transaction-lifecycle handlers)
+//
+// 17 of 18 admin resources use action keys NOT in the original 8-handler
+// registry (publish/unpublish/feature/unfeature/verify/suspend/activate/delete).
+// Marketplace transaction-lifecycle action keys (confirm, cancel, refund,
+// close, accept, reject, start, end, schedule, complete, deliver, review,
+// resolve, hide, verify-email) had NO handlers → action-engine.ts:233 threw
+// `Error: No handler for action "..."` at runtime.
+//
+// The handlers below use a SAFE pattern: only write the `status` field (which
+// all models have) plus an optional timestamp field IF it exists on the model
+// (confirmedAt, cancelledAt, etc.). If the timestamp field is missing, the
+// status update still succeeds — we wrap the dual-field update in a try/catch
+// that falls back to status-only update on Prisma validation errors.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper: create a status-transition handler that writes only `status` (universal).
+ * Optionally attempts to also write a timestamp field; falls back to status-only
+ * if the model doesn't have that field (avoids PrismaClientValidationError).
+ */
+function makeStatusHandler(
+  statusValue: string,
+  timestampField?: string,
+): ActionHandler {
+  return async (item) => {
+    const model = (db as any)[getModelName(item.__model as string)];
+    // First try: status + timestamp (if both provided)
+    if (timestampField) {
+      try {
+        return await model.update({
+          where: { id: item.id },
+          data: { status: statusValue, [timestampField]: new Date() },
+        });
+      } catch {
+        // Fall back to status-only — model likely doesn't have the timestamp field.
+      }
+    }
+    // Safe fallback: status only (every model has `status` enum)
+    return await model.update({
+      where: { id: item.id },
+      data: { status: statusValue },
+    });
+  };
+}
+
+// Order lifecycle (R6 orders): confirm/cancel
+registerActionHandler('confirm', makeStatusHandler('CONFIRMED', 'confirmedAt'));
+registerActionHandler('cancel',  makeStatusHandler('CANCELLED', 'cancelledAt'));
+
+// Payment lifecycle (R7 payments): refund
+registerActionHandler('refund', makeStatusHandler('REFUNDED', 'refundedAt'));
+
+// Closure lifecycle (R12 rfqs, R18 buy-requests): close
+registerActionHandler('close', makeStatusHandler('CLOSED', 'closedAt'));
+
+// Accept/reject (R13 offers, R16 transports): accept/reject
+registerActionHandler('accept', makeStatusHandler('ACCEPTED', 'acceptedAt'));
+registerActionHandler('reject', makeStatusHandler('REJECTED', 'rejectedAt'));
+
+// Auction lifecycle (R14 auctions): start/end
+registerActionHandler('start', makeStatusHandler('ACTIVE',   'startedAt'));
+registerActionHandler('end',   makeStatusHandler('ENDED',    'endedAt'));
+
+// Inspection lifecycle (R15 inspections): schedule/complete
+registerActionHandler('schedule',  makeStatusHandler('SCHEDULED', 'scheduledAt'));
+registerActionHandler('complete',  makeStatusHandler('COMPLETED', 'completedAt'));
+
+// Transport lifecycle (R16 transports): deliver
+registerActionHandler('deliver', makeStatusHandler('DELIVERED', 'deliveredAt'));
+
+// Dispute lifecycle (R17 disputes): review/resolve
+registerActionHandler('review',  makeStatusHandler('UNDER_REVIEW', 'reviewedAt'));
+registerActionHandler('resolve', makeStatusHandler('RESOLVED',     'resolvedAt'));
+
+// Review moderation (R10 reviews): hide
+registerActionHandler('hide', makeStatusHandler('HIDDEN', 'hiddenAt'));
+
+// User lifecycle (R3 users): verify-email
+registerActionHandler('verify-email', async (item) => {
+  const model = (db as any)[getModelName(item.__model as string)];
+  return await model.update({
+    where: { id: item.id },
+    data: { emailVerified: true },
+  });
 });
 
 // ── Execute action ──────────────────────────────────────────
