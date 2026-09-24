@@ -190,7 +190,7 @@ export async function canAccessResource(
  *   2. No hidden escalation (e.g., can't bulk-delete if only has listing.read)
  */
 export async function canBulkAction(
-  userId: string,
+  userId: string | null | undefined,
   action: string,
 ): Promise<boolean> {
   // Map bulk actions to required permissions
@@ -213,7 +213,7 @@ export async function canBulkAction(
  * Reading a single record ≠ exporting thousands of records.
  */
 export async function canExport(
-  userId: string,
+  userId: string | null | undefined,
   resource: string,
 ): Promise<boolean> {
   const EXPORT_PERMISSIONS: Record<string, string> = {

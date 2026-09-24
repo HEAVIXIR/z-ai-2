@@ -1,48 +1,86 @@
 /**
- * HEAVIX - Audit logger utility
+ * HEAVIX — Audit Log helper
  *
- * Records admin actions to the AuditLog table.
- * Used by all admin API endpoints to keep an append-only trail.
+ * Records admin actions to the AuditLog table (append-only).
+ * Uses the REAL HEAVIX AuditLog schema fields:
+ *   actorId, actorType, action, entityType, entityId,
+ *   beforeJson, afterJson, ip, userAgent, requestId, reason
  */
 
 import { db } from '@/lib/db';
 import { headers } from 'next/headers';
 import { Prisma } from '@prisma/client';
 
-export type AuditContext = {
+export type AuditActorType = 'USER' | 'ADMIN' | 'SYSTEM' | 'AI';
+
+export interface LogAuditParams {
   actorId?: string | null;
-  actorEmail?: string | null;
-  action: string;        // e.g. "user.create", "feature_flag.toggle"
-  resource?: string | null;
-  resourceId?: string | null;
-  metadata?: Prisma.InputJsonValue;
-  status?: 'success' | 'failure' | 'warning';
-};
+  actorType?: AuditActorType;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  before?: unknown;
+  after?: unknown;
+  ip?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+  reason?: string | null;
+}
+
+function safeStringify(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
 
 /**
- * Write an audit log entry. Best-effort: never throws to the caller.
+ * Append an entry to the AuditLog table. Best-effort (never throws).
  */
-export async function audit(ctx: AuditContext): Promise<void> {
+export async function logAudit(params: LogAuditParams): Promise<void> {
   try {
     const h = await headers();
-    const ip = h.get('x-forwarded-for') || h.get('x-real-ip') || '127.0.0.1';
-    const ua = h.get('user-agent') || 'unknown';
+    const ip = params.ip ?? (h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || null);
+    const ua = params.userAgent ?? (h.get('user-agent') || null);
 
     await db.auditLog.create({
       data: {
-        actorId: ctx.actorId ?? null,
-        actorEmail: ctx.actorEmail ?? null,
-        action: ctx.action,
-        resource: ctx.resource ?? null,
-        resourceId: ctx.resourceId ?? null,
-        metadata: (ctx.metadata ?? {}) as Prisma.InputJsonValue,
-        ip: ip.split(',')[0]?.trim() || ip,
+        actorId: params.actorId ?? null,
+        actorType: params.actorType ?? 'USER',
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId ?? null,
+        beforeJson: safeStringify(params.before),
+        afterJson: safeStringify(params.after),
+        ip: ip ?? null,
         userAgent: ua,
-        status: ctx.status ?? 'success',
+        requestId: params.requestId ?? null,
+        reason: params.reason ?? null,
       },
     });
   } catch (err) {
-    // Audit failure must never break the main operation.
-    console.error('[audit] failed to write audit log:', err);
+    console.error('[audit] failed to write audit log:', {
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId,
+      error: (err as Error)?.message,
+    });
   }
 }
+
+// Keep the old `audit()` function for backward compat (maps to logAudit)
+export async function audit(ctx: {
+  actorId?: string | null;
+  action: string;
+  resource?: string | null;
+  resourceId?: string | null;
+  reason?: string | null;
+}): Promise<void> {
+  await logAudit({
+    actorId: ctx.actorId,
+    action: ctx.action,
+    entityType: ctx.resource ?? 'Unknown',
+    entityId: ctx.resourceId,
+    reason: ctx.reason,
+  });
+}
+

@@ -48,6 +48,9 @@
     "upload",
     "tests",
     "mini-services",
-    "prisma/legacy-sqlite"
+    "prisma/legacy-sqlite",
+    "scripts",
+    "**/migrate-*.ts",
+    "src/app.phase12-backup"
   ]
 }

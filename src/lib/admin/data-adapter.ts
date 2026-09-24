@@ -15,7 +15,7 @@
 import { db } from '@/lib/db';
 import type { AdminResourceConfig } from './types';
 import { buildPrismaQuery, buildCountQuery, type AdminQueryParams } from './query/query-builder';
-import { applyFieldPolicy, type FieldPolicyContext } from './field-policy';
+import { applyFieldPolicy, applyFieldWritePolicy, type FieldPolicyContext } from './field-policy';
 
 // ── Types ──────────────────────────────────────────────────
 export interface ListResult<T> {

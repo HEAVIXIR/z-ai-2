@@ -131,6 +131,7 @@ export interface AdminBulkAction {
   icon?: string;
   permission: string;
   type: 'confirm' | 'modal';
+  variant?: 'default' | 'destructive' | 'outline' | 'ghost';
   confirmMessage?: string;
   apiPath?: string;
   apiMethod?: 'POST' | 'PATCH' | 'DELETE';

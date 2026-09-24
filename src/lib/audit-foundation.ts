@@ -159,7 +159,7 @@ export async function auditMutation<T>(
   }
 
   // 4. Log audit entry
-  const audited = await logAudit({
+  await logAudit({
     actorId: ctx.actorId,
     actorType: ctx.actorType ?? 'USER',
     action: ctx.action,
@@ -173,7 +173,7 @@ export async function auditMutation<T>(
     requestId: reqInfo.requestId,
   });
 
-  return { result, before, after, audited };
+  return { result, before, after, audited: true };
 }
 
 // ── Combined: requirePermissionAndAudit ────────────────────
