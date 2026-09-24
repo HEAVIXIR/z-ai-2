@@ -1,20 +1,15 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin } from "@/lib/authorization";
 import LogoutButton from "./LogoutButton";
 import AdminSidebarNav from "@/components/admin/AdminSidebarNav";
 
 /* =========================================================
    ADMIN LAYOUT — Aria-style RTL sidebar + topbar.
-   Access rules (P0-RBAC enforcement):
-     • admin cookie (LEGACY username/password path — see     → allowed
-       src/lib/auth.ts `isAuthenticated`); kept for backward
-       compatibility with the ADMIN_CREDENTIALS login. This
-       path does NOT consult UserRole / RBAC. To be removed
-       once all admins are migrated to user-session logins.
+   STEP 03: Legacy AdminSession path REMOVED.
+   Access rules (hardened RBAC):
      • user session cookie with ADMIN UserRole (RBAC)       → allowed
-     • user session cookie with legacy user.role === ADMIN  → allowed (transition)
      • user session cookie with non-admin role              → /dashboard
      • not authenticated at all                             → /login
 ========================================================= */
@@ -26,20 +21,12 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // LEGACY admin-cookie path — username/password auth via ADMIN_CREDENTIALS.
-  // This path bypasses RBAC entirely. Kept for backward compatibility until
-  // all admin operators are migrated to user-session logins with ADMIN UserRole.
-  const adminAuthed = await isAuthenticated();
-  if (!adminAuthed) {
-    // Try user session — only ADMIN role may view the admin panel.
-    const user = await getCurrentUser();
-    if (!user) redirect("/login");
-    // P0-5 RBAC: check UserRole table for ADMIN role. Falls back to the
-    // legacy User.role column for the transition period (see src/lib/rbac.ts).
-    const adminOk = await isAdmin(user.id);
-    if (!adminOk) {
-      redirect("/dashboard");
-    }
+  // STEP 03: RBAC-only path — no more AdminSession cookie fallback.
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const adminOk = await isAdmin(user.id);
+  if (!adminOk) {
+    redirect("/dashboard");
   }
 
   return (

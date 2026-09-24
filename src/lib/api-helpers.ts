@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Require admin auth; returns a 401 NextResponse if not authed. */
+/**
+ * Require admin auth via RBAC (user session + ADMIN UserRole).
+ * STEP 03: Legacy AdminSession cookie path REMOVED.
+ * Returns true if admin, or a 401 NextResponse if not.
+ */
 export async function requireAdmin(): Promise<true | NextResponse> {
-  const ok = await isAuthenticated();
-  if (!ok) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const admin = await isAdmin(user.id);
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden: admin access required" }, { status: 403 });
   }
   return true;
 }
