@@ -30,8 +30,35 @@ export type ComputedStat = {
  * Compute the raw integer count for a metric. Returns null when the
  * metric is `custom_value` (no DB count) — caller should fall back to
  * `customValue`.
+ *
+ * STEP 15-B.5.1: Added optional `precomputed` parameter. When the caller
+ * has already computed a count for a metric (e.g. the homepage Phase 4
+ * already runs `listing.count({ status: "PUBLISHED" })` and
+ * `brand.count({ active: true })`), it can pass those values here to
+ * avoid re-firing the same query (eliminating duplicate Q21/Q22).
+ *
+ * Semantics: if `precomputed[metric]` is provided, it is returned
+ * directly — the DB query is NOT fired. If not provided, the DB query
+ * fires as before (backward-compatible for callers that don't pass it).
  */
-export async function computeMetricCount(metric: string): Promise<number | null> {
+export async function computeMetricCount(
+  metric: string,
+  precomputed?: { listings?: number; brands?: number; categories?: number },
+): Promise<number | null> {
+  // STEP 15-B.5.1: reuse pre-computed values when available
+  if (precomputed) {
+    if (metric === "listings" || metric === "listings_published") {
+      if (precomputed.listings !== undefined) return precomputed.listings;
+    }
+    if (metric === "brands") {
+      if (precomputed.brands !== undefined) return precomputed.brands;
+    }
+    // NOTE: "categories" is NOT deduplicated here because the homepage
+    // Phase 4 query (Q10) has a DIFFERENT predicate (`layer='CATALOG'`)
+    // than this function's query (no `layer` filter). Q10 returns 23,
+    // this returns 30. They are NOT interchangeable.
+  }
+
   switch (metric) {
     case "categories":
       return db.category.count({ where: { parentId: null, active: true } });
@@ -62,14 +89,14 @@ export async function computeMetricCount(metric: string): Promise<number | null>
 /**
  * Compute the display value (Persian-formatted) for a single SiteStat row.
  */
-export async function computeStatValue(stat: {
-  metric: string;
-  customValue?: string | null;
-}): Promise<string> {
+export async function computeStatValue(
+  stat: { metric: string; customValue?: string | null },
+  precomputed?: { listings?: number; brands?: number; categories?: number },
+): Promise<string> {
   if (stat.metric === "custom_value") {
     return stat.customValue ? toFa(stat.customValue) : "—";
   }
-  const count = await computeMetricCount(stat.metric);
+  const count = await computeMetricCount(stat.metric, precomputed);
   if (count === null) return "—";
   return toFa(count);
 }
@@ -79,7 +106,9 @@ export async function computeStatValue(stat: {
  * live value computed from the DB. Used by the homepage (hero + stats
  * section) to render whatever the admin has configured.
  */
-export async function getActiveStats(): Promise<ComputedStat[]> {
+export async function getActiveStats(
+  precomputed?: { listings?: number; brands?: number; categories?: number },
+): Promise<ComputedStat[]> {
   const rows = await db.siteStat.findMany({
     where: { active: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -98,7 +127,7 @@ export async function getActiveStats(): Promise<ComputedStat[]> {
       icon: r.icon,
       sortOrder: r.sortOrder,
       active: r.active,
-      value: await computeStatValue(r),
+      value: await computeStatValue(r, precomputed),
     })),
   );
   return withValues;

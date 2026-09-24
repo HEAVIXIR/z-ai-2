@@ -355,7 +355,15 @@ export default async function HomePage() {
   // FIX-STATS: dynamic homepage stats — admin-configured via SiteStat rows.
   // Falls back to live DB counts when nothing is configured yet so the page
   // never renders empty panels.
-  const activeStats = await getActiveStats();
+  //
+  // STEP 15-B.5.1: Pass pre-computed Q8 (activeListings) and Q9 (brandCount)
+  // to getActiveStats() so it skips re-firing the same count queries (Q21/Q22).
+  // Q23 (categories) and Q24 (provinces) still fire inside getActiveStats —
+  // Q23 has a different predicate than Phase 4's Q10, and Q24 is unique.
+  const activeStats = await getActiveStats({
+    listings: activeListings,
+    brands: brandCount,
+  });
 
   const heroStats: HeroStat[] =
     activeStats.length > 0
