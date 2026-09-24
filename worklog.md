@@ -1085,3 +1085,77 @@ Files produced/modified:
 - Removed: .next-dev-backup/ directory (180MB freed)
 
 Next: 15-B.4.2 (production query re-measure on the full 28-query inventory with the new index) → 15-B.4.3 (count aggregate experiment with before/after measurement) → 15-B.4.4 (Promise.all experiment) → 15-B.4.5 (ISR/cache experiment) → 15-B.5 (full regression + re-measure).
+
+---
+
+Task ID: STEP-15-B-4-2
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.4.2 — Production Query Re-measure. Re-run the same 28 EXPLAIN ANALYZE queries from 15-B.1 with Brand_name_idx applied. Compare against baseline. Verify no regression. Per user policy: no new optimizations, keep DB-level vs Page-level separate.
+
+Work Log:
+- Backed up 15-B.1 baseline to /tmp/explain-results-15-B-1-baseline.txt (629 lines, 28 queries).
+- Re-ran scripts/explain-analyze.sh with Brand_name_idx applied → /tmp/explain-results.txt (630 lines).
+- Wrote Python parser /tmp/compare-queries.py to extract from each query:
+  exec time, planning time, scan type, rows returned, buffers hit/read, sort method + memory, hash presence, loops.
+- Compared all 36 measured queries (28 from inventory + 8 sub-queries).
+
+Results:
+- 1 IMPROVED: B3 (target query) — 0.233ms → 0.083ms = 2.81× faster, scan switched
+  Seq Scan → Index Scan using Brand_name_idx ✓
+- 33 NEUTRAL: All other queries within ±0.05ms noise
+- 2 INVESTIGATE:
+  * L12: scan switch Index Scan (Listing_pkey) → Seq Scan, +0.002ms (4% slower — noise).
+    Planner correctly chose Seq Scan for 29-row table where ID doesn't exist.
+  * L14: simulated JOIN query (Listing + Brand + Category + ListingImage LATERAL),
+    +0.173ms (65% slower). Planner switched from Nested Loop to Merge Right Join.
+    NOT a production path — Prisma's `include` generates separate queries,
+    not explicit JOINs. The actual production queries (L1 + B5 + C3 + LI1)
+    are all NEUTRAL.
+
+Brand-specific analysis (per user request):
+- B3 (target): uses Brand_name_idx ✓ — 2.81× improvement
+- B1 (home top brands, sorts by featured+sortOrder+name): NEUTRAL — index on `name` alone doesn't match leading sort columns
+- B2 (count active brands): NEUTRAL — count must scan all rows
+- B4 (popular brands, sorts by sortOrder): NEUTRAL — doesn't sort by name
+- B5 (trusted brands, filters by id IN): NEUTRAL — uses Brand_pkey
+- B6 (taxonomy brands API, sorts by sortOrder+name): NEUTRAL — leading sort is sortOrder, not name
+- No Brand query regressed ✓
+
+Acceptance gate (per user spec):
+- ✅ Target query improved: B3 2.81× with Index Scan
+- ✅ No production query has meaningful regression
+- ✅ Index is used by the target query
+- 🟡 L14 simulated query regression documented (NOT on production path)
+- 🟡 L12 scan switch within noise (+0.002ms)
+
+Decision: ACCEPT — Brand_name_idx stays in place. No revert needed.
+No new index added. No code changes.
+
+Per user policy: DB-level improvement PROVEN (2.81× on B3),
+Page-level TTFB NOT PROVEN (consistent with 15-A finding that
+DB is 1.75% of warm TTFB).
+
+Files produced:
+- docs/verification/STEP-15-B-4-2-RE-MEASURE.md (8 sections, 342 lines, full per-query table)
+- /tmp/explain-results-15-B-1-baseline.txt (15-B.1 baseline backup)
+- /tmp/explain-results.txt (15-B.4.2 re-measure)
+- /tmp/compare-queries.py (reusable comparison script)
+
+Commit 2c81f70 pushed to GitHub (385eac8..2c81f70 main -> main).
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (Brand_name_idx + 285 baseline).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Stage Summary:
+- ✅ 15-B.4.2 complete: 28 queries re-measured, no production regression.
+- ✅ Brand_name_idx ACCEPTED (target query proven, no production regression).
+- ✅ L14 simulated query regression documented (not on production path).
+- ✅ Brand-specific analysis confirms planner uses index correctly.
+- ✅ No new optimizations applied. No code changes.
+
+Next: 15-B.4.3 (Count Aggregate Experiment — merge 3 duplicate count pairs
+Q8↔Q21, Q9↔Q22, Q10↔Q23 into COUNT(*) FILTER aggregate, before/after
+measurement, accept only if real latency reduction observed AND no
+correctness regression).
