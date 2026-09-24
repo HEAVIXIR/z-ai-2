@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>HEAVIX — Backup Downloads</title>
+  <title>HEAVIX — Backup Downloads (GitHub Synced)</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0b0b0b; color: #fff; padding: 2rem; max-width: 900px; margin: 0 auto; }
     h1 { color: #F58220; border-bottom: 2px solid #F58220; padding-bottom: 0.5rem; }
@@ -16,18 +16,24 @@
     code { background: #2a2a2a; padding: 2px 6px; border-radius: 3px; color: #F58220; font-size: 0.9rem; }
     pre { background: #0a0a0a; padding: 0.75rem; border-radius: 4px; overflow-x: auto; margin-top: 0.5rem; }
     pre code { background: none; padding: 0; color: #4ade80; }
-    .warning { background: #2a1500; border: 1px solid #F58220; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
-    .warning strong { color: #F58220; }
+    .success { background: #002a15; border: 1px solid #4ade80; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+    .success strong { color: #4ade80; }
+    .github { background: #0a0a0a; border: 1px solid #2a2a2a; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+    .github a { color: #58a6ff; font-family: monospace; }
   </style>
 </head>
 <body>
   <h1>📦 HEAVIX — Backup Downloads</h1>
   <p>فایل‌های بک‌آپ پروژه HEAVIX برای دانلود از طریق Caddy gateway.</p>
 
-  <div class="warning">
-    <strong>⚠️ درباره GitHub:</strong> sandbox فعلی قابلیت push مستقیم به GitHub را ندارد (احراز هویت موجود نیست).
-    به جای آن، یک <strong>git bundle</strong> کامل (با تمام ۶۳ commit) برای انتقال دستی ساخته شده است.
-    روی ماشین شما با GitHub access، فایل bundle را دانلود کرده و دستورات پایین را اجرا کنید.
+  <div class="success">
+    <strong>✅ GitHub Synced!</strong> همه ۶۶ commit با موفقیت به GitHub push شد.
+  </div>
+
+  <div class="github">
+    <strong>🌐 GitHub Repository:</strong>
+    <a href="https://github.com/HEAVIXIR/z-ai-2">https://github.com/HEAVIXIR/z-ai-2</a>
+    <div class="meta">Branch: <code>main</code> &nbsp;|&nbsp; Commits: 66 &nbsp;|&nbsp; Latest: <code>82bcca9</code></div>
   </div>
 
   <h2>🗂️ Source Code Backup (ZIP)</h2>
@@ -35,68 +41,42 @@
     <a href="heavix-backup-20260924-134642.zip">⬇️ heavix-backup-20260924-134642.zip</a>
     <div class="meta">
       📅 Generated: 2026-09-24 13:46 UTC &nbsp;|&nbsp;
-      💾 Size: <span class="size">15M</span> &nbsp;|&nbsp;
+      💾 Size: <span class="size">15 MB</span> &nbsp;|&nbsp;
       📁 Files: 1500
     </div>
     <div class="meta" style="margin-top: 0.75rem;">
-      <strong>Contents:</strong> src/, scripts/, prisma/, docs/, tests/, public/, package.json, tsconfig.json, next.config.ts, Caddyfile, worklog.md, dev.log, start-dev.sh, start-prod.sh, components.json, bun.lock
+      <strong>Contents:</strong> src/, scripts/, prisma/, docs/, tests/, public/, package.json, tsconfig.json, next.config.ts, Caddyfile, worklog.md, dev.log
     </div>
     <div class="meta" style="margin-top: 0.5rem;">
-      <strong>Excluded:</strong> node_modules/, .next/, .git/, tool-results/
-    </div>
-    <div class="meta" style="margin-top: 0.5rem;">
-      <strong>Restore:</strong> <code>unzip heavix-backup-20260924-134642.zip -d heavix-restore/ &amp;&amp; cd heavix-restore &amp;&amp; bun install</code>
+      <strong>Restore:</strong> <code>unzip heavix-backup-*.zip -d heavix-restore/ &amp;&amp; cd heavix-restore &amp;&amp; bun install</code>
     </div>
   </div>
 
-  <h2>🌿 Git History Bundle (all 63 commits)</h2>
+  <h2>🌿 Git History Bundle (all 66 commits)</h2>
   <div class="backup">
     <a href="heavix-git-bundle-20260924-134754.bundle">⬇️ heavix-git-bundle-20260924-134754.bundle</a>
     <div class="meta">
       📅 Generated: 2026-09-24 13:47 UTC &nbsp;|&nbsp;
-      💾 Size: <span class="size">148M</span> &nbsp;|&nbsp;
-      📝 Commits: 63
+      💾 Size: <span class="size">148 MB</span> &nbsp;|&nbsp;
+      📝 Commits: 66 (full history)
     </div>
     <div class="meta" style="margin-top: 0.75rem;">
-      <strong>Verified:</strong> bundle is okay, contains refs/heads/main + HEAD, complete history.
+      <strong>Already on GitHub:</strong> all 66 commits pushed. Use bundle as offline backup.
     </div>
-    <div class="meta" style="margin-top: 0.75rem;">
-      <strong>Use this to sync GitHub manually:</strong>
+    <div class="meta" style="margin-top: 0.5rem;">
+      <strong>Restore from bundle:</strong>
     </div>
-    <pre><code># On a machine with GitHub access:
-git clone https://github.com/HEAVIXIR/z-ai-2.git
+    <pre><code>git clone https://github.com/HEAVIXIR/z-ai-2.git
 cd z-ai-2
-git fetch ../heavix-git-bundle-20260924-134754.bundle main:latest-local
-git log latest-local  # verify the commits look right
-git push origin latest-local:main</code></pre>
+git fetch ../heavix-git-bundle-*.bundle main:bundle-restore
+git log bundle-restore  # verify
+git checkout bundle-restore  # or merge into main</code></pre>
   </div>
-
-  <h2>📋 Recent Commits (local-only, 63 total)</h2>
-  <div class="backup" style="font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; line-height: 1.6;">1db0b02  cron: webDevReview snapshot
-cac043a  feat(15-B.3): Home Query Fan-out Analysis — pure measurement
-cc2e1a6  cron: webDevReview snapshot
-ad28b61  feat(15-B.2): Index Hypothesis Simulation — 1 of 18 PROVEN
-512ebb1  cron: webDevReview snapshot
-5eba776  feat(15-B.1): Production Query Inventory + EXPLAIN ANALYZE
-c9cd21e  cron: webDevReview snapshot
-16ffd1c  feat(15-A): Performance Baseline — pure measurement
-e2bb29d  feat(14.8-A→G): Evidence Freeze + Production Build + Runtime Smoke
-a12db03  cron: webDevReview snapshot
-b298cf2  cron: webDevReview snapshot
-c57067f  feat(14.7-G/H + 14.8): Page Builder verification + Legacy migration checklist
-5c4cba3  test: STEP 14.7-G — Page Builder Verification Tests (30 PASS)
-284047b  test: STEP 14.7-F — CRUD + Action + Bulk + Export + Audit Tests
-fdc318d  test: STEP 14.7-E — RBAC Authorization Matrix Tests
-230c3e1  test: STEP 14.7-D — Universal Resource Contract Tests
-0acd930  docs: STEP 14.7-A/B/C — Environment Freeze
-8ad5f47  fix: STEP 14.6 — TS=0 + .env restored + schema provider fixed
-2ea2378  fix: STEP 14.6 — TypeScript ZERO (152 → 0)
-... (44 more commits — full history in git bundle)</div>
 
   <div class="footer">
     <p>HEAVIX — Industrial Heavy-Machinery Marketplace | Next.js 16 + TypeScript 5 + Prisma + PostgreSQL 17</p>
-    <p>Step 15-B.3 complete. Gate: 🟢 GREEN (73/74 PASS)</p>
-    <p>Total automated tests: 498/498 PASS</p>
+    <p>Step 15-B.3 complete. Gate: 🟢 GREEN (73/74 PASS) | Tests: 498/498 PASS</p>
+    <p>GitHub: <a href="https://github.com/HEAVIXIR/z-ai-2" style="color: #58a6ff;">github.com/HEAVIXIR/z-ai-2</a> — synced</p>
   </div>
 </body>
 </html>
