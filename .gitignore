@@ -75,3 +75,4 @@ heavixselectedfile*.zip
 src/app.phase12-backup/
 
 db/backups/
+download/*.bundle
