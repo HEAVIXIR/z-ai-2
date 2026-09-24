@@ -1583,3 +1583,54 @@ Stage Summary:
 - ✅ Pushed to GitHub.
 
 Next: 15-B.5.3 (Homepage Critical-Path Review — full dependency graph analysis).
+
+---
+
+Task ID: STEP-15-B-5-3
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.5.3 — Homepage Critical-Path Analysis. Extract complete dependency DAG, calculate critical path, identify safe parallelization candidates. Analysis ONLY — no code changes.
+
+Work Log:
+- Extracted all 25 Prisma operations from page.tsx (post-15-B.5.2 state) with line numbers.
+- Mapped variable dependencies: which query results feed into subsequent queries.
+- Mapped consumers: where each result is used (component props, fallback logic, etc.).
+- Constructed dependency DAG showing:
+  - Phase 1 [Q1,Q2]: independent of everything
+  - Phase 2 [Q3,Q4]: independent of Phase 1
+  - Phase 3 [Q5,Q6,Q7]: Q6 depends on verifiedOnlyFlag (from Q4)
+  - Phase 4 [Q8-Q17]: independent of Phase 1/2/3 (no data dep!)
+  - Phase 5 [Q18→Q19]: depends on homeCategoryConfig (from Q3), NOT on Phase 3/4
+  - Phase 6 [Q20a,Q20b→Q20c]: independent of EVERYTHING (self-contained IIFE)
+  - Phase 7 (getActiveStats): depends on Q8+Q9 (from Phase 4), NOT on Phase 5/6
+  - Phase 8 (Q27, conditional): depends on Q17 (from Phase 4)
+
+Critical path calculation:
+- Current (all phases sequential): 1.070ms
+- Theoretical minimum (3 parallel waves): 0.581ms
+- Potential savings: 0.489ms (45.7% at DB level)
+- TTFB impact: 0ms (invisible — DB is 1.75% of 67ms TTFB per 15-A)
+
+All 5 parallelization candidates analyzed:
+1. Merge Phase 1 + Phase 2: dependency-safe ✅, semantic-safe ✅, NOT measurable at TTFB ❌
+2. Merge Phase 4 into Wave 1: dependency-safe ✅, semantic-safe ✅, NOT measurable at TTFB ❌
+3. Merge Phase 6 into Wave 1: dependency-safe ✅, semantic-safe ✅, NOT measurable at TTFB ❌
+4. Move Phase 7 earlier: dependency-safe ✅, semantic-safe ✅, NOT measurable at TTFB ❌
+5. Move Phase 5 earlier: dependency-safe ✅, semantic-safe ✅, NOT measurable at TTFB ❌
+
+Decision: NO IMPLEMENTATION — Analysis Only / No Safe Change Found
+- The 0.489ms DB-level savings is invisible at TTFB level
+- The code restructure required is major (not a micro-optimization)
+- Per user policy: optimization must be measurable at PAGE level, not just DB level
+- Risk of variable scoping / IIFE restructuring errors outweighs invisible benefit
+
+Conclusion: DB-level optimizations are EXHAUSTED. The remaining 98.25% of TTFB is
+JS render + HTML serialization + network — the domain of STEP 15-D (Frontend).
+
+No code changes made. No Promise.all restructure applied. Baseline preserved.
+
+Files produced:
+- docs/verification/STEP-15-B-5-3-CRITICAL-PATH-ANALYSIS.md (10 sections, full DAG)
+
+Next: 15-B.5.4 (ISR/Cache — evaluate design from 15-B.4.5 with page-level TTFB measurement).
+This is the ONLY remaining optimization that could produce measurable TTFB improvement,
+because ISR eliminates the entire server-side render for cached requests.
