@@ -16,6 +16,19 @@
  *   - No arbitrary queries from frontend
  */
 
+// STEP 16-D: BigInt JSON serialization fix.
+// Several Prisma models (Listing, BuyRequest, Deal, Payment, Order, Auction, etc.)
+// use BigInt for currency/amount fields (price, budgetMin, budgetMax, agreedAmount,
+// amount, etc.). JSON.stringify cannot serialize BigInt by default — it throws
+// "TypeError: Do not know how to serialize a BigInt". This monkey-patches the
+// BigInt.prototype.toJSON so all BigInt values are serialized as strings (with
+// a trailing "n" suffix to disambiguate from numbers). This is a well-known
+// workaround documented in the TC39 BigInt JSON proposal.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString() + 'n';
+};
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import '@/lib/admin/resource-index'; // ensures all resources are registered

@@ -6,6 +6,12 @@
  * DELETE /api/admin/resources/:resource/:id  — delete resource
  */
 
+// STEP 16-D: BigInt JSON serialization fix (same as [resource]/route.ts).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString() + 'n';
+};
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import '@/lib/admin/resource-index';

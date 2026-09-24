@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import LogoutButton from "./LogoutButton";
 import AdminSidebarNav from "@/components/admin/AdminSidebarNav";
+import { ReactQueryProvider } from "@/components/admin/react-query-provider";
 
 /* =========================================================
    ADMIN LAYOUT — Aria-style RTL sidebar + topbar.
@@ -95,7 +96,7 @@ export default async function AdminLayout({
 
         {/* Page content */}
         <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-          {children}
+          <ReactQueryProvider>{children}</ReactQueryProvider>
         </main>
       </div>
     </div>
