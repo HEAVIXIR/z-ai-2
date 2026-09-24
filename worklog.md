@@ -1676,3 +1676,29 @@ Total indexes: 286 (unchanged).
 Production build: exit 0.
 
 Next: 15-B.5.4-B (Cache Contract — define TTL + tag + invalidation per data category, resolve Tier 3 design challenge).
+
+---
+
+Task ID: STEP-15-B-5-4-B
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.5.4-B — Homepage Cache Contract v1.0. Design/Contract only — NO code changes.
+
+Work Log:
+- Wrote Cache Contract document defining:
+  - 3 tiers (T1 stable/T2 semi-dynamic/T3 listings)
+  - 13 cache tags (12 granular + 1 nuclear)
+  - Mutation→Invalidation matrix (14 domains)
+  - Universal API resource→tag mapping (4 of 18 resources affect Homepage)
+  - Freshness test plan (10 scenarios + 2 negative tests)
+  - Performance gate (cold/warm/post-mutation TTFB)
+  - Failure policy (TTL safety net + error log + audit + observability)
+- Key decision: T3 listings EXCLUDED from full-page ISR — freshness protected
+- 3 implementation options evaluated for T3, NONE implemented
+- Homepage will use per-query unstable_cache for T1+T2 only
+- T3 listings remain server-rendered fresh on every request
+
+Decision: GREEN as Cache Contract (Design only, not Implementation)
+Next: 15-B.5.4-C.1 (Mutation→Cache Tag Mapping freeze)
+
+No code changes made. Baseline preserved.
+Commit + push + sync: ✅
