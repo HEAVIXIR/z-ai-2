@@ -1522,3 +1522,64 @@ Stage Summary:
 - ✅ Pushed to GitHub.
 
 Next: 15-B.5.2 (Promise.all for Q3+Q4 — Phase 2 needless sequential).
+
+---
+
+Task ID: STEP-15-B-5-2
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.5.2 — Promise.all for Q3 (homeCategoryConfig) + Q4 (siteSettings). Change from sequential awaits to Promise.all. Scope locked: only Q3+Q4, no other queries touched, no schema/cache/ISR/index changes.
+
+Work Log:
+- Registered baseline: Q3 result=null (HomeCategoryConfig empty), Q4 result=main (SiteSettings exists), verifiedOnlyFlag=true (default fallback), TTFB baseline=0.077s (median of 3 warm runs).
+- Applied change to src/app/page.tsx (lines 69-79): replaced two sequential `await` statements with one `Promise.all([Q3, Q4])` call.
+- Preserved: homeCategoryConfig construction (lines 81-84), verifiedOnlyFlag construction (line 90), all subsequent Phase 3+ code unchanged.
+- Query shape: UNCHANGED — same Prisma calls, same predicates, same `where: { id: "main" }` for both.
+- Other queries: UNCHANGED — Phase 1 (brands+categories), Phase 3 (featured+verified+latest), Phase 4 (counts), Phase 5-8 all untouched.
+
+Validation Gate (ALL GREEN):
+  1. tsc --noEmit: 0 errors ✅
+  2. eslint src/: 0 errors (5 pre-existing warnings) ✅
+  3. vitest run tests/contract/: 498/498 PASS ✅
+  4. next build: exit 0 ✅
+  5. GET /: HTTP 200 ✅
+  6. GET /store: HTTP 200 ✅
+  7. Semantic verification: Q3=null Q4=main verifiedOnlyFlag=true — all match baseline ✅
+
+TTFB comparison:
+  Before: 0.077s (median of 3 warm runs)
+  After:  0.082s (median of 5 warm runs)
+  Delta:  +0.005s (within noise — NOT a regression, just measurement variance)
+  Per 15-A: DB is 1.75% of TTFB. Prisma overhead savings of ~0.4ms is invisible in 77ms TTFB.
+
+Proven in 15-B.4.4 experiment (before this step):
+  Sequential median: 1.704ms
+  Promise.all median: 1.272ms
+  Improvement: 1.34× faster (single), 1.47× faster (concurrent load)
+
+Micro-optimization note (per user policy):
+  This is a DB/Prisma overhead reduction, NOT a TTFB improvement.
+  The Promise.all change reduces sequential await overhead by running
+  two independent queries in parallel. The benefit is at the
+  client/DB-interaction level, not the page-render level.
+
+Git diff review:
+  1 file changed, 12 insertions(+), 7 deletions(-)
+  Only src/app/page.tsx modified — no other files touched.
+
+Commit a6cfe40 pushed to GitHub (319af5d..a6cfe40 main -> main).
+Verified sync: ✅ IN SYNC.
+
+Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending).
+Total indexes: 286 (unchanged).
+498/498 automated tests pass.
+Production build: exit 0.
+
+Stage Summary:
+- ✅ 15-B.5.2 complete: Q3+Q4 converted from sequential to Promise.all.
+- ✅ Query shape preserved (same Prisma calls, same predicates).
+- ✅ Semantics preserved (Q3=null, Q4=main, verifiedOnlyFlag=true — all match baseline).
+- ✅ All validation gates green.
+- ✅ TTFB within noise (0.077s → 0.082s — expected, DB is 1.75% of TTFB).
+- ✅ Pushed to GitHub.
+
+Next: 15-B.5.3 (Homepage Critical-Path Review — full dependency graph analysis).
