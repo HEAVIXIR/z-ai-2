@@ -831,3 +831,105 @@ Files produced:
 - scripts/index-hypothesis-sim.sh (reusable simulation)
 
 Next: 15-B.3 (Home Query Fan-out Analysis — identify independent queries, duplicates, ISR candidates with freshness requirements) → 15-B.4 (Apply ONLY proven improvements — B-H1 only, with regression gate) → 15-B.5 (Regression + Re-measure).
+
+---
+
+Task ID: STEP-15-B-3
+Agent: Main Orchestrator (Z.ai Code)
+Task: STEP 15-B.3 — Home Query Fan-out Analysis. Pure measurement — no code changes, no indexes, no Promise.all implementation, no aggregate merges, no ISR applied. Build dependency graph + evidence.
+
+Work Log:
+- Static analysis of src/app/page.tsx (656 lines) — extracted all 27 db.* calls with line numbers.
+- Traced dependency for each query: independent vs depends on previous query output.
+- Identified that getActiveStats() (called from page.tsx:358) fires 5 additional queries (1 siteStat.findMany + 4 Promise.all computeMetricCount) — bringing total to 27.
+- Verified database state: SiteStat has 4 active rows (categories, brands, listings, provinces), HomePageSection has 17 rows (all 6 "missing keys" exist), HeroConfig is empty.
+- Confirmed 3 conditional queries (Q25 createMany, Q26 create/update missing keys, Q27 hero card listings) are SKIPPED on typical render.
+- Wrote scripts/analyze-home-fanout.sh — runs EXPLAIN (ANALYZE, BUFFERS) on all 27 queries, computes per-phase parallel/sequential wall-clock times, calculates critical path.
+- Wrote scripts/home-query-inventory.json — machine-readable inventory with all 30 query entries (27 firing + 3 SKIPPED conditionals) + 8 phases + 12 ISR candidates + categorization.
+- Ran EXPLAIN ANALYZE on all queries not yet measured in 15-B.1:
+  - Q3 homeCategoryConfig: 0.027ms Index Scan (pkey)
+  - Q4 siteSettings: 0.037ms Index Scan (pkey)
+  - Q14 article.findMany: 0.034ms Seq Scan
+  - Q15 hotSearch.findMany: 0.038ms Seq Scan
+  - Q16 homePageSection: 0.049ms Seq Scan
+  - Q17 heroConfig: 0.034ms Index Scan (pkey)
+  - Q20a brandDisplay: 0.024ms Seq Scan
+  - Q20b brand.findMany featured: 0.115ms Seq Scan
+  - Q20c brand.findMany id IN: 0.068ms Index Scan (pkey)
+  - Q20d siteStat.findMany: 0.049ms Seq Scan
+  - Q21-Q24 computeMetricCount: 0.042-0.184ms Seq Scan
+
+Critical path computation (DB-bound theoretical):
+- Phase 1 (parallel max): 0.298ms
+- Phase 2 (sequential sum): 0.064ms
+- Phase 3 (parallel max): 0.083ms
+- Phase 4 (parallel max): 0.183ms
+- Phase 5 (legit sequential): 0.126ms
+- Phase 6 (parallel max): 0.115ms
+- Phase 7 (legit sequential): 0.068ms
+- Phase 8 (8a+8b parallel): 0.233ms
+- TOTAL DB-bound critical path: 1.170ms
+
+Key insight: DB is 1.75% of warm TTFB (67ms). JS render + serialization is 98.25%. Optimizing the database alone won't meaningfully improve home page TTFB — addressed in 15-D (Frontend).
+
+Duplicate count queries identified (3 pairs):
+- Q8 (Phase 4) ↔ Q21 (Phase 8): Listing WHERE status='PUBLISHED' = 29 (DUPLICATE)
+- Q9 (Phase 4) ↔ Q22 (Phase 8): Brand WHERE active=true = 629 (DUPLICATE)
+- Q10 (Phase 4) ↔ Q23 (Phase 8): Category WHERE parentId IS NULL AND active=true (near-duplicate — Q10 adds layer='CATALOG')
+Merge strategy: COUNT(*) FILTER (WHERE ...) — reduces 8 count queries to 3 SQL statements.
+Estimated savings: 0.366ms (31% of DB critical path). NOT applied — deferred to 15-B.4.
+
+Categorization (4 groups per user spec):
+- A_PARALLEL (already Promise.all'd): 13 queries
+- B_SEQUENTIAL_LEGITIMATE (real data dependency): 3 queries (Q18→Q19 parentId lookup; Q20a+Q20b→Q20c id list; Q20d→Q21-Q24 metric config)
+- B_SEQUENTIAL_NEEDLESS (Promise.all candidate): 2 queries (Q3+Q4 in Phase 2 — savings 0.027ms)
+- C_MERGE_CANDIDATE (duplicate counts): 8 queries (3 duplicate pairs + Q11+Q12 mergeable with Q8)
+- D_CONDITIONAL (skipped on typical render): 3 queries (Q25, Q26, Q27)
+
+ISR candidate matrix (12 data types):
+- Each entry has: freshness requirement + mutability + invalidation source + ISR candidate status
+- Brands/Categories/SiteSettings/HomePageSection/HeroConfig/HomeCategoryConfig/Articles/HotSearches/SiteStats: YES candidates with various revalidate windows
+- Featured/Verified/Latest Listings: NEEDS REVIEW — must align with Page Builder's existing revalidatePath('/') on publish/rollback (already wired in /api/admin/pages/[id]/{publish,rollback}/route.ts)
+- Page Builder layout: YES but with strategy tied to publish/rollback events, NOT generic revalidate: 60
+
+Alignment requirement documented: ISR strategy MUST connect to publish/rollback events via revalidatePath, NOT introduce independent revalidate: 60 that bypasses the existing Page Builder invalidation model.
+
+Verification:
+- 0 temp indexes leaked (285 total, matches baseline)
+- No code changes, no schema changes, no Prisma migration
+- 498/498 automated tests pass (unchanged)
+- Gate remains GREEN (73/74 PASS, 0 CRITICAL pending, 0 HIGH pending)
+
+Stage Summary:
+- ✅ 15-B.3 complete: Home query fan-out analyzed with full dependency graph.
+- ✅ 27 queries inventoried with source locations + dependencies + scan types + exec times.
+- ✅ Critical path computed: 1.170ms DB-bound (1.75% of warm TTFB).
+- ✅ 3 duplicate count pairs identified (Q8↔Q21, Q9↔Q22, Q10↔Q23).
+- ✅ 12 ISR candidates documented with freshness + invalidation sources.
+- ✅ Page Builder alignment requirement explicitly documented.
+- ✅ No optimizations applied. No indexes added. No code changes. Baseline preserved.
+
+Files produced:
+- docs/verification/STEP-15-B-3-HOME-FANOUT.md (11 sections, ~24KB)
+- scripts/analyze-home-fanout.sh (reusable analyzer)
+- scripts/home-query-inventory.json (machine-readable inventory, 30 queries, 8 phases, 12 ISR candidates)
+
+Acceptance criteria (16/16 met):
+✅ All real Home queries inventoried
+✅ Each query has source location
+✅ Each query's dependency identified
+✅ Independent queries identified
+✅ Sequential queries documented with reason
+✅ Duplicate queries identified
+✅ Aggregate candidates identified
+✅ Conditional queries identified
+✅ Critical path computed
+✅ Wall-clock per phase measured
+✅ ISR candidates identified
+✅ Freshness requirement per candidate recorded
+✅ Invalidation source per candidate specified
+✅ No code changes
+✅ No indexes added
+✅ Baseline preserved
+
+Next: 15-B.4 (Apply ONLY proven improvements — B-H1 Brand.name index from 15-B.2 + merge candidates + Promise.all Q3+Q4 + ISR with tag-based invalidation aligned to Page Builder). Each change measured before/after against 15-A baseline.
