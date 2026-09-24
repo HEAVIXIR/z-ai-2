@@ -361,10 +361,10 @@ export default async function HomePage() {
     activeStats.length > 0
       ? activeStats.map((s) => ({ value: s.value, label: s.labelFa }))
       : [
-          { value: activeListings, label: "آگهی فعال", suffix: "+" },
-          { value: brandCount, label: "برند معتبر", suffix: "+" },
-          { value: categoryCount, label: "دسته‌بندی اصلی", suffix: "" },
-          { value: 31, label: "استان تحت پوشش", suffix: "" },
+          { value: activeListings, label: "آگهی فعال", suffix: "+", icon: "tags" },
+          { value: brandCount, label: "برند معتبر", suffix: "+", icon: "building" },
+          { value: categoryCount, label: "دسته‌بندی اصلی", suffix: "", icon: "activity" },
+          { value: 31, label: "استان تحت پوشش", suffix: "", icon: "map" },
         ];
 
   const liveCount = toFa(activeListings);

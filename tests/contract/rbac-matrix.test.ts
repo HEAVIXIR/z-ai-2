@@ -88,9 +88,14 @@ describe('RBAC Permission Matrix — V2.1 spec vs Database', () => {
 // ════════════════════════════════════════════════════════════
 describe('ADMIN role — Superuser', () => {
 
-  it('ADMIN should have all 71 permissions', () => {
+  it('ADMIN should have all permissions (was 71, now 89 after STEP 16-C pass 1 added 18 marketplace CP perms)', () => {
     const adminPerms = dbRoles.get('ADMIN')?.permissions ?? new Set();
-    expect(adminPerms.size).toBe(71);
+    // STEP 16-C pass 1 added 18 new permission constants:
+    //   part.read/update/delete, machine.read/update, review.publish,
+    //   offer.read/update, auction.read/update, inspection.read/manage,
+    //   transport.read/manage, request.read/manage, dispute.read/manage
+    // Total: 71 (original) + 18 (new) = 89.
+    expect(adminPerms.size).toBe(89);
   });
 
   // Allow cases
