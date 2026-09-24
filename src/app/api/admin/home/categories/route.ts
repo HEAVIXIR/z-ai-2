@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";

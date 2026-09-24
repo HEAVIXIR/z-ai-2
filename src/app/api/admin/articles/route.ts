@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -63,6 +65,9 @@ export async function POST(req: Request) {
         case "archive": data = { status: "ARCHIVED" }; break;
         case "delete":
           await db.article.deleteMany({ where: { id: { in: ids } } });
+          // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+          try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles] revalidateTag failed:', e); }
+
           return NextResponse.json({ ok: true, action: body.action, count: ids.length });
         default:
           return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -71,6 +76,9 @@ export async function POST(req: Request) {
         where: { id: { in: ids } },
         data,
       });
+      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles] revalidateTag failed:', e); }
+
       return NextResponse.json({ ok: true, action: body.action, updated: r.count });
     }
 
@@ -95,6 +103,9 @@ export async function POST(req: Request) {
         publishedAt: body.status === "PUBLISHED" ? new Date() : null,
       },
     });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, article });
   } catch (err: any) {
     return NextResponse.json(

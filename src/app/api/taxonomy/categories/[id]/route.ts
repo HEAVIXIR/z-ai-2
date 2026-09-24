@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -189,6 +191,9 @@ export async function DELETE(_req: Request, { params }: Params) {
       data: { parentId: null, level: 0 },
     });
     await db.category.delete({ where: { id } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[categories/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

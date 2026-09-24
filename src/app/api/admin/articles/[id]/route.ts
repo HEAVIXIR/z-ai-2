@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -40,6 +42,9 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const article = await db.article.update({ where: { id }, data });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, article });
   } catch (err: any) {
     return NextResponse.json(
@@ -57,6 +62,9 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await db.article.delete({ where: { id } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

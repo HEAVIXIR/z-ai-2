@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -55,6 +57,9 @@ export async function PUT(req: Request) {
       const sections = await db.homePageSection.findMany({
         orderBy: { order: "asc" },
       });
+      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.sections, 'default'); } catch (e) { console.error('[homepage-sections] revalidateTag failed:', e); }
+
       return NextResponse.json({ ok: true, sections });
     }
     const data = sectionData(body);
@@ -66,6 +71,9 @@ export async function PUT(req: Request) {
       create: data,
       update: data,
     });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.sections, 'default'); } catch (e) { console.error('[homepage-sections] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, section });
   } catch (err: any) {
     return NextResponse.json(
@@ -96,6 +104,9 @@ export async function POST(req: Request) {
       );
     }
     const section = await db.homePageSection.create({ data });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.sections, 'default'); } catch (e) { console.error('[homepage-sections] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, section });
   } catch (err: any) {
     return NextResponse.json(

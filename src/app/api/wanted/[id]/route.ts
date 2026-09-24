@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
@@ -60,6 +62,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.status) updateData.status = String(body.status);
 
     const updated = await db.buyRequest.update({ where: { id }, data: updateData });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[wanted/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, id: updated.id, status: updated.status });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
@@ -78,6 +83,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (existing.userId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     await db.buyRequest.update({ where: { id }, data: { status: "CANCELLED" } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[wanted/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

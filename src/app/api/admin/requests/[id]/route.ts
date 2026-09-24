@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -50,6 +52,9 @@ export async function PATCH(req: Request, { params }: Params) {
     else if (body.action === "activate") data.status = "ACTIVE";
 
     const r = await db.buyRequest.update({ where: { id }, data });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, request: serialize(r) });
   } catch (err: any) {
     return NextResponse.json(
@@ -67,6 +72,9 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await db.buyRequest.delete({ where: { id } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

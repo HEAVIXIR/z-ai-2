@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -51,6 +53,9 @@ export async function PUT(
       { status: 500 },
     );
   }
+
+  // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+  try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[brands/logo] revalidateTag failed:', e); }
 
   return NextResponse.json({ ok: true, logoUrl });
 }

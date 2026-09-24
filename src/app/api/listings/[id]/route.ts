@@ -1,4 +1,6 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
@@ -321,6 +323,9 @@ export async function DELETE(_req: Request, { params }: Args) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     await db.listing.delete({ where: { id } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

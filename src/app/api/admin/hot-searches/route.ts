@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -37,6 +39,9 @@ export async function POST(req: Request) {
       const ids: string[] = body.ids;
       if (body.action === "delete") {
         await db.hotSearch.deleteMany({ where: { id: { in: ids } } });
+        // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+        try { revalidateTag(HOMEPAGE_CACHE_TAGS.hotSearches, 'default'); } catch (e) { console.error('[hot-searches] revalidateTag failed:', e); }
+
         return NextResponse.json({ ok: true, action: body.action, count: ids.length });
       }
       let data: any = {};
@@ -47,6 +52,9 @@ export async function POST(req: Request) {
         where: { id: { in: ids } },
         data,
       });
+      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.hotSearches, 'default'); } catch (e) { console.error('[hot-searches] revalidateTag failed:', e); }
+
       return NextResponse.json({ ok: true, action: body.action, updated: r.count });
     }
 
@@ -63,6 +71,9 @@ export async function POST(req: Request) {
         sortOrder: Number(body.sortOrder) || 0,
       },
     });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.hotSearches, 'default'); } catch (e) { console.error('[hot-searches] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, hotSearch: hs });
   } catch (err: any) {
     return NextResponse.json(

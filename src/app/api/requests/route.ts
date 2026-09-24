@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -89,6 +91,9 @@ export async function POST(req: Request) {
     };
 
     const r = await db.buyRequest.create({ data });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[requests] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, id: r.id, status: r.status });
   } catch (err: any) {
     return NextResponse.json(

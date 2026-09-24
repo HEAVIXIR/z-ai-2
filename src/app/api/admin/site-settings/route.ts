@@ -1,4 +1,6 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
@@ -125,6 +127,9 @@ export async function PUT(req: Request) {
           ? s.sellIn7DaysPrepaymentAmount.toString()
           : null,
     };
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.settings, 'default'); } catch (e) { console.error('[site-settings] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, settings: safe });
   } catch (err: any) {
     console.error("[site-settings] PUT error:", err);

@@ -1,4 +1,6 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
@@ -103,6 +105,9 @@ export async function POST(req: Request) {
       after: { title, category, status: "ACTIVE" },
       ip: getClientIp(req),
     }).catch(() => {});
+
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[wanted] revalidateTag failed:', e); }
 
     return NextResponse.json({ ok: true, id: request.id, status: request.status });
   } catch (err: any) {

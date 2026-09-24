@@ -1,4 +1,6 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
@@ -108,6 +110,9 @@ export async function GET(_req: Request, { params }: Params) {
       }
     }
     if (!l) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ listing: serialize(l) });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
@@ -230,6 +235,9 @@ export async function PATCH(req: Request, { params }: Params) {
           })),
         });
       }
+      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings/id] revalidateTag failed:', e); }
+
       return NextResponse.json({ ok: true, duplicated: true, id: dup.id });
     }
 
@@ -352,6 +360,9 @@ export async function PATCH(req: Request, { params }: Params) {
         images: { orderBy: { sortOrder: "asc" } },
       },
     });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true, listing: fresh ? serialize(fresh) : null });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
@@ -376,6 +387,9 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await db.listing.delete({ where: { id } });
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings/id] revalidateTag failed:', e); }
+
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

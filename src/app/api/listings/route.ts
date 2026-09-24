@@ -1,3 +1,5 @@
+import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -117,6 +119,9 @@ export async function GET(req: Request) {
           ip: getClientIp(req),
         });
       }
+
+      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+      try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
 
       return NextResponse.json({ success: true, count: total, data });
     }
@@ -242,6 +247,9 @@ export async function GET(req: Request) {
       });
     }
 
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
+
     return NextResponse.json({ success: true, count: total, data });
   } catch (err: any) {
     return NextResponse.json(
@@ -345,6 +353,9 @@ export async function POST(req: Request) {
       brandId: listing.brandId ?? null,
       page: "/api/listings",
     });
+
+    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
 
     return NextResponse.json({
       ok: true,
