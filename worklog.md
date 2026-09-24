@@ -4041,3 +4041,1215 @@ PHASE 6 / Price Intelligence
    - 6B-6J: Build Price Intelligence features per DoD
 ```
 
+
+---
+
+Task ID: PHASE-6A-1
+Agent: Explore (Prisma Models Auditor)
+Task: PHASE 6A.1 — Audit ALL Prisma models related to Price Intelligence + Compare domain in `prisma/schema.prisma` (EVIDENCE-ONLY, no code changes, no schema changes, no Control Plane modifications).
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` lines 3793-4043 (tail) — confirmed Control Plane frozen at commit `0d79dc3` / tag `control-plane-baseline-16E` with 🟢 GREEN verdict (per STEP-16-E-FINAL-GATE.md).
+- Read `/home/z/my-project/docs/verification/STEP-16-E-FINAL-GATE.md` (lines 1-226) — confirmed gate scope, Phase 6 execution order (6A → 6J), and the pre-6A constraint that 6A is **evidence-only**.
+- Read `/home/z/my-project/prisma/schema.prisma` lines 1-100 (Brand block, header, datasource/generator) and ran grep `^model\s+\w+` to enumerate ALL 88 model declarations in the file (lines 17-2588).
+- Ran targeted grep across the entire schema for `price|Price|compar|Compar|estimate|Estimate|observation|Observation|adjustment|Adjustment|confidence|Confidence|explanation|Explanation` — found 6 core Price/Compare models + ~20 reverse-relation / adjacent-field references.
+- Ran grep for `enum` across the entire schema — **0 enum declarations found anywhere in the file**. All enum-like fields use plain `String` with inline comments listing valid values.
+- Read each of the 6 core Price/Compare models in full + adjacent models (`Listing:444-534`, `Brand:17-61`, `Category:162-194`, `Product:1754-1781`, `CompatibilityEdge:1831-1847`, `Opportunity:1928-1941`, `BuyRequest:550-574`, `SellIn7DaysApplication:2038-2068`, `ListingAttributeValue:365-387`) to map reverse relations and identify gaps.
+
+# PHASE 6A.1 — Prisma Models Audit Report
+
+## Summary
+- Total Price/Compare-related models found: **6** (core)
+- Models with full schema (relations + indexes + unique constraints): **4** (`PriceRecord`, `PriceObservation`, `PriceEstimate`, `PriceOverride`)
+- Models with incomplete schema (missing FK relations / unique constraints): **2** (`ComparisonSession` — no User FK; `ComparisonItem` — no Brand/Model FK relations, no @@unique on (sessionId, listingId))
+- Empty/stub models: **0**
+- Enum declarations found anywhere in schema: **0** (all enum-like fields are plain `String` with inline comments)
+- Duplicate / overlapping models: **1 pair** (`PriceRecord` vs `PriceObservation` — both track observed prices for listings/products/brands; `PriceObservation` is the richer superset)
+
+---
+
+## Model 1: PriceRecord
+- **File:** `prisma/schema.prisma:1859-1876`
+- **Block comment (lines 1856-1858):**
+  - `// P2-22 — Price Intelligence: track every observed price for a`
+  - `// Listing / Product / Category+Brand combo so the analytics layer`
+  - `// can compute averages, history, outliers and seller suggestions.`
+- **Fields (12):**
+  - `id`          String   @id @default(cuid())
+  - `listingId`   String?
+  - `listing`     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `productId`   String?
+  - `product`     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  - `categoryId`  String?
+  - `brandId`     String?
+  - `price`       Float
+  - `currency`    String   @default("IRR")
+  - `year`        Int?
+  - `condition`   String?
+  - `recordedAt`  DateTime @default(now())
+  - `source`      String   @default("LISTING") // LISTING | MANUAL | AI_ESTIMATE
+- **Relations (2):**
+  - `listing`     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `product`     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+- **Indexes (3):**
+  - @@index([productId])
+  - @@index([categoryId, brandId])
+  - @@index([recordedAt])
+- **Unique constraints:** none
+- **Enums used:** none (uses inline `// LISTING | MANUAL | AI_ESTIMATE` comment for `source`)
+- **Reverse relations referencing this model:**
+  - `Listing.priceRecords PriceRecord[]` (line 518)
+  - `Product.priceRecords PriceRecord[]` (line 1778)
+- **Gaps / inconsistencies:**
+  - **No `createdAt` field** — only `recordedAt DateTime @default(now())`. Inconsistent with `PriceObservation` which has both `observedAt` AND `createdAt`.
+  - **`categoryId` and `brandId` are bare String fields** with no `@relation` declarations — soft references, no referential integrity.
+  - **`price` is `Float`** — inconsistent with `Listing.price` (which is `BigInt`) and with `PriceObservation.askingPrice` (which is `BigInt?`). This is a type mismatch that could cause precision loss (Float has ~15 significant digits; BigInt is exact) and may trigger the BigInt JSON serialization bug pattern (per worklog 16-D Fix 1, lines 3796-3802).
+  - **No `status` / `quality` / `confidence` field** — less expressive than `PriceObservation`.
+
+## Model 2: PriceObservation
+- **File:** `prisma/schema.prisma:2075-2108`
+- **Block comment (lines 2070-2073):**
+  - `// ════════════════════════════════════════════════════════════`
+  - `// PRICE ESTIMATION ENGINE (HEAVIX-PRICE-ESTIMATION-SPEC-V1.0)`
+  - `// PRICE-ENGINE task — additive, server-only via src/lib/price-engine.ts`
+  - `// ════════════════════════════════════════════════════════════`
+- **Fields (22):**
+  - `id`              String   @id @default(cuid())
+  - `listingId`       String?
+  - `listing`         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `productId`       String?
+  - `brandId`         String?
+  - `brand`           Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  - `categoryId`      String?
+  - `category`        Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  - `modelId`         String?
+  - `askingPrice`     BigInt?
+  - `estimatedPrice`  Float?
+  - `priceLower`      Float?
+  - `priceUpper`      Float?
+  - `currency`        String   @default("IRR")
+  - `normalizedPrice` Float?
+  - `source`          String   @default("LISTING") // LISTING | MANUAL | AI_ESTIMATE | EXTERNAL
+  - `sourceType`      String?  // HEAVIX | DIVAR | SHEYPOOR | OTHER
+  - `observedAt`      DateTime @default(now())
+  - `market`          String?  // IRAN | REGIONAL
+  - `quality`         String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  - `status`          String   @default("ACTIVE") // ACTIVE | FLAGGED | EXCLUDED
+  - `confidence`      String?  // HIGH | MEDIUM | LOW | INSUFFICIENT
+  - `comparableCount` Int?
+  - `notes`           String?
+  - `createdAt`       DateTime @default(now())
+- **Relations (3):**
+  - `listing`   Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `brand`     Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  - `category`  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+- **Indexes (3):**
+  - @@index([brandId, categoryId])
+  - @@index([modelId])
+  - @@index([observedAt])
+- **Unique constraints:** none
+- **Enums used:** none — uses inline comments for `source`, `sourceType`, `market`, `quality`, `status`, `confidence`
+- **Reverse relations referencing this model:**
+  - `Brand.priceObservations PriceObservation[]` (line 37)
+  - `Category.priceObservations PriceObservation[]` (line 193)
+  - `Listing.priceObservations PriceObservation[]` (line 520, marked `// P2-PRICE-ENGINE — HEAVIX Price Estimation Engine (additive)`)
+- **Gaps / inconsistencies:**
+  - **No `product` relation** — `productId String?` is a bare string with no `@relation` (unlike `PriceRecord` which has `Product?` relation). Soft reference, no referential integrity. Note: `Product` model has NO reverse `priceObservations` field declared, confirming the missing relation.
+  - **No `model` relation** — `modelId String?` is a bare string with no `@relation` to `ProductModel`. Soft reference only.
+  - **Mixed numeric types** — `askingPrice BigInt?` (BigInt) but `estimatedPrice`/`priceLower`/`priceUpper` are `Float?`. Inconsistent precision across price fields in the same row.
+  - **`confidence String?`** — Phase 6 DoD calls for "PriceEstimate with confidence + explanation". Here, `confidence` is on `PriceObservation` not `PriceEstimate`, and is a free-form `String` (HIGH|MEDIUM|LOW|INSUFFICIENT) rather than a 0..1 Float score. This may or may not match the intended semantic — needs spec clarification in 6D.
+  - **`comparableCount Int?`** — present but no relation to a `Comparable` model. Phase 6 DoD calls for a "Comparable engine" (6C). No `Comparable` model exists.
+
+## Model 3: PriceEstimate
+- **File:** `prisma/schema.prisma:2110-2125`
+- **Fields (11):**
+  - `id`              String   @id @default(cuid())
+  - `listingId`       String?
+  - `listing`         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `estimatedPrice`  Float
+  - `priceLower`      Float
+  - `priceUpper`      Float
+  - `confidence`      String   @default("MEDIUM") // HIGH | MEDIUM | LOW | INSUFFICIENT
+  - `comparableCount` Int      @default(0)
+  - `dataFreshness`   String?  // FRESH | RECENT | STALE
+  - `mainDrivers`     String?  // JSON array of price drivers
+  - `warnings`        String?  // JSON array of warnings
+  - `modelVersion`    String   @default("v1.0")
+  - `createdAt`       DateTime @default(now())
+- **Relations (1):**
+  - `listing`  Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+- **Indexes (1):**
+  - @@index([listingId])
+- **Unique constraints:** none
+- **Enums used:** none — inline comments for `confidence`, `dataFreshness`
+- **Reverse relations referencing this model:**
+  - `Listing.priceEstimates PriceEstimate[]` (line 521)
+- **Gaps / inconsistencies:**
+  - **No `explanation` field as a structured type** — Phase 6 DoD calls for "PriceEstimate with confidence + explanation". Here, `explanation` is implicitly split between `mainDrivers String?` (JSON array of price drivers) and `warnings String?` (JSON array of warnings). These are JSON-encoded `String` fields, not structured arrays/relations — likely insufficient for the "explanation" requirement per Phase 6 DoD §6.1.
+  - **No `brandId` / `categoryId` / `productId` / `modelId` fields** — estimate is anchored ONLY to `listingId`. Cannot compute category-level or brand-level estimates without going through Listing.
+  - **No `updatedAt` field** — only `createdAt`. Estimates are immutable; no versioning of estimate revisions. `modelVersion String @default("v1.0")` exists but is a static string, not a real versioning mechanism.
+  - **No relation back to `PriceObservation` rows that were used to compute the estimate** — no `observationIds` field, no junction table. The provenance chain from estimate → observations is lost.
+  - **No `PriceOverride` relation** — `PriceOverride.listingId` references Listing, not PriceEstimate, so a single listing can have multiple estimates AND multiple overrides with no FK between them. Per Phase 6 DoD "Admin Review / Override" (6F), the override should arguably link to a specific estimate, not the listing as a whole.
+
+## Model 4: PriceOverride
+- **File:** `prisma/schema.prisma:2127-2137`
+- **Fields (7):**
+  - `id`          String   @id @default(cuid())
+  - `listingId`   String
+  - `listing`     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  - `originalEstimate` Float
+  - `overridePrice`    Float
+  - `reason`      String
+  - `overriddenBy` String?
+  - `overriddenAt` DateTime @default(now())
+- **Relations (1):**
+  - `listing`  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade) — note: **Cascade** (not SetNull), so deleting a Listing deletes all its overrides.
+- **Indexes (1):**
+  - @@index([listingId])
+- **Unique constraints:** none
+- **Enums used:** none
+- **Reverse relations referencing this model:**
+  - `Listing.priceOverrides PriceOverride[]` (line 522)
+- **Gaps / inconsistencies:**
+  - **`overriddenBy String?` is a bare string** — no `@relation` to `User` or `AdminSession`. Phase 6 DoD calls for "Price Override Audit" — currently there is no referential link to WHO performed the override. Only a free-text `String?`.
+  - **No `AuditLog` relation** — Phase 6 DoD §6.1 explicitly calls for "Price Override Audit". `AuditLog` model exists (line 1678) but `PriceOverride` has no FK to it. Audit trail would have to be reconstructed from generic `AuditLog` rows filtered by `entityType="PriceOverride"`, but `PriceOverride` has no field that links back to the `AuditLog` row.
+  - **No `previousOverrideId`** — overrides cannot chain. Each override is a flat standalone row.
+  - **No `status` field** — overrides are always "active" implicitly; no way to mark one as superseded, reverted, or disputed.
+  - **`originalEstimate Float`** — stores a snapshot of the estimate at override time, but doesn't FK to the `PriceEstimate.id`. If the estimate is later revised, the override still references the old numeric value with no traceability.
+
+## Model 5: ComparisonSession
+- **File:** `prisma/schema.prisma:2147-2159`
+- **Block comment (lines 2140-2145):**
+  - `// ════════════════════════════════════════════════════════════`
+  - `// HEAVIX MACHINE COMPARISON ENGINE (V1.0)`
+  - `// docs/HEAVIX-MACHINE-COMPARISON-SPEC-V1.0.md`
+  - `// Persistent comparison sessions with optional share tokens.`
+  - `// Additive only — no existing rows/columns touched.`
+  - `// ════════════════════════════════════════════════════════════`
+- **Fields (9):**
+  - `id`              String   @id @default(cuid())
+  - `userId`          String?
+  - `name`            String?
+  - `shareToken`      String?  @unique
+  - `shareExpiresAt`  DateTime?
+  - `status`          String   @default("ACTIVE") // ACTIVE | ARCHIVED
+  - `aiSummary`       String?  // cached LLM summary (last generation)
+  - `aiSummaryAt`     DateTime?
+  - `createdAt`       DateTime @default(now())
+  - `updatedAt`       DateTime @updatedAt
+  - `items`           ComparisonItem[]
+- **Relations (1, reverse only):**
+  - `items` ComparisonItem[] (reverse relation — no outbound FK)
+- **Indexes:** none declared
+- **Unique constraints (1):**
+  - @@unique on `shareToken` (declared inline as `@unique` on the field, not as a model-level `@@unique`)
+- **Enums used:** none — inline comment for `status`
+- **Gaps / inconsistencies:**
+  - **`userId String?` is a bare string** — no `@relation` to `User`. Soft reference, no referential integrity. Anonymous sessions (no userId) are allowed per the `String?` nullability.
+  - **No `@@index([userId])`** — querying "all sessions for user X" requires a full table scan.
+  - **No `@@index([status])`** — querying "all ACTIVE sessions" requires a full table scan.
+  - **No `@@index([shareExpiresAt])`** — querying "expired share tokens ready for cleanup" requires a full table scan.
+  - **No `aiSummaryModelVersion` field** — `aiSummary` is cached but doesn't track which LLM model produced it. Reproducibility of AI summaries is lost.
+  - **No `entityType` discriminator** — Phase 6 DoD calls for "Model Compare, Product Compare, Listing Compare" as 3 distinct compare types. Currently a single `ComparisonSession` table holds all types implicitly (the type is determined by what `ComparisonItem` rows point at: `listingId`/`productId`/`brandId`/`modelId`). There is no explicit `compareType` field on the session. This is a design choice (unified table), but means the "differences-only view" requirement per Phase 6 DoD §6.1 needs special handling for the heterogeneous entity types.
+
+## Model 6: ComparisonItem
+- **File:** `prisma/schema.prisma:2161-2172`
+- **Fields (8):**
+  - `id`          String   @id @default(cuid())
+  - `sessionId`   String
+  - `session`     ComparisonSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  - `listingId`   String?
+  - `listing`     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  - `productId`   String?
+  - `brandId`     String?
+  - `modelId`     String?
+  - `sortOrder`   Int      @default(0)
+- **Relations (2):**
+  - `session`  ComparisonSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  - `listing`  Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+- **Indexes (1):**
+  - @@index([sessionId])
+- **Unique constraints:** none
+- **Enums used:** none
+- **Reverse relations referencing this model:**
+  - `Listing.comparisonItems ComparisonItem[]` (line 526, marked `// COMPARE-ENGINE — Comparison items referencing this listing`)
+  - `ComparisonSession.items ComparisonItem[]` (line 2158)
+- **Gaps / inconsistencies:**
+  - **`productId`, `brandId`, `modelId` are all bare `String?` with no `@relation` declarations** — soft references only, no referential integrity. Three of the four entity-type FK fields are non-enforced.
+  - **No `@@unique([sessionId, listingId])`** — same listing can be added to the same session multiple times, producing duplicate rows. Same gap for `(sessionId, productId)` and `(sessionId, modelId)`.
+  - **No `entityType` discriminator field** — given that `listingId`, `productId`, `brandId`, `modelId` are all nullable `String?`, an item row can have ANY combination of these set (including all-null, which would be a dangling row). There's no schema-level enforcement that exactly one entity-type FK is set.
+  - **No `addedAt` / `addedById`** — only `sortOrder`. No audit trail of who added which item to the session or when.
+  - **No `snapshot` fields** — when a listing is added to a comparison session, the current price/title/attributes are not snapshotted into `ComparisonItem`. If the listing is later edited or deleted (onDelete: SetNull would null the FK), the comparison row loses its meaning. Phase 6 DoD §6.1 calls for "Differences-only view" which requires point-in-time snapshots to be meaningful.
+  - **No `@@index([productId])`, `@@index([brandId])`, `@@index([modelId])`** — querying "which sessions contain product X" requires full table scan.
+
+---
+
+## Gap list (models that should exist per Phase 6 DoD but don't)
+
+Per `docs/verification/STEP-16-E-FINAL-GATE.md` §6.1 Phase 6 Definition of Done:
+
+- **`Comparable`** — NOT FOUND as a standalone model. Phase 6 DoD §6.1 calls for "Comparable engine" (sub-phase 6C). Currently, the role of "comparable" is implicit: `PriceObservation.comparableCount Int?` is a count, and `ComparisonItem` is a join-table from session to listing/product, but there is NO `Comparable` entity model that represents "a candidate comparable listing for a given target listing, with a similarity score and a reason". This is a real gap that 6C will need to fill.
+- **`PriceHistory`** — NOT FOUND as a standalone model. Phase 6 DoD §6.1 calls for "Price History timeline". Currently the history function would have to be derived from querying `PriceRecord` (filtered by `recordedAt`) or `PriceObservation` (filtered by `observedAt`) — both are point-in-time snapshots, not a materialized timeline aggregate. The lack of a `PriceHistory` (or `PriceTrend`) model means computing moving averages, week-over-week deltas, or chart data requires ad-hoc GROUP BY queries on every render.
+- **`Adjustment`** — NOT FOUND as a model. Phase 6 DoD §6.1 mentions "Adjustment" indirectly via "Admin Review / Override" (6F). Currently `PriceOverride` covers the override use case but there's no separate `Adjustment` entity for nuanced adjustments (e.g., per-attribute price adjustments, regional adjustments, condition adjustments). Whether 6F needs a new `Adjustment` model or can extend `PriceOverride` is an open design question.
+- **`Confidence`** — NOT FOUND as a model. It exists as a `String? // HIGH | MEDIUM | LOW | INSUFFICIENT` field inside both `PriceObservation` (line 2101) and `PriceEstimate` (line 2117). The Phase 6 DoD "Estimate + Confidence" (6D) is partially satisfied by these fields, but a structured `Confidence` model (with breakdown: data quality, comparable count, freshness, model version) does not exist.
+- **`Explanation`** — NOT FOUND as a model. The Phase 6 DoD "PriceEstimate with confidence + explanation" (6D) is currently served by `PriceEstimate.mainDrivers String?` (JSON array) and `PriceEstimate.warnings String?` (JSON array). A structured `Explanation` model with typed breakdown (price drivers, comparable contributions, confidence factors) does not exist.
+- **`ModelCompare` / `ProductCompare` / `ListingCompare`** — NOT FOUND as separate models. Phase 6 DoD §6.1 calls for "Price Comparison (Model Compare, Product Compare, Listing Compare)". Currently all three compare types are unified in `ComparisonSession` + `ComparisonItem`, with the type implicit in which FK is set on the item. Whether this unified design satisfies the DoD or needs 3 separate tables is an open design question for 6E.
+
+## Dead code / stub models (declared but unused or empty)
+
+- None found. All 6 Price/Compare models have at least one `@relation` and at least one field. No empty/stub models in this domain.
+
+## Duplicate / overlapping models
+
+- **`PriceRecord` vs `PriceObservation`** — both exist with similar purpose (track observed prices for listings/products/brands). 
+  - `PriceRecord` (line 1859, declared under "P2-22 — Price Intelligence" block comment) — simpler, 12 fields, `price Float`, only Listing + Product relations, no Brand/Category relations (despite having `brandId`/`categoryId` bare strings), no `createdAt`, no `confidence`/`quality`/`status`.
+  - `PriceObservation` (line 2075, declared under "PRICE ESTIMATION ENGINE (HEAVIX-PRICE-ESTIMATION-SPEC-V1.0)" block comment) — richer, 22 fields, `askingPrice BigInt?` + `estimatedPrice Float?` + `priceLower Float?` + `priceUpper Float?` + `normalizedPrice Float?`, has Listing + Brand + Category relations, has `observedAt` + `createdAt`, has `confidence`/`quality`/`status`/`market`/`sourceType`/`notes`.
+  - **Overlap**: Both have `listingId`, `productId` (PriceRecord has relation, PriceObservation has bare string), `brandId` (PriceRecord has bare string, PriceObservation has relation), `categoryId` (both bare strings; PriceObservation also has Category relation), `price`/`askingPrice`, `currency`, `year`/`condition` (only PriceRecord), `source`, `recordedAt`/`observedAt`.
+  - **Possible interpretation**: `PriceRecord` is the older / simpler model (per the P2-22 comment); `PriceObservation` is the newer / richer model (per the PRICE-ESTIMATION-SPEC-V1.0 comment). The Phase 6 work in 6B may need to either (a) consolidate these into one model, (b) deprecate `PriceRecord` in favor of `PriceObservation`, or (c) keep both with clear semantic boundaries (e.g., `PriceRecord` = raw observed, `PriceObservation` = enriched/normalized). This decision is OUT OF SCOPE for 6A.1 (evidence-only) and belongs to 6B.
+  - **Reverse relations**: `Listing` has BOTH `priceRecords` (line 518) AND `priceObservations` (line 520). `Product` has `priceRecords` (line 1778) but NOT `priceObservations`. `Brand` has `priceObservations` (line 37) but NOT `priceRecords`. `Category` has `priceObservations` (line 193) but NOT `priceRecords`. This asymmetric reverse-relation footprint strongly suggests the two models serve different (but overlapping) purposes, but the spec is not clear on which is canonical.
+
+## Adjacent / price-bearing models (NOT in core Price/Compare scope, listed for context only)
+
+These models contain `price` BigInt fields but are NOT Price/Compare models themselves — they are commercial-transaction entities:
+
+- `Listing.price BigInt?` (line 450) + `Listing.priceType String @default("NEGOTIABLE")` (line 451) + `Listing.deposit BigInt?` (line 474) — the primary listing price field. This is the data source that PriceObservation/PriceRecord ingest.
+- `BuyRequest.budgetMin BigInt?` + `budgetMax BigInt?` (lines 557-558) — buyer-side budget range. Not in Price/Compare scope but causes the BigInt JSON serialization bug per worklog 16-D Fix 1.
+- `RFQQuote.unitPrice BigInt` + `totalPrice BigInt` (lines 876-877) — RFQ quote pricing.
+- `Auction.startPrice BigInt` + `reservePrice BigInt?` (lines 897-898) — auction pricing.
+- `SubscriptionPlan.priceMonthly BigInt @default(0)` + `priceYearly BigInt?` (lines 1107-1108) — subscription pricing.
+- `DealRoom.agreedPrice BigInt?` (line 1313) — negotiated deal price.
+- `Inspection.price BigInt?` (line 1367) — inspection service fee.
+- `ListingOffer.quotedPrice BigInt?` (line 1394) — offer price.
+- `SellIn7DaysApplication.expectedPrice BigInt?` + `valuationPrice BigInt?` + `salePrice BigInt?` + `commissionAmount BigInt?` (lines 2053-2062) — sell-in-7-days pricing (note: has `valuationPrice` which is a kind of estimate, but stored on the application row directly, not as a `PriceEstimate` FK).
+
+## Adjacent / confidence-bearing models (NOT in core Price/Compare scope, listed for context only)
+
+- `BrandAlias.confidence Int @default(80)` (line 71) — confidence in alias detection (0..100 Int).
+- `ListingAttributeValue.confidence Float? // 0..1` (line 379) — confidence in attribute provenance (0..1 Float).
+- `Product.confidence Float?` (line 1768) — confidence in product canonicalization (0..1 Float).
+- `CompatibilityEdge.confidence Float?` (line 1838) — confidence in compatibility relation (0..1 Float).
+- `UserRecommendation` (line 1985) — likely has confidence/score fields (not opened in this audit; out of scope).
+- `Opportunity.score Float // 0..1 opportunity score` (line 1935) — opportunity score, not a confidence but related signal.
+
+**Note on confidence inconsistency**: the codebase has 3 different representations of "confidence":
+1. `Int @default(80)` (0..100 integer) — `BrandAlias` (line 71)
+2. `Float? // 0..1` (0..1 float) — `ListingAttributeValue`, `Product`, `CompatibilityEdge`
+3. `String? // HIGH | MEDIUM | LOW | INSUFFICIENT` (categorical) — `PriceObservation`, `PriceEstimate`
+
+The Price/Compare domain uses the categorical (String) form. The 6D sub-phase should decide whether to keep categorical or move to numeric for consistency with the rest of the codebase.
+
+## Index / unique constraint summary across all 6 core models
+
+| Model | Indexes | Unique | Relations (outbound) | Reverse relations (inbound) |
+|---|---|---|---|---|
+| PriceRecord | 3 | 0 | 2 (Listing, Product) | 2 (Listing, Product) |
+| PriceObservation | 3 | 0 | 3 (Listing, Brand, Category) | 3 (Brand, Category, Listing) |
+| PriceEstimate | 1 | 0 | 1 (Listing) | 1 (Listing) |
+| PriceOverride | 1 | 0 | 1 (Listing) | 1 (Listing) |
+| ComparisonSession | 0 | 1 (inline `@unique` on `shareToken`) | 0 (reverse-only on `items`) | 1 (ComparisonItem) |
+| ComparisonItem | 1 | 0 | 2 (ComparisonSession, Listing) | 2 (ComparisonSession, Listing) |
+| **TOTAL** | **9** | **1** | **9** | **10** |
+
+## Summary of gaps for downstream sub-phases (6B-6F)
+
+This audit is evidence-only. The following gaps are flagged for the responsible sub-phase to address — they are NOT being fixed in 6A.1:
+
+- **6B (Price Observation + History)**: decide `PriceRecord` vs `PriceObservation` consolidation; consider adding `PriceHistory` materialized aggregate; add `Product` relation to `PriceObservation`; add `Brand`/`Category` relations to `PriceRecord`; fix `Float` vs `BigInt` price-type inconsistency; add `createdAt` to `PriceRecord`.
+- **6C (Comparable Engine)**: introduce `Comparable` model (or extend `ComparisonItem` with similarity score + reason) — currently missing.
+- **6D (Estimate + Confidence)**: add `explanation` structured field to `PriceEstimate` (currently only `mainDrivers`/`warnings` as JSON strings); add `brandId`/`categoryId`/`productId`/`modelId` fields to `PriceEstimate`; add `observationIds` provenance linkage; decide confidence representation (categorical String vs numeric Float).
+- **6E (Compare Engine)**: add `@@unique([sessionId, listingId])` to `ComparisonItem`; add `entityType` discriminator; add `Product`/`Brand`/`ProductModel` relations to `ComparisonItem`; add snapshot fields (price, title, attributes) to `ComparisonItem`; add indexes on `productId`/`brandId`/`modelId`.
+- **6F (Admin Review / Override)**: add `overriddenById` User relation to `PriceOverride`; add `AuditLog` linkage; add `status` field; consider `previousOverrideId` for chaining; consider FK to `PriceEstimate.id` instead of just `listingId`.
+- **Cross-cutting**: no enum declarations anywhere in schema — all enum-like fields use plain `String` with inline comments. This is a codebase-wide convention choice and is NOT a 6B-6F decision; if the project wants DB-level enum integrity, it would be a separate cross-cutting refactor.
+
+## Stage Summary
+
+- ✅ Read worklog tail (lines 3793-4043) — confirmed Control Plane frozen at commit `0d79dc3` / tag `control-plane-baseline-16E` with 🟢 GREEN verdict.
+- ✅ Read STEP-16-E-FINAL-GATE.md (226 lines) — confirmed 6A is evidence-only, no new Schema/API.
+- ✅ Enumerated ALL 88 model declarations in `prisma/schema.prisma` (lines 17-2588) via `^model\s+\w+` grep.
+- ✅ Targeted grep across schema for `price|Price|compar|Compar|estimate|Estimate|observation|Observation|adjustment|Adjustment|confidence|Confidence|explanation|Explanation` — found 6 core Price/Compare models + ~20 reverse/adjacent references.
+- ✅ Confirmed **0 enum declarations** anywhere in the schema (grep `enum` returned 0 matches).
+- ✅ Read each of the 6 core models in full + adjacent reverse-relation hosts (Listing, Brand, Category, Product) + adjacent price-bearing models (BuyRequest, SellIn7DaysApplication, etc.).
+- ✅ Recorded per-model: file + line range, field inventory with exact Prisma types, all `@relation` blocks with target + FK + onDelete, all `@@index` and `@unique` declarations, inline comments, reverse relations.
+- ✅ Flagged 11 specific schema gaps (missing relations, missing indexes, missing unique constraints, type inconsistencies, missing audit-trail linkage, missing snapshot fields) for downstream sub-phases (6B-6F) to address.
+- ✅ Identified 1 duplicate/overlapping pair (`PriceRecord` vs `PriceObservation`) and 6 missing models per Phase 6 DoD (`Comparable`, `PriceHistory`, `Adjustment`, `Confidence`, `Explanation`, `ModelCompare`/`ProductCompare`/`ListingCompare` as separate tables).
+- ✅ NO files modified, NO code written, NO schema changes — pure evidence extraction.
+
+## Next Steps
+
+```
+✅ PHASE-6A.1 — Prisma Models Audit   ← COMPLETE (this entry, 6 core models catalogued)
+⏳ PHASE-6A.2 — API + Service Inventory  ← NEXT (audit src/app/api/** + src/lib/price-engine.ts + comparison engine)
+⏳ PHASE-6A.3 — Frontend / Admin UI Inventory  ← (audit src/app/admin/** + src/components/** for Price/Compare UI)
+⏳ PHASE-6A.4 — Tests + Docs Inventory  ← (audit tests/** + docs/** for Price/Compare coverage)
+⏳ PHASE-6B — Price Observation + History (build starts here, after 6A audit complete)
+```
+
+---
+
+## Task ID: PHASE-6A-2
+- **Agent:** Explore (API + Services Auditor)
+- **Task:** Evidence-only audit of all Price/Compare API routes (`src/app/api/**/price*`, `**/pricing*`, `**/compare*`, `**/ai-price*`) and service/engine files (`src/lib/price-engine.ts`, `src/lib/price-intelligence.ts`, `src/lib/compare-engine.ts`) — record per-route method inventory, permission gates, audit hooks, cache invalidation, validation, and stubs; per-service exported function inventory + completeness; cross-reference permission/audit integration in `src/lib/authorization/permissions.ts` + `src/lib/authorization/index.ts`. NO code changes, NO file edits beyond appending this report.
+
+## Work Log
+
+- ✅ Read worklog tail (lines 4136-4385) — confirmed PHASE-6A.1 (Prisma Models Audit) catalogued 6 core Price/Compare models. Control Plane still frozen at commit `0d79dc3` / tag `control-plane-baseline-16E`. 🟢 GREEN verdict from prior sub-phase.
+- ✅ Enumerated ALL files under `/home/z/my-project/src/app/api/` (208 route files) via `LS`.
+- ✅ Identified 18 Price/Compare API route files (15 distinct URL paths, several exposing 2-3 HTTP methods) by:
+  1. Path-based match: `**/price*`, `**/pricing*`, `**/compare*`, `**/ai-price*`
+  2. Import-based match: grep for `@/lib/price-engine` / `@/lib/compare-engine` / `@/lib/price-intelligence`
+  3. Direct-model match: grep for `priceObservation|priceRecord|priceEstimate|priceOverride|comparisonSession|comparisonItem` (case-insensitive) — found 14 files
+- ✅ Read ALL 18 route files in full.
+- ✅ Read ALL 3 service files (`price-engine.ts` = 1015 lines, `price-intelligence.ts` = 353 lines, `compare-engine.ts` = 930 lines).
+- ✅ Read `src/lib/authorization/permissions.ts` (282 lines) — confirmed **ZERO** `price.*` / `pricing.*` / `compare.*` / `compar.*` permission keys exist (lines 34-182 — exhaustive scan).
+- ✅ Read `src/lib/authorization/index.ts` (301 lines) — confirmed `requirePermission` / `can` / `isAdmin` helpers exist BUT are NOT used by any Price/Compare route.
+- ✅ Cross-checked `src/lib/admin/legacy-migration-checklist.ts:156-162` — `compare` legacy admin page maps to `comparisonSession` resource (PENDING, no resource def registered), `price-intelligence` flagged KEEP_AS_IS, `pricing` legacy page mislabeled as mapping to `subscriptionPlan` (NOT PriceObservation/PriceOverride).
+- ✅ Grep for `auditMutation|auditCreate|auditDelete|revalidateTag|revalidatePath` in `**/price*/**`, `**/pricing/**`, `**/compare/**` under `src/app/api/` → 0 matches in any Price/Compare route.
+- ✅ Grep for `zod|z.object|validate|parse` in `src/app/api/admin/pricing` and `src/app/api/compare` → 0 matches.
+- ✅ Grep for `TODO|FIXME|not implemented|status: 501` in price/compare routes → 0 matches.
+- ✅ Grep for `logAudit|audit` in `compare-engine.ts` → 0 matches. In `price-engine.ts` → 1 match (line 897, inside `createOverride`). In `price-intelligence.ts` → 0 matches.
+- ✅ Confirmed `src/lib/audit.ts:5` re-exports `logAudit` from `src/lib/admin/audit.ts` (different naming convention than `auditMutation` / `auditCreate` / `auditDelete` per task spec — codebase uses `logAudit` only).
+- ✅ NO files modified, NO code written, NO schema/API changes — pure evidence extraction.
+
+## API Route Inventory (18 route files / 15 distinct URL paths)
+
+### Route 1: GET /api/price-history
+- **File:** `src/app/api/price-history/route.ts:1-39` (39 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — fully public, no `isAuthenticated()`, no `requirePermission`
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — checks `listingId` OR `(brandId + categoryId)` required (lines 19-24); no type/format validation
+- **Service dependency:** `getPriceHistory` from `@/lib/price-engine` (NOT price-intelligence)
+- **Status:** ⚠️ partial — header marked `@ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY` (line 1)
+
+### Route 2: GET /api/price-estimate
+- **File:** `src/app/api/price-estimate/route.ts:1-63` (63 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — `listingId` required (lines 26-30); no pattern validation
+- **Service dependency:** `estimatePrice` from `@/lib/price-engine`
+- **Status:** ⚠️ partial — header `@ts-nocheck — STEP-14.6-LEGACY` (line 1). Returns 404 with "Could not generate price estimate" when insufficient data — engine-side INSUFFICIENT handling not surfaced as a structured field.
+
+### Route 3: GET /api/price-intelligence
+- **File:** `src/app/api/price-intelligence/route.ts:1-98` (98 lines)
+- **Methods:** GET only — `?action=stats|history|suggestions|outliers` (line 30)
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — `categoryId` required for `action=suggestions` (lines 62-67), `listingId` required for `action=outliers` (lines 77-83); numeric coercion of `year`/`months` is guarded by `Number.isFinite` (lines 35-37)
+- **Service dependencies:** `getPriceStats`, `getPriceHistory`, `getPriceSuggestions`, `detectOutliers` from `@/lib/price-intelligence`
+- **Status:** ✅ complete (no legacy header, no TODOs)
+
+### Route 4: GET /api/ai-price-intelligence
+- **File:** `src/app/api/ai-price-intelligence/route.ts:1-102` (102 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — `listingId` required (lines 15-17); 404 if listing not found (lines 23-25); 400 if `listing.price` is null (lines 26-31)
+- **Service dependencies:** NONE — does inline `db.listing.findMany` (lines 44-48) and computes avg/median/min/max + verdict (UNDERPRICED/FAIR/OVERPRICED) at lines 59-95. Does NOT call `@/lib/price-engine` or `@/lib/price-intelligence`.
+- **Status:** ⚠️ partial — INCONSISTENT with the canonical PriceHealthStatus vocabulary (`IN_RANGE` / `BELOW_RANGE` / `ABOVE_RANGE` / `INSUFFICIENT`) defined in `price-engine.ts:45-49`. Competing ad-hoc verdict strings, no provenance to PriceObservation/PriceRecord tables.
+
+### Route 5: POST /api/ai-price-suggestion
+- **File:** `src/app/api/ai-price-suggestion/route.ts:1-126` (126 lines)
+- **Methods:** POST only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — inline filtering `body.brandId/categoryId/condition/province/year` with no zod; year windowed `gte: y-3, lte: y+3` (lines 22-25)
+- **Service dependencies:** NONE — direct `db.listing.findMany` (lines 27-38) + LLM call via `ZAI.create()` (lines 64-95). Falls back to median if LLM fails.
+- **Status:** ⚠️ partial — does NOT call `@/lib/price-intelligence.getPriceSuggestions` (which would return a structured `PriceSuggestion` with confidence); returns ad-hoc `confidence: "HIGH"|"MEDIUM"|"LOW"` based on sample count (lines 107-108) — same vocabulary as `PriceSuggestion` but computed differently.
+
+### Route 6: GET /api/pricing/history
+- **File:** `src/app/api/pricing/history/route.ts:1-45` (45 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — at least one of `brandId/categoryId/modelId` required (lines 20-25); `months` defaults to 12 (line 18)
+- **Service dependencies:** `getPriceHistory` from `@/lib/price-engine` (same fn as Route 1 but different param signature — Route 1 takes `listingId` + `(brandId, categoryId)`, Route 6 takes `(brandId, categoryId, modelId)` + `months`)
+- **Status:** ✅ complete (no legacy header, no TODOs)
+
+### Route 7: GET + POST /api/pricing/estimate
+- **File:** `src/app/api/pricing/estimate/route.ts:1-94` (94 lines)
+- **Methods:** GET (lines 17-40), POST (lines 46-94)
+- **Permission gate:** ❌ NONE — both methods fully public
+- **Audit hook:** ❌ NONE — POST calls `recordObservation` (price-engine:816) which writes a `PriceObservation` row with `source: "AI_ESTIMATE"` but does NOT call `logAudit`. Silent write — no audit trail of who triggered the observation.
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — GET: `listingId` required (lines 21-26). POST: no zod; raw body destructuring at lines 49-58 with no type/format checks; `Number()` coercion with no NaN guard for `year`/`hours`.
+- **Service dependencies:** `estimatePrice`, `recordObservation`, `PRICE_MODEL_VERSION` from `@/lib/price-engine`
+- **Status:** ⚠️ partial — header `@ts-nocheck — STEP-14.6-LEGACY` (line 1). POST response shape (`{ modelVersion, disclaimer, ...result }` flat) DIFFERS from Route 2's GET response shape (`{ estimate: { ... } }` wrapped) — inconsistent API surface for the same engine call.
+
+### Route 8: GET /api/pricing/health
+- **File:** `src/app/api/pricing/health/route.ts:1-35` (35 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — `listingId` required (lines 17-22)
+- **Service dependencies:** `getPriceHealth` from `@/lib/price-engine`
+- **Status:** ✅ complete (no legacy header, no TODOs)
+
+### Route 9: POST /api/admin/pricing/override
+- **File:** `src/app/api/admin/pricing/override/route.ts:1-59` (59 lines)
+- **Methods:** POST only
+- **Permission gate:** ⚠️ legacy `isAuthenticated()` from `@/lib/auth` (line 2, 14) — checks `ADMIN_CREDENTIALS.username/password` cookie only. NOT `requirePermission('price.override')` from `@/lib/authorization` — no permission key for `price.*` even exists (see Permission Inventory below).
+- **Audit hook:** ✅ INDIRECT — calls `createOverride` (price-engine:862) which calls `logAudit({ actorId, actorType: "ADMIN", action: "pricing.override", entityType: "PriceOverride", entityId, before, after, ip, userAgent, reason })` at `src/lib/price-engine.ts:897-917`. Audit trail IS recorded.
+- **Cache invalidation:** ❌ NONE — no `revalidateTag('price:overrides')` or `revalidatePath('/admin/pricing')` call after override creation
+- **Validation:** ⚠️ partial — inline checks: `listingId` non-empty (lines 23-25), `Number.isFinite(overridePrice) && overridePrice > 0` (lines 26-31), `reason.length >= 3` (lines 32-37). No zod. No max length on reason. No `overridePrice` upper bound.
+- **Service dependencies:** `createOverride` from `@/lib/price-engine`, `isAuthenticated` + `ADMIN_CREDENTIALS` from `@/lib/auth`
+- **Status:** ⚠️ partial — engine is fully implemented but route uses legacy auth, no cache invalidation, no zod
+
+### Route 10: GET /api/admin/pricing/observations
+- **File:** `src/app/api/admin/pricing/observations/route.ts:1-44` (44 lines)
+- **Methods:** GET only
+- **Permission gate:** ⚠️ legacy `isAuthenticated()` (line 13) — NOT `requirePermission('price.read')`
+- **Audit hook:** ❌ NONE — GET (read-only, no audit expected)
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — `limit` defaults 50 (lines 22-24), `offset` defaults 0 (lines 25-27); no clamping inside route (engine clamps to 1..200, see price-engine:934)
+- **Service dependencies:** `listObservations` from `@/lib/price-engine`
+- **Status:** ⚠️ partial — only GET (list). No `POST` (create), `GET /[id]` (detail), `PATCH /[id]` (flag/exclude), `DELETE /[id]` (hard delete) routes — full CRUD missing for 6B Price Observation + History.
+
+### Route 11: POST + GET /api/compare
+- **File:** `src/app/api/compare/route.ts:1-131` (131 lines)
+- **Methods:** POST (create session, lines 25-86), GET (legacy ad-hoc compare, lines 94-131)
+- **Permission gate:** ❌ NONE — fully public (anonymous sessions allowed by design per `createSession` signature `userId?: string | null`)
+- **Audit hook:** ❌ NONE — POST calls `createSession` (compare-engine:184) which does raw `db.comparisonSession.create` with no `logAudit` call. Also calls `trackEvent({ eventType: "COMPARE", ... })` (lines 63-68) — analytics event, NOT audit log.
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — POST: `name` sliced to 200 chars (line 28), `listingIds` filtered to strings + sliced to 5 (lines 34-36); individual listing existence + PUBLISHED status checked (lines 42-46); failures swallowed silently (lines 56-58). GET: `ids` count must be 2..5 (lines 102-107). No zod.
+- **Service dependencies:** `createSession` from `@/lib/compare-engine`, `getCurrentUserId` from `@/lib/auth`, `trackEvent` from `@/lib/analytics`, direct `db.listing.findMany` (GET path, lines 109-116) and `db.comparisonItem.create` (POST path, line 47)
+- **Status:** ⚠️ partial — GET is marked "LEGACY ad-hoc compare" (line 89) — kept for backward compat. POST is the canonical session-creation path. Both bypass audit hooks.
+
+### Route 12: GET + DELETE + PATCH /api/compare/[id]
+- **File:** `src/app/api/compare/[id]/route.ts:1-142` (142 lines)
+- **Methods:** GET (lines 17-68), DELETE (lines 73-90), PATCH (lines 96-142)
+- **Permission gate:** ❌ NONE — fully public. NOTE: GET does NOT verify session ownership — any user with a session ID can fetch any session's data (no `userId` check).
+- **Audit hook:** ❌ NONE — DELETE does raw `db.comparisonSession.update({ where: { id }, data: { status: "ARCHIVED" } })` (lines 79-82) — no `logAudit`. PATCH does raw `db.comparisonSession.update` for rename + `refreshShareToken` + `shareExpiresAt` (lines 122-133) — no `logAudit`. Bypasses `compare-engine.ts:900 archiveSession`, `:910 renameSession`, `:920 refreshShareToken` helpers (which also don't audit, but at least would centralize the mutation surface).
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — PATCH: `name` sliced to 200 (line 106); `shareExpiresAt` parsed via `new Date(string)` with `isNaN` guard (lines 117-120); `refreshShareToken` is boolean check (line 108); `crypto.getRandomValues` for token (lines 110-113). No zod.
+- **Service dependencies:** `getComparisonData` from `@/lib/compare-engine`, direct `db.comparisonSession.findUnique/update`
+- **Status:** ⚠️ partial — functional but bypasses compare-engine helpers; no audit; no ownership check on GET
+
+### Route 13: POST /api/compare/[id]/items
+- **File:** `src/app/api/compare/[id]/items/route.ts:1-40` (40 lines)
+- **Methods:** POST only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE — calls `addItem` (compare-engine:216) which does raw `db.comparisonItem.create` (line 239 of compare-engine), no `logAudit`.
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — at least one of `listingId/productId/brandId/modelId` required (lines 26-31); each coerced via `typeof x === "string"` (lines 21-24). No zod. No check that the referenced entity exists (engine does check session existence + 5-item cap + dedupe by listingId at compare-engine:221-250, but does NOT verify Product/Brand/ProductModel existence).
+- **Service dependencies:** `addItem` from `@/lib/compare-engine`
+- **Status:** ⚠️ partial — error status code mapping at lines 36-38 (`msg.includes("حداکثر")` → 400, `msg.includes("not found")` → 404) — fragile string-based error routing.
+
+### Route 14: DELETE /api/compare/[id]/items/[itemId]
+- **File:** `src/app/api/compare/[id]/items/[itemId]/route.ts:1-26` (26 lines)
+- **Methods:** DELETE only
+- **Permission gate:** ❌ NONE — fully public
+- **Audit hook:** ❌ NONE — calls `removeItem` (compare-engine:256) which does raw `db.comparisonItem.deleteMany({ where: { id: itemId, sessionId } })`, no `logAudit`.
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ❌ NONE — no validation beyond route param destructuring
+- **Service dependencies:** `removeItem` from `@/lib/compare-engine`
+- **Status:** ⚠️ partial — functional but no audit, no ownership check (anyone with session+item IDs can delete items from any session)
+
+### Route 15: POST /api/compare/[id]/ai-summary
+- **File:** `src/app/api/compare/[id]/ai-summary/route.ts:1-25` (25 lines)
+- **Methods:** POST only
+- **Permission gate:** ❌ NONE — fully public (anyone can trigger LLM billing for any session)
+- **Audit hook:** ❌ NONE — calls `generateAISummary` (compare-engine:737) which calls `db.comparisonSession.update({ data: { aiSummary, aiSummaryAt } })` (compare-engine:809-812), no `logAudit`.
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ❌ NONE
+- **Service dependencies:** `generateAISummary` from `@/lib/compare-engine`
+- **Status:** ⚠️ partial — LLM call exposed publicly with no rate limiting and no auth; cost-abuse vector.
+
+### Route 16: GET /api/compare/shared/[token]
+- **File:** `src/app/api/compare/shared/[token]/route.ts:1-43` (43 lines)
+- **Methods:** GET only
+- **Permission gate:** ❌ NONE — intentionally public (share token IS the auth)
+- **Audit hook:** ❌ NONE — no `logAudit` of share-token access (could be a privacy/abuse concern)
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ✅ adequate — token existence + expiry + ARCHIVED status enforced inside `getSessionByShareToken` (compare-engine:708-720)
+- **Service dependencies:** `getSessionByShareToken`, `getComparisonData` from `@/lib/compare-engine`
+- **Status:** ✅ complete
+
+### Route 17: GET + PUT /api/admin/compare
+- **File:** `src/app/api/admin/compare/route.ts:1-110` (110 lines)
+- **Methods:** GET (lines 19-69), PUT (lines 78-110)
+- **Permission gate:** ⚠️ legacy `isAuthenticated()` (lines 20, 79) — NOT `requirePermission('compare.manage')`. No `price.*` / `compare.*` permission key exists.
+- **Audit hook:** ❌ NONE — PUT mutates `SiteSettings.compareVisibleAttributeIds` JSON (lines 91-101) with no `logAudit`. GET is read-only.
+- **Cache invalidation:** ❌ NONE — no `revalidatePath('/compare')` after changing visible attributes (public compare view will serve stale attribute visibility until next revalidate).
+- **Validation:** ⚠️ partial — PUT: `visibleAttributeIds` filtered to strings + sliced to 500 (lines 85-89), `JSON.stringify` (line 91); GET: no input validation (no query params).
+- **Service dependencies:** `listSessionsForAdmin` from `@/lib/compare-engine`, direct `db.attributeDefinition.findMany`, `db.siteSettings.findUnique/upsert`
+- **Status:** ⚠️ partial — functional but no audit, no cache invalidation, no zod
+
+### Route 18: GET + DELETE + PATCH /api/admin/compare/[id]
+- **File:** `src/app/api/admin/compare/[id]/route.ts:1-124` (124 lines)
+- **Methods:** GET (lines 14-67), DELETE (lines 72-92), PATCH (lines 98-124)
+- **Permission gate:** ⚠️ legacy `isAuthenticated()` (lines 18, 76, 102) — NOT `requirePermission('compare.manage')`
+- **Audit hook:** ❌ NONE — DELETE does raw `db.comparisonSession.update({ data: { status: "ARCHIVED" } })` (lines 81-84), no `logAudit`. PATCH does raw `db.comparisonSession.update` for rename (lines 112-116), no `logAudit`. Bypasses compare-engine helpers `archiveSession`/`renameSession` (which also don't audit).
+- **Cache invalidation:** ❌ NONE
+- **Validation:** ⚠️ partial — PATCH: `name` sliced to 200 (line 110). No zod.
+- **Service dependencies:** `getComparisonData` from `@/lib/compare-engine`, direct `db.comparisonSession.findUnique/update`
+- **Status:** ⚠️ partial — header `@ts-nocheck — STEP-14.6-LEGACY` (line 1). Functional but no audit, no cache invalidation, no zod.
+
+## Service / Engine Inventory (3 core service files + 1 adjacent consumer)
+
+### Service 1: src/lib/price-engine.ts
+- **Lines:** 1015
+- **Header docstring:** lines 4-29 — references `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md`. Server-only. Enforces: Asking vs Estimated never conflated; no fabricated prices (returns `INSUFFICIENT` when comparables < 2); overrides audited via `logAudit`.
+- **Exported constants (1):**
+  - `PRICE_MODEL_VERSION = "v1.0"` (line 31)
+- **Exported types (9):**
+  - `ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT"` (line 43)
+  - `DataFreshness = "FRESH" | "RECENT" | "STALE"` (line 44)
+  - `PriceHealthStatus = "IN_RANGE" | "BELOW_RANGE" | "ABOVE_RANGE" | "INSUFFICIENT"` (lines 45-49)
+  - `EstimateInput` (lines 51-60)
+  - `EstimateResult` (lines 62-83) — includes `comparables: Array<{ id, title, slug, price, year, workingHours, city, similarity: number }>` (this is the "comparable" surface — note: NO standalone `Comparable` entity model exists per 6A.1 audit)
+  - `PriceHealthResult` (lines 85-93)
+  - `PriceHistoryPoint` (lines 95-100)
+  - `RecordObservationInput` (lines 102-123)
+  - `ObservationListFilters` (lines 924-931)
+- **Exported functions (7):**
+  - `estimatePrice(params: EstimateInput): Promise<EstimateResult>` — line 174. Implements: brand+category required gate → comparable selection (strict year±3, hours±30%, MAX 60) → relaxed fallback (year±5, drop hours window) → brand+category-only fallback → merges active `PriceObservation` rows (lines 275-290) + legacy `PriceRecord` rows (lines 442-480) → median/p25/p75 confidence scoring → freshness (FRESH≤30d / RECENT≤90d / STALE) → drivers + warnings + comparables preview (top 12 by similarity). NEVER fabricates prices — returns `emptyEstimate(warnings)` when comparables < 2 (line 482).
+  - `getPriceHealth(listingId: string): Promise<PriceHealthResult>` — line 622. Computes asking-vs-estimate classification.
+  - `getPriceHistory(params: { brandId?, categoryId?, modelId?, months? }): Promise<PriceHistoryPoint[]>` — line 706. Merges `PriceObservation.askingPrice` + `Listing.price` into monthly buckets. Zero-fills empty months (unlike price-intelligence.ts version which skips them).
+  - `recordObservation(params: RecordObservationInput): Promise<void>` — line 816. Persists a `PriceObservation` row. Silent on error (line 854-857) — observation logging never breaks callers.
+  - `createOverride(args: { listingId, overridePrice, reason, adminId?, ip?, userAgent? }): Promise<{ id: string }>` — line 862. Creates `PriceOverride` row + calls `logAudit({ action: "pricing.override", entityType: "PriceOverride", ... })` at line 897. Records `before` (listing title, originalEstimate, listingAskingPrice) and `after` (overridePrice, reason). ✅ AUDITED.
+  - `listObservations(filters: ObservationListFilters = {})` — line 933. Paginated observation listing with brand/category/source/status filters. Engine clamps `limit` to 1..200 (line 934), `offset` to ≥0 (line 935).
+  - `listOverrides(limit = 100)` — line 995. Returns PriceOverride rows with listing join. ⚠️ **UNUSED** — no API route in `src/app/api/**` imports `listOverrides`. Gap: no `GET /api/admin/pricing/overrides` route exists.
+- **Purpose:** Core HEAVIX price intelligence engine — comparable selection, median/p25/p75 estimation, freshness tracking, override audit, admin observation listing.
+- **Status:** ✅ complete — no TODOs/FIXMEs/stubs. All 7 exported functions are implemented with full bodies.
+
+### Service 2: src/lib/price-intelligence.ts
+- **Lines:** 353
+- **Header docstring:** lines 3-28 — references `HEAVIX-P0-IMPLEMENTATION-PLAN.md P2-22` and `HEAVIX-CORRECTED-REFERENCE-V1.1.md §13 (AI Authority)`. Server-only. Note at lines 15-20: explains `Listing.price` is BigInt, `PriceRecord.price` is Float, conversions are explicit and loss-free for prices < 2^53.
+- **Exported interfaces (4):**
+  - `PriceStats` (lines 30-39)
+  - `PriceHistoryPoint` (lines 41-45) — ⚠️ **NAME COLLISION** with `price-engine.ts:95` `PriceHistoryPoint`. Same name, DIFFERENT shape (`avgPrice` here vs `medianPrice` + `range` there).
+  - `OutlierResult` (lines 47-53)
+  - `PriceSuggestion` (lines 55-61)
+- **Exported functions (5):**
+  - `recordPriceFromListing(listingId: string): Promise<void>` — line 122. Persists a `PriceRecord` row from `Listing.price`. Idempotent-ish (no dedupe). ⚠️ **UNUSED** — no API route imports this. No background job triggers it (grep `recordPriceFromListing` in `src/` returns only the definition site + 1 match in the legacy-migration-checklist comment context). Implies `PriceRecord` table is never populated by any active code path — orphaned writer.
+  - `getPriceStats(params: { productId?, categoryId?, brandId?, year? }): Promise<PriceStats>` — line 163. Aggregates over `PriceRecord` rows.
+  - `getPriceHistory(params: { productId?, categoryId?, brandId?, months? }): Promise<PriceHistoryPoint[]>` — line 193. Buckets `PriceRecord.recordedAt` by YYYY-MM, skips empty months. **CONFLICTS** with `price-engine.ts:706 getPriceHistory` which uses `PriceObservation` + `Listing.price` and zero-fills. Two functions with the same name returning different data shapes.
+  - `detectOutliers(listingId: string): Promise<OutlierResult>` — line 242. Robust Tukey-fence outlier detection (p25 - 1.5*IQR, p75 + 1.5*IQR) over `PriceRecord` rows. Returns `deviation` (signed percentage from median).
+  - `getPriceSuggestions(params: { categoryId, brandId?, year?, condition? }): Promise<PriceSuggestion>` — line 313. Returns `[p25, p75]` range + mean + sample count + confidence.
+- **Purpose:** Older "P2-22" price intelligence layer — operates on `PriceRecord` table only (not `PriceObservation`).
+- **Status:** ✅ complete — no TODOs/FIXMEs/stubs. ⚠️ **CRITICAL GAP**: `recordPriceFromListing` (the only writer to `PriceRecord`) appears to have NO callers — the `PriceRecord` table is effectively write-dead. All 4 reader functions (`getPriceStats`, `getPriceHistory`, `detectOutliers`, `getPriceSuggestions`) operate on `PriceRecord` rows that are never inserted by current code. Either (a) `PriceRecord` is populated by a deactivated background job, (b) these readers always return empty/sampleSize=0, or (c) there's an out-of-tree caller. **FLAG for 6B investigation.**
+
+### Service 3: src/lib/compare-engine.ts
+- **Lines:** 930
+- **Header docstring:** lines 5-34 — references `docs/HEAVIX-MACHINE-COMPARISON-SPEC-V1.0.md`. Server-only. Rules: catalog-first; missing data shown as "—"; no winner / no aggregate ranking; only difference flags per row.
+- **Exported types (8):** `ComparisonEntityType`, `ComparisonItemData`, `ComparisonCellProvenance`, `ComparisonPriceRange`, `ComparisonCell`, `ComparisonRow`, `ComparisonData`, `AddItemInput`
+- **Exported functions (11):**
+  - `createSession(userId?: string | null, name?: string)` — line 184. Generates 24-char base64url share token via `crypto.getRandomValues`.
+  - `addItem(sessionId, input: AddItemInput)` — line 216. Enforces 5-item cap (line 228), dedupes by `listingId` (lines 233-236). Does NOT verify `productId`/`brandId`/`modelId` reference real entities — soft-fails at compare-time (compare-engine:327-356).
+  - `removeItem(sessionId, itemId)` — line 256. Hard delete via `db.comparisonItem.deleteMany`.
+  - `getComparisonData(sessionId): Promise<ComparisonData>` — line 275. Builds structured table: column metadata (LISTING / PRODUCT / MODEL / BRAND), pulls `ListingAttributeValue` rows in scope (line 374), respects `SiteSettings.compareVisibleAttributeIds` JSON filter (lines 405-426), builds fixed-spec rows (brand/model/category/year/hours/condition/city/province/price), builds dynamic attribute rows (option/number/boolean/date/text), computes `isDifferent` per row (lines 449-453, 658-661), computes cross-category warning (line 680), computes estimated price ranges per item via `getPriceSuggestions` from price-intelligence (lines 522-537). 690 lines of structured projection logic.
+  - `getDifferencesOnly(sessionId): Promise<ComparisonRow[]>` — line 699. Wraps `getComparisonData` + filters `isDifferent` rows.
+  - `getSessionByShareToken(token)` — line 708. Returns null for invalid/expired/ARCHIVED tokens.
+  - `generateAISummary(sessionId): Promise<string>` — line 737. Builds compact JSON payload of items + rows + differences + crossCategoryWarning, prompts ZAI with strict rules (no winner, no English, 3-5 Persian bullet lines), persists summary + timestamp at compare-engine:808-812. Has deterministic `buildFallbackSummary(data)` fallback (line 821) when LLM fails.
+  - `listSessionsForAdmin(opts?: { limit? })` — line 863. Returns session list with `_count.items` itemCount.
+  - `archiveSession(sessionId)` — line 900. ⚠️ **UNUSED** — admin/compare/[id] route does inline update instead (route:81-84).
+  - `renameSession(sessionId, name)` — line 910. ⚠️ **UNUSED** — admin/compare/[id] route does inline update instead (route:112-116).
+  - `refreshShareToken(sessionId, expiresAt?)` — line 920. ⚠️ **UNUSED** — public compare/[id] route does inline `crypto.getRandomValues` + update instead (route:108-114).
+- **Purpose:** Core HEAVIX comparison engine — session lifecycle, structured comparison-table projection, AI summary, admin listing.
+- **Status:** ✅ complete — no TODOs/FIXMEs/stubs. ⚠️ 3 exported functions (`archiveSession`, `renameSession`, `refreshShareToken`) are dead code — bypassed by admin/public routes which do inline `db.comparisonSession.update`. Refactor opportunity for 6E.
+
+### Adjacent consumer: src/lib/opportunity-engine.ts (lines 1-444)
+- **Lines:** 444
+- **Status:** Read partially (lines 1-50, 270-329). Not a core Price/Compare service, but consumes `Listing.priceRecords` reverse-relation (line 279, 286) in `detectPriceDrops()` (line 272) — depends on `PriceRecord` table being populated. **Given that `recordPriceFromListing` (the only PriceRecord writer) appears unused (see Service 2 gap), `detectPriceDrops()` likely always returns an empty array.** Flag for 6B investigation.
+
+## Permission Inventory (from `src/lib/authorization/permissions.ts:34-182`)
+
+Grep for `price.|compar.,pricing.,estimate.,observation.,override.` across `src/lib/authorization/` → **0 matches**.
+
+| Permission Key | Status | Evidence |
+|---|---|---|
+| `price.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array (lines 34-182) |
+| `price.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `price.observe` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `price.override` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `pricing.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `pricing.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `pricing.override` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `compare.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `compare.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `compare.create` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `comparisons.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `comparisons.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `observation.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `observation.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `estimate.read` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+| `override.manage` | ❌ NOT FOUND | Not in `PERMISSIONS` array |
+
+**Cross-checks in `src/lib/authorization/index.ts`:**
+- `canExport()` map (lines 235-263) — 0 entries for `price` / `pricing` / `compare` / `comparison` / `observation` / `estimate` / `override` resources
+- `canBulkAction()` map (lines 197-204) — 0 entries for `bulk-archive` on comparison sessions or any price-related bulk action
+
+**Actual auth used by Price/Compare routes:**
+- `isAuthenticated()` from `@/lib/auth` (legacy ADMIN_CREDENTIALS cookie check) — used by 4 admin route files: `admin/pricing/override`, `admin/pricing/observations`, `admin/compare`, `admin/compare/[id]`. None call `requirePermission()`, `can()`, `isAdmin()`, or `hasRole()` from `@/lib/authorization`.
+- 14 of 18 routes (all public Price/Compare routes) have ZERO auth gate.
+
+## Gap list
+
+### Missing API routes (per Phase 6 DoD §6.1 sub-phases 6B-6F)
+
+- **`GET /api/admin/pricing/observations/[id]`** — NOT FOUND. Single-observation detail view needed by 6B for inspecting a PriceObservation row's full provenance.
+- **`POST /api/admin/pricing/observations`** — NOT FOUND. Manual observation create route needed by 6B (currently `recordObservation` in price-engine:816 is called only as a side-effect of `POST /api/pricing/estimate` at route:62-80 — there is no admin-only explicit create endpoint).
+- **`PATCH /api/admin/pricing/observations/[id]`** — NOT FOUND. Flag/exclude observation route (status ACTIVE→FLAGGED→EXCLUDED) needed by 6B.
+- **`DELETE /api/admin/pricing/observations/[id]`** — NOT FOUND. Hard-delete observation route.
+- **`GET /api/admin/pricing/overrides`** — NOT FOUND. `listOverrides` is exported from `price-engine.ts:995` but has NO API consumer. Phase 6 DoD §6.1 "Price Override Audit" (6F) requires a list view.
+- **`GET /api/admin/pricing/overrides/[id]`** — NOT FOUND. Single override detail + audit history view.
+- **`DELETE /api/admin/pricing/overrides/[id]`** — NOT FOUND. Revert an override (currently overrides are immutable — no status field, no chaining, no revert per 6A.1 audit).
+- **`GET /api/admin/pricing/estimates`** — NOT FOUND. List `PriceEstimate` rows (currently no API surface for PriceEstimate at all — the model is read-implicit via `estimatePrice` engine call, never persisted as a row).
+- **`GET /api/admin/pricing/estimates/[id]`** — NOT FOUND.
+- **`POST /api/compare/[id]/items/batch`** — NOT FOUND. Bulk-add items to session (currently POST items must be called N times).
+- **`GET /api/compare/sessions`** — NOT FOUND. List user's own sessions (only admin variant exists). Public user has no way to retrieve their own past sessions.
+- **`GET /api/compare/[id]/differences`** — NOT FOUND. Differences-only view (engine helper `getDifferencesOnly` exists at compare-engine:699 but no route exposes it).
+
+### Missing services (per Phase 6 DoD §6.1 sub-phases 6C, 6D)
+
+- **`src/lib/comparable-engine.ts`** — NOT FOUND. Phase 6 DoD §6.1 calls for "Comparable engine" (6C). Currently `comparables` is computed inline inside `estimatePrice` (price-engine:386-435 + 442-480) with no standalone `Comparable` entity model (per 6A.1 audit) and no standalone `comparable-engine.ts` service module. 6C will need to either extract this logic into a dedicated module or introduce a `Comparable` model with a similarity score + reason.
+- **`src/lib/price-history-engine.ts`** — NOT FOUND. Phase 6 DoD §6.1 calls for "Price History timeline" (6B). Currently `getPriceHistory` is a single function inside price-engine.ts:706, with no dedicated module, no caching, no materialized timeline aggregate (per 6A.1 audit, no `PriceHistory` model exists).
+
+### Unused / dead code in existing services
+
+- **`price-engine.ts:995 listOverrides`** — exported, no API consumer (gap above).
+- **`compare-engine.ts:900 archiveSession`** — exported, no API consumer (admin/compare/[id] route:81-84 does inline update).
+- **`compare-engine.ts:910 renameSession`** — exported, no API consumer (admin/compare/[id] route:112-116 does inline update).
+- **`compare-engine.ts:920 refreshShareToken`** — exported, no API consumer (compare/[id] route:108-114 does inline update).
+- **`price-intelligence.ts:122 recordPriceFromListing`** — exported, no API consumer. This is the only writer to `PriceRecord` table. If truly unused, the entire `PriceRecord`-based analytics layer (`getPriceStats`, `getPriceHistory`, `detectOutliers`, `getPriceSuggestions`) is reading an empty table. **CRITICAL FLAG for 6B.**
+
+### Missing permission keys
+
+- All 16 candidate permission keys listed in Permission Inventory above are absent from `src/lib/authorization/permissions.ts:34-182`. The Price/Compare domain has ZERO representation in the RBAC matrix. Phase 6 DoD §6.1 "Admin Review / Override" (6F) cannot be properly permission-gated until at minimum these are added:
+  - `price.read` — for `GET /api/admin/pricing/observations` + `GET /api/admin/pricing/estimates`
+  - `price.observe` — for `POST /api/admin/pricing/observations` (manual create)
+  - `price.manage` — for `PATCH /api/admin/pricing/observations/[id]` (flag/exclude)
+  - `price.override` — for `POST /api/admin/pricing/override`
+  - `compare.read` — for `GET /api/admin/compare`
+  - `compare.manage` — for `PUT /api/admin/compare` + `DELETE /api/admin/compare/[id]`
+  - `compare.create` — for `POST /api/compare` (if rate-limited to authenticated users)
+
+### Missing audit / cache integration
+
+- **`auditMutation` / `auditCreate` / `auditDelete`** — 0 calls anywhere in `src/app/api/**/price*` or `**/pricing*` or `**/compare*`. Only audit hook is `logAudit` (different name) called once inside `createOverride` (price-engine:897). All other Price/Compare mutations (PATCH compare, DELETE compare, POST compare items, DELETE compare items, POST ai-summary, PUT admin/compare visible-attributes, DELETE admin/compare, PATCH admin/compare) have NO audit trail.
+- **`revalidateTag` / `revalidatePath`** — 0 calls in any Price/Compare route. After `POST /api/admin/pricing/override`, the public `/api/pricing/estimate` cache (if any) and the `/admin/pricing` admin UI are not invalidated. After `PUT /api/admin/compare` (changes `compareVisibleAttributeIds`), the public `/compare/[id]` view serves stale attribute visibility.
+- **Zod validation** — 0 usages. All 18 Price/Compare routes use inline `typeof` + `Number.isFinite` + `String#trim` + length-slice checks. No structured schema validation, no error standardization.
+
+### Duplicate / overlapping APIs
+
+- **`getPriceHistory` name collision** — defined in BOTH `price-engine.ts:706` (uses PriceObservation + Listing.price, zero-fills empty months, returns `medianPrice` + `range`) AND `price-intelligence.ts:193` (uses PriceRecord only, skips empty months, returns `avgPrice` only). Same export name, different behavior, different consumers:
+  - `/api/price-history` (route:3) and `/api/pricing/history` (route:6) → price-engine version
+  - `/api/price-intelligence?action=history` (route:3) → price-intelligence version
+- **`getPriceSuggestions` vs `POST /api/ai-price-suggestion`** — both produce price suggestions, but:
+  - `getPriceSuggestions` (price-intelligence:313) — percentile-based, no LLM, called by `/api/price-intelligence?action=suggestions` AND by compare-engine:527 (per-item estimated ranges)
+  - `/api/ai-price-suggestion` (route:5) — direct `db.listing.findMany` + LLM (ZAI), does NOT call `getPriceSuggestions`. Returns ad-hoc shape `{ suggested, min, max, avg, median, samples, confidence, aiNote }` vs `PriceSuggestion` shape `{ suggestedMin, suggestedMax, suggestedAvg, confidence, sampleSize }`.
+- **`estimatePrice` exposed at TWO routes with different response shapes** — `/api/price-estimate` (route:2) wraps in `{ estimate: { ... } }`; `/api/pricing/estimate` (route:7) returns flat `{ modelVersion, disclaimer, ...result }`. Same engine, two contracts.
+- **Two competing "verdict" vocabularies** — `getPriceHealth` (price-engine:622) returns `PriceHealthStatus = "IN_RANGE" | "BELOW_RANGE" | "ABOVE_RANGE" | "INSUFFICIENT"`. `/api/ai-price-intelligence` (route:4) computes inline verdict `"UNDERPRICED" | "FAIR" | "OVERPRICED"`. Two unrelated vocabularies for the same concept; UI surfaces need to map between them.
+- **OpenAPI spec is incomplete** — `src/app/api/openapi/route.ts:420-471` documents only `/api/price-intelligence` (GET) and `/api/compare` (GET, the legacy ad-hoc variant). The 16 other Price/Compare route paths (including `/api/pricing/estimate`, `/api/pricing/health`, `/api/admin/pricing/override`, `/api/admin/pricing/observations`, `/api/admin/compare`, `/api/compare/[id]`, `/api/compare/shared/[token]`, etc.) are absent from the OpenAPI registry. The `categorizePath()` helper at route:646-647 only knows `price-intelligence` → "Pricing" and `compare` → "Compare" — other Price/Compare paths would fall through to "Misc" or 404.
+
+### Resource-registry / admin-UI integration
+
+- **No `comparisonSession` resource registered** — `src/lib/admin/resource-registry.ts` and `src/lib/admin/resource-index.ts` contain 0 matches for `price|Price|compar|Compar|observation|Observation|estimate|Estimate|override|Override`. The legacy-migration-checklist (line 156) flags this as PENDING migration target (`legacyPath: 'compare', resource: 'comparisonSession', replacementPath: 'resources/comparisonSession', capabilities: ['list','view','delete']`).
+- **`price-intelligence` legacy admin page** — flagged KEEP_AS_IS (line 160) — has its own dedicated UI at `src/app/admin/price-intelligence/page.tsx` (out of scope for 6A.2; in scope for 6A.3 frontend audit).
+- **`pricing` legacy admin page** — flagged as migrating to `subscriptionPlan` resource (line 161), which is a DIFFERENT domain (subscription billing, not PriceObservation/PriceOverride). Misleading mapping; the `/admin/pricing/page.tsx` actually drives the `PriceObservation` + `PriceOverride` workflows via `/api/admin/pricing/observations` + `/api/admin/pricing/override`. Phase 6 should clarify whether `pricing` admin page belongs under "Subscription" or "Price Intelligence" — currently miscategorized.
+
+## Stage Summary
+
+- ✅ Read worklog tail (lines 4136-4385) — confirmed 6A.1 Prisma Models Audit catalogued 6 core models, identified 11 schema gaps + 1 model overlap (`PriceRecord` vs `PriceObservation`).
+- ✅ Enumerated ALL 208 API route files under `src/app/api/` via `LS`.
+- ✅ Identified **18 Price/Compare API route files** (15 distinct URL paths) by combining path-pattern, import-pattern, and direct-model-reference grep.
+- ✅ Read ALL 18 route files in full + ALL 3 core service files (`price-engine.ts` 1015 lines, `price-intelligence.ts` 353 lines, `compare-engine.ts` 930 lines).
+- ✅ Read `src/lib/authorization/permissions.ts` (282 lines) + `src/lib/authorization/index.ts` (301 lines) — confirmed **ZERO** `price.*` / `pricing.*` / `compare.*` / `compar.*` permission keys exist (16 candidate keys all return ❌ NOT FOUND).
+- ✅ Grep-confirmed: 0 `auditMutation`/`auditCreate`/`auditDelete` calls, 0 `revalidateTag`/`revalidatePath` calls, 0 `zod`/`z.object` usages, 0 `TODO`/`FIXME`/`status: 501` markers in any Price/Compare route.
+- ✅ Grep-confirmed: 1 `logAudit` call inside `createOverride` (price-engine:897), 0 `logAudit` calls inside `price-intelligence.ts` or `compare-engine.ts`.
+- ✅ Identified **18 routes**: 14 public (no auth), 4 admin (legacy `isAuthenticated()` only — no `requirePermission()` integration).
+- ✅ Identified **3 stubs**: NONE — all 18 routes have functional handlers; all 3 service files have complete implementations.
+- ✅ Identified **5 unused exported service functions** (`listOverrides`, `archiveSession`, `renameSession`, `refreshShareToken`, `recordPriceFromListing`) — dead code or missing API consumer.
+- ✅ Identified **12 missing API routes** (CRUD gaps for observations/overrides/estimates, batch items, list-user-sessions, differences-only view).
+- ✅ Identified **2 missing service modules** (`comparable-engine.ts` for 6C, `price-history-engine.ts` for 6B).
+- ✅ Identified **5 duplicate/overlapping API design issues** (getPriceHistory name collision, getPriceSuggestions vs ai-price-suggestion, two response shapes for estimatePrice, two verdict vocabularies, incomplete OpenAPI registry).
+- ✅ Identified **1 critical data-flow risk**: `recordPriceFromListing` (the only writer to `PriceRecord` table) appears to have 0 API consumers — `PriceRecord`-based readers (`getPriceStats`/`getPriceHistory`/`detectOutliers`/`getPriceSuggestions`) and `detectPriceDrops` in opportunity-engine may all return empty results. **Flagged for 6B investigation.**
+- ✅ NO files modified, NO code written, NO schema/API changes — pure evidence extraction.
+
+## Next Steps
+
+```
+✅ PHASE-6A.1 — Prisma Models Audit                 ← COMPLETE (6 core models catalogued)
+✅ PHASE-6A.2 — API + Service Inventory             ← COMPLETE (this entry, 18 routes + 3 services catalogued)
+⏳ PHASE-6A.3 — Frontend / Admin UI Inventory       ← NEXT (audit src/app/admin/pricing, /admin/price-intelligence, /admin/compare, /compare, /listings/[slug] for Price/Compare UI components + hooks + consumer code paths)
+⏳ PHASE-6A.4 — Tests + Docs Inventory              ← (audit tests/** + docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md + docs/HEAVIX-MACHINE-COMPARISON-SPEC-V1.0.md for coverage + spec drift)
+⏳ PHASE-6B — Price Observation + History (build starts here, after 6A audit complete)
+   ─ Decision needed: PriceRecord vs PriceObservation consolidation; investigate recordPriceFromListing caller gap
+⏳ PHASE-6C — Comparable Engine (introduce Comparable model + extract comparable-selection logic from price-engine:386-480)
+⏳ PHASE-6D — Estimate + Confidence (add explanation structured field to PriceEstimate; persist estimates as rows; add observationIds provenance)
+⏳ PHASE-6E — Compare Engine (add @@unique([sessionId, listingId]); add entityType discriminator; add Product/Brand/ProductModel relations; add snapshot fields)
+⏳ PHASE-6F — Admin Review / Override (add price.* permission keys; wire requirePermission into admin/pricing/* routes; add audit hooks to compare mutations; add GET /api/admin/pricing/overrides consumer for listOverrides)
+```
+
+---
+
+## Task ID: PHASE-6A-3
+## Agent: Explore (UI + Tests + Runtime Auditor)
+## Task: Price/Compare UI Components + Tests + Runtime Smoke Evidence Audit (evidence-only)
+
+## Work Log:
+
+- ✅ Read worklog tail (lines 4440-4790) — confirmed 6A.1 + 6A.2 audits complete: 6 Prisma models, 18 routes / 15 URL paths (legacy `isAuthenticated()` only, no `requirePermission`), 3 service files (price-engine 1015L / price-intelligence 353L / compare-engine 930L), 0 `price.*` / `compare.*` permission keys, 5 unused service functions, 12 missing API routes.
+- ✅ Globbed `src/components/**` + `src/app/admin/**` + `src/app/dashboard/**` for `price-*` / `pricing-*` / `estimate-*` / `compar*` patterns — found 0 path-name matches (file names use no kebab-case `price-`/`compar-` prefix except for `price-engine.ts` / `compare-engine.ts` service modules already covered by 6A.2).
+- ✅ Grepped entire `src/` tree for `PriceObservation|PriceRecord|PriceEstimate|PriceOverride|ComparisonSession|ComparisonItem` (Prisma model names) → **10 files matched**, of which 4 are UI files: `src/components/listings/PriceEstimateCard.tsx`, `src/app/listings/[slug]/page.tsx`, `src/app/admin/pricing/page.tsx`, `src/app/admin/price-intelligence/page.tsx` (the rest are service files / API routes covered by 6A.2).
+- ✅ Grepped entire `src/` tree for `from '@/lib/(price-engine|price-intelligence|compare-engine)'` → **18 files** (all 18 are API route files + service files already covered by 6A.2). **No UI component imports these service modules directly** — UI talks to services only via the public + admin API routes.
+- ✅ Grepped entire `src/` tree for URL fragments `/api/compare|/api/price-|/api/pricing|/api/admin/pricing|/api/admin/compare|/api/ai-price` → **27 files** matched, of which 7 are UI components: `PriceIntelligence.tsx`, `PriceEstimateCard.tsx`, `compare/ComparePageClient.tsx`, `admin/pricing/PricingEngineClient.tsx`, `admin/price-intelligence/PriceIntelligenceClient.tsx`, `admin/compare/page.tsx`, `app/compare/page.tsx` (the other 20 are API routes already covered by 6A.2).
+- ✅ Cross-verified `src/components/listings/PriceIntelligence.tsx` is an **ORPHAN** — `grep -r 'import PriceIntelligence' src/` returns 0 matches; `grep -r 'compare/ComparePageClient' src/` returns 0 matches. Two dead UI files.
+- ✅ Read in full ALL 10 Price/Compare UI files: `PriceIntelligence.tsx` (174L), `PriceEstimateCard.tsx` (287L), `CompareButton.tsx` (95L), `compare/ComparePageClient.tsx` (394L), `admin/pricing/PricingEngineClient.tsx` (1292L), `admin/price-intelligence/PriceIntelligenceClient.tsx` (410L), `admin/compare/page.tsx` (664L), `app/compare/page.tsx` (977L), `admin/pricing/page.tsx` (42L server wrapper), `admin/price-intelligence/page.tsx` (222L server wrapper) = 5060 lines total.
+- ✅ Read `/home/z/my-project/src/app/listings/[slug]/page.tsx:15,18,343,416` — confirmed `CompareButton` and `PriceEstimateCard` are the only Price/Compare widgets wired into the public listing detail page; legacy `PriceIntelligence.tsx` is not rendered there.
+- ✅ Grepped `src/app/dashboard/**` for price/compare/estimat/observ/override — confirmed **0 dashboard surfaces** for Price/Compare (all matches are about `Listing.price` BigInt column displayed in deal-rooms/favorites, NOT about PriceIntelligence/CompareEngine).
+- ✅ Globbed `tests/**/*{price,pricing,estimate,compar,comparison,override,observation}*` → 1 file: `tests/phase6-price-compare.test.ts` (175 lines).
+- ✅ Grepped entire `tests/` directory for `PriceObservation|PriceRecord|PriceEstimate|PriceOverride|ComparisonSession|ComparisonItem|price-engine|compare-engine|price-intelligence|/api/compare|/api/pricing|...` → only `tests/phase6-price-compare.test.ts` matched. Cross-checked `tests/contract/` directory — **22 contract test files exist** (rbac-matrix, payment, machine, crud-pipeline, brand, listing, order, part, buy-request, offer, rfq, review, inspection, auction, product, company, deal, user, resource, page-builder, dispute, transport) — **0 of them test any of the 6 Price/Compare Prisma models**. No `price-record-contract.test.ts`, no `price-observation-contract.test.ts`, no `price-estimate-contract.test.ts`, no `price-override-contract.test.ts`, no `comparison-session-contract.test.ts`, no `comparison-item-contract.test.ts`, no `price-engine.test.ts`, no `compare-engine.test.ts`.
+- ✅ Read in full `tests/phase6-price-compare.test.ts` (175 lines, 25 `it()` blocks across 9 `describe` sections) — confirmed all 25 tests are **structural smoke tests**: they check (a) `fs.existsSync("src/lib/price-engine.ts")` is true, (b) `fs.readFileSync(...)` `.toContain("export async function estimatePrice")`, (c) `fs.readFileSync("prisma/schema.prisma")` `.toContain("model PriceEstimate")`, (d) `db.priceRecord.count() > 0`, (e) `db.listing.findMany` for varying prices. **Zero behavioral tests** — no test calls `estimatePrice()`, `getComparisonData()`, `createOverride()`, `getDifferencesOnly()`, `getSessionByShareToken()`, `recordObservation()`, or hits any of the 18 API routes via HTTP.
+- ✅ Read `tests/README.md` (108 lines) — confirmed test strategy scope: 5 unit tests + 1 integration test + planned-but-unwritten E2E + planned-but-unwritten security suites. Price/Compare is not mentioned in README at all.
+- ✅ Read `docs/verification/STEP-14.8-EVIDENCE.md:280-399` (lines 280-399) — confirmed §10.2 Production-build runtime smoke matrix contains exactly **21 URLs**: 4 public pages (`/`, `/listings`, `/brands`, `/login`) + 17 admin resource routes (`/admin/resources/{listings,brands,products,orders,deals,rfqs,users,payments,auctions,inspections,transportRequests,offers,disputes,buyRequests,parts,machines,reviews}`). **ZERO of the 21 URLs is a Price/Compare URL.**
+- ✅ Read `docs/verification/STEP-14.8-EVIDENCE.md:140-219` (§7.2 `@ts-nocheck` inventory) — confirmed 5 of the 18 Price/Compare route files carry legacy `@ts-nocheck` headers: `src/app/api/price-estimate/route.ts` (line 180), `src/app/api/price-history/route.ts` (line 181), `src/app/api/pricing/estimate/route.ts` (line 182), `src/app/api/admin/compare/[id]/route.ts` (line 163) — plus the admin page `src/app/admin/price-intelligence/page.tsx` (line 155).
+- ✅ Grepped `dev.log` (1001 lines) for `price|compar|estimat|observ|override` → **0 matches**. Grepped `dev.log` for all HTTP request lines → confirmed the only API requests logged are: `GET /`, `/api/listings`, `/api/taxonomy`, `/api/services`, `/api/recommendations`, `POST /api/auth/login`, and the entire `/api/admin/resources/*` matrix (lines 95-240). **ZERO Price/Compare API requests in the dev.log** — no `/api/price-*`, no `/api/pricing/*`, no `/api/compare*`, no `/api/admin/pricing/*`, no `/api/admin/compare/*`, no `/api/ai-price-*`.
+- ✅ Grepped `src/app/api/openapi/route.ts` (the OpenAPI registry) for price/compare patterns — confirmed the registry documents only 2 of the 18 Price/Compare routes: `/api/price-intelligence` (GET, line 420) and `/api/compare` (GET legacy ad-hoc path, line 462). The other 16 routes are absent.
+- ✅ Grepped `src/lib/admin/legacy-migration-checklist.ts` for `compare|pricing|price-intelligence` — confirmed:
+  - `compare` → `MIGRATE_TO_RESOURCE` → `resources/comparisonSession` (capabilities: list/view/delete), status `PENDING`, risk `LOW`, owner `analytics` (line 156)
+  - `price-intelligence` → `KEEP_AS_IS`, risk `LOW`, owner `pricing` (line 160)
+  - `pricing` → `MIGRATE_TO_RESOURCE` → `resources/subscriptionPlan` — **MISCATEGORIZED**: legacy `pricing` admin page actually drives PriceObservation + PriceOverride workflows via `/api/admin/pricing/observations` + `/api/admin/pricing/override`, but is mapped to the `subscriptionPlan` resource (subscription billing domain), NOT to a `priceIntelligence` or `priceOverride` resource (line 161). Cross-flagged by 6A.2.
+- ✅ NO files modified, NO code written, NO schema/API/UI changes — pure evidence extraction.
+
+# PHASE 6A.3 — UI Components + Tests + Runtime Audit Report
+
+## Summary
+
+- **Total Price/Compare UI component files found:** 10 (8 live + 2 orphan)
+  - 5 client components: `PriceIntelligence.tsx` (orphan, 174L), `PriceEstimateCard.tsx` (287L), `CompareButton.tsx` (95L), `compare/ComparePageClient.tsx` (orphan, 394L), `admin/pricing/PricingEngineClient.tsx` (1292L), `admin/price-intelligence/PriceIntelligenceClient.tsx` (410L)
+  - 3 page-as-client: `app/admin/compare/page.tsx` (664L), `app/compare/page.tsx` (977L)
+  - 2 server-component wrappers: `admin/pricing/page.tsx` (42L), `admin/price-intelligence/page.tsx` (222L)
+  - 1 consumer: `listings/[slug]/page.tsx` (503L) — embeds `PriceEstimateCard` + `CompareButton` only (not the orphan `PriceIntelligence.tsx`)
+- **Total Price/Compare test files found:** 1 (`tests/phase6-price-compare.test.ts`, 175 lines)
+- **Total tests:** 25 (all structural smoke — file-existence + content-string checks; **zero behavioral tests**)
+- **Components with backend integration:** 8 of 8 client UI files fetch from `/api/*` routes; 0 client UI files import `@/lib/price-engine` / `@/lib/compare-engine` / `@/lib/price-intelligence` directly (UI talks to services only via HTTP routes)
+- **Components with client-side permission checks:** 0 — no `user.role === 'ADMIN'` / `useUser()` / `hasPermission()` checks anywhere in the UI; the admin pages rely entirely on the legacy `isAuthenticated()` cookie check at the API layer (which itself does NOT call `requirePermission` per 6A.2 audit)
+- **Stub/partial components:** 2 orphans + 1 partial:
+  - `src/components/listings/PriceIntelligence.tsx` (174L) — ORPHAN: not imported anywhere; uses ad-hoc verdict vocab `UNDERPRICED|FAIR|OVERPRICED` (line 14) which conflicts with canonical `PriceHealthStatus = IN_RANGE|BELOW_RANGE|ABOVE_RANGE|INSUFFICIENT` (price-engine.ts:45-49) used by live `PriceEstimateCard.tsx` (line 41)
+  - `src/components/compare/ComparePageClient.tsx` (394L) — ORPHAN: not imported anywhere; uses legacy ad-hoc compare (fetches `GET /api/compare?ids=a,b,c` legacy path, lines 79-82; inline `specs` array at lines 145-192 with hardcoded 3-item cap) instead of `getComparisonData` structured table; predates V1.0 Compare spec
+  - `src/app/admin/pricing/PricingEngineClient.tsx:823-845` (OverridesTab) — PARTIAL: on successful override POST, the new row is **locally fabricated** with `id: "new-" + Date.now()`, `originalEstimate: 0`, `overriddenBy: "ADMIN"` (lines 833-842) — does NOT re-fetch from a `GET /api/admin/pricing/overrides` endpoint (which does not exist per 6A.2). Stale-on-reload.
+- **Runtime smoke evidence found:** 0 — STEP-14.8 §10.2 smoke matrix has 21 URLs, **none** are Price/Compare (lines 298-322 of `docs/verification/STEP-14.8-EVIDENCE.md`); `dev.log` (1001 lines) contains **zero** Price/Compare HTTP requests (only `/api/listings`, `/api/taxonomy`, `/api/services`, `/api/recommendations`, `/api/auth/login`, `/api/admin/resources/*` matrix).
+- **Missing tests (gaps):** 25+ gap items (catalogued below in Test Gaps section).
+
+## UI Component Inventory
+
+### Component 1: PriceIntelligence (ORPHAN)
+- **File:** `src/components/listings/PriceIntelligence.tsx:1-174` (174 lines)
+- **Component name:** `PriceIntelligence`
+- **Props:** `{ listingId: string; listingTitle: string }`
+- **Purpose:** Renders a "هوش قیمت هویکس" (Heavix Price Intelligence) widget showing UNDERPRICED/FAIR/OVERPRICED verdict + min/max/avg/median stats from comparable listings.
+- **Backend integration:** Fetches `GET /api/ai-price-intelligence?listingId=X` (line 68) — the ad-hoc verdict route (route 4 in 6A.2 inventory, returns UNDERPRICED/FAIR/OVERPRICED vocab, NO provenance to PriceObservation/PriceRecord tables).
+- **Permissions checked client-side:** ❌ none
+- **Status:** ⚠️ **ORPHAN** — never imported anywhere in `src/`. Confirmed via `grep -r 'import PriceIntelligence' src/` returning 0 matches. Also uses the ad-hoc verdict vocabulary (`UNDERPRICED|FAIR|OVERPRICED`, line 14) which conflicts with the canonical `PriceHealthStatus` (`IN_RANGE|BELOW_RANGE|ABOVE_RANGE|INSUFFICIENT`) used by the live `PriceEstimateCard.tsx:41`. Two competing verdict vocabularies at the UI layer too (mirrors 6A.2 §"Two competing 'verdict' vocabularies" finding).
+- **Risk:** Dead code — should be deleted in 6B if no consumer is reintroduced, OR re-wired into `/listings/[slug]/page.tsx` if the ad-hoc verdict is desired as a parallel "AI verdict" widget.
+
+### Component 2: PriceEstimateCard (live)
+- **File:** `src/components/listings/PriceEstimateCard.tsx:1-287` (287 lines)
+- **Component name:** `PriceEstimateCard`
+- **Props:** `{ listingId: string }`
+- **Purpose:** Renders the canonical public-facing "تخمین قیمت HEAVIX" card on the listing detail page — shows estimated price + range + confidence + freshness + comparables count + price health (IN_RANGE/BELOW_RANGE/ABOVE_RANGE/INSUFFICIENT) + main drivers + warnings + legal disclaimer. RTL dark theme.
+- **Backend integration:** Fetches `GET /api/pricing/estimate?listingId=X` (line 102) and `GET /api/pricing/health?listingId=X` (line 105) in parallel via `Promise.all`. Both endpoints call `@/lib/price-engine`'s `estimatePrice` (route 7 in 6A.2) and `getPriceHealth` (route 8 in 6A.2) respectively. Does NOT call `/api/price-estimate` (route 2) — uses the canonical `/api/pricing/*` paths only.
+- **Permissions checked client-side:** ❌ none (page is public — the consumer `listings/[slug]/page.tsx:343` does not gate on role either)
+- **Status:** ✅ **complete** — no TODOs/FIXMEs, full data flow + loading skeleton + insufficient-data state + disclaimer per spec §9.
+- **Embedded in:** `src/app/listings/[slug]/page.tsx:343` (`<PriceEstimateCard listingId={listing.id} />`)
+
+### Component 3: CompareButton (live)
+- **File:** `src/components/listings/CompareButton.tsx:1-95` (95 lines)
+- **Component name:** `CompareButton`
+- **Props:** `{ listingId: string; title?: string }`
+- **Purpose:** Adds the current listing's ID to a `localStorage` pending queue (`heavix:compare:pendingListingIds`) and navigates to `/compare`. Max 5 items enforced (line 48). The `/compare` page picks up the pending IDs on mount and creates a fresh comparison session via `POST /api/compare`.
+- **Backend integration:** ❌ NO direct API calls — pure localStorage + `router.push("/compare")`. The actual session creation happens in `app/compare/page.tsx:302-306` via `POST /api/compare`.
+- **Permissions checked client-side:** ❌ none (button is visible to all visitors; the public `/compare` page is anonymous by design per 6A.2 route 11)
+- **Status:** ✅ **complete** — no TODOs; full UX (toast + busy/added states + max-item toast). Note: does NOT verify the listing still exists / is PUBLISHED before enqueue — silent failures possible if listing is later archived.
+- **Embedded in:** `src/app/listings/[slug]/page.tsx:416` (`<CompareButton listingId={listing.id} title={listing.title} />`)
+
+### Component 4: ComparePageClient (ORPHAN, LEGACY)
+- **File:** `src/components/compare/ComparePageClient.tsx:1-394` (394 lines)
+- **Component name:** `ComparePageClient`
+- **Props:** `{ categories: { id, name, slug, parentId, icon? }[] }`
+- **Purpose:** Renders a pre-V1.0 ad-hoc comparison table — user picks up to 3 listings via search, fetches them via legacy `GET /api/compare?ids=a,b,c` path, and shows inline `specs[]` rows (price, brand, category, condition, year, hours, city, province, viewCount, featured, verified). NO session persistence, NO AI summary, NO share token, NO differences-only view, NO comparable engine integration.
+- **Backend integration:** Fetches `GET /api/compare?ids=...` (line 79) — the **LEGACY ad-hoc GET path** (route 11 in 6A.2, lines 94-131 of `src/app/api/compare/route.ts`, marked `LEGACY ad-hoc compare` at line 89). Also fetches `GET /api/admin/listings?q=...` (line 116) — wrong endpoint (admin-only, will 401 anonymous users). Does NOT use the canonical `POST /api/compare` (createSession path) or `GET /api/compare/[id]` (`getComparisonData` structured table).
+- **Permissions checked client-side:** ❌ none
+- **Status:** ⚠️ **ORPHAN + LEGACY** — never imported anywhere (`grep -r 'compare/ComparePageClient' src/` returns 0 matches). Predates V1.0 Compare spec (`docs/HEAVIX-MACHINE-COMPARISON-SPEC-V1.0.md`). Hardcoded 3-item cap (line 135) vs V1.0 spec's 2-5 range. Inline `specs` array (lines 145-192) duplicates logic that now lives in `compare-engine.ts:275 getComparisonData` (structured `Row[]` with `isDifferent` flag). Dead code — should be deleted in 6E.
+- **Risk:** Confusing codebase — a developer reading `src/components/compare/` would assume `ComparePageClient` is the live compare page, but it's actually the legacy version. The real compare page is `src/app/compare/page.tsx` (Component 7 below).
+
+### Component 5: PricingEngineClient (live, admin)
+- **File:** `src/app/admin/pricing/PricingEngineClient.tsx:1-1292` (1292 lines)
+- **Component name:** `PricingEngineClient`
+- **Props:** `{ categories: {id,name,slug}[]; brands: {id,name,slug}[]; overrides: Override[] }`
+- **Purpose:** 4-tab admin UI for the HEAVIX price estimation engine:
+  1. **Estimates tab** (lines 231-550): debounced listing search (`/api/listings?q=...`) → pick a listing → load `estimatePrice` + `getPriceHealth` → show estimated price + range + confidence + freshness + comparables + mainDrivers + warnings + health verdict. Mirrors `PriceEstimateCard.tsx` but with admin chrome (categories/brands left rail, comparables list expanded).
+  2. **Observations tab** (lines 552-754): paginated `PriceObservation` table with brand/category/source/status filters. Fetches `GET /api/admin/pricing/observations?...` (line 580).
+  3. **Overrides tab** (lines 756-1011): paginated `PriceOverride` list (from SSR-loaded `initialOverrides` prop) + new-override form. Submits `POST /api/admin/pricing/override` (line 806) with `{ listingId, overridePrice, reason }`.
+  4. **History tab** (lines 1013-1233): brand+category+months selectors → CSS bar chart of monthly median price + range. Fetches `GET /api/pricing/history?brandId=X&categoryId=Y&months=Z` (line 1034).
+- **Backend integration:** 5 endpoints: `/api/listings` (search), `/api/pricing/estimate`, `/api/pricing/health`, `/api/admin/pricing/observations`, `/api/admin/pricing/override`, `/api/pricing/history`. Does NOT call `/api/price-estimate` (route 2), `/api/price-history` (route 3), `/api/ai-price-intelligence` (route 4), `/api/ai-price-suggestion` (route 5), `/api/price-intelligence` (route 1). Canonical `/api/pricing/*` paths only.
+- **Permissions checked client-side:** ❌ none — relies entirely on the legacy `isAuthenticated()` cookie check at the API layer (per 6A.2 audit, route 9-10). No `useUser()` hook, no `hasRole('ADMIN')`, no `useSession()` check. A non-admin visitor who somehow reaches `/admin/pricing` would see the page chrome but get 401s from the APIs.
+- **Status:** ⚠️ **partial** — Observations tab is **read-only** (no PATCH/DELETE observation UI; no flag/exclude workflow UI; no create-observation UI — would all be needed for 6B). Overrides tab uses **locally fabricated rows** on successful POST (line 833: `id: "new-" + Date.now()`, `originalEstimate: 0`, `overriddenBy: "ADMIN"`) instead of re-fetching from a `GET /api/admin/pricing/overrides` route (which doesn't exist per 6A.2 gap). History tab uses CSS bars only (no proper charting library), no CSV export, no brand+category combo picker. SSR wrapper `admin/pricing/page.tsx:32` calls `listOverrides(100)` directly (server-side) — but `listOverrides` has no API route per 6A.2 audit (gap).
+- **Note:** A small typo at line 239 (`ealth, setHealth] = useState<Health | null>(null);` — missing `[h` prefix) — likely masked by `@ts-nocheck` legacy header on the parent admin/price-intelligence/page.tsx (line 1, `// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY`); PricingEngineClient itself does not carry `@ts-nocheck`.
+
+### Component 6: PriceIntelligenceClient (live, admin)
+- **File:** `src/app/admin/price-intelligence/PriceIntelligenceClient.tsx:1-410` (410 lines)
+- **Component name:** `PriceIntelligenceClient`
+- **Props:** `{ categories, brands, filters, statsRows, outliers, categoryId, brandId, year }`
+- **Purpose:** Admin UI for the older "P2-22" price intelligence layer (operates on `PriceRecord` table). Shows: suggestions cards (min/avg/max/confidence), per-category+brand stats table (avg/min/max/count), monthly history bar chart, outlier listings (≥50% deviation from median). Filter chips for category/brand/year.
+- **Backend integration:** Receives `statsRows` + `outliers` from SSR parent page (`admin/price-intelligence/page.tsx:194-220` which runs `db.priceRecord.groupBy` + `db.listing.findMany` directly). Additionally fetches `GET /api/price-intelligence?action=history&...` (line 100) and `GET /api/price-intelligence?action=suggestions&...` (line 108) client-side — these are the legacy `price-intelligence.ts` engine functions (`getPriceHistory` + `getPriceSuggestions`). Does NOT call `/api/pricing/*` (canonical price-engine paths). Does NOT call `/api/ai-price-intelligence` (ad-hoc verdict).
+- **Permissions checked client-side:** ❌ none
+- **Status:** ⚠️ **partial + LEGACY** — parent page `admin/price-intelligence/page.tsx` carries `@ts-nocheck — STEP-14.6-LEGACY` header (line 1, confirmed in STEP-14.8-EVIDENCE.md:155). Operates on `PriceRecord` table which (per 6A.2 critical finding) is **write-dead** — `recordPriceFromListing` (the only writer) has 0 callers. So this entire admin view likely shows empty `statsRows` and empty `outliers` for most filters unless seed data is loaded. Cross-flagged with 6A.2 §"Critical data-flow risk". Migration status per `legacy-migration-checklist.ts:160` is `KEEP_AS_IS` (low risk, owner `pricing`) — but the 6A.2 finding suggests it should be either deleted (if `PriceRecord` is consolidated into `PriceObservation`) or its parent should be migrated to use `PriceObservation` engine functions instead.
+
+### Component 7: AdminComparePage (live, admin)
+- **File:** `src/app/admin/compare/page.tsx:1-664` (664 lines)
+- **Component name:** `AdminComparePage` (default export, no separate client component file)
+- **Props:** none (pure client component, fetches own data)
+- **Purpose:** 3-section admin overview for the V1.0 comparison engine:
+  1. **Sessions table** (lines 288-409): lists comparison sessions with name (inline rename via PATCH), status badge, item count, AI summary indicator + timestamp, created/updated timestamps, action buttons (view detail, open share link in new tab, archive via DELETE).
+  2. **Attribute visibility config** (lines 411-522): checkbox matrix of all `AttributeDefinition` rows — toggles which attributes appear in the public compare table (`compareVisibleAttributeIds` JSON in `SiteSettings`). Saved via `PUT /api/admin/compare` (line 168).
+  3. **Detail drawer** (lines 524-652): modal showing the session's full comparison table — fetches `GET /api/admin/compare/[id]` (line 229), renders structured `Row[]` + `Cell[]` data (`crossCategoryWarning`, `isDifferent` flag dots, `isPrice` styling, `aiSummary` panel).
+- **Backend integration:** 4 endpoints: `GET /api/admin/compare` (sessions list + attributes, line 138), `PUT /api/admin/compare` (save visibleAttributeIds, line 168), `DELETE /api/admin/compare/[id]` (archive session, line 191), `PATCH /api/admin/compare/[id]` (rename session, line 206), `GET /api/admin/compare/[id]` (session detail, line 229). All 4 routes carry legacy `isAuthenticated()` cookie check per 6A.2 audit (routes 17-18).
+- **Permissions checked client-side:** ❌ none
+- **Status:** ✅ **complete** — full admin UI for the V1.0 Compare spec. No TODOs. Stat cards (line 281-286) show active/archived/AI-summary counts + visible attribute count. Inline rename UX (lines 318-351). Share-link opens `?share=TOKEN` in new tab (line 387). Detail drawer is read-only (no inline cell editing, no audit on view — both are intentional design choices per spec).
+- **Gap:** No bulk-archive button on sessions (the bulk-action surface `canBulkAction()` per 6A.2 audit has no `compare.session` entry). No "regenerate AI summary" button (the `POST /api/compare/[id]/ai-summary` route exists publicly per 6A.2 route 15, but admin UI doesn't expose it). No "create comparison session" admin action — admin can only view/archive sessions created by users.
+
+### Component 8: ComparePage (live, public)
+- **File:** `src/app/compare/page.tsx:1-977` (977 lines)
+- **Component name:** `ComparePage` (default export wrapper with `<Suspense>` + `ComparePageInner` inner component)
+- **Props:** none (pure client component)
+- **Purpose:** Public-facing V1.0 comparison engine UI. Two modes:
+  - **Shared mode** (`?share=TOKEN` query): read-only render of a shared session via `GET /api/compare/shared/[token]` (line 239). Hides search bar / save / share / new buttons.
+  - **Authoring mode** (no `?share`): full UX — search listings (`/api/listings`), add via `POST /api/compare/[id]/items` (creates session lazily on first add via `POST /api/compare`), remove via `DELETE /api/compare/[id]/items/[itemId]`, "تفاوت‌ها فقط" (differences-only) toggle (line 549-553 filters `data.rows.filter(r => r.isDifferent)`), "خلاصه هوش مصنوعی" button (`POST /api/compare/[id]/ai-summary`, line 454), "ذخیره مقایسه" dialog (PATCH `/api/compare/[id]` with `{ name, refreshShareToken: !session?.shareToken }`, line 479), "اشتراک‌گذاری" copies `${origin}/compare?share=TOKEN` to clipboard (line 519), "مقایسهٔ جدید" resets (line 536). Min 2 / max 5 items (lines 160-161). Cross-category warning (lines 587-601). Per-item price-range badge via `PriceRangeInfo` helper (line 960). Cell provenance labels (lines 853-863).
+- **Backend integration:** 7 endpoints: `POST /api/compare` (create session, line 302/363), `GET /api/compare/[id]` (fetch session, line 210), `POST /api/compare/[id]/items` (add item, line 406), `DELETE /api/compare/[id]/items/[itemId]` (remove item, line 434), `POST /api/compare/[id]/ai-summary` (AI summary, line 454), `PATCH /api/compare/[id]` (save + refresh share token, line 479), `GET /api/compare/shared/[token]` (load shared session, line 239). All 7 routes are public (zero auth) per 6A.2 routes 11-16.
+- **Permissions checked client-side:** ❌ none — by design (anonymous compare). The `isReadOnly` flag (line 184) gates only UI affordances, not authorization. There is no client-side check that the user "owns" the session before `PATCH`/`DELETE` — and per 6A.2 there is also no server-side ownership check (`GET /api/compare/[id]` does not verify `userId`, line 17 of route file). **Privacy/abuse risk:** any user with a session ID can fetch + mutate any other user's session. Cross-flagged with 6A.2 route 12.
+- **Status:** ✅ **complete** — full V1.0 Compare spec implementation. Min/max item enforcement (lines 390, 575), dedupe (line 399), localStorage resume (line 294), 410/404 handling on shared-link load (lines 211-219), Suspense boundary for `useSearchParams` (Next.js 16 static export requirement, lines 164-178). No TODOs. Per spec §9 "no winner / no aggregate ranking" — only `isDifferent` row dots, no ranking column.
+- **Note:** STEP-14.8-EVIDENCE.md:253 confirms the Suspense wrapper was added to fix static-export failure ("`useSearchParams()` must be wrapped in `<Suspense>` for static export").
+
+### Server wrappers (not components per se but worth noting)
+
+### Wrapper 9: AdminPricingPage
+- **File:** `src/app/admin/pricing/page.tsx:1-42` (42 lines, server component)
+- **Purpose:** SSR wrapper that loads categories + brands + `listOverrides(100)` (line 32 — direct call to `@/lib/price-engine`'s `listOverrides` which has NO API consumer per 6A.2). Renders `PricingEngineClient`.
+- **Permissions checked server-side:** ❌ none — `export const dynamic = "force-dynamic"` (line 5), no `requirePermission`, no `isAuthenticated`, no `getCurrentUser` check. Anyone reaching `/admin/pricing` URL would get server-side `listOverrides` data rendered (a privacy/audit concern — overrides contain admin reasoning text).
+- **Status:** ⚠️ **partial** — works functionally but has NO auth gate at the server-component level. Relies entirely on the admin shell layout `/admin/layout.tsx` to redirect non-admins. The 4 API routes it consumes DO carry `isAuthenticated()` (per 6A.2 routes 9-10), so data fetches would 401 — but the SSR `listOverrides(100)` call at line 32 bypasses the API layer entirely.
+
+### Wrapper 10: PriceIntelligencePage
+- **File:** `src/app/admin/price-intelligence/page.tsx:1-222` (222 lines, server component)
+- **Purpose:** SSR wrapper that loads categories + brands + per-(category,brand) stats (via `db.priceRecord.groupBy` at line 59) + outlier listings (via `db.listing.findMany` + JS median computation at lines 125-194). Renders `PriceIntelligenceClient`.
+- **Permissions checked server-side:** ❌ none — `// @ts-nocheck — HEAVIX Legacy` header (line 1), `export const dynamic = "force-dynamic"` (line 15), no auth gate. Same SSR-bypass concern as Wrapper 9.
+- **Status:** ⚠️ **partial + LEGACY** — carries the legacy `@ts-nocheck` header (confirmed at STEP-14.8-EVIDENCE.md:155). Operates on `PriceRecord` table (write-dead per 6A.2 critical finding) — likely returns empty `statsRows` for production filters unless `prisma/seed-price-records.ts` is loaded.
+
+### Component 11: listings/[slug]/page.tsx (consumer page)
+- **File:** `src/app/listings/[slug]/page.tsx:1-503` (503 lines)
+- **Role:** Consumer of `PriceEstimateCard` (line 343) and `CompareButton` (line 416). Does NOT render the orphan `PriceIntelligence.tsx` widget. The listing detail page shows the canonical price estimate card + a compare CTA — no other Price/Compare surfaces.
+- **Permissions:** public page; no auth gate on PriceEstimateCard or CompareButton.
+
+## Test Inventory
+
+### Test 1: tests/phase6-price-compare.test.ts (ONLY Price/Compare test file)
+- **File:** `tests/phase6-price-compare.test.ts:1-175` (175 lines)
+- **Tests:** 25 `it()` blocks across 9 `describe()` sections
+- **What it tests:** Structural smoke only — checks that (a) certain files exist (`fs.existsSync("src/lib/price-engine.ts")` line 38, `fs.existsSync("src/app/api/price-estimate/route.ts")` line 122, etc.); (b) certain files contain certain string literals (`fs.readFileSync(...).toContain("export async function estimatePrice")` line 43, `.toContain("model PriceEstimate")` line 63, `.toContain("HIGH")`/`.toContain("MEDIUM")`/`.toContain("LOW")` lines 53-55, etc.); (c) DB has `PriceRecord` rows (`db.priceRecord.count() > 0` line 15); (d) listings have varying prices across multiple brands (lines 156-173).
+- **Test type:** ⚠️ **structural smoke** (NOT contract, NOT unit, NOT integration, NOT E2E). The 9 sections are:
+  1. "1. Price Data Foundation" — 3 tests (lines 12-33): PriceRecord has data, listings have prices, PriceRecord has source attribution.
+  2. "2. Price Engine" — 4 tests (lines 36-57): file exists, exports `estimatePrice`, exports `getPriceHistory`, contains "HIGH/MEDIUM/LOW" strings.
+  3. "3. Price Estimate Schema" — 3 tests (lines 60-75): schema contains `model PriceEstimate`, `model PriceObservation`, `confidence`.
+  4. "4. Compare Engine" — 5 tests (lines 78-104): file exists, exports `createSession`, `getComparisonData`, `getDifferencesOnly`, contains "LISTING/PRODUCT/MODEL" strings.
+  5. "5. Compare Schema" — 2 tests (lines 107-117): schema contains `model ComparisonSession`, `model ComparisonItem`.
+  6. "6. API Routes" — 3 tests (lines 120-132): files exist for `/api/price-estimate`, `/api/price-history`, `/api/compare`.
+  7. "7. Admin" — 1 test (line 136-138): `/admin/price-intelligence/page.tsx` exists.
+  8. "8. Price Override" — 2 tests (lines 143-151): schema contains `PriceOverride`, price-engine exports `createOverride`.
+  9. "9. Price Range Data" — 2 tests (lines 156-173): listings have varying prices, multiple brands.
+- **Status:** ⚠️ **PASSING but extremely shallow** — verifies file presence + string presence, never executes the engine functions, never hits the API routes, never verifies model field types/relations/indexes (which is what `tests/contract/*-contract.test.ts` files do for other domains like brand/listing/order/etc.). Zero behavioral coverage of: comparable selection, median/p25/p75 confidence scoring, freshness calc, override audit trail, session lifecycle, share-token uniqueness, differences-only filter, AI summary generation, observation flag/exclude workflow, cross-category warning, 5-item cap, dedupe.
+
+### Contract test inventory (cross-checked, all 22 files)
+- **Files:** `tests/contract/{rbac-matrix,payment,machine,crud-pipeline,brand,listing,order,part,buy-request,offer,rfq,review,inspection,auction,product,company,deal,user,resource,page-builder,dispute,transport}-contract.test.ts`
+- **Price/Compare coverage:** ❌ **NONE** — no `price-record-contract.test.ts`, no `price-observation-contract.test.ts`, no `price-estimate-contract.test.ts`, no `price-override-contract.test.ts`, no `comparison-session-contract.test.ts`, no `comparison-item-contract.test.ts`. All 6 Price/Compare Prisma models catalogued in 6A.1 have ZERO contract test coverage.
+
+### Unit test inventory
+- **Files:** `tests/unit/{rbac,password,rate-limit,upload-security,brand-alias}.test.ts`
+- **Price/Compare coverage:** ❌ NONE — no `price-engine.test.ts`, no `compare-engine.test.ts`, no `price-intelligence.test.ts`. None of the 3 service modules (1015L + 353L + 930L = 2298 lines) has any unit test.
+
+### Integration test inventory
+- **Files:** `tests/integration/auth.test.ts`
+- **Price/Compare coverage:** ❌ NONE
+
+### E2E / Security suites
+- **Status:** ❌ NOT WRITTEN (per `tests/README.md:66-88` — "planned, not yet written"). Price/Compare endpoints would be entirely uncovered.
+
+## Test Gaps (25+ gaps)
+
+### Engine / service behavior (zero coverage)
+- ❌ No test for `price-engine.estimatePrice` returning `INSUFFICIENT` when comparables < 2 (the spec's "never fabricate prices" invariant at price-engine.ts:482)
+- ❌ No test for `price-engine.estimatePrice` median/p25/p75 confidence calculation (price-engine.ts:174-480, ~300 lines of comparable selection + scoring logic — untested)
+- ❌ No test for `price-engine.estimatePrice` strict → relaxed → brand+category-only fallback chain (price-engine.ts:386-435, 442-480)
+- ❌ No test for `price-engine.getPriceHealth` IN_RANGE/BELOW_RANGE/ABOVE_RANGE/INSUFFICIENT classification (price-engine.ts:622)
+- ❌ No test for `price-engine.getPriceHistory` zero-fill of empty months (price-engine.ts:706)
+- ❌ No test for `price-engine.recordObservation` silent-on-error behavior (price-engine.ts:854-857)
+- ❌ No test for `price-engine.createOverride` audit trail — verifies `logAudit({ action: "pricing.override", entityType: "PriceOverride", before, after, ... })` is called with correct before/after payload (price-engine.ts:897-917)
+- ❌ No test for `price-engine.listObservations` filter clamping (limit 1..200, offset ≥0) (price-engine.ts:933-935)
+- ❌ No test for `price-intelligence.recordPriceFromListing` (price-intelligence.ts:122) — **flagged as dead writer by 6A.2 — needs investigation whether it's called by any background job**
+- ❌ No test for `price-intelligence.detectOutliers` Tukey-fence math (p25 - 1.5*IQR, p75 + 1.5*IQR) (price-intelligence.ts:242)
+- ❌ No test for `price-intelligence.getPriceSuggestions` percentile computation (price-intelligence.ts:313)
+- ❌ No test for `compare-engine.createSession` 24-char base64url share token uniqueness (compare-engine.ts:184) — uniqueness is critical for share-link security
+- ❌ No test for `compare-engine.addItem` 5-item cap + dedupe by listingId (compare-engine.ts:216-250)
+- ❌ No test for `compare-engine.getComparisonData` structured row projection — `isDifferent` flag computation (compare-engine.ts:275-690, 415 lines of projection logic — untested)
+- ❌ No test for `compare-engine.getDifferencesOnly` filter behavior (compare-engine.ts:699) — the engine function exists, the UI calls it via `data.rows.filter(r => r.isDifferent)` (`compare/page.tsx:552`), but neither is tested
+- ❌ No test for `compare-engine.getSessionByShareToken` expiry + ARCHIVED enforcement (compare-engine.ts:708-720) — security-critical for share-link access
+- ❌ No test for `compare-engine.generateAISummary` ZAI prompt + `buildFallbackSummary` fallback (compare-engine.ts:737-821)
+- ❌ No test for `compare-engine.listSessionsForAdmin` itemCount aggregation (compare-engine.ts:863)
+- ❌ No test for the 3 dead `compare-engine` helpers (`archiveSession`, `renameSession`, `refreshShareToken` — flagged as unused by 6A.2 — no test verifies they're actually wired or unwired)
+
+### API route behavior (zero coverage of 18 routes)
+- ❌ No integration test for `POST /api/admin/pricing/override` returning 200 with the override ID + audit log being created (route 9 in 6A.2)
+- ❌ No integration test for `GET /api/admin/pricing/observations` filter + pagination behavior (route 10)
+- ❌ No integration test for `POST /api/compare` session creation with `listingIds` array (route 11)
+- ❌ No integration test for `GET /api/compare/[id]` ownership check — should return 403 for non-owner, currently returns 200 for any session ID (route 12 — flagged as privacy gap by 6A.2)
+- ❌ No integration test for `DELETE /api/compare/[id]` archiving (route 12)
+- ❌ No integration test for `PATCH /api/compare/[id]` rename + `refreshShareToken` boolean behavior (route 12)
+- ❌ No integration test for `POST /api/compare/[id]/items` 5-item cap + dedupe (route 13)
+- ❌ No integration test for `DELETE /api/compare/[id]/items/[itemId]` (route 14)
+- ❌ No integration test for `POST /api/compare/[id]/ai-summary` LLM call + fallback (route 15)
+- ❌ No integration test for `GET /api/compare/shared/[token]` expiry/ARCHIVED enforcement (route 16) — security-critical
+- ❌ No integration test for `GET /api/admin/compare` sessions list + attributes (route 17)
+- ❌ No integration test for `PUT /api/admin/compare` visibleAttributeIds update + cache invalidation (route 17 — note: no cache invalidation implemented per 6A.2 gap)
+- ❌ No integration test for `DELETE /api/admin/compare/[id]` archive (route 18)
+- ❌ No integration test for `PATCH /api/admin/compare/[id]` rename (route 18)
+- ❌ No integration test for `GET /api/price-estimate` shape `{ estimate: {...} }` vs `/api/pricing/estimate` shape `{ modelVersion, disclaimer, ...result }` — the 2-route contract divergence flagged by 6A.2
+- ❌ No integration test for the 4 admin Price/Compare routes rejecting anonymous requests (currently they accept any session with `isAuthenticated()` cookie only — no `requirePermission` per 6A.2)
+
+### UI component behavior (zero coverage)
+- ❌ No component test for `PriceEstimateCard` loading/error/insufficient states
+- ❌ No component test for `CompareButton` 5-item cap + dedupe UX
+- ❌ No component test for `app/compare/page.tsx` shared-vs-authoring mode switching
+- ❌ No component test for `app/compare/page.tsx` differences-only toggle filtering
+- ❌ No component test for `admin/compare/page.tsx` attribute visibility save flow
+
+## Runtime Evidence
+
+### STEP-14.8 §10.2 Production smoke matrix (21 URLs)
+- ✅ All 4 public pages: `/`, `/listings`, `/brands`, `/login` return 200 (`docs/verification/STEP-14.8-EVIDENCE.md:302-305`)
+- ✅ All 17 admin resource routes return 307 → `/login` for unauthenticated access (`docs/verification/STEP-14.8-EVIDENCE.md:306-322`): `/admin/resources/{listings,brands,products,orders,deals,rfqs,users,payments,auctions,inspections,transportRequests,offers,disputes,buyRequests,parts,machines,reviews}`
+- ❌ **0 of the 21 URLs** are Price/Compare URLs:
+  - ❌ `/api/admin/pricing/observations` — NOT in smoke matrix
+  - ❌ `/api/admin/pricing/override` — NOT in smoke matrix
+  - ❌ `/api/pricing/estimate` — NOT in smoke matrix
+  - ❌ `/api/pricing/health` — NOT in smoke matrix
+  - ❌ `/api/pricing/history` — NOT in smoke matrix
+  - ❌ `/api/price-estimate` — NOT in smoke matrix
+  - ❌ `/api/price-history` — NOT in smoke matrix
+  - ❌ `/api/price-intelligence` — NOT in smoke matrix
+  - ❌ `/api/ai-price-intelligence` — NOT in smoke matrix
+  - ❌ `/api/ai-price-suggestion` — NOT in smoke matrix
+  - ❌ `/api/compare` (GET or POST) — NOT in smoke matrix
+  - ❌ `/api/compare/[id]` (GET, PATCH, DELETE) — NOT in smoke matrix
+  - ❌ `/api/compare/[id]/items` (POST) — NOT in smoke matrix
+  - ❌ `/api/compare/[id]/items/[itemId]` (DELETE) — NOT in smoke matrix
+  - ❌ `/api/compare/[id]/ai-summary` (POST) — NOT in smoke matrix
+  - ❌ `/api/compare/shared/[token]` (GET) — NOT in smoke matrix
+  - ❌ `/api/admin/compare` (GET, PUT) — NOT in smoke matrix
+  - ❌ `/api/admin/compare/[id]` (GET, DELETE, PATCH) — NOT in smoke matrix
+  - ❌ `/admin/pricing` page — NOT in smoke matrix
+  - ❌ `/admin/price-intelligence` page — NOT in smoke matrix
+  - ❌ `/admin/compare` page — NOT in smoke matrix
+  - ❌ `/compare` public page — NOT in smoke matrix
+  - ❌ `/listings/[slug]` (the page that embeds `PriceEstimateCard` + `CompareButton`) — NOT in smoke matrix
+
+### dev.log runtime evidence (1001 lines)
+- ✅ Logged HTTP requests cover: `GET /`, `GET /api/listings?limit=8`, `GET /api/taxonomy`, `GET /api/services?limit=50`, `GET /api/recommendations?limit=8&refresh=1` (401 expected), `POST /api/auth/login`, and the entire `/api/admin/resources/*` matrix (lines 95-240 of dev.log, all returning 200 except 2 transient 500s on listings + buy-requests that were later fixed).
+- ❌ **0 Price/Compare HTTP requests** in `dev.log` — confirmed by grepping for `price|compar|estimat|observ|override` (case-insensitive) returning 0 matches. No public compare page hit, no pricing engine admin page hit, no Price/Compare API endpoint hit. The dev server has never exercised the Price/Compare surface.
+
+### OpenAPI registry (`src/app/api/openapi/route.ts`)
+- ✅ Documents 2 of 18 Price/Compare routes:
+  - `GET /api/price-intelligence` (legacy intelligence, route.ts:420) — categorized as "Pricing" via `categorizePath()` helper at route.ts:646
+  - `GET /api/compare` (legacy ad-hoc GET, route.ts:462) — categorized as "Compare" via `categorizePath()` helper at route.ts:647
+- ❌ The other 16 Price/Compare routes (per 6A.2 inventory) are NOT in the OpenAPI registry — confirmed via the same grep. The `categorizePath()` helper only knows `/api/price-intelligence` and `/api/compare` prefixes; `/api/pricing/*`, `/api/admin/pricing/*`, `/api/admin/compare/*`, `/api/price-estimate`, `/api/price-history`, `/api/ai-price-*` all fall through to "Misc" or are omitted entirely.
+
+### Legacy migration checklist (`src/lib/admin/legacy-migration-checklist.ts:154-162`)
+- `compare` → `MIGRATE_TO_RESOURCE` → `resources/comparisonSession` (capabilities: list/view/delete), status `PENDING`, risk `LOW`, owner `analytics` (line 156)
+- `price-intelligence` → `KEEP_AS_IS`, risk `LOW`, owner `pricing` (line 160)
+- `pricing` → `MIGRATE_TO_RESOURCE` → `resources/subscriptionPlan` — **MISCATEGORIZED**: the `/admin/pricing` page actually drives `PriceObservation` + `PriceOverride` workflows (via `/api/admin/pricing/observations` + `/api/admin/pricing/override`), but is mapped to `subscriptionPlan` (subscription billing domain), NOT to a `priceIntelligence` or `priceOverride` resource (line 161). Cross-flagged by 6A.2.
+
+### `@ts-nocheck` legacy header inventory (`docs/verification/STEP-14.8-EVIDENCE.md:147-204`)
+- 5 of 18 Price/Compare files carry `@ts-nocheck`:
+  - `src/app/api/price-estimate/route.ts` (line 180 of evidence doc)
+  - `src/app/api/price-history/route.ts` (line 181)
+  - `src/app/api/pricing/estimate/route.ts` (line 182)
+  - `src/app/api/admin/compare/[id]/route.ts` (line 163)
+  - `src/app/admin/price-intelligence/page.tsx` (line 155)
+- All 5 are flagged as "B — needs migration" per STEP-14.8-E classification (must be type-safe before final gate).
+
+## Final Gap list (for 6B+ planning)
+
+### UI gaps (3 missing UI surfaces)
+1. **No `/admin/pricing/observations/[id]` detail page** — admin cannot drill into a single `PriceObservation` row's full provenance (listing snapshot, estimator version, comparable IDs that fed the estimate, manual flag/exclude UI). Required by Phase 6 DoD §6.1 "6B Price Observation + History".
+2. **No `/admin/pricing/overrides/[id]` detail page** — admin cannot view a single override's audit trail (who, when, before/after, reason). The list view exists (PricingEngineClient OverridesTab) but no detail view + no revert UI. Required by Phase 6 DoD §6.1 "6F Admin Review / Override".
+3. **No `/compare/shared/[token]` standalone page** — the public `/compare?share=TOKEN` URL handles shared sessions via query param (compare/page.tsx:183), but there's no dedicated `/compare/shared/[token]` route segment. This is consistent with the API design (`/api/compare/shared/[token]` route exists, route 16 in 6A.2), but the URL pattern is unusual — most apps use `/compare/s/[token]` or `/shared/compare/[token]`. Minor UX gap.
+
+### UI partial / dead-code gaps (3 items)
+4. **`PricingEngineClient.OverridesTab:823-845` fabricates rows locally** on successful override POST instead of re-fetching from a `GET /api/admin/pricing/overrides` endpoint (which doesn't exist). Stale-on-reload + lies about `originalEstimate` (always 0) + `overriddenBy` (always "ADMIN"). Fix in 6F.
+5. **`src/components/listings/PriceIntelligence.tsx` (174L) is dead code** — never imported. Either delete in 6B or re-wire into `/listings/[slug]/page.tsx` as a parallel "AI verdict" widget alongside `PriceEstimateCard`. Uses ad-hoc verdict vocab that conflicts with canonical `PriceHealthStatus`.
+6. **`src/components/compare/ComparePageClient.tsx` (394L) is dead code** — never imported. Predates V1.0 Compare spec; uses legacy `GET /api/compare?ids=` ad-hoc path; inline 3-item cap. Delete in 6E.
+
+### UI permission gaps (0 client-side role checks anywhere)
+7. **0 of 10 Price/Compare UI files** perform a client-side permission check (no `useUser()`, no `hasRole('ADMIN')`, no `useSession()`). All rely on (a) the admin shell layout `/admin/layout.tsx` to redirect non-admins, and (b) the API layer's `isAuthenticated()` cookie check — which per 6A.2 audit is the legacy `ADMIN_CREDENTIALS` cookie check and does NOT call `requirePermission`. The admin shell redirect is a UX nicety, not a security boundary. Fix in 6F when `price.*` / `compare.*` permission keys land.
+
+### Test gaps (25+ tests missing — full list above in "Test Gaps" section)
+8. **Zero behavioral tests** for `price-engine.ts` (1015L), `compare-engine.ts` (930L), `price-intelligence.ts` (353L) — 2298 lines of business-critical engine code with zero unit test coverage. The 25 tests in `tests/phase6-price-compare.test.ts` are all structural smoke (`fs.existsSync` + `fs.readFileSync + toContain`).
+9. **Zero contract tests** for any of the 6 Price/Compare Prisma models — all 22 contract test files cover other domains.
+10. **Zero integration tests** for any of the 18 Price/Compare API routes — no HTTP-level test verifies the legacy `isAuthenticated()` cookie check, the missing `requirePermission` integration, the missing audit hooks, the missing cache invalidation, the missing zod validation, or the `getComparisonData` structured response shape.
+11. **Critical untested security invariants**:
+    - `compare-engine.getSessionByShareToken` expiry + ARCHIVED enforcement (compare-engine.ts:708-720) — share-link security
+    - `compare-engine.createSession` 24-char base64url token uniqueness (compare-engine.ts:184) — share-link uniqueness
+    - `price-engine.createOverride` audit trail integrity (price-engine.ts:897-917) — regulatory compliance
+    - `GET /api/compare/[id]` ownership check (route 12 — currently returns 200 for any session ID, flagged by 6A.2 as privacy/abuse risk)
+
+### Runtime smoke gaps (15+ endpoints missing from smoke matrix)
+12. **0 of 21 STEP-14.8 §10.2 smoke URLs** are Price/Compare — the entire Price/Compare surface (18 API routes + 4 admin pages + 1 public compare page + 1 listing-detail consumer page) has **ZERO runtime smoke evidence**. No `dev.log` entry. No production-build smoke hit. The surface is functionally untested at runtime.
+13. **OpenAPI registry documents only 2 of 18 Price/Compare routes** (`/api/price-intelligence` GET + `/api/compare` GET legacy). The other 16 routes (including all `/api/pricing/*`, all `/api/admin/pricing/*`, all `/api/admin/compare/*`, `/api/compare/[id]` and sub-routes, `/api/compare/shared/[token]`, `/api/price-estimate`, `/api/price-history`, `/api/ai-price-*`) are absent from the OpenAPI spec — external API consumers cannot discover them.
+
+### Cross-cutting gaps (carried forward from 6A.1 + 6A.2)
+14. **`PriceRecord` table is write-dead** — `recordPriceFromListing` (price-intelligence.ts:122) is the only writer, has 0 callers per 6A.2. The legacy `admin/price-intelligence/page.tsx` (Component 10) operates on this dead table — likely shows empty stats in production. **6B decision needed**: consolidate `PriceRecord` into `PriceObservation` OR wire `recordPriceFromListing` into a background job.
+15. **Two competing verdict vocabularies** at UI layer — orphan `PriceIntelligence.tsx:14` uses `UNDERPRICED|FAIR|OVERPRICED` (matches `/api/ai-price-intelligence` route's ad-hoc vocab); live `PriceEstimateCard.tsx:41` uses `IN_RANGE|BELOW_RANGE|ABOVE_RANGE|INSUFFICIENT` (matches canonical `PriceHealthStatus` in price-engine.ts:45-49). UI surfaces need to map between them or one vocab must be deprecated in 6B.
+16. **Two competing `getPriceHistory` functions** — `price-engine.ts:706` (zero-fills months, returns median+range, uses PriceObservation+Listing.price) vs `price-intelligence.ts:193` (skips empty months, returns avg only, uses PriceRecord). Different consumers (admin PricingEngineClient.HistoryTab uses the price-engine version via `/api/pricing/history`; admin PriceIntelligenceClient uses the price-intelligence version via `/api/price-intelligence?action=history`). Same name, different shapes — flagged by 6A.2, unaddressed.
+
+## Stage Summary
+
+- ✅ Read worklog tail (lines 4440-4790) — confirmed 6A.1 + 6A.2 audit complete (6 models, 18 routes, 3 services, 0 permission keys, 5 unused functions, 12 missing routes).
+- ✅ Enumerated ALL Price/Compare UI files via 3 grep strategies: (a) Prisma model name imports → 4 UI files; (b) service module imports → 0 UI files (UI talks to services only via HTTP); (c) `/api/*` URL fragments → 7 UI files. Combined with `LS src/app/admin` + `LS src/app/compare` + `LS src/components/{listings,compare}` → **10 UI files** total (8 live + 2 orphans).
+- ✅ Read ALL 10 UI files in full (5060 lines total: PriceIntelligence.tsx 174L, PriceEstimateCard.tsx 287L, CompareButton.tsx 95L, compare/ComparePageClient.tsx 394L, admin/pricing/PricingEngineClient.tsx 1292L, admin/price-intelligence/PriceIntelligenceClient.tsx 410L, admin/compare/page.tsx 664L, app/compare/page.tsx 977L, admin/pricing/page.tsx 42L, admin/price-intelligence/page.tsx 222L) plus the consumer page `listings/[slug]/page.tsx` (503L) embedding the canonical price card + compare button.
+- ✅ Confirmed **2 ORPHAN components**: `PriceIntelligence.tsx` (174L) + `compare/ComparePageClient.tsx` (394L) — never imported anywhere via `grep -r 'import PriceIntelligence' src/` returning 0 matches and `grep -r 'compare/ComparePageClient' src/` returning 0 matches. 568 lines of dead UI code.
+- ✅ Confirmed **0 client-side permission checks** anywhere in the 10 Price/Compare UI files — admin pages rely on `/admin/layout.tsx` shell + `isAuthenticated()` cookie (legacy, no `requirePermission` per 6A.2).
+- ✅ Confirmed **1 PARTIAL component**: `admin/pricing/PricingEngineClient.tsx:823-845` OverridesTab fabricates override rows locally (`id: "new-" + Date.now()`, `originalEstimate: 0`, `overriddenBy: "ADMIN"`) instead of re-fetching — because `GET /api/admin/pricing/overrides` route doesn't exist per 6A.2 gap.
+- ✅ Confirmed **1 test file** (`tests/phase6-price-compare.test.ts`, 175L, 25 `it()` blocks across 9 `describe` sections). All 25 tests are **structural smoke** (`fs.existsSync` + `fs.readFileSync + toContain` + simple `db.*.count() > 0`). Zero behavioral, zero contract, zero integration, zero E2E tests for Price/Compare.
+- ✅ Cross-checked all 22 `tests/contract/*-contract.test.ts` files — **0 cover any of the 6 Price/Compare Prisma models**.
+- ✅ Confirmed **0 Price/Compare URLs in STEP-14.8 §10.2 smoke matrix** (21 URLs, all are public pages or `/admin/resources/*` — `docs/verification/STEP-14.8-EVIDENCE.md:298-322`).
+- ✅ Confirmed **0 Price/Compare HTTP requests in `dev.log`** (1001 lines, grep for `price|compar|estimat|observ|override` returns 0 matches).
+- ✅ Confirmed OpenAPI registry documents only **2 of 18** Price/Compare routes (`/api/price-intelligence` GET + `/api/compare` GET legacy at `src/app/api/openapi/route.ts:420,462`).
+- ✅ Confirmed 5 Price/Compare files carry `@ts-nocheck` legacy header (STEP-14.8-EVIDENCE.md:147-204): `price-estimate/route.ts`, `price-history/route.ts`, `pricing/estimate/route.ts`, `admin/compare/[id]/route.ts`, `admin/price-intelligence/page.tsx`.
+- ✅ Identified **25+ test gaps** (engine service behavior, API route behavior, UI component behavior, security invariants like share-token uniqueness + override audit trail + ownership checks).
+- ✅ Identified **3 UI surface gaps** (no `/admin/pricing/observations/[id]` detail page, no `/admin/pricing/overrides/[id]` detail page, no dedicated `/compare/shared/[token]` standalone page).
+- ✅ Identified **3 UI partial/dead-code gaps** (OverridesTab local fabrication, PriceIntelligence.tsx orphan, compare/ComparePageClient.tsx orphan).
+- ✅ Identified **15+ runtime smoke gaps** (0 of 18 Price/Compare routes in §10.2 matrix; 16 of 18 routes absent from OpenAPI registry).
+- ✅ NO files modified, NO code written, NO UI/API/schema changes — pure evidence extraction.
+
+## Next Steps
+
+```
+✅ PHASE-6A.1 — Prisma Models Audit                          ← COMPLETE (6 core models catalogued)
+✅ PHASE-6A.2 — API + Service Inventory                      ← COMPLETE (18 routes + 3 services catalogued)
+✅ PHASE-6A.3 — UI + Tests + Runtime Audit                   ← COMPLETE (this entry, 10 UI files + 1 test file + 0 runtime smoke catalogued)
+⏳ PHASE-6B — Price Observation + History (build starts here, after 6A audit complete)
+   ─ Decision needed: PriceRecord vs PriceObservation consolidation; investigate recordPriceFromListing caller gap
+   ─ UI gaps to fix: /admin/pricing/observations/[id] detail page + flag/exclude UI; /admin/pricing/overrides/[id] detail page + revert UI
+   ─ Test gaps to fill: 14+ unit tests for price-engine + price-intelligence behavior; contract tests for 4 Price models (PriceRecord, PriceObservation, PriceEstimate, PriceOverride)
+   ⏳ PHASE-6C — Comparable Engine (introduce Comparable model + extract comparable-selection logic from price-engine:386-480)
+   ⏳ PHASE-6D — Estimate + Confidence (add explanation structured field to PriceEstimate; persist estimates as rows; add observationIds provenance)
+   ⏳ PHASE-6E — Compare Engine (add @@unique([sessionId, listingId]); add entityType discriminator; add Product/Brand/ProductModel relations; add snapshot fields; delete dead compare/ComparePageClient.tsx orphan; re-wire or delete PriceIntelligence.tsx orphan)
+   ⏳ PHASE-6F — Admin Review / Override (add price.* permission keys; wire requirePermission into admin/pricing/* routes; add audit hooks to compare mutations; add GET /api/admin/pricing/overrides consumer for listOverrides; fix OverridesTab local fabrication; add ownership check to GET /api/compare/[id])
+   ⏳ PHASE-6G — Test Coverage (write 25+ missing tests catalogued in this audit; add Price/Compare URLs to STEP-14.8 §10.2 smoke matrix; document 16 missing routes in OpenAPI registry)
+```
+
+---
+
+Task ID: PHASE-6A-CONSOLIDATED
+Agent: Main Orchestrator (Z.ai Code)
+Task: PHASE 6A — Price Intelligence + Compare Inventory Audit (CONSOLIDATED). Build final inventory matrix + gap list from 3 sub-audits (6A.1 Prisma, 6A.2 API+Services, 6A.3 UI+Tests+Runtime). Evidence-only — NO code changes.
+
+Work Log:
+- Read 3 sub-audit reports appended by parallel Explore agents:
+  - 6A.1 (Prisma Models Auditor): 6 models found, 6 missing per DoD, 1 duplicate, multiple missing FK/unique constraints
+  - 6A.2 (API + Services Auditor): 18 routes found, 0 use requirePermission, 0 use zod, 0 direct audit hooks, 12 missing routes, 3 service engines (2298 LOC), 5 unused exports, 1 dead-writer (recordPriceFromListing)
+  - 6A.3 (UI + Tests + Runtime Auditor): 10 UI components (5060 LOC), 2 orphan (568 LOC dead code), 1 fabricates data, 1 test file with 25 structural smoke tests, 0 behavioral/contract/integration/E2E tests, 0 of 18 endpoints in smoke matrix
+- Created `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md` (consolidated matrix + gap list, 250+ lines) with:
+  - §1 Executive Summary (10 headline counts + per-layer verdict table)
+  - §2 Inventory Matrix (9 sub-sections: Prisma models, API routes, services, UI components, tests, permissions, audit hooks, cache invalidation, runtime smoke)
+  - §3 Critical Issues (6 critical + 6 high + 8 medium, sorted by severity)
+  - §4 Phase 6 Sub-Phase Plan (validated by audit findings — 6B→6J mapped to specific gap numbers)
+  - §5 What This Audit Did NOT Do (constraints honored)
+  - §6 Conclusion (per user principle: existence of Model/API alone is NOT Feature Complete)
+
+## Headline Findings (10 layers)
+
+| Layer | Count | Verdict |
+|---|---:|---|
+| Prisma models | 6 found, 6 missing | ⚠️ partial — 1 duplicate, missing FK/unique constraints |
+| API routes | 18 found, 12 missing | ⚠️ partial — 0 use requirePermission, 0 use zod, 0 direct audit hooks |
+| Service engines | 3 found (2298 LOC), 2 missing | ⚠️ partial — 5 unused exports, 1 dead-writer |
+| UI components | 10 found (5060 LOC), 2 missing | ⚠️ partial — 2 orphan (dead code), 1 fabricates data |
+| Test files | 1 (25 tests), 0 behavioral | ❌ critical gap — 0 unit/contract/integration/E2E tests |
+| Permission keys | 0 found | ❌ critical gap — `price.*` and `compare.*` entirely absent from RBAC |
+| Audit hooks | 1 indirect, 0 direct | ❌ critical gap — 0 routes call auditMutation/auditCreate/auditDelete |
+| Cache invalidation | 0 found | ❌ critical gap — 0 revalidateTag/revalidatePath calls |
+| Runtime smoke evidence | 0 of 18 | ❌ critical gap — 0 endpoints in STEP-14.8 §10.2 smoke matrix |
+| OpenAPI documentation | 2 of 18 | ⚠️ partial — only /api/price-intelligence + /api/compare documented |
+
+## 6 Critical Issues (block Phase 6 progression)
+
+1. 🚨 `recordPriceFromListing` is dead-writer — only writer to PriceRecord table, appears unused. Downstream readers may return empty.
+2. 🚨 Zero `price.*` or `compare.*` permission keys in RBAC matrix.
+3. 🚨 Zero audit hooks on Price/Compare mutations (0 direct, 1 indirect).
+4. 🚨 Zero behavioral tests for 2298 LOC of engine code (only 25 structural smoke tests).
+5. 🚨 `PriceRecord` vs `PriceObservation` duplicate — overlapping purpose, type inconsistency (Float vs BigInt).
+6. 🚨 Zero cache invalidation — admin mutations don't invalidate any caches.
+
+## 6 High-Severity Debts
+
+7. ⚠️ Two orphan UI components (568 LOC dead code) — `PriceIntelligence.tsx` (174L) + `ComparePageClient.tsx` (394L) never imported.
+8. ⚠️ PricingEngineClient.OverridesTab fabricates data locally (`PricingEngineClient.tsx:823-845`).
+9. ⚠️ 5 unused exported service functions — `listOverrides`, `archiveSession`, `renameSession`, `refreshShareToken`, `recordPriceFromListing`.
+10. ⚠️ 12 missing API routes — CRUD for observations/overrides/estimates, batch items, list-user-sessions, differences-only view.
+11. ⚠️ 2 missing service modules — `comparable-engine.ts` (6C), `price-history-engine.ts` (6B).
+12. ⚠️ 5 files with `@ts-nocheck` — `price-estimate/route.ts`, `price-history/route.ts`, `pricing/estimate/route.ts`, `admin/compare/[id]/route.ts`, `admin/price-intelligence/page.tsx`.
+
+## Stage Summary
+
+- ✅ PHASE 6A — Price Intelligence + Compare Inventory Audit COMPLETE (evidence-only, 3 parallel sub-audits)
+- ✅ All claims traced to file + line (no assumptions)
+- ✅ Control Plane baseline preserved — NO code changes, NO schema changes, NO migrations
+- ✅ Consolidated inventory matrix + gap list created at `docs/verification/PHASE-6A-PRICE-COMPARE-INVENTORY.md`
+- ✅ Phase 6 sub-phase plan (6B→6J) validated against audit findings
+- ✅ Per user principle honored: "existence of Model/API alone is NOT Feature Complete" — audit confirms this domain has scaffolding but is NOT complete
+
+## Next Step: 6B — Price Observation + History (BUILD)
+
+6B begins building from this evidence baseline. Priority actions per audit findings:
+
+1. **Consolidate `PriceRecord` ↔ `PriceObservation`** — pick one (likely `PriceObservation` as the richer superset), deprecate the other. Fix type inconsistency (Float vs BigInt).
+2. **Fix `recordPriceFromListing` dead-writer** — investigate why it's unused; either wire it to a cron job / listing-publish hook, or remove it + downstream readers.
+3. **Add CRUD API routes** — `PATCH/DELETE /api/admin/pricing/observations/[id]`, `GET /api/admin/pricing/overrides`, `PATCH/DELETE /api/admin/pricing/overrides/[id]`.
+4. **Add `price.read`, `price.manage`, `price.override` permission keys** — wire `requirePermission` into all admin routes.
+5. **Add direct audit hooks** — `auditMutation`/`auditCreate`/`auditDelete` on all mutation routes.
+6. **Add cache invalidation** — `revalidateTag('price:observations')`, `revalidateTag('price:estimates')`, etc.
+7. **Write 14+ unit tests** for `price-engine` functions (currently 0).
+8. **Write 4 contract tests** for the consolidated `PriceObservation` model (currently 0).
+9. **Add UI components** — observation detail page, override detail page.
+10. **Add to STEP-14.8 §10.2 smoke matrix** — all 18 Price/Compare endpoints.
+
+## Next Steps
+
+```
+✅ 16-A Repository Inventory        ← COMPLETE
+✅ 16-B Completion Matrix           ← COMPLETE
+🟢 16-C Gap + Debt Audit            ← COMPLETE (8 passes, +133 cells)
+🟢 16-D Runtime Verification       ← COMPLETE (54/54 smoke tests)
+🟢 16-E Final Control Plane Gate   ← COMPLETE — 🟢 GREEN verdict
+   - Git tag: control-plane-baseline-16E (frozen baseline)
+✅ PHASE 6A — Price/Compare Inventory Audit ← COMPLETE (this entry — evidence-only, 3 sub-audits)
+🔵 PHASE 6B — Price Observation + History ← NEXT (build from 6A gap list)
+   - 6B.1: Consolidate PriceRecord ↔ PriceObservation
+   - 6B.2: Fix recordPriceFromListing dead-writer
+   - 6B.3: Add CRUD API routes (observations + overrides)
+   - 6B.4: Add price.* permission keys + wire requirePermission
+   - 6B.5: Add direct audit hooks
+   - 6B.6: Add cache invalidation
+   - 6B.7: Write 14+ unit tests + 4 contract tests
+   - 6B.8: Add UI components (observation detail, override detail)
+   - 6B.9: Add to STEP-14.8 §10.2 smoke matrix
+```
+
