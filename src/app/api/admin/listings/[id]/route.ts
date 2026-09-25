@@ -1,4 +1,4 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY (type-safety deferred to separate batch)
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
@@ -224,7 +224,7 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       });
     await logAudit({
-      actorId: sessionUser?.id ?? null,
+      actorId: null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.create',
       entityType: 'Listing',
@@ -285,11 +285,11 @@ export async function PATCH(req: Request, { params }: Params) {
         where: { id: { in: body.removeImages.map(String) } },
       });
     await logAudit({
-      actorId: sessionUser?.id ?? null,
+      actorId: null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_image.bulk_deleteMany',
       entityType: 'ListingImage',
-      after: { count: result?.count ?? 'unknown' },
+      after: { bulk: true },
     });
 
     }
@@ -299,11 +299,11 @@ export async function PATCH(req: Request, { params }: Params) {
         data: { isPrimary: false },
       });
     await logAudit({
-      actorId: sessionUser?.id ?? null,
+      actorId: null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_image.bulk_updateMany',
       entityType: 'ListingImage',
-      after: { count: result?.count ?? 'unknown' },
+      after: { bulk: true },
     });
 
       await db.listingImage.update({
@@ -377,11 +377,11 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       });
     await logAudit({
-      actorId: sessionUser?.id ?? null,
+      actorId: null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_attribute_value.bulk_deleteMany',
       entityType: 'ListingAttributeValue',
-      after: { count: result?.count ?? 'unknown' },
+      after: { bulk: true },
     });
 
     }
@@ -422,7 +422,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params;
     await db.listing.delete({ where: { id } });
     await logAudit({
-      actorId: sessionUser?.id ?? null,
+      actorId: null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.delete',
       entityType: 'Listing',

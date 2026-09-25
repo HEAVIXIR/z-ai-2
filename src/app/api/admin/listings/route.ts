@@ -1,4 +1,4 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY (type-safety deferred to separate batch)
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
@@ -167,7 +167,7 @@ export async function POST(req: Request) {
       actorType: 'ADMIN',
       action: 'marketplace.listing.bulk_deleteMany',
       entityType: 'Listing',
-      after: { count: result?.count ?? 'unknown' },
+      after: { bulk: true },
     });
 
     await logAudit({
@@ -175,7 +175,7 @@ export async function POST(req: Request) {
       actorType: 'ADMIN',
       action: 'marketplace.listing.bulk_updateMany',
       entityType: 'Listing',
-      after: { count: result?.count ?? 'unknown' },
+      after: { bulk: true },
     });
 
 
