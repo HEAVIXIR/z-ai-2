@@ -1,69 +1,137 @@
-# HEAVIX — Known Gaps and Exceptions
+# HEAVIX — Joint Batch Known Gaps
 
 ## Purpose
 
-این فهرست از تبدیل debt یا limitation به وضعیت مبهم «non-blocking» جلوگیری می‌کند.
+This document records known limitations without silently treating them as implementation failures. A gap may only be removed when new evidence proves that it has been resolved.
 
 ---
 
-## G-001 — Runtime verification pending
-- Scope: Store + Marketplace
-- Status: OPEN
-- Evidence needed: Joint Batch Gate runtime matrix
-- Impact: Gate cannot be GREEN yet
+## G-001 — Store Runtime Verification Pending
+
+**Status:** OPEN
+
+Store runtime DB evidence has not yet been completed.
+
+Affected:
+```text
+E2E-02
+E2E-03
+E2E-04
+E2E-05
+E2E-06
+E2E-07
+```
+
+No implementation change should be made solely to manufacture runtime evidence.
 
 ---
 
-## G-002 — PGlite environment limitation
-- Scope: runtime DB verification
-- Status: ENVIRONMENT-BLOCKER if reproduced
-- Rule: no workaround
-- Required evidence: exact command + exact error + affected operation
-- Historical reference: EVD-6D-01/02
+## G-002 — Marketplace Runtime Verification Pending
+
+**Status:** OPEN
+
+Marketplace runtime verification remains pending.
+
+Affected:
+```text
+E2E-08
+E2E-09
+E2E-10
+```
 
 ---
 
-## G-003 — Monitoring operational evidence
-- Scope: Store + Marketplace
-- Status: PARTIAL
-- Existing: health endpoints and monitoring contract
-- Missing: runtime/operational verification
+## G-003 — PGlite Environment Limitation
+
+**Status:** KNOWN ENVIRONMENT LIMITATION
+
+The previously documented PGlite single-connection limitation remains separate from implementation correctness.
+
+If the limitation prevents required evidence:
+- do not workaround
+- do not modify production code
+- do not claim PASS
+- record exact failed observation
+
+The limitation may justify a CONDITIONAL verdict only when all other required evidence is available and the limitation is explicitly bounded.
 
 ---
 
-## G-004 — Production verification
-- Scope: Store + Marketplace batch
-- Status: PENDING
-- Required: production-equivalent build/runtime evidence according to project gate
+## G-004 — Monitoring Partial
+
+**Status:** PARTIAL
+
+Health endpoints and monitoring documentation provide the current foundation.
+
+Complete production observability is not yet established.
+
+This is independent from the runtime smoke result.
 
 ---
 
-## G-005 — 13 out-of-scope admin routes with `@ts-nocheck`
-- Scope: unrelated admin routes
-- Status: OUT-OF-SCOPE FOR THIS BATCH
-- Rule: do not reopen during Joint Batch Gate unless independently blocking a Gate criterion
-- Tracking requirement: future batch must give each cleanup scope an owner, severity, ticket, and deadline
+## G-005 — Documentation Baseline
+
+**Status:** BASELINE READY
+
+The Joint Batch Gate documentation package is established.
+
+During Gate execution:
+- update `EVIDENCE-REGISTER.md` with real evidence;
+- update this file only when a concrete gap is discovered or resolved;
+- do not create parallel Gate documents.
 
 ---
 
-## G-006 — 6D remains frozen
-- Scope: 6D
-- Status: FROZEN / CONDITIONAL
-- Rule: Joint Batch Gate must not reopen or modify 6D.
+## G-006 — Out-of-Scope Type Safety
+
+**Status:** KNOWN / OUT OF SCOPE
+
+There are additional Admin routes outside the Store and Marketplace batch that still contain `@ts-nocheck`.
+
+These are not part of this batch.
+
+They must not be silently represented as resolved by the Store + Marketplace Type-Safety work.
+
+Future work may address them under a separate batch.
 
 ---
 
-## Exception rule
+## G-007 — Production Build Verification
 
-An exception is valid only when it has:
+**Status:** PENDING
+
+A production-oriented build/verification pass has not yet been accepted as Joint Batch Gate evidence unless explicitly executed and recorded.
+
+Existing tsc, lint, and contract-test results are not substitutes for a production verification result.
+
+---
+
+## Gap Reopening Rule
+
+A known gap may reopen implementation only when:
+- evidence confirms the gap is real;
+- its scope is known;
+- the minimal remediation is identifiable.
+
+The following are prohibited:
+- speculative refactors;
+- unrelated cleanup;
+- architecture reopening;
+- Universal Resource Engine refactoring;
+- Control Plane redesign;
+- PGlite workarounds.
+
+---
+
+## Current Summary
 
 ```text
-ID
-Scope
-Evidence
-Reason
-Impact
-Owner
-Next action
-Closure criterion
+Store implementation:     COMPLETE
+Marketplace implementation: COMPLETE
+Contract tests:           90/90
+Runtime evidence:         PENDING
+Monitoring:               PARTIAL
+Documentation:            BASELINE READY
+Implementation freeze:    ACTIVE
+Joint Batch Gate:         OPEN
 ```

@@ -2,66 +2,146 @@
 
 ## Purpose
 
-این سند Monitoring را از Runtime Smoke جدا می‌کند. Smoke ثابت می‌کند مسیر اجرا می‌شود؛ Monitoring ثابت می‌کند وضعیت عملیاتی قابل مشاهده و قابل تشخیص است.
+Monitoring is an independent Gate dimension. A successful runtime smoke test does not automatically satisfy Monitoring. Likewise, a health endpoint alone does not constitute complete observability.
 
 ---
 
-## Minimum monitoring contract
+## 1. Health
 
-### Health
-- Store health endpoint exists.
-- Marketplace health endpoint exists.
-- Health response must be deterministic and machine-readable.
-- Health checks must not mutate business data.
-
----
-
-## Operational signals
-
-At minimum, monitoring should expose or record:
+Both Control Planes must expose a health signal:
 
 ```text
-API availability
-Error rate
-Latency
-Database connectivity
-Failed mutations
-Audit failures
-Authentication/authorization failures
+Store
+Marketplace
 ```
 
-### Store-specific signals
-- Store API failures
-- Order mutation failures
-- Payment mutation failures
-- Inventory mutation failures
-- Audit write failures
-
-### Marketplace-specific signals
-- Listing mutation failures
-- Offer/deal failures
-- Moderation/rejection failures
-- Audit write failures
+The health endpoint must be:
+- reachable;
+- deterministic;
+- suitable for monitoring;
+- independent from privileged Admin UI authentication where required by the monitoring environment.
 
 ---
 
-## Monitoring evidence
+## 2. Minimum Health Contract
 
-A monitoring item is not COMPLETE because an endpoint exists.
+A health response should communicate at least:
+- status
+- service
+- timestamp
 
-Evidence must show:
-- endpoint responds;
-- response shape is valid;
-- failure condition is observable;
-- signal is attributable to Store or Marketplace;
-- no business mutation is required to test health.
+Where practical:
+- database
+- version
+- environment
+
+Sensitive secrets must never be returned.
 
 ---
 
-## Current status
+## 3. Application Monitoring
 
-- Health endpoints: PRESENT
-- Monitoring contract: DOCUMENTED
-- Operational dashboards/alerts: NOT YET VERIFIED
+The following classes should be observable:
+- HTTP errors
+- API failures
+- authorization failures
+- mutation failures
+- validation failures
+- database failures
+- slow requests
+- unexpected exceptions
 
-Therefore Monitoring remains PARTIAL until runtime/operational evidence is collected.
+---
+
+## 4. Store Monitoring
+
+At minimum:
+- Store API availability
+- Store public route availability
+- Store mutation failures
+- Order failures
+- Payment failures
+- Audit failures
+
+---
+
+## 5. Marketplace Monitoring
+
+At minimum:
+- Marketplace API availability
+- Listing failures
+- Offer failures
+- Moderation failures
+- Matching failures
+- Audit failures
+
+---
+
+## 6. Security Events
+
+Monitoring should distinguish:
+- 401
+- 403
+- validation failure
+- rate-limit rejection
+- suspicious mutation
+- sensitive action failure
+
+---
+
+## 7. Audit vs Monitoring
+
+These are separate concerns.
+
+**Audit** answers:
+- Who changed what?
+
+**Monitoring** answers:
+- Is the system behaving correctly and reliably?
+
+An AuditLog record does not replace operational monitoring.
+
+A health endpoint does not replace audit logging.
+
+---
+
+## 8. Alerting
+
+Future production alerting should cover:
+- service unavailable
+- database unavailable
+- error-rate spike
+- latency spike
+- repeated authorization failures
+- payment failures
+- audit failures
+
+Thresholds should be defined separately from this structural contract.
+
+---
+
+## 9. Gate Rule
+
+Monitoring is:
+- GREEN
+- PARTIAL
+- BLOCKED
+
+and must be reported independently of runtime smoke.
+
+A successful smoke test cannot silently promote:
+```
+Monitoring = PARTIAL
+```
+to:
+```
+Monitoring = GREEN
+```
+
+---
+
+## 10. Implementation Freeze Rule
+
+Monitoring gaps discovered during the Joint Batch Gate may reopen implementation only when a concrete missing capability is demonstrated.
+
+Do not add speculative telemetry merely to increase the number of monitoring signals.
