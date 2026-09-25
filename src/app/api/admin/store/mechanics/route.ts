@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -116,6 +117,15 @@ export async function POST(req: Request) {
       },
       include: { _count: { select: { orders: true } } },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.mechanic.create',
+      entityType: 'Mechanic',
+      entityId: m.id,
+      after: m,
+    });
+
     return NextResponse.json({ success: true, data: serialize(m) });
   } catch (e: any) {
     console.error("[store/mechanics POST] error:", e);

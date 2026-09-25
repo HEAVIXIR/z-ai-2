@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       data,
       include: { _count: { select: { parts: true } } },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.brand.update',
+      entityType: 'Brand',
+      entityId: b.id,
+      before: existing,
+      after: b,
+    });
+
     return NextResponse.json({ success: true, data: serialize(b) });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
@@ -67,6 +78,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const existing = await storeDb.brand.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     await storeDb.brand.delete({ where: { id } });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "store.brand.delete",
+      entityType: "Brand",
+      entityId: id,
+      before: existing,
+    });
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });

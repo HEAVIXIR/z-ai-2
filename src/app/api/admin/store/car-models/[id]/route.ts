@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       data,
       include: { _count: { select: { parts: true } } },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.car_model.update',
+      entityType: 'CarModel',
+      entityId: c.id,
+      before: existing,
+      after: c,
+    });
+
     return NextResponse.json({ success: true, data: serialize(c) });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
@@ -62,6 +73,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const existing = await storeDb.carModel.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     await storeDb.carModel.delete({ where: { id } });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "store.car_model.delete",
+      entityType: "CarModel",
+      entityId: id,
+      before: existing,
+    });
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });

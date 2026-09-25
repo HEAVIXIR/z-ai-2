@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,14 @@ export async function POST(req: Request) {
           autoSource: autoSource || "telegram",
         },
       });
+      await logAudit({
+        actorId: user.id,
+        actorType: 'ADMIN',
+        action: 'store.currency_setting.update',
+        entityType: 'CurrencySetting',
+        entityId: s.id,
+        after: s,
+      });
       return NextResponse.json({ success: true, data: serializeSetting(s) });
     }
 
@@ -123,6 +132,14 @@ export async function POST(req: Request) {
           source: source || "MANUAL",
           note: note || null,
         },
+      });
+      await logAudit({
+        actorId: user.id,
+        actorType: 'ADMIN',
+        action: 'store.currency_rate.update',
+        entityType: 'CurrencyRate',
+        entityId: r.date,
+        after: r,
       });
       return NextResponse.json({ success: true, data: serializeRate(r) });
     }

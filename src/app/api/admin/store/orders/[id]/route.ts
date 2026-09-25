@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +115,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         _count: { select: { items: true, payments: true } },
       },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.order.update',
+      entityType: 'Order',
+      entityId: order.id,
+      before: existing,
+      after: order,
+    });
+
     return NextResponse.json({ success: true, data: serialize(order) });
   } catch (e: any) {
     console.error("[store/orders PATCH] error:", e);

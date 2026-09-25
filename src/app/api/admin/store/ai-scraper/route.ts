@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { storeDb } from "@/lib/store-db";
 import { slugify } from "@/lib/api-helpers";
 import ZAI from "z-ai-web-dev-sdk";
@@ -267,7 +268,7 @@ async function scrapePartFromUrl(
  * Find or create a Brand by name. Uses slugify so "Bosch" and "بوش"
  * each get their own slug. Returns the brand id.
  */
-async function findOrCreateBrand(name: string): Promise<string> {
+async function findOrCreateBrand(name: string, userId?: string | null): Promise<string> {
   const trimmed = name.trim();
   if (!trimmed) {
     // Fall back to a generic "سایر" brand so we always have a valid id.
@@ -275,6 +276,14 @@ async function findOrCreateBrand(name: string): Promise<string> {
     if (generic) return generic.id;
     const created = await storeDb.brand.create({
       data: { name: "سایر", slug: "سایر" },
+    });
+    await logAudit({
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.brand.create',
+      entityType: 'Brand',
+      entityId: created.id,
+      after: created,
     });
     return created.id;
   }
@@ -284,17 +293,33 @@ async function findOrCreateBrand(name: string): Promise<string> {
   const created = await storeDb.brand.create({
     data: { name: trimmed, slug },
   });
+  await logAudit({
+    actorId: userId ?? null,
+    actorType: 'ADMIN',
+    action: 'store.brand.create',
+    entityType: 'Brand',
+    entityId: created.id,
+    after: created,
+  });
   return created.id;
 }
 
 /** Find or create a Category by name. Returns the category id. */
-async function findOrCreateCategory(name: string): Promise<string> {
+async function findOrCreateCategory(name: string, userId?: string | null): Promise<string> {
   const trimmed = name.trim();
   if (!trimmed) {
     const generic = await storeDb.category.findUnique({ where: { slug: "سایر" } });
     if (generic) return generic.id;
     const created = await storeDb.category.create({
       data: { name: "سایر", slug: "سایر" },
+    });
+    await logAudit({
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.category.create',
+      entityType: 'Category',
+      entityId: created.id,
+      after: created,
     });
     return created.id;
   }
@@ -303,6 +328,14 @@ async function findOrCreateCategory(name: string): Promise<string> {
   if (existing) return existing.id;
   const created = await storeDb.category.create({
     data: { name: trimmed, slug },
+  });
+  await logAudit({
+    actorId: userId ?? null,
+    actorType: 'ADMIN',
+    action: 'store.category.create',
+    entityType: 'Category',
+    entityId: created.id,
+    after: created,
   });
   return created.id;
 }
@@ -318,6 +351,7 @@ function generateSku(): string {
 /** Import a single part suggestion into the store DB. */
 async function importPartIntoStore(
   input: PartsScrapeSuggestion & { stock?: number },
+  userId?: string | null,
 ): Promise<{ id: string; sku: string; name: string }> {
   const name = (input.name || input.nameFa || "قطعه بدون عنوان").trim();
   const categoryName =
@@ -325,8 +359,8 @@ async function importPartIntoStore(
   const brandName = input.brandName || "سایر";
 
   const [categoryId, brandId] = await Promise.all([
-    findOrCreateCategory(categoryName),
-    findOrCreateBrand(brandName),
+    findOrCreateCategory(categoryName, userId),
+    findOrCreateBrand(brandName, userId),
   ]);
 
   const contactForPrice =
@@ -360,6 +394,15 @@ async function importPartIntoStore(
       active: true,
       featured: false,
     },
+  });
+
+  await logAudit({
+    actorId: userId ?? null,
+    actorType: 'ADMIN',
+    action: 'store.part.create',
+    entityType: 'Part',
+    entityId: part.id,
+    after: part,
   });
 
   return { id: part.id, sku: part.sku, name: part.name };
@@ -428,7 +471,15 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
-      const created = await importPartIntoStore(part);
+      const created = await importPartIntoStore(part, user.id);
+      await logAudit({
+        actorId: user.id,
+        actorType: 'ADMIN',
+        action: 'store.ai_scraper.import',
+        entityType: 'Part',
+        entityId: created.id,
+        after: created,
+      });
       return NextResponse.json({
         ok: true,
         part: created,
@@ -461,7 +512,15 @@ export async function POST(req: Request) {
             results.push({ name: p?.name ?? "(بدون نام)", ok: false, error: "نام قطعه خالی است" });
             continue;
           }
-          const created = await importPartIntoStore(p);
+          const created = await importPartIntoStore(p, user.id);
+          await logAudit({
+            actorId: user.id,
+            actorType: 'ADMIN',
+            action: 'store.ai_scraper.import',
+            entityType: 'Part',
+            entityId: created.id,
+            after: created,
+          });
           results.push({
             name: created.name,
             ok: true,

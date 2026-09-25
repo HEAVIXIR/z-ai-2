@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           where: { id: order.id },
           data: { paymentStatus: approvedSumNum >= totalIrrNum ? "PAID" : "PARTIAL" },
         });
+        await logAudit({
+          actorId: user.id,
+          actorType: 'ADMIN',
+          action: 'store.order.update',
+          entityType: 'Order',
+          entityId: order.id,
+          before: { paymentStatus: order.paymentStatus },
+          after: { paymentStatus: approvedSumNum >= totalIrrNum ? "PAID" : "PARTIAL" },
+        });
       }
     }
 
@@ -79,6 +89,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         customer: { select: { id: true, name: true, family: true, phone: true } },
       },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.payment.update',
+      entityType: 'Payment',
+      entityId: payment.id,
+      before: existing,
+      after: payment,
+    });
+
 
     return NextResponse.json({ success: true, data: serialize(payment) });
   } catch (e: any) {

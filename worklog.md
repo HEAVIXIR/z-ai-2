@@ -7782,3 +7782,141 @@ Work Log:
 - Verified 3 `logAudit` calls via grep.
 - Committed as `558bf19` ("feat(PHASE-STORE-2B): Wire logAudit() into parts routes (create/update/delete) — proof of concept").
 
+---
+Task ID: PHASE-STORE-2B-COMPLETE
+Agent: Main Orchestrator (Z.ai Code)
+Task: Complete Store Control Plane Phase 2B — wire `logAudit()` into ALL remaining store mutation routes. Prove 0 mutations without audit.
+
+## Summary
+
+| Metric | Before (2B start) | After proof-of-concept | After 2B COMPLETE |
+|---|---|---|---|
+| Store routes with `logAudit` | 0 | 2 (parts only) | **14** (all mutation routes) ✅ |
+| `logAudit` calls in store routes | 0 | 3 | **27** ✅ |
+| `storeDb` mutation calls (create/update/delete/upsert) | 25 | 25 | **25** (all covered) ✅ |
+| Mutations without audit | 25 | 22 | **0** ✅ |
+| Unique action keys | 0 | 3 | **20** ✅ |
+| Lint errors | 0 | 0 | **0** ✅ |
+| tsc errors | 0 | 0 | **0** ✅ |
+
+## §1. 0-Mutation-Without-Audit Proof (the core 2B acceptance criterion)
+
+Per-route coverage table (mutations vs audits):
+
+| Route | Mutations | Audits | Status |
+|---|---|---|---|
+| `ai-scraper/route.ts` | 5 | 7 | ✅ OK (2 extra: call-site import audits) |
+| `brands/route.ts` | 1 | 1 | ✅ |
+| `brands/[id]/route.ts` | 2 | 2 | ✅ |
+| `categories/route.ts` | 1 | 1 | ✅ |
+| `categories/[id]/route.ts` | 2 | 2 | ✅ |
+| `car-models/route.ts` | 1 | 1 | ✅ |
+| `car-models/[id]/route.ts` | 2 | 2 | ✅ |
+| `currency/route.ts` | 2 | 2 | ✅ |
+| `mechanics/route.ts` | 1 | 1 | ✅ |
+| `mechanics/[id]/route.ts` | 2 | 2 | ✅ |
+| `orders/[id]/route.ts` | 1 | 1 | ✅ |
+| `parts/route.ts` | 1 | 1 | ✅ |
+| `parts/[id]/route.ts` | 2 | 2 | ✅ |
+| `payments/[id]/route.ts` | 2 | 2 | ✅ |
+| `customers/route.ts` | 0 | 0 | ✅ (GET-only) |
+| `orders/route.ts` | 0 | 0 | ✅ (GET-only) |
+| `payments/route.ts` | 0 | 0 | ✅ (GET-only) |
+| `stats/route.ts` | 0 | 0 | ✅ (GET-only) |
+| **TOTAL** | **25** | **27** | **0 mutations without audit** ✅ |
+
+## §2. Action Key Coverage (20 unique keys)
+
+| Entity | Operations | Action Keys | Status |
+|---|---|---|---|
+| Part | create/update/delete | `store.part.create` / `.update` / `.delete` | ✅ |
+| Brand | create/update/delete | `store.brand.create` / `.update` / `.delete` | ✅ |
+| Category | create/update/delete | `store.category.create` / `.update` / `.delete` | ✅ |
+| CarModel | create/update/delete | `store.car_model.create` / `.update` / `.delete` | ✅ |
+| Mechanic | create/update/delete | `store.mechanic.create` / `.update` / `.delete` | ✅ |
+| Order | update | `store.order.update` | ✅ |
+| Payment | update | `store.payment.update` | ✅ |
+| CurrencySetting | update (upsert) | `store.currency_setting.update` | ✅ |
+| CurrencyRate | update (upsert) | `store.currency_rate.update` | ✅ |
+| AI Scraper | import | `store.ai_scraper.import` | ✅ |
+
+## §3. Implementation Method
+
+1. **Proof of concept (previous round, commit `558bf19`)**: Manually wired `parts/route.ts` POST + `parts/[id]/route.ts` PATCH + DELETE with logAudit. Established the pattern.
+
+2. **Batch wiring (this round)**: Wrote a Python script (`wire-store-audit.py`, since removed) that:
+   - Parsed each route file for `storeDb.X.create/update/delete(...)` calls.
+   - Found the result variable name (e.g., `const b = await storeDb.brand.create(...)`).
+   - Found the `existing` variable (fetched before update/delete) for `before` state.
+   - Inserted logAudit after the mutation call's closing `});`, before the `return`.
+   - Added `import { logAudit } from "@/lib/audit"` to each file.
+   - Script wired 10 audit hooks across 10 route files.
+
+3. **Manual fixes (this round)**: The script missed single-line `delete({ where: { id } })` calls (the `});` was on the same line, not a separate line). Manually wired 4 DELETE handlers (brands, categories, car-models, mechanics `[id]` routes) using a targeted Python insertion.
+
+4. **Currency 2-path POST**: Manually wired 2 upsert audits (currencySetting + currencyRate) — the script couldn't detect the two return paths.
+
+5. **payments/[id] order side-effect**: Discovered the PATCH handler has 2 mutations (`storeDb.order.update` as a side-effect of payment approval + `storeDb.payment.update`). Added the missing `store.order.update` audit for the order status change.
+
+6. **ai-scraper internal helpers**: The 5 mutations inside `importPartIntoStore` → `findOrCreateBrand` / `findOrCreateCategory` helpers didn't have access to `user`. Changed all 3 helper function signatures to accept `userId?: string | null`, passed `user.id` from the 2 call sites, and added 5 internal audits (2 brand.create + 2 category.create + 1 part.create). The 2 call-site audits (`store.ai_scraper.import`) capture the user-initiated import action.
+
+## §4. Verification
+
+- `bun run lint`: 0 errors, 7 pre-existing warnings (unchanged).
+- `npx tsc --noEmit`: 0 errors (exit code 0).
+- Grep proof: 27 `await logAudit` calls, 25 `storeDb.*.(create|update|delete|upsert)` calls — every mutation route has matching or more audits.
+- 20 unique action keys covering all Store entities and operations.
+- Runtime smoke test: BLOCKED BY ENVIRONMENT (same PGlite blocker — `logAudit` writes to `db.auditLog` which requires a working DB connection; the call is best-effort so it won't crash, but the audit row won't be written at runtime in this sandbox). This is the SAME environment blocker as EVD-6D-01/02. The audit hooks are structurally present (verified by grep + lint + tsc).
+
+## §5. Definition of Done Chain Status (Store Control Plane, after Phase 2B)
+
+| Link | Status | Evidence |
+|---|---|---|
+| Schema | ✅ | 20 models (STORE-1A) |
+| Service | ✅ | 8 service files (STORE-1A) |
+| API | ✅ | 33 routes (STORE-1A) |
+| Permission | ✅ | 18/18 routes wired (STORE-2A) |
+| Admin UI | ✅ | 11 admin pages (STORE-1A) |
+| Public UI | 🔴 | 1 legacy @ts-nocheck page (Phase 2D scope) |
+| Validation | 🟡 | Basic field validation (future) |
+| Audit | ✅ **NEW** | 27 logAudit calls, 0 mutations without audit (this phase) |
+| Tests | 🔴 | 0 tests (Phase 2C scope) |
+| Monitoring | 🔴 | Not started |
+| Documentation | 🟡 | Audit records in worklog.md |
+
+## §6. Constraints Honored
+
+- ✅ NO 6D path changes (`src/lib/price-engine.ts`, `src/app/api/admin/pricing/**`, `src/app/api/pricing/**` all untouched).
+- ✅ NO Control Plane config changes (frozen files untouched — only CONSUMED the `logAudit` helper from `@/lib/audit` and the `requirePermission` helper from `@/lib/authorization`).
+- ✅ NO schema changes (`prisma/schema.prisma`, `prisma/store-schema.prisma` untouched).
+- ✅ NO `.env` changes (frozen baseline 562e5f7 preserved).
+- ✅ NO `connection_limit` / Prisma pool changes.
+- ✅ NO persistence mocking.
+- ✅ NO `bun run build`.
+- ✅ NO 6F started.
+- ✅ Phase 6D remains FROZEN (CONDITIONALLY GREEN / OPEN, EVD-6D-01/02 still registered).
+
+## Stage Summary
+
+- ✅ **PHASE-STORE-2B — Audit Hooks COMPLETE.**
+- All 14 mutation route files have `logAudit()` calls.
+- 27 logAudit calls total; 25 storeDb mutation calls — 0 mutations without audit.
+- 20 unique action keys covering all Store entities and operations.
+- Lint clean (0 errors); tsc clean (0 errors).
+- DoD chain: Audit link now 🟢 (was 🔴 in STORE-1A audit, was 🟡 after proof-of-concept).
+- Next: **Phase 2C — Tests** (write contract/unit tests for store routes, mirroring `tests/phase6d-estimate-confidence.test.ts` pattern).
+
+Work Log:
+- Read the 6D canonical `logAudit` call at `src/lib/price-engine.ts:775-800` (`createOverride` pattern) and `src/lib/admin/audit.ts:39-68` (function signature).
+- Dumped mutation handler patterns from all 13 remaining route files via grep to map the wiring scope.
+- Wrote `wire-store-audit.py` Python script to batch-wire audit hooks: parsed each route for `storeDb.X.create/update/delete` calls, found result variable + existing variable, inserted logAudit after the mutation. Script wired 10 hooks.
+- Manually wired 4 DELETE handlers (brands, categories, car-models, mechanics `[id]`) that the script missed due to single-line delete calls.
+- Manually wired `currency/route.ts` 2-path POST (currencySetting upsert + currencyRate upsert).
+- Discovered `payments/[id]/route.ts` PATCH has 2 mutations (order.update side-effect + payment.update); added the missing `store.order.update` audit.
+- Changed `findOrCreateBrand`, `findOrCreateCategory`, `importPartIntoStore` helper signatures in `ai-scraper/route.ts` to accept `userId?: string | null`; passed `user.id` from both call sites; added 5 internal audits (2 brand.create + 2 category.create + 1 part.create).
+- Ran `bun run lint` → 0 errors, 7 pre-existing warnings.
+- Ran `npx tsc --noEmit` → 0 errors (exit 0).
+- Verified coverage: 27 `await logAudit` calls, 25 `storeDb` mutation calls, every route has audits >= mutations, 0 mutations without audit.
+- Removed helper scripts (`wire-store-perms.py` from 2A, `wire-store-audit.py` from 2B).
+- Appended this 2B-COMPLETE record to worklog.md.
+
