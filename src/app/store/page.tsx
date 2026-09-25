@@ -1,4 +1,4 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// HEAVIX Store — public page (Phase STORE-2D.3: type-safe, no @ts-nocheck)
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
@@ -16,6 +16,7 @@ import { WishlistDialog } from '@/components/store/WishlistDialog'
 import { MechanicsDialog } from '@/components/store/MechanicsDialog'
 import { StoreFooter } from '@/components/store/StoreFooter'
 import { useStoreCart } from '@/lib/store-cart'
+import { useStoreUser } from '@/lib/use-store-user'
 import type {
   Part,
   Category,
@@ -67,6 +68,9 @@ export default function StorePage() {
   const [highlightOrder, setHighlightOrder] = useState<string | null>(null)
 
   const [coupon, setCoupon] = useState<CouponValidation | null>(null)
+
+  // -- store user (from HEAVIX auth, via useStoreUser hook)
+  const { user: storeUser } = useStoreUser()
 
   // -- cart store
   const cartItems = useStoreCart((s) => s.items)
@@ -358,6 +362,7 @@ export default function StorePage() {
         shippingUsd={shippingUsd}
         appliedCoupon={coupon}
         onClearCoupon={() => setCoupon(null)}
+        user={storeUser}
         onOrderCreated={(order: Order) => {
           setHighlightOrder(order.orderNumber)
           setOrdersOpen(true)
@@ -369,6 +374,7 @@ export default function StorePage() {
         open={ordersOpen}
         onOpenChange={setOrdersOpen}
         highlightOrder={highlightOrder}
+        user={storeUser}
       />
 
       {/* Wishlist */}
