@@ -6535,3 +6535,196 @@ These 2 gaps were identified at 6B.6 runtime verification (worklog lines 5877, 5
    - 6C Phase 12: Smoke + runtime E2E (mirror 6B.6 pattern)
 ```
 
+# HEAVIX — PHASE 6C.2: Comparable Canonical Decision Record
+
+> **Status:** Evidence-Only — NO schema changes, NO migrations, NO new models.
+> **Per user instruction:** "تا پایان این inventory: ❌ schema change ❌ migration ❌ model جدید ❌ API جدید ❌ Comparable engine جدید ❌ PriceEstimate"
+> **Audited on:** 2026-09-25
+> **Baseline:** HEAD `83b9088` (6C.1 inventory)
+
+---
+
+## Decision Record (4 explicit decisions)
+
+### Decision 1: Comparable model — NOT REQUIRED
+
+**Evidence:** The 6C.1 inventory found that:
+- `PriceObservation` (22 fields, 3 relations) serves as the comparable data point
+- `price-engine.ts:estimatePrice()` (lines 174-544) performs comparable selection in-memory using PriceObservation + PUBLISHED Listings
+- `price-history-engine.ts` reads comparable data from PriceObservation
+- No use case or persistence requirement for a separate `Comparable` entity has been found
+
+**Decision:** Do NOT create a new `Comparable` model. Each `PriceObservation` row IS a comparable data point. Comparable selection logic lives in `estimatePrice()`.
+
+**Rationale:** Per project principle "do not create parallel Domain without evidence." No evidence found that a separate `Comparable` entity is needed.
+
+### Decision 2: Comparable data source — PriceObservation
+
+**Evidence:** All 3 canonical readers in `price-history-engine.ts` read from `PriceObservation`. The 1 live writer (`recordObservation` at `price-engine.ts:789`) writes to `PriceObservation`. Both tables are empty (verified by live query).
+
+**Decision:** `PriceObservation` is the canonical comparable data source. No alternative data source needed.
+
+### Decision 3: Verdict vocabulary — canonical four-value vocabulary
+
+**Evidence:**
+- **Canonical** (`price-engine.ts:43-49`): `IN_RANGE | BELOW_RANGE | ABOVE_RANGE | INSUFFICIENT`
+  - Producers: `price-engine.ts:646-648` (getPriceHealth)
+  - Consumers: `PriceEstimateCard.tsx` (live)
+- **Legacy** (`api/ai-price-intelligence/route.ts:71-73`): `UNDERPRICED | FAIR | OVERPRICED`
+  - Producers: `api/ai-price-intelligence/route.ts:71-73` (hardcoded ±15% threshold)
+  - Consumers: `PriceIntelligence.tsx:14,106` (ORPHAN — 0 importers, 0 dynamic imports, 0 test refs)
+- **Note:** `UNDERPRICED_LISTING` in `opportunity-engine.ts` is a DIFFERENT concept (opportunity type, not price verdict) — NOT mapped.
+
+**Mapping:**
+| Legacy | Canonical | Semantic |
+|---|---|---|
+| UNDERPRICED | BELOW_RANGE | price below estimated range |
+| FAIR | IN_RANGE | price within range |
+| OVERPRICED | ABOVE_RANGE | price above estimated range |
+| (none) | INSUFFICIENT | not enough data |
+
+**Decision:** Canonical vocabulary is `IN_RANGE | BELOW_RANGE | ABOVE_RANGE | INSUFFICIENT`. Legacy vocabulary has 0 live consumers (only orphan `PriceIntelligence.tsx`). The orphan + the legacy AI route will be cleaned up.
+
+### Decision 4: PriceEstimate — DEFERRED to 6D
+
+**Evidence:**
+- `PriceEstimate` model exists at `prisma/schema.prisma:2096-2111` (11 fields)
+- **0 runtime readers** — no `db.priceEstimate.findMany/findFirst/findUnique/count` in `src/`
+- **1 seed-only writer** — `prisma/seed-price-observations.ts:127` (seed script, not runtime)
+- `estimatePrice()` returns an `EstimateResult` in memory but does NOT persist to `PriceEstimate` model
+- The model has fields that overlap with `PriceObservation` (`estimatedPrice`, `priceLower`, `priceUpper`, `confidence`, `comparableCount`)
+
+**Decision:** PriceEstimate lifecycle is DEFERRED to 6D (Estimate + Confidence). The question of whether estimates should be persisted (via `PriceEstimate` model) or kept in-memory is a 6D architectural decision, not a 6C decision.
+
+**Rationale:** Per user instruction: "این تصمیم مستقیماً روی 6D اثر دارد" (this decision directly impacts 6D). 6C should not pre-decide 6D's architecture.
+
+---
+
+## §1. Root-Cause: 5 Prisma Runtime Errors
+
+### Problem
+`PriceObservation` model has NO `year` or `condition` fields. But 5 code sites pass them as query filters:
+
+| # | File:Line | Function | Filter | Root Cause |
+|---|---|---|---|---|
+| 1 | `price-history-engine.ts:136` | `getPriceStats()` | `where.year = params.year` | Ported from PriceRecord (which HAD year field) without checking target model |
+| 2 | `price-history-engine.ts:294` | `detectOutliers()` | `where.year = listing.year` | Same — ported from PriceRecord |
+| 3 | `price-history-engine.ts:362` | `getPriceSuggestions()` | `where.year = params.year` | Same |
+| 4 | `price-history-engine.ts:363` | `getPriceSuggestions()` | `where.condition = params.condition` | Same |
+| 5 | `admin/price-intelligence/page.tsx:57` | admin SSR | `priceWhere.year = yearFilter` | Same — admin page queries PriceObservation with PriceRecord's filter shape |
+
+### Solution (NO schema change)
+PriceObservation links to `Listing` via `listingId`. The `Listing` model HAS `year` and `condition` fields. The filters should use Prisma's relation filter syntax:
+- `where: { listing: { year: X } }` instead of `where: { year: X }`
+- `where: { listing: { condition: X } }` instead of `where: { condition: X }`
+
+For observations with `listingId: null` (brand-level, not listing-level), the year/condition filter is not applicable — these should be excluded when year/condition filtering is requested.
+
+### Fix scope: 6C implementation (not 6C.2 — this is evidence-only)
+
+---
+
+## §2. Verdict Vocabulary — Full Producer/Consumer Inventory
+
+### Canonical vocabulary
+| Value | Producer | Consumer |
+|---|---|---|
+| IN_RANGE | `price-engine.ts:648` | `PriceEstimateCard.tsx` (live) |
+| BELOW_RANGE | `price-engine.ts:646` | `PriceEstimateCard.tsx` (live) |
+| ABOVE_RANGE | `price-engine.ts:647` | `PriceEstimateCard.tsx` (live) |
+| INSUFFICIENT | `price-engine.ts:161,490,552,603,632,635` | `PriceEstimateCard.tsx` (live) |
+
+### Legacy vocabulary
+| Value | Producer | Consumer |
+|---|---|---|
+| UNDERPRICED | `api/ai-price-intelligence/route.ts:72` | `PriceIntelligence.tsx:14` (ORPHAN) |
+| FAIR | `api/ai-price-intelligence/route.ts:71` | `PriceIntelligence.tsx:106` (ORPHAN) |
+| OVERPRICED | `api/ai-price-intelligence/route.ts:73` | `PriceIntelligence.tsx:14` (ORPHAN) |
+
+### Note: UNDERPRICED_LISTING is NOT legacy verdict
+`UNDERPRICED_LISTING` in `opportunity-engine.ts:32` and `OpportunitiesAdminClient.tsx:41` is an **opportunity type**, not a price verdict. It should NOT be mapped to `BELOW_RANGE`. It's a separate concept in the Opportunity domain.
+
+---
+
+## §3. PriceEstimate Lifecycle — Deferred to 6D
+
+### Current state
+- Model: exists at `prisma/schema.prisma:2096-2111` (11 fields)
+- Writers: 1 seed-only (`prisma/seed-price-observations.ts:127`)
+- Runtime readers: **0**
+- `estimatePrice()` returns in-memory `EstimateResult` but does NOT persist to `PriceEstimate`
+
+### Open questions for 6D
+1. Should `estimatePrice()` persist its result to `PriceEstimate`? (caching/audit)
+2. Or should `PriceEstimate` be removed as a legacy artifact?
+3. If persisted, what's the relationship between `PriceEstimate` and `PriceObservation` (both have `estimatedPrice`/`priceLower`/`priceUpper`)?
+
+**Decision: DEFERRED to 6D.** 6C should not pre-decide 6D's architecture.
+
+---
+
+## §4. Orphan Component Inventory
+
+### PriceIntelligence.tsx
+| Check | Result |
+|---|---|
+| File | `src/components/listings/PriceIntelligence.tsx` (174 lines) |
+| Imports | **0** — no file in `src/` imports this component |
+| Dynamic imports | **0** |
+| Route references | **0** |
+| Test references | **0** |
+| Live consumers | **0** |
+| **Verdict: SAFE TO DELETE** | ✅ |
+
+### ComparePageClient.tsx
+| Check | Result |
+|---|---|
+| File | `src/components/compare/ComparePageClient.tsx` (394 lines) |
+| Imports | **0** — no file in `src/` imports this component |
+| Dynamic imports | **0** |
+| Route references | **0** |
+| Test references | **0** |
+| Live consumers | **0** |
+| **Verdict: SAFE TO DELETE** | ✅ |
+
+---
+
+## §5. Deferred Gaps from 6B (confirmed 6F scope)
+
+| # | Gap | Source | Scope |
+|---|---|---|---|
+| 1 | `POST /api/pricing/estimate` doesn't pass `listingId` to `recordObservation` | 6B.6 worklog:5877,5900,5907 | 6F |
+| 2 | `POST /api/pricing/estimate` has no `logAudit()` call | 6B.6 worklog:5886,5902,5908 | 6F |
+
+These gaps are **registered as 6F scope**. They are NOT to be silently fixed in 6C. If they appear in the 6C inventory, they are only registered as dependency/evidence.
+
+---
+
+## §6. 6C.2 Gate Criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Prisma runtime conflicts (year/condition) | 🔴 OPEN | 5 sites identified, root-caused, fix plan documented (relation filter syntax) |
+| Verdict vocabulary reconciliation | 🟢 RESOLVED | Canonical 4-value vocabulary confirmed; legacy has 0 live consumers |
+| Orphan UI inventory | 🟢 RESOLVED | 2 orphans identified, 0 live consumers proven, safe to delete |
+| Comparable necessity | 🟢 DECIDED | NOT REQUIRED — PriceObservation is the data source |
+| PriceEstimate lifecycle | 🔴 DEFERRED to 6D | 0 runtime readers, 1 seed writer; decision impacts 6D |
+| Schema change | ⛔ FORBIDDEN | No schema changes in 6C.2 |
+| 6D Estimate | ⛔ FORBIDDEN | Not started |
+
+### Gate verdict: 6C.2 is a DECISION RECORD, not an implementation gate. Implementation (6C proper) can begin after:
+1. Fix 5 Prisma runtime errors (relation filter syntax)
+2. Delete 2 orphan components
+3. Verdict vocabulary is already canonical (no work needed — legacy has 0 consumers)
+
+---
+
+## §7. What This Audit Did NOT Do
+
+- ✅ No schema changes
+- ✅ No migrations
+- ✅ No new models
+- ✅ No new APIs
+- ✅ No Comparable engine
+- ✅ No PriceEstimate changes
+- ✅ No silent fix of 6B deferred gaps (listingId + AuditLog — confirmed 6F scope)
