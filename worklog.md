@@ -7014,3 +7014,38 @@ All code-level criteria pass. 2 runtime verification gaps remain due to PGlite e
 2. POST /api/admin/pricing/override runtime smoke (needs admin auth)
 
 These gaps are environment limitations, NOT code issues. The persistence logic is structurally verified by 25 unit tests + no console.error at runtime.
+
+<br/>
+<br/>
+
+---
+Task ID: PHASE-6D-FREEZE
+Agent: Main Orchestrator (Z.ai Code) + general-purpose subagent
+Task: 6D Gate FREEZE — register PGlite environment blocker, do not reopen 6D.
+
+Work Log:
+- Restored .env to frozen baseline 562e5f7 via `git checkout 562e5f7 -- .env` (reverted the bad config drift introduced by commit 962b039 which had removed `connection_limit=1&pool_timeout=10`).
+- Confirmed .env frozen baseline value: `DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres?schema=public&connection_limit=1&pool_timeout=10`.
+- Killed stale dev processes and removed `.zscripts/dev.pid`.
+- Attempted clean restart of `bash .zscripts/dev.sh` with shell `DATABASE_URL` unset so .env wins. The script progressed past `bun install` and `prisma generate` but FAILED at `bun run db:push` with Prisma error P1001 `Can't reach database server at 127.0.0.1:5432` (and a later log entry shows P1012 URL validation when the shell env var leaked back in).
+- Verified port 5432 is served by a `bun` process (pid 1307) running `/tmp/pglite-admin.mjs` — this is the PGlite WASM bridge, NOT a real PostgreSQL. This is the registered environment blocker.
+- Created recurring 15-minute `webDevReview` cron job (job_id 413758, schedule `0 */15 * * * ?`, timezone Asia/Tehran, payload kind `webDevReview`) with the mandatory task description plus 6D-FREEZE context embedded so future automated rounds respect the freeze.
+- Did NOT modify any code in `src/`, `prisma/schema.prisma`, `package.json`, or any test file.
+- Did NOT change DATABASE_URL to a different value, did NOT add/remove connection_limit, did NOT touch Prisma pool config, did NOT mock persistence, did NOT change PriceEstimate for testability.
+
+Stage Summary:
+- 6D implementation: COMPLETE (no code changes this round).
+- 6D.7: CONDITIONALLY GREEN.
+- 6D Gate: OPEN / ENVIRONMENT-BLOCKED (registered as infrastructure blocker, NOT a code issue).
+- Frozen baseline: commit 562e5f7.
+- .env state: restored to frozen baseline 562e5f7 value (DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres?schema=public&connection_limit=1&pool_timeout=10).
+- PGlite bridge on port 5432: ALIVE (bun pid 1307, /tmp/pglite-admin.mjs). It is a WASM bridge emulating PostgreSQL wire protocol — single-connection limitation makes independent DB verification of persisted PriceEstimate / PriceOverride / AuditLog rows impossible while the dev server holds the connection.
+- Dev server on port 3000: DOWN at the time of this freeze (Prisma cannot reliably reach the PGlite bridge during `db:push`). This is itself evidence of the environment blocker — NOT a code regression.
+- Recurring webDevReview cron job: created (job_id 413758, every 15min, Asia/Tehran).
+- Forbidden workarounds (per user's explicit engineering decision — DO NOT attempt in future rounds): connection_limit changes, Prisma pool changes, Promise.all workarounds, DATABASE_URL changes to dodge the limitation, PriceEstimate testability changes, persistence mocking for E2E.
+- Current evidence status: Implementation COMPLETE; Unit tests PASS (25/25 phase 6D, 386/386 contract); Structural verification PASS (persistEstimate, INSUFFICIENT guard, price.read + price.override permissions, requirePermission wiring, logAudit on override); Runtime partial verification PASS (GET /api/pricing/estimate returns 200 with MEDIUM confidence + 7 comparables; INSUFFICIENT scenario returns 200 with confidence=INSUFFICIENT + skipped persistence); Final DB evidence BLOCKED BY ENVIRONMENT (cannot SELECT PriceEstimate / PriceOverride / AuditLog rows independently).
+
+Next steps for future rounds:
+- (a) DO NOT reopen 6D. The 6D Gate stays OPEN / ENVIRONMENT-BLOCKED until a real PostgreSQL is available.
+- (b) If a real PostgreSQL becomes available in another environment, run the verification-only pass with ZERO code changes: DB connectivity → migrate/schema verification → seed minimal data → POST/GET pricing estimate → SELECT PriceEstimate → POST admin override → SELECT PriceOverride → SELECT AuditLog → record evidence → 6D Gate GREEN.
+- (c) Otherwise, keep improving unrelated UI/features/styling on routes OTHER than the 6D estimate/pricing persistence path. Bring the dev server back up if possible (operational restart only — no code/config changes), but if the PGlite bridge stays unreachable, register it as the ongoing environment blocker and move on.
