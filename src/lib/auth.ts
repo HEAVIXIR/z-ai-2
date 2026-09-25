@@ -174,22 +174,52 @@ export async function destroyUserSession(): Promise<void> {
 /** Returns the current User record if the user cookie is a valid session. */
 export async function getCurrentUser() {
   const store = await cookies();
+
+  // 1. Try user session (heavix-user cookie → Session table)
   const token = store.get(USER_COOKIE)?.value;
-  if (!token) return null;
-  try {
-    const session = await db.session.findUnique({
-      where: { token },
-      include: { user: true },
-    });
-    if (!session) return null;
-    if (session.expiresAt.getTime() < Date.now()) {
-      await db.session.delete({ where: { id: session.id } }).catch(() => {});
-      return null;
+  if (token) {
+    try {
+      const session = await db.session.findUnique({
+        where: { token },
+        include: { user: true },
+      });
+      if (session) {
+        if (session.expiresAt.getTime() < Date.now()) {
+          await db.session.delete({ where: { id: session.id } }).catch(() => {});
+        } else {
+          return session.user;
+        }
+      }
+    } catch {
+      /* fall through to admin check */
     }
-    return session.user;
-  } catch {
-    return null;
   }
+
+  // 2. Fall back to admin session (heavix-admin cookie → AdminSession table)
+  // E2E-06 GAP FIX: admin login sets heavix-admin, but getCurrentUser()
+  // only checked heavix-user. This aligns admin login with getCurrentUser().
+  const adminToken = store.get(ADMIN_COOKIE)?.value;
+  if (adminToken) {
+    try {
+      const tokenHash = hashToken(adminToken);
+      const adminSession = await db.adminSession.findUnique({ where: { tokenHash } });
+      if (adminSession) {
+        if (adminSession.expiresAt.getTime() < Date.now()) {
+          await db.adminSession.delete({ where: { id: adminSession.id } }).catch(() => {});
+        } else {
+          // Admin sessions are not linked to a User record.
+          // Return a synthetic admin user whose id 'ADMIN' is recognized
+          // by can() as having all permissions (matching adminGuard's
+          // "ADMIN role has all permissions" semantics).
+          return { id: 'ADMIN', firstName: 'Admin' } as any;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return null;
 }
 
 export async function getCurrentUserId(): Promise<string | null> {

@@ -43,6 +43,9 @@ export async function can(
   permission: string,
 ): Promise<boolean> {
   if (!userId) return false;
+  // E2E-06 GAP FIX: admin sessions return id='ADMIN' from getCurrentUser().
+  // Admin has all permissions (matches adminGuard's "ADMIN role has all permissions").
+  if (userId === 'ADMIN') return true;
   const perms = await getUserPermissions(userId);
   return perms.includes(permission);
 }
