@@ -1,4 +1,4 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY (type-safety deferred to separate batch)
+// HEAVIX Marketplace admin (Phase MARKETPLACE-2C: type-safe, no @ts-nocheck)
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
@@ -97,7 +97,7 @@ export async function GET(_req: Request, { params }: Params) {
     };
     let l: any = null;
     try {
-      l = await db.listing.findUnique({ where: { id }, include: fullInclude });
+      l = await db.listing.findUnique({ where: { id }, include: fullInclude as any });
     } catch (includeErr: any) {
       // Stale PrismaClient — retry without the new P1-5/6 relations.
       if (
@@ -105,7 +105,7 @@ export async function GET(_req: Request, { params }: Params) {
         includeErr.message.includes("Unknown field")
       ) {
         const { product: _p, transactionType: _t, country: _c, provinceRel: _pr, cityRel: _ci, ...legacyInclude } = fullInclude;
-        l = await db.listing.findUnique({ where: { id }, include: legacyInclude });
+        l = await db.listing.findUnique({ where: { id }, include: legacyInclude as any });
       } else {
         throw includeErr;
       }
