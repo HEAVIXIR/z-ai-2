@@ -8378,3 +8378,72 @@ Work Log:
 - Appended this 2E-FREEZE decision record to worklog.md.
 - Stopped — no new work (freeze honored).
 
+---
+Task ID: PROCESS-BATCH-MODEL
+Agent: Main Orchestrator (Z.ai Code)
+Task: Process optimization — adopt two-layer batch model for phases. Reduce ceremony/verification repetition, NOT quality standards.
+
+## New Operating Principle (effective immediately)
+
+### Two-Layer Model per Phase
+
+**Layer A — Implementation (per phase):**
+- Coding
+- lint / typecheck
+- contract / unit tests
+- commit
+
+**Layer B — Gate (batch, once per set of phases):**
+- runtime evidence
+- monitoring
+- documentation
+- production verification
+
+### New Flow (batch model)
+```
+Evidence-only inventory → Implementation → Local structural verification → Commit → Freeze → Batch Gate
+```
+
+### Old Flow (avoid — causes round-to-round drag)
+```
+one change → test → Gate → runtime → worklog → inventory again → another change
+```
+
+## Application to Store Control Plane
+
+- **2A–2D = Layer A (Implementation):** COMPLETE (permission, audit, tests, public UI — all structurally verified, committed).
+- **2E = Layer B (Batch Gate):** FROZEN as verification-pending. Does NOT block development of other independent architecture layers. Gate stays OPEN until the full chain has evidence.
+
+## Hard Constraints (unchanged)
+
+- ❌ NO big architectural refactor just to speed up verification.
+- ❌ NO turning Universal Resource Engine into a God Component (per project docs — Admin/Control Plane must be layered).
+- ❌ NO removing tests, audit, permission, or documentation to go faster.
+- ✅ Speed comes from: batching Gates, removing duplicate inventories, separating implementation from runtime verification.
+
+## Governing Principle (still authoritative)
+```
+Schema → Service → API → Permission → UI → Validation → Audit → Tests → Monitoring → Documentation → DONE
+```
+Existence of API/tests alone does NOT make a Gate GREEN. The full chain must have evidence. The batch model changes WHEN we verify (once per batch, not per change), NOT WHAT we verify.
+
+## Impact on Future Rounds (including cron job 413915)
+
+- Implementation rounds: focus on code + lint + typecheck + contract tests + commit. Do NOT re-run full runtime Gate after every small change.
+- Gate rounds: run the full verification chain (runtime evidence + monitoring + documentation + production verification) ONCE per batch of phases.
+- Store 2E is a Gate round — it stays frozen until runtime verification is actually executable. It does NOT block the next independent architecture layer (Marketplace Control Plane) if the user requests it.
+
+## Stage Summary
+
+- ✅ Two-layer batch model adopted as the new operating principle.
+- ✅ Layer A (implementation) and Layer B (batch gate) are now separate.
+- ✅ Store 2A–2D = Layer A (complete). Store 2E = Layer B (frozen, pending).
+- ✅ No quality standards reduced — only ceremony and repetition removed.
+- ✅ Universal Resource Engine independence preserved (no God Component).
+- ✅ Full DoD chain remains the Gate criterion.
+
+Work Log:
+- Confirmed user directive: adopt two-layer batch model (Implementation + Batch Gate).
+- Appended this process decision record to worklog.md (ONE brief entry — not per-round ceremony).
+- Stopped — this is a meta-decision, not implementation work.
+
