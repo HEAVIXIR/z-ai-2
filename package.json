@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "DATABASE_URL=postgresql://heavix@localhost:5432/heavix?schema=public next dev -p 3000 2>&1 | tee dev.log",
+    "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
