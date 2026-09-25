@@ -42,7 +42,8 @@ function listRouteFiles(): string[] {
     }
   }
   walk(STORE_ROUTES_DIR);
-  return results.sort();
+  // Exclude health endpoints (monitoring stubs — no auth required)
+  return results.filter(f => !f.includes('/health/')).sort();
 }
 
 function readRoute(rel: string): string {
