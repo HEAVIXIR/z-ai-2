@@ -370,19 +370,6 @@ exports.Prisma.NotificationScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
-exports.Prisma.AuditLogScalarFieldEnum = {
-  id: 'id',
-  adminId: 'adminId',
-  adminName: 'adminName',
-  action: 'action',
-  entity: 'entity',
-  entityId: 'entityId',
-  before: 'before',
-  after: 'after',
-  ipAddress: 'ipAddress',
-  createdAt: 'createdAt'
-};
-
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -413,8 +400,7 @@ exports.Prisma.ModelName = {
   Wishlist: 'Wishlist',
   Coupon: 'Coupon',
   WalletTransaction: 'WalletTransaction',
-  Notification: 'Notification',
-  AuditLog: 'AuditLog'
+  Notification: 'Notification'
 };
 
 /**

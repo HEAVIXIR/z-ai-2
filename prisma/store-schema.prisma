@@ -29,7 +29,7 @@ model AdminUser {
 
   payments      Payment[]       @relation("PaymentReviewer")
   currencyRates CurrencyRate[]
-  auditLogs     AuditLog[]
+  // auditLogs removed — store audit writes to main PostgreSQL (cross-DB design)
   reviewedReviews Review[]      @relation("ReviewModerator")
 }
 
@@ -343,18 +343,10 @@ model Notification {
 }
 
 // ---------------------------------------------------------------------------
-// AUDIT LOG
+// AUDIT LOG — removed (Track A P0 fix)
+// Store audit hooks use logAudit() from src/lib/admin/audit.ts which writes
+// to the MAIN PostgreSQL AuditLog table (cross-DB design, verified E2E-07).
+// This store-schema AuditLog model was dead code (never written to, never
+// read from, different field shape from main schema). Removed for clarity.
+// See: docs/STORE-MARKETPLACE-CONTROL-PLANE.md for cross-DB audit design.
 // ---------------------------------------------------------------------------
-model AuditLog {
-  id        String    @id @default(cuid())
-  adminId   String?
-  admin     AdminUser? @relation(fields: [adminId], references: [id])
-  adminName String
-  action    String
-  entity    String
-  entityId  String?
-  before    String?
-  after     String?
-  ipAddress String?
-  createdAt DateTime @default(now())
-}

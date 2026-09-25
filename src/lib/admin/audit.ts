@@ -5,6 +5,13 @@
  * Uses the REAL HEAVIX AuditLog schema fields:
  *   actorId, actorType, action, entityType, entityId,
  *   beforeJson, afterJson, ip, userAgent, requestId, reason
+ *
+ * CROSS-DB DESIGN (Track A P0):
+ *   This function writes to the MAIN PostgreSQL AuditLog table (db.auditLog).
+ *   Store routes (src/app/api/admin/store/*) also use this function — their
+ *   audit entries are written to PostgreSQL, NOT to the store SQLite DB.
+ *   This is intentional: store audit is cross-DB (verified E2E-07).
+ *   The store-schema AuditLog model was removed as dead code.
  */
 
 import { db } from '@/lib/db';

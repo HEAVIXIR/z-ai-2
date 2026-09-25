@@ -174,6 +174,10 @@ export default function AdminProcurementPage() {
 
   return (
     <div className="space-y-6">
+      {/* Track A P1: This is a stub UI — no backend API exists yet */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        ⚠️ این صفحه یک رابط کاربری نمایشی است. backend مربوط به مناقصات هنوز پیاده‌سازی نشده است.
+      </div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
