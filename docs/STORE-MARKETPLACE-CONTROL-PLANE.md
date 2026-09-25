@@ -3,6 +3,8 @@
 > **Status:** Layer A implementation COMPLETE. Batch Gate PENDING (deferred to joint runtime verification).
 > **Date:** 2026-09-25
 > **Baseline:** commit `562e5f7` (frozen)
+> **Current HEAD:** commit `5862d9f` (synced to GitHub)
+> **Commits since baseline:** 18 (all Store 2A-2D + Marketplace 2A-2C + monitoring + docs)
 
 ---
 
@@ -90,16 +92,23 @@ Implementation + structural evidence (tests, lint, tsc) are green. Runtime evide
 2. The PGlite bridge stabilizes enough for runtime smoke, OR
 3. The user explicitly requests a different verification approach.
 
-**78/90 contract tests passing does NOT auto-GREEN the Gate.** Per project principle: "Existence of API/tests is NOT Completion." The full DoD chain (Schema → Service → API → Permission → UI → Validation → Audit → Tests → Monitoring → Documentation → DONE) must have evidence.
+**90/90 contract tests passing does NOT auto-GREEN the Gate.** Per project principle: "Existence of API/tests is NOT Completion." The full DoD chain (Schema → Service → API → Permission → UI → Validation → Audit → Tests → Monitoring → Documentation → DONE) must have evidence.
 
 ---
 
 ## Frozen Baseline
 
-- **Git commit:** `562e5f7`
+- **Git commit (baseline):** `562e5f7`
+- **Current HEAD:** `5862d9f` (synced to GitHub)
 - **.env:** `DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres?schema=public&connection_limit=1&pool_timeout=10` (frozen, do NOT change)
 - **6D path:** untouched (price-engine.ts, pricing routes)
 - **Control Plane config:** untouched (resources, authorization, action-engine)
+
+### Known Gaps (out of scope for this batch)
+
+- **13 admin route files outside Store/Marketplace still have `@ts-nocheck`** — these are in the general admin layer (ai-scraper, brands-ai, categories/generate-image, compare, jobs, lifecycle, pages/rollback, preferences, sell-in-7-days, site-settings, social-reels, users). Type-safety for these is a **future batch** — NOT part of Store/Marketplace Control Plane.
+- **Store 2E / Marketplace 2E runtime verification** — blocked by PGlite (EVD-6D-01/02). Deferred to Joint Batch Gate.
+- **Production build verification** — not run (`bun run build` forbidden per constraints).
 
 ---
 
