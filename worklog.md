@@ -7649,3 +7649,136 @@ Work Log:
 - Attempted dev server smoke test: started `next dev` directly (bypassing `db:push`). Server reached "Ready" but crashed on first request (DB connection failure — registered PGlite blocker). Documented as environment-blocked, NOT a regression.
 - Removed the helper script `wire-store-perms.py` (it was a build-time tool, not part of the codebase).
 
+---
+Task ID: PHASE-STORE-2B (started — proof of concept)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Store Control Plane Phase 2B — Audit Hooks. Wire `logAudit()` calls into store mutation routes, mirroring the 6D canonical pattern at `src/lib/price-engine.ts:783` (`createOverride`).
+
+## Summary
+
+| Metric | Before | After (this round) | Target (full Phase 2B) |
+|---|---|---|---|
+| Store routes with `logAudit` | 0 | 2 (parts + parts/[id]) | 16 (all mutation routes) |
+| `logAudit` calls in store routes | 0 | **3** | ~20 (all create/update/delete handlers) |
+| Audit hooks coverage | 0% | **~15%** (3/~20 handlers) | 100% |
+
+## §1. Canonical Pattern Applied (mirrors 6D `price-engine.ts:783`)
+
+`logAudit` function (at `src/lib/admin/audit.ts:39-68`):
+- Writes to the MAIN `db.auditLog` table (line 45: `await db.auditLog.create(...)`).
+- Best-effort: try/catch with `console.error` on failure — never throws, never crashes the route.
+- Fields: `actorId`, `actorType` ('USER'|'ADMIN'|'SYSTEM'|'AI'), `action`, `entityType`, `entityId`, `before` (JSON), `after` (JSON), `ip`, `userAgent`, `requestId`, `reason`.
+- `before`/`after` are JSON-serialized via `safeStringify`.
+
+This mirrors 6D's `persistEstimate` pattern: structurally present (the call exists in code), best-effort (won't crash on DB failure), runtime verification blocked by environment (EVD-6D-01/02 root cause).
+
+## §2. Proof-of-Concept Wiring (parts routes)
+
+### `parts/route.ts` POST (create)
+```typescript
+await logAudit({
+  actorId: user.id,
+  actorType: 'ADMIN',
+  action: 'store.part.create',
+  entityType: 'Part',
+  entityId: part.id,
+  after: { name, sku, categoryId, brandId, priceUsd, stock, active, featured },
+});
+```
+
+### `parts/[id]/route.ts` PATCH (update)
+```typescript
+await logAudit({
+  actorId: user.id,
+  actorType: 'ADMIN',
+  action: 'store.part.update',
+  entityType: 'Part',
+  entityId: id,
+  before: { name, sku, priceUsd, stock, active },  // from `existing` (pre-update fetch)
+  after: { name, sku, priceUsd, stock, active },   // from `part` (post-update result)
+});
+```
+
+### `parts/[id]/route.ts` DELETE (delete)
+```typescript
+await logAudit({
+  actorId: user.id,
+  actorType: 'ADMIN',
+  action: 'store.part.delete',
+  entityType: 'Part',
+  entityId: id,
+  before: { name, sku, priceUsd, stock },  // from `existing` (pre-delete fetch)
+});
+```
+
+## §3. Action Key Naming Convention
+
+Pattern: `store.<entity>.<operation>`
+
+| Entity | Operations | Action Keys |
+|---|---|---|
+| Part | create/update/delete | `store.part.create` / `.update` / `.delete` ✅ wired |
+| Brand | create/update/delete | `store.brand.create` / `.update` / `.delete` (pending) |
+| Category | create/update/delete | `store.category.*` (pending) |
+| Order | update | `store.order.update` (pending) |
+| Payment | update | `store.payment.update` (pending) |
+| Currency | update | `store.currency.update` (pending) |
+| Mechanic | create/update/delete | `store.mechanic.*` (pending) |
+| CarModel | create/update/delete | `store.car_model.*` (pending) |
+| Customer | create | `store.customer.create` (pending) |
+| AI Scraper | import | `store.ai_scraper.import` (pending) |
+
+## §4. Remaining Work for Phase 2B (cron job will continue)
+
+The following 14 route files still need `logAudit` calls added to their mutation handlers:
+1. `brands/route.ts` POST → `store.brand.create`
+2. `brands/[id]/route.ts` PATCH → `store.brand.update`, DELETE → `store.brand.delete`
+3. `categories/route.ts` POST → `store.category.create`
+4. `categories/[id]/route.ts` PATCH → `store.category.update`, DELETE → `store.category.delete`
+5. `orders/[id]/route.ts` PATCH → `store.order.update`
+6. `payments/[id]/route.ts` PATCH → `store.payment.update`
+7. `currency/route.ts` POST → `store.currency.update`
+8. `mechanics/route.ts` POST → `store.mechanic.create`
+9. `mechanics/[id]/route.ts` PATCH → `store.mechanic.update`, DELETE → `store.mechanic.delete`
+10. `car-models/route.ts` POST → `store.car_model.create`
+11. `car-models/[id]/route.ts` PATCH → `store.car_model.update`, DELETE → `store.car_model.delete`
+12. `customers/route.ts` POST → `store.customer.create`
+13. `ai-scraper/route.ts` POST → `store.ai_scraper.import`
+
+Each follows the same pattern: add `import { logAudit } from "@/lib/audit"` and call `await logAudit({...})` after the successful `storeDb.<entity>.create/update/delete` call, using the `before` (pre-mutation fetch) and `after` (post-mutation result) states.
+
+## §5. Verification
+
+- `bun run lint`: 0 errors, 7 pre-existing warnings (unchanged).
+- 3 `logAudit` calls verified via grep in `src/app/api/admin/store/`.
+- Runtime smoke test: BLOCKED BY ENVIRONMENT (same PGlite blocker — `logAudit` writes to `db.auditLog` which requires a working DB connection; the call is best-effort so it won't crash, but the audit row won't be written at runtime in this sandbox).
+
+## §6. Constraints Honored
+
+- ✅ NO 6D path changes.
+- ✅ NO Control Plane config changes.
+- ✅ NO schema changes, NO .env changes, NO connection_limit/pool changes.
+- ✅ NO persistence mocking.
+- ✅ Phase 6D remains FROZEN.
+- ✅ Phase 6F NOT started.
+
+## Stage Summary
+
+- 🔵 **PHASE-STORE-2B — Audit Hooks STARTED (proof of concept).**
+- 3 `logAudit` calls wired into parts routes (create/update/delete).
+- Pattern established for the cron job to continue wiring the remaining ~17 handlers across 13 route files.
+- DoD chain: Audit link now 🟡 (was 🔴 in STORE-1A audit; will be 🟢 when all handlers wired).
+- Lint clean.
+- Next: cron job continues Phase 2B (wire remaining routes), then Phase 2C (tests), 2D (public UI), 2E (smoke matrix).
+
+Work Log:
+- Read 6D canonical `logAudit` call at `src/lib/price-engine.ts:775-800` (`createOverride` pattern).
+- Read `logAudit` function signature at `src/lib/admin/audit.ts:1-68` — confirmed it writes to main `db.auditLog`, is best-effort (try/catch), takes `actorId`/`action`/`entityType`/`entityId`/`before`/`after`/`ip`/`userAgent`/`requestId`/`reason`.
+- Added `import { logAudit } from "@/lib/audit"` to `parts/route.ts` and `parts/[id]/route.ts`.
+- Wired `store.part.create` audit hook in `parts/route.ts` POST (after `storeDb.part.create`, with `after` state).
+- Wired `store.part.update` audit hook in `parts/[id]/route.ts` PATCH (after `storeDb.part.update`, with `before` + `after` states).
+- Wired `store.part.delete` audit hook in `parts/[id]/route.ts` DELETE (after `storeDb.part.delete`, with `before` state).
+- Ran `bun run lint` → 0 errors, 7 pre-existing warnings (clean).
+- Verified 3 `logAudit` calls via grep.
+- Committed as `558bf19` ("feat(PHASE-STORE-2B): Wire logAudit() into parts routes (create/update/delete) — proof of concept").
+
