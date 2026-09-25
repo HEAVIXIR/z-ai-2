@@ -6728,3 +6728,73 @@ These gaps are **registered as 6F scope**. They are NOT to be silently fixed in 
 - ✅ No Comparable engine
 - ✅ No PriceEstimate changes
 - ✅ No silent fix of 6B deferred gaps (listingId + AuditLog — confirmed 6F scope)
+
+---
+
+Task ID: PHASE-6D-1
+Agent: Main Orchestrator (Z.ai Code)
+Task: PHASE 6D.1 — Estimate + Confidence Evidence-Only Inventory. NO code changes, NO schema changes, NO migrations.
+
+## Summary
+
+| Layer | Count | Status |
+|---|---|---|
+| PriceEstimate model | 1 (11 fields, 0 runtime readers, 1 seed writer) | ⚠️ orphaned |
+| estimatePrice() function | 1 (returns in-memory EstimateResult, does NOT persist) | ✅ canonical engine |
+| Confidence field | String type ("HIGH"\|"MEDIUM"\|"LOW"\|"INSUFFICIENT") — NOT structured | ⚠️ string, not model |
+| mainDrivers/warnings | string[] in EstimateResult, JSON String? in PriceEstimate model | ⚠️ unstructured |
+| API routes serving estimates | 5 (price-estimate, pricing/estimate, pricing/health, ai-evaluation, ai-gateway) | ✅ functional |
+| UI consumers | 2 (PriceEstimateCard.tsx + PricingEngineClient.tsx) | ✅ functional |
+| Tests | 3 structural tests (model exists, function exported, confidence field) | ⚠️ structural only |
+| DB rows | PriceEstimate: 0, PriceObservation: 0 | ✅ zero risk |
+
+## §1. PriceEstimate Model
+- **File:** `prisma/schema.prisma:2096-2111`
+- **11 fields:** id, listingId, listing(relation), estimatedPrice(Float), priceLower(Float), priceUpper(Float), confidence(String default "MEDIUM"), comparableCount(Int default 0), dataFreshness(String?), mainDrivers(String? JSON array), warnings(String? JSON array), modelVersion(String default "v1.0"), createdAt
+- **Index:** @@index([listingId])
+- **Writers:** 1 seed-only (`prisma/seed-price-observations.ts:127`)
+- **Runtime readers:** 0
+- **DB rows:** 0
+- **Overlap with PriceObservation:** PriceObservation also has estimatedPrice, priceLower, priceUpper, confidence, comparableCount — fields are duplicated
+
+## §2. estimatePrice() Function
+- **File:** `src/lib/price-engine.ts:174`
+- **Returns:** `EstimateResult` (in-memory, NOT persisted)
+- **EstimateResult fields:** estimatedPrice, priceLower, priceUpper, medianPrice, confidence(ConfidenceLevel), comparableCount, dataFreshness, mainDrivers(string[]), warnings(string[]), modelVersion, comparables(array)
+- **Reads:** PriceObservation (askingPrice) + PUBLISHED Listings (price) — both via `db.priceObservation.findMany` + `db.listing.findMany`
+- **Persists:** NO — does not write to PriceEstimate or any DB table
+- **Confidence logic:** based on comparableCount (>=10 → HIGH, >=5 → MEDIUM, >=2 → LOW, <2 → INSUFFICIENT)
+
+## §3. Confidence Field
+- **Type:** `ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT"` (string union type, NOT structured model)
+- **In PriceEstimate model:** `confidence String @default("MEDIUM")` — plain string, no relation
+- **In PriceObservation model:** `confidence String?` — plain string
+- **In EstimateResult:** `confidence: ConfidenceLevel` — typed
+- **Calculation:** in estimatePrice() at ~line 487-491 — based on comparableCount thresholds
+- **NOT a structured model** — per 6D DoD, a `Confidence` model with score + breakdown may be needed
+
+## §4. mainDrivers / Explanation
+- **In EstimateResult:** `mainDrivers: string[]` — typed string array
+- **In PriceEstimate model:** `mainDrivers String?` — JSON-encoded string (unstructured)
+- **In estimatePrice():** drivers.push() at various points — adds human-readable strings
+- **NOT a structured model** — per 6D DoD, an `Explanation` model may be needed
+
+## §5. Canonical Candidate
+- **estimatePrice() IS the canonical estimate engine** — returns in-memory EstimateResult
+- **PriceEstimate model is an orphaned PERSISTED CACHE** — 0 runtime readers, 1 seed-only writer, 0 DB rows
+- **Question for 6D:** Should PriceEstimate be wired up as a persisted cache for estimate results? Or removed as legacy?
+
+## §6. Reconciliation Plan (evidence-based, not design-based)
+1. Wire estimatePrice() to persist results to PriceEstimate (for caching/audit)
+2. OR remove PriceEstimate model (if in-memory is sufficient)
+3. Consider structured Confidence + Explanation models per 6D DoD
+4. Add price.* permission keys for admin estimate routes
+5. Add audit hooks to estimate mutation routes
+6. Write unit tests for estimatePrice() confidence calculation
+7. Add to smoke matrix
+
+## Constraints honored
+- ✅ No code changes
+- ✅ No schema changes
+- ✅ No migrations
+- ✅ Every claim traced to file + line
