@@ -133,7 +133,9 @@ export async function getPriceStats(params: {
   if (params.productId) where.productId = params.productId;
   if (params.categoryId) where.categoryId = params.categoryId;
   if (params.brandId) where.brandId = params.brandId;
-  if (params.year) where.year = params.year;
+  // STEP 6C.3: Fixed year/condition filter — PriceObservation has NO
+  // year/condition fields. Use relation filter via Listing instead.
+  if (params.year) (where as Record<string, unknown>).listing = { ...((where as Record<string, unknown>).listing ?? {}), year: params.year };
 
   const rows = await db.priceObservation.findMany({
     where,
@@ -291,7 +293,8 @@ export async function detectOutliers(listingId: string): Promise<OutlierResult> 
   const where: Record<string, unknown> = {};
   if (listing.categoryId) where.categoryId = listing.categoryId;
   if (listing.brandId) where.brandId = listing.brandId;
-  if (listing.year) where.year = listing.year;
+  // STEP 6C.3: Fixed year filter — relation filter via Listing.
+  if (listing.year) (where as Record<string, unknown>).listing = { ...((where as Record<string, unknown>).listing ?? {}), year: listing.year };
 
   const rows = await db.priceObservation.findMany({
     where,
@@ -359,8 +362,10 @@ export async function getPriceSuggestions(params: {
 }): Promise<PriceSuggestion> {
   const where: Record<string, unknown> = { categoryId: params.categoryId };
   if (params.brandId) where.brandId = params.brandId;
-  if (params.year) where.year = params.year;
-  if (params.condition) where.condition = params.condition;
+  // STEP 6C.3: Fixed year/condition filter — PriceObservation has NO
+  // year/condition fields. Use relation filter via Listing instead.
+  if (params.year) (where as Record<string, unknown>).listing = { ...((where as Record<string, unknown>).listing ?? {}), year: params.year };
+  if (params.condition) (where as Record<string, unknown>).listing = { ...((where as Record<string, unknown>).listing ?? {}), condition: params.condition };
 
   const rows = await db.priceObservation.findMany({
     where,

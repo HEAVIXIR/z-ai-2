@@ -54,7 +54,9 @@ export default async function PriceIntelligencePage({
   const priceWhere: any = {};
   if (categoryFilter) priceWhere.categoryId = categoryFilter;
   if (brandFilter) priceWhere.brandId = brandFilter;
-  if (yearFilter && Number.isFinite(yearFilter)) priceWhere.year = yearFilter;
+  // STEP 6C.3: Fixed year filter — PriceObservation has NO year field.
+  // Use relation filter via Listing instead.
+  if (yearFilter && Number.isFinite(yearFilter)) priceWhere.listing = { year: yearFilter };
 
   // Per category+brand stats (top 30 by sample size)
   const allStats = await db.priceObservation.groupBy({
