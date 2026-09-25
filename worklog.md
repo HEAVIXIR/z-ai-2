@@ -6918,3 +6918,29 @@ Task: PHASE 6D.2 — Estimate + Confidence Canonical Decision Record. Evidence-b
 - Canonical source: ✅ DECIDED (estimatePrice + PriceEstimate)
 - Schema change: ⛔ FORBIDDEN in 6D.2
 - 6F deferred gaps: ⛔ untouched
+
+---
+
+Task ID: PHASE-6D-5
+Agent: Main Orchestrator (Z.ai Code)
+Task: 6D.5 — Audit hooks inventory + assessment. Evidence-only. NO code changes.
+
+## Audit Hook Inventory
+
+| Route | Method | Mutation | Audit Hook | Status |
+|---|---|---|---|---|
+| POST /api/admin/pricing/override | POST | Creates PriceOverride | ✅ `logAudit()` at `price-engine.ts:783` (action: `pricing.override`, entityType: `PriceOverride`) | Already audited |
+| GET /api/admin/pricing/observations | GET | Read-only (no mutation) | N/A | No audit needed |
+| POST /api/pricing/estimate | POST | Creates PriceObservation via `recordObservation()` | ❌ No audit hook | **6B deferred gap — 6F scope** |
+| estimatePrice() persistEstimate (6D.3) | System | Creates PriceEstimate (cache write) | ❌ No audit | System cache write, not user-initiated mutation |
+
+## Assessment
+
+- **POST /api/admin/pricing/override**: ✅ Already has proper audit hook via `createOverride()` → `logAudit()`. No action needed.
+- **POST /api/pricing/estimate**: ❌ Missing audit hook on `recordObservation()`. This is the **6B deferred gap** (worklog 6B.6). Per user instruction: "شکاف‌های listingId و AuditLog همچنان scope فاز 6F هستند" — this is **6F scope, NOT to be touched in 6D**.
+- **persistEstimate (6D.3)**: System-generated cache write, not a user-initiated mutation. No audit hook needed at this level. If audit is needed, it would be on the calling route (POST /api/pricing/estimate), which is 6F scope.
+
+## Decision: NO NEW AUDIT HOOKS IN 6D.5
+
+All user-initiated mutations in the estimate domain already have audit hooks (createOverride). The only gap (recordObservation audit) is a 6B deferred gap explicitly in 6F scope.
+
