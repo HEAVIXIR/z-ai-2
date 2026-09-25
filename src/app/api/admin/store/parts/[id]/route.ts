@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +104,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         brand: { select: { id: true, name: true, slug: true } },
       },
     });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.part.update',
+      entityType: 'Part',
+      entityId: id,
+      before: {
+        name: existing.name,
+        sku: existing.sku,
+        priceUsd: existing.priceUsd,
+        stock: existing.stock,
+        active: existing.active,
+      },
+      after: {
+        name: part.name,
+        sku: part.sku,
+        priceUsd: part.priceUsd,
+        stock: part.stock,
+        active: part.active,
+      },
+    });
+
     return NextResponse.json({ success: true, data: serialize(part) });
   } catch (e: any) {
     console.error("[store/parts PATCH] error:", e);
@@ -125,6 +149,21 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     await storeDb.part.delete({ where: { id } });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.part.delete',
+      entityType: 'Part',
+      entityId: id,
+      before: {
+        name: existing.name,
+        sku: existing.sku,
+        priceUsd: existing.priceUsd,
+        stock: existing.stock,
+      },
+    });
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });

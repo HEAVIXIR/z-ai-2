@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,24 @@ export async function POST(req: Request) {
       include: {
         category: { select: { id: true, name: true, slug: true } },
         brand: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.part.create',
+      entityType: 'Part',
+      entityId: part.id,
+      after: {
+        name: part.name,
+        sku: part.sku,
+        categoryId: part.categoryId,
+        brandId: part.brandId,
+        priceUsd: part.priceUsd,
+        stock: part.stock,
+        active: part.active,
+        featured: part.featured,
       },
     });
 
