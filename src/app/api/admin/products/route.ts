@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { requireAdmin } from "@/lib/admin-guard";
 
@@ -137,6 +138,15 @@ export async function POST(req: Request) {
         model: { select: { id: true, name: true, nameEn: true } },
       },
     });
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.product.create',
+      entityType: 'Product',
+      entityId: product?.id,
+      after: product,
+    });
+
 
     return NextResponse.json({ ok: true, product });
   } catch (err: any) {

@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
@@ -44,6 +45,15 @@ export async function POST(req: Request, { params }: Params) {
         status: "OPEN",
       },
     });
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_rejection.create',
+      entityType: 'ListingRejection',
+      entityId: rejection?.id,
+      after: rejection,
+    });
+
 
     await db.listing.update({
       where: { id },

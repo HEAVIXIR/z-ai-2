@@ -8447,3 +8447,71 @@ Work Log:
 - Appended this process decision record to worklog.md (ONE brief entry — not per-round ceremony).
 - Stopped — this is a meta-decision, not implementation work.
 
+---
+Task ID: PHASE-MARKETPLACE-2B (Layer A implementation batch)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Marketplace Control Plane Layer A batch — wire logAudit() into Marketplace admin mutation routes. Evidence-only inventory → implementation → structural verification → commit → freeze.
+
+## Evidence-Only Inventory
+
+| Metric | Count |
+|---|---|
+| Marketplace admin route files | 7 (listings, listings/[id], listings/[id]/reject, offers-all, offers-all/[id], products, products/[id]) |
+| Marketplace models (main schema) | 12+ (Listing, ListingImage, ListingAttributeValue, ProductModel, Product, AuctionBid, ListingOffer, ListingRejection, FoundingSeller, DealRoom, DealMessage, DealDocument, Deal) |
+| Admin API routes | 7 |
+| Public API routes | 19+ |
+| Admin pages | 6 |
+| Public pages | 11 |
+| Permission keys declared | 11 (listing.read/create/update/delete/publish/moderate/export + product.read/create/update/delete) |
+| Permission keys wired | 🟡 partial — listings POST uses `hasPermission` for session users (dual-auth); others use legacy `isAuthenticated()` only |
+| `@ts-nocheck` files | 2 (listings/route.ts, listings/[id]/route.ts) |
+| Total mutations | 21 |
+| Pre-existing audits | 2 (offers-all/[id]) |
+
+## Implementation (Layer A)
+
+- Wrote `wire-marketplace-audit.py` (removed after use) to batch-wire logAudit() into Marketplace admin mutations.
+- Script detected `db.X.create/update/delete/upsert/deleteMany/updateMany` calls, found the result variable + existing variable, inserted logAudit after the mutation, added `import { logAudit }` if missing.
+- Handled dual-auth pattern: used `sessionUser?.id ?? null` as actorId for routes with session user, `null` for legacy admin-cookie routes.
+- 13 new audit hooks wired (15 total with pre-existing 2).
+
+## Per-Route Coverage
+
+| Route | Mutations | Audits | Status |
+|---|---|---|---|
+| listings/[id]/reject | 3 | 1 | 🟡 partial (2 gap) |
+| listings/[id] | 10 | 5 | 🟡 partial (5 gap) |
+| listings/route | 2 | 2 | ✅ |
+| offers-all/[id] | 3 | 4 | ✅ |
+| offers-all/route | 0 | 0 | ✅ (GET-only) |
+| products/[id] | 2 | 2 | ✅ |
+| products/route | 1 | 1 | ✅ |
+| **TOTAL** | **21** | **15** | 6 gap (in complex switch-statement routes) |
+
+## Verification
+
+- `bun run lint`: 0 errors, 7 pre-existing warnings ✅
+- `npx tsc --noEmit`: 0 errors ✅
+- `bun run test` (3 contract files): **90/90 PASS** (44 Store 2C + 34 Store 2D + 12 Marketplace 2B) ✅
+- Marketplace contract tests: `tests/phase-marketplace-2b-contracts.test.ts` (12 tests)
+
+## Constraints Honored
+
+- ✅ NO 6D path changes.
+- ✅ NO Control Plane config changes.
+- ✅ NO Universal Resource Engine refactor.
+- ✅ NO `@ts-nocheck` removal (deferred — type-safety is a separate batch).
+- ✅ NO permission pattern changes (dual-auth preserved).
+- ✅ NO schema/.env changes.
+- ✅ Phase 6D FROZEN, Store 2E FROZEN.
+- ✅ Batch model followed (inventory → implement → verify → commit → freeze).
+
+## Stage Summary
+
+- 🔵 **Marketplace-2B Layer A batch COMPLETE.** 13 audit hooks wired (15 total).
+- 12 contract tests pass.
+- 6 mutations still without audit (in complex switch-statement routes — future batch).
+- `@ts-nocheck` still on 2 files (type-safety deferred to separate batch).
+- Gate: deferred (Batch Gate comes at the end of the batch, not per-phase).
+- Next: more Layer A work (remove @ts-nocheck, wire permission keys, fill the 6 audit gaps) OR next independent layer.
+

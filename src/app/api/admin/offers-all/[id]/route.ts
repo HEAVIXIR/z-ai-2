@@ -135,6 +135,16 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       },
     });
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_offer.update',
+      entityType: 'ListingOffer',
+      entityId: updated?.id,
+      before: existing,
+      after: updated,
+    });
+
 
     if (shouldMarkListingSold && updated.listingId) {
       try {
@@ -201,6 +211,15 @@ export async function DELETE(_req: Request, { params }: Params) {
         before: serialize(existing),
         reason: "حذف پیشنهاد توسط مدیر",
       });
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_offer.delete',
+      entityType: 'ListingOffer',
+      before: existing,
+      after: { deleted: true },
+    });
+
     } catch {
       /* non-fatal */
     }

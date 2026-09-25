@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
 
@@ -222,6 +223,15 @@ export async function PATCH(req: Request, { params }: Params) {
           companyId: existing.companyId,
         },
       });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.create',
+      entityType: 'Listing',
+      entityId: dup?.id,
+      after: dup,
+    });
+
       // Copy images
       const imgs = await db.listingImage.findMany({ where: { listingId: id } });
       if (imgs.length > 0) {
@@ -274,12 +284,28 @@ export async function PATCH(req: Request, { params }: Params) {
       await db.listingImage.deleteMany({
         where: { id: { in: body.removeImages.map(String) } },
       });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_image.bulk_deleteMany',
+      entityType: 'ListingImage',
+      after: { count: result?.count ?? 'unknown' },
+    });
+
     }
     if (body.setPrimaryImage) {
       await db.listingImage.updateMany({
         where: { listingId: id },
         data: { isPrimary: false },
       });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_image.bulk_updateMany',
+      entityType: 'ListingImage',
+      after: { count: result?.count ?? 'unknown' },
+    });
+
       await db.listingImage.update({
         where: { id: String(body.setPrimaryImage) },
         data: { isPrimary: true },
@@ -350,6 +376,14 @@ export async function PATCH(req: Request, { params }: Params) {
           attributeId: { in: body.removeAttributeIds.map(String) },
         },
       });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing_attribute_value.bulk_deleteMany',
+      entityType: 'ListingAttributeValue',
+      after: { count: result?.count ?? 'unknown' },
+    });
+
     }
 
     const fresh = await db.listing.findUnique({
@@ -387,6 +421,14 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await db.listing.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.delete',
+      entityType: 'Listing',
+      after: { deleted: true },
+    });
+
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings/id] revalidateTag failed:', e); }
 

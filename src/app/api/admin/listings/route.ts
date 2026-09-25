@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { parseBig, parseBool, parseNumber } from "@/lib/api-helpers";
 
@@ -161,6 +162,22 @@ export async function POST(req: Request) {
       where: { id: { in: ids } },
       data,
     });
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.bulk_deleteMany',
+      entityType: 'Listing',
+      after: { count: result?.count ?? 'unknown' },
+    });
+
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.bulk_updateMany',
+      entityType: 'Listing',
+      after: { count: result?.count ?? 'unknown' },
+    });
+
 
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[admin/listings] revalidateTag failed:', e); }
