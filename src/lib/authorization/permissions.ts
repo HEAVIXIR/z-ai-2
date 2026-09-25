@@ -179,6 +179,10 @@ export const PERMISSIONS = [
   'request.manage',
   'dispute.read',
   'dispute.manage',
+
+  // Price Intelligence (STEP 6D.4)
+  'price.read',
+  'price.override',
 ] as const;
 
 export type PermissionKey = typeof PERMISSIONS[number];
@@ -209,6 +213,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'transport.read',               // 16-C: ship items
     'media.upload',
     'analytics.read',
+    'price.read',                     // 6D.4: view price estimates
   ],
 
   BUYER: [
@@ -253,6 +258,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'transport.read', 'transport.manage',
     'request.read', 'request.manage',
     'dispute.read', 'dispute.manage',
+    'price.read',                     // 6D.4: moderate price estimates
+    'price.override',                 // 6D.4: override estimates
   ],
 
   SUPPORT: [
@@ -267,6 +274,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // 16-C: support can view all marketplace CP resources
     'part.read', 'machine.read', 'offer.read', 'auction.read',
     'inspection.read', 'transport.read', 'request.read', 'dispute.read',
+    'price.read',                     // 6D.4: view price estimates
   ],
 };
 

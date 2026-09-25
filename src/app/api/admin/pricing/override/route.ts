@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, ADMIN_CREDENTIALS } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { createOverride } from "@/lib/price-engine";
 
 export const runtime = "nodejs";
@@ -7,12 +8,19 @@ export const dynamic = "force-dynamic";
 
 /* POST /api/admin/pricing/override
    Admin only. Creates a PriceOverride (with audit log) per spec §13.
+   STEP 6D.4: Permission gate upgraded from isAuthenticated() to requirePermission('price.override')
 
    Body: { listingId, overridePrice, reason }
 */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'price.override');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires price.override" }, { status: 403 });
   }
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
@@ -44,7 +52,7 @@ export async function POST(req: Request) {
       listingId,
       overridePrice,
       reason,
-      adminId: ADMIN_CREDENTIALS.username,
+      adminId: user.id,
       ip,
       userAgent,
     });

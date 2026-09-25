@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { listObservations } from "@/lib/price-engine";
 
 export const runtime = "nodejs";
@@ -8,10 +9,17 @@ export const dynamic = "force-dynamic";
 /* GET /api/admin/pricing/observations
    Admin only. Lists PriceObservation rows with filters (spec §13).
    Query: brandId, categoryId, source, status, limit, offset
+   STEP 6D.4: Permission gate upgraded from isAuthenticated() to requirePermission('price.read')
 */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'price.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires price.read" }, { status: 403 });
   }
   try {
     const url = new URL(req.url);
