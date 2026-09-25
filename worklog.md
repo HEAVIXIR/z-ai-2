@@ -8283,3 +8283,98 @@ Work Log:
 - Ran `bun run lint`: 0 errors, 7 pre-existing warnings.
 - Appended this 2D record to worklog.md.
 
+---
+Task ID: PHASE-STORE-2E-FREEZE
+Agent: Main Orchestrator (Z.ai Code)
+Task: Store 2E freeze decision — keep verification-pending, no new refactor/workaround.
+
+## Decision (per user directive)
+
+> "فعلاً بهترین تصمیم مهندسی: Store 2E را freeze در حالت verification-pending نگه داریم و هیچ refactor یا workaround جدیدی انجام ندهیم."
+
+Translation: "For now, the best engineering decision: keep Store 2E frozen in verification-pending state, and don't do any new refactor or workaround."
+
+## Two Blocker Types — Kept Separate (critical distinction)
+
+| Blocker | Type | Scope | Resolution |
+|---|---|---|---|
+| **EVD-6D-01/02** | Environment | PGlite single-connection limitation; cannot independently SELECT PriceEstimate/PriceOverride/AuditLog rows | Resolve when real PostgreSQL is available; run verification-only pass with ZERO code changes |
+| **2E current** | Infrastructure | Platform dev tool session invalidated; cannot run Bash/Read/Write/Edit/Glob/LS; cannot determine runtime state at all | Resolve when tool session recovers; re-run 2E.2–2E.10 verification plan |
+
+These are **distinct**. The 2E tool outage is NOT the PGlite blocker — it prevented even observing whether PGlite is reachable.
+
+## Store 2E Status: ⏸️ VERIFICATION-PENDING (FROZEN)
+
+- 2E.1 ✅ PASS (git/working tree/baseline — verified before tool outage)
+- 2E.2–2E.10 ⏸️ BLOCKED (tool outage; will re-run via cron job 413915 when tools recover)
+- NO code changes made to force smoke green (per user directive: "هیچ تغییر production code برای عبور از این مراحل مجاز نیست")
+- NO worklog fabrication
+
+## Store Gate Verdict: ⏸️ OPEN
+
+Per user directive: "78/78 تست سبز به‌تنهایی Gate را GREEN نمی‌کند" (78/78 green tests alone does NOT make the Gate GREEN).
+
+The Gate must consider the FULL DoD chain:
+
+| Link | Status | Evidence |
+|---|---|---|
+| Implementation | 🟢 | 2A (permission) + 2B (audit) + 2D (public UI) complete |
+| Permission | 🟢 | 2A: 18/18 routes, 32 requirePermission calls |
+| Audit | 🟢 | 2B: 27 logAudit calls, 0 mutations without audit |
+| Tests | 🟢 | 2C (44) + 2D (34) = 78 contract tests pass |
+| Public UI | 🟢 | 2D: @ts-nocheck removed, tsc 0 errors |
+| Runtime evidence | ⏸️ | BLOCKED — 2E.2–2E.10 not completed (tool outage + PGlite blocker) |
+| Monitoring | 🔴 | Not started — honest gap |
+| Documentation | 🟡 | Worklog entries exist for 1A/2A/2B/2C/2D; no standalone Store Control Plane doc |
+| **Store Gate** | ⏸️ **OPEN** | Implementation + structural evidence green, but runtime evidence pending + Monitoring gap + Documentation partial |
+
+## Verification Plan (for cron job 413915 or next round when tools recover)
+
+Run in this exact order (per user directive), with ZERO production code changes:
+1. git status + baseline integrity
+2. DB connectivity (observation only)
+3. schema/migration validation
+4. Start dev server without config changes
+5. curl /store (public route)
+6. curl admin routes (auth + permission path — expect 401)
+7. One representative mutation (if DB reachable)
+8. Check AuditLog for that mutation
+9. Run tsc + lint + 2C/2D tests
+10. Register evidence + determine Gate
+
+## Constraints Honored
+
+- ✅ NO code changes this round (freeze honored).
+- ✅ NO refactor or workaround (freeze honored).
+- ✅ NO PGlite manipulation.
+- ✅ NO 6D reopening.
+- ✅ NO Control Plane config changes.
+- ✅ NO fabrication.
+- ✅ Two blocker types kept separate.
+- ✅ Gate NOT forced GREEN — honest OPEN verdict.
+
+## State Observed (at freeze time)
+
+- PGlite bridge: ALIVE on port 5432 (bun pid 1307)
+- Dev server: DOWN (port 3000 not listening)
+- Git HEAD: `d3fea40` (9 commits since frozen baseline 562e5f7 — all Store 2A-2D + docs)
+- Working tree: clean
+- `.env`: unchanged from baseline 562e5f7
+- 6D path: untouched
+- Control Plane config: untouched
+
+## Stage Summary
+
+- 🔵 **Store 2E FROZEN as verification-pending.**
+- Store Gate: ⏸️ OPEN (implementation green, runtime evidence pending, Monitoring gap, Documentation partial).
+- Two blocker types kept separate (EVD-6D-01/02 environment vs 2E tool infrastructure).
+- Cron job 413915 (every 15 min, Asia/Tehran) will re-run 2E verification when tools recover.
+- No new work until 2E verification completes OR user explicitly requests next layer (Marketplace Control Plane).
+
+Work Log:
+- Confirmed user directive: freeze Store 2E as verification-pending, no new refactor/workaround.
+- Quick state observation: PGlite bridge alive on 5432, dev server down on 3000, git HEAD d3fea40, working tree clean.
+- Recreated cron job 413915 (previous 413812 was cleared) with full 2E verification plan + Store context.
+- Appended this 2E-FREEZE decision record to worklog.md.
+- Stopped — no new work (freeze honored).
+
