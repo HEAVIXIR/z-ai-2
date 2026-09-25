@@ -6798,3 +6798,123 @@ Task: PHASE 6D.1 — Estimate + Confidence Evidence-Only Inventory. NO code chan
 - ✅ No schema changes
 - ✅ No migrations
 - ✅ Every claim traced to file + line
+
+---
+
+Task ID: PHASE-6D-2
+Agent: Main Orchestrator (Z.ai Code)
+Task: PHASE 6D.2 — Estimate + Confidence Canonical Decision Record. Evidence-based decisions only. NO code changes, NO schema changes, NO new models.
+
+## 5 Canonical Decisions
+
+### Decision 1: PriceEstimate lifecycle — KEEP as persisted cache, wire it up
+
+**Evidence:**
+- PriceEstimate model: 11 fields, 1 reverse-relation on Listing (`priceEstimates PriceEstimate[]` at schema:520)
+- Writers: 1 seed-only (`prisma/seed-price-observations.ts:127`), 0 runtime writers
+- Readers: 0 runtime readers
+- DB rows: 0
+- `estimatePrice()` returns `EstimateResult` in-memory but does NOT persist — every estimate request recomputes from scratch
+- 5 overlapping fields with PriceObservation: estimatedPrice, priceLower, priceUpper, confidence, comparableCount
+
+**Analysis:**
+- PriceObservation stores raw observation data (what was observed)
+- PriceEstimate stores computed estimate results (what was calculated from observations)
+- These are DIFFERENT concepts: observation = input, estimate = output
+- The 5 overlapping fields exist in PriceObservation as DENORMALIZED snapshot fields (the observation captures the estimate that was computed at observation time)
+- PriceEstimate is the CANONICAL persisted estimate (not a duplicate of PriceObservation)
+
+**Decision:** KEEP PriceEstimate model. Wire `estimatePrice()` to persist results to PriceEstimate (caching + audit trail). This is 6D implementation scope.
+
+**Rationale:** 
+- Every estimate request currently recomputes from scratch — expensive for high-traffic listings
+- Persisting estimates enables: audit trail (when was this estimate computed?), cache (reuse recent estimate), admin review (override stale estimates)
+- PriceEstimate has `modelVersion` field — enables version tracking of the price model
+- The model is well-designed (11 fields cover all EstimateResult fields) — just not wired up
+
+### Decision 2: Confidence structure — KEEP as string union type (NOT structured model)
+
+**Evidence:**
+- Confidence is a union type: `"HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT"` (`price-engine.ts:43`)
+- Calculation logic: `confidenceForCount()` at `price-engine.ts` — based on comparableCount thresholds (>=8 → HIGH, >=4 → MEDIUM, >=2 → LOW, <2 → INSUFFICIENT)
+- Also considers: coefficient of variation (>0.5 → warning), data freshness (STALE → warning), relaxed search (→ warning)
+- Used in: EstimateResult.confidence, PriceEstimate.confidence, PriceObservation.confidence
+- 4 values cover the full semantic range
+
+**Analysis:**
+- A structured `Confidence` model (with score Float + breakdown JSON) would add complexity without clear benefit
+- The 4-value union type already captures the semantic meaning
+- The calculation considers multiple factors (count, CV, freshness, relaxed) but maps them to a single 4-value result — this is correct design
+- The factors are already exposed via `mainDrivers` and `warnings` arrays
+
+**Decision:** KEEP Confidence as string union type. Do NOT create a separate `Confidence` model. The 4-value union + mainDrivers + warnings provide sufficient explanation.
+
+### Decision 3: mainDrivers/warnings structure — KEEP as string arrays (NOT structured model)
+
+**Evidence:**
+- In EstimateResult: `mainDrivers: string[]` + `warnings: string[]` (typed arrays)
+- In PriceEstimate model: `mainDrivers String?` + `warnings String?` (JSON-encoded strings)
+- Content: human-readable Persian strings (e.g., "پراکندگی بالای قیمت در موارد مشابه — تخمین با احتیاط ببینید.")
+- 6 different warning conditions identified in code (lines 482-499)
+
+**Analysis:**
+- These are human-readable messages, not structured data
+- A structured `Explanation` model would require: schema design, migration, relation, API, UI — significant complexity
+- The current string[] approach is flexible and human-readable
+- The JSON encoding in PriceEstimate model is a serialization concern, not a structural one
+
+**Decision:** KEEP mainDrivers/warnings as string arrays. Do NOT create a separate `Explanation` model. The string[] approach is sufficient for the current and foreseeable use cases.
+
+### Decision 4: PriceEstimate vs PriceObservation — FRIEND, not duplicate
+
+**Evidence:**
+- 5 overlapping fields: estimatedPrice, priceLower, priceUpper, confidence, comparableCount
+- PriceObservation: stores RAW observation data (what was seen in the market) — input
+- PriceEstimate: stores COMPUTED estimate results (what was calculated) — output
+- PriceObservation has `listingId` relation — links to a specific listing
+- PriceEstimate has `listingId` relation — links to a specific listing
+- PriceObservation.confidence = the confidence of the OBSERVATION itself
+- PriceEstimate.confidence = the confidence of the ESTIMATE computed from multiple observations
+
+**Analysis:**
+- The overlapping fields serve DIFFERENT purposes in each model:
+  - In PriceObservation: they're DENORMALIZED snapshots of the estimate at observation time
+  - In PriceEstimate: they're the CANONICAL computed values
+- This is a valid denormalization pattern (snapshot in observation = audit trail of what was computed when)
+- NOT a duplicate — different lifecycle, different source of truth
+
+**Decision:** FRIEND. The 5 overlapping fields are denormalized snapshots in PriceObservation and canonical values in PriceEstimate. No conflict to resolve.
+
+### Decision 5: Canonical source for Estimate + Confidence
+
+**Evidence:**
+- `estimatePrice()` in `price-engine.ts:174` IS the canonical estimate engine
+- It reads from PriceObservation + PUBLISHED Listings
+- It returns EstimateResult (in-memory)
+- PriceEstimate model is the canonical PERSISTED estimate (currently orphaned, to be wired in 6D implementation)
+- `price-history-engine.ts` is the canonical reader (for history/stats/suggestions)
+- Confidence is computed by `confidenceForCount()` in `price-engine.ts`
+
+**Decision:** 
+- **Canonical estimate engine:** `estimatePrice()` in `price-engine.ts`
+- **Canonical persisted estimate:** `PriceEstimate` model (to be wired in 6D implementation)
+- **Canonical confidence calculation:** `confidenceForCount()` in `price-engine.ts`
+- **Canonical reader:** `price-history-engine.ts` (for history/stats/suggestions)
+
+## Constraints honored
+- ✅ PriceEstimate model: untouched
+- ✅ Schema: untouched
+- ✅ No new Confidence model
+- ✅ No new Explanation model
+- ✅ No implementation started
+- ✅ 6F deferred gaps: untouched (listingId + AuditLog)
+- ✅ All decisions evidence-based (traced to file + line)
+
+## 6D.2 Gate
+- PriceEstimate lifecycle: ✅ DECIDED (keep + wire up)
+- Confidence structure: ✅ DECIDED (keep string union)
+- mainDrivers/warnings: ✅ DECIDED (keep string arrays)
+- PriceEstimate vs PriceObservation: ✅ DECIDED (friend, not duplicate)
+- Canonical source: ✅ DECIDED (estimatePrice + PriceEstimate)
+- Schema change: ⛔ FORBIDDEN in 6D.2
+- 6F deferred gaps: ⛔ untouched
