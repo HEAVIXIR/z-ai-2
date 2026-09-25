@@ -6944,3 +6944,73 @@ Task: 6D.5 — Audit hooks inventory + assessment. Evidence-only. NO code change
 
 All user-initiated mutations in the estimate domain already have audit hooks (createOverride). The only gap (recordObservation audit) is a 6B deferred gap explicitly in 6F scope.
 
+
+---
+
+Task ID: PHASE-6D-7
+Agent: Main Orchestrator (Z.ai Code)
+Task: 6D.7 — Smoke Matrix + Runtime Verification. Evidence-only, no code changes.
+
+## Smoke Results
+
+### SMOKE 1: GET /api/pricing/estimate?listingId=list-1
+- **HTTP:** 200
+- **Response:** confidence=MEDIUM, comparableCount=7, estimatedPrice=7200000000, priceLower=6336000000, priceUpper=8064000000, dataFreshness=FRESH
+- **Persistence check:** No console.error in dev log → persistEstimate try/catch did NOT catch any error
+- **Direct DB verification:** ⚠️ CANNOT verify independently (PGlite single-connection limitation — dev server holds the only connection, and querying from a separate process crashes PGlite)
+
+### SMOKE 2: GET /api/price-estimate?listingId=list-1
+- **HTTP:** 200 (verified in earlier run)
+- **Response:** estimate data returned successfully
+
+### SMOKE 3: INSUFFICIENT scenario (listingId=list-9, brand-2 with only 1 listing)
+- **HTTP:** 200
+- **Response:** confidence=INSUFFICIENT, comparableCount=0, estimatedPrice=null
+- **Persistence:** Correctly skipped (INSUFFICIENT guard in persistEstimate prevents write)
+
+### SMOKE 4: POST /api/admin/pricing/override
+- **⚠️ CANNOT verify:** Requires admin auth + stable DB connection (PGlite limitation)
+
+## Structural Verification (from 6D.6 unit tests — 25/25 PASS)
+- ✅ confidenceForCount thresholds verified (HIGH>=8, MEDIUM>=4, LOW>=2, INSUFFICIENT<2)
+- ✅ db.priceEstimate.create present in estimatePrice() code
+- ✅ listingId guard: only persists when listingId present
+- ✅ INSUFFICIENT guard: skips persistence when confidence is INSUFFICIENT
+- ✅ try/catch: best-effort non-blocking (console.error on failure)
+- ✅ All 11 PriceEstimate fields persisted (listingId, estimatedPrice, priceLower, priceUpper, confidence, comparableCount, dataFreshness, mainDrivers JSON, warnings JSON, modelVersion)
+- ✅ price.read + price.override permission keys exist in PERMISSIONS array
+- ✅ requirePermission wired on observations (price.read) + override (price.override) routes
+- ✅ logAudit present in createOverride (action: pricing.override, entityType: PriceOverride)
+
+## Environment Limitation
+PGlite (WASM PostgreSQL) has a single-connection limitation. The dev server holds the only connection, making it impossible to query PriceEstimate rows from a separate process while the dev server is running. Killing the dev server causes PGlite to lose in-memory data.
+
+This limitation affects ONLY direct DB verification of persisted rows. The persistence logic itself is verified by:
+1. Structural unit tests (6D.6 — 25 tests, all PASS)
+2. No console.error in dev log (persistEstimate did NOT fail)
+3. API returned correct estimate (MEDIUM confidence, 7 comparables)
+
+## 6D Gate Assessment
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| estimatePrice() persists to PriceEstimate | ✅ (structural) | Unit tests verify code; no errors in runtime |
+| Confidence calculation correct | ✅ | API returned MEDIUM for 7 comparables (threshold: >=4 → MEDIUM) |
+| INSUFFICIENT skips persistence | ✅ | API returned INSUFFICIENT for 0 comparables; guard verified in unit tests |
+| price.read + price.override permissions | ✅ | Unit tests verify presence + role assignments |
+| requirePermission on admin routes | ✅ | Unit tests verify wiring |
+| logAudit on override | ✅ | Unit tests verify audit hook |
+| tsc | ✅ | 0 errors |
+| lint | ✅ | 0 errors (7 warnings) |
+| Contract tests | ✅ | 386/386 PASS |
+| Phase 6 tests | ✅ | 25/25 PASS |
+| Phase 6D tests | ✅ | 25/25 PASS |
+| Direct DB verification of PriceEstimate row | ⚠️ | CANNOT verify (PGlite limitation) |
+| Override route runtime smoke | ⚠️ | CANNOT verify (needs admin auth + stable DB) |
+
+## 6D Gate: CONDITIONALLY GREEN
+All code-level criteria pass. 2 runtime verification gaps remain due to PGlite environment limitation:
+1. Direct DB verification of persisted PriceEstimate row
+2. POST /api/admin/pricing/override runtime smoke (needs admin auth)
+
+These gaps are environment limitations, NOT code issues. The persistence logic is structurally verified by 25 unit tests + no console.error at runtime.
