@@ -7049,3 +7049,448 @@ Next steps for future rounds:
 - (a) DO NOT reopen 6D. The 6D Gate stays OPEN / ENVIRONMENT-BLOCKED until a real PostgreSQL is available.
 - (b) If a real PostgreSQL becomes available in another environment, run the verification-only pass with ZERO code changes: DB connectivity → migrate/schema verification → seed minimal data → POST/GET pricing estimate → SELECT PriceEstimate → POST admin override → SELECT PriceOverride → SELECT AuditLog → record evidence → 6D Gate GREEN.
 - (c) Otherwise, keep improving unrelated UI/features/styling on routes OTHER than the 6D estimate/pricing persistence path. Bring the dev server back up if possible (operational restart only — no code/config changes), but if the PGlite bridge stays unreachable, register it as the ongoing environment blocker and move on.
+
+---
+Task ID: PHASE-6D-EVD (Evidence Debt Record)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Formal Evidence Debt registration for 6D — freeze 6D, register 2 verification debts, move to next independent architecture layer (Store Control Plane). NO code changes.
+
+## 6D Gate Status (5-level, verbatim per user directive)
+
+| Level | Status |
+|---|---|
+| 6D Implementation | 🟢 COMPLETE |
+| 6D Unit/Structural | 🟢 PASS |
+| 6D Runtime Partial | 🟢 PASS |
+| 6D Final DB Evidence | 🟡 ENVIRONMENT-BLOCKED |
+| **6D Gate** | 🟡 **CONDITIONALLY GREEN / OPEN** |
+
+This is consistent with current evidence: implementation and tests are verified, but the two witnesses requiring a real DB have NOT been independently confirmed.
+
+## Evidence Debt (formal Verification Debt registration)
+
+These are NOT development work. They are a short verification pass to be executed when a real PostgreSQL environment is available. The current sandbox is NOT suitable for these witnesses (port 5432 is a PGlite WASM bridge with a single-connection limitation, NOT real PostgreSQL).
+
+### EVD-6D-01 — Real PostgreSQL: SELECT PriceEstimate after estimate request
+
+- **Scope:** Verify that `estimatePrice()` in `src/lib/price-engine.ts` persists computed estimates to the `PriceEstimate` table.
+- **Preconditions:** Real PostgreSQL instance. Schema/migrations applied. Minimal seed data present.
+- **Steps:**
+  1. POST (or GET) `/api/pricing/estimate?listingId=<listing-with-comparables>` → HTTP 200, confidence ∈ {HIGH, MEDIUM, LOW}.
+  2. `SELECT * FROM "PriceEstimate" WHERE "listingId" = '<listingId>' ORDER BY "createdAt" DESC LIMIT 1;`
+- **Pass criterion:** A `PriceEstimate` row exists for that `listingId` with `estimatedPrice`, `priceLower`, `priceUpper`, `confidence`, `comparableCount` matching the API response. `mainDrivers` and `warnings` are non-null (JSON arrays).
+- **Current evidence:** Structural unit tests (6D.6 — 25/25 PASS) verify the `db.priceEstimate.create()` call exists in `estimatePrice()` with all 11 fields. Runtime: no `console.error` in dev.log → `persistEstimate` try/catch did NOT fire. But independent `SELECT` cannot be performed in this sandbox (PGlite single-connection limitation).
+- **Debt type:** Runtime verification, environment-blocked.
+- **Resolution path:** Run in a real PostgreSQL environment. ZERO code changes required.
+
+### EVD-6D-02 — Real PostgreSQL + admin auth: POST /api/admin/pricing/override → verify PriceOverride → verify AuditLog
+
+- **Scope:** Verify that `POST /api/admin/pricing/override` creates a `PriceOverride` row AND a corresponding `AuditLog` row.
+- **Preconditions:** Real PostgreSQL instance. Admin user seeded (`ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`). Schema/migrations applied.
+- **Steps:**
+  1. Acquire admin session (NextAuth sign-in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`).
+  2. `POST /api/admin/pricing/override` with body `{ listingId, overridePrice, reason }` → HTTP 200 (or 201).
+  3. `SELECT * FROM "PriceOverride" WHERE "listingId" = '<listingId>' ORDER BY "createdAt" DESC LIMIT 1;`
+  4. `SELECT * FROM "AuditLog" WHERE "entityType" = 'PriceOverride' ORDER BY "createdAt" DESC LIMIT 1;`
+- **Pass criterion:** A `PriceOverride` row exists with the submitted `overridePrice` and `reason`. An `AuditLog` row exists with `action = 'pricing.override'`, `entityType = 'PriceOverride'`, linking to the new override.
+- **Current evidence:** Structural unit tests (6D.6) verify `logAudit()` is called in `createOverride()` with action `pricing.override` and entityType `PriceOverride`. The route is wired with `requirePermission('price.override')`. But the runtime POST → row-insert → SELECT chain cannot be verified in this sandbox (PGlite limitation + admin auth flow requires a stable DB connection).
+- **Debt type:** Runtime verification, environment-blocked.
+- **Resolution path:** Run in a real PostgreSQL environment. ZERO code changes required.
+
+## Verification-Only Pass Checklist (when real PostgreSQL is available)
+
+Per user directive #5: when a real PostgreSQL environment is available, do NOT reopen Phase 6D. Just run this checklist:
+
+1. PostgreSQL connectivity (`psql` or Prisma client connection test)
+2. Schema/migrations verification (`prisma db push` or `prisma migrate deploy`)
+3. Seed minimal data (admin user + 1 brand + 1 category + 1 listing + ~3 price observations)
+4. POST/GET `/api/pricing/estimate` → HTTP 200
+5. `SELECT PriceEstimate` → row exists with correct fields (resolves EVD-6D-01)
+6. `POST /api/admin/pricing/override` → HTTP 200
+7. `SELECT PriceOverride` → row exists
+8. `SELECT AuditLog` → row exists with `action = 'pricing.override'` (resolves EVD-6D-02)
+9. Attach evidence (queries + results) to worklog.md under a new `PHASE-6D-VERIFICATION-PASS` section
+10. **6D Gate → 🟢 GREEN** (flip from CONDITIONALLY GREEN)
+
+## Forbidden workarounds (DO NOT attempt in any round)
+
+Per user's explicit engineering decision — these create architectural risk just to get a Gate tick:
+
+- ❌ `connection_limit` changes (adding, removing, or tuning)
+- ❌ Prisma pool configuration changes
+- ❌ `Promise.all` workarounds for the single-connection limitation
+- ❌ Mocking persistence for E2E tests
+- ❌ Changing `PriceEstimate` model just to make it testable
+- ❌ Schema changes solely for testability
+- ❌ Changing `DATABASE_URL` to simulate PostgreSQL (the PGlite WASM bridge on port 5432 is NOT real PostgreSQL, regardless of URL format)
+
+## Architecture Status (per registered architecture, post-6D-freeze)
+
+```
+✅ Infrastructure                                              ← COMPLETE
+✅ Control Plane (Phase 16, tag control-plane-baseline-16E)   ← 🟢 GREEN, FROZEN
+🔵 Phase 6 / Price Intelligence
+   ✅ 6A Audit              ← COMPLETE
+   ✅ 6B Price Observation  ← COMPLETE
+   ✅ 6C Comparable Engine  ← COMPLETE
+   🟡 6D Estimate+Confidence ← CONDITIONALLY GREEN / OPEN (EVD-6D-01, EVD-6D-02 registered)
+   ⏸️  6E Compare Engine     ← PAUSED (Phase 6 paused per user directive; resume only when 6D Gate is GREEN or when user explicitly requests)
+   ⏸️  6F Admin Review/Override ← PAUSED
+   ⏸️  6G API + Frontend    ← PAUSED
+   ⏸️  6H Tests + E2E       ← PAUSED
+   ⏸️  6I Build + Runtime   ← PAUSED
+   ⏸️  6J Gate + Backup     ← PAUSED
+🔵 Store Control Plane                                       ← NEXT INDEPENDENT LAYER (start here)
+⏸️  Marketplace Control Plane
+⏸️  Page/Widget Builder
+⏸️  SEO/Media/Content
+⏸️  AI Control Plane
+⏸️  Analytics/Observability
+⏸️  Production Gate
+```
+
+Per user directive #4: "stop 6D and move to the next independent work, without falsely declaring the Gate green." The next independent layer is **Store Control Plane**. Phase 6 (6E-6J) is PAUSED — not abandoned — and will resume only when 6D Gate flips to GREEN (via EVD-6D-01 + EVD-6D-02 resolution in a real PostgreSQL environment) or when the user explicitly requests resuming Phase 6.
+
+## Definition of Done (per project documents — verbatim chain)
+
+A Feature is complete ONLY when the full chain is done:
+
+```
+Schema → Service → API → Permission → Admin UI → Public UI → Validation → Audit → Tests → Monitoring → Documentation → DONE
+```
+
+Existence of Schema/API is NOT Completion. This principle governs all future phase work, including Store Control Plane.
+
+## Decision: 6C/6D decisions are LOCKED
+
+Per user directive: 6C and 6D decisions are NOT to be reopened. This aligns with the project principle of preventing constant returns to previous phases. The 6C.2 Decision Record and 6D.2 Decision Record remain authoritative.
+
+## Stage Summary
+
+- ✅ 6D Gate FROZEN at CONDITIONALLY GREEN / OPEN.
+- ✅ Evidence Debt formally registered: EVD-6D-01, EVD-6D-02.
+- ✅ Verification-Only Pass Checklist documented (10 steps, zero code changes).
+- ✅ Forbidden workarounds enumerated (7 items).
+- ✅ Architecture status updated — Phase 6 PAUSED, Store Control Plane is NEXT.
+- ✅ 6C/6D decisions LOCKED.
+- ✅ NO code changes this round.
+- 🔵 Next: Store Control Plane Phase 1 — Evidence-Only Inventory Audit (mirror 6A pattern).
+
+Work Log:
+- Read worklog.md lines 3906-4035 to confirm Control Plane Gate 16-E is 🟢 GREEN and frozen at git tag `control-plane-baseline-16E` (commit 57bfba3).
+- Confirmed Phase 6 execution order: 6A→6B→6C→6D→6E→6F→6G→6H→6I→6J. 6A-6D done; 6E-6J paused.
+- Verified `.env` matches frozen baseline 562e5f7 exactly (no drift): `DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres?schema=public&connection_limit=1&pool_timeout=10`.
+- Confirmed PGlite bridge on port 5432 is ALIVE (bun pid 1307, /tmp/pglite-admin.mjs) but is a WASM bridge, NOT real PostgreSQL — this is the root cause of EVD-6D-01 and EVD-6D-02 being environment-blocked.
+- Confirmed dev server on port 3000 is DOWN (Prisma P1001 during `db:push`) — registered as ongoing environment blocker, NOT a code regression.
+- Appended this EVD record with the 5-level status table, 2 formal Evidence Debt items, the 10-step verification pass checklist, 7 forbidden workarounds, and the architecture status map showing Phase 6 PAUSED and Store Control Plane as the next independent layer.
+
+---
+Task ID: PHASE-STORE-1A
+Agent: general-purpose subagent
+Task: Store Control Plane Phase 1 — Evidence-Only Inventory Audit. NO code changes, NO schema changes, NO migrations.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` lines 6800-7186 to confirm the PHASE-6D-EVD record, the frozen Control Plane baseline at tag `control-plane-baseline-16E`, and that Store Control Plane is the next independent layer per user directive.
+- Read the ENTIRE `prisma/store-schema.prisma` (361 lines) and inventoried all 20 models with their field counts, relations, and the singleton pattern for `CurrencySetting` (id @default("singleton")).
+- Identified the store datasource name (`db`), provider (`sqlite`), and url (`file:/home/z/my-project/db/store.db`) at `prisma/store-schema.prisma:11-14`.
+- Identified the store generator output location (`../src/lib/generated/store-client`) at `prisma/store-schema.prisma:6-9`.
+- Verified the generated store Prisma client directory exists at `src/lib/generated/store-client/` (schema.prisma copy + 10 runtime files including the query engine .so.node, WASM engine, edge/wasm/browser builds).
+- Read `src/lib/store-db.ts` (28 lines) — singleton wrapping `PrismaClient` from `@/lib/generated/store-client`, cached on `globalThis.storeDb` to avoid dev hot-reload exhaustion (mirror pattern of main `@/lib/db`).
+- Inventoried the 8 store service-layer files under `src/lib/`: `store-db.ts`, `store-auth.ts`, `store-types.ts`, `store-cart.ts`, `store-currency.ts`, `store-format.ts`, `store-zarinpal.ts`, `use-store-user.ts`. Listed their exported functions for the report.
+- Inventoried the 18 admin store API route files under `src/app/api/admin/store/**` (parts, orders, payments, brands, categories, car-models, mechanics, customers, currency, stats, ai-scraper) and confirmed each uses `requireAdmin` from `@/lib/admin-guard` with NO permission key argument.
+- Inventoried the 15 public store API route files under `src/app/api/store/**` (parts, parts/[id], parts/[id]/reviews, orders, orders/[id], payments/gateway/request, payments/gateway/callback, payments/manual, brands, categories, car-models, mechanics, currency, coupons/validate, wishlist).
+- Inventoried the 11 admin store UI pages under `src/app/admin/store/**` (root dashboard, parts, orders, payments, customers, mechanics, categories, brands, car-models, currency, ai-scraper).
+- Confirmed the 1 public store UI page at `src/app/store/page.tsx` (391 lines, marked `@ts-nocheck` legacy).
+- Grepped `src/lib/authorization/*.ts` for `store.` patterns — found exactly 2 store permission keys: `store.read` (permissions.ts:107) and `store.manage` (permissions.ts:108). Verified in `permissions.ts:191-279` (ROLE_PERMISSIONS) that neither key is granted to SELLER, BUYER, MODERATOR, or SUPPORT — only ADMIN gets them implicitly via `[...PERMISSIONS]`.
+- Verified via Grep that ZERO admin/store or /api/store route actually calls `requirePermission('store.read')` or `requirePermission('store.manage')` — all 18 admin routes import `requireAdmin` from `@/lib/admin-guard` but invoke it with NO permission key, falling back to the generic admin cookie + RBAC admin-role check.
+- Grepped `src/app/api/admin/store/**` and `src/app/api/store/**` for `logAudit|storeDb.auditLog` — ZERO matches. The `AuditLog` model at `prisma/store-schema.prisma:348-360` is defined but never written to by any Store domain mutation route.
+- Grepped the `tests/` directory for `storeDb|store-client|store-cart|store-currency|store-zarinpal|store-auth|/api/store|/api/admin/store` — ZERO matching test files. The 2 files that mention "store" in `tests/` (`page-builder.test.ts:137` and `integration/auth.test.ts:116`) use the word incidentally in unrelated contexts.
+- Listed `mini-services/` directory at project root — contains only a `.gitkeep` placeholder. NO store mini-services exist.
+- Read the frozen Control Plane config `src/lib/admin/resources/store-resources.ts` (598 lines, 7 resource configs) and the resource-index registration at `src/lib/admin/resource-index.ts:22-25`. Found that the misleadingly-named `store-resources.ts` actually configures MAIN HEAVIX resources (`product`, `part`, `order`, `payment`, `company`, `machine`, `review`) pointing to apiBase paths like `/api/admin/products`, `/api/admin/parts`, `/api/admin/payments`, `/api/admin/companies`, `/api/admin/machines` — these models live in the MAIN `prisma/schema.prisma`, NOT in `prisma/store-schema.prisma`. The naming collision is documented but NOT a code change item.
+- Verified the package.json scripts for store DB lifecycle: `store:db:generate`, `store:db:push`, `store:db:migrate`, `store:db:reset`, and the `postinstall` hook runs `prisma generate` against BOTH schemas.
+- Confirmed NO code changes were made: did not touch `prisma/schema.prisma`, `prisma/store-schema.prisma`, `package.json`, `src/lib/admin/resources/*.ts`, `src/lib/authorization/*.ts`, `src/lib/admin/action-engine.ts`, or any file under `src/`. Did NOT run `prisma migrate`, `prisma db push`, `bun install`, or any stateful command. All commands run were read-only (`ls`, `wc`, `diff`, `grep` via the Grep tool).
+
+Stage Summary:
+- Store models: 20
+- Store API routes: 33 (18 admin + 15 public)
+- Store admin pages: 11
+- Store public pages: 1
+- Store test files: 0
+- Verdict: PARTIALLY BUILT — substantial scaffolding exists (schema, services, APIs, admin UI, public UI) but the Definition-of-Done chain is broken at Permission Wiring, Audit, Tests, Monitoring, Documentation
+- Key gaps:
+  1. ZERO audit hooks — `AuditLog` model defined at store-schema:348 but no Store mutation route writes to it
+  2. Permission matrix disconnected — `store.read`/`store.manage` keys defined at permissions.ts:107-108 but no admin/store route invokes `requirePermission(...)` (all use bare `requireAdmin()` / `isAuthenticated()`)
+  3. ZERO tests — no contract, unit, or integration test exercises any Store code path
+  4. Frozen Control Plane `store-resources.ts` configures MAIN HEAVIX resources (Product/Part/Order/Payment/Company/Machine/Review), NOT the store-schema.prisma resources — naming collision, the actual auto-parts Store is NOT registered in the Control Plane resource-registry
+  5. The frozen `store-resources.ts` Part config uses fields like `partNumber`/`oemNumber` that do NOT exist on the store-schema.prisma Part model (which has `name`/`nameFa`/`sku`/`categoryId`/`brandId`/`priceUsd`/...)
+  6. The single public store page (`/store/page.tsx`) is marked `@ts-nocheck` legacy
+  7. NO mini-services for Store — the `mini-services/` dir contains only `.gitkeep`
+  8. NO monitoring/observability hooks for Store mutations
+  9. NO Store-specific documentation (no `docs/HEAVIX-STORE-*.md` files, no STEP-16-style verification doc for Store)
+- Next steps for Store Control Plane Phase 2+:
+  1. Phase 2A: Wire `requirePermission('store.read')`/`'store.manage'` (or finer `store.part.update`, `store.order.update`, `store.payment.manage`, `store.payment.refund`, etc.) into all 18 admin/store routes — this requires extending the permission matrix in `src/lib/authorization/permissions.ts` (currently FROZEN, will need an unfreeze decision)
+  2. Phase 2B: Add `logAudit()` calls to every Store mutation route (parts create/update/delete, orders update, payments verify/reject/refund, brands create/update/delete, categories create/update/delete, car-models create/update/delete, mechanics create/update/delete, currency rate set, ai-scraper import) — `AuditLog` model already exists at store-schema:348
+  3. Phase 2C: Register the actual Store resources (store Part, store Order, store Payment, store Customer, store Mechanic, store Brand, store Category, store CarModel, store Coupon, store CurrencyRate, store Review, store Wishlist, store WalletTransaction, store Notification, store Shipment) in a NEW resource config file (separate from the frozen `store-resources.ts`) — naming the new file e.g. `auto-parts-resources.ts` to avoid the collision
+  4. Phase 2D: Write contract tests mirroring `tests/contract/{part,order,payment,review}-contract.test.ts` for the store Part/Order/Payment/Review resources
+  5. Phase 2E: Address the legacy `@ts-nocheck` on `/store/page.tsx` and the `requireAdmin` imports that are never called in `src/app/api/admin/store/**` (currently dead imports)
+  6. Phase 2F: Add Store domain documentation under `docs/verification/PHASE-STORE-*-*.md` mirroring the PHASE-6A pattern
+
+## §1. Store Schema Inventory
+
+File: `prisma/store-schema.prisma` (361 lines)
+Datasource: `db` (line 11-14), provider = `sqlite`, url = `file:/home/z/my-project/db/store.db`
+Generator: `client` (line 6-9), provider = `prisma-client-js`, output = `../src/lib/generated/store-client`
+
+20 models:
+
+| # | Model | Lines | Field Count (scalar) | Relations | Notable Indexes/Constraints |
+|---|---|---|---|---|---|
+| 1 | AdminUser | 19-34 | 9 | 4 (payments, currencyRates, auditLogs, reviewedReviews) | `@unique` on username |
+| 2 | Customer | 39-60 | 12 | 6 (orders, payments, reviews, wishlists, walletTxns, notifications) | `@unique` on phone |
+| 3 | Mechanic | 62-80 | 12 | 1 (orders) | `@unique` on phone |
+| 4 | CarModel | 85-95 | 6 | 1 (parts via implicit m:n back-relation) | none |
+| 5 | Category | 97-109 | 8 | 3 (self-parent, children, parts) | `@unique` on slug |
+| 6 | Brand | 111-121 | 7 | 1 (parts) | `@unique` on slug |
+| 7 | Part | 123-156 | 21 | 5 (category, brand, orderItems, reviews, wishlists, carModels implicit m:n) | `@unique` on sku |
+| 8 | Order | 161-192 | 18 | 4 (customer, mechanic, items, payments, shipment) | `@unique` on orderNumber |
+| 9 | OrderItem | 194-206 | 10 | 2 (order cascade-delete, part) | none |
+| 10 | Payment | 208-233 | 19 | 3 (order, customer, reviewedBy) | none |
+| 11 | Shipment | 235-247 | 9 | 1 (order @unique) | `@unique` on orderId |
+| 12 | CurrencyRate | 252-262 | 8 | 1 (setBy AdminUser) | `@unique` on date |
+| 13 | CurrencySetting | 264-274 | 7 | 0 | singleton id @default("singleton") |
+| 14 | Setting | 276-280 | 3 | 0 | id @id (no default — caller must set) |
+| 15 | Review | 285-298 | 9 | 3 (part cascade-delete, customer, reviewedBy) | none |
+| 16 | Wishlist | 300-309 | 5 | 2 (customer, part) | `@@unique([customerId, partId])` |
+| 17 | Coupon | 311-322 | 9 | 0 | `@unique` on code |
+| 18 | WalletTransaction | 324-332 | 6 | 1 (customer) | none |
+| 19 | Notification | 334-343 | 7 | 1 (customer) | none |
+| 20 | AuditLog | 348-360 | 9 | 1 (admin AdminUser) | none |
+
+Implicit m:n join tables created by Prisma: `_PartToCarModel` (Part.carModels ↔ CarModel.parts).
+No `@@index` declarations — only `@unique` constraints on natural keys.
+AuditLog entity is defined but has no writers (see §8).
+
+## §2. Store Prisma Client
+
+Files:
+- `src/lib/generated/store-client/schema.prisma` (360 lines, byte-identical content to `prisma/store-schema.prisma` modulo whitespace alignment)
+- `src/lib/generated/store-client/index.js`, `index.d.ts`, `client.js`, `client.d.ts`, `default.js`, `default.d.ts`, `edge.js`, `edge.d.ts`, `wasm.js`, `wasm.d.ts`, `index-browser.js`, `wasm-worker-loader.mjs`, `wasm-edge-light-loader.mjs`, `query_engine_bg.js`, `query_engine_bg.wasm`, `libquery_engine-debian-openssl-3.0.x.so.node`
+- `src/lib/generated/store-client/runtime/{library.js, library.d.ts, index-browser.js, index-browser.d.ts, edge.js, edge-esm.js, react-native.js, wasm-engine-edge.js, wasm-compiler-edge.js}`
+
+Singleton wrapper: `src/lib/store-db.ts` (28 lines)
+- Imports `PrismaClient` from `@/lib/generated/store-client` (line 1)
+- Caches on `globalThis.storeDb` (lines 15-17, 25-27)
+- Dev-mode log: `["error", "warn"]` (line 22)
+- Exported as `storeDb` (line 19)
+
+Importers of `storeDb` (read-only evidence): 21 files in `src/app/api/admin/store/**` and `src/app/api/store/**` plus `prisma/seed-store.ts`. No service-layer file (other than `store-db.ts` itself and `store-currency.ts` at line 1) imports the singleton directly.
+
+## §3. Store Service Layer
+
+8 files under `src/lib/`:
+
+| File | Lines | Purpose | Key exports |
+|---|---|---|---|
+| `store-db.ts` | 28 | Prisma client singleton | `storeDb` |
+| `store-auth.ts` | 98 | HEAVIX auth → Store user bridge | `StoreUser` interface, `getStoreUser`, `isStoreAdmin`, `getStoreUserWithRole` |
+| `store-types.ts` | 220 | JSON API shape types | `EffectiveRate`, `CurrencyInfo`, `Brand`, `Category`, `CarModel`, `CarModelGroup`, `Review`, `Part`, `Mechanic`, `OrderItem`, `Payment`, `Shipment`, `Order`, `CouponValidation`, `CreateOrderResponse`, `ManualPaymentResponse`, `GatewayRequestResponse` |
+| `store-cart.ts` | 123 | Zustand client cart + wishlist (localStorage) | `CartItem`, `CartState`, `useStoreCart`, `migrateLegacyCartKey()` (legacy key `mekanix-store-cart-v2` → `heavix-store-cart-v2`) |
+| `store-currency.ts` | 66 | Server-side rate + formatting helpers | `todayTehran`, `EffectiveRate`, `getEffectiveRate`, `usdToIrr`, `formatIrr`, `formatUsd` |
+| `store-format.ts` | 71 | Client-side Persian formatting | `toFa`, `toFaPrice`, `toUsd`, `toFaDate`, `ORDER_STATUS_FA`, `PAYMENT_STATUS_FA`, `PAYMENT_METHOD_FA`, `SHIPMENT_STATUS_FA`, `CURRENCY_SOURCE_FA` |
+| `store-zarinpal.ts` | 101 | Zarinpal gateway integration | `GatewayRequest`, `GatewayRequestResult`, `GatewayVerify`, `GatewayVerifyResult`, `requestPayment`, `verifyPayment`, `isSandbox` |
+| `use-store-user.ts` | 71 | Client React hook for HEAVIX user | `StoreUserClient`, `useStoreUser` (returns `{user, loading, refresh}`) |
+
+Frozen Control Plane config (NOT a Store service-layer file — listed for evidence):
+- `src/lib/admin/resources/store-resources.ts` (598 lines) — exports `productConfig`, `partConfig`, `orderConfig`, `paymentConfig`, `companyConfig`, `machineConfig`, `reviewConfig` — but these resources map to MAIN HEAVIX schema models, NOT to store-schema.prisma models. The frozen file is part of the `control-plane-baseline-16E` tag and was NOT modified in this audit.
+
+## §4. Store API Routes
+
+**Public Store API** (`src/app/api/store/**`) — 15 route files, no auth required (read-only or buyer-side):
+
+| Route file | HTTP methods | Purpose |
+|---|---|---|
+| `parts/route.ts` | GET | Public catalog search with currency conversion (uses `getEffectiveRate`) |
+| `parts/[id]/route.ts` | GET | Single part detail + reviews aggregation |
+| `parts/[id]/reviews/route.ts` | GET, POST | List reviews / submit a review (POST triggers customer lookup) |
+| `orders/route.ts` | GET, POST | List my orders (by phone or userId) / create new order from cart |
+| `orders/[id]/route.ts` | GET | Single order detail (ownership check via phone/userId) |
+| `payments/gateway/request/route.ts` | POST | Start Zarinpal (or mock) gateway flow, persist Payment with authority |
+| `payments/gateway/callback/route.ts` GET, POST | Zarinpal callback handler, verifies payment and marks Payment APPROVED |
+| `payments/manual/route.ts` | POST | Upload card-receipt Payment for manual review |
+| `brands/route.ts` | GET | Public brand list |
+| `categories/route.ts` | GET | Public category tree |
+| `car-models/route.ts` | GET | Public car model list for vehicle selector |
+| `mechanics/route.ts` | GET | Public mechanic list |
+| `currency/route.ts` | GET | Public currency info (rate, margin, source, auto-fetch status) |
+| `coupons/validate/route.ts` | POST | Validate a coupon code, return discount calculation |
+| `wishlist/route.ts` | GET, POST, DELETE | Customer wishlist CRUD (by phone/userId) |
+
+**Admin Store API** (`src/app/api/admin/store/**`) — 18 route files, all guarded by `requireAdmin()` (no permission key):
+
+| Route file | HTTP methods | Purpose | Audit hook? |
+|---|---|---|---|
+| `parts/route.ts` | GET, POST | List/create parts | ❌ no logAudit |
+| `parts/[id]/route.ts` | GET, PATCH, DELETE | Get/update/delete a part | ❌ no logAudit |
+| `orders/route.ts` | GET | List orders with filters | N/A (read-only) |
+| `orders/[id]/route.ts` | GET, PATCH | Get/update order status | ❌ no logAudit on PATCH |
+| `payments/route.ts` | GET | List payments | N/A (read-only) |
+| `payments/[id]/route.ts` | GET, PATCH | Get/verify/reject/refund payment | ❌ no logAudit on PATCH (even on APPROVED/REFUNDED) |
+| `brands/route.ts` | GET, POST | List/create brands | ❌ no logAudit |
+| `brands/[id]/route.ts` | GET, PATCH, DELETE | CRUD on a brand | ❌ no logAudit |
+| `categories/route.ts` | GET, POST | List/create categories | ❌ no logAudit |
+| `categories/[id]/route.ts` | GET, PATCH, DELETE | CRUD on a category | ❌ no logAudit |
+| `car-models/route.ts` | GET, POST | List/create car models | ❌ no logAudit |
+| `car-models/[id]/route.ts` | GET, PATCH, DELETE | CRUD on a car model | ❌ no logAudit |
+| `mechanics/route.ts` | GET, POST | List/create mechanics | ❌ no logAudit |
+| `mechanics/[id]/route.ts` | GET, PATCH, DELETE | CRUD on a mechanic | ❌ no logAudit |
+| `customers/route.ts` | GET | List customers | N/A (read-only) |
+| `currency/route.ts` | GET, POST | Get currency info / set manual rate for today | ❌ no logAudit on POST (rate changes have no audit trail) |
+| `stats/route.ts` | GET | Dashboard aggregate stats | N/A (read-only) |
+| `ai-scraper/route.ts` (492 lines) | POST | AI-assisted parts scraper with `action: scrape` / `import` / `bulk-import` | ❌ no logAudit on imported parts |
+
+**Total**: 33 store API route files (15 public + 18 admin).
+
+## §5. Store Admin UI
+
+`src/app/admin/store/**` — 11 pages:
+
+| Page | Route | Purpose |
+|---|---|---|
+| `page.tsx` (289 lines) | `/admin/store` | Dashboard with stat cards (parts, orders, customers, approved revenue), today's currency rate, low-stock alert, status breakdowns |
+| `parts/page.tsx` | `/admin/store/parts` | Parts catalog management (CRUD, low-stock filter) |
+| `orders/page.tsx` | `/admin/store/orders` | Orders list + status/payment-status filters + detail drawer |
+| `payments/page.tsx` | `/admin/store/payments` | Payment verification queue (approve/reject/refund) |
+| `customers/page.tsx` | `/admin/store/customers` | Customer list (phone, totalOrders, totalSpentIrr, walletBalanceIrr) |
+| `mechanics/page.tsx` | `/admin/store/mechanics` | Mechanic directory CRUD |
+| `categories/page.tsx` | `/admin/store/categories` | Category tree CRUD |
+| `brands/page.tsx` | `/admin/store/brands` | Brand CRUD |
+| `car-models/page.tsx` | `/admin/store/car-models` | Car model CRUD (vehicle compatibility) |
+| `currency/page.tsx` | `/admin/store/currency` | Currency rate management (manual override, Telegram auto-fetch toggle) |
+| `ai-scraper/page.tsx` | `/admin/store/ai-scraper` | AI parts scraper UI (scrape → preview → import) |
+
+## §6. Store Public UI
+
+`src/app/store/page.tsx` — 1 page, 391 lines, `'use client'`, marked `// @ts-nocheck` (legacy).
+- Renders StoreHeader, Hero, CarSelector, CategoryChips, PartsGrid, PartDetailDialog, CartSheet, CheckoutDialog, MyOrdersDialog, WishlistDialog, MechanicsDialog, StoreFooter.
+- Uses Zustand `useStoreCart` from `@/lib/store-cart`.
+- Fetches `/api/store/*` routes.
+- Legacy tag: `HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY`.
+
+Supporting client components in `src/components/store/` (13 files, listed for evidence, not counted as pages): CheckoutDialog, MyOrdersDialog, PartsGrid, CategoryChips, MechanicsDialog, StoreHeader, CarSelector, Hero, StoreFooter, WishlistDialog, CartSheet, Stars, PartDetailDialog.
+
+## §7. Store Permissions
+
+File: `src/lib/authorization/permissions.ts`
+- 2 store-specific permission keys defined:
+  - `store.read` (line 107)
+  - `store.manage` (line 108)
+- Comment block at line 21 declares the `store.*` category as "Store management"
+- `ROLE_PERMISSIONS` at lines 191-279:
+  - ADMIN: `[...PERMISSIONS]` → includes `store.read` + `store.manage` (line 192)
+  - SELLER (lines 194-217): does NOT include any `store.*` key
+  - BUYER (lines 219-238): does NOT include any `store.*` key
+  - MODERATOR (lines 240-263): does NOT include any `store.*` key
+  - SUPPORT (lines 265-278): does NOT include any `store.*` key
+- `src/lib/authorization/index.ts:11` documents the intended usage: `await requireAnyPermission(userId, ['store.read', 'store.manage'])` — but this is a comment/example, NOT a runtime call site.
+
+Wiring audit (Grep across `src/app/api/admin/store/**` for `requirePermission|requireAnyPermission`):
+- 0 routes call `requirePermission('store.read')` or `requirePermission('store.manage')`.
+- All 18 admin/store routes import `requireAdmin` from `@/lib/admin-guard` but invoke it with NO permission key (`const [user, error] = await requireAdmin();` pattern), which means the permission matrix is bypassed — only the generic admin cookie + RBAC admin-role check runs.
+
+Gap: The `store.read` and `store.manage` keys exist but are DEAD — they appear in the PERMISSIONS array (which seeds the DB `Permission` table) but have zero runtime enforcement sites. Phase 2 must wire them (or finer-grained `store.part.update`, `store.order.update`, `store.payment.manage`, `store.payment.refund`, `store.currency.manage`, `store.scraper.run` keys) into the 18 admin/store routes.
+
+## §8. Store Audit Hooks
+
+File: `prisma/store-schema.prisma:348-360` — `AuditLog` model is fully defined:
+- `id` (cuid), `adminId?` (FK to AdminUser), `adminName`, `action`, `entity`, `entityId?`, `before?`, `after?`, `ipAddress?`, `createdAt`
+
+Wiring audit (Grep across `src/app/api/admin/store/**` and `src/app/api/store/**` for `logAudit|storeDb.auditLog`):
+- 0 matches in admin routes
+- 0 matches in public routes
+- The `AuditLog` table is therefore an ORPHAN model — schema exists, runtime writers = 0.
+
+For comparison, the Phase 6D Price Intelligence domain has `logAudit()` wired into `createOverride()` at `price-engine.ts:783` with `action: 'pricing.override'`, `entityType: 'PriceOverride'` (per 6D.5 audit). The Store domain has no equivalent.
+
+Gap: Phase 2 must add `storeDb.auditLog.create({ data: { adminId, adminName, action, entity, entityId, before, after, ipAddress } })` calls to every Store mutation:
+- parts create/update/delete
+- orders status/paymentStatus/notes update
+- payments verify (APPROVED) / reject (REJECTED) / refund (REFUNDED)
+- brands create/update/delete
+- categories create/update/delete
+- car-models create/update/delete
+- mechanics create/update/delete
+- currency rate POST (manual override of today's rate)
+- ai-scraper import / bulk-import (each imported Part)
+
+## §9. Store Tests
+
+Files matching store-domain patterns (`storeDb|store-client|store-cart|store-currency|store-zarinpal|store-auth|/api/store|/api/admin/store`):
+- 0 files in `tests/contract/`
+- 0 files in `tests/unit/`
+- 0 files in `tests/integration/`
+- 0 files at `tests/` root level (no `phase*-store*.test.ts`)
+
+The 2 files that Grep matched on the literal substring "store" (`tests/contract/page-builder.test.ts:137` and `tests/integration/auth.test.ts:116`) use the word incidentally in non-Store contexts (one is "should store layout as JSON", the other is "the password is NOT stored in plaintext").
+
+The MAIN HEAVIX contract tests at `tests/contract/{part,order,payment,review,brand,company,machine,product}-contract.test.ts` test the MAIN HEAVIX schema resources (registered via `src/lib/admin/resource-index.ts` from `src/lib/admin/resources/store-resources.ts`), NOT the auto-parts Store resources (which are not registered in the resource-registry at all).
+
+Gap: Phase 2 must add store-domain contract tests mirroring the MAIN HEAVIX pattern, e.g.:
+- `tests/contract/store-part-contract.test.ts`
+- `tests/contract/store-order-contract.test.ts`
+- `tests/contract/store-payment-contract.test.ts`
+- `tests/contract/store-customer-contract.test.ts`
+- `tests/contract/store-mechanic-contract.test.ts`
+- `tests/unit/store-currency.test.ts` (rate fallback chain: daily MANUAL → auto TELEGRAM → DEFAULT singleton)
+- `tests/unit/store-zarinpal.test.ts` (sandbox requestPayment/verifyPayment)
+- `tests/unit/store-cart.test.ts` (Zustand actions: addItem, setQty, removeItem, wishlist toggle, legacy migration)
+
+## §10. Store Mini-Services
+
+`/home/z/my-project/mini-services/` directory contents:
+- `.gitkeep` (empty placeholder, 0 bytes)
+- 0 actual service files
+
+Gap: NO store mini-services exist. The 6D-EVD record mentions a "Telegram mini-service / on-demand" for auto-fetching currency rates (referenced in `src/lib/store-currency.ts:46` comment), but no actual mini-service implementation is present. The currency auto-fetch is documented as a future/on-demand integration; the current `getEffectiveRate()` falls back gracefully when `lastAutoRate` is null.
+
+Possible Phase 2+ mini-service candidates:
+- `mini-services/store-currency-telegram/` — Telegram channel rate scraper for USD→IRR
+- `mini-services/store-ai-scraper-scheduler/` — Cron-style parts scraper runner
+- `mini-services/store-low-stock-alerts/` — Daily low-stock email/Telegram alert
+
+## §11. Gap Assessment (vs. Definition of Done chain)
+
+The chain (per PHASE-6D-EVD record at worklog:7158-7160):
+```
+Schema → Service → API → Permission → Admin UI → Public UI → Validation → Audit → Tests → Monitoring → Documentation → DONE
+```
+
+Store Control Plane status per link:
+
+| Link | Status | Evidence |
+|---|---|---|
+| 1. Schema | 🟢 DONE | `prisma/store-schema.prisma` (361 lines, 20 models) |
+| 2. Service | 🟢 DONE | 8 service-layer files in `src/lib/store-*.ts` + `src/lib/use-store-user.ts` |
+| 3. API | 🟢 DONE | 33 API routes (15 public + 18 admin) |
+| 4. Permission | 🔴 MISSING | `store.read`/`store.manage` defined but not wired into any admin/store route (all 18 routes call bare `requireAdmin()`) |
+| 5. Admin UI | 🟢 DONE | 11 admin pages under `src/app/admin/store/**` |
+| 6. Public UI | 🟡 PARTIAL | 1 public page (`/store/page.tsx`) — but marked `@ts-nocheck` legacy (STEP-14.6-LEGACY tag) |
+| 7. Validation | 🟡 PARTIAL | Per-route inline validation (e.g. ALLOWED_STATUSES lists for orders/payments) — but no centralized validation schema like `AdminResourceConfig.fields[].validation` for store resources (the frozen `store-resources.ts` has field validations but they target MAIN HEAVIX Part/Product/etc., not store-schema Part) |
+| 8. Audit | 🔴 MISSING | `AuditLog` model exists but 0 writers across all 33 store routes (0 `logAudit` matches) |
+| 9. Tests | 🔴 MISSING | 0 test files match any store-domain pattern |
+| 10. Monitoring | 🔴 MISSING | No `/api/admin/store/health` route, no error-tracking integration for store routes, no metrics export for store mutations |
+| 11. Documentation | 🔴 MISSING | No `docs/HEAVIX-STORE-*.md`, no `docs/verification/PHASE-STORE-*-*.md`, no architecture doc for the auto-parts Store |
+
+**Verdict: PARTIALLY BUILT** (4 of 11 links green, 1 yellow, 6 red). The first 3 links (Schema, Service, API) are complete, then the chain breaks at Permission wiring and stays broken through Documentation. The Store Control Plane is NOT at Definition-of-Done — it is at the same maturity level the Price Intelligence domain was at PHASE-6A (pre-audit), and the next phase must close the Permission → Audit → Tests gap before any new Store feature work.
+
+## §12. What This Audit Did NOT Do
+- ✅ No code changes
+- ✅ No schema changes
+- ✅ No migrations
+- ✅ No new models
+- ✅ No new APIs
+- ✅ No Control Plane config changes (frozen `src/lib/admin/resources/*.ts`, `src/lib/authorization/*.ts`, `src/lib/admin/action-engine.ts` all untouched)
+- ✅ No 6D path changes (Price Intelligence / estimatePrice / persistEstimate / PriceEstimate / PriceOverride all untouched)
+- ✅ No `prisma db push`, `prisma migrate`, `bun install`, or any stateful command run
+- ✅ No edits to `package.json`, `prisma/schema.prisma`, `prisma/store-schema.prisma`, or any file in `src/`
+- ✅ All file-system commands run were read-only (`ls`, `wc`, `diff`, `grep`-via-Grep-tool, `Read` tool, `LS` tool, `Glob` tool)
+
