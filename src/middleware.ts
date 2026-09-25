@@ -76,6 +76,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Health endpoints are public (for monitoring tools) — per MONITORING-CONTRACT.md.
+  // They are read-only DB checks that must not require admin auth.
+  if (pathname.endsWith('/health')) {
+    return NextResponse.next();
+  }
+
   // Presence-only cookie check. The cryptographic hash verification
   // against the `AdminSession` table happens server-side in
   // `src/lib/auth.ts` — see `isAuthenticated()`.
