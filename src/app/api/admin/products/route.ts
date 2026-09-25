@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
-import { requireAdmin } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,8 +13,14 @@ const ALLOWED_SOURCES = ["MANUAL", "AI_SUGGESTED", "IMPORTED"];
 
 /* GET /api/admin/products — admin list (all statuses, optionally filtered). */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'product.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires product.read" }, { status: 403 });
   }
   try {
     const url = new URL(req.url);
@@ -70,8 +76,14 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/products — admin create. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'product.create');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires product.create" }, { status: 403 });
   }
   try {
     const body = await req.json().catch(() => ({}));

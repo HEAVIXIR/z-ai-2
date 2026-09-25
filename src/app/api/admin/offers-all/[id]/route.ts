@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,8 +31,14 @@ function serialize(o: any) {
 
 /* GET /api/admin/offers-all/[id] — single offer with relations. */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'listing.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires listing.read" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -85,8 +91,14 @@ export async function GET(_req: Request, { params }: Params) {
    }
 */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'listing.update');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires listing.update" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -191,8 +203,14 @@ export async function PATCH(req: Request, { params }: Params) {
 
 /* DELETE /api/admin/offers-all/[id] */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'listing.delete');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires listing.delete" }, { status: 403 });
   }
   try {
     const { id } = await params;

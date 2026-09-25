@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* GET /api/admin/offers-all — admin view of all offers. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'listing.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires listing.read" }, { status: 403 });
   }
   try {
     const url = new URL(req.url);

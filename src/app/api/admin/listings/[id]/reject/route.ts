@@ -2,9 +2,9 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +18,14 @@ interface Params {
    Creates a ListingRejection record and sets listing status to REJECTED.
 */
 export async function POST(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'listing.moderate');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires listing.moderate" }, { status: 403 });
   }
   try {
     const { id } = await params;
