@@ -8,6 +8,8 @@
  * Legacy admin-cookie path shows ALL items (backward compat).
  * RBAC path shows only items where permissionKey is null OR
  * the user has that permission.
+ *
+ * TODO: add navigation-permission contract tests (Track C future)
  */
 
 import { NextResponse } from 'next/server';

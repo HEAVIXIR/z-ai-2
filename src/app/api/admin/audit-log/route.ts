@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +9,7 @@ export const dynamic = "force-dynamic";
 /* ============================================================
    /api/admin/audit-log — admin audit log reader.
 
-   GET (admin only):
+   GET (requires audit.read permission):
      ?actorId=       filter by actorId
      ?action=        filter by action (contains)
      ?entityType=    filter by entityType
@@ -23,6 +22,14 @@ export const dynamic = "force-dynamic";
    Returns:
      { success, total, data: [...] }
    Sorted by createdAt DESC.
+
+   Track C — CP Foundation Gap (2025-09):
+     Replaced the legacy `isAuthenticated()` + `isAdmin(user.id)`
+     authorizeAdmin() helper with the Store 2A pattern:
+     getCurrentUser() → requirePermission(user.id, 'audit.read').
+     The 'ADMIN' synthetic user returned by getCurrentUser() for
+     admin-cookie sessions still passes requirePermission() because
+     can('ADMIN', ...) short-circuits to true (see authorization/index.ts).
    ============================================================ */
 
 function parseDate(value: string | null): Date | null {
@@ -52,18 +59,18 @@ function serialize(row: any) {
   };
 }
 
-async function authorizeAdmin(): Promise<boolean> {
-  // Legacy admin-cookie path
-  if (await isAuthenticated()) return true;
-  // User-session path — needs ADMIN role
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
-
 export async function GET(req: Request) {
-  if (!(await authorizeAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "audit.read");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires audit.read" },
+      { status: 403 },
+    );
   }
 
   try {

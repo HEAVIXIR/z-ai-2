@@ -183,6 +183,14 @@ export const PERMISSIONS = [
   // Price Intelligence (STEP 6D.4)
   'price.read',
   'price.override',
+
+  // ── TRACK B: Marketplace CP missing permission keys ──
+  // These domains existed in code but had no enforceable permission keys.
+  // Admins get them automatically (ADMIN role = all permissions).
+  'conversation.read',    // conversations admin oversight
+  'moderation.read',      // moderation queue view
+  'moderation.moderate',  // approve/reject moderated content
+  'matching.read',        // matching engine admin view
 ] as const;
 
 export type PermissionKey = typeof PERMISSIONS[number];

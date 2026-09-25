@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 /**
  * HEAVIX — STEP 10: Admin Preferences API
  * GET  /api/admin/preferences — get current user's preferences
@@ -6,24 +5,34 @@
  *
  * Personal scope: each user has their own AdminPreference row.
  * System defaults: if no row exists, returns defaults.
+ *
+ * Track C — CP Foundation Gap (2025-09):
+ *   Removed legacy `@ts-nocheck`; enforced `admin.preferences.read`
+ *   on GET and `admin.preferences.manage` on PUT using the Store 2A
+ *   getCurrentUser + requirePermission pattern.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-import { isAdmin } from '@/lib/authorization';
+import { requirePermission } from '@/lib/authorization';
 
 export const dynamic = 'force-dynamic';
 
+// Initial values used when a user has no AdminPreference row yet.
+// Nullable JSON columns (`pinnedItems`, `hiddenItems`, `dashboardLayout`)
+// must use the Prisma JSON-null sentinel rather than the literal `null`
+// (Prisma 6 rejects raw null on `Json?` create inputs — see TS2322).
 const DEFAULTS = {
   theme: 'system',
   density: 'comfortable',
   locale: 'fa',
   timezone: 'Asia/Tehran',
   sidebarCollapsed: false,
-  pinnedItems: null,
-  hiddenItems: null,
-  dashboardLayout: null,
+  pinnedItems: Prisma.DbNull,
+  hiddenItems: Prisma.DbNull,
+  dashboardLayout: Prisma.DbNull,
   defaultPageSize: 25,
 };
 
@@ -31,6 +40,15 @@ const DEFAULTS = {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    await requirePermission(user.id, 'admin.preferences.read');
+  } catch {
+    return NextResponse.json(
+      { error: 'Forbidden: requires admin.preferences.read' },
+      { status: 403 },
+    );
+  }
 
   let prefs = await db.adminPreference.findUnique({ where: { userId: user.id } });
   if (!prefs) {
@@ -47,6 +65,15 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    await requirePermission(user.id, 'admin.preferences.manage');
+  } catch {
+    return NextResponse.json(
+      { error: 'Forbidden: requires admin.preferences.manage' },
+      { status: 403 },
+    );
+  }
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
