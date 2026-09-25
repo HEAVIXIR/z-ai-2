@@ -267,6 +267,15 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     });
 
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.update',
+      entityType: 'Listing',
+      entityId: id,
+      after: { updated: true, fields: Object.keys(data || {}).length },
+    });
+
     // Image management
     if (body.addImages && Array.isArray(body.addImages)) {
       const existingCount = await db.listingImage.count({ where: { listingId: id } });
@@ -310,6 +319,14 @@ export async function PATCH(req: Request, { params }: Params) {
         where: { id: String(body.setPrimaryImage) },
         data: { isPrimary: true },
       });
+      await logAudit({
+        actorId: null,
+        actorType: 'ADMIN',
+        action: 'marketplace.listing_image.update',
+        entityType: 'ListingImage',
+        entityId: String(body.setPrimaryImage),
+        after: { isPrimary: true },
+      });
     }
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
       await Promise.all(
@@ -317,6 +334,13 @@ export async function PATCH(req: Request, { params }: Params) {
           db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
         ),
       );
+      await logAudit({
+        actorId: null,
+        actorType: 'ADMIN',
+        action: 'marketplace.listing_image.bulk_reorder',
+        entityType: 'ListingImage',
+        after: { count: body.reorderImages.length },
+      });
     }
 
     // ── Attribute values upsert (full attribute editing) ──
@@ -367,6 +391,13 @@ export async function PATCH(req: Request, { params }: Params) {
           },
         });
       }
+      await logAudit({
+        actorId: null,
+        actorType: 'ADMIN',
+        action: 'marketplace.listing_attribute_value.bulk_upsert',
+        entityType: 'ListingAttributeValue',
+        after: { count: body.attributeValues.length },
+      });
     }
     // Optional: delete attribute values for attributes not in the incoming set
     if (Array.isArray(body.removeAttributeIds) && body.removeAttributeIds.length) {

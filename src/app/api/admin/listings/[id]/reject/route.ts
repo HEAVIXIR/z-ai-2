@@ -65,6 +65,14 @@ export async function POST(req: Request, { params }: Params) {
       where: { id },
       data: { status: "REJECTED" },
     });
+    await logAudit({
+      actorId: null,
+      actorType: 'ADMIN',
+      action: 'marketplace.listing.update',
+      entityType: 'Listing',
+      entityId: id,
+      after: { status: 'REJECTED' },
+    });
 
     // Notify seller if registered
     if (listing.sellerId) {
@@ -76,6 +84,13 @@ export async function POST(req: Request, { params }: Params) {
           body: `آگهی «${listing.title}» توسط مدیریت رد شد. دلیل: ${reason}`,
           link: `/listings/${listing.slug}`,
         },
+      });
+      await logAudit({
+        actorId: null,
+        actorType: 'ADMIN',
+        action: 'marketplace.notification.create',
+        entityType: 'Notification',
+        after: { type: 'LISTING_REJECTED', userId: listing.sellerId },
       });
     }
 

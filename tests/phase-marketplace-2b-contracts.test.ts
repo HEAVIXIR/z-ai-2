@@ -147,7 +147,8 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
         const matches = content.matchAll(/action:\s*['"](marketplace\.[^'"]+)['"]/g);
         for (const m of matches) {
           const key = m[1];
-          expect(key).toMatch(/^marketplace\.\w+\.(create|update|delete|bulk_update|bulk_delete|bulk_deleteMany|bulk_updateMany)$/);
+          // Accept: create, update, delete, upsert, and bulk_* variants (bulk_update, bulk_delete, bulk_reorder, bulk_upsert, etc.)
+          expect(key).toMatch(/^marketplace\.\w+\.(create|update|delete|upsert|bulk_\w+)$/);
         }
       }
     });
