@@ -519,7 +519,7 @@ export async function estimatePrice(
     }
   }
 
-  return {
+  const result: EstimateResult = {
     estimatedPrice: med,
     priceLower: lower,
     priceUpper: upper,
@@ -541,6 +541,34 @@ export async function estimatePrice(
       similarity: c.similarity,
     })),
   };
+
+  // STEP 6D.3: Persist estimate to PriceEstimate (best-effort, non-blocking).
+  // Only persists when we have a listingId (brand-level estimates without
+  // listingId can't be linked to a specific listing).
+  // Skips INSUFFICIENT confidence — no useful estimate to cache.
+  if (params.listingId && result.confidence !== "INSUFFICIENT") {
+    try {
+      await db.priceEstimate.create({
+        data: {
+          listingId: params.listingId,
+          estimatedPrice: result.estimatedPrice ?? 0,
+          priceLower: result.priceLower ?? 0,
+          priceUpper: result.priceUpper ?? 0,
+          confidence: result.confidence,
+          comparableCount: result.comparableCount,
+          dataFreshness: result.dataFreshness ?? null,
+          mainDrivers: JSON.stringify(result.mainDrivers),
+          warnings: JSON.stringify(result.warnings),
+          modelVersion: result.modelVersion,
+        },
+      });
+    } catch (err) {
+      // Best-effort — log but don't block the estimate from being returned.
+      console.error("[price-engine] persistEstimate failed:", err);
+    }
+  }
+
+  return result;
 }
 
 function emptyEstimate(warnings: string[]): EstimateResult {
