@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
-import { requireAdmin } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
    /api/admin/store/parts/[id] — HEAVIX part CRUD
+   STEP STORE-2A: Permission gate wired — GET requires store.read,
+   PATCH/DELETE require store.manage (mirrors 6D pattern).
    ============================================================ */
 
 function serialize(p: any) {
@@ -25,8 +27,14 @@ function serialize(p: any) {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
   }
   const { id } = await params;
   try {
@@ -45,8 +53,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.manage');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
   const { id } = await params;
   try {
@@ -97,8 +111,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.manage');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
   const { id } = await params;
   try {

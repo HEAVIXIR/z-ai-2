@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { storeDb } from "@/lib/store-db";
 import { slugify } from "@/lib/api-helpers";
 import ZAI from "z-ai-web-dev-sdk";
@@ -368,8 +369,14 @@ async function importPartIntoStore(
    POST handler
    ============================================================ */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.manage');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
 
   try {

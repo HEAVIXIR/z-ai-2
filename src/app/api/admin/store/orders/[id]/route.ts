@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
-import { requireAdmin } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,8 +43,14 @@ function serialize(o: any) {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.read');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
   }
   const { id } = await params;
   try {
@@ -66,8 +72,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.manage');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
   const { id } = await params;
   try {

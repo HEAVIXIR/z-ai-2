@@ -7494,3 +7494,158 @@ Store Control Plane status per link:
 - ✅ No edits to `package.json`, `prisma/schema.prisma`, `prisma/store-schema.prisma`, or any file in `src/`
 - ✅ All file-system commands run were read-only (`ls`, `wc`, `diff`, `grep`-via-Grep-tool, `Read` tool, `LS` tool, `Glob` tool)
 
+---
+Task ID: PHASE-STORE-2A
+Agent: Main Orchestrator (Z.ai Code)
+Task: Store Control Plane Phase 2A — Permission Wiring. Wire `requirePermission('store.read'/'store.manage')` into all 18 admin store routes, mirroring the 6D canonical pattern at `src/app/api/admin/pricing/observations/route.ts`.
+
+## Summary
+
+| Metric | Before | After |
+|---|---|---|
+| Admin store routes | 18 | 18 |
+| Routes with `requirePermission` wired | 0 | **18** ✅ |
+| `requirePermission(user.id, ...)` calls | 0 | **32** |
+| `store.read` references (calls + error messages + comments) | 2 (declared only) | **28** |
+| `store.manage` references (calls + error messages + comments) | 2 (declared only) | **40** |
+| Leftover `isAuthenticated` calls in store routes | 18 | **0** ✅ |
+| Leftover `requireAdmin` imports in store routes | 17 | **0** ✅ |
+| Lint errors | 0 | **0** ✅ |
+| Lint warnings | 7 (pre-existing) | 7 (pre-existing, unchanged) |
+
+## §1. Canonical Pattern Applied (mirrors 6D `pricing/observations/route.ts`)
+
+**Before (legacy store pattern):**
+```typescript
+import { isAuthenticated } from "@/lib/auth";
+import { requireAdmin } from "@/lib/admin-guard";  // imported but UNUSED
+
+export async function GET(req: Request) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // ... handler
+}
+```
+
+**After (6D canonical pattern, adapted for store):**
+```typescript
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
+
+export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.read');  // 'store.manage' for mutations
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
+  }
+  // ... handler
+}
+```
+
+**Permission key mapping:**
+| HTTP Method | Permission Key | Rationale |
+|---|---|---|
+| GET | `store.read` | Read-only access to store data |
+| POST / PATCH / PUT / DELETE | `store.manage` | Mutating operations on store data |
+
+## §2. Per-Route Wiring Breakdown
+
+| Route | Handlers Wired | Permission Keys |
+|---|---|---|
+| `ai-scraper/route.ts` | 1 | store.manage (POST) |
+| `brands/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `brands/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH) |
+| `car-models/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `car-models/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH/DELETE) |
+| `categories/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `categories/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH) |
+| `currency/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `customers/route.ts` | 1 | store.read (GET) |
+| `mechanics/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `mechanics/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH/DELETE) |
+| `orders/route.ts` | 1 | store.read (GET) |
+| `orders/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH) |
+| `parts/route.ts` | 2 | store.read (GET) + store.manage (POST) |
+| `parts/[id]/route.ts` | 3 | store.read (GET) + store.manage (PATCH + DELETE) |
+| `payments/route.ts` | 1 | store.read (GET) |
+| `payments/[id]/route.ts` | 2 | store.read (GET) + store.manage (PATCH) |
+| `stats/route.ts` | 1 | store.read (GET) |
+| **TOTAL** | **32** | |
+
+## §3. Implementation Method
+
+1. Manually wired `parts/route.ts` (GET + POST) and `parts/[id]/route.ts` (GET + PATCH + DELETE) as proof of concept using MultiEdit — verified lint clean (0 errors).
+2. Wrote a Python script (`wire-store-perms.py`, since removed) that:
+   - Reads each of the remaining 16 route files.
+   - Finds all handler functions via regex (`^export async function (GET|POST|PATCH|PUT|DELETE)`).
+   - For each handler, locates the `if (!(await isAuthenticated()))` block within the first 8 lines.
+   - Replaces the 3-line auth block with the 9-line 6D pattern, injecting the correct permission key based on the HTTP method.
+   - Replaces the `isAuthenticated` import with `getCurrentUser`.
+   - Replaces the `requireAdmin` import with `requirePermission` (or adds the import if `requireAdmin` was absent, e.g., `ai-scraper`).
+3. Script result: 16 files wired, 2 already-wired (skipped).
+4. Post-wiring lint: 0 errors, 7 pre-existing warnings (all unrelated `Unused eslint-disable directive` warnings in non-store files).
+
+## §4. Smoke Test Status
+
+- Dev server (`next dev`) was started directly bypassing `dev.sh`'s `prisma db push` step (which fails with P1001 — registered PGlite environment blocker).
+- Server started successfully ("Ready in 768ms" on port 3000) but crashed when the first request triggered a DB connection attempt (likely `getCurrentUser()` queries the session store, which needs the DB).
+- This is the SAME registered environment blocker (EVD-6D-01/02 root cause: PGlite bridge on port 5432 is alive but Prisma cannot complete the wire-protocol handshake). It is NOT a regression from the permission wiring.
+- **Structural verification (lint) PASSED** — 0 errors, 0 new warnings.
+- **Runtime smoke test** — ⚠️ BLOCKED BY ENVIRONMENT (dev server crashes on DB-dependent requests; the 401 path requires `getCurrentUser()` which queries the DB). Deferred to a future round when the environment stabilizes OR to the recurring webDevReview cron job.
+
+## §5. Definition of Done Chain Status (Store Control Plane, after Phase 2A)
+
+| Link | Status | Evidence |
+|---|---|---|
+| Schema | ✅ | 20 models in `prisma/store-schema.prisma` (from STORE-1A audit) |
+| Service | ✅ | 8 service files (from STORE-1A audit) |
+| API | ✅ | 33 routes (18 admin + 15 public) (from STORE-1A audit) |
+| Permission | ✅ **NEW** | 18/18 admin routes wired with `requirePermission` (this phase) |
+| Admin UI | ✅ | 11 admin pages (from STORE-1A audit) |
+| Public UI | 🔴 | 1 legacy `@ts-nocheck` page (Phase 2D scope) |
+| Validation | 🟡 | Basic field validation in routes; no schema validation (future) |
+| Audit | 🔴 | 0 audit hooks (Phase 2B scope) |
+| Tests | 🔴 | 0 tests (Phase 2C scope) |
+| Monitoring | 🔴 | Not started |
+| Documentation | 🟡 | Audit records in worklog.md |
+
+## §6. Constraints Honored
+
+- ✅ NO 6D path changes (`src/lib/price-engine.ts`, `src/app/api/admin/pricing/**`, `src/app/api/pricing/**` all untouched).
+- ✅ NO Control Plane config changes (frozen `src/lib/admin/resources/*.ts`, `src/lib/authorization/*.ts`, `src/lib/admin/action-engine.ts` all untouched — only CONSUMED the `requirePermission` helper and `store.read`/`store.manage` keys that were already declared).
+- ✅ NO schema changes (`prisma/schema.prisma`, `prisma/store-schema.prisma` untouched).
+- ✅ NO `.env` changes (frozen baseline 562e5f7 value preserved).
+- ✅ NO `connection_limit` / Prisma pool changes.
+- ✅ NO persistence mocking.
+- ✅ NO `bun run build`.
+- ✅ NO 6F started.
+- ✅ Phase 6D remains FROZEN (CONDITIONALLY GREEN / OPEN, EVD-6D-01/02 still registered).
+
+## Stage Summary
+
+- ✅ **PHASE-STORE-2A — Permission Wiring COMPLETE.**
+- All 18 admin store routes now enforce `requirePermission('store.read')` for GET and `requirePermission('store.manage')` for mutations.
+- Lint clean (0 errors).
+- Runtime smoke test blocked by PGlite environment blocker (registered, not a regression).
+- DoD chain: Permission link now 🟢 (was 🔴 in STORE-1A audit).
+- Next: **Phase 2B — Audit Hooks** (add `logAudit()` calls to all store mutations, mirroring `price-engine.ts:783` `createOverride` pattern).
+
+Work Log:
+- Read 6D canonical pattern at `src/app/api/admin/pricing/observations/route.ts` (lines 1-52) — confirmed the `getCurrentUser` + `requirePermission(user.id, 'price.read')` + try/catch → 403 pattern.
+- Read `requirePermission` signature at `src/lib/authorization/index.ts:77-85` — confirmed it throws `AuthorizationError` on denial.
+- Read `parts/route.ts` and `parts/[id]/route.ts` — confirmed the legacy `isAuthenticated` + unused `requireAdmin` import pattern.
+- Manually wired `parts/route.ts` (GET → store.read, POST → store.manage) via MultiEdit.
+- Manually wired `parts/[id]/route.ts` (GET → store.read, PATCH+DELETE → store.manage) via MultiEdit.
+- Ran `bun run lint` → 0 errors, 7 pre-existing warnings (clean).
+- Wrote `wire-store-perms.py` Python script to batch-wire the remaining 16 routes using the same transformation, with method-aware permission key injection.
+- Ran the script → 16 files wired, 2 already-wired (skipped). Total: 18/18 routes wired.
+- Ran `bun run lint` again → 0 errors, 7 pre-existing warnings (unchanged).
+- Verified wiring coverage via grep: 32 `requirePermission(user.id, ...)` calls, 0 leftover `isAuthenticated`, 0 leftover `requireAdmin` imports.
+- Attempted dev server smoke test: started `next dev` directly (bypassing `db:push`). Server reached "Ready" but crashed on first request (DB connection failure — registered PGlite blocker). Documented as environment-blocked, NOT a regression.
+- Removed the helper script `wire-store-perms.py` (it was a build-time tool, not part of the codebase).
+
