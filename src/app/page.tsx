@@ -1,4 +1,10 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+// Track D1: This homepage is hardcoded. Page Builder (PageRenderer) is complete
+// and ready but NOT wired here. Migration plan:
+// 1. Create a default AdminPage with the current homepage layout as JSON
+// 2. Replace this file with a PageRenderer that loads the published page
+// 3. Migrate HomepageSection admin to AdminPage model (consolidate two systems)
+// See: docs/gates/joint-batch/EXECUTION-BASELINE.md + src/components/page-renderer/
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
