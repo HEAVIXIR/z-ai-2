@@ -133,6 +133,19 @@ const STANDALONES: Standalone[] = [
   // in /admin/companies/[id]). Uses the canonical `company.verify` gate.
   { key: 'verifications', titleFa: 'تأییدها', href: '/admin/verifications', icon: 'BadgeCheck', sortOrder: 10.35, permissionKey: 'company.verify' },
   { key: 'matching', titleFa: 'تطابق', href: '/admin/matching', icon: 'Sparkles', sortOrder: 10.4, permissionKey: 'matching.read' },
+  // ── T8: AI Control Plane — unified AI control plane hub ──
+  // Standalone page that aggregates AIAgent + AIGatewayLog + AITaskPolicy +
+  // AIBudget into one admin overview. Uses the canonical `ai.read` gate
+  // (the API routes /api/admin/ai-* enforce ai.manage / ai.execute).
+  { key: 'ai-control', titleFa: 'هوش مصنوعی', href: '/admin/ai', icon: 'Brain', sortOrder: 10.6, permissionKey: 'ai.read' },
+  // ── T9: Analytics/Observability Control Plane — unified hub ──
+  // Standalone page that aggregates business counts (users, listings,
+  // orders, payments, deals, rfqs) + technical observability
+  // (AIGatewayLog, AuditLog, process uptime, main+store DB health)
+  // into one admin overview. Uses the canonical `analytics.read` gate
+  // (the API routes /api/analytics/* + /api/admin/site-stats enforce
+  // analytics.read / analytics.manage).
+  { key: 'observability', titleFa: 'مشاهده‌پذیری', href: '/admin/observability', icon: 'Gauge', sortOrder: 10.7, permissionKey: 'analytics.read' },
   { key: 'audit-log', titleFa: 'لاگ ممیزی', href: '/admin/audit-log', icon: 'ShieldCheck', sortOrder: 12, permissionKey: 'audit.read' },
   { key: 'settings', titleFa: 'تنظیمات', href: '/admin/settings', icon: 'Settings', sortOrder: 13, permissionKey: 'system.manage' },
 
