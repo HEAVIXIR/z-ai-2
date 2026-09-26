@@ -16,6 +16,12 @@
  * Audit: logAudit('company.verification.list_view',
  *   entityType: 'CompanyVerification') — best-effort, never throws.
  *
+ * Phase 5 — Trust & Verification deep system additions:
+ *   - "Review" action button per row (links to /admin/verifications/[id])
+ *   - "Revoke" action for VERIFIED items (POST .../revoke)
+ *   - Expiry indicator (amber badge if expiresAt < 7 days)
+ *   - "Check Expiry" button at top (POST .../check-expiry)
+ *
  * Schema (prisma/schema.prisma → CompanyVerification):
  *   status:           PENDING | UNDER_REVIEW | VERIFIED | REJECTED | EXPIRED | REVOKED
  *   verificationType: PHONE | EMAIL | BUSINESS | DOCUMENT | INSPECTION
@@ -28,7 +34,7 @@ import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { toFa, faDate, timeAgo } from "@/lib/format";
-import { BadgeCheck, Search } from "lucide-react";
+import { BadgeCheck, Search, Clock, AlertTriangle, RotateCcw, FileSearch } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +78,22 @@ const TYPE_LABEL: Record<string, string> = {
 
 const INPUT_CLS =
   "h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none transition focus:border-[#F58220]";
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** True iff the verification expires within the next 7 days. */
+function isExpiringSoon(expiresAt: Date | null): boolean {
+  if (!expiresAt) return false;
+  const diff = expiresAt.getTime() - Date.now();
+  return diff >= 0 && diff <= SEVEN_DAYS_MS;
+}
+
+/** True iff the verification has already expired (defensive — the
+ *  expiry sweep should have caught these, but rows can linger). */
+function isAlreadyExpired(expiresAt: Date | null): boolean {
+  if (!expiresAt) return false;
+  return expiresAt.getTime() < Date.now();
+}
 
 export default async function AdminVerificationsPage({
   searchParams,
@@ -134,6 +156,33 @@ export default async function AdminVerificationsPage({
     <div className="space-y-6 p-6">
       <Header />
 
+      {/* Top action bar — Check Expiry sweep trigger */}
+      <form
+        action="/api/admin/verifications/check-expiry"
+        method="post"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
+      >
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-amber-600" />
+          <div>
+            <p className="text-sm font-bold text-amber-800">
+              انقضای تأییدها
+            </p>
+            <p className="text-xs text-amber-700">
+              بررسی تأیید‌های منقضی‌شده (VERIFIED با expiresAt &lt; الان) و
+              انتقال خودکار آن‌ها به وضعیت EXPIRED.
+            </p>
+          </div>
+        </div>
+        <button
+          type="submit"
+          className="flex h-9 items-center gap-1.5 rounded-xl bg-amber-600 px-4 text-xs font-bold text-white transition hover:bg-amber-700"
+        >
+          <Clock className="h-4 w-4" />
+          بررسی انقضا
+        </button>
+      </form>
+
       {/* Status filter */}
       <form className="rounded-xl border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -193,63 +242,116 @@ export default async function AdminVerificationsPage({
                   <th className="px-3 py-3 text-right font-bold">بررسی‌کننده</th>
                   <th className="px-3 py-3 text-right font-bold">تأیید در</th>
                   <th className="px-3 py-3 text-right font-bold">انقضا</th>
+                  <th className="px-3 py-3 text-right font-bold">عملیات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {verifications.map((v) => (
-                  <tr key={v.id} className="hover:bg-zinc-50">
-                    {/* Subject — company name */}
-                    <td className="px-3 py-3">
-                      {v.company ? (
-                        <Link
-                          href={`/admin/companies/${v.company.id}`}
-                          className="font-medium text-zinc-900 hover:text-[#F58220]"
+                {verifications.map((v) => {
+                  const expSoon = isExpiringSoon(v.expiresAt);
+                  const expired = isAlreadyExpired(v.expiresAt);
+                  return (
+                    <tr key={v.id} className="hover:bg-zinc-50">
+                      {/* Subject — company name */}
+                      <td className="px-3 py-3">
+                        {v.company ? (
+                          <Link
+                            href={`/admin/companies/${v.company.id}`}
+                            className="font-medium text-zinc-900 hover:text-[#F58220]"
+                          >
+                            {v.company.name}
+                          </Link>
+                        ) : (
+                          <span className="text-zinc-400">شرکت حذف‌شده</span>
+                        )}
+                        <div className="font-mono text-[10px] text-zinc-400">
+                          {v.company?.slug ?? "—"}
+                        </div>
+                      </td>
+                      {/* Type */}
+                      <td className="px-3 py-3 text-xs text-zinc-600">
+                        {TYPE_LABEL[v.verificationType] ?? v.verificationType}
+                      </td>
+                      {/* Status */}
+                      <td className="px-3 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            STATUS_CLS[v.status] ?? "bg-zinc-100 text-zinc-600"
+                          }`}
                         >
-                          {v.company.name}
-                        </Link>
-                      ) : (
-                        <span className="text-zinc-400">شرکت حذف‌شده</span>
-                      )}
-                      <div className="font-mono text-[10px] text-zinc-400">
-                        {v.company?.slug ?? "—"}
-                      </div>
-                    </td>
-                    {/* Type */}
-                    <td className="px-3 py-3 text-xs text-zinc-600">
-                      {TYPE_LABEL[v.verificationType] ?? v.verificationType}
-                    </td>
-                    {/* Status */}
-                    <td className="px-3 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          STATUS_CLS[v.status] ?? "bg-zinc-100 text-zinc-600"
-                        }`}
-                      >
-                        {STATUS_LABEL[v.status] ?? v.status}
-                      </span>
-                    </td>
-                    {/* Source — evidence JSON (best-effort extract) */}
-                    <td className="px-3 py-3 text-xs text-zinc-500">
-                      {extractSource(v.evidence)}
-                    </td>
-                    {/* Verifier — reviewedBy */}
-                    <td className="px-3 py-3 text-xs text-zinc-600">
-                      {v.reviewedBy ?? "—"}
-                    </td>
-                    {/* VerifiedAt — reviewedAt */}
-                    <td className="px-3 py-3 text-[11px] text-zinc-500">
-                      {v.reviewedAt
-                        ? `${faDate(v.reviewedAt)} · ${timeAgo(v.reviewedAt)}`
-                        : "—"}
-                    </td>
-                    {/* ExpiresAt */}
-                    <td className="px-3 py-3 text-[11px] text-zinc-500">
-                      {v.expiresAt
-                        ? `${faDate(v.expiresAt)} · ${timeAgo(v.expiresAt)}`
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
+                          {STATUS_LABEL[v.status] ?? v.status}
+                        </span>
+                      </td>
+                      {/* Source — evidence JSON (best-effort extract) */}
+                      <td className="px-3 py-3 text-xs text-zinc-500">
+                        {extractSource(v.evidence)}
+                      </td>
+                      {/* Verifier — reviewedBy */}
+                      <td className="px-3 py-3 text-xs text-zinc-600">
+                        {v.reviewedBy ?? "—"}
+                      </td>
+                      {/* VerifiedAt — reviewedAt */}
+                      <td className="px-3 py-3 text-[11px] text-zinc-500">
+                        {v.reviewedAt
+                          ? `${faDate(v.reviewedAt)} · ${timeAgo(v.reviewedAt)}`
+                          : "—"}
+                      </td>
+                      {/* ExpiresAt — with expiry indicator */}
+                      <td className="px-3 py-3 text-[11px] text-zinc-500">
+                        {v.expiresAt ? (
+                          <div className="flex flex-col gap-1">
+                            <span>
+                              {faDate(v.expiresAt)} · {timeAgo(v.expiresAt)}
+                            </span>
+                            {expired && (
+                              <span className="inline-flex w-fit items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-700">
+                                <AlertTriangle className="h-3 w-3" />
+                                منقضی
+                              </span>
+                            )}
+                            {expSoon && !expired && (
+                              <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700">
+                                <Clock className="h-3 w-3" />
+                                کمتر از ۷ روز
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      {/* Actions */}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Review action — link to detail page */}
+                          <Link
+                            href={`/admin/verifications/${v.id}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#F58220]/40 bg-[#F58220]/5 px-2 text-[10px] font-bold text-[#F58220] transition hover:bg-[#F58220]/15"
+                            title="بررسی"
+                          >
+                            <FileSearch className="h-3.5 w-3.5" />
+                            بررسی
+                          </Link>
+                          {/* Revoke action — only for VERIFIED.
+                              A confirm + prompt is client-side behaviour
+                              we can't ship from a server component, so we
+                              deep-link to the detail page where the
+                              reviewer enters a reason in the dedicated
+                              revoke form. */}
+                          {v.status === "VERIFIED" && (
+                            <Link
+                              href={`/admin/verifications/${v.id}`}
+                              className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-2 text-[10px] font-bold text-rose-700 transition hover:bg-rose-100"
+                              title="ابطال"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              ابطال
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
