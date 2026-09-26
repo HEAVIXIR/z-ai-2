@@ -1,7 +1,13 @@
 import { db } from "@/lib/db";
+import crypto from "node:crypto";
+import {
+  FUNNELS,
+  type FunnelName,
+  isFunnelName,
+} from "@/lib/funnel-definitions";
 
 /* ============================================================
-   HEAVIX — Analytics / BI (P1-2)
+   HEAVIX — Analytics / BI (P1-2 + Phase 11A)
    ------------------------------------------------------------
    Lightweight fire-and-forget event tracker. Every public flow
    (listing view, search, compare, offer, share, contact, etc.)
@@ -19,6 +25,14 @@ import { db } from "@/lib/db";
      LISTING_VIEW | SEARCH | CLICK | FAVORITE | COMPARE |
      CONTACT | SHARE | REGISTER | LOGIN | LISTING_CREATE |
      OFFER_MAKE
+
+   Phase 11A (Growth Analytics) adds:
+     • `trackEventWithSession()` — wraps trackEvent with session
+       attribution (sessionId stored in metadata.sessionId).
+     • `getOrCreateSession()` — returns a stable session ID per
+       user (reused if the user was active in the last 30 minutes).
+     • `getEventsByFunnel()` — fetches events matching a named
+       funnel definition (FUNNELS in src/lib/funnel-definitions.ts).
 
    The module is server-only (imports Prisma).
    ============================================================ */
@@ -365,4 +379,281 @@ export async function getAnalyticsSummary(days: number): Promise<AnalyticsSummar
     topCategories,
     dailyTimeline,
   };
+}
+
+/* ============================================================
+   Phase 11A — Session attribution + funnel query helpers
+   ------------------------------------------------------------
+   These functions support the BI dashboard (/admin/growth) and the
+   events query API (/api/analytics/events). All fire-and-forget
+   rules from `trackEvent` apply — the caller never awaits the
+   write. Session IDs are stored in the `metadata` JSON column
+   under the `sessionId` key (schema is unchanged: `metadata` is
+   a free-form JSON string column on AnalyticsEvent).
+   ============================================================ */
+
+/**
+ * Inactivity gap after which a user is considered to have started a
+ * new session. Industry standard (Google Analytics, PostHog) is 30
+ * minutes — we mirror that so per-user session counts are comparable
+ * to other analytics platforms the operator may have used.
+ */
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
+export interface SessionInfo {
+  sessionId: string;
+  isNew: boolean;
+}
+
+/**
+ * Returns the user's current session ID. If the user's most recent
+ * tracked event was within `SESSION_TIMEOUT_MS` (30 min), that
+ * event's sessionId is reused. Otherwise a fresh UUIDv4 is minted.
+ *
+ * This is a read-then-decide function — it does NOT persist. The
+ * sessionId is persisted on the next `trackEventWithSession` call
+ * (which writes it to `metadata.sessionId` on the new event row).
+ *
+ * Anonymous users (userId = null / empty) get a fresh ephemeral
+ * session ID per call since we can't correlate their history. The
+ * caller should stash it in a cookie to reuse it across requests.
+ *
+ * NEVER throws — DB errors fall back to a fresh UUID so the caller's
+ * tracking call never crashes.
+ */
+export async function getOrCreateSession(
+  userId?: string | null,
+): Promise<SessionInfo> {
+  // Anonymous user → can't correlate, always fresh.
+  if (!userId || typeof userId !== "string") {
+    return { sessionId: newSessionId(), isNew: true };
+  }
+
+  try {
+    // Find the most recent event with a sessionId for this user.
+    // We read all metadata-bearing rows in the last 24h and look
+    // for one with sessionId. Prisma can't filter on JSON keys
+    // portably, so we filter in JS.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await db.analyticsEvent.findMany({
+      where: {
+        userId,
+        createdAt: { gte: since },
+        metadata: { not: null },
+      },
+      select: { metadata: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const cutoff = Date.now() - SESSION_TIMEOUT_MS;
+    for (const r of rows) {
+      const sid = parseSessionId(r.metadata);
+      if (sid && r.createdAt.getTime() >= cutoff) {
+        return { sessionId: sid, isNew: false };
+      }
+      if (r.createdAt.getTime() < cutoff) break; // rows are DESC
+    }
+
+    return { sessionId: newSessionId(), isNew: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[analytics] getOrCreateSession failed, minting fresh:", msg);
+    return { sessionId: newSessionId(), isNew: true };
+  }
+}
+
+/**
+ * Track an event with session attribution. Wraps the canonical
+ * `trackEvent` so callers can attach a sessionId + source channel
+ * (web | app | bot | api) without repeating boilerplate.
+ *
+ * If `sessionId` is omitted, `getOrCreateSession(userId)` is called
+ * first to resolve one (async). The persist itself remains
+ * fire-and-forget — this function returns void like `trackEvent`.
+ *
+ * entityId is stored in the most appropriate existing column based on
+ * a simple convention:
+ *   • If eventType contains "listing"  → listingId
+ *   • If eventType contains "brand"    → brandId
+ *   • If eventType contains "category"  → categoryId
+ *   • Otherwise entityId is stored in metadata.entityId
+ */
+export interface TrackEventWithSessionParams {
+  eventType: string;
+  userId?: string | null;
+  entityId?: string | null;
+  properties?: Record<string, unknown> | null;
+  sessionId?: string | null;
+  source?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  page?: string | null;
+  referrer?: string | null;
+  query?: string | null;
+}
+
+export function trackEventWithSession(
+  params: TrackEventWithSessionParams,
+): void {
+  void (async () => {
+    try {
+      const sessionId =
+        params.sessionId ||
+        (await getOrCreateSession(params.userId ?? null)).sessionId;
+
+      const mergedProperties: Record<string, unknown> = {
+        ...(params.properties ?? {}),
+        sessionId,
+        source: params.source ?? null,
+      };
+      if (params.entityId) {
+        mergedProperties.entityId = params.entityId;
+      }
+
+      // Route entityId to the best-fit column when possible so the
+      // existing top-listings / top-brands / top-categories queries
+      // still work without changes.
+      const et = (params.eventType ?? "").toLowerCase();
+      const listingId = et.includes("listing")
+        ? params.entityId ?? null
+        : null;
+      const brandId = et.includes("brand")
+        ? params.entityId ?? null
+        : null;
+      const categoryId = et.includes("category")
+        ? params.entityId ?? null
+        : null;
+
+      trackEvent({
+        eventType: params.eventType,
+        userId: params.userId ?? null,
+        listingId,
+        categoryId,
+        brandId,
+        query: params.query ?? null,
+        page: params.page ?? null,
+        referrer: params.referrer ?? null,
+        ip: params.ip ?? null,
+        userAgent: params.userAgent ?? null,
+        metadata: mergedProperties,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[analytics] trackEventWithSession failed:", msg);
+    }
+  })();
+}
+
+/**
+ * Fetch events matching a named funnel definition. Returns all
+ * AnalyticsEvent rows whose eventType is in the funnel's stage
+ * list, optionally scoped to a single user.
+ *
+ * Use this for ad-hoc funnel analysis (the BI service's
+ * `getFunnelMetrics` is the high-level KPI computation; this is
+ * the lower-level row fetch for custom analyses).
+ *
+ * Sorted by createdAt ASC so the caller can walk the user journey
+ * in order.
+ */
+export interface FunnelEventRow {
+  id: string;
+  eventType: string;
+  userId: string | null;
+  listingId: string | null;
+  categoryId: string | null;
+  brandId: string | null;
+  page: string | null;
+  query: string | null;
+  metadata: string | null;
+  createdAt: Date;
+}
+
+export async function getEventsByFunnel(
+  funnelName: FunnelName,
+  userId?: string | null,
+  dateRange?: { from?: Date; to?: Date },
+): Promise<FunnelEventRow[]> {
+  if (!isFunnelName(funnelName)) {
+    throw new Error(`Unknown funnel: ${funnelName}`);
+  }
+  const stages: string[] = [...FUNNELS[funnelName]];
+  if (stages.length === 0) return [];
+
+  try {
+    const where: {
+      eventType: { in: string[] };
+      userId?: string;
+      createdAt?: { gte?: Date; lte?: Date };
+    } = { eventType: { in: stages } };
+    if (userId) where.userId = userId;
+    if (dateRange?.from || dateRange?.to) {
+      where.createdAt = {};
+      if (dateRange.from) where.createdAt.gte = dateRange.from;
+      if (dateRange.to) where.createdAt.lte = dateRange.to;
+    }
+
+    const rows = await db.analyticsEvent.findMany({
+      where,
+      select: {
+        id: true,
+        eventType: true,
+        userId: true,
+        listingId: true,
+        categoryId: true,
+        brandId: true,
+        page: true,
+        query: true,
+        metadata: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+      take: 5000, // safety cap so a runaway query never OOMs the page
+    });
+
+    return rows as unknown as FunnelEventRow[];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[analytics] getEventsByFunnel failed:", msg);
+    return [];
+  }
+}
+
+// ── Internal helpers ────────────────────────────────────────
+
+function newSessionId(): string {
+  // crypto.randomUUID is available on Node 19+ (we target ES2020).
+  // Fall back to randomBytes for older runtimes.
+  try {
+    if (typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* fall through */
+  }
+  return (
+    crypto.randomBytes(8).toString("hex") +
+    "-" +
+    crypto.randomBytes(4).toString("hex")
+  );
+}
+
+/**
+ * Parse the `sessionId` key out of a JSON-encoded metadata string.
+ * Returns null if the metadata is not valid JSON or has no
+ * sessionId key.
+ */
+function parseSessionId(metadata: string | null): string | null {
+  if (!metadata || typeof metadata !== "string") return null;
+  try {
+    const obj = JSON.parse(metadata) as unknown;
+    if (obj && typeof obj === "object") {
+      const sid = (obj as Record<string, unknown>).sessionId;
+      if (typeof sid === "string" && sid.length > 0) return sid;
+    }
+  } catch {
+    /* not JSON or malformed — ignore */
+  }
+  return null;
 }
