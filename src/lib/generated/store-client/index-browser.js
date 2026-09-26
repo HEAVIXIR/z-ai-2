@@ -370,6 +370,18 @@ exports.Prisma.NotificationScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.SupplierScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  nameFa: 'nameFa',
+  phone: 'phone',
+  email: 'email',
+  address: 'address',
+  active: 'active',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -400,7 +412,8 @@ exports.Prisma.ModelName = {
   Wishlist: 'Wishlist',
   Coupon: 'Coupon',
   WalletTransaction: 'WalletTransaction',
-  Notification: 'Notification'
+  Notification: 'Notification',
+  Supplier: 'Supplier'
 };
 
 /**

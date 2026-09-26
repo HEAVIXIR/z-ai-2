@@ -72,6 +72,9 @@ const EXPECTED_ACTION_KEYS = [
   'store.part.delete',
   'store.part.update',
   'store.payment.update',
+  'store.supplier.create',
+  'store.supplier.delete',
+  'store.supplier.update',
 ];
 
 describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
@@ -80,12 +83,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 18 admin store route files', () => {
+    it('should have exactly 20 admin store route files', () => {
       const files = listRouteFiles();
-      expect(files.length).toBe(18);
+      expect(files.length).toBe(20);
     });
 
-    it('should have 32 requirePermission calls across all store routes', () => {
+    it('should have 37 requirePermission calls across all store routes', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -93,10 +96,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(32);
+      expect(count).toBe(37);
     });
 
-    it('should have 13 store.read requirePermission calls', () => {
+    it('should have 15 store.read requirePermission calls', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -104,10 +107,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.read'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(13);
+      expect(count).toBe(15);
     });
 
-    it('should have 19 store.manage requirePermission calls', () => {
+    it('should have 22 store.manage requirePermission calls', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -115,7 +118,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.manage'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(19);
+      expect(count).toBe(22);
     });
 
     it('every admin store route imports requirePermission from @/lib/authorization', () => {
@@ -202,7 +205,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 27 logAudit calls across all store routes', () => {
+    it('should have 30 logAudit calls across all store routes', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -210,10 +213,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/await logAudit\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(27);
+      expect(count).toBe(30);
     });
 
-    it('should have 25 storeDb mutation calls (create/update/delete/upsert)', () => {
+    it('should have 28 storeDb mutation calls (create/update/delete/upsert)', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -221,7 +224,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/storeDb\.\w+\.(create|update|delete|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(25);
+      expect(count).toBe(28);
     });
 
     it('every mutation route file imports logAudit from @/lib/audit', () => {
@@ -399,7 +402,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (27) >= total mutations (25)', () => {
+    it('total audits (30) >= total mutations (28)', () => {
       const files = listRouteFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -411,16 +414,16 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += auditMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(25);
-      expect(totalAudit).toBe(27);
+      expect(totalMut).toBe(28);
+      expect(totalAudit).toBe(30);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 6. ACTION KEY COVERAGE (20 unique keys)
+  // 6. ACTION KEY COVERAGE (23 unique keys)
   // ═══════════════════════════════════════════════════════════════
   describe('6. Action Key Coverage', () => {
-    it('should have all 20 expected action keys', () => {
+    it('should have all 23 expected action keys', () => {
       const files = listRouteFiles();
       const foundKeys = new Set<string>();
       for (const f of files) {
@@ -433,7 +436,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(20);
+      expect(foundKeys.size).toBe(23);
     });
 
     it('action keys follow the store.<entity>.<operation> convention', () => {

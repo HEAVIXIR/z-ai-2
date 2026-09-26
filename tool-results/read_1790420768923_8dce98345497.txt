@@ -1,0 +1,710 @@
+     1→import type { AdminResourceConfig } from '../types';
+     2→
+     3→// ════════════════════════════════════════════════════════════
+     4→// STEP 13 — MARKETPLACE CONTROL PLANE RESOURCES
+     5→// ════════════════════════════════════════════════════════════
+     6→
+     7→export const dealConfig: AdminResourceConfig = {
+     8→  key: 'deals',
+     9→  titleFa: 'معاملات',
+    10→  titleEn: 'Deals',
+    11→  icon: 'Handshake',
+    12→  model: 'deal',
+    13→  apiBase: '/api/admin/resources/deals',
+    14→  adminPath: '/admin/resources/deals',
+    15→
+    16→  permissions: { read: 'deal.read', create: 'deal.manage', update: 'deal.manage', delete: 'deal.manage', export: 'deal.read' },
+    17→
+    18→  columns: [
+    19→    { key: 'dealNumber', label: 'شماره معامله', type: 'text', sortable: true, filterable: true },
+    20→    { key: 'sourceType', label: 'منبع', type: 'badge', filterable: true },
+    21→    { key: 'agreedAmount', label: 'مبلغ توافق', type: 'currency', sortable: true },
+    22→    { key: 'currency', label: 'ارز', type: 'badge' },
+    23→    { key: 'transactionType', label: 'نوع', type: 'badge', filterable: true },
+    24→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+    25→    { key: 'agreedAt', label: 'توافق', type: 'date', sortable: true, visible: false },
+    26→    { key: 'confirmedAt', label: 'تأیید', type: 'date', sortable: true, visible: false },
+    27→    { key: 'completedAt', label: 'تکمیل', type: 'date', sortable: true },
+    28→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+    29→  ],
+    30→
+    31→  filters: [
+    32→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+    33→      { value: 'DRAFT', label: 'پیش‌نویس' },
+    34→      { value: 'PENDING_CONFIRMATION', label: 'در انتظار تأیید' },
+    35→      { value: 'CONFIRMED', label: 'تأییدشده' },
+    36→      { value: 'IN_PROGRESS', label: 'در حال انجام' },
+    37→      { value: 'COMPLETED', label: 'تکمیل‌شده' },
+    38→      { value: 'CANCELLED', label: 'لغوشده' },
+    39→      { value: 'DISPUTED', label: 'مختلص' },
+    40→    ]},
+    41→    { key: 'sourceType', label: 'منبع', type: 'select', options: [
+    42→      { value: 'LISTING_OFFER', label: 'پیشنهاد آگهی' },
+    43→      { value: 'RFQ_QUOTE', label: 'پیشنهاد RFQ' },
+    44→      { value: 'DEAL_ROOM', label: 'اتاق معامله' },
+    45→    ]},
+    46→  ],
+    47→
+    48→  defaultSort: { field: 'createdAt', order: 'desc' },
+    49→  pageSize: 25, searchable: true, searchFields: ['dealNumber'],
+    50→
+    51→  fields: [
+    52→    { key: 'dealNumber', label: 'شماره معامله', type: 'text', required: true,
+    53→      validation: { minLength: 3, maxLength: 50, pattern: '^DEAL-\\d{4,}$', message: 'شماره معامله باید با DEAL- شروع و حداقل ۴ رقم داشته باشد (مثال: DEAL-1234)' } },
+    54→    { key: 'sourceType', label: 'منبع', type: 'select', options: [
+    55→      { value: 'LISTING_OFFER', label: 'پیشنهاد آگهی' },
+    56→      { value: 'RFQ_QUOTE', label: 'پیشنهاد RFQ' },
+    57→      { value: 'DEAL_ROOM', label: 'اتاق معامله' },
+    58→    ]},
+    59→    { key: 'agreedAmount', label: 'مبلغ توافق', type: 'currency',
+    60→      validation: { min: 1000, message: 'مبلغ توافق باید حداقل ۱,۰۰۰ ریال باشد' },
+    61→      permissions: { read: 'deal.read', write: 'deal.manage' } },
+    62→    { key: 'currency', label: 'ارز', type: 'text', defaultValue: 'IRR',
+    63→      validation: { pattern: '^(IRR|USD|EUR)$', message: 'ارز باید یکی از IRR، USD یا EUR باشد' } },
+    64→    { key: 'transactionType', label: 'نوع معامله', type: 'select', options: [
+    65→      { value: 'SALE', label: 'فروش' }, { value: 'RENT', label: 'اجاره' },
+    66→    ]},
+    67→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+    68→      { value: 'DRAFT', label: 'پیش‌نویس' },
+    69→      { value: 'CONFIRMED', label: 'تأییدشده' },
+    70→      { value: 'COMPLETED', label: 'تکمیل‌شده' },
+    71→      { value: 'CANCELLED', label: 'لغوشده' },
+    72→    ]},
+    73→    { key: 'notes', label: 'یادداشت', type: 'textarea',
+    74→      validation: { maxLength: 2000, message: 'یادداشت نباید بیش از ۲,۰۰۰ نویسه باشد' } },
+    75→  ],
+    76→
+    77→  detailTabs: [
+    78→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    79→    { key: 'order', label: 'سفارش', type: 'relations' },
+    80→    { key: 'disputes', label: 'اختلافات', type: 'relations' },
+    81→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+    82→  ],
+    83→
+    84→  actions: [
+    85→    { key: 'confirm', label: 'تأیید معامله', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/deals', apiMethod: 'PATCH' },
+    86→    { key: 'cancel', label: 'لغو معامله', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/deals', apiMethod: 'PATCH' },
+    87→  ],
+    88→
+    89→  bulkActions: [
+    90→    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive' },
+    91→  ],
+    92→
+    93→  audit: { enabled: true, entityType: 'Deal', actions: ['deal.manage', 'deal.read'] },
+    94→  relations: [
+    95→    { label: 'سفارش', resource: 'orders', filterField: 'dealId' },
+    96→    { label: 'اختلافات', resource: 'disputes', filterField: 'dealId' },
+    97→  ],
+    98→};
+    99→
+   100→export const rfqConfig: AdminResourceConfig = {
+   101→  key: 'rfqs',
+   102→  titleFa: 'درخواست‌های خرید (RFQ)',
+   103→  titleEn: 'RFQ',
+   104→  icon: 'FileText',
+   105→  model: 'rFQ',
+   106→  apiBase: '/api/admin/resources/rfqs',
+   107→  adminPath: '/admin/resources/rfqs',
+   108→
+   109→  permissions: { read: 'rfq.read', create: 'rfq.manage', update: 'rfq.manage', delete: 'rfq.manage', export: 'rfq.read' },
+   110→
+   111→  columns: [
+   112→    { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },
+   113→    { key: 'machineType', label: 'نوع دستگاه', type: 'text', filterable: true },
+   114→    { key: 'quantity', label: 'تعداد', type: 'number', sortable: true },
+   115→    { key: 'budgetMin', label: 'حداقل بودجه', type: 'currency', visible: false },
+   116→    { key: 'budgetMax', label: 'حداکثر بودجه', type: 'currency', visible: false },
+   117→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   118→    { key: 'buyerName', label: 'خریدار', type: 'text' },
+   119→    { key: 'buyerPhone', label: 'تماس', type: 'text', visible: false },
+   120→    { key: 'deadline', label: 'مهلت', type: 'date', sortable: true },
+   121→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   122→  ],
+   123→
+   124→  filters: [
+   125→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   126→      { value: 'OPEN', label: 'باز' }, { value: 'QUOTING', label: 'در حال پیشنهاد' },
+   127→      { value: 'AWARDED', label: 'تخصیص‌یافته' }, { value: 'CLOSED', label: 'بسته' },
+   128→    ]},
+   129→  ],
+   130→
+   131→  defaultSort: { field: 'createdAt', order: 'desc' },
+   132→  pageSize: 25, searchable: true, searchFields: ['title', 'machineType', 'buyerName', 'buyerPhone'],
+   133→
+   134→  fields: [
+   135→    { key: 'title', label: 'عنوان درخواست', type: 'text', required: true,
+   136→      validation: { minLength: 3, maxLength: 200, message: 'عنوان درخواست باید بین ۳ تا ۲۰۰ نویسه باشد' } },
+   137→    { key: 'description', label: 'توضیحات', type: 'textarea',
+   138→      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   139→    { key: 'machineType', label: 'نوع دستگاه', type: 'text',
+   140→      validation: { maxLength: 200, message: 'نوع دستگاه نباید بیش از ۲۰۰ نویسه باشد' } },
+   141→    { key: 'brandPref', label: 'ترجیح برند', type: 'text',
+   142→      validation: { maxLength: 200, message: 'ترجیح برند نباید بیش از ۲۰۰ نویسه باشد' } },
+   143→    { key: 'quantity', label: 'تعداد', type: 'number', defaultValue: 1,
+   144→      validation: { min: 1, max: 10000, message: 'تعداد باید بین ۱ تا ۱۰,۰۰۰ باشد' } },
+   145→    { key: 'budgetMin', label: 'حداقل بودجه', type: 'currency',
+   146→      validation: { min: 0, message: 'حداقل بودجه باید عدد نامنفی باشد' },
+   147→      permissions: { read: 'rfq.read', write: 'rfq.manage' } },
+   148→    { key: 'budgetMax', label: 'حداکثر بودجه', type: 'currency',
+   149→      validation: { min: 0, message: 'حداکثر بودجه باید عدد نامنفی باشد' },
+   150→      permissions: { read: 'rfq.read', write: 'rfq.manage' } },
+   151→    { key: 'location', label: 'موقعیت', type: 'text',
+   152→      validation: { maxLength: 200, message: 'موقعیت نباید بیش از ۲۰۰ نویسه باشد' } },
+   153→    { key: 'deadline', label: 'مهلت', type: 'datetime' },
+   154→    { key: 'terms', label: 'شرایط', type: 'textarea',
+   155→      validation: { maxLength: 5000, message: 'شرایط نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   156→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   157→      { value: 'OPEN', label: 'باز' }, { value: 'CLOSED', label: 'بسته' },
+   158→    ]},
+   159→    { key: 'buyerName', label: 'نام خریدار', type: 'text',
+   160→      validation: { maxLength: 200, message: 'نام خریدار نباید بیش از ۲۰۰ نویسه باشد' } },
+   161→    { key: 'buyerPhone', label: 'تماس', type: 'text', required: true,
+   162→      validation: { pattern: '^0\\d{10}$', message: 'تماس باید ۱۱ رقم و با ۰ شروع شود (مثال: 09123456789)' },
+   163→      permissions: { read: 'rfq.read', write: 'rfq.manage' } },
+   164→    { key: 'buyerEmail', label: 'ایمیل', type: 'text',
+   165→      validation: { pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', message: 'فرمت ایمیل نامعتبر است' },
+   166→      permissions: { read: 'rfq.read', write: 'rfq.manage' } },
+   167→  ],
+   168→
+   169→  detailTabs: [
+   170→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   171→    { key: 'quotes', label: 'پیشنهادها', type: 'relations' },
+   172→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   173→  ],
+   174→
+   175→  actions: [
+   176→    { key: 'close', label: 'بستن درخواست', icon: 'Lock', permission: 'rfq.manage', type: 'confirm', apiPath: '/api/admin/resources/rfqs', apiMethod: 'PATCH' },
+   177→    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/rfqs', apiMethod: 'DELETE' },
+   178→  ],
+   179→
+   180→  bulkActions: [
+   181→    { key: 'bulk-close', label: 'بستن گروهی', icon: 'Lock', permission: 'rfq.manage', type: 'confirm', confirmMessage: 'درخواست‌های انتخاب‌شده بسته شوند؟' },
+   182→    { key: 'bulk-delete', label: 'حذف گروهی', icon: 'Trash2', permission: 'rfq.manage', type: 'confirm', variant: 'destructive' },
+   183→  ],
+   184→
+   185→  audit: { enabled: true, entityType: 'RFQ', actions: ['rfq.manage'] },
+   186→  relations: [
+   187→    { label: 'پیشنهادها', resource: 'rfq-quotes', filterField: 'rfqId' },
+   188→  ],
+   189→};
+   190→
+   191→export const offerConfig: AdminResourceConfig = {
+   192→  key: 'offers',
+   193→  titleFa: 'پیشنهادها',
+   194→  titleEn: 'Offers',
+   195→  icon: 'Tag',
+   196→  model: 'listingOffer',
+   197→  apiBase: '/api/admin/resources/offers',
+   198→  adminPath: '/admin/resources/offers',
+   199→
+   200→  permissions: { read: 'listing.read', create: 'listing.read', update: 'listing.update', delete: 'listing.update', export: 'listing.read' },
+   201→
+   202→  columns: [
+   203→    { key: 'offerAmount', label: 'مبلغ پیشنهاد', type: 'currency', sortable: true, filterable: true },
+   204→    { key: 'message', label: 'پیام', type: 'text', visible: false },
+   205→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   206→    { key: 'counterAmount', label: 'مبلغ ضدپیشنهاد', type: 'currency', visible: false },
+   207→    { key: 'buyerName', label: 'خریدار', type: 'text' },
+   208→    { key: 'buyerPhone', label: 'تماس', type: 'text', visible: false },
+   209→    { key: 'sellerNote', label: 'یادداشت فروشنده', type: 'text', visible: false },
+   210→    { key: 'respondedAt', label: 'پاسخ', type: 'date', sortable: true, visible: false },
+   211→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   212→  ],
+   213→
+   214→  filters: [
+   215→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   216→      { value: 'PENDING', label: 'در انتظار' },
+   217→      { value: 'ACCEPTED', label: 'پذیرفته‌شده' },
+   218→      { value: 'REJECTED', label: 'ردشده' },
+   219→      { value: 'COUNTERED', label: 'ضدپیشنهاد' },
+   220→    ]},
+   221→  ],
+   222→
+   223→  defaultSort: { field: 'createdAt', order: 'desc' },
+   224→  pageSize: 25, searchable: true, searchFields: ['buyerName', 'buyerPhone', 'message'],
+   225→
+   226→  fields: [
+   227→    { key: 'offerAmount', label: 'مبلغ پیشنهاد', type: 'currency', required: true,
+   228→      validation: { min: 0, message: 'مبلغ پیشنهاد باید عدد نامنفی باشد' },
+   229→      permissions: { read: 'offer.read', write: 'offer.update' } },
+   230→    { key: 'message', label: 'پیام', type: 'textarea',
+   231→      validation: { maxLength: 2000, message: 'پیام نباید بیش از ۲,۰۰۰ نویسه باشد' } },
+   232→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   233→      { value: 'PENDING', label: 'در انتظار' },
+   234→      { value: 'ACCEPTED', label: 'پذیرفته‌شده' },
+   235→      { value: 'REJECTED', label: 'ردشده' },
+   236→    ],
+   237→      permissions: { read: 'offer.read', write: 'offer.update' } },
+   238→    { key: 'counterAmount', label: 'مبلغ ضدپیشنهاد', type: 'currency',
+   239→      validation: { min: 0, message: 'مبلغ ضدپیشنهاد باید عدد نامنفی باشد' },
+   240→      permissions: { read: 'offer.read', write: 'offer.update' } },
+   241→    { key: 'buyerName', label: 'نام خریدار', type: 'text',
+   242→      validation: { maxLength: 200, message: 'نام خریدار نباید بیش از ۲۰۰ نویسه باشد' } },
+   243→    { key: 'buyerPhone', label: 'تماس خریدار', type: 'text', required: true,
+   244→      validation: { pattern: '^0\\d{10}$', message: 'تماس باید ۱۱ رقم و با ۰ شروع شود (مثال: 09123456789)' },
+   245→      permissions: { read: 'offer.read', write: 'offer.update' } },
+   246→    { key: 'buyerEmail', label: 'ایمیل', type: 'text',
+   247→      validation: { pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', message: 'فرمت ایمیل نامعتبر است' },
+   248→      permissions: { read: 'offer.read', write: 'offer.update' } },
+   249→    { key: 'sellerNote', label: 'یادداشت فروشنده', type: 'textarea',
+   250→      validation: { maxLength: 2000, message: 'یادداشت نباید بیش از ۲,۰۰۰ نویسه باشد' } },
+   251→  ],
+   252→
+   253→  actions: [
+   254→    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm', apiPath: '/api/admin/resources/offers', apiMethod: 'PATCH' },
+   255→    { key: 'reject', label: 'رد', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/offers', apiMethod: 'PATCH' },
+   256→  ],
+   257→
+   258→  bulkActions: [
+   259→    { key: 'bulk-accept', label: 'پذیرش گروهی', icon: 'CheckCircle', permission: 'listing.update', type: 'confirm', confirmMessage: 'پیشنهادهای انتخاب‌شده پذیرفته شوند؟' },
+   260→    { key: 'bulk-reject', label: 'رد گروهی', icon: 'X', permission: 'listing.update', type: 'confirm', variant: 'destructive' },
+   261→  ],
+   262→
+   263→  detailTabs: [
+   264→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   265→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   266→  ],
+   267→
+   268→  relations: [
+   269→    { label: 'آگهی مرتبط', resource: 'listings', filterField: 'offerId' },
+   270→  ],
+   271→
+   272→  audit: { enabled: true, entityType: 'ListingOffer', actions: ['listing.update'] },
+   273→};
+   274→
+   275→export const auctionConfig: AdminResourceConfig = {
+   276→  key: 'auctions',
+   277→  titleFa: 'مزایده‌ها',
+   278→  titleEn: 'Auctions',
+   279→  icon: 'Gavel',
+   280→  model: 'auction',
+   281→  apiBase: '/api/admin/auctions',
+   282→  adminPath: '/admin/resources/auctions',
+   283→
+   284→  permissions: { read: 'auction.manage', create: 'auction.manage', update: 'auction.manage', delete: 'auction.manage', export: 'auction.manage' },
+   285→
+   286→  columns: [
+   287→    { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },
+   288→    { key: 'startPrice', label: 'قیمت شروع', type: 'currency', sortable: true },
+   289→    { key: 'reservePrice', label: 'قیمت رزرو', type: 'currency', visible: false },
+   290→    { key: 'minIncrement', label: 'حداقل افزایش', type: 'currency', visible: false },
+   291→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   292→    { key: 'winnerName', label: 'برنده', type: 'text', visible: false },
+   293→    { key: 'winningBid', label: 'پیشنهاد برنده', type: 'currency', visible: false },
+   294→    { key: 'startDate', label: 'شروع', type: 'date', sortable: true },
+   295→    { key: 'endDate', label: 'پایان', type: 'date', sortable: true },
+   296→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   297→  ],
+   298→
+   299→  filters: [
+   300→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   301→      { value: 'SCHEDULED', label: 'زمان‌بندی‌شده' },
+   302→      { value: 'LIVE', label: 'در جریان' },
+   303→      { value: 'ENDED', label: 'پایان‌یافته' },
+   304→      { value: 'CANCELLED', label: 'لغوشده' },
+   305→    ]},
+   306→  ],
+   307→
+   308→  defaultSort: { field: 'createdAt', order: 'desc' },
+   309→  pageSize: 25, searchable: true, searchFields: ['title', 'winnerName'],
+   310→
+   311→  fields: [
+   312→    { key: 'title', label: 'عنوان مزایده', type: 'text', required: true,
+   313→      validation: { minLength: 3, maxLength: 200, message: 'عنوان مزایده باید بین ۳ تا ۲۰۰ نویسه باشد' } },
+   314→    { key: 'description', label: 'توضیحات', type: 'textarea',
+   315→      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   316→    { key: 'startPrice', label: 'قیمت شروع', type: 'currency', required: true,
+   317→      validation: { min: 1000, message: 'قیمت شروع باید حداقل ۱,۰۰۰ ریال باشد' },
+   318→      permissions: { read: 'auction.read', write: 'auction.manage' } },
+   319→    { key: 'reservePrice', label: 'قیمت رزرو', type: 'currency',
+   320→      validation: { min: 1000, message: 'قیمت رزرو باید حداقل ۱,۰۰۰ ریال باشد' },
+   321→      permissions: { read: 'auction.read', write: 'auction.manage' } },
+   322→    { key: 'minIncrement', label: 'حداقل افزایش', type: 'currency',
+   323→      validation: { min: 100, message: 'حداقل افزایش باید حداقل ۱۰۰ ریال باشد' } },
+   324→    { key: 'startDate', label: 'تاریخ شروع', type: 'datetime', required: true },
+   325→    { key: 'endDate', label: 'تاریخ پایان', type: 'datetime', required: true },
+   326→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   327→      { value: 'SCHEDULED', label: 'زمان‌بندی‌شده' },
+   328→      { value: 'LIVE', label: 'در جریان' },
+   329→      { value: 'ENDED', label: 'پایان‌یافته' },
+   330→    ]},
+   331→  ],
+   332→
+   333→  detailTabs: [
+   334→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   335→    { key: 'bids', label: 'پیشنهادها', type: 'relations' },
+   336→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   337→  ],
+   338→
+   339→  actions: [
+   340→    { key: 'start', label: 'شروع مزایده', icon: 'Play', permission: 'auction.manage', type: 'confirm', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
+   341→    { key: 'end', label: 'پایان مزایده', icon: 'Square', permission: 'auction.manage', type: 'confirm', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
+   342→    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/auctions', apiMethod: 'PATCH' },
+   343→  ],
+   344→
+   345→  bulkActions: [
+   346→    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'auction.manage', type: 'confirm', variant: 'destructive', confirmMessage: 'مزایده‌های انتخاب‌شده لغو شوند؟' },
+   347→  ],
+   348→
+   349→  audit: { enabled: true, entityType: 'Auction', actions: ['auction.manage'] },
+   350→  relations: [
+   351→    { label: 'پیشنهادها', resource: 'auction-bids', filterField: 'auctionId' },
+   352→  ],
+   353→};
+   354→
+   355→export const inspectionConfig: AdminResourceConfig = {
+   356→  key: 'inspections',
+   357→  titleFa: 'کارشناسی',
+   358→  titleEn: 'Inspections',
+   359→  icon: 'Search',
+   360→  model: 'inspection',
+   361→  apiBase: '/api/admin/inspections',
+   362→  adminPath: '/admin/resources/inspections',
+   363→
+   364→  permissions: { read: 'inspection.read', create: 'inspection.read', update: 'inspection.read', delete: 'inspection.read', export: 'inspection.read' },
+   365→
+   366→  columns: [
+   367→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   368→    { key: 'requestedBy', label: 'درخواست‌کننده', type: 'text' },
+   369→    { key: 'inspectorId', label: 'کارشناس', type: 'text', visible: false },
+   370→    { key: 'scheduledDate', label: 'تاریخ برنامه', type: 'date', sortable: true },
+   371→    { key: 'completedAt', label: 'تکمیل', type: 'date', sortable: true },
+   372→    { key: 'score', label: 'امتیاز', type: 'number', sortable: true },
+   373→    { key: 'price', label: 'مبلغ', type: 'currency', visible: false },
+   374→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   375→  ],
+   376→
+   377→  filters: [
+   378→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   379→      { value: 'REQUESTED', label: 'درخواست‌شده' },
+   380→      { value: 'SCHEDULED', label: 'برنامه‌ریزی‌شده' },
+   381→      { value: 'IN_PROGRESS', label: 'در حال انجام' },
+   382→      { value: 'COMPLETED', label: 'تکمیل‌شده' },
+   383→      { value: 'CANCELLED', label: 'لغوشده' },
+   384→    ]},
+   385→  ],
+   386→
+   387→  defaultSort: { field: 'createdAt', order: 'desc' },
+   388→  pageSize: 25, searchable: true, searchFields: ['requestedBy', 'inspectorId'],
+   389→
+   390→  fields: [
+   391→    { key: 'requestedBy', label: 'درخواست‌کننده', type: 'text', required: true,
+   392→      validation: { minLength: 2, maxLength: 100, message: 'نام درخواست‌کننده باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+   393→    { key: 'inspectorId', label: 'کارشناس', type: 'text',
+   394→      validation: { maxLength: 100, message: 'شناسه کارشناس نباید بیش از ۱۰۰ نویسه باشد' } },
+   395→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   396→      { value: 'REQUESTED', label: 'درخواست‌شده' },
+   397→      { value: 'SCHEDULED', label: 'برنامه‌ریزی‌شده' },
+   398→      { value: 'COMPLETED', label: 'تکمیل‌شده' },
+   399→    ]},
+   400→    { key: 'scheduledDate', label: 'تاریخ برنامه', type: 'datetime' },
+   401→    { key: 'score', label: 'امتیاز (۰-۱۰۰)', type: 'number',
+   402→      validation: { min: 0, max: 100, message: 'امتیاز باید بین ۰ تا ۱۰۰ باشد' },
+   403→      permissions: { read: 'inspection.read', write: 'inspection.manage' } },
+   404→    { key: 'reportUrl', label: 'گزارش', type: 'media' },
+   405→    { key: 'price', label: 'مبلغ', type: 'currency',
+   406→      validation: { min: 0, message: 'مبلغ باید عدد نامنفی باشد' },
+   407→      permissions: { read: 'inspection.read', write: 'inspection.manage' } },
+   408→    { key: 'notes', label: 'یادداشت', type: 'textarea',
+   409→      validation: { maxLength: 5000, message: 'یادداشت نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   410→  ],
+   411→
+   412→  actions: [
+   413→    { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+   414→    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+   415→    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+   416→  ],
+   417→
+   418→  bulkActions: [
+   419→    { key: 'bulk-schedule', label: 'برنامه‌ریزی گروهی', icon: 'Calendar', permission: 'inspection.manage', type: 'confirm' },
+   420→    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'inspection.manage', type: 'confirm', variant: 'destructive' },
+   421→  ],
+   422→
+   423→  detailTabs: [
+   424→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   425→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   426→  ],
+   427→
+   428→  relations: [
+   429→    { label: 'معامله مرتبط', resource: 'deals', filterField: 'inspectionId' },
+   430→  ],
+   431→
+   432→  audit: { enabled: true, entityType: 'Inspection', actions: ['inspection.read'] },
+   433→};
+   434→
+   435→export const transportConfig: AdminResourceConfig = {
+   436→  key: 'transports',
+   437→  titleFa: 'حمل‌ونقل',
+   438→  titleEn: 'Transport',
+   439→  icon: 'Truck',
+   440→  model: 'transportRequest',
+   441→  apiBase: '/api/admin/transport',
+   442→  adminPath: '/admin/resources/transports',
+   443→
+   444→  permissions: { read: 'transport.read', create: 'transport.read', update: 'transport.read', delete: 'transport.read', export: 'transport.read' },
+   445→
+   446→  columns: [
+   447→    { key: 'origin', label: 'مبدا', type: 'text', filterable: true },
+   448→    { key: 'destination', label: 'مقصد', type: 'text', filterable: true },
+   449→    { key: 'cargoType', label: 'نوع بار', type: 'text', visible: false },
+   450→    { key: 'cargoWeight', label: 'وزن', type: 'number', visible: false },
+   451→    { key: 'vehicleType', label: 'نوع وسیله', type: 'badge', filterable: true },
+   452→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   453→    { key: 'quotedPrice', label: 'مبلغ', type: 'currency', sortable: true },
+   454→    { key: 'carrierName', label: 'حامل', type: 'text' },
+   455→    { key: 'trackingCode', label: 'کد ردیابی', type: 'text' },
+   456→    { key: 'loadingDate', label: 'بارگیری', type: 'date', sortable: true },
+   457→    { key: 'deliveryDate', label: 'تحویل', type: 'date', sortable: true },
+   458→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   459→  ],
+   460→
+   461→  filters: [
+   462→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   463→      { value: 'REQUESTED', label: 'درخواست‌شده' },
+   464→      { value: 'QUOTING', label: 'در حال پیشنهاد' },
+   465→      { value: 'ACCEPTED', label: 'پذیرفته‌شده' },
+   466→      { value: 'IN_TRANSIT', label: 'در حال حمل' },
+   467→      { value: 'DELIVERED', label: 'تحویل‌شده' },
+   468→      { value: 'CANCELLED', label: 'لغوشده' },
+   469→    ]},
+   470→    { key: 'vehicleType', label: 'نوع وسیله', type: 'select', options: [
+   471→      { value: 'FLATBED', label: 'تخت‌دار' },
+   472→      { value: 'LOWBOY', label: 'لوبوی' },
+   473→      { value: 'CONTAINER', label: 'کانتینر' },
+   474→      { value: 'SPECIAL', label: 'ویژه' },
+   475→    ]},
+   476→  ],
+   477→
+   478→  defaultSort: { field: 'createdAt', order: 'desc' },
+   479→  pageSize: 25, searchable: true, searchFields: ['origin', 'destination', 'carrierName', 'trackingCode'],
+   480→
+   481→  fields: [
+   482→    { key: 'origin', label: 'مبدا', type: 'text', required: true,
+   483→      validation: { minLength: 2, maxLength: 200, message: 'مبدا باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+   484→    { key: 'destination', label: 'مقصد', type: 'text', required: true,
+   485→      validation: { minLength: 2, maxLength: 200, message: 'مقصد باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+   486→    { key: 'cargoType', label: 'نوع بار', type: 'text',
+   487→      validation: { maxLength: 100, message: 'نوع بار نباید بیش از ۱۰۰ نویسه باشد' } },
+   488→    { key: 'cargoWeight', label: 'وزن (kg)', type: 'number',
+   489→      validation: { min: 0, message: 'وزن بار باید عدد نامنفی باشد' } },
+   490→    { key: 'cargoLength', label: 'طول', type: 'number', visible: false,
+   491→      validation: { min: 0, message: 'طول باید عدد نامنفی باشد' } },
+   492→    { key: 'cargoWidth', label: 'عرض', type: 'number', visible: false,
+   493→      validation: { min: 0, message: 'عرض باید عدد نامنفی باشد' } },
+   494→    { key: 'cargoHeight', label: 'ارتفاع', type: 'number', visible: false,
+   495→      validation: { min: 0, message: 'ارتفاع باید عدد نامنفی باشد' } },
+   496→    { key: 'vehicleType', label: 'نوع وسیله', type: 'select', options: [
+   497→      { value: 'FLATBED', label: 'تخت‌دار' },
+   498→      { value: 'LOWBOY', label: 'لوبوی' },
+   499→      { value: 'CONTAINER', label: 'کانتینر' },
+   500→    ]},
+   501→    { key: 'loadingDate', label: 'تاریخ بارگیری', type: 'datetime' },
+   502→    { key: 'deliveryDate', label: 'تاریخ تحویل', type: 'datetime' },
+   503→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   504→      { value: 'REQUESTED', label: 'درخواست‌شده' },
+   505→      { value: 'ACCEPTED', label: 'پذیرفته‌شده' },
+   506→      { value: 'IN_TRANSIT', label: 'در حال حمل' },
+   507→      { value: 'DELIVERED', label: 'تحویل‌شده' },
+   508→    ]},
+   509→    { key: 'quotedPrice', label: 'مبلغ', type: 'currency',
+   510→      validation: { min: 0, message: 'مبلغ حمل باید عدد نامنفی باشد' },
+   511→      permissions: { read: 'transport.read', write: 'transport.manage' } },
+   512→    { key: 'carrierName', label: 'نام حامل', type: 'text',
+   513→      validation: { maxLength: 200, message: 'نام حامل نباید بیش از ۲۰۰ نویسه باشد' } },
+   514→    { key: 'carrierPhone', label: 'تماس حامل', type: 'text',
+   515→      validation: { pattern: '^0\\d{10}$', message: 'تماس حامل باید ۱۱ رقم و با ۰ شروع شود (مثال: 02112345678)' } },
+   516→    { key: 'trackingCode', label: 'کد ردیابی', type: 'text',
+   517→      validation: { maxLength: 100, message: 'کد ردیابی نباید بیش از ۱۰۰ نویسه باشد' } },
+   518→    { key: 'requestedBy', label: 'درخواست‌کننده', type: 'text', required: true,
+   519→      validation: { minLength: 2, maxLength: 100, message: 'نام درخواست‌کننده باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+   520→    { key: 'notes', label: 'یادداشت', type: 'textarea',
+   521→      validation: { maxLength: 2000, message: 'یادداشت نباید بیش از ۲,۰۰۰ نویسه باشد' } },
+   522→  ],
+   523→
+   524→  actions: [
+   525→    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+   526→    { key: 'deliver', label: 'تحویل', icon: 'Package', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+   527→    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+   528→  ],
+   529→
+   530→  bulkActions: [
+   531→    { key: 'bulk-accept', label: 'پذیرش گروهی', icon: 'CheckCircle', permission: 'transport.manage', type: 'confirm' },
+   532→    { key: 'bulk-cancel', label: 'لغو گروهی', icon: 'X', permission: 'transport.manage', type: 'confirm', variant: 'destructive' },
+   533→  ],
+   534→
+   535→  detailTabs: [
+   536→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   537→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   538→  ],
+   539→
+   540→  relations: [
+   541→    { label: 'معامله مرتبط', resource: 'deals', filterField: 'transportId' },
+   542→  ],
+   543→
+   544→  audit: { enabled: true, entityType: 'TransportRequest', actions: ['transport.read'] },
+   545→};
+   546→
+   547→export const disputeConfig: AdminResourceConfig = {
+   548→  key: 'disputes',
+   549→  titleFa: 'اختلافات',
+   550→  titleEn: 'Disputes',
+   551→  icon: 'AlertTriangle',
+   552→  model: 'dispute',
+   553→  apiBase: '/api/admin/resources/disputes',
+   554→  adminPath: '/admin/resources/disputes',
+   555→
+   556→  permissions: { read: 'deal.read', create: 'deal.manage', update: 'deal.manage', delete: 'deal.manage', export: 'deal.read' },
+   557→
+   558→  columns: [
+   559→    { key: 'reason', label: 'دلیل', type: 'text', filterable: true },
+   560→    { key: 'description', label: 'توضیحات', type: 'text', visible: false },
+   561→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   562→    { key: 'openedBy', label: 'باز‌کننده', type: 'text' },
+   563→    { key: 'resolution', label: 'راه‌حل', type: 'text', visible: false },
+   564→    { key: 'resolvedBy', label: 'حل‌کننده', type: 'text', visible: false },
+   565→    { key: 'openedAt', label: 'باز‌شدن', type: 'date', sortable: true },
+   566→    { key: 'resolvedAt', label: 'حل‌شدن', type: 'date', sortable: true },
+   567→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   568→  ],
+   569→
+   570→  filters: [
+   571→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   572→      { value: 'OPEN', label: 'باز' },
+   573→      { value: 'UNDER_REVIEW', label: 'در حال بررسی' },
+   574→      { value: 'RESOLVED', label: 'حل‌شده' },
+   575→      { value: 'CANCELLED', label: 'لغوشده' },
+   576→    ]},
+   577→  ],
+   578→
+   579→  defaultSort: { field: 'createdAt', order: 'desc' },
+   580→  pageSize: 25, searchable: true, searchFields: ['reason', 'description', 'openedBy'],
+   581→
+   582→  fields: [
+   583→    { key: 'reason', label: 'دلیل اختلاف', type: 'text', required: true,
+   584→      validation: { minLength: 5, maxLength: 200, message: 'دلیل اختلاف باید بین ۵ تا ۲۰۰ نویسه باشد' } },
+   585→    { key: 'description', label: 'توضیحات', type: 'textarea',
+   586→      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   587→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   588→      { value: 'OPEN', label: 'باز' },
+   589→      { value: 'UNDER_REVIEW', label: 'در حال بررسی' },
+   590→      { value: 'RESOLVED', label: 'حل‌شده' },
+   591→    ]},
+   592→    { key: 'resolution', label: 'راه‌حل', type: 'textarea',
+   593→      validation: { maxLength: 5000, message: 'راه‌حل نباید بیش از ۵,۰۰۰ نویسه باشد' },
+   594→      permissions: { read: 'dispute.read', write: 'dispute.manage' } },
+   595→    { key: 'evidence', label: 'مدارک', type: 'json' },
+   596→    { key: 'openedBy', label: 'باز‌کننده', type: 'text', required: true,
+   597→      validation: { minLength: 2, maxLength: 100, message: 'نام باز‌کننده باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+   598→  ],
+   599→
+   600→  actions: [
+   601→    { key: 'review', label: 'شروع بررسی', icon: 'Search', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
+   602→    { key: 'resolve', label: 'حل اختلاف', icon: 'CheckCircle', permission: 'deal.manage', type: 'confirm', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
+   603→    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'deal.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/disputes', apiMethod: 'PATCH' },
+   604→  ],
+   605→
+   606→  bulkActions: [
+   607→    { key: 'bulk-review', label: 'بررسی گروهی', icon: 'Search', permission: 'dispute.manage', type: 'confirm' },
+   608→    { key: 'bulk-resolve', label: 'حل گروهی', icon: 'CheckCircle', permission: 'dispute.manage', type: 'confirm' },
+   609→  ],
+   610→
+   611→  detailTabs: [
+   612→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   613→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   614→  ],
+   615→
+   616→  relations: [
+   617→    { label: 'معامله مرتبط', resource: 'deals', filterField: 'disputeId' },
+   618→    { label: 'سفارش مرتبط', resource: 'orders', filterField: 'disputeId' },
+   619→  ],
+   620→
+   621→  audit: { enabled: true, entityType: 'Dispute', actions: ['deal.manage'] },
+   622→};
+   623→
+   624→export const buyRequestConfig: AdminResourceConfig = {
+   625→  key: 'buy-requests',
+   626→  titleFa: 'درخواست‌های خرید',
+   627→  titleEn: 'Buy Requests',
+   628→  icon: 'ShoppingBag',
+   629→  model: 'buyRequest',
+   630→  apiBase: '/api/admin/requests',
+   631→  adminPath: '/admin/resources/buy-requests',
+   632→
+   633→  permissions: { read: 'request.read', create: 'request.read', update: 'request.read', delete: 'request.read', export: 'request.read' },
+   634→
+   635→  columns: [
+   636→    { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },
+   637→    { key: 'category', label: 'دسته', type: 'text', filterable: true },
+   638→    { key: 'brandPref', label: 'ترجیح برند', type: 'text', visible: false },
+   639→    { key: 'budgetMin', label: 'حداقل بودجه', type: 'currency', visible: false },
+   640→    { key: 'budgetMax', label: 'حداکثر بودجه', type: 'currency', visible: false },
+   641→    { key: 'city', label: 'شهر', type: 'text', filterable: true },
+   642→    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+   643→    { key: 'verified', label: 'تأییدشده', type: 'boolean', filterable: true },
+   644→    { key: 'viewCount', label: 'بازدید', type: 'number', sortable: true, visible: false },
+   645→    { key: 'createdAt', label: 'ایجاد', type: 'date', sortable: true },
+   646→  ],
+   647→
+   648→  filters: [
+   649→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   650→      { value: 'ACTIVE', label: 'فعال' }, { value: 'CLOSED', label: 'بسته' },
+   651→    ]},
+   652→    { key: 'verified', label: 'فقط تأییدشده', type: 'boolean' },
+   653→  ],
+   654→
+   655→  defaultSort: { field: 'createdAt', order: 'desc' },
+   656→  pageSize: 25, searchable: true, searchFields: ['title', 'category', 'city', 'requesterName', 'requesterPhone'],
+   657→
+   658→  fields: [
+   659→    { key: 'title', label: 'عنوان درخواست', type: 'text', required: true,
+   660→      validation: { minLength: 3, maxLength: 200, message: 'عنوان درخواست باید بین ۳ تا ۲۰۰ نویسه باشد' } },
+   661→    { key: 'description', label: 'توضیحات', type: 'textarea',
+   662→      validation: { maxLength: 5000, message: 'توضیحات نباید بیش از ۵,۰۰۰ نویسه باشد' } },
+   663→    { key: 'category', label: 'دسته', type: 'text',
+   664→      validation: { maxLength: 100, message: 'دسته نباید بیش از ۱۰۰ نویسه باشد' } },
+   665→    { key: 'brandPref', label: 'ترجیح برند', type: 'text',
+   666→      validation: { maxLength: 200, message: 'ترجیح برند نباید بیش از ۲۰۰ نویسه باشد' } },
+   667→    { key: 'budgetMin', label: 'حداقل بودجه', type: 'currency',
+   668→      validation: { min: 0, message: 'حداقل بودجه باید عدد نامنفی باشد' },
+   669→      permissions: { read: 'request.read', write: 'request.manage' } },
+   670→    { key: 'budgetMax', label: 'حداکثر بودجه', type: 'currency',
+   671→      validation: { min: 0, message: 'حداکثر بودجه باید عدد نامنفی باشد' },
+   672→      permissions: { read: 'request.read', write: 'request.manage' } },
+   673→    { key: 'city', label: 'شهر', type: 'text',
+   674→      validation: { maxLength: 100, message: 'شهر نباید بیش از ۱۰۰ نویسه باشد' } },
+   675→    { key: 'province', label: 'استان', type: 'text',
+   676→      validation: { maxLength: 100, message: 'استان نباید بیش از ۱۰۰ نویسه باشد' } },
+   677→    { key: 'deadline', label: 'مهلت', type: 'text' },
+   678→    { key: 'status', label: 'وضعیت', type: 'select', options: [
+   679→      { value: 'ACTIVE', label: 'فعال' }, { value: 'CLOSED', label: 'بسته' },
+   680→    ]},
+   681→    { key: 'verified', label: 'تأییدشده', type: 'boolean' },
+   682→    { key: 'requesterName', label: 'نام درخواست‌کننده', type: 'text',
+   683→      validation: { minLength: 2, maxLength: 100, message: 'نام درخواست‌کننده باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+   684→    { key: 'requesterPhone', label: 'تماس', type: 'text',
+   685→      validation: { pattern: '^0\\d{10}$', message: 'تماس باید ۱۱ رقم و با ۰ شروع شود (مثال: 09123456789)' } },
+   686→  ],
+   687→
+   688→  actions: [
+   689→    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+   690→    { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+   691→    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'DELETE' },
+   692→  ],
+   693→
+   694→  bulkActions: [
+   695→    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'ShieldCheck', permission: 'request.manage', type: 'confirm' },
+   696→    { key: 'bulk-close', label: 'بستن گروهی', icon: 'Lock', permission: 'request.manage', type: 'confirm' },
+   697→  ],
+   698→
+   699→  detailTabs: [
+   700→    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+   701→    { key: 'audit', label: 'ممیزی', type: 'audit' },
+   702→  ],
+   703→
+   704→  relations: [
+   705→    { label: 'پیشنهادهای مرتبط', resource: 'offers', filterField: 'buyRequestId' },
+   706→  ],
+   707→
+   708→  audit: { enabled: true, entityType: 'BuyRequest', actions: ['request.read'] },
+   709→};
+   710→

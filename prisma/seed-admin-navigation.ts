@@ -125,6 +125,7 @@ const STANDALONES: Standalone[] = [
   { key: 'companies', titleFa: 'شرکت‌ها', href: '/admin/companies', icon: 'Building2', sortOrder: 3, permissionKey: 'company.read' },
   { key: 'subscriptions', titleFa: 'اشتراک‌ها', href: '/admin/subscriptions', icon: 'Crown', sortOrder: 9, permissionKey: 'subscription.read' },
   { key: 'users', titleFa: 'کاربران', href: '/admin/users', icon: 'Users', sortOrder: 10, permissionKey: 'user.read' },
+  { key: 'sellers', titleFa: 'فروشندگان', href: '/admin/sellers', icon: 'Store', sortOrder: 10.25, permissionKey: 'user.read' },
   { key: 'disputes', titleFa: 'اختلافات', href: '/admin/resources/disputes', icon: 'Gavel', sortOrder: 10.5, permissionKey: 'dispute.read' },
   { key: 'audit-log', titleFa: 'لاگ ممیزی', href: '/admin/audit-log', icon: 'ShieldCheck', sortOrder: 12, permissionKey: 'audit.read' },
   { key: 'settings', titleFa: 'تنظیمات', href: '/admin/settings', icon: 'Settings', sortOrder: 13, permissionKey: 'system.manage' },

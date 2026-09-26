@@ -343,6 +343,25 @@ model Notification {
 }
 
 // ---------------------------------------------------------------------------
+// SUPPLIERS (T2-W1-A — Store Gap Domain #3)
+// Lightweight supplier directory used by procurement + Parts sourcing.
+// No relation to Part yet — procurement flow will add a SupplierPart join
+// table when its write route is wired (T2-W2). For now this is a CRUD
+// directory: name + bilingual label + contact details + active flag.
+// ---------------------------------------------------------------------------
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  nameFa    String?
+  phone     String?
+  email     String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
 // AUDIT LOG — removed (Track A P0 fix)
 // Store audit hooks use logAudit() from src/lib/admin/audit.ts which writes
 // to the MAIN PostgreSQL AuditLog table (cross-DB design, verified E2E-07).
