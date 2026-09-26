@@ -252,10 +252,16 @@ model Shipment {
   order        Order     @relation(fields: [orderId], references: [id])
   carrier      String // پست | تیپاکس | چاپار
   trackingCode String?
-  status       String    @default("PENDING") // PENDING | DISPATCHED | IN_TRANSIT | DELIVERED
+  status       String    @default("PENDING") // PENDING | DISPATCHED | IN_TRANSIT | DELIVERED | EXCEPTION | FAILED
   shippedAt    DateTime?
   deliveredAt  DateTime?
   note         String?
+  // PHASE-P9-LOGISTICS — snapshot fields kept in sync by the logistics
+  // service for queryability. The ShipmentTracking append-only rows are
+  // the source of truth; these fields are convenience snapshots (mirrors
+  // the shippedAt/deliveredAt pattern).
+  pickupDate   DateTime?
+  proofUrl     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -710,4 +716,65 @@ model RentalBooking {
   @@index([status])
   @@index([startDate])
   @@index([endDate])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE-P9-SERVICES — SERVICES MARKETPLACE
+// ---------------------------------------------------------------------------
+// ServiceProvider is the catalog row for an external or in-house service
+// provider (transport, inspection, maintenance, repair, installation,
+// delivery). The provider is the rate/scheduling layer; a ServiceRequest
+// is the operational job row. The ServiceRequest state machine:
+//   REQUESTED → (provider quote) → QUOTED
+//   QUOTED    → (customer/admin accept) → ACCEPTED
+//   ACCEPTED  → (admin schedule) → SCHEDULED
+//   SCHEDULED → (admin start) → IN_PROGRESS
+//   IN_PROGRESS → (admin complete) → COMPLETED
+//   any state → (admin cancel) → CANCELLED
+//
+// `customerId` is a plain String (no FK to Customer) — mirrors the
+// RentalBooking pattern: the services marketplace can be requested on
+// behalf of a customer (Customer.id), a HEAVIX User.id, or an external
+// customer reference. The reference resolution is UI-side policy, not a
+// data invariant.
+// ---------------------------------------------------------------------------
+model ServiceProvider {
+  id              String           @id @default(cuid())
+  name            String
+  nameFa          String?
+  type            String // TRANSPORT | INSPECTION | MAINTENANCE | REPAIR | INSTALLATION | DELIVERY
+  phone           String?
+  email           String?
+  address         String?
+  active          Boolean          @default(true)
+  verified        Boolean          @default(false)
+  rating          Float            @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  serviceRequests ServiceRequest[]
+
+  @@index([type])
+  @@index([active])
+  @@index([verified])
+}
+
+model ServiceRequest {
+  id            String           @id @default(cuid())
+  providerId    String?
+  provider      ServiceProvider? @relation(fields: [providerId], references: [id])
+  customerId    String
+  type          String // TRANSPORT | INSPECTION | MAINTENANCE | REPAIR | INSTALLATION | DELIVERY
+  status        String           @default("REQUESTED") // REQUESTED | QUOTED | ACCEPTED | SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
+  description   String?
+  scheduledDate DateTime?
+  completedAt   DateTime?
+  price         Float?
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([providerId])
+  @@index([customerId])
+  @@index([type])
+  @@index([status])
 }
