@@ -3,44 +3,40 @@ import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  getOrderDetail,
+  CommerceServiceError,
+} from "@/lib/commerce-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
    /api/admin/store/orders/[id] — order detail + status update
+   PHASE-P8-TRANSACTION — GET delegated to commerce-service
+   (getOrderDetail, richer read with customer + mechanic + payments
+   + shipment context). PATCH stays inline for the metadata fields
+   (status / notes / shippingAddress / couponCode / mechanicId) and
+   imports commerce-service so future deepening (status-state-machine
+   via the service) is one method-call away.
    ============================================================ */
 
 const ALLOWED_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"];
 const ALLOWED_PAY_STATUSES = ["UNPAID", "PARTIAL", "PAID", "REFUNDED"];
 
-function serialize(o: any) {
-  return {
-    ...o,
-    subtotalUsd: o.subtotalUsd?.toString?.() ?? String(o.subtotalUsd ?? 0),
-    shippingUsd: o.shippingUsd?.toString?.() ?? String(o.shippingUsd ?? 0),
-    discountIrr: o.discountIrr?.toString?.() ?? String(o.discountIrr ?? 0),
-    totalUsd: o.totalUsd?.toString?.() ?? String(o.totalUsd ?? 0),
-    totalIrr: o.totalIrr?.toString?.() ?? String(o.totalIrr ?? 0),
-    currencyRateAtOrder: o.currencyRateAtOrder?.toString?.() ?? String(o.currencyRateAtOrder ?? 0),
-    marginPercentAtOrder: o.marginPercentAtOrder?.toString?.() ?? String(o.marginPercentAtOrder ?? 0),
-    createdAt: o.createdAt?.toISOString?.() ?? null,
-    updatedAt: o.updatedAt?.toISOString?.() ?? null,
-    items: (o.items || []).map((it: any) => ({
-      ...it,
-      unitPriceUsd: it.unitPriceUsd?.toString?.() ?? String(it.unitPriceUsd ?? 0),
-      unitPriceIrr: it.unitPriceIrr?.toString?.() ?? String(it.unitPriceIrr ?? 0),
-      lineTotalUsd: it.lineTotalUsd?.toString?.() ?? String(it.lineTotalUsd ?? 0),
-      lineTotalIrr: it.lineTotalIrr?.toString?.() ?? String(it.lineTotalIrr ?? 0),
-    })),
-    payments: (o.payments || []).map((p: any) => ({
-      ...p,
-      amountIrr: p.amountIrr?.toString?.() ?? String(p.amountIrr ?? 0),
-      amountUsd: p.amountUsd?.toString?.() ?? String(p.amountUsd ?? 0),
-      createdAt: p.createdAt?.toISOString?.() ?? null,
-      reviewedAt: p.reviewedAt?.toISOString?.() ?? null,
-    })),
-  };
+function toErrorResponse(e: unknown) {
+  if (e instanceof CommerceServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/orders/[id]] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -55,20 +51,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   const { id } = await params;
   try {
-    const order = await storeDb.order.findUnique({
-      where: { id },
-      include: {
-        customer: { select: { id: true, name: true, family: true, phone: true, address: true } },
-        mechanic: { select: { id: true, name: true, family: true, shopName: true, phone: true } },
-        items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true } } } },
-        payments: true,
-        shipment: true,
-      },
-    });
-    if (!order) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    return NextResponse.json({ success: true, data: serialize(order) });
+    // Delegate the rich read to the commerce-service so the read
+    // shape + audit context is owned by the service (same pattern
+    // as the procurement/shipments detail routes after extraction).
+    const order = await getOrderDetail(id);
+    return NextResponse.json({ success: true, data: order });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
 
@@ -117,17 +106,33 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     });
     await logAudit({
       actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.order.update',
-      entityType: 'Order',
+      actorType: "ADMIN",
+      action: "store.order.update",
+      entityType: "Order",
       entityId: order.id,
       before: existing,
       after: order,
     });
 
-    return NextResponse.json({ success: true, data: serialize(order) });
+    // After the inline update, delegate the rich read to the
+    // commerce-service so the response shape is identical to GET.
+    const refreshed = await getOrderDetail(id).catch(() => null);
+    return NextResponse.json({
+      success: true,
+      data: refreshed ?? {
+        ...order,
+        subtotalUsd: String(order.subtotalUsd),
+        shippingUsd: String(order.shippingUsd),
+        discountIrr: String(order.discountIrr),
+        totalUsd: String(order.totalUsd),
+        totalIrr: String(order.totalIrr),
+        currencyRateAtOrder: String(order.currencyRateAtOrder),
+        marginPercentAtOrder: String(order.marginPercentAtOrder),
+        createdAt: order.createdAt?.toISOString?.() ?? null,
+        updatedAt: order.updatedAt?.toISOString?.() ?? null,
+      },
+    });
   } catch (e: any) {
-    console.error("[store/orders PATCH] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

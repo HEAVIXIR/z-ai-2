@@ -648,3 +648,66 @@ model ShipmentTracking {
   @@index([shipmentId])
   @@index([status])
 }
+
+// ---------------------------------------------------------------------------
+// PHASE-P8-TRANSACTION — RENTAL DOMAIN (part-time leasing of equipment)
+// ---------------------------------------------------------------------------
+// RentalListing is the catalog row for a rentable Part (or HEAVIX Listing —
+// the partId is optional so the rental flow can be reused for the marketplace
+// heavy-machinery side via listingId). The listing is the rate + policy
+// layer (daily/weekly/monthly rates, deposit, min/max duration). A listing
+// has 0..N RentalBookings — the booking lifecycle is:
+//   REQUESTED → APPROVED → ACTIVE → COMPLETED  (or → CANCELLED from any state).
+//
+// `available` is a manual gate (admin can hide a listing) — the actual
+// availability check (no overlapping ACTIVE/REQUESTED booking) lives in
+// the rental-service.checkAvailability() helper.
+// ---------------------------------------------------------------------------
+model RentalListing {
+  id           String   @id @default(cuid())
+  partId       String?
+  listingId    String?
+  dailyRate    Float
+  weeklyRate   Float?
+  monthlyRate  Float?
+  deposit      Float?
+  available    Boolean  @default(true)
+  minDuration  Int      @default(1) // days
+  maxDuration  Int?     // null = unlimited
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  bookings     RentalBooking[]
+
+  @@index([partId])
+  @@index([listingId])
+  @@index([available])
+}
+
+// RentalBooking — a single customer reservation against a RentalListing.
+// `dailyRate` is snapshotted at booking time (immune to later rate edits,
+// mirrors the OrderItem.unitPrice pattern in the commerce flow).
+// `totalAmount` = dailyRate × dayCount (computed in requestBooking).
+// `depositPaid` gates the APPROVED→ACTIVE transition (the admin starts the
+// rental after the deposit payment is confirmed; this is a manual flag for
+// now — the auto-link to the store Payment flow is a future deepening).
+model RentalBooking {
+  id               String   @id @default(cuid())
+  rentalListingId  String
+  rentalListing    RentalListing @relation(fields: [rentalListingId], references: [id], onDelete: Cascade)
+  customerId       String
+  startDate        DateTime
+  endDate          DateTime
+  status           String   @default("REQUESTED") // REQUESTED | APPROVED | ACTIVE | COMPLETED | CANCELLED
+  dailyRate        Float
+  totalAmount      Float
+  depositPaid      Boolean  @default(false)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([rentalListingId])
+  @@index([customerId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+}

@@ -487,6 +487,36 @@ exports.Prisma.ShipmentTrackingScalarFieldEnum = {
   timestamp: 'timestamp'
 };
 
+exports.Prisma.RentalListingScalarFieldEnum = {
+  id: 'id',
+  partId: 'partId',
+  listingId: 'listingId',
+  dailyRate: 'dailyRate',
+  weeklyRate: 'weeklyRate',
+  monthlyRate: 'monthlyRate',
+  deposit: 'deposit',
+  available: 'available',
+  minDuration: 'minDuration',
+  maxDuration: 'maxDuration',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.RentalBookingScalarFieldEnum = {
+  id: 'id',
+  rentalListingId: 'rentalListingId',
+  customerId: 'customerId',
+  startDate: 'startDate',
+  endDate: 'endDate',
+  status: 'status',
+  dailyRate: 'dailyRate',
+  totalAmount: 'totalAmount',
+  depositPaid: 'depositPaid',
+  notes: 'notes',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -527,7 +557,9 @@ exports.Prisma.ModelName = {
   ProcurementRequest: 'ProcurementRequest',
   PurchaseOrder: 'PurchaseOrder',
   PurchaseOrderItem: 'PurchaseOrderItem',
-  ShipmentTracking: 'ShipmentTracking'
+  ShipmentTracking: 'ShipmentTracking',
+  RentalListing: 'RentalListing',
+  RentalBooking: 'RentalBooking'
 };
 
 /**

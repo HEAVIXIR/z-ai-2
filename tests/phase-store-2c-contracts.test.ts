@@ -215,6 +215,15 @@ const EXPECTED_ACTION_KEYS = [
   'store.procurement.po.receive',
   'store.procurement.po.cancel',
   'store.shipment.tracking.add',
+  // ── PHASE-P8-TRANSACTION (2 new action keys in route scope) ──
+  // The RentalBooking state-machine audits (store.rental.create,
+  // store.rental.booking.{request,approve,cancel}, store.rental.start,
+  // store.rental.complete) live in src/lib/rental-service.ts which is
+  // NOT in this test's service scope (covered separately by
+  // tests/phase-p8-transaction.test.ts). The 2 route-scope keys are
+  // the inline audits on rentals/[id]/route.ts (PATCH update + DELETE).
+  'store.rental.update',
+  'store.rental.delete',
 ];
 
 describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
@@ -223,7 +232,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS (route-only — RBAC is enforced in routes)
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 38 admin store route files', () => {
+    it('should have exactly 42 admin store route files', () => {
       // T-A-DEEP-STORE: 28 routes originally.
       // T1+T2-DEEP: +6 new routes (warehouses/route, warehouses/[id],
       // inventory/reserve, inventory/release, inventory/low-stock,
@@ -233,16 +242,20 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //    procurement/[id]/purchase-orders/[poId]/route,
       //    procurement/[id]/purchase-orders/[poId]/receive,
       //    shipments/[id]/tracking) → 38.
+      // PHASE-P8-TRANSACTION: +4 new routes (rentals/route, rentals/[id],
+      //   rentals/[id]/bookings, rentals/[id]/bookings/[bookingId]) → 42.
       const files = listRouteFiles();
-      expect(files.length).toBe(38);
+      expect(files.length).toBe(42);
     });
 
-    it('should have 70 requirePermission calls across all store routes', () => {
+    it('should have 78 requirePermission calls across all store routes', () => {
       // T-A-DEEP-STORE: 53 originally.
       // T1+T2-DEEP: +10 new (warehouses 2+3, reserve 1, release 1,
       // low-stock 1, returns/[id]/items 2) → 63.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: +7 new (purchase-orders 2+2,
       // purchase-orders/[poId]/receive 1, shipments/[id]/tracking 2) → 70.
+      // PHASE-P8-TRANSACTION: +8 new (rentals/route 2, rentals/[id] 3,
+      //   rentals/[id]/bookings 2, rentals/[id]/bookings/[bookingId] 1) → 78.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -250,12 +263,14 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(70);
+      expect(count).toBe(78);
     });
 
-    it('should have 15 store.read requirePermission calls', () => {
+    it('should have 18 store.read requirePermission calls', () => {
       // T-A-DEEP-STORE: 8 store.read calls were migrated to domain-specific
       // keys (inventory/returns/shipping/procurement .read). Down from 23.
+      // PHASE-P8-TRANSACTION: +3 new (rentals/route GET, rentals/[id] GET,
+      //   rentals/[id]/bookings GET) → 18.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -263,12 +278,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.read'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(15);
+      expect(count).toBe(18);
     });
 
-    it('should have 22 store.manage requirePermission calls', () => {
+    it('should have 27 store.manage requirePermission calls', () => {
       // T-A-DEEP-STORE: 8 store.manage calls were migrated to domain-specific
       // keys (inventory/returns/shipping/procurement .manage). Down from 30.
+      // PHASE-P8-TRANSACTION: +5 new (rentals/route POST, rentals/[id] PATCH,
+      //   rentals/[id] DELETE, rentals/[id]/bookings POST,
+      //   rentals/[id]/bookings/[bookingId] PATCH) → 27.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -276,7 +294,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.manage'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(22);
+      expect(count).toBe(27);
     });
 
     it('should have 15 fine-grained domain read permissions (inventory/returns/shipping/procurement.read)', () => {
@@ -511,36 +529,47 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 63 logAudit calls across all store routes + services', () => {
+    it('should have 65 logAudit calls across all store routes + services', () => {
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
       // T1+T2-DEEP: services grew (+14: 8 in inventory service +
       // 6 in returns service) → 33 routes + 20 services = 53.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10: 8 in the
       // new procurement service + 2 in the shipments service for tracking)
       // → 33 routes + 30 services = 63.
+      // PHASE-P8-TRANSACTION: +2 in routes (rentals/[id] PATCH store.rental.update
+      //   + DELETE store.rental.delete audits inline; the 6 rental-service.ts
+      //   audits live in src/lib/rental-service.ts which is NOT in this test's
+      //   service scope — it's covered separately by phase-p8-transaction.test.ts)
+      //   → 35 routes + 30 services = 65.
       const files = readAllStoreFiles();
       let count = 0;
       for (const { content } of files) {
         const matches = content.match(/await logAudit\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(63);
+      expect(count).toBe(65);
     });
 
-    it('should have 61 storeDb mutation calls across routes + services', () => {
+    it('should have 63 storeDb mutation calls across routes + services', () => {
       // T-A-DEEP-STORE: 31 in routes + 6 in services = 37.
       // T1+T2-DEEP: services grew (+14: 8 in inventory service +
       // 6 in returns service) → 31 routes + 20 services = 51.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10: 8 in the
       // new procurement service + 2 in the shipments service for tracking)
       // → 31 routes + 30 services = 61.
+      // PHASE-P8-TRANSACTION: +2 in routes (rentals/[id] PATCH + DELETE
+      //   call storeDb.rentalListing.update + .delete inline; the 6
+      //   rental-service.ts mutations live in src/lib/rental-service.ts
+      //   which is NOT in this test's service scope — it's covered
+      //   separately by phase-p8-transaction.test.ts) → 33 routes + 30
+      //   services = 63.
       const files = readAllStoreFiles();
       let count = 0;
       for (const { content } of files) {
         const matches = content.match(/storeDb\.\w+\.(create|update|delete|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(61);
+      expect(count).toBe(63);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -700,7 +729,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (63) >= total mutations (61)', () => {
+    it('total audits (65) >= total mutations (63)', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -711,13 +740,13 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += auditMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(61);
-      expect(totalAudit).toBe(63);
+      expect(totalMut).toBe(63);
+      expect(totalAudit).toBe(65);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 6. ACTION KEY COVERAGE (46 unique keys across routes + services)
+  // 6. ACTION KEY COVERAGE (48 unique keys across routes + services)
   //   T-A-DEEP-STORE: 31 keys originally.
   //   T1+T2-DEEP: +9 new keys (warehouse.create/update/delete,
   //     inventory.balance.update, inventory.reserve, inventory.release,
@@ -725,9 +754,13 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   //   PHASE1-PROCUREMENT-SHIPPING-DEEP: +6 new keys (procurement.po.
   //     {create, submit, approve, receive, cancel}, shipment.tracking.
   //     add) → 46.
+  //   PHASE-P8-TRANSACTION: +2 new route-scope keys (rental.update,
+  //     rental.delete — inline audits on rentals/[id] PATCH + DELETE).
+  //     The 6 rental-service.ts state-machine audits live out-of-scope
+  //     for this test (covered by tests/phase-p8-transaction.test.ts) → 48.
   // ═══════════════════════════════════════════════════════════════
   describe('6. Action Key Coverage', () => {
-    it('should have all 46 expected action keys', () => {
+    it('should have all 48 expected action keys', () => {
       const files = readAllStoreFiles();
       const foundKeys = new Set<string>();
       for (const { content } of files) {
@@ -739,7 +772,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(46);
+      expect(foundKeys.size).toBe(48);
     });
 
     it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
