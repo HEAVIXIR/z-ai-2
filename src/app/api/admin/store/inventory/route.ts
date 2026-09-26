@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/authorization";
 import {
   createMovement,
   listMovements,
+  adjustStock,
   InventoryServiceError,
 } from "@/lib/store-inventory-service";
 
@@ -15,10 +16,14 @@ export const dynamic = "force-dynamic";
    T2-W2-A — Inventory domain (balance + movement ledger).
    T-A-DEEP-STORE — Business logic extracted to
    src/lib/store-inventory-service.ts; route handler stays thin.
+   T1-DEEP — POST now accepts an optional `warehouseId`. When
+   provided, the route calls adjustStock() (per-warehouse path:
+   updates InventoryBalance + writes StockMovement with warehouseId
+   set + syncs Part.stock). When omitted, the legacy createMovement()
+   path runs (Part.stock only — backward-compat for clients that
+   don't know about warehouses).
    GET  : list recent movements with filters (partId, type, limit)
-   POST : record a movement and adjust Part.stock atomically.
-   Every mutation to Part.stock MUST be recorded as a StockMovement
-   so the ledger reconstructs the balance at any point in time.
+   POST : record a movement and adjust stock atomically.
    ============================================================ */
 
 function toErrorResponse(e: unknown) {
@@ -76,7 +81,25 @@ export async function POST(req: Request) {
   }
   try {
     const body = await req.json();
-    const { partId, type, quantity, reason, reference } = body;
+    const { partId, type, quantity, reason, reference, warehouseId } = body;
+
+    // T1-DEEP — when warehouseId is present, use the per-warehouse path
+    // (updates InventoryBalance + writes StockMovement with warehouseId
+    // set + syncs Part.stock). When absent, fall back to the legacy
+    // createMovement() which only touches Part.stock (backward compat).
+    if (warehouseId) {
+      const result = await adjustStock(
+        partId,
+        warehouseId,
+        quantity,
+        type,
+        reason,
+        reference,
+        user.id,
+      );
+      return NextResponse.json({ success: true, data: result });
+    }
+
     const movement = await createMovement(
       partId,
       type,

@@ -391,7 +391,29 @@ exports.Prisma.StockMovementScalarFieldEnum = {
   reason: 'reason',
   reference: 'reference',
   createdBy: 'createdBy',
+  warehouseId: 'warehouseId',
   createdAt: 'createdAt'
+};
+
+exports.Prisma.WarehouseScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  code: 'code',
+  address: 'address',
+  active: 'active',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.InventoryBalanceScalarFieldEnum = {
+  id: 'id',
+  partId: 'partId',
+  warehouseId: 'warehouseId',
+  quantity: 'quantity',
+  reserved: 'reserved',
+  lowStockThreshold: 'lowStockThreshold',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.ReturnScalarFieldEnum = {
@@ -406,6 +428,17 @@ exports.Prisma.ReturnScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.ReturnItemScalarFieldEnum = {
+  id: 'id',
+  returnId: 'returnId',
+  orderItemId: 'orderItemId',
+  quantity: 'quantity',
+  reason: 'reason',
+  condition: 'condition',
+  restockable: 'restockable',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.ProcurementRequestScalarFieldEnum = {
   id: 'id',
   title: 'title',
@@ -418,6 +451,40 @@ exports.Prisma.ProcurementRequestScalarFieldEnum = {
   supplierId: 'supplierId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
+};
+
+exports.Prisma.PurchaseOrderScalarFieldEnum = {
+  id: 'id',
+  procurementId: 'procurementId',
+  supplierId: 'supplierId',
+  status: 'status',
+  totalAmount: 'totalAmount',
+  currency: 'currency',
+  notes: 'notes',
+  approvedBy: 'approvedBy',
+  approvedAt: 'approvedAt',
+  receivedAt: 'receivedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.PurchaseOrderItemScalarFieldEnum = {
+  id: 'id',
+  purchaseOrderId: 'purchaseOrderId',
+  partId: 'partId',
+  quantity: 'quantity',
+  unitPrice: 'unitPrice',
+  received: 'received',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.ShipmentTrackingScalarFieldEnum = {
+  id: 'id',
+  shipmentId: 'shipmentId',
+  status: 'status',
+  location: 'location',
+  description: 'description',
+  timestamp: 'timestamp'
 };
 
 exports.Prisma.SortOrder = {
@@ -453,8 +520,14 @@ exports.Prisma.ModelName = {
   Notification: 'Notification',
   Supplier: 'Supplier',
   StockMovement: 'StockMovement',
+  Warehouse: 'Warehouse',
+  InventoryBalance: 'InventoryBalance',
   Return: 'Return',
-  ProcurementRequest: 'ProcurementRequest'
+  ReturnItem: 'ReturnItem',
+  ProcurementRequest: 'ProcurementRequest',
+  PurchaseOrder: 'PurchaseOrder',
+  PurchaseOrderItem: 'PurchaseOrderItem',
+  ShipmentTracking: 'ShipmentTracking'
 };
 
 /**

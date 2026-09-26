@@ -2,6 +2,7 @@
  * HEAVIX — Store Inventory Admin Page
  * /admin/store/inventory — stock movement ledger list view.
  * T-A — Store Domain Completion: admin UI for the inventory domain.
+ * T1-DEEP — Inventory Deep: shows warehouse column + low-stock alert panel.
  *
  * Pattern: server component (same as /admin/conversations +
  * /admin/sellers). Reads URL searchParams for filter state.
@@ -11,6 +12,14 @@
  *
  * Audit: logAudit('store.inventory.list_view', entityType: 'StockMovement')
  *   — best-effort, never throws (see src/lib/admin/audit.ts).
+ *
+ * T1-DEEP layout:
+ *   - Top: low-stock alert banner (rendered only when there are items
+ *     with quantity <= lowStockThreshold across all warehouses).
+ *   - Filters: type + reference (same as before).
+ *   - Table: added a "انبار" (Warehouse) column between "SKU" and "نوع
+ *     حرکت" — shows the warehouse name + code when the movement is
+ *     warehouse-scoped, or "—" for legacy system-wide movements.
  */
 
 import { getCurrentUser } from "@/lib/auth";
@@ -18,7 +27,7 @@ import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { storeDb } from "@/lib/store-db";
 import { toFa, faDate, timeAgo } from "@/lib/format";
-import { Boxes, Search } from "lucide-react";
+import { Boxes, Search, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -89,7 +98,7 @@ export default async function StoreInventoryPage({
     ? (typeParam as MovementType)
     : undefined;
 
-  // ── 3. Query storeDb.stockMovement with part info ──
+  // ── 3. Query storeDb.stockMovement with part info (T1-DEEP: + warehouse) ──
   const where: {
     type?: MovementType;
     reference?: { contains: string };
@@ -106,6 +115,7 @@ export default async function StoreInventoryPage({
     reason: string | null;
     reference: string | null;
     createdBy: string | null;
+    warehouseId: string | null;
     createdAt: Date;
     part: {
       id: string;
@@ -114,6 +124,7 @@ export default async function StoreInventoryPage({
       sku: string;
       stock: number;
     } | null;
+    warehouse: { id: string; name: string; code: string } | null;
   }> = [];
 
   try {
@@ -131,6 +142,9 @@ export default async function StoreInventoryPage({
             stock: true,
           },
         },
+        warehouse: {
+          select: { id: true, name: true, code: true },
+        },
       },
     });
   } catch (e) {
@@ -146,6 +160,42 @@ export default async function StoreInventoryPage({
     );
   }
 
+  // ── 3b. T1-DEEP — fetch low-stock items for the alert banner ──
+  // We use the same storeDb call as the /api/admin/store/inventory/low-stock
+  // route (just inlined here since this is a server component). Falls back
+  // to [] if the table is empty (e.g. before any warehouses are seeded).
+  let lowStockItems: Array<{
+    id: string;
+    quantity: number;
+    reserved: number;
+    lowStockThreshold: number;
+    part: {
+      id: string;
+      name: string;
+      nameFa: string | null;
+      sku: string;
+    } | null;
+    warehouse: { id: string; name: string; code: string } | null;
+  }> = [];
+  try {
+    const allBalances = await storeDb.inventoryBalance.findMany({
+      take: 500,
+      include: {
+        part: { select: { id: true, name: true, nameFa: true, sku: true } },
+        warehouse: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { quantity: "asc" },
+    });
+    lowStockItems = allBalances
+      .filter((b) => b.quantity <= b.lowStockThreshold)
+      .slice(0, 20);
+  } catch (e) {
+    // If InventoryBalance table doesn't exist (pre-T1-DEEP db), silently
+    // skip the low-stock banner — the movements table is the source of
+    // truth for the rest of the page.
+    console.warn("[admin/store/inventory] low-stock query skipped:", e);
+  }
+
   // ── 4. Best-effort audit (list_view) — never throws ──
   await logAudit({
     actorId: user.id,
@@ -159,6 +209,40 @@ export default async function StoreInventoryPage({
   return (
     <div className="space-y-6 p-6">
       <Header />
+
+      {/* T1-DEEP — Low-Stock Alert Banner */}
+      {lowStockItems.length > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            <h2 className="text-sm font-bold text-amber-800">
+              هشدار موجودی کم — {toFa(lowStockItems.length)} قلم در آستانهٔ
+              اتمام موجودی
+            </h2>
+          </div>
+          <ul className="mt-3 space-y-1.5">
+            {lowStockItems.map((b) => (
+              <li
+                key={b.id}
+                className="flex items-center justify-between gap-2 text-xs text-amber-900"
+              >
+                <span className="font-medium">
+                  {b.part?.nameFa ?? b.part?.name ?? "—"}
+                  <span className="font-mono text-[10px] text-amber-700">
+                    {" "}
+                    ({b.part?.sku ?? "—"})
+                  </span>
+                </span>
+                <span className="font-mono">
+                  {b.warehouse ? `${b.warehouse.name} · ` : ""}
+                  موجودی: {toFa(b.quantity)} (آستانه:{" "}
+                  {toFa(b.lowStockThreshold)})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Filters */}
       <form className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -211,6 +295,7 @@ export default async function StoreInventoryPage({
                 <tr>
                   <th className="px-3 py-3 text-right font-bold">قطعه</th>
                   <th className="px-3 py-3 text-right font-bold">SKU</th>
+                  <th className="px-3 py-3 text-right font-bold">انبار</th>
                   <th className="px-3 py-3 text-right font-bold">نوع حرکت</th>
                   <th className="px-3 py-3 text-right font-bold">تعداد</th>
                   <th className="px-3 py-3 text-right font-bold">
@@ -238,6 +323,18 @@ export default async function StoreInventoryPage({
                     </td>
                     <td className="px-3 py-3 font-mono text-[11px] text-zinc-500">
                       {m.part?.sku ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-zinc-700">
+                      {m.warehouse ? (
+                        <span className="inline-flex flex-col">
+                          <span className="font-medium">{m.warehouse.name}</span>
+                          <span className="font-mono text-[10px] text-zinc-500">
+                            {m.warehouse.code}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       <span
@@ -274,6 +371,9 @@ export default async function StoreInventoryPage({
 
       <p className="text-xs text-zinc-400">
         مجموع: {toFa(movements.length)} حرکت انبار
+        {lowStockItems.length > 0
+          ? ` · ${toFa(lowStockItems.length)} قلم در وضعیت موجودی کم`
+          : ""}
       </p>
     </div>
   );

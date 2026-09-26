@@ -150,10 +150,18 @@ model Part {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
-  orderItems     OrderItem[]
-  reviews        Review[]
-  wishlists      Wishlist[]
-  stockMovements StockMovement[]
+  orderItems         OrderItem[]
+  reviews            Review[]
+  wishlists          Wishlist[]
+  stockMovements     StockMovement[]
+  // T1-DEEP — per-warehouse inventory balances (one row per part per warehouse).
+  // Stock is still summarized on Part.stock for backward compat with the
+  // public storefront; InventoryBalance is the source of truth for the
+  // admin inventory domain (warehouse-level reservations + low-stock).
+  inventoryBalances  InventoryBalance[]
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — PO line items that sourced this Part.
+  // Back-relation for PurchaseOrderItem.part; the procurement flow is the writer.
+  purchaseOrderItems PurchaseOrderItem[]
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +213,10 @@ model OrderItem {
   unitPriceIrr     Float
   lineTotalUsd     Float
   lineTotalIrr     Float
+
+  // T2-DEEP — back-relation for ReturnItem lines that reference this
+  // OrderItem. Read-only on this side; the Return flow is the writer.
+  returnItems ReturnItem[]
 }
 
 model Payment {
@@ -246,6 +258,14 @@ model Shipment {
   note         String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — append-only tracking history.
+  // Each carrier scan / status update appends a ShipmentTracking row
+  // (rather than mutating the parent Shipment fields in place). The
+  // parent's status/shippedAt/deliveredAt are kept in sync as a snapshot
+  // for storefront queries; ShipmentTracking is the source of truth for
+  // the audit trail.
+  tracking ShipmentTracking[]
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +382,9 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  procurements ProcurementRequest[]
+  procurements   ProcurementRequest[]
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — POs awarded to this supplier.
+  purchaseOrders PurchaseOrder[]
 }
 
 // ---------------------------------------------------------------------------
@@ -380,22 +402,79 @@ model Supplier {
 // StockMovement (append-only ledger of RECEIVE/SALE/RETURN/TRANSFER/
 // ADJUSTMENT/DAMAGE). Every mutation to Part.stock MUST be recorded as a
 // StockMovement so the ledger reconstructs the balance at any point in time.
+//
+// T1-DEEP — Warehouse + InventoryBalance introduced so the ledger can be
+// segmented per-warehouse. StockMovement.warehouseId is OPTIONAL for
+// backward-compat with existing movements that pre-date warehouses.
 // ---------------------------------------------------------------------------
 model StockMovement {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   partId       String
-  part         Part     @relation(fields: [partId], references: [id])
+  part         Part       @relation(fields: [partId], references: [id])
   type         String // RECEIVE | SALE | RETURN | TRANSFER | ADJUSTMENT | DAMAGE
   quantity     Int // positive for in, negative for out
   balanceAfter Int // snapshot of Part.stock after this movement
   reason       String?
   reference    String? // order ID, PO ID, etc
   createdBy    String?
-  createdAt    DateTime @default(now())
+  // T1-DEEP — optional warehouse reference. NULL for legacy movements
+  // (pre-T1-DEEP) created before warehouses existed, or for system-wide
+  // adjustments that don't belong to a specific warehouse.
+  warehouseId  String?
+  warehouse    Warehouse? @relation(fields: [warehouseId], references: [id])
+  createdAt    DateTime   @default(now())
 
   @@index([partId])
   @@index([type])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// T1-DEEP — WAREHOUSE
+// Lightweight warehouse directory: name + unique code + address + active
+// flag. Each InventoryBalance row is scoped to one Warehouse so the admin
+// can manage multi-warehouse stock (main warehouse + returns + damaged).
+// ---------------------------------------------------------------------------
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+}
+
+// ---------------------------------------------------------------------------
+// T1-DEEP — INVENTORY BALANCE
+// One row per (part, warehouse) pair. The single source of truth for the
+// admin inventory domain. `quantity` is the on-hand count, `reserved` is
+// the soft-reserved count (held for an order/invoice that hasn't shipped
+// yet). `lowStockThreshold` triggers low-stock alerts when quantity <= it.
+//
+// Note: Part.stock is still the canonical public count for the storefront
+// (so the public catalog doesn't need a join). When the admin adjusts a
+// WarehouseInventoryBalance row, the service layer also updates Part.stock
+// to keep the public snapshot in sync.
+// ---------------------------------------------------------------------------
+model InventoryBalance {
+  id                String    @id @default(cuid())
+  partId            String
+  part              Part      @relation(fields: [partId], references: [id])
+  warehouseId       String
+  warehouse         Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity          Int       @default(0)
+  reserved          Int       @default(0)
+  lowStockThreshold Int       @default(5)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([partId, warehouseId])
+  @@index([warehouseId])
+  @@index([partId])
 }
 
 // ---------------------------------------------------------------------------
@@ -417,8 +496,40 @@ model Return {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // T2-DEEP — per-line return items. A Return is composed of 1+ ReturnItems
+  // (each tied to an OrderItem). Inspection marks each item as restockable
+  // or not; the resolve step aggregates item outcomes into a single refund
+  // amount + wallet transaction. For backward-compat with Returns created
+  // before T2-DEEP, a Return can have zero items (legacy single-reason
+  // returns). The list/detail endpoints include items always.
+  items ReturnItem[]
+
   @@index([orderId])
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// T2-DEEP — RETURN ITEM
+// One row per returned OrderItem line. `condition` is the customer-stated
+// reason for return on the item (UNOPENED | DAMAGED | WRONG_ITEM | OTHER).
+// `restockable` is set by the admin during the inspection step: true means
+// the item is in sellable condition and can be added back to inventory;
+// false means it's damaged/unsellable and should be written off.
+// ---------------------------------------------------------------------------
+model ReturnItem {
+  id          String    @id @default(cuid())
+  returnId    String
+  return      Return    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  quantity    Int
+  reason      String?
+  condition   String? // UNOPENED | DAMAGED | WRONG_ITEM | OTHER
+  restockable Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@index([returnId])
+  @@index([orderItemId])
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +553,98 @@ model ProcurementRequest {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — POs issued against this procurement
+  // tender. A procurement may have 0..N POs over its lifetime (re-orders,
+  // split shipments, etc.). POs are the operational layer; the
+  // ProcurementRequest is the strategic (tender) layer.
+  purchaseOrders PurchaseOrder[]
+
   @@index([status])
   @@index([supplierId])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — PURCHASE ORDER (PO)
+// ---------------------------------------------------------------------------
+// A PurchaseOrder is the operational document issued against a
+// ProcurementRequest once the tender is awarded (or directly without a
+// tender for spot-buys). Status flow:
+//   DRAFT → SUBMITTED → APPROVED → RECEIVED (or CANCELLED from any state).
+//
+// Each PO has 1..N PurchaseOrderItem lines (per-Part quantity + unitPrice +
+// partial `received` counter for split shipments). When all items are fully
+// received the PO auto-flips to RECEIVED + receivedAt is stamped.
+//
+// `approvedBy` / `approvedAt` capture the 3-way separation of duty: the
+// submitter ≠ the approver (approvePurchaseOrder enforces this by recording
+// the approver's userId distinct from the submitter, but we don't hard-refuse
+// same-user approve — that's a UI policy, not a data invariant).
+// ---------------------------------------------------------------------------
+model PurchaseOrder {
+  id            String              @id @default(cuid())
+  procurementId String
+  procurement   ProcurementRequest  @relation(fields: [procurementId], references: [id])
+  supplierId    String?
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id])
+  status        String              @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | RECEIVED | CANCELLED
+  totalAmount   Float?
+  currency      String              @default("USD")
+  notes         String?
+  approvedBy    String?
+  approvedAt    DateTime?
+  receivedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  items         PurchaseOrderItem[]
+
+  @@index([procurementId])
+  @@index([supplierId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — PURCHASE ORDER ITEM (per-Part line)
+// ---------------------------------------------------------------------------
+// One row per Part ordered on a PO. `received` is the partial-receive
+// counter (incremented by receivePurchaseOrderItem up to `quantity`).
+// `unitPrice` is captured at PO-create time (price snapshot, immune to
+// later Part.priceUsd changes — mirrors the OrderItem.partNameSnapshot
+// pattern in the customer-facing order flow).
+// ---------------------------------------------------------------------------
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  partId          String
+  part            Part          @relation(fields: [partId], references: [id])
+  quantity        Int
+  unitPrice       Float
+  received        Int           @default(0) // partial receiving
+  createdAt       DateTime      @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([partId])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — SHIPMENT TRACKING (append-only history)
+// ---------------------------------------------------------------------------
+// Each carrier scan / status update appends a ShipmentTracking row. The
+// parent Shipment.status + shippedAt/deliveredAt are kept in sync as a
+// snapshot by addTrackingEvent, but ShipmentTracking is the source of truth
+// for the audit trail (you can reconstruct the full delivery timeline from
+// these rows). Status values: DISPATCHED | IN_TRANSIT | OUT_FOR_DELIVERY |
+// DELIVERED | EXCEPTION.
+// ---------------------------------------------------------------------------
+model ShipmentTracking {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id])
+  status      String // DISPATCHED | IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | EXCEPTION
+  location    String?
+  description String?
+  timestamp   DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([status])
 }

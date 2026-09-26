@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import {
   updateReturnStatus,
+  inspectReturn,
+  resolveReturn,
   ReturnsServiceError,
 } from "@/lib/store-returns-service";
 
@@ -11,13 +14,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
-   /api/admin/store/returns/[id] — single Return detail + status update
+   /api/admin/store/returns/[id] — single Return detail + lifecycle
    T2-W2-B — Returns domain.
    T-A-DEEP-STORE — PATCH business logic extracted to
    src/lib/store-returns-service.ts; GET stays inline (rich read).
-   GET   : fetch a single return with order + customer context
-   PATCH : advance status (REQUESTED → APPROVED → INSPECTED → RESOLVED
-           | REJECTED) and optionally set inspection/resolution notes.
+   T2-DEEP — PATCH now dispatches three workflow modes:
+     - body.action === 'inspect'  → inspectReturn (item conditions)
+     - body.action === 'resolve'  → resolveReturn (REFUND/EXCHANGE/REJECT)
+     - default (no action)        → updateReturnStatus (status/notes)
+   GET   : fetch a single return with order + customer + items context
+   PATCH : advance status / inspect / resolve (see modes above).
    ============================================================ */
 
 function serialize(r: any) {
@@ -77,6 +83,22 @@ export async function GET(
             },
           },
         },
+        // T2-DEEP — include the per-line return items + their orderItem
+        // context so the inspector UI can render restockable flags +
+        // the resolver UI can show which items will be refunded.
+        items: {
+          include: {
+            orderItem: {
+              select: {
+                id: true,
+                partNameSnapshot: true,
+                quantity: true,
+                lineTotalIrr: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
     if (!ret) {
@@ -101,12 +123,41 @@ export async function PATCH(
   }
   try {
     await requirePermission(user.id, 'returns.manage');
+    if (!checkCsrf(req)) {
+      return NextResponse.json(
+        { error: "CSRF check failed" },
+        { status: 403 },
+      );
+    }
   } catch {
     return NextResponse.json({ error: "Forbidden: requires returns.manage" }, { status: 403 });
   }
   const { id } = await params;
   try {
     const body = await req.json();
+
+    // T2-DEEP — dispatch based on `body.action`. Three workflow modes:
+    //   1. action='inspect' → inspectReturn (admin records per-item
+    //      restockable flags + inspection notes; status → INSPECTED).
+    //   2. action='resolve' → resolveReturn (admin finalizes with
+    //      REFUND | EXCHANGE | REJECT; for REFUND creates WalletTxn).
+    //   3. no action → legacy updateReturnStatus (status flip + notes).
+    if (body.action === "inspect") {
+      const ret = await inspectReturn(
+        id,
+        body.inspection ?? null,
+        Array.isArray(body.itemConditions) ? body.itemConditions : [],
+        user.id,
+      );
+      return NextResponse.json({ success: true, data: ret });
+    }
+
+    if (body.action === "resolve") {
+      const ret = await resolveReturn(id, body.resolution, user.id);
+      return NextResponse.json({ success: true, data: ret });
+    }
+
+    // Default: legacy status/notes update.
     const ret = await updateReturnStatus(
       id,
       body.status,
