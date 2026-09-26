@@ -133,6 +133,12 @@ const STANDALONES: Standalone[] = [
   // in /admin/companies/[id]). Uses the canonical `company.verify` gate.
   { key: 'verifications', titleFa: 'تأییدها', href: '/admin/verifications', icon: 'BadgeCheck', sortOrder: 10.35, permissionKey: 'company.verify' },
   { key: 'matching', titleFa: 'تطابق', href: '/admin/matching', icon: 'Sparkles', sortOrder: 10.4, permissionKey: 'matching.read' },
+  // ── Wave 2B: Matching Deep — results admin page ──
+  // Standalone page that lists recent match-run AuditLog rows
+  // (action='marketplace.matching.run' or 'matching.run').
+  // Uses the canonical `matching.read` gate (the API route
+  // /api/admin/matching/results enforces matching.read).
+  { key: 'matching-results', titleFa: 'نتایج تطابق', href: '/admin/matching/results', icon: 'Target', sortOrder: 10.45, permissionKey: 'matching.read' },
   // ── T8: AI Control Plane — unified AI control plane hub ──
   // Standalone page that aggregates AIAgent + AIGatewayLog + AITaskPolicy +
   // AIBudget into one admin overview. Uses the canonical `ai.read` gate

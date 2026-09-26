@@ -4,10 +4,12 @@
  * T3-W3: Conversations admin page (uses main schema Conversation model)
  */
 
+import Link from 'next/link';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
+import { ArrowLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,19 @@ export default async function AdminConversationsPage() {
 
   await logAudit({ actorId: user.id, actorType: 'ADMIN', action: 'marketplace.conversation.list_view', entityType: 'Conversation' });
 
+  const STATUS_LABEL: Record<string, string> = {
+    ACTIVE: 'فعال',
+    CLOSED: 'بسته‌شده',
+    BLOCKED: 'مسدودشده',
+    ARCHIVED: 'بایگانی‌شده',
+  };
+  const STATUS_CLS: Record<string, string> = {
+    ACTIVE: 'bg-emerald-100 text-emerald-700',
+    CLOSED: 'bg-zinc-100 text-zinc-600',
+    BLOCKED: 'bg-red-100 text-red-700',
+    ARCHIVED: 'bg-zinc-100 text-zinc-600',
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -43,7 +58,7 @@ export default async function AdminConversationsPage() {
         <div className="overflow-hidden rounded-lg border border-zinc-200">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-zinc-600">
-              <tr><th className="px-4 py-3 text-right">کاربر ۱</th><th className="px-4 py-3 text-right">کاربر ۲</th><th className="px-4 py-3 text-right">آگهی</th><th className="px-4 py-3 text-right">پیام‌ها</th><th className="px-4 py-3 text-right">تاریخ</th></tr>
+              <tr><th className="px-4 py-3 text-right">کاربر ۱</th><th className="px-4 py-3 text-right">کاربر ۲</th><th className="px-4 py-3 text-right">آگهی</th><th className="px-4 py-3 text-right">وضعیت</th><th className="px-4 py-3 text-right">پیام‌ها</th><th className="px-4 py-3 text-right">تاریخ</th><th className="px-4 py-3 text-right">اقدامات</th></tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {conversations.map(c => (
@@ -51,8 +66,23 @@ export default async function AdminConversationsPage() {
                   <td className="px-4 py-3">{c.participant1?.firstName || '—'} {c.participant1?.lastName || ''}</td>
                   <td className="px-4 py-3">{c.participant2?.firstName || '—'} {c.participant2?.lastName || ''}</td>
                   <td className="px-4 py-3 text-zinc-600">{c.listing?.title || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_CLS[c.status] ?? 'bg-zinc-100 text-zinc-600'}`}>
+                      {STATUS_LABEL[c.status] ?? c.status}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-zinc-600">{c._count?.messages || 0}</td>
                   <td className="px-4 py-3 text-zinc-400">{c.updatedAt?.toLocaleDateString('fa-IR') || '—'}</td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/admin/conversations/${c.id}`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-bold text-zinc-700 transition hover:border-[#F58220] hover:text-[#F58220]"
+                      title="جزئیات و اقدامات نظارتی"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      جزئیات و اقدام
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -2434,12 +2434,38 @@ model Dispute {
   resolution      String?
   resolvedBy      String?
   resolvedAt      DateTime?
+  // ── Wave 2D: Disputes Deep — typed evidence rows (replaces the
+  //    legacy JSON `evidence` blob; the JSON column is kept for
+  //    backward compat with the orders/[id]/disputes POST route
+  //    that still writes a JSON string). New admin evidence route
+  //    writes DisputeEvidence rows so each piece of evidence is
+  //    individually auditable + queryable.
+  evidenceRows    DisputeEvidence[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([dealId])
   @@index([orderId])
   @@index([status])
+}
+
+// ── Wave 2D: Disputes Deep — typed evidence rows ──────────────
+// Each row is one piece of evidence (screenshot, document, message
+// snapshot, or "other"). The `type` discriminator drives the admin
+// UI badge + the audit `after` shape. The `url` points to the
+// already-uploaded attachment (uploaded via /api/admin/attachments
+// — see upload-security.ts; we never accept raw file bytes here).
+model DisputeEvidence {
+  id          String   @id @default(cuid())
+  disputeId   String
+  dispute     Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  type        String   // SCREENSHOT | DOCUMENT | MESSAGE | OTHER
+  url         String
+  description String?
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@index([disputeId])
 }
 
 // ════════════════════════════════════════════════════════════

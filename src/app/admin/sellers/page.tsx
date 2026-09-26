@@ -11,6 +11,7 @@ import {
   Handshake,
   AlertTriangle,
   User,
+  ChevronLeft,
 } from "lucide-react";
 import { logAudit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth";
@@ -220,6 +221,13 @@ export default async function AdminSellersPage() {
                           that filter is added later. */}
                       <div className="flex items-center gap-1.5">
                         <Link
+                          href={`/admin/sellers/${r.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-amber-50 text-[#F58220] transition hover:border-[#F58220] hover:bg-[#F58220]/10"
+                          title="جزئیات فروشنده (verify/suspend)"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Link>
+                        <Link
                           href={`/admin/users/${r.id}`}
                           className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"
                           title="جزئیات کاربر"
@@ -269,7 +277,11 @@ export default async function AdminSellersPage() {
       {/* T-B-DEEP-MARKETPLACE — seller-specific actions legend */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-4">
         <h3 className="mb-2 text-xs font-bold text-zinc-700">راهنمای اقدامات فروشنده</h3>
-        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-600 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-600 sm:grid-cols-5">
+          <div className="flex items-center gap-1.5">
+            <ChevronLeft className="h-3.5 w-3.5 text-[#F58220]" />
+            <span>جزئیات فروشنده (verify/suspend)</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <User className="h-3.5 w-3.5 text-zinc-500" />
             <span>جزئیات کاربر</span>
@@ -288,6 +300,8 @@ export default async function AdminSellersPage() {
           </div>
         </div>
         <p className="mt-2 text-[10px] text-zinc-400">
+          لینک «جزئیات فروشنده» به صفحهٔ /admin/sellers/[id] می‌رود که امکان
+          verify/suspend/register را در جریان چرخهٔ عمر فروشنده فراهم می‌کند.
           فیلتر ?sellerId=... یک الگوی forward-compatible است: صفحات هدف
           در نسخه‌های بعدی می‌توانند آن را برای فیلتر کردن بر اساس فروشنده
           پیاده‌سازی کنند.
