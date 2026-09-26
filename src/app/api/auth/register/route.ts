@@ -6,6 +6,7 @@ import { hashPassword } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { REGISTER } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -158,6 +159,7 @@ export async function POST(req: Request) {
       verificationDeadline: verificationDeadline.toISOString(),
     });
   } catch (err: any) {
+    trackError(err, { endpoint: "POST /api/auth/register" });
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }

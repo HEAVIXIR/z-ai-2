@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export async function GET() {
       },
     });
   } catch (err: any) {
+    trackError(err, { endpoint: "GET /api/auth/me" });
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Server error" },
       { status: 500 },

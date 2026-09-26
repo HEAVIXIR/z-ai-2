@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
       })),
     });
   } catch (err: any) {
+    trackError(err, { endpoint: "GET /api/orders" });
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }

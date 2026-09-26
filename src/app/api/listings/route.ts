@@ -12,6 +12,7 @@ import {
 import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -252,6 +253,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, count: total, data });
   } catch (err: any) {
+    trackError(err, { endpoint: "GET /api/listings" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },
@@ -364,6 +366,7 @@ export async function POST(req: Request) {
       status: listing.status,
     });
   } catch (err: any) {
+    trackError(err, { endpoint: "POST /api/listings" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },

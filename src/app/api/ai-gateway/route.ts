@@ -10,6 +10,7 @@ import {
   getAIBudget,
 } from "@/lib/ai-policy";
 import { logAudit } from "@/lib/audit";
+import { trackError } from "@/lib/error-tracking";
 import ZAI from "z-ai-web-dev-sdk";
 
 /* ============================================================
@@ -228,6 +229,15 @@ export async function POST(req: NextRequest) {
     } else {
       errorMsg = e?.message ?? String(e);
     }
+    // Observability — track LLM failures via trackError so they show up
+    // in the AuditLog next to other backend errors. We pass `task`,
+    // `model` and `effectiveUserId` so the dashboard can triage.
+    trackError(e, {
+      endpoint: "POST /api/ai-gateway",
+      task,
+      model,
+      userId: effectiveUserId ?? null,
+    });
     result = { error: errorMsg };
   } finally {
     clearTimeout(timeoutTimer);

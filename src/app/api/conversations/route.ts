@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export async function GET(req: Request) {
       })),
     });
   } catch (err: any) {
+    trackError(err, { endpoint: "GET /api/conversations" });
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }
@@ -107,6 +109,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, id: conversation.id });
   } catch (err: any) {
+    trackError(err, { endpoint: "POST /api/conversations" });
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }

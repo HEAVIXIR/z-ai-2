@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET() {
     ]);
     return NextResponse.json({ notifications: items, unreadCount });
   } catch (err: any) {
+    trackError(err, { endpoint: "GET /api/notifications" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },
@@ -53,6 +55,7 @@ export async function PATCH(req: Request) {
     }
     return NextResponse.json({ error: "id or all is required" }, { status: 400 });
   } catch (err: any) {
+    trackError(err, { endpoint: "PATCH /api/notifications" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },
@@ -76,6 +79,7 @@ export async function DELETE(req: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (err: any) {
+    trackError(err, { endpoint: "DELETE /api/notifications" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },

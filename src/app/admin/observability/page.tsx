@@ -51,6 +51,11 @@ import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
 import { toFa, timeAgo } from "@/lib/format";
 import {
+  getSlowRequests,
+  getStats,
+  type RequestRecord,
+} from "@/lib/performance-monitor";
+import {
   Gauge,
   Users,
   Megaphone,
@@ -65,6 +70,9 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Timer,
+  Zap,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -158,6 +166,14 @@ export default async function ObservabilityPage() {
       ? process.uptime()
       : 0;
   const startedAt = processStartedAt();
+
+  // ── 5b. Performance Monitor — slow request samples (T5-A) ──
+  // Best-effort snapshot of the in-process ring buffer kept by
+  // src/lib/performance-monitor.ts. Single-process scope: each Node
+  // worker sees its own view, which is fine for a tactical "what's
+  // slow right now" panel. No DB calls — pure in-memory read.
+  const perfStats = getStats();
+  const slowRequests = getSlowRequests(20);
 
   // ── 6. Best-effort audit (list_view) — never throws ──
   await logAudit({
@@ -324,6 +340,107 @@ export default async function ObservabilityPage() {
         </div>
       </section>
 
+      {/* ── Section 3: Slow Requests (T5-A Performance Monitor) ── */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-lg font-black text-zinc-900">
+            <Timer className="h-5 w-5 text-[#F58220]" />
+            درخواست‌های کند
+          </h2>
+          <span className="text-[11px] text-zinc-500">
+            آستانه: {toFa(perfStats.slowThresholdMs)}ms · نمونه‌ها از بافر همین فرآیند
+          </span>
+        </div>
+
+        <p className="text-xs leading-6 text-zinc-500">
+          این بخش درخواست‌های API را که بیش از{" "}
+          {toFa(perfStats.slowThresholdMs)} میلی‌ثانیه طول کشیده‌اند، فهرست
+          می‌کند. داده‌ها در حافظه همین فرآیند نگه‌داری می‌شوند و با راه‌اندازی
+          مجدد پاک می‌شوند — این نمای تاکتیکی برای پاسخ سریع به کندی‌های زنده
+          است، نه یک ذخیرهٔ تاریخی بلندمدت.
+        </p>
+
+        {/* Perf stat tiles */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
+          <PerfStatCard
+            icon={<Activity className="h-4 w-4 text-blue-500" />}
+            label="کل نمونه‌ها"
+            value={
+              perfStats.total === 0
+                ? "—"
+                : toFa(perfStats.total)
+            }
+          />
+          <PerfStatCard
+            icon={<Zap className="h-4 w-4 text-amber-500" />}
+            label="درخواست‌های کند"
+            value={
+              perfStats.total === 0
+                ? "—"
+                : toFa(perfStats.slowCount)
+            }
+          />
+          <PerfStatCard
+            icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
+            label="میانگین تأخیر (ms)"
+            value={
+              perfStats.avgLatencyMs < 0
+                ? "—"
+                : toFa(perfStats.avgLatencyMs)
+            }
+          />
+          <PerfStatCard
+            icon={<Clock className="h-4 w-4 text-violet-500" />}
+            label="P۹۵ تأخیر (ms)"
+            value={
+              perfStats.p95LatencyMs < 0
+                ? "—"
+                : toFa(perfStats.p95LatencyMs)
+            }
+          />
+          <PerfStatCard
+            icon={<Clock className="h-4 w-4 text-rose-500" />}
+            label="بیشینه تأخیر (ms)"
+            value={
+              perfStats.maxLatencyMs < 0
+                ? "—"
+                : toFa(perfStats.maxLatencyMs)
+            }
+          />
+        </div>
+
+        {/* Slow requests list */}
+        {slowRequests.length === 0 ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>
+                هیچ درخواست کندی در همین فرآیند ثبت نشده — همه زیر آستانه{" "}
+                {toFa(perfStats.slowThresholdMs)}ms بوده‌اند.
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+            <table className="w-full text-right text-xs" dir="rtl">
+              <thead className="bg-zinc-50 text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2 font-bold">اندپوینت</th>
+                  <th className="px-3 py-2 font-bold">تأخیر (ms)</th>
+                  <th className="px-3 py-2 font-bold">وضعیت</th>
+                  <th className="px-3 py-2 font-bold">زمان</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {slowRequests.map((r, idx) => (
+                  <SlowRequestRow key={`${r.timestamp}-${idx}`} rec={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <p className="text-xs text-zinc-400">
         نمای کلی مشاهده‌پذیری — کاربران: {toFa(userCount)}، آگهی‌ها:{" "}
         {toFa(listingCount)}، سفارش‌ها: {toFa(orderCount)}، پرداخت‌ها:{" "}
@@ -332,6 +449,68 @@ export default async function ObservabilityPage() {
         {toFa(auditLogCount)}، آپ‌تایم: {formatUptime(uptimeSeconds)}.
       </p>
     </div>
+  );
+}
+
+// ── PerfStatCard sub-component (T5-A) ──────────────────────────
+function PerfStatCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-50">
+          {icon}
+        </span>
+        <p className="text-[11px] text-zinc-500">{label}</p>
+      </div>
+      <p className="mt-2 text-lg font-black text-zinc-900" dir="ltr">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// ── SlowRequestRow sub-component (T5-A) ────────────────────────
+function SlowRequestRow({ rec }: { rec: RequestRecord }) {
+  const status = rec.status;
+  let statusPill = "bg-zinc-100 text-zinc-600";
+  if (status !== undefined) {
+    if (status >= 500) statusPill = "bg-red-100 text-red-700";
+    else if (status >= 400) statusPill = "bg-amber-100 text-amber-700";
+    else if (status >= 200 && status < 300)
+      statusPill = "bg-emerald-100 text-emerald-700";
+  }
+  return (
+    <tr className="hover:bg-zinc-50">
+      <td className="px-3 py-2 font-mono text-[11px] text-zinc-700" dir="ltr">
+        {rec.endpoint}
+      </td>
+      <td className="px-3 py-2 font-mono font-bold text-rose-600" dir="ltr">
+        {toFa(rec.latencyMs)}
+      </td>
+      <td className="px-3 py-2">
+        {status !== undefined ? (
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${statusPill}`}
+            dir="ltr"
+          >
+            {toFa(status)}
+          </span>
+        ) : (
+          <span className="text-[10px] text-zinc-400">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-[11px] text-zinc-500" dir="ltr">
+        {timeAgo(rec.timestamp)}
+      </td>
+    </tr>
   );
 }
 
