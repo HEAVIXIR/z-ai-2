@@ -128,9 +128,21 @@ const STANDALONES: Standalone[] = [
   { key: 'sellers', titleFa: 'فروشندگان', href: '/admin/sellers', icon: 'Store', sortOrder: 10.25, permissionKey: 'user.read' },
   { key: 'disputes', titleFa: 'اختلافات', href: '/admin/resources/disputes', icon: 'Gavel', sortOrder: 10.5, permissionKey: 'dispute.read' },
   { key: 'conversations', titleFa: 'مکالمات', href: '/admin/conversations', icon: 'MessagesSquare', sortOrder: 10.3, permissionKey: 'conversation.read' },
+  // ── T-B: Marketplace Partials Completion — verification trust-center ──
+  // Standalone page that lists ALL CompanyVerification rows (not embedded
+  // in /admin/companies/[id]). Uses the canonical `company.verify` gate.
+  { key: 'verifications', titleFa: 'تأییدها', href: '/admin/verifications', icon: 'BadgeCheck', sortOrder: 10.35, permissionKey: 'company.verify' },
   { key: 'matching', titleFa: 'تطابق', href: '/admin/matching', icon: 'Sparkles', sortOrder: 10.4, permissionKey: 'matching.read' },
   { key: 'audit-log', titleFa: 'لاگ ممیزی', href: '/admin/audit-log', icon: 'ShieldCheck', sortOrder: 12, permissionKey: 'audit.read' },
   { key: 'settings', titleFa: 'تنظیمات', href: '/admin/settings', icon: 'Settings', sortOrder: 13, permissionKey: 'system.manage' },
+
+  // ── T-A: Store Domain Completion — store admin sub-pages ──
+  // Fine-grained permission keys (inventory.read / returns.read / shipping.read)
+  // were added to src/lib/authorization/permissions.ts. ADMIN gets them all
+  // via the [...PERMISSIONS] spread.
+  { key: 'store-inventory', titleFa: 'موجودی', href: '/admin/store/inventory', icon: 'Boxes', sortOrder: 14.1, permissionKey: 'inventory.read' },
+  { key: 'store-returns', titleFa: 'مرتجعات', href: '/admin/store/returns', icon: 'Undo2', sortOrder: 14.2, permissionKey: 'returns.read' },
+  { key: 'store-shipments', titleFa: 'محموله‌ها', href: '/admin/store/shipments', icon: 'Truck', sortOrder: 14.3, permissionKey: 'shipping.read' },
 ];
 
 async function main() {

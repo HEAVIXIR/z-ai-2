@@ -111,6 +111,18 @@ export const PERMISSIONS = [
   'inventory.read',
   'inventory.manage',
 
+  // Returns (T-A: fine-grained store domain permissions)
+  'returns.read',
+  'returns.manage',
+
+  // Procurement (T-A: fine-grained store domain permissions)
+  'procurement.read',
+  'procurement.manage',
+
+  // Shipping (T-A: fine-grained store domain permissions)
+  'shipping.read',
+  'shipping.manage',
+
   // SEO
   'seo.read',
   'seo.manage',
