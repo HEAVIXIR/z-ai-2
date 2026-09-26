@@ -62,9 +62,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await requirePermission(user.id, 'store.read');
+    await requirePermission(user.id, 'procurement.read');
   } catch {
-    return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden: requires procurement.read" }, { status: 403 });
   }
   try {
     const url = new URL(req.url);
@@ -137,9 +137,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await requirePermission(user.id, 'store.manage');
+    await requirePermission(user.id, 'procurement.manage');
   } catch {
-    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden: requires procurement.manage" }, { status: 403 });
   }
   try {
     const body = await req.json();

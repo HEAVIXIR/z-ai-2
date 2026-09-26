@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
   }
   try {
     await requirePermission(user.id, 'store.read');
+    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
   }
@@ -90,6 +92,7 @@ export async function POST(req: Request) {
   }
   try {
     await requirePermission(user.id, 'store.manage');
+    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }

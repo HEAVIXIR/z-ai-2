@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { toFa, faDate, timeAgo } from "@/lib/format";
-import { Store, ShieldCheck, Mail, Phone, Building2, Eye } from "lucide-react";
+import {
+  Store,
+  ShieldCheck,
+  Mail,
+  Phone,
+  Building2,
+  LayoutGrid,
+  Handshake,
+  AlertTriangle,
+  User,
+} from "lucide-react";
 import { logAudit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -145,7 +155,7 @@ export default async function AdminSellersPage() {
                   <th className="px-3 py-3 text-right font-bold">بنیان‌گذار</th>
                   <th className="px-3 py-3 text-right font-bold">آخرین ورود</th>
                   <th className="px-3 py-3 text-right font-bold">عضویت</th>
-                  <th className="px-3 py-3 text-right font-bold">عملیات</th>
+                  <th className="px-3 py-3 text-right font-bold">اقدامات فروشنده</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -201,13 +211,43 @@ export default async function AdminSellersPage() {
                       {faDate(r.createdAt)}
                     </td>
                     <td className="px-3 py-3">
-                      <Link
-                        href={`/admin/users/${r.id}`}
-                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-bold text-zinc-700 hover:border-[#F58220] hover:text-[#F58220]"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        جزئیات
-                      </Link>
+                      {/* T-B-DEEP-MARKETPLACE — seller-specific actions.
+                          Each link points to a domain page that already
+                          exists in the admin app. The query params
+                          (?sellerId=…) are forward-compatible — the
+                          target pages currently render the full list,
+                          but will be able to filter by sellerId when
+                          that filter is added later. */}
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/admin/users/${r.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"
+                          title="جزئیات کاربر"
+                        >
+                          <User className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          href={`/admin/listings?sellerId=${r.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"
+                          title={`آگهی‌های این فروشنده (${toFa(r.listingsCount)})`}
+                        >
+                          <LayoutGrid className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          href={`/admin/deal-rooms?sellerId=${r.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"
+                          title="اتاق‌های معاملهٔ این فروشنده"
+                        >
+                          <Handshake className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          href={`/admin/disputes?openedBy=${r.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"
+                          title="اختلافات مرتبط"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -224,6 +264,34 @@ export default async function AdminSellersPage() {
           کاربران
         </Link>{" "}
         استفاده کنید. پس از تغییر نقش به SELLER، کاربر به‌طور خودکار در این فهرست ظاهر می‌شود.
+      </div>
+
+      {/* T-B-DEEP-MARKETPLACE — seller-specific actions legend */}
+      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <h3 className="mb-2 text-xs font-bold text-zinc-700">راهنمای اقدامات فروشنده</h3>
+        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-600 sm:grid-cols-4">
+          <div className="flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-zinc-500" />
+            <span>جزئیات کاربر</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <LayoutGrid className="h-3.5 w-3.5 text-zinc-500" />
+            <span>آگهی‌های فروشنده</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Handshake className="h-3.5 w-3.5 text-zinc-500" />
+            <span>اتاق‌های معامله</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-zinc-500" />
+            <span>اختلافات مرتبط</span>
+          </div>
+        </div>
+        <p className="mt-2 text-[10px] text-zinc-400">
+          فیلتر ?sellerId=... یک الگوی forward-compatible است: صفحات هدف
+          در نسخه‌های بعدی می‌توانند آن را برای فیلتر کردن بر اساس فروشنده
+          پیاده‌سازی کنند.
+        </p>
       </div>
     </div>
   );

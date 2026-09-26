@@ -27,9 +27,9 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await requirePermission(user.id, 'store.read');
+    await requirePermission(user.id, 'inventory.read');
   } catch {
-    return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden: requires inventory.read" }, { status: 403 });
   }
   const { id } = await params;
   try {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import { createOverride } from "@/lib/price-engine";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   }
   try {
     await requirePermission(user.id, 'price.override');
+    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires price.override" }, { status: 403 });
   }

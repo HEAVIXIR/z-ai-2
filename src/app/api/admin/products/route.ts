@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function GET(req: Request) {
   }
   try {
     await requirePermission(user.id, 'product.read');
+    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires product.read" }, { status: 403 });
   }
@@ -82,6 +84,7 @@ export async function POST(req: Request) {
   }
   try {
     await requirePermission(user.id, 'product.create');
+    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires product.create" }, { status: 403 });
   }
