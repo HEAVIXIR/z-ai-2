@@ -78,6 +78,8 @@ const EXPECTED_ACTION_KEYS = [
   'store.procurement.update',
   'store.return.create',
   'store.return.update',
+  'store.shipment.create',
+  'store.shipment.update',
   'store.supplier.create',
   'store.supplier.delete',
   'store.supplier.update',
@@ -91,7 +93,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   describe('1. Permission Wiring', () => {
     it('should have exactly 26 admin store route files', () => {
       const files = listRouteFiles();
-      expect(files.length).toBe(26);
+      expect(files.length).toBe(28);
     });
 
     it('should have 49 requirePermission calls across all store routes', () => {
@@ -102,10 +104,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(49);
+      expect(count).toBe(53);
     });
 
-    it('should have 21 store.read requirePermission calls', () => {
+    it('should have 23 store.read requirePermission calls', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -113,7 +115,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.read'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(21);
+      expect(count).toBe(23);
     });
 
     it('should have 28 store.manage requirePermission calls', () => {
@@ -124,7 +126,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.manage'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(28);
+      expect(count).toBe(30);
     });
 
     it('every admin store route imports requirePermission from @/lib/authorization', () => {
@@ -219,7 +221,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/await logAudit\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(37);
+      expect(count).toBe(39);
     });
 
     it('should have 35 storeDb mutation calls (create/update/delete/upsert)', () => {
@@ -230,7 +232,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/storeDb\.\w+\.(create|update|delete|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(35);
+      expect(count).toBe(37);
     });
 
     it('every mutation route file imports logAudit from @/lib/audit', () => {
@@ -420,8 +422,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += auditMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(35);
-      expect(totalAudit).toBe(37);
+      expect(totalMut).toBe(37);
+      expect(totalAudit).toBe(39);
     });
   });
 
@@ -442,7 +444,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(29);
+      expect(foundKeys.size).toBe(31);
     });
 
     it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
