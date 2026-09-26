@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { MESSAGING } from "@/lib/rate-limit-presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +23,10 @@ export async function POST(req: Request) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // ── Rate limit (MESSAGING preset, 30/h/user) ──
+    const rl = enforceRateLimit(userId, MESSAGING);
+    if (!rl.ok) return rl.response;
 
     const body = await req.json().catch(() => ({}));
     const otherUserId = String(body.otherUserId ?? "").trim();

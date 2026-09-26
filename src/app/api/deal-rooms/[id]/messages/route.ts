@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { MESSAGING } from "@/lib/rate-limit-presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +18,10 @@ export async function POST(
   }
   const { id } = await ctx.params;
   try {
+    // ── Rate limit (MESSAGING preset, 30/h/user) ──
+    const rl = enforceRateLimit(user.id, MESSAGING);
+    if (!rl.ok) return rl.response;
+
     const room = await db.dealRoom.findUnique({
       where: { id },
       select: { id: true, buyerId: true, sellerId: true },

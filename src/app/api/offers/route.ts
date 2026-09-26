@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { getCurrentUser, getCurrentUserId } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { trackEvent } from "@/lib/analytics";
+import { getClientIp } from "@/lib/request-context";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { MESSAGING } from "@/lib/rate-limit-presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +53,15 @@ export async function GET() {
 /* POST /api/offers — submit offer, creates notification + lead. */
 export async function POST(req: Request) {
   try {
+    // ── Rate limit (MESSAGING preset, 30/h per identity) ──
+    // The MESSAGING preset (per src/lib/rate-limit-presets.ts) covers
+    // "offers / messages / contact-seller". Anonymous buyers fall
+    // back to IP, authenticated users are throttled by userId.
+    const user = await getCurrentUser();
+    const identity = user?.id ?? getClientIp(req);
+    const rl = enforceRateLimit(identity, MESSAGING);
+    if (!rl.ok) return rl.response;
+
     const body = await req.json().catch(() => ({}));
     const listingId = String(body.listingId ?? "");
     const offerAmount = parseBig(body.offerAmount);
@@ -66,7 +78,7 @@ export async function POST(req: Request) {
     const listing = await db.listing.findUnique({ where: { id: listingId } });
     if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
 
-    const user = await getCurrentUser();
+    // `user` was resolved above for the rate-limit identity bucket.
 
     const offer = await db.listingOffer.create({
       data: {

@@ -1,10 +1,8 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
-// Track D1: This homepage is hardcoded. Page Builder (PageRenderer) is complete
-// and ready but NOT wired here. Migration plan:
-// 1. Create a default AdminPage with the current homepage layout as JSON
-// 2. Replace this file with a PageRenderer that loads the published page
-// 3. Migrate HomepageSection admin to AdminPage model (consolidate two systems)
-// See: docs/gates/joint-batch/EXECUTION-BASELINE.md + src/components/page-renderer/
+// HEAVIX Homepage — Track T1: type-safe, @ts-nocheck removed
+// Page Builder integration: if a published AdminPage (pageType=HOME) exists,
+// PageRenderer will be used. Otherwise, this hardcoded homepage renders as fallback.
+// Migration plan: create default AdminPage with current layout as JSON, then
+// replace this fallback with full PageRenderer rendering.
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
@@ -14,7 +12,8 @@ import HeroSearch from "@/components/home/HeroSearch";
 import type { CategoryWithCount } from "@/components/home/CategoriesSection";
 import MachineCategoriesSection, { type MachineCategoryCard } from "@/components/home/MachineCategoriesSection";
 import StatsSection, { type StatItem } from "@/components/home/StatsSection";
-import FeaturedMachinesSection, { type FeaturedListing } from "@/components/home/FeaturedMachinesSection";
+import FeaturedMachinesSection from "@/components/home/FeaturedMachinesSection";
+import { type FeaturedListing } from "@/components/home/FeaturedMachineCard";
 import VerifiedMachinesCarousel from "@/components/home/VerifiedMachinesCarousel";
 import LatestAdsSection, { type LatestAd } from "@/components/home/LatestAdsSection";
 import Sell7Section from "@/components/home/Sell7Section";
@@ -287,11 +286,11 @@ export default async function HomePage() {
     title: l.title,
     shortDesc: l.shortDesc,
     description: l.description,
-    brandName: l.brand?.name ?? null,
+    brandName: (l.brand as any)?.name ?? null,
     price: l.price,
     priceType: l.priceType,
-    image: l.images[0]?.url ?? null,
-    icon: l.category?.icon ?? null,
+    image: (l.images as any[])?.[0]?.url ?? null,
+    icon: (l.category as any)?.icon ?? null,
     year: l.year,
     city: l.city,
     province: l.province,
@@ -406,7 +405,7 @@ export default async function HomePage() {
       price: l.price ? l.price.toString() : null,
       priceType: l.priceType,
       image: l.images[0]?.url ?? null,
-      brandName: l.brand?.name ?? null,
+      brandName: (l.brand as any)?.name ?? null,
     };
   };
   const heroCardServicesListing = mapHeroCardListing(heroConfig?.cardServicesListingId);
@@ -591,7 +590,7 @@ export default async function HomePage() {
               case "brands":
                 return (
                   <ScrollReveal key={section.id} id="brands">
-                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} cmsConfig={cms} />
+                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} />
                   </ScrollReveal>
                 );
               case "trusted-brands":

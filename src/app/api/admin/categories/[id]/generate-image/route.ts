@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { getClientIp } from "@/lib/request-context";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { UPLOAD } from "@/lib/rate-limit-presets";
 import ZAI from "z-ai-web-dev-sdk";
 import path from "path";
 import { promises as fs } from "fs";
@@ -47,6 +50,14 @@ export async function POST(
       { status: 403 },
     );
   }
+
+  // ── Rate limit (UPLOAD preset, 20/h per identity) ──
+  // This route writes a generated PNG to /public/uploads/categories,
+  // so it is resource-consuming. Authenticated callers are keyed by
+  // userId; the admin-cookie path falls back to IP (per preset).
+  const uploadIdentity = sessionUser?.id ?? getClientIp(req);
+  const rl = enforceRateLimit(uploadIdentity, UPLOAD);
+  if (!rl.ok) return rl.response;
 
   const { id } = await ctx.params;
 

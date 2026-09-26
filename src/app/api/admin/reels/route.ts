@@ -5,6 +5,9 @@ import ZAI from "z-ai-web-dev-sdk";
 import fs from "fs/promises";
 import path from "path";
 import { requireAdmin } from "@/lib/admin-guard";
+import { getClientIp } from "@/lib/request-context";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { UPLOAD } from "@/lib/rate-limit-presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +36,13 @@ export async function POST(req: Request) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // ── Rate limit (UPLOAD preset, 20/h per IP) ──
+  // This route generates + writes a video file to
+  // /public/uploads/reels, so it is resource-consuming.
+  const rl = enforceRateLimit(getClientIp(req), UPLOAD);
+  if (!rl.ok) return rl.response;
+
   try {
     const body = await req.json().catch(() => ({}));
     const { listingId, platform = "INSTAGRAM", duration = 5 } = body;
