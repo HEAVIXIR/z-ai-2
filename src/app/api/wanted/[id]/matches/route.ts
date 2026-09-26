@@ -1,31 +1,60 @@
+/**
+ * HEAVIX — Wanted Matches API (Phase 7 — Wanted/RFQ/Matching)
+ * ------------------------------------------------------------
+ * GET /api/wanted/[id]/matches
+ *
+ * Returns the matching-engine candidates for a wanted request.
+ * Delegates to wanted-service.getWantedMatches (which wraps
+ * matching-service.matchBuyRequest + audit + 404/error mapping).
+ *
+ * The matching engine scores BuyRequest ↔ Listing compatibility
+ * using category, brand, price range, location, and transaction
+ * type. Each candidate carries:
+ *   - listingId, title, slug, price, city, province
+ *   - brandName, categoryName, primaryImage
+ *   - score (0..1), reason (human-readable)
+ *
+ * Public route — no auth required (matches are computed from
+ * PUBLISHED listings, which are already public). The service
+ * writes an audit `marketplace.matching.run` (entityType:
+ * BuyRequest) so the human trigger is recorded.
+ */
 import { NextResponse } from "next/server";
-import { matchRequestToListings } from "@/lib/matching-engine";
+import { getCurrentUserId } from "@/lib/auth";
+import { getWantedMatches, WantedServiceError } from "@/lib/wanted-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* GET /api/wanted/[id]/matches — get matching listings for a wanted request.
- *
- * Returns scored matches with:
- * - listingId, listingTitle, listingPrice, listingBrand, listingCity
- * - score (0..100), confidence (HIGH/MEDIUM/LOW), reasons[]
- *
- * Per HEAVIX Master Execution Plan V3.0 Phase 7D-7E.
- */
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
-    const url = new URL(req.url);
-    const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 10));
-    const minScore = Math.min(100, Math.max(0, Number(url.searchParams.get("minScore")) || 10));
-
-    const matches = await matchRequestToListings(id, { limit, minScore });
-
+    // Best-effort: include the user id in the audit trail when
+    // the caller is authenticated. Anonymous calls still get
+    // matches (the data is public) but the audit actorId is null.
+    const userId = await getCurrentUserId().catch(() => null);
+    const result = await getWantedMatches(id, userId);
     return NextResponse.json({
-      matches,
-      count: matches.length,
+      success: true,
+      data: {
+        request: result.request,
+        candidates: result.candidates,
+        count: result.candidates.length,
+      },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    if (err instanceof WantedServiceError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status },
+      );
+    }
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
   }
 }

@@ -1,40 +1,54 @@
+/**
+ * HEAVIX — RFQ API (Phase 7 — Wanted/RFQ/Matching)
+ * ------------------------------------------------------------
+ * Public + authenticated routes for the RFQ (Request For Quote)
+ * B2B procurement domain. Delegates business logic to
+ * src/lib/rfq-service.ts.
+ *
+ * Routes:
+ *   GET  /api/rfq         — list open RFQs (paginated)
+ *   POST /api/rfq         — create a new RFQ (auth)
+ *
+ * Query params (GET):
+ *   ?status=OPEN           (default OPEN|QUOTING) — filter
+ *   ?buyerId=...                                    — filter
+ *   ?sellerId=...                                   — RFQs the
+ *                                                     seller has
+ *                                                     quoted on
+ *   ?limit=20 (1..100)     ?offset=0
+ *
+ * Body (POST):
+ *   { title, description?, buyerId, sellerId?, deadline?,
+ *     categoryId?, brandId?, specs? }
+ *
+ * The POST handler authenticates via getCurrentUser(). The
+ * service writes audit `marketplace.rfq.create`.
+ */
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { parseBig, parseNumber } from "@/lib/api-helpers";
+import { createRFQ, listRFQs, RFQServiceError } from "@/lib/rfq-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* ============================================================
-   /api/rfq
-   GET  — list open RFQs (public)
-   POST — create new RFQ
-   ============================================================ */
-
+/* GET /api/rfq — list open RFQs (paginated). */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(50, Number(searchParams.get("limit")) || 20);
+    const status = searchParams.get("status")?.trim() || null;
+    const buyerId = searchParams.get("buyerId")?.trim() || null;
+    const sellerId = searchParams.get("sellerId")?.trim() || null;
+    const limit = Number(searchParams.get("limit")) || 20;
+    const offset = Number(searchParams.get("offset")) || 0;
 
-    const rfqs = await db.rFQ.findMany({
-      where: { status: { in: ["OPEN", "QUOTING"] } },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: {
-        _count: { select: { quotes: true } },
-      },
-    });
+    const result = await listRFQs({ status, buyerId, sellerId, limit, offset });
 
     return NextResponse.json({
       success: true,
-      data: rfqs.map((r) => ({
-        ...r,
-        budgetMin: r.budgetMin ? r.budgetMin.toString() : null,
-        budgetMax: r.budgetMax ? r.budgetMax.toString() : null,
-        quoteCount: r._count.quotes,
-        _count: undefined,
-      })),
+      data: result.items,
+      total: result.total,
+      limit,
+      offset,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -44,57 +58,58 @@ export async function GET(req: Request) {
   }
 }
 
+/* POST /api/rfq — create a new RFQ (authenticated).
+ * Delegates validation + persistence + audit to rfq-service. */
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const title = String(body.title ?? "").trim();
-    const buyerPhone = String(body.buyerPhone ?? "").trim();
-    if (!title) {
-      return NextResponse.json({ error: "title is required" }, { status: 400 });
-    }
-    if (!buyerPhone) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json(
-        { error: "buyerPhone is required" },
-        { status: 400 },
+        { error: "برای ثبت استعلام ابتدا وارد شوید" },
+        { status: 401 },
       );
     }
 
-    const user = await getCurrentUser();
-    const quantity = parseNumber(body.quantity) ?? 1;
-    const deadline = body.deadline ? new Date(body.deadline) : null;
-    if (deadline && isNaN(deadline.getTime())) {
-      return NextResponse.json({ error: "invalid deadline" }, { status: 400 });
-    }
+    const body = await req.json().catch(() => ({}));
+    const {
+      title,
+      description,
+      buyerId,
+      sellerId,
+      deadline,
+      categoryId,
+      brandId,
+      specs,
+    } = body;
 
-    const rfq = await db.rFQ.create({
-      data: {
-        title,
-        description: body.description ? String(body.description) : null,
-        machineType: body.machineType ? String(body.machineType) : null,
-        brandPref: body.brandPref ? String(body.brandPref) : null,
-        quantity,
-        budgetMin: parseBig(body.budgetMin),
-        budgetMax: parseBig(body.budgetMax),
-        location: body.location ? String(body.location) : null,
-        deadline,
-        terms: body.terms ? String(body.terms) : null,
-        buyerName: body.buyerName ? String(body.buyerName) : null,
-        buyerPhone,
-        buyerEmail: body.buyerEmail ? String(body.buyerEmail) : null,
-        buyerId: user?.id ?? null,
-        status: "OPEN",
-      },
+    // Use the authenticated user's id as buyerId when not
+    // explicitly provided (the typical case — a buyer creates
+    // their own RFQ). sellerId is optional — when present, the
+    // RFQ is addressed to a specific seller.
+    const created = await createRFQ({
+      title,
+      description,
+      buyerId: buyerId ?? user.id,
+      sellerId,
+      deadline,
+      categoryId,
+      brandId,
+      specs,
+      userId: user.id,
     });
 
     return NextResponse.json({
       success: true,
-      data: {
-        ...rfq,
-        budgetMin: rfq.budgetMin ? rfq.budgetMin.toString() : null,
-        budgetMax: rfq.budgetMax ? rfq.budgetMax.toString() : null,
-      },
+      id: created.id,
+      status: created.status,
     });
   } catch (err: any) {
+    if (err instanceof RFQServiceError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status },
+      );
+    }
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },

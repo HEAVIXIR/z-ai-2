@@ -1,0 +1,901 @@
+     1→     1→import { db } from "@/lib/db";
+     2→     2→import { logAudit } from "@/lib/audit";
+     3→     3→
+     4→     4→/* ============================================================
+     5→     5→   HEAVIX — Price Estimation Engine (PRICE-ENGINE)
+     6→     6→   ------------------------------------------------------------
+     7→     7→   Implements the data-driven price estimation pipeline described
+     8→     8→   in `docs/HEAVIX-PRICE-ESTIMATION-SPEC-V1.0.md`:
+     9→     9→
+    10→    10→     Raw Market Data
+    11→    11→     → Comparable Selection (same brand+category, year ±3,
+    12→    12→       working-hours ±30%)
+    13→    13→     → Feature Normalization (Toman/IRR; no fabricated values)
+    14→    14→     → Price Estimation (median, p25, p75)
+    15→    15→     → Confidence / Data Quality (count-based + variance)
+    16→    16→     → Explanation (main drivers + warnings)
+    17→    17→
+    18→    18→   This module is INTENTIONALLY SERVER-ONLY — it imports the Prisma
+    19→    19→   client directly. NEVER import it from a Client Component.
+    20→    20→
+    21→    21→   Spec rules enforced here:
+    22→    22→     • Asking vs Estimated are NEVER conflated — `askingPrice`
+    23→    23→       is read from `Listing.price`; `estimatedPrice` is computed.
+    24→    24→     • Confidence is NEVER presented as a guarantee.
+    25→    25→     • No price is invented without source data — when there are
+    26→    26→       fewer than 2 comparables the engine returns
+    27→    27→       `confidence = "INSUFFICIENT"` and no estimatedPrice.
+    28→    28→     • Overrides are audited via the shared `logAudit` helper.
+    29→    29→   ============================================================ */
+    30→    30→
+    31→    31→export const PRICE_MODEL_VERSION = "v1.0";
+    32→    32→
+    33→    33→/** Comparable-year tolerance (spec §5 — Comparable Based). */
+    34→    34→const YEAR_TOLERANCE = 3;
+    35→    35→/** Comparable working-hours tolerance, as a fraction of the target. */
+    36→    36→const HOURS_TOLERANCE_RATIO = 0.3;
+    37→    37→/** Maximum comparables we will read per estimate (cap cost). */
+    38→    38→const MAX_COMPARABLES = 60;
+    39→    39→/** Data freshness cutoffs (days since most-recent observation). */
+    40→    40→const FRESH_DAYS = 30;
+    41→    41→const RECENT_DAYS = 90;
+    42→    42→
+    43→    43→export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT";
+    44→    44→export type DataFreshness = "FRESH" | "RECENT" | "STALE";
+    45→    45→export type PriceHealthStatus =
+    46→    46→  | "IN_RANGE"
+    47→    47→  | "BELOW_RANGE"
+    48→    48→  | "ABOVE_RANGE"
+    49→    49→  | "INSUFFICIENT";
+    50→    50→
+    51→    51→export interface EstimateInput {
+    52→    52→  listingId?: string;
+    53→    53→  brandId?: string | null;
+    54→    54→  categoryId?: string | null;
+    55→    55→  modelId?: string | null;
+    56→    56→  year?: number | null;
+    57→    57→  hours?: number | null;
+    58→    58→  condition?: string | null;
+    59→    59→  city?: string | null;
+    60→    60→}
+    61→    61→
+    62→    62→export interface EstimateResult {
+    63→    63→  estimatedPrice: number | null;
+    64→    64→  priceLower: number | null;
+    65→    65→  priceUpper: number | null;
+    66→    66→  medianPrice: number | null;
+    67→    67→  confidence: ConfidenceLevel;
+    68→    68→  comparableCount: number;
+    69→    69→  dataFreshness: DataFreshness | null;
+    70→    70→  mainDrivers: string[];
+    71→    71→  warnings: string[];
+    72→    72→  modelVersion: string;
+    73→    73→  comparables: Array<{
+    74→    74→    id: string;
+    75→    75→    title: string;
+    76→    76→    slug: string;
+    77→    77→    price: number;
+    78→    78→    year: number | null;
+    79→    79→    workingHours: number | null;
+    80→    80→    city: string | null;
+    81→    81→    similarity: number;
+    82→    82→  }>;
+    83→    83→}
+    84→    84→
+    85→    85→export interface PriceHealthResult {
+    86→    86→  status: PriceHealthStatus;
+    87→    87→  askingPrice: number | null;
+    88→    88→  estimatedLower: number | null;
+    89→    89→  estimatedUpper: number | null;
+    90→    90→  estimatedPrice: number | null;
+    91→    91→  confidence: ConfidenceLevel | null;
+    92→    92→  deviationPct: number | null;
+    93→    93→}
+    94→    94→
+    95→    95→export interface PriceHistoryPoint {
+    96→    96→  month: string; // YYYY-MM
+    97→    97→  medianPrice: number | null;
+    98→    98→  count: number;
+    99→    99→  range: [number, number] | null;
+   100→   100→}
+   101→   101→
+   102→   102→export interface RecordObservationInput {
+   103→   103→  listingId?: string | null;
+   104→   104→  productId?: string | null;
+   105→   105→  brandId?: string | null;
+   106→   106→  categoryId?: string | null;
+   107→   107→  modelId?: string | null;
+   108→   108→  askingPrice?: bigint | number | null;
+   109→   109→  estimatedPrice?: number | null;
+   110→   110→  priceLower?: number | null;
+   111→   111→  priceUpper?: number | null;
+   112→   112→  normalizedPrice?: number | null;
+   113→   113→  currency?: string;
+   114→   114→  source?: string; // LISTING | MANUAL | AI_ESTIMATE | EXTERNAL
+   115→   115→  sourceType?: string | null; // HEAVIX | DIVAR | SHEYPOOR | OTHER
+   116→   116→  observedAt?: Date;
+   117→   117→  market?: string | null;
+   118→   118→  quality?: string; // HIGH | MEDIUM | LOW
+   119→   119→  status?: string; // ACTIVE | FLAGGED | EXCLUDED
+   120→   120→  confidence?: string | null;
+   121→   121→  comparableCount?: number | null;
+   122→   122→  notes?: string | null;
+   123→   123→}
+   124→   124→
+   125→   125→/* ─────────── Private statistical helpers ─────────── */
+   126→   126→
+   127→   127→function median(sorted: number[]): number | null {
+   128→   128→  if (sorted.length === 0) return null;
+   129→   129→  const mid = Math.floor(sorted.length / 2);
+   130→   130→  return sorted.length % 2 === 0
+   131→   131→    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+   132→   132→    : sorted[mid]!;
+   133→   133→}
+   134→   134→
+   135→   135→function percentile(sorted: number[], p: number): number | null {
+   136→   136→  if (sorted.length === 0) return null;
+   137→   137→  const idx = (sorted.length - 1) * p;
+   138→   138→  const lo = Math.floor(idx);
+   139→   139→  const hi = Math.ceil(idx);
+   140→   140→  if (lo === hi) return sorted[lo] ?? null;
+   141→   141→  const frac = idx - lo;
+   142→   142→  const a = sorted[lo]!;
+   143→   143→  const b = sorted[hi]!;
+   144→   144→  return a + (b - a) * frac;
+   145→   145→}
+   146→   146→
+   147→   147→/** Coefficient of variation (σ / μ). Robust spread indicator. */
+   148→   148→function coefficientOfVariation(values: number[]): number | null {
+   149→   149→  if (values.length < 2) return null;
+   150→   150→  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+   151→   151→  if (mean === 0) return null;
+   152→   152→  const variance =
+   153→   153→    values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+   154→   154→  return Math.sqrt(variance) / mean;
+   155→   155→}
+   156→   156→
+   157→   157→function confidenceForCount(count: number): ConfidenceLevel {
+   158→   158→  if (count >= 8) return "HIGH";
+   159→   159→  if (count >= 4) return "MEDIUM";
+   160→   160→  if (count >= 2) return "LOW";
+   161→   161→  return "INSUFFICIENT";
+   162→   162→}
+   163→   163→
+   164→   164→function freshnessForLatestObserved(latest: Date | null): DataFreshness | null {
+   165→   165→  if (!latest) return null;
+   166→   166→  const days = (Date.now() - latest.getTime()) / (1000 * 60 * 60 * 24);
+   167→   167→  if (days <= FRESH_DAYS) return "FRESH";
+   168→   168→  if (days <= RECENT_DAYS) return "RECENT";
+   169→   169→  return "STALE";
+   170→   170→}
+   171→   171→
+   172→   172→/* ─────────── Core: estimatePrice ─────────── */
+   173→   173→
+   174→   174→export async function estimatePrice(
+   175→   175→  params: EstimateInput,
+   176→   176→): Promise<EstimateResult> {
+   177→   177→  const drivers: string[] = [];
+   178→   178→  const warnings: string[] = [];
+   179→   179→
+   180→   180→  /* 1. Resolve target attributes — either from a listingId or
+   181→   181→        raw params. NEVER invent missing fields. */
+   182→   182→  let target: {
+   183→   183→    brandId: string | null;
+   184→   184→    categoryId: string | null;
+   185→   185→    modelId: string | null;
+   186→   186→    year: number | null;
+   187→   187→    hours: number | null;
+   188→   188→    condition: string | null;
+   189→   189→    city: string | null;
+   190→   190→  };
+   191→   191→
+   192→   192→  if (params.listingId) {
+   193→   193→    const listing = await db.listing.findUnique({
+   194→   194→      where: { id: params.listingId },
+   195→   195→      select: {
+   196→   196→        id: true ,
+   197→   197→        brandId: true,
+   198→   198→        categoryId: true,
+   199→   199→        modelId: true,
+   200→   200→        year: true,
+   201→   201→        workingHours: true,
+   202→   202→        condition: true,
+   203→   203→        city: true,
+   204→   204→      },
+   205→   205→    });
+   206→   206→    if (!listing) {
+   207→   207→      return emptyEstimate(["آگهی یافت نشد"]);
+   208→   208→    }
+   209→   209→    target = {
+   210→   210→      brandId: params.brandId ?? listing.brandId,
+   211→   211→      categoryId: params.categoryId ?? listing.categoryId,
+   212→   212→      modelId: params.modelId ?? listing.modelId,
+   213→   213→      year: params.year ?? listing.year,
+   214→   214→      hours: params.hours ?? listing.workingHours,
+   215→   215→      condition: params.condition ?? listing.condition,
+   216→   216→      city: params.city ?? listing.city,
+   217→   217→    };
+   218→   218→  } else {
+   219→   219→    target = {
+   220→   220→      brandId: params.brandId ?? null,
+   221→   221→      categoryId: params.categoryId ?? null,
+   222→   222→      modelId: params.modelId ?? null,
+   223→   223→      year: params.year ?? null,
+   224→   224→      hours: params.hours ?? null,
+   225→   225→      condition: params.condition ?? null,
+   226→   226→      city: params.city ?? null,
+   227→   227→    };
+   228→   228→  }
+   229→   229→
+   230→   230→  /* 2. Comparable selection — require brand+category at minimum. */
+   231→   231→  if (!target.brandId || !target.categoryId) {
+   232→   232→    return emptyEstimate([
+   233→   233→      "برای تخمین قیمت، برند و دسته‌بندی لازم است.",
+   234→   234→    ]);
+   235→   235→  }
+   236→   236→
+   237→   237→  const where: {
+   238→   238→    status: string;
+   239→   239→    price: { not: null };
+   240→   240→    brandId: string;
+   241→   241→    categoryId: string;
+   242→   242→    modelId?: string;
+   243→   243→    year?: { gte: number; lte: number };
+   244→   244→    workingHours?: { gte: number; lte: number };
+   245→   245→    NOT?: { id: string }[];
+   246→   246→  } = {
+   247→   247→    status: "PUBLISHED",
+   248→   248→    price: { not: null },
+   249→   249→    brandId: target.brandId,
+   250→   250→    categoryId: target.categoryId,
+   251→   251→  };
+   252→   252→  if (target.modelId) where.modelId = target.modelId;
+   253→   253→  if (params.listingId) (where as any).NOT = { id: params.listingId };
+   254→   254→
+   255→   255→  // Year window (±3). Apply only if target year is known.
+   256→   256→  if (target.year && Number.isFinite(target.year)) {
+   257→   257→    where.year = {
+   258→   258→      gte: target.year - YEAR_TOLERANCE,
+   259→   259→      lte: target.year + YEAR_TOLERANCE,
+   260→   260→    };
+   261→   261→  }
+   262→   262→
+   263→   263→  // Working-hours window (±30%). Apply only if target hours is known.
+   264→   264→  if (target.hours != null && Number.isFinite(target.hours) && target.hours > 0) {
+   265→   265→    const delta = Math.max(1, target.hours * HOURS_TOLERANCE_RATIO);
+   266→   266→    where.workingHours = {
+   267→   267→      gte: Math.floor(target.hours - delta),
+   268→   268→      lte: Math.ceil(target.hours + delta),
+   269→   269→    };
+   270→   270→  }
+   271→   271→
+   272→   272→  // Always also consider PriceObservations of the same brand+category
+   273→   273→  // (source = LISTING) so the engine benefits from historical data even
+   274→   274→  // when active comparable listings are scarce. NEVER fabricate prices.
+   275→   275→  const obsRows = await db.priceObservation.findMany({
+   276→   276→    where: {
+   277→   277→      brandId: target.brandId,
+   278→   278→      categoryId: target.categoryId,
+   279→   279→      status: "ACTIVE",
+   280→   280→      askingPrice: { not: null },
+   281→   281→    },
+   282→   282→    select: {
+   283→   283→      id: true ,
+   284→   284→      askingPrice: true,
+   285→   285→      observedAt: true,
+   286→   286→      listingId: true,
+   287→   287→    },
+   288→   288→    take: MAX_COMPARABLES,
+   289→   289→    orderBy: { observedAt: "desc" },
+   290→   290→  });
+   291→   291→
+   292→   292→  // ── Fallback: if the strict query (year±3, hours±30%) yields
+   293→   293→  //    fewer than 2 active comparables, retry with a relaxed query
+   294→   294→  //    (drop the hours window and widen year to ±5) so the engine
+   295→   295→  //    still produces an estimate on smaller datasets. The relaxed
+   296→   296→  //    pass is flagged via a warning so consumers know similarity
+   297→   297→  //    is looser. NEVER fabricates prices — only uses real listings.
+   298→   298→  let rows = await db.listing.findMany({
+   299→   299→    where,
+   300→   300→    select: {
+   301→   301→      id: true ,
+   302→   302→      title: true,
+   303→   303→      slug: true,
+   304→   304→      price: true,
+   305→   305→      year: true,
+   306→   306→      workingHours: true,
+   307→   307→      city: true,
+   308→   308→      createdAt: true,
+   309→   309→    },
+   310→   310→    take: MAX_COMPARABLES,
+   311→   311→    orderBy: { createdAt: "desc" },
+   312→   312→  });
+   313→   313→
+   314→   314→  let relaxed = false;
+   315→   315→  if (rows.length < 2) {
+   316→   316→    const relaxedWhere: typeof where = { ...where };
+   317→   317→    delete (relaxedWhere ).workingHours;
+   318→   318→    if (target.year && Number.isFinite(target.year)) {
+   319→   319→      relaxedWhere.year = {
+   320→   320→        gte: target.year - (YEAR_TOLERANCE + 2),
+   321→   321→        lte: target.year + (YEAR_TOLERANCE + 2),
+   322→   322→      };
+   323→   323→    } else {
+   324→   324→      delete (relaxedWhere ).year;
+   325→   325→    }
+   326→   326→    const relaxedRows = await db.listing.findMany({
+   327→   327→      where: relaxedWhere,
+   328→   328→      select: {
+   329→   329→        id: true ,
+   330→   330→        title: true,
+   331→   331→        slug: true,
+   332→   332→        price: true,
+   333→   333→        year: true,
+   334→   334→        workingHours: true,
+   335→   335→        city: true,
+   336→   336→        createdAt: true,
+   337→   337→      },
+   338→   338→      take: MAX_COMPARABLES,
+   339→   339→      orderBy: { createdAt: "desc" },
+   340→   340→    });
+   341→   341→    if (relaxedRows.length > rows.length) {
+   342→   342→      rows = relaxedRows;
+   343→   343→      relaxed = true;
+   344→   344→    }
+   345→   345→  }
+   346→   346→
+   347→   347→  // ── Final fallback: brand+category only (no year/hours window).
+   348→   348→  //    Keeps the engine usable on small catalogs — every comparable
+   349→   349→  //    is a real listing, we just broaden similarity to the maximum.
+   350→   350→  let brandCategoryOnly = false;
+   351→   351→  if (rows.length < 2) {
+   352→   352→    const broadRows = await db.listing.findMany({
+   353→   353→      where: {
+   354→   354→        status: "PUBLISHED",
+   355→   355→        price: { not: null },
+   356→   356→        brandId: target.brandId,
+   357→   357→        categoryId: target.categoryId,
+   358→   358→        ...(params.listingId ? { NOT: { id: params.listingId } } : {}),
+   359→   359→      },
+   360→   360→      select: {
+   361→   361→        id: true ,
+   362→   362→        title: true,
+   363→   363→        slug: true,
+   364→   364→        price: true,
+   365→   365→        year: true,
+   366→   366→        workingHours: true,
+   367→   367→        city: true,
+   368→   368→        createdAt: true,
+   369→   369→      },
+   370→   370→      take: MAX_COMPARABLES,
+   371→   371→      orderBy: { createdAt: "desc" },
+   372→   372→    });
+   373→   373→    if (broadRows.length > rows.length) {
+   374→   374→      rows = broadRows;
+   375→   375→      brandCategoryOnly = true;
+   376→   376→    }
+   377→   377→  }
+   378→   378→
+   379→   379→
+   380→   380→  // Merge: prices from active listings + prices from observations.
+   381→   381→  // Each row in each table is treated as a DISTINCT market observation
+   382→   382→  // (spec §14 — every observation has its own provenance). Multiple
+   383→   383→  // observations of the same listing over time legitimately count as
+   384→   384→  // separate comparables — this is how the engine benefits from
+   385→   385→  // historical price drift on the same machine.
+   386→   386→  const seenIds = new Set<string>();
+   387→   387→  type Comp = {
+   388→   388→    id: string;
+   389→   389→    title: string;
+   390→   390→    slug: string;
+   391→   391→    price: number;
+   392→   392→    year: number | null;
+   393→   393→    workingHours: number | null;
+   394→   394→    city: string | null;
+   395→   395→    observedAt: Date;
+   396→   396→    similarity: number;
+   397→   397→  };
+   398→   398→  const comps: Comp[] = [];
+   399→   399→
+   400→   400→  for (const r of rows) {
+   401→   401→    if (!r.price) continue;
+   402→   402→    if (seenIds.has(r.id)) continue;
+   403→   403→    seenIds.add(r.id);
+   404→   404→    comps.push({
+   405→   405→      id: r.id,
+   406→   406→      title: r.title,
+   407→   407→      slug: r.slug,
+   408→   408→      price: Number(r.price),
+   409→   409→      year: r.year,
+   410→   410→      workingHours: r.workingHours,
+   411→   411→      city: r.city,
+   412→   412→      observedAt: r.createdAt,
+   413→   413→      similarity: computeSimilarity(target, {
+   414→   414→        year: r.year,
+   415→   415→        hours: r.workingHours,
+   416→   416→        city: r.city,
+   417→   417→      }),
+   418→   418→    });
+   419→   419→  }
+   420→   420→  for (const o of obsRows) {
+   421→   421→    if (!o.askingPrice) continue;
+   422→   422→    if (seenIds.has(o.id)) continue;
+   423→   423→    seenIds.add(o.id);
+   424→   424→    comps.push({
+   425→   425→      id: o.id,
+   426→   426→      title: "(مشاهده بازار)",
+   427→   427→      slug: "",
+   428→   428→      price: Number(o.askingPrice),
+   429→   429→      year: null,
+   430→   430→      workingHours: null,
+   431→   431→      city: null,
+   432→   432→      observedAt: o.observedAt,
+   433→   433→      similarity: 0.5,
+   434→   434→    });
+   435→   435→  }
+   436→   436→
+   437→   437→  // ── STEP 6B.1: PriceRecord fold-in REMOVED.
+   438→   438→  // The legacy PriceRecord table is deprecated (canonical model is
+   439→   439→  // PriceObservation per PHASE-6A-RECONCILE). The PriceRecord writer
+   440→   440→  // (recordPriceFromListing) is dead code with 0 callers, so the table
+   441→   441→  // is empty — folding in its rows would yield zero comparables anyway.
+   442→   442→  // All comparable selection now uses PriceObservation exclusively.
+   443→   443→
+   444→   444→  if (comps.length < 2) {
+   445→   445→    return emptyEstimate([
+   446→   446→      "داده مشابه کافی برای تخمین قیمت موجود نیست.",
+   447→   447→      "این تخمین جایگزین کارشناسی حضوری نیست.",
+   448→   448→    ]);
+   449→   449→  }
+   450→   450→
+   451→   451→  // Sort by similarity (desc) for the comparables preview.
+   452→   452→  const bySimilarity = [...comps].sort((a, b) => b.similarity - a.similarity);
+   453→   453→
+   454→   454→  // Price statistics computed across ALL comparables.
+   455→   455→  const prices = comps.map((c) => c.price).sort((a, b) => a - b);
+   456→   456→  const med = median(prices);
+   457→   457→  const p25 = percentile(prices, 0.25);
+   458→   458→  const p75 = percentile(prices, 0.75);
+   459→   459→  const count = comps.length;
+   460→   460→  const confidence = confidenceForCount(count);
+   461→   461→
+   462→   462→  // Latest observation date → freshness.
+   463→   463→  const latest = comps.reduce<Date | null>((acc, c) => {
+   464→   464→    if (!acc || c.observedAt > acc) return c.observedAt;
+   465→   465→    return acc;
+   466→   466→  }, null);
+   467→   467→  const dataFreshness = freshnessForLatestObserved(latest);
+   468→   468→
+   469→   469→  // Drivers (explain what influenced the estimate).
+   470→   470→  if (target.brandId) drivers.push("برند");
+   471→   471→  if (target.categoryId) drivers.push("دسته‌بندی");
+   472→   472→  if (target.modelId) drivers.push("مدل");
+   473→   473→  if (target.year) drivers.push("سال ساخت");
+   474→   474→  if (target.hours != null) drivers.push("ساعت کارکرد");
+   475→   475→  if (target.condition) drivers.push("وضعیت دستگاه");
+   476→   476→  if (target.city) drivers.push("موقعیت جغرافیایی");
+   477→   477→  drivers.push(`تعداد موارد مشابه: ${count}`);
+   478→   478→
+   479→   479→  // Warnings.
+   480→   480→  const cv = coefficientOfVariation(prices);
+   481→   481→  if (cv != null && cv > 0.5) {
+   482→   482→    warnings.push("پراکندگی بالای قیمت در موارد مشابه — تخمین با احتیاط ببینید.");
+   483→   483→  }
+   484→   484→  if (dataFreshness === "STALE") {
+   485→   485→    warnings.push("آخرین داده‌های مشاهده‌شده قدیمی هستند (بیش از ۹۰ روز).");
+   486→   486→  }
+   487→   487→  if (confidence === "LOW") {
+   488→   488→    warnings.push("تعداد موارد مشابه کم است؛ تخمین با قطعیت بالا تلقی نشود.");
+   489→   489→  }
+   490→   490→  if (confidence === "INSUFFICIENT") {
+   491→   491→    warnings.push("داده ناکافی — تخمین معتبر نیست.");
+   492→   492→  }
+   493→   493→  if (relaxed) {
+   494→   494→    warnings.push(
+   495→   495→      "بازه جستجوی موارد مشابه به دلیل کمبود داده گسترش یافت (تخمین با دقت کمتر).",
+   496→   496→    );
+   497→   497→  }
+   498→   498→  if (brandCategoryOnly) {
+   499→   499→    warnings.push(
+   500→   500→      "به دلیل کمبود داده، تخمین بر اساس تمام آگهی‌های همان برند و دسته‌بندی محاسبه شده است (بدون فیلتر سال/کارکرد).",
+   501→   501→    );
+   502→   502→  }
+   503→   503→
+   504→   504→  // Range: use p25/p75 (when available), widened for low confidence.
+   505→   505→  let lower = p25 ?? null;
+   506→   506→  let upper = p75 ?? null;
+   507→   507→  if (med != null) {
+   508→   508→    if (lower == null) lower = med * 0.85;
+   509→   509→    if (upper == null) upper = med * 1.15;
+   510→   510→    if (confidence === "LOW") {
+   511→   511→      lower = med * 0.8;
+   512→   512→      upper = med * 1.2;
+   513→   513→    } else if (confidence === "MEDIUM") {
+   514→   514→      lower = med * 0.88;
+   515→   515→      upper = med * 1.12;
+   516→   516→    } else if (confidence === "HIGH") {
+   517→   517→      lower = med * 0.92;
+   518→   518→      upper = med * 1.08;
+   519→   519→    }
+   520→   520→  }
+   521→   521→
+   522→   522→  const result: EstimateResult = {
+   523→   523→    estimatedPrice: med,
+   524→   524→    priceLower: lower,
+   525→   525→    priceUpper: upper,
+   526→   526→    medianPrice: med,
+   527→   527→    confidence,
+   528→   528→    comparableCount: count,
+   529→   529→    dataFreshness,
+   530→   530→    mainDrivers: drivers,
+   531→   531→    warnings,
+   532→   532→    modelVersion: PRICE_MODEL_VERSION,
+   533→   533→    comparables: bySimilarity.slice(0, 12).map((c) => ({
+   534→   534→      id: c.id,
+   535→   535→      title: c.title,
+   536→   536→      slug: c.slug,
+   537→   537→      price: c.price,
+   538→   538→      year: c.year,
+   539→   539→      workingHours: c.workingHours,
+   540→   540→      city: c.city,
+   541→   541→      similarity: c.similarity,
+   542→   542→    })),
+   543→   543→  };
+   544→   544→
+   545→   545→  // STEP 6D.3: Persist estimate to PriceEstimate (best-effort, non-blocking).
+   546→   546→  // Only persists when we have a listingId (brand-level estimates without
+   547→   547→  // listingId can't be linked to a specific listing).
+   548→   548→  // Skips INSUFFICIENT confidence — no useful estimate to cache.
+   549→   549→  if (params.listingId && result.confidence !== "INSUFFICIENT") {
+   550→   550→    try {
+   551→   551→      await db.priceEstimate.create({
+   552→   552→        data: {
+   553→   553→          listingId: params.listingId,
+   554→   554→          estimatedPrice: result.estimatedPrice ?? 0,
+   555→   555→          priceLower: result.priceLower ?? 0,
+   556→   556→          priceUpper: result.priceUpper ?? 0,
+   557→   557→          confidence: result.confidence,
+   558→   558→          comparableCount: result.comparableCount,
+   559→   559→          dataFreshness: result.dataFreshness ?? null,
+   560→   560→          mainDrivers: JSON.stringify(result.mainDrivers),
+   561→   561→          warnings: JSON.stringify(result.warnings),
+   562→   562→          modelVersion: result.modelVersion,
+   563→   563→        },
+   564→   564→      });
+   565→   565→    } catch (err) {
+   566→   566→      // Best-effort — log but don't block the estimate from being returned.
+   567→   567→      console.error("[price-engine] persistEstimate failed:", err);
+   568→   568→    }
+   569→   569→  }
+   570→   570→
+   571→   571→  return result;
+   572→   572→}
+   573→   573→
+   574→   574→function emptyEstimate(warnings: string[]): EstimateResult {
+   575→   575→  return {
+   576→   576→    estimatedPrice: null,
+   577→   577→    priceLower: null,
+   578→   578→    priceUpper: null,
+   579→   579→    medianPrice: null,
+   580→   580→    confidence: "INSUFFICIENT",
+   581→   581→    comparableCount: 0,
+   582→   582→    dataFreshness: null,
+   583→   583→    mainDrivers: [],
+   584→   584→    warnings,
+   585→   585→    modelVersion: PRICE_MODEL_VERSION,
+   586→   586→    comparables: [],
+   587→   587→  };
+   588→   588→}
+   589→   589→
+   590→   590→/** Heuristic similarity score (0..1) — higher is closer. */
+   591→   591→function computeSimilarity(
+   592→   592→  target: { year: number | null; hours: number | null; city: string | null },
+   593→   593→  cand: { year: number | null; hours: number | null; city: string | null },
+   594→   594→): number {
+   595→   595→  let score = 0.5;
+   596→   596→  if (target.year != null && cand.year != null) {
+   597→   597→    const d = Math.abs(target.year - cand.year);
+   598→   598→    score += Math.max(0, 0.25 - d * 0.05);
+   599→   599→  }
+   600→   600→  if (target.hours != null && cand.hours != null && target.hours > 0) {
+   601→   601→    const ratio = Math.abs(target.hours - cand.hours) / target.hours;
+   602→   602→    score += Math.max(0, 0.15 - ratio * 0.2);
+   603→   603→  }
+   604→   604→  if (target.city && cand.city && target.city === cand.city) {
+   605→   605→    score += 0.1;
+   606→   606→  }
+   607→   607→  return Math.min(1, score);
+   608→   608→}
+   609→   609→
+   610→   610→/* ─────────── getPriceHealth ─────────── */
+   611→   611→
+   612→   612→export async function getPriceHealth(
+   613→   613→  listingId: string,
+   614→   614→): Promise<PriceHealthResult> {
+   615→   615→  const listing = await db.listing.findUnique({
+   616→   616→    where: { id: listingId },
+   617→   617→    select: {
+   618→   618→      id: true ,
+   619→   619→      price: true,
+   620→   620→      brandId: true,
+   621→   621→      categoryId: true,
+   622→   622→      modelId: true,
+   623→   623→      year: true,
+   624→   624→      workingHours: true,
+   625→   625→      condition: true,
+   626→   626→      city: true,
+   627→   627→    },
+   628→   628→  });
+   629→   629→  if (!listing) {
+   630→   630→    return {
+   631→   631→      status: "INSUFFICIENT",
+   632→   632→      askingPrice: null,
+   633→   633→      estimatedLower: null,
+   634→   634→      estimatedUpper: null,
+   635→   635→      estimatedPrice: null,
+   636→   636→      confidence: null,
+   637→   637→      deviationPct: null,
+   638→   638→    };
+   639→   639→  }
+   640→   640→
+   641→   641→  const estimate = await estimatePrice({
+   642→   642→    listingId: listing.id,
+   643→   643→    brandId: listing.brandId,
+   644→   644→    categoryId: listing.categoryId,
+   645→   645→    modelId: listing.modelId,
+   646→   646→    year: listing.year,
+   647→   647→    hours: listing.workingHours,
+   648→   648→    condition: listing.condition,
+   649→   649→    city: listing.city,
+   650→   650→  });
+   651→   651→
+   652→   652→  const asking =
+   653→   653→    listing.price != null ? Number(listing.price) : null;
+   654→   654→
+   655→   655→  if (
+   656→   656→    asking == null ||
+   657→   657→    estimate.estimatedPrice == null ||
+   658→   658→    estimate.priceLower == null ||
+   659→   659→    estimate.priceUpper == null ||
+   660→   660→    estimate.confidence === "INSUFFICIENT"
+   661→   661→  ) {
+   662→   662→    return {
+   663→   663→      status: "INSUFFICIENT",
+   664→   664→      askingPrice: asking,
+   665→   665→      estimatedLower: estimate.priceLower,
+   666→   666→      estimatedUpper: estimate.priceUpper,
+   667→   667→      estimatedPrice: estimate.estimatedPrice,
+   668→   668→      confidence: estimate.confidence,
+   669→   669→      deviationPct: null,
+   670→   670→    };
+   671→   671→  }
+   672→   672→
+   673→   673→  let status: PriceHealthStatus;
+   674→   674→  if (asking < estimate.priceLower) status = "BELOW_RANGE";
+   675→   675→  else if (asking > estimate.priceUpper) status = "ABOVE_RANGE";
+   676→   676→  else status = "IN_RANGE";
+   677→   677→
+   678→   678→  const deviationPct =
+   679→   679→    estimate.estimatedPrice > 0
+   680→   680→      ? (asking - estimate.estimatedPrice) / estimate.estimatedPrice
+   681→   681→      : 0;
+   682→   682→
+   683→   683→  return {
+   684→   684→    status,
+   685→   685→    askingPrice: asking,
+   686→   686→    estimatedLower: estimate.priceLower,
+   687→   687→    estimatedUpper: estimate.priceUpper,
+   688→   688→    estimatedPrice: estimate.estimatedPrice,
+   689→   689→    confidence: estimate.confidence,
+   690→   690→    deviationPct,
+   691→   691→  };
+   692→   692→}
+   693→   693→
+   694→   694→/* ─────────── getPriceHistory ─────────── */
+   695→   695→// STEP 6B.5: getPriceHistory REMOVED from price-engine.ts.
+   696→   696→// Canonical location is now src/lib/price-history-engine.ts.
+   697→   697→// All routes (/api/price-history, /api/pricing/history, /api/price-intelligence)
+   698→   698→// now import from the canonical module.
+   699→   699→
+   700→   700→/* ─────────── recordObservation ─────────── */
+   701→   701→
+   702→   702→export async function recordObservation(
+   703→   703→  params: RecordObservationInput,
+   704→   704→): Promise<void> {
+   705→   705→  const asking =
+   706→   706→    params.askingPrice != null
+   707→   707→      ? typeof params.askingPrice === "bigint"
+   708→   708→        ? Number(params.askingPrice)
+   709→   709→        : params.askingPrice
+   710→   710→      : null;
+   711→   711→
+   712→   712→  try {
+   713→   713→    await db.priceObservation.create({
+   714→   714→      data: {
+   715→   715→        listingId: params.listingId ?? null,
+   716→   716→        productId: params.productId ?? null,
+   717→   717→        brandId: params.brandId ?? null,
+   718→   718→        categoryId: params.categoryId ?? null,
+   719→   719→        modelId: params.modelId ?? null,
+   720→   720→        askingPrice:
+   721→   721→          asking != null && Number.isFinite(asking)
+   722→   722→            ? BigInt(Math.round(asking))
+   723→   723→            : null,
+   724→   724→        estimatedPrice: params.estimatedPrice ?? null,
+   725→   725→        priceLower: params.priceLower ?? null,
+   726→   726→        priceUpper: params.priceUpper ?? null,
+   727→   727→        normalizedPrice: params.normalizedPrice ?? null,
+   728→   728→        currency: params.currency ?? "IRR",
+   729→   729→        source: params.source ?? "LISTING",
+   730→   730→        sourceType: params.sourceType ?? null,
+   731→   731→        observedAt: params.observedAt ?? new Date(),
+   732→   732→        market: params.market ?? null,
+   733→   733→        quality: params.quality ?? "MEDIUM",
+   734→   734→        status: params.status ?? "ACTIVE",
+   735→   735→        confidence: params.confidence ?? null,
+   736→   736→        comparableCount: params.comparableCount ?? null,
+   737→   737→        notes: params.notes ?? null,
+   738→   738→      },
+   739→   739→    });
+   740→   740→  } catch (err) {
+   741→   741→    // Non-fatal — observation logging must not break callers.
+   742→   742→    console.error("[price-engine] recordObservation failed:", err);
+   743→   743→  }
+   744→   744→}
+   745→   745→
+   746→   746→/* ─────────── createOverride (admin, audited) ─────────── */
+   747→   747→
+   748→   748→export async function createOverride(args: {
+   749→   749→  listingId: string;
+   750→   750→  overridePrice: number;
+   751→   751→  reason: string;
+   752→   752→  adminId?: string | null;
+   753→   753→  ip?: string | null;
+   754→   754→  userAgent?: string | null;
+   755→   755→}): Promise<{ id: string }> {
+   756→   756→  if (!args.listingId) throw new Error("listingId is required");
+   757→   757→  if (!Number.isFinite(args.overridePrice) || args.overridePrice <= 0) {
+   758→   758→    throw new Error("overridePrice must be a positive finite number");
+   759→   759→  }
+   760→   760→  if (!args.reason || args.reason.trim().length < 3) {
+   761→   761→    throw new Error("reason is required (min 3 chars)");
+   762→   762→  }
+   763→   763→
+   764→   764→  // Compute the current estimate so we can record the "before" value.
+   765→   765→  const estimate = await estimatePrice({ listingId: args.listingId });
+   766→   766→  const originalEstimate = estimate.estimatedPrice ?? 0;
+   767→   767→
+   768→   768→  const listing = await db.listing.findUnique({
+   769→   769→    where: { id: args.listingId },
+   770→   770→    select: { id: true , title: true, slug: true, price: true },
+   771→   771→  });
+   772→   772→
+   773→   773→  const created = await db.priceOverride.create({
+   774→   774→    data: {
+   775→   775→      listingId: args.listingId,
+   776→   776→      originalEstimate,
+   777→   777→      overridePrice: args.overridePrice,
+   778→   778→      reason: args.reason.trim(),
+   779→   779→      overriddenBy: args.adminId ?? "ADMIN",
+   780→   780→    },
+   781→   781→  });
+   782→   782→
+   783→   783→  await logAudit({
+   784→   784→    actorId: args.adminId ?? null,
+   785→   785→    actorType: "ADMIN",
+   786→   786→    action: "pricing.override",
+   787→   787→    entityType: "PriceOverride",
+   788→   788→    entityId: created.id,
+   789→   789→    before: {
+   790→   790→      listingId: args.listingId,
+   791→   791→      listingTitle: listing?.title ?? null,
+   792→   792→      originalEstimate,
+   793→   793→      listingAskingPrice: listing?.price != null ? Number(listing.price) : null,
+   794→   794→    },
+   795→   795→    after: {
+   796→   796→      listingId: args.listingId,
+   797→   797→      overridePrice: args.overridePrice,
+   798→   798→      reason: args.reason.trim(),
+   799→   799→    },
+   800→   800→    ip: args.ip ?? null,
+   801→   801→    userAgent: args.userAgent ?? null,
+   802→   802→    reason: args.reason.trim(),
+   803→   803→  });
+   804→   804→
+   805→   805→  return { id: created.id };
+   806→   806→}
+   807→   807→
+   808→   808→/* ─────────── listObservations (admin) ─────────── */
+   809→   809→
+   810→   810→export interface ObservationListFilters {
+   811→   811→  brandId?: string | null;
+   812→   812→  categoryId?: string | null;
+   813→   813→  source?: string | null;
+   814→   814→  status?: string | null;
+   815→   815→  limit?: number;
+   816→   816→  offset?: number;
+   817→   817→}
+   818→   818→
+   819→   819→export async function listObservations(filters: ObservationListFilters = {}) {
+   820→   820→  const limit = Math.max(1, Math.min(200, filters.limit ?? 50));
+   821→   821→  const offset = Math.max(0, filters.offset ?? 0);
+   822→   822→
+   823→   823→  const where: {
+   824→   824→    brandId?: string;
+   825→   825→    categoryId?: string;
+   826→   826→    source?: string;
+   827→   827→    status?: string;
+   828→   828→  } = {};
+   829→   829→  if (filters.brandId) where.brandId = filters.brandId;
+   830→   830→  if (filters.categoryId) where.categoryId = filters.categoryId;
+   831→   831→  if (filters.source) where.source = filters.source;
+   832→   832→  if (filters.status) where.status = filters.status;
+   833→   833→
+   834→   834→  const [rows, total] = await Promise.all([
+   835→   835→    db.priceObservation.findMany({
+   836→   836→      where,
+   837→   837→      orderBy: { observedAt: "desc" },
+   838→   838→      take: limit,
+   839→   839→      skip: offset,
+   840→   840→      include: {
+   841→   841→        listing: { select: { id: true , title: true, slug: true } },
+   842→   842→        brand: { select: { id: true , name: true } },
+   843→   843→        category: { select: { id: true , name: true } },
+   844→   844→      },
+   845→   845→    }),
+   846→   846→    db.priceObservation.count({ where }),
+   847→   847→  ]);
+   848→   848→
+   849→   849→  return {
+   850→   850→    rows: rows.map((r) => ({
+   851→   851→      id: r.id,
+   852→   852→      listingId: r.listingId,
+   853→   853→      listingTitle: r.listing?.title ?? null,
+   854→   854→      listingSlug: r.listing?.slug ?? null,
+   855→   855→      brandId: r.brandId,
+   856→   856→      brandName: r.brand?.name ?? null,
+   857→   857→      categoryId: r.categoryId,
+   858→   858→      categoryName: r.category?.name ?? null,
+   859→   859→      askingPrice: r.askingPrice != null ? Number(r.askingPrice) : null,
+   860→   860→      estimatedPrice: r.estimatedPrice,
+   861→   861→      priceLower: r.priceLower,
+   862→   862→      priceUpper: r.priceUpper,
+   863→   863→      currency: r.currency,
+   864→   864→      source: r.source,
+   865→   865→      sourceType: r.sourceType,
+   866→   866→      observedAt: r.observedAt.toISOString(),
+   867→   867→      quality: r.quality,
+   868→   868→      status: r.status,
+   869→   869→      confidence: r.confidence,
+   870→   870→      comparableCount: r.comparableCount,
+   871→   871→      notes: r.notes,
+   872→   872→    })),
+   873→   873→    total,
+   874→   874→    limit,
+   875→   875→    offset,
+   876→   876→  };
+   877→   877→}
+   878→   878→
+   879→   879→/* ─────────── listOverrides (admin) ─────────── */
+   880→   880→
+   881→   881→export async function listOverrides(limit = 100) {
+   882→   882→  const rows = await db.priceOverride.findMany({
+   883→   883→    orderBy: { overriddenAt: "desc" },
+   884→   884→    take: Math.max(1, Math.min(500, limit)),
+   885→   885→    include: {
+   886→   886→      listing: { select: { id: true , title: true, slug: true } },
+   887→   887→    },
+   888→   888→  });
+   889→   889→  return rows.map((r) => ({
+   890→   890→    id: r.id,
+   891→   891→    listingId: r.listingId,
+   892→   892→    listingTitle: r.listing?.title ?? null,
+   893→   893→    listingSlug: r.listing?.slug ?? null,
+   894→   894→    originalEstimate: r.originalEstimate,
+   895→   895→    overridePrice: r.overridePrice,
+   896→   896→    reason: r.reason,
+   897→   897→    overriddenBy: r.overriddenBy,
+   898→   898→    overriddenAt: r.overriddenAt.toISOString(),
+   899→   899→  }));
+   900→   900→}
+   901→   901→
