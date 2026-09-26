@@ -1,75 +1,136 @@
-import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
-import { revalidateTag } from 'next/cache';
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { uniqueSlug } from "@/lib/api-helpers";
-import { requireAdmin } from "@/lib/admin-guard";
+/**
+ * HEAVIX — Phase 3-3C: Content Engine API — Article Detail
+ *
+ * GET    /api/admin/articles/:id   — fetch a single article
+ * PATCH  /api/admin/articles/:id   — update an article
+ * DELETE /api/admin/articles/:id   — archive (soft delete)
+ *
+ * Permission gate: `content.manage`
+ *   Mutations route through content-service.ts, which writes
+ *   `content.article.{update,archive}` audit rows via logAudit.
+ */
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import { NextResponse, type NextRequest } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { can } from '@/lib/authorization';
+import {
+  updateArticle,
+  archiveArticle,
+  type ArticleStatus,
+} from '@/lib/content-service';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-/* PATCH /api/admin/articles/[id] */
-export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// ── Auth helper (same gate as the list route) ─────────────
+async function requireContentManager() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return {
+      user: null,
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
   }
+  const allowed = await can(user.id, 'content.manage');
+  if (!allowed) {
+    return {
+      user: null,
+      response: NextResponse.json(
+        { error: 'Forbidden: requires content.manage' },
+        { status: 403 },
+      ),
+    };
+  }
+  return { user, response: null };
+}
+
+// ── GET /api/admin/articles/:id ───────────────────────────
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { response } = await requireContentManager();
+  if (response) return response;
+
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-    const existing = await db.article.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-    const data: any = {};
-    const allowed = [
-      "title", "excerpt", "content", "category", "tags", "coverImage",
-      "status",
-    ];
-    for (const k of allowed) {
-      if (k in body) data[k] = body[k] === undefined ? null : body[k];
+    // Lazy-import db to keep the auth helper side-effect-free at
+    // module load (db import triggers Prisma client init).
+    const { db } = await import('@/lib/db');
+    const article = await db.article.findUnique({ where: { id } });
+    if (!article) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    if (body.status === "PUBLISHED" && existing.status !== "PUBLISHED") {
-      data.publishedAt = new Date();
-    }
-    if (body.title && body.title !== existing.title && !body.slug) {
-      data.slug = await uniqueSlug(db.article, body.title);
-    } else if (body.slug && body.slug !== existing.slug) {
-      data.slug = await uniqueSlug(db.article, body.slug);
-    }
-
-    const article = await db.article.update({ where: { id }, data });
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles/id] revalidateTag failed:', e); }
-
     return NextResponse.json({ ok: true, article });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: err?.message ?? 'Server error' },
       { status: 500 },
     );
   }
 }
 
-/* DELETE /api/admin/articles/[id] */
-export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+// ── PATCH /api/admin/articles/:id ─────────────────────────
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { user, response } = await requireContentManager();
+  if (response) return response;
+
   try {
     const { id } = await params;
-    await db.article.delete({ where: { id } });
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) { console.error('[articles/id] revalidateTag failed:', e); }
+    const body = await req.json().catch(() => ({}));
 
-    return NextResponse.json({ ok: true });
+    // Allow callers that still send the legacy `content` field name
+    // (the old admin articles form does) — normalise to `body`.
+    const normalised: any = { ...body };
+    if (body.body === undefined && body.content !== undefined) {
+      normalised.body = body.content;
+    }
+    // Allow `category` field-name as alias for `categoryId`.
+    if (body.categoryId === undefined && body.category !== undefined) {
+      normalised.categoryId = body.category;
+    }
+
+    const article = await updateArticle(
+      id,
+      {
+        title: normalised.title,
+        slug: normalised.slug,
+        body: normalised.body,
+        excerpt: normalised.excerpt,
+        categoryId: normalised.categoryId,
+        brandId: normalised.brandId,
+        status: normalised.status as ArticleStatus | undefined,
+        tags: normalised.tags,
+        coverImage: normalised.coverImage,
+      },
+      user.id,
+    );
+
+    return NextResponse.json({ ok: true, article });
   } catch (err: any) {
+    const status = err?.statusCode ?? 500;
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { error: err?.message ?? 'Server error' },
+      { status },
+    );
+  }
+}
+
+// ── DELETE /api/admin/articles/:id ────────────────────────
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { user, response } = await requireContentManager();
+  if (response) return response;
+
+  try {
+    const { id } = await params;
+    const article = await archiveArticle(id, user.id);
+    return NextResponse.json({ ok: true, article });
+  } catch (err: any) {
+    const status = err?.statusCode ?? 500;
+    return NextResponse.json(
+      { error: err?.message ?? 'Server error' },
+      { status },
     );
   }
 }

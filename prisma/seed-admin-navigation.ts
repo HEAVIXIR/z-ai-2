@@ -162,6 +162,22 @@ const STANDALONES: Standalone[] = [
   { key: 'store-inventory', titleFa: 'موجودی', href: '/admin/store/inventory', icon: 'Boxes', sortOrder: 14.1, permissionKey: 'inventory.read' },
   { key: 'store-returns', titleFa: 'مرتجعات', href: '/admin/store/returns', icon: 'Undo2', sortOrder: 14.2, permissionKey: 'returns.read' },
   { key: 'store-shipments', titleFa: 'محموله‌ها', href: '/admin/store/shipments', icon: 'Truck', sortOrder: 14.3, permissionKey: 'shipping.read' },
+  // ── Wave 3A: Media Infrastructure — canonical media library ──
+  // New canonical media library backed by src/lib/media-service.ts
+  // (filesystem + sidecar JSON metadata). Differs from the legacy
+  // /admin/media browser: stores alt text, entityType/entityId,
+  // uploader id; supports per-asset delete via /api/admin/media/[id].
+  // Uses the canonical `media.upload` gate (the API routes
+  // /api/admin/media + /api/admin/media/[id] enforce media.upload /
+  // media.manage). ADMIN gets them via the [...PERMISSIONS] spread.
+  { key: 'media-library', titleFa: 'کتابخانه رسانه', href: '/admin/media-library', icon: 'Images', sortOrder: 14.5, permissionKey: 'media.upload' },
+  // ── Phase 3-3C: Content Engine — canonical articles admin ──
+  // Standalone nav entry pointing to the /admin/articles content
+  // engine. Uses the canonical `content.manage` permission gate
+  // (the API routes /api/admin/articles + /api/admin/articles/[id]
+  // enforce content.manage; ADMIN gets it via the [...PERMISSIONS]
+  // spread). Icon: FileText (added to AdminSidebarNav ICON_MAP).
+  { key: 'articles', titleFa: 'مقالات', href: '/admin/articles', icon: 'FileText', sortOrder: 14.6, permissionKey: 'content.manage' },
 ];
 
 async function main() {

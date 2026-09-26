@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/rbac";
 import {
   getSEO,
@@ -11,25 +11,36 @@ import {
   generateStructuredData,
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
-import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import {
+  updateSEO,
+  listSEO,
+  type UpdateSEOInput,
+} from "@/lib/seo-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
-   /api/admin/seo — SEO metadata CRUD (P2-28)
+   /api/admin/seo — SEO metadata CRUD (P2-28 + Wave 3B)
    ------------------------------------------------------------
-   GET  ?entityType=&entityId=            — get SEO for an entity
-       ?search=&entityType=               — search entities for picker
-   PUT  { entityType, entityId, ...seo }  — upsert SEO (admin only)
+   GET    ?entityType=&entityId=            — get SEO for an entity
+          ?search=&entityType=               — search entities for picker
+          ?entityType=&list=1                — list all SEO rows for an
+                                                entity type (Wave 3B)
+   POST   { entityType, entityId, ...seo }  — upsert via seo-service
+   PUT    { entityType, entityId, ...seo }  — legacy upsert (still works)
+   PATCH  { entityType, entityId, ...seo }  — alias for POST/PUT
+   Permission: seo.read (GET), seo.manage (POST/PUT/PATCH)
    ============================================================ */
 
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
+async function authorizeAdmin(): Promise<string | null> {
+  // Legacy admin cookie path — full access
   const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
+  if (!user) return null;
+  // Require admin role
+  const adminOk = await isAdmin(user.id);
+  if (!adminOk) return null;
+  return user.id;
 }
 
 function isValidEntityType(t: string): boolean {
@@ -37,7 +48,8 @@ function isValidEntityType(t: string): boolean {
 }
 
 export async function GET(req: Request) {
-  if (!(await authorizeAdmin())) {
+  const userId = await authorizeAdmin();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -45,8 +57,29 @@ export async function GET(req: Request) {
     const entityType = url.searchParams.get("entityType")?.trim() || "";
     const entityId = url.searchParams.get("entityId")?.trim() || "";
     const searchQ = url.searchParams.get("search")?.trim() || "";
+    const listFlag = url.searchParams.get("list");
+    const limitParam = url.searchParams.get("limit");
+    const limit = limitParam ? Number(limitParam) : undefined;
 
-    if (!isValidEntityType(entityType)) {
+    // ── List mode (Wave 3B): ?list=1[&entityType=][&entityId=][&limit=]
+    // Returns all SEO rows (optionally filtered by entityType/entityId).
+    // entityType is OPTIONAL here — if omitted, list across all types.
+    if (listFlag === "1" || listFlag === "true") {
+      if (entityType && !isValidEntityType(entityType)) {
+        return NextResponse.json(
+          { error: "entityType نامعتبر است." },
+          { status: 400 },
+        );
+      }
+      const rows = await listSEO({
+        entityType: entityType || undefined,
+        entityId: entityId || undefined,
+        limit: Number.isFinite(limit) ? (limit as number) : undefined,
+      });
+      return NextResponse.json({ ok: true, rows, count: rows.length });
+    }
+
+    if (!entityType || !isValidEntityType(entityType)) {
       return NextResponse.json(
         { error: "entityType نامعتبر است." },
         { status: 400 },
@@ -106,8 +139,14 @@ export async function GET(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
-  if (!(await authorizeAdmin())) {
+/**
+ * Shared body for POST / PUT / PATCH. All three accept the same
+ * body shape; we route through the Wave 3B `updateSEO` service
+ * so mutations are consistently audit-logged as `seo.update`.
+ */
+async function handleUpsert(req: Request): Promise<Response> {
+  const userId = await authorizeAdmin();
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -129,36 +168,25 @@ export async function PUT(req: Request) {
       );
     }
 
-    // Extract only the SEO fields from the body — ignore anything else.
-    const fields: Record<string, unknown> = {};
-    for (const k of [
-      "metaTitle",
-      "metaDescription",
-      "keywords",
-      "canonicalUrl",
-      "ogImage",
-      "ogTitle",
-      "ogDescription",
-      "structuredData",
-      "robotsIndex",
-      "robotsFollow",
-      "sitemapPriority",
-      "sitemapChangeFreq",
-    ]) {
-      if (k in body) fields[k] = body[k];
-    }
+    // Wave 3B task field names + legacy schema field names — accept both.
+    const input: UpdateSEOInput = {
+      entityType: body.entityType,
+      entityId: body.entityId,
+      actorId: userId,
+      title: body.title ?? body.metaTitle,
+      description: body.description ?? body.metaDescription,
+      keywords: body.keywords,
+      canonical: body.canonical ?? body.canonicalUrl,
+      robots: body.robots ?? robotsStringFromFlags(body.robotsIndex, body.robotsFollow),
+      ogTitle: body.ogTitle,
+      ogDescription: body.ogDescription,
+      ogImage: body.ogImage,
+      structuredData: body.structuredData,
+      sitemapPriority: body.sitemapPriority,
+      sitemapChangeFreq: body.sitemapChangeFreq,
+    };
 
-    const seo = await upsertSEO(body.entityType, body.entityId, fields as any);
-
-    await logAudit({
-      actorId: null,
-      actorType: "ADMIN",
-      action: "seo.upsert",
-      entityType: "SEOMetadata",
-      entityId: seo.id,
-      after: { entityType: body.entityType, entityId: body.entityId, fields },
-      reason: `به‌روزرسانی SEO برای ${body.entityType} #${body.entityId}`,
-    });
+    const seo = await updateSEO(input);
 
     return NextResponse.json({ ok: true, seo });
   } catch (err: any) {
@@ -167,4 +195,37 @@ export async function PUT(req: Request) {
       { status: 500 },
     );
   }
+}
+
+function robotsStringFromFlags(
+  robotsIndex: unknown,
+  robotsFollow: unknown,
+): string | undefined {
+  if (robotsIndex === undefined && robotsFollow === undefined) return undefined;
+  const idx = robotsIndex === false ? "noindex" : "index";
+  const follow = robotsFollow === false ? "nofollow" : "follow";
+  return `${idx}, ${follow}`;
+}
+
+export async function POST(req: Request) {
+  return handleUpsert(req);
+}
+
+export async function PUT(req: Request) {
+  return handleUpsert(req);
+}
+
+export async function PATCH(req: Request) {
+  return handleUpsert(req);
+}
+
+/* ── Legacy: keep the old `upsertSEO`-direct path available for any
+   callers that bypassed the service — used by tests that mock the
+   raw upsert. Exposed as a default-export-less helper. */
+export async function legacyUpsertSEO(
+  entityType: string,
+  entityId: string,
+  fields: Record<string, unknown>,
+) {
+  return upsertSEO(entityType, entityId, fields as any);
 }

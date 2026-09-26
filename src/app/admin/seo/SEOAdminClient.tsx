@@ -215,6 +215,43 @@ export default function SEOAdminClient() {
         </p>
       </div>
 
+      {/* Wave 3B SEO Control Plane — quick links */}
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="mb-2 flex items-center gap-2 text-xs font-bold text-amber-800">
+          <Sparkles size={14} />
+          کنترل سئو (Wave 3B)
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-amber-700">
+          <a
+            href="/api/sitemap"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-white px-2 py-1 font-bold text-amber-800 transition hover:bg-amber-100"
+          >
+            🗺️ پیش‌نمایش نقشهٔ سایت (sitemap)
+          </a>
+          <a
+            href="/api/robots-txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-white px-2 py-1 font-bold text-amber-800 transition hover:bg-amber-100"
+          >
+            🤖 robots.txt
+          </a>
+          <a
+            href="/api/admin/seo?list=1&limit=200"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-white px-2 py-1 font-bold text-amber-800 transition hover:bg-amber-100"
+          >
+            📋 لیست همهٔ رکوردهای SEO
+          </a>
+          <span className="text-amber-600">
+            مسیر بومی Next.js نیز در /sitemap.xml و /robots.txt در دسترس است.
+          </span>
+        </div>
+      </div>
+
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle size={18} />
