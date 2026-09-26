@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { runModerationBatch } from "@/lib/moderation";
 import { logAudit } from "@/lib/audit";
 
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
    ------------------------------------------------------------
    GET  — list flagged listings (riskScore > 0.5 in their latest
           ModerationLog) + the moderation stats summary.
+          Permission: moderation.read
 
    POST — three actions, dispatched by `body.action`:
      • { action: "scan", limit? }      — run moderation batch.
@@ -21,21 +22,24 @@ export const dynamic = "force-dynamic";
      • { action: "reject", listingId, reason? }
                                         — human rejects a flagged listing
                                           (sets status to REJECTED).
+   Permission: moderation.moderate
 
-   Admin-only. Uses the dual-path authorization pattern: legacy
-   admin-cookie OR user session with ADMIN role.
+   Uses the Store 2A authorization pattern:
+     getCurrentUser() → 401 → requirePermission → 403
    ============================================================ */
 
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
-
 export async function GET(req: Request) {
-  if (!(await authorizeAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "moderation.read");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires moderation.read" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -128,8 +132,17 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (!(await authorizeAdmin())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "moderation.moderate");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires moderation.moderate" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -150,9 +163,9 @@ export async function POST(req: Request) {
       const result = await runModerationBatch(limit);
 
       await logAudit({
-        actorId: null,
+        actorId: user.id,
         actorType: "ADMIN",
-        action: "moderation.scan_run",
+        action: "marketplace.moderation.scan_run",
         entityType: "ModerationLog",
         entityId: null,
         after: result,
@@ -210,12 +223,10 @@ export async function POST(req: Request) {
         data: { status: newStatus },
       });
 
-      const user = await getCurrentUser().catch(() => null);
-
       await logAudit({
-        actorId: user?.id ?? null,
+        actorId: user.id,
         actorType: "ADMIN",
-        action: `moderation.${action}`,
+        action: `marketplace.moderation.${action}`,
         entityType: "Listing",
         entityId: listingId,
         before: { status: listing.status },

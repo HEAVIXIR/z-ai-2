@@ -93,7 +93,7 @@ export default function AdminProcurementPage() {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`/api/admin/procurement?${params}`);
+      const res = await fetch(`/api/admin/store/procurement?${params}`);
       const json = await res.json();
       if (json.success) {
         setItems(json.data || []);
@@ -134,11 +134,18 @@ export default function AdminProcurementPage() {
     if (selected.size === 0) return;
     setActing(true);
     try {
-      await fetch("/api/admin/procurement", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: Array.from(selected), status }),
-      });
+      // The store procurement API doesn't support a bulk POST endpoint —
+      // bulk status change is implemented as a fan-out of PATCH calls.
+      const ids = Array.from(selected);
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/store/procurement/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          }),
+        ),
+      );
       setSelected(new Set());
       flash("عملیات گروهی انجام شد");
       await load();
@@ -152,7 +159,7 @@ export default function AdminProcurementPage() {
     if (!confirm(`${msg}آیا مطمئن هستید؟`)) return;
     setBusyId(r.id);
     try {
-      const res = await fetch(`/api/admin/procurement/${r.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/store/procurement/${r.id}`, { method: "DELETE" });
       const json = await res.json();
       if (json.success) {
         flash("مناقصه حذف شد");
@@ -174,10 +181,6 @@ export default function AdminProcurementPage() {
 
   return (
     <div className="space-y-6">
-      {/* Track A P1: This is a stub UI — no backend API exists yet */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        ⚠️ این صفحه یک رابط کاربری نمایشی است. backend مربوط به مناقصات هنوز پیاده‌سازی نشده است.
-      </div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
@@ -486,7 +489,7 @@ function EditProcurementModal({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/procurement/${procurement.id}`, {
+      const res = await fetch(`/api/admin/store/procurement/${procurement.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

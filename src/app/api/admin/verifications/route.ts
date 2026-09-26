@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/api-helpers";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 
@@ -9,10 +10,21 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/admin/verifications?status=PENDING
  * Returns verification queue for admin trust center.
+ * Permission: company.verify
  */
 export async function GET(req: Request) {
-  const auth = await requireAdmin();
-  if (auth !== true) return auth;
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "company.verify");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.verify" },
+      { status: 403 },
+    );
+  }
 
   try {
     const url = new URL(req.url);
@@ -36,10 +48,21 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/verifications — create a new verification request
  * Body: { companyId, verificationType, evidence?, notes? }
+ * Permission: company.verify
  */
 export async function POST(req: Request) {
-  const auth = await requireAdmin();
-  if (auth !== true) return auth;
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "company.verify");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.verify" },
+      { status: 403 },
+    );
+  }
 
   try {
     const body = await req.json();
@@ -60,8 +83,9 @@ export async function POST(req: Request) {
     });
 
     await logAudit({
+      actorId: user.id,
       actorType: "ADMIN",
-      action: "verification.create",
+      action: "company.verification.create",
       entityType: "CompanyVerification",
       entityId: verif.id,
       after: { companyId, verificationType, status: "PENDING" },

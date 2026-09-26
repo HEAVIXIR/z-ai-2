@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/api-helpers";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 
@@ -23,10 +24,22 @@ const ALLOWED_STATUSES = ["VERIFIED", "REJECTED", "UNDER_REVIEW", "EXPIRED", "RE
  *
  * When status = REJECTED:
  *   - Sets reviewedAt = now, reviewedBy = admin
+ *
+ * Permission: company.verify
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdmin();
-  if (auth !== true) return auth;
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "company.verify");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.verify" },
+      { status: 403 },
+    );
+  }
 
   try {
     const { id } = await params;
@@ -88,8 +101,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     await logAudit({
+      actorId: user.id,
       actorType: "ADMIN",
-      action: "verification.moderate",
+      action: "company.verification.moderate",
       entityType: "CompanyVerification",
       entityId: id,
       before: { status: existing.status },

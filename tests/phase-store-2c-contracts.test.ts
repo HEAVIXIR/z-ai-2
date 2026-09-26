@@ -50,7 +50,7 @@ function readRoute(rel: string): string {
   return fs.readFileSync(rel, 'utf8');
 }
 
-// ── Expected action keys (from 2B inventory) ──
+// ── Expected action keys (from 2B inventory + T2-W2 store domains) ──
 const EXPECTED_ACTION_KEYS = [
   'store.ai_scraper.import',
   'store.brand.create',
@@ -64,6 +64,7 @@ const EXPECTED_ACTION_KEYS = [
   'store.category.update',
   'store.currency_rate.update',
   'store.currency_setting.update',
+  'store.inventory.movement.create',
   'store.mechanic.create',
   'store.mechanic.delete',
   'store.mechanic.update',
@@ -72,6 +73,11 @@ const EXPECTED_ACTION_KEYS = [
   'store.part.delete',
   'store.part.update',
   'store.payment.update',
+  'store.procurement.create',
+  'store.procurement.delete',
+  'store.procurement.update',
+  'store.return.create',
+  'store.return.update',
   'store.supplier.create',
   'store.supplier.delete',
   'store.supplier.update',
@@ -83,12 +89,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 20 admin store route files', () => {
+    it('should have exactly 26 admin store route files', () => {
       const files = listRouteFiles();
-      expect(files.length).toBe(20);
+      expect(files.length).toBe(26);
     });
 
-    it('should have 37 requirePermission calls across all store routes', () => {
+    it('should have 49 requirePermission calls across all store routes', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -96,10 +102,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(37);
+      expect(count).toBe(49);
     });
 
-    it('should have 15 store.read requirePermission calls', () => {
+    it('should have 21 store.read requirePermission calls', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -107,10 +113,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.read'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(15);
+      expect(count).toBe(21);
     });
 
-    it('should have 22 store.manage requirePermission calls', () => {
+    it('should have 28 store.manage requirePermission calls', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -118,7 +124,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,\s*'store\.manage'\)/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(22);
+      expect(count).toBe(28);
     });
 
     it('every admin store route imports requirePermission from @/lib/authorization', () => {
@@ -205,7 +211,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 30 logAudit calls across all store routes', () => {
+    it('should have 37 logAudit calls across all store routes', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -213,10 +219,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/await logAudit\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(30);
+      expect(count).toBe(37);
     });
 
-    it('should have 28 storeDb mutation calls (create/update/delete/upsert)', () => {
+    it('should have 35 storeDb mutation calls (create/update/delete/upsert)', () => {
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -224,7 +230,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/storeDb\.\w+\.(create|update|delete|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(28);
+      expect(count).toBe(35);
     });
 
     it('every mutation route file imports logAudit from @/lib/audit', () => {
@@ -402,7 +408,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (30) >= total mutations (28)', () => {
+    it('total audits (37) >= total mutations (35)', () => {
       const files = listRouteFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -414,16 +420,16 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += auditMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(28);
-      expect(totalAudit).toBe(30);
+      expect(totalMut).toBe(35);
+      expect(totalAudit).toBe(37);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 6. ACTION KEY COVERAGE (23 unique keys)
+  // 6. ACTION KEY COVERAGE (29 unique keys)
   // ═══════════════════════════════════════════════════════════════
   describe('6. Action Key Coverage', () => {
-    it('should have all 23 expected action keys', () => {
+    it('should have all 29 expected action keys', () => {
       const files = listRouteFiles();
       const foundKeys = new Set<string>();
       for (const f of files) {
@@ -436,18 +442,22 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(23);
+      expect(foundKeys.size).toBe(29);
     });
 
-    it('action keys follow the store.<entity>.<operation> convention', () => {
+    it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
       const files = listRouteFiles();
       for (const f of files) {
         const content = readRoute(f);
         const matches = content.matchAll(/action:\s*['"](store\.[^'"]+)['"]/g);
         for (const m of matches) {
           const key = m[1];
-          // Must match store.<entity>.<operation> where operation is create/update/delete/import
-          expect(key).toMatch(/^store\.\w+\.(create|update|delete|import)$/);
+          // Must match store.<entity>(.<subentity>)*.<operation>
+          // where operation is create/update/delete/import. This
+          // supports nested entity names like
+          // `store.inventory.movement.create` (T2-W2-A inventory
+          // movement ledger) — the .<sub> part can repeat.
+          expect(key).toMatch(/^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import)$/);
         }
       }
     });

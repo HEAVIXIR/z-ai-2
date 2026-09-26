@@ -382,6 +382,44 @@ exports.Prisma.SupplierScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.StockMovementScalarFieldEnum = {
+  id: 'id',
+  partId: 'partId',
+  type: 'type',
+  quantity: 'quantity',
+  balanceAfter: 'balanceAfter',
+  reason: 'reason',
+  reference: 'reference',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.ReturnScalarFieldEnum = {
+  id: 'id',
+  orderId: 'orderId',
+  reason: 'reason',
+  status: 'status',
+  inspection: 'inspection',
+  resolution: 'resolution',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.ProcurementRequestScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  description: 'description',
+  quantity: 'quantity',
+  budgetMin: 'budgetMin',
+  budgetMax: 'budgetMax',
+  deadline: 'deadline',
+  status: 'status',
+  supplierId: 'supplierId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -413,7 +451,10 @@ exports.Prisma.ModelName = {
   Coupon: 'Coupon',
   WalletTransaction: 'WalletTransaction',
   Notification: 'Notification',
-  Supplier: 'Supplier'
+  Supplier: 'Supplier',
+  StockMovement: 'StockMovement',
+  Return: 'Return',
+  ProcurementRequest: 'ProcurementRequest'
 };
 
 /**

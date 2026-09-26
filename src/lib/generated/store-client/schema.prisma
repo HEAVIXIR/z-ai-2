@@ -150,9 +150,10 @@ model Part {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
-  orderItems OrderItem[]
-  reviews    Review[]
-  wishlists  Wishlist[]
+  orderItems     OrderItem[]
+  reviews        Review[]
+  wishlists      Wishlist[]
+  stockMovements StockMovement[]
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +190,7 @@ model Order {
   items    OrderItem[]
   payments Payment[]
   shipment Shipment?
+  returns  Return[]
 }
 
 model OrderItem {
@@ -359,6 +361,8 @@ model Supplier {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  procurements ProcurementRequest[]
 }
 
 // ---------------------------------------------------------------------------
@@ -369,3 +373,75 @@ model Supplier {
 // read from, different field shape from main schema). Removed for clarity.
 // See: docs/STORE-MARKETPLACE-CONTROL-PLANE.md for cross-DB audit design.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// T2-W2-A — INVENTORY MOVEMENT LEDGER
+// Architecture: Warehouse → InventoryBalance (Part.stock snapshot) →
+// StockMovement (append-only ledger of RECEIVE/SALE/RETURN/TRANSFER/
+// ADJUSTMENT/DAMAGE). Every mutation to Part.stock MUST be recorded as a
+// StockMovement so the ledger reconstructs the balance at any point in time.
+// ---------------------------------------------------------------------------
+model StockMovement {
+  id           String   @id @default(cuid())
+  partId       String
+  part         Part     @relation(fields: [partId], references: [id])
+  type         String // RECEIVE | SALE | RETURN | TRANSFER | ADJUSTMENT | DAMAGE
+  quantity     Int // positive for in, negative for out
+  balanceAfter Int // snapshot of Part.stock after this movement
+  reason       String?
+  reference    String? // order ID, PO ID, etc
+  createdBy    String?
+  createdAt    DateTime @default(now())
+
+  @@index([partId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// T2-W2-B — RETURNS
+// Architecture: Return → Order → Items → Reason → Status → Inspection →
+// Resolution → Refund → Audit. A Return is a customer-initiated request to
+// send back items from a delivered order. Status flows REQUESTED → APPROVED
+// → INSPECTED → RESOLVED (or REJECTED at any stage).
+// ---------------------------------------------------------------------------
+model Return {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  reason     String
+  status     String   @default("REQUESTED") // REQUESTED | APPROVED | INSPECTED | RESOLVED | REJECTED
+  inspection String? // notes from inspection step
+  resolution String? // REFUND | EXCHANGE | REJECT
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// T2-W2-C — PROCUREMENT (B2B tender)
+// ProcurementRequest represents an internal purchasing need: a part/service
+// the store wants to source. Status flows DRAFT → PUBLISHED → QUOTING →
+// AWARDED → COMPLETED (or CANCELLED). Optionally linked to a Supplier once
+// awarded. The admin page at /admin/procurement manages this lifecycle.
+// ---------------------------------------------------------------------------
+model ProcurementRequest {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  quantity    Int
+  budgetMin   Float?
+  budgetMax   Float?
+  deadline    DateTime?
+  status      String    @default("DRAFT") // DRAFT | PUBLISHED | QUOTING | AWARDED | COMPLETED | CANCELLED
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([supplierId])
+}
