@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -155,8 +154,8 @@ export async function GET(req: NextRequest) {
         })
       : Promise.resolve([]),
   ]);
-  const brandMap = new Map(brands.map((b) => [b.id, b]));
-  const categoryMap = new Map(categories.map((c) => [c.id, c]));
+  const brandMap = new Map(brands.map((b) => [b.id, b] as [string, typeof b]));
+  const categoryMap = new Map(categories.map((c) => [c.id, c] as [string, typeof c]));
   const rowsWithRelations = rows.map((r) => ({
     ...r,
     brand: r.brandId ? brandMap.get(r.brandId) ?? null : null,

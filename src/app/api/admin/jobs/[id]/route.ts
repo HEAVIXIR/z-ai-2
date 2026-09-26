@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextResponse } from "next/server";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/rbac";
@@ -85,7 +84,7 @@ export async function PATCH(req: Request, { params }: Params) {
       if (!before) {
         return NextResponse.json({ error: "Job not found" }, { status: 404 });
       }
-      const result = cancelJob(id);
+      const result = cancelJob(id) as any;
       if (!result.ok) {
         return NextResponse.json(
           {

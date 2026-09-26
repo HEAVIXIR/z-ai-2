@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 /**
  * HEAVIX — STEP 14.5: Rollback (FIXED — creates NEW version, never overwrites)
  * POST /api/admin/pages/:id/rollback
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       pageId,
       version: newVersionNumber,
       status: 'PUBLISHED',
-      layout: targetVersion.layout, // copy layout from target version
+      layout: targetVersion.layout as any, // copy layout from target version
       changeLog: `Rollback to version ${targetVersion.version}`,
       createdBy: user.id,
       publishedAt: new Date(),

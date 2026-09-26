@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -103,7 +102,7 @@ export async function POST(req: Request) {
         prompt,
         durationSec: Number(durationSec) || 5,
         resolution: resolution || "720x1440",
-      }).catch((e) =>
+      } as any).catch((e) =>
         console.error("[admin/social-reels] background generation error:", e),
       );
       return NextResponse.json({
@@ -119,7 +118,7 @@ export async function POST(req: Request) {
       prompt,
       durationSec: Number(durationSec) || 5,
       resolution: resolution || "720x1440",
-    });
+    } as any);
 
     return NextResponse.json({ success: true, reel: result });
   } catch (e: any) {

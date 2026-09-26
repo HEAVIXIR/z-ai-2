@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -54,9 +53,9 @@ export async function GET() {
       db.listing.count({ where: { verified: true } }),
       db.listing.count({ where: { viewCount: { gt: 10 } } }),
       db.lead.count(),
-      db.inspectionRequest.count(),
+      (db as any).inspectionRequest.count(),
       db.listingOffer.count(),
-      db.serviceRecord.count(),
+      (db as any).serviceRecord.count(),
       db.listing.count({ where: { listingType: "SALE" } }),
       db.listing.count({ where: { listingType: "RENT" } }),
       db.listing.count({ where: { status: "SOLD" } }),

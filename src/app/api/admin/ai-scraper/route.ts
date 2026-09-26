@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
@@ -371,7 +370,7 @@ async function generateAIListingImage(title: string, brand?: string): Promise<st
       await new Promise(r => setTimeout(r, 1000)); // small delay to avoid rate limit
       const res = await zai.images.generations.create({
         prompt: genPrompt,
-        size: "1280x720",
+        size: "1280x720" as any,
       });
       const b64 = res.data?.[0]?.base64;
       if (b64) {
@@ -636,7 +635,7 @@ ${focusHint}
           condition: s.condition,
           description: s.description,
           phone: randomPhone(),
-          images: [], // NO static images — AI image will be generated on import
+          images: [] as string[], // NO static images — AI image will be generated on import
           sourceSite: "تولید هوش مصنوعی",
           sourceUrl: "",
           brandMatch,
