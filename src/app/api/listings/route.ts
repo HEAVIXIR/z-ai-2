@@ -20,6 +20,10 @@ export const dynamic = "force-dynamic";
 /* GET /api/listings — PUBLIC listing search. No auth required.
    Query:
      ?q=&page=&limit=&category=&brand=&city=
+     ?priceMin=&priceMax=         (Phase 4 deepening — price range, BigInt-able)
+     ?condition=NEW|USED|REFURBISHED
+     ?yearMin=&yearMax=           (Int year range)
+     ?sort=newest|oldest|price-asc|price-desc|featured
      ?attr.KEY_min=&attr.KEY_max=   (numeric range on attribute value)
      ?attr.KEY=val                  (SELECT optionId OR TEXT exact match;
                                      can repeat for multi-select)
@@ -36,6 +40,11 @@ export const dynamic = "force-dynamic";
    the local Prisma query (so the `attributeValues: { some: ... }`
    AND clauses can be composed) but still use the normalized helpers
    for the text/brand/category parts.
+
+   Phase 4 deepening (P4-SEARCH-DISCOVERY): the new `priceMin` /
+   `priceMax` / `condition` / `yearMin` / `yearMax` / `sort` filters
+   are applied in BOTH paths — they get forwarded to `searchListings`
+   in the fast path and are AND-claused locally in the slow path.
 */
 export async function GET(req: Request) {
   try {
@@ -46,6 +55,25 @@ export async function GET(req: Request) {
     const category = (url.searchParams.get("category") ?? "").trim();
     const brand = (url.searchParams.get("brand") ?? "").trim();
     const city = (url.searchParams.get("city") ?? "").trim();
+
+    // ── Phase 4 deepening — faceted filters (P4-SEARCH-DISCOVERY) ──
+    const priceMin = (url.searchParams.get("priceMin") ?? "").trim() || null;
+    const priceMax = (url.searchParams.get("priceMax") ?? "").trim() || null;
+    const conditionRaw = (url.searchParams.get("condition") ?? "").trim().toUpperCase();
+    const condition =
+      conditionRaw === "NEW" || conditionRaw === "USED" || conditionRaw === "REFURBISHED"
+        ? conditionRaw
+        : null;
+    const yearMinRaw = url.searchParams.get("yearMin");
+    const yearMaxRaw = url.searchParams.get("yearMax");
+    const yearMin = yearMinRaw ? Number(yearMinRaw) : null;
+    const yearMax = yearMaxRaw ? Number(yearMaxRaw) : null;
+    const sortRaw = (url.searchParams.get("sort") ?? "").trim().toLowerCase();
+    const sort: "newest" | "oldest" | "price-asc" | "price-desc" | "featured" | null =
+      sortRaw === "newest" || sortRaw === "oldest" || sortRaw === "price-asc" ||
+      sortRaw === "price-desc" || sortRaw === "featured"
+        ? sortRaw
+        : null;
 
     /* ── Dynamic attribute filters ──
        Parse `attr.KEY_min`, `attr.KEY_max`, `attr.KEY` (latter may repeat)
@@ -67,6 +95,13 @@ export async function GET(req: Request) {
         category,
         brand,
         city,
+        // Phase 4 deepening — forward faceted filters + sort.
+        priceMin,
+        priceMax,
+        condition,
+        yearMin: yearMin !== null && Number.isFinite(yearMin) ? yearMin : null,
+        yearMax: yearMax !== null && Number.isFinite(yearMax) ? yearMax : null,
+        sort,
         limit,
         offset: (page - 1) * limit,
       });
@@ -161,6 +196,30 @@ export async function GET(req: Request) {
       where.OR = where.OR ? [...where.OR, ...brandClause] : brandClause;
     }
 
+    // Phase 4 deepening — apply the same faceted filters in the slow path.
+    if (priceMin || priceMax) {
+      const priceFilter: any = {};
+      const minBi = parseBig(priceMin);
+      const maxBi = parseBig(priceMax);
+      if (minBi !== null && minBi >= 0n) priceFilter.gte = minBi;
+      if (maxBi !== null && maxBi >= 0n) priceFilter.lte = maxBi;
+      if (Object.keys(priceFilter).length > 0) {
+        where.AND = (where.AND as any[] | undefined) ?? [];
+        where.AND.push({ price: priceFilter });
+      }
+    }
+    if (condition) {
+      where.AND = (where.AND as any[] | undefined) ?? [];
+      where.AND.push({ condition });
+    }
+    if ((yearMin !== null && Number.isFinite(yearMin)) || (yearMax !== null && Number.isFinite(yearMax))) {
+      const yearFilter: any = {};
+      if (yearMin !== null && Number.isFinite(yearMin)) yearFilter.gte = yearMin;
+      if (yearMax !== null && Number.isFinite(yearMax)) yearFilter.lte = yearMax;
+      where.AND = (where.AND as any[] | undefined) ?? [];
+      where.AND.push({ year: yearFilter });
+    }
+
     // Build attribute AND clauses
     const keys = Array.from(attrKeys);
     const defs = await db.attributeDefinition.findMany({
@@ -199,13 +258,27 @@ export async function GET(req: Request) {
       where.AND.push(...andClauses);
     }
 
+    // Phase 4 deepening — sort: same mapping as the fast path
+    // (`searchListings`); falls back to featured+newest when no sort
+    // was supplied.
+    const orderBy: any =
+      sort === "oldest"
+        ? [{ createdAt: "asc" }]
+        : sort === "price-asc"
+          ? [{ price: "asc" }, { createdAt: "desc" }]
+          : sort === "price-desc"
+            ? [{ price: "desc" }, { createdAt: "desc" }]
+            : sort === "newest"
+              ? [{ createdAt: "desc" }]
+              : [{ featured: "desc" }, { createdAt: "desc" }];
+
     const [total, rows] = await Promise.all([
       db.listing.count({ where }),
       db.listing.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+        orderBy,
         include: {
           brand: {
             select: { id: true, name: true, nameEn: true, slug: true, country: true },

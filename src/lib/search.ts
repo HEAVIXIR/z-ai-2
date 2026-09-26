@@ -115,6 +115,26 @@ export function mergeOrClauses(
   return { OR: [...baseOr, ...extraOr] };
 }
 
+/**
+ * Coerce a price input (number, string, BigInt-able) to a `bigint | null`.
+ * Non-numeric / negative values are dropped (returns null) so callers
+ * can spread cleanly. Used by the Phase 4 faceted `priceMin`/`priceMax`
+ * filters in `searchListings` (and re-used by `src/lib/search-service.ts`).
+ */
+function toBigIntSafe(v: number | string | null | undefined): bigint | null {
+  if (v === null || v === undefined || v === "") return null;
+  try {
+    const n = typeof v === "string" ? v.replace(/[^\d-]/g, "") : String(v);
+    if (n === "" || n === "-") return null;
+    const bi = BigInt(n);
+    return bi < 0n ? null : bi;
+  } catch {
+    return null;
+  }
+}
+// re-export so search-service can reuse it
+export { toBigIntSafe };
+
 /* ============================================================
    Listing search
    ============================================================ */
@@ -126,6 +146,13 @@ export interface SearchListingsParams {
   transactionType?: string | null; // key (SALE | RENT | ...)
   province?: string | null; // canonical provinceId OR legacy string match
   city?: string | null; // canonical cityId OR legacy string match
+  /** Phase 4 deepening — faceted filters (P4-SEARCH-DISCOVERY) */
+  priceMin?: number | string | null; // BigInt-able
+  priceMax?: number | string | null;
+  condition?: "NEW" | "USED" | "REFURBISHED" | null;
+  yearMin?: number | null;
+  yearMax?: number | null;
+  sort?: "newest" | "oldest" | "price-asc" | "price-desc" | "featured" | null;
   limit?: number;
   offset?: number;
 }
@@ -272,13 +299,72 @@ export async function searchListings(
         ];
   }
 
+  // ── Phase 4 deepening — faceted filters (P4-SEARCH-DISCOVERY) ──
+  // Price range (BigInt column). Coerce via the same parseBig-style
+  // logic used across the codebase so callers can pass either a
+  // number, numeric string, or Persian-digit string.
+  const priceFilter: PrismaWhere = {};
+  if (params.priceMin !== null && params.priceMin !== "" && params.priceMin !== undefined) {
+    const bi = toBigIntSafe(params.priceMin);
+    if (bi !== null) priceFilter.gte = bi;
+  }
+  if (params.priceMax !== null && params.priceMax !== "" && params.priceMax !== undefined) {
+    const bi = toBigIntSafe(params.priceMax);
+    if (bi !== null) priceFilter.lte = bi;
+  }
+  if (Object.keys(priceFilter).length > 0) {
+    where.AND = [
+      ...((where.AND as PrismaWhere[] | undefined) ?? []),
+      { price: priceFilter },
+    ];
+  }
+
+  // Condition (NEW | USED | REFURBISHED)
+  if (params.condition) {
+    where.AND = [
+      ...((where.AND as PrismaWhere[] | undefined) ?? []),
+      { condition: params.condition },
+    ];
+  }
+
+  // Year range (Int column)
+  const yearFilter: PrismaWhere = {};
+  if (params.yearMin !== null && params.yearMin !== undefined) {
+    const n = Number(params.yearMin);
+    if (Number.isFinite(n)) yearFilter.gte = n;
+  }
+  if (params.yearMax !== null && params.yearMax !== undefined) {
+    const n = Number(params.yearMax);
+    if (Number.isFinite(n)) yearFilter.lte = n;
+  }
+  if (Object.keys(yearFilter).length > 0) {
+    where.AND = [
+      ...((where.AND as PrismaWhere[] | undefined) ?? []),
+      { year: yearFilter },
+    ];
+  }
+
+  // Sort — maps the user-facing sort key to a Prisma orderBy array.
+  // `featured` (default) preserves the original "featured DESC, then
+  // newest" behavior so featured ads float to the top.
+  const orderBy =
+    params.sort === "oldest"
+      ? [{ createdAt: "asc" as const }]
+      : params.sort === "price-asc"
+        ? [{ price: "asc" as const }, { createdAt: "desc" as const }]
+        : params.sort === "price-desc"
+          ? [{ price: "desc" as const }, { createdAt: "desc" as const }]
+          : params.sort === "newest"
+            ? [{ createdAt: "desc" as const }]
+            : [{ featured: "desc" as const }, { createdAt: "desc" as const }];
+
   const [total, rows] = await Promise.all([
     db.listing.count({ where: where as any }),
     db.listing.findMany({
       where: where as any,
       skip: offset,
       take: limit,
-      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+      orderBy,
       include: {
         brand: {
           select: { id: true, name: true, nameEn: true, slug: true, country: true },
