@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 
 /* POST /api/auth/login
    Body: { username, password }   → admin login
-   Body: { mobile, password }     → user login (mobile + password)
-   Body: { email, password }      → user login (email + password)
+   Body: { mobile, password }     → user login
+   Body: { email, password }      → user login
 
-   Rate-limited: LOGIN preset (10 / 15min / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
+   Admin authentication is ONLY performed through `username`.
+   Mobile/email values are NEVER retried as admin credentials.
 */
 export async function POST(req: Request) {
   try {
-    // ── Rate limit (P0-6) — applied before any DB/credential work ──
     const ip = getClientIp(req);
     const rl = rateLimit({
       key: rateLimitKey(ip, LOGIN.label),
@@ -49,8 +49,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Admin path
-    if (username) {
+    /*
+     * ADMIN PATH
+     *
+     * Important:
+     * The admin credential pair is accepted ONLY through `username`.
+     * We deliberately do not fall back from mobile/email to username.
+     */
+    if (username !== undefined && username !== null && String(username).trim()) {
       if (!validateLogin(String(username), String(password))) {
         return NextResponse.json(
           { error: "نام کاربری یا رمز عبور نادرست است" },
@@ -65,7 +71,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // User path (mobile or email)
+    /*
+     * USER PATH
+     *
+     * Users authenticate through mobile OR email.
+     * No user identifier is ever retried against admin credentials.
+     */
     if (!mobile && !email) {
       return NextResponse.json(
         { error: "شماره موبایل یا ایمیل الزامی است" },
@@ -82,19 +93,19 @@ export async function POST(req: Request) {
       },
     });
 
-    if (!user || !(await verifyPassword(String(password), user.passwordHash))) {
-      // Fallback: the identifier might actually be an admin username
-      // (e.g. "09121404927" looks like a mobile but is the admin username).
-      // Try the admin path with the mobile/email value as username.
-      const fallbackId = mobile || email;
-      if (fallbackId && validateLogin(String(fallbackId), String(password))) {
-        await createSession();
-        return NextResponse.json({
-          ok: true,
-          role: "admin",
-          message: "ورود مدیر موفقیت‌آمیز بود",
-        });
-      }
+    if (!user) {
+      return NextResponse.json(
+        { error: "کاربر یافت نشد یا رمز نادرست است" },
+        { status: 401 },
+      );
+    }
+
+    const passwordValid = await verifyPassword(
+      String(password),
+      user.passwordHash,
+    );
+
+    if (!passwordValid) {
       return NextResponse.json(
         { error: "کاربر یافت نشد یا رمز نادرست است" },
         { status: 401 },
@@ -115,9 +126,6 @@ export async function POST(req: Request) {
 
     await createUserSession(user.id);
 
-    // Return the user's role (ADMIN / SELLER / BUYER) so the client can
-    // route to the right dashboard. `role: "admin"` is reserved for the
-    // legacy admin-cookie path above.
     return NextResponse.json({
       ok: true,
       role: user.role || "BUYER",

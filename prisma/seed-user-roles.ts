@@ -6,12 +6,11 @@
    returned [] for everyone and RBAC was theoretical.
 
    This script makes RBAC real by:
-     1. Locating the admin user (mobile "09121404927" — the same mobile
-        used as `ADMIN_CREDENTIALS.username` in `src/lib/auth.ts` — OR any
-        user whose legacy `User.role` column is ADMIN/SUPERADMIN).
+     1. Locating the admin user using ADMIN_USERNAME from the environment
+        — OR any user whose legacy `User.role` column is ADMIN/SUPERADMIN.
      2. If no such user exists, creating one with the admin mobile + a
-        bcrypt hash of `ADMIN_CREDENTIALS.password` (so the username/password
-        admin can ALSO log in via the user-session path and exercise RBAC).
+        bcrypt hash of ADMIN_PASSWORD (so the admin can ALSO log in via
+        the user-session path and exercise RBAC).
      3. Upserting a UserRole(ADMIN) row for that user.
      4. Upserting a UserRole(BUYER) row for every OTHER user.
      5. Writing an AuditLog entry per assignment (actorType=SYSTEM) so the
@@ -31,10 +30,25 @@ import bcrypt from "bcryptjs";
 
 const db = new PrismaClient();
 
-/** Mobile that doubles as the admin username (see src/lib/auth.ts). */
-const ADMIN_MOBILE = process.env.ADMIN_USERNAME ?? "09121404927";
-/** Password for a freshly-created admin user (see src/lib/auth.ts). */
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "ZIASAMa6365N@";
+/*
+ * Admin credentials are read ONLY from environment variables.
+ * There are intentionally no hardcoded fallback credentials.
+ * The seed will fail closed if ADMIN_USERNAME or ADMIN_PASSWORD
+ * is not configured.
+ */
+const ADMIN_MOBILE = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_MOBILE) {
+  throw new Error(
+    "ADMIN_USERNAME is required. Refusing to use a hardcoded admin credential.",
+  );
+}
+if (!ADMIN_PASSWORD) {
+  throw new Error(
+    "ADMIN_PASSWORD is required. Refusing to use a hardcoded admin credential.",
+  );
+}
 
 /** Append an AuditLog row. Failures are non-fatal (matches src/lib/audit.ts contract). */
 async function writeAudit(params: {
@@ -87,7 +101,7 @@ async function main() {
   let adminUser = await db.user.findFirst({
     where: {
       OR: [
-        { mobile: ADMIN_MOBILE },
+        { mobile: ADMIN_MOBILE! },
         { role: { in: ["ADMIN", "admin", "SUPERADMIN", "superadmin"] } },
       ],
     },
@@ -97,13 +111,13 @@ async function main() {
   //    path too (the legacy admin-cookie path will keep working regardless).
   if (!adminUser) {
     console.log(`  • No admin user found; creating one with mobile ${ADMIN_MOBILE} …`);
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD!, 10);
     adminUser = await db.user.create({
       data: {
         firstName: "HEAVIX",
         lastName: "Admin",
         email: "admin@heavix.local",
-        mobile: ADMIN_MOBILE,
+        mobile: ADMIN_MOBILE!,
         passwordHash,
         userType: "INDIVIDUAL",
         role: "ADMIN",
@@ -118,7 +132,7 @@ async function main() {
       action: "user.create",
       entityType: "User",
       entityId: adminUser.id,
-      reason: "RBAC seed: bootstrapped admin user (mobile matched ADMIN_CREDENTIALS.username)",
+      reason: "RBAC seed: bootstrapped admin user using ADMIN_USERNAME",
       after: { id: adminUser.id, mobile: adminUser.mobile, email: adminUser.email, role: adminUser.role },
     });
   } else {
