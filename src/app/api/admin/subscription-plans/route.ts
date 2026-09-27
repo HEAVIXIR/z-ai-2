@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -21,9 +22,11 @@ async function serialize(p: any) {
 
 /* GET /api/admin/subscription-plans — list all plans ordered by sortOrder. */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "subscription.manage");
   try {
     const plans = await db.subscriptionPlan.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -40,9 +43,11 @@ export async function GET() {
 
 /* POST /api/admin/subscription-plans — create a new plan. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "subscription.manage");
   try {
     const body = await req.json().catch(() => ({}));
 

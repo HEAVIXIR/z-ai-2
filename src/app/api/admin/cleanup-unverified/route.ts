@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     // ── Auth gate ──
-    let adminOk = await isAuthenticated();
+    const user = await getCurrentUser();
+  let adminOk = !!user;
+  if (adminOk) {
+    try { await requirePermission(user.id, "security.manage"); } catch { adminOk = false; }
+  }
     if (!adminOk) {
       const user = await getCurrentUser();
       const role = (user?.role || "BUYER").toUpperCase();
@@ -97,7 +102,11 @@ export async function POST(req: Request) {
 /* GET — preview: list candidates without touching them. */
 export async function GET() {
   try {
-    let adminOk = await isAuthenticated();
+    const user = await getCurrentUser();
+  let adminOk = !!user;
+  if (adminOk) {
+    try { await requirePermission(user.id, "security.manage"); } catch { adminOk = false; }
+  }
     if (!adminOk) {
       const user = await getCurrentUser();
       const role = (user?.role || "BUYER").toUpperCase();

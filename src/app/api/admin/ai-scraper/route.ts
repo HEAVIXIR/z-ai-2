@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { slugify, parseBig } from "@/lib/api-helpers";
 import ZAI from "z-ai-web-dev-sdk";
 
@@ -408,9 +409,11 @@ async function generateAIListingImage(title: string, brand?: string): Promise<st
    { mode: "bulk-import", urls: [] }  → scrape + import all
 */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "ai.scraper.execute");
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");

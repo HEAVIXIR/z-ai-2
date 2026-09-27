@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { execFile } from "node:child_process";
@@ -26,9 +27,11 @@ export const dynamic = "force-dynamic";
    DB (sub-second). For a large DB, move to a queue + return
    202 Accepted. */
 export async function POST() {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "backup.manage");
   try {
     const projectRoot = path.resolve(process.cwd());
     const scriptPath = path.join(projectRoot, "scripts", "backup.sh");

@@ -38,6 +38,7 @@ export const PERMISSIONS = [
   'admin.navigation.manage',
   'admin.preferences.read',
   'admin.preferences.manage',
+  'admin.settings.manage',
 
   // Users
   'user.read',
@@ -139,6 +140,8 @@ export const PERMISSIONS = [
   // Security
   'security.read',
   'security.manage',
+  'backup.manage',
+  'subscription.manage',
 
   // System
   'system.read',
@@ -148,6 +151,7 @@ export const PERMISSIONS = [
   'ai.read',
   'ai.manage',
   'ai.execute',
+  'ai.scraper.execute',
 
   // Audit
   'audit.read',

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -25,9 +26,11 @@ async function serialize(p: any) {
 
 /* GET /api/admin/subscription-plans/[id] */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "subscription.manage");
   try {
     const { id } = await params;
     const plan = await db.subscriptionPlan.findUnique({ where: { id } });
@@ -48,9 +51,11 @@ export async function GET(_req: Request, { params }: Params) {
 
 /* PATCH /api/admin/subscription-plans/[id] — update any plan field. */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "subscription.manage");
   try {
     const { id } = await params;
     const existing = await db.subscriptionPlan.findUnique({ where: { id } });
@@ -152,9 +157,11 @@ export async function PATCH(req: Request, { params }: Params) {
 
 /* DELETE /api/admin/subscription-plans/[id] */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "subscription.manage");
   try {
     const { id } = await params;
     const existing = await db.subscriptionPlan.findUnique({ where: { id } });
