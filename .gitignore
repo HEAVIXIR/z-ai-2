@@ -77,3 +77,9 @@ src/app.phase12-backup/
 db/backups/
 download/*.bundle
 .next-dev-backup/
+
+# Containment: tool-results/ is per-session agent tool-execution dumps
+tool-results/
+
+# Containment: .zscripts/dev.pid is runtime PID file
+.zscripts/dev.pid
