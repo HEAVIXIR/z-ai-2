@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ interface Args {
 }
 
 export async function GET(_req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -35,9 +37,11 @@ export async function GET(_req: Request, { params }: Args) {
 }
 
 export async function PATCH(req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "media.manage");
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -64,9 +68,11 @@ export async function PATCH(req: Request, { params }: Args) {
 }
 
 export async function DELETE(_req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "media.manage");
   try {
     const { id } = await params;
     await db.attachment.delete({ where: { id } });

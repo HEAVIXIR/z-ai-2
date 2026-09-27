@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseBool, parseNumber } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 
@@ -25,7 +26,8 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ taskType: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { taskType } = await ctx.params;
@@ -40,9 +42,11 @@ export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ taskType: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "ai.policy.manage");
   const { taskType } = await ctx.params;
   const before = await db.aITaskPolicy.findUnique({ where: { taskType } });
   if (!before) {

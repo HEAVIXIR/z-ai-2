@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { listSessionsForAdmin } from "@/lib/compare-engine";
 
 export const runtime = "nodejs";
@@ -17,7 +18,8 @@ export const dynamic = "force-dynamic";
      }
    ============================================================ */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -76,9 +78,11 @@ export async function GET() {
    public compare table.
    ============================================================ */
 export async function PUT(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "compare.manage");
   try {
     const body = await req.json().catch(() => ({}));
     let ids: string[] = [];

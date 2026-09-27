@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,8 @@ const SOURCES = ["MANUAL", "AI_SUGGESTED", "OEM_DOCUMENT"];
 
 /* GET /api/admin/compatibility-edges — list edges, optionally filtered by entity. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -58,9 +60,11 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/compatibility-edges — create new edge. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "compatibility.manage");
   try {
     const body = await req.json().catch(() => ({}));
 

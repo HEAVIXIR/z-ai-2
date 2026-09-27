@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
 
 /* ============================================================
@@ -94,7 +95,8 @@ function serializeApp(a: any) {
 
 /* ----------------------------- GET ------------------------------ */
 export async function GET(req: NextRequest) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -183,9 +185,11 @@ export async function GET(req: NextRequest) {
 
 /* ----------------------------- PATCH ---------------------------- */
 export async function PATCH(req: NextRequest) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "admin.settings.manage");
 
   let body: any = {};
   try {

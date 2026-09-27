@@ -39,6 +39,11 @@ export const PERMISSIONS = [
   'admin.preferences.read',
   'admin.preferences.manage',
   'admin.settings.manage',
+  'service.manage',
+  'admin.homepage.manage',
+  'compare.manage',
+  'compatibility.read',
+  'compatibility.manage',
 
   // Users
   'user.read',
@@ -151,6 +156,7 @@ export const PERMISSIONS = [
   'ai.read',
   'ai.manage',
   'ai.execute',
+  'ai.policy.manage',
   'ai.scraper.execute',
 
   // Audit
@@ -182,9 +188,11 @@ export const PERMISSIONS = [
   // inspections, transports, disputes, buy-requests.
   'part.read',
   'part.update',
+  'part.create',
   'part.delete',
   'machine.read',
   'machine.update',
+  'machine.create',
   'review.publish',
   'offer.read',
   'offer.update',
