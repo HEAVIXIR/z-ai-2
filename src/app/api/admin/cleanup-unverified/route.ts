@@ -20,24 +20,10 @@ export async function POST(req: Request) {
   try {
     // ── Auth gate ──
     const user = await getCurrentUser();
-  let adminOk = !!user;
-  if (adminOk) {
-    try { await requirePermission(user.id, "security.manage"); } catch { adminOk = false; }
-  }
-    if (!adminOk) {
-      const user = await getCurrentUser();
-      const role = (user?.role || "BUYER").toUpperCase();
-      if (role !== "ADMIN" && role !== "SUPERADMIN") {
-        return NextResponse.json(
-          { error: "دسترسی فقط برای مدیران مجاز است" },
-          { status: 403 },
-        );
-      }
-      adminOk = true;
+    if (!user) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 401 });
     }
-    if (!adminOk) {
-      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
-    }
+    await requirePermission(user.id, "security.manage");
 
     // ── Parse mode: delete (default) or deactivate ──
     const url = new URL(req.url);
@@ -103,24 +89,10 @@ export async function POST(req: Request) {
 export async function GET() {
   try {
     const user = await getCurrentUser();
-  let adminOk = !!user;
-  if (adminOk) {
-    try { await requirePermission(user.id, "security.manage"); } catch { adminOk = false; }
-  }
-    if (!adminOk) {
-      const user = await getCurrentUser();
-      const role = (user?.role || "BUYER").toUpperCase();
-      if (role !== "ADMIN" && role !== "SUPERADMIN") {
-        return NextResponse.json(
-          { error: "دسترسی فقط برای مدیران مجاز است" },
-          { status: 403 },
-        );
-      }
-      adminOk = true;
+    if (!user) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 401 });
     }
-    if (!adminOk) {
-      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
-    }
+    await requirePermission(user.id, "security.manage");
 
     const now = new Date();
     const candidates = await db.user.findMany({

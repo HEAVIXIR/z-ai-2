@@ -89,6 +89,15 @@ export async function POST(req: Request) {
       );
     }
     const type = body.type.trim();
+
+    // Validate that the job type is registered in the system.
+    if (!listRegisteredTypes().includes(type)) {
+      return NextResponse.json(
+        { error: `Unknown job type: ${type}` },
+        { status: 400 },
+      );
+    }
+
     const payload = body.payload ?? null;
     const priority =
       typeof body.priority === "number" ? body.priority : undefined;
