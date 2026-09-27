@@ -89,10 +89,11 @@ export async function POST(req: Request) {
       console.error("[resend-verification] sendVerificationEmail failed:", e);
     }
 
+    const showDevCode = process.env.DEV_AUTH_CODES === "true";
     return NextResponse.json({
       ok: true,
       message: "کد جدید به ایمیل شما ارسال شد.",
-      devEmailCode,
+      ...(showDevCode ? { devEmailCode } : {}),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

@@ -151,11 +151,11 @@ export async function POST(req: Request) {
       // Don't fail the registration — the user can use resend-verification.
     }
 
+    const showDevCodes = process.env.DEV_AUTH_CODES === "true";
     return NextResponse.json({
       ok: true,
       userId: user.id,
-      devMobileCode,
-      devEmailCode,
+      ...(showDevCodes ? { devMobileCode, devEmailCode } : {}),
       verificationDeadline: verificationDeadline.toISOString(),
     });
   } catch (err: any) {
