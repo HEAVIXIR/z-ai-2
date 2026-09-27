@@ -297,6 +297,17 @@ export async function getCurrentUser() {
               },
             })
             .catch(() => {});
+        } else if (session.user.status === "BLOCKED") {
+          // Revoke the session immediately — BLOCKED users must not
+          // retain access even if their session was created before the
+          // block was applied.
+          await db.session
+            .delete({
+              where: {
+                id: session.id,
+              },
+            })
+            .catch(() => {});
         } else {
           return session.user;
         }
