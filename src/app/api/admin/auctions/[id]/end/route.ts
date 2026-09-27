@@ -11,7 +11,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { getCurrentUser } from "@/lib/auth";
 import { endAuction, AuctionServiceError } from "@/lib/auction-service";
 
 export const runtime = 'nodejs';
