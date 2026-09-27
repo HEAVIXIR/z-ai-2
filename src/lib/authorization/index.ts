@@ -56,6 +56,8 @@ export async function canAny(
   permissions: string[],
 ): Promise<boolean> {
   if (!userId || permissions.length === 0) return false;
+  // The server-issued admin session uses the synthetic ADMIN id.
+  if (userId === 'ADMIN') return true;
   const perms = await getUserPermissions(userId);
   return permissions.some((p) => perms.includes(p));
 }
@@ -66,6 +68,8 @@ export async function canAll(
   permissions: string[],
 ): Promise<boolean> {
   if (!userId) return false;
+  // The server-issued admin session has unrestricted permissions.
+  if (userId === 'ADMIN') return true;
   const perms = await getUserPermissions(userId);
   return permissions.every((p) => perms.includes(p));
 }
@@ -114,7 +118,6 @@ export async function requireAllPermissions(
 ): Promise<void> {
   const ok = await canAll(userId, permissions);
   if (!ok) {
-    const missing = permissions.filter(async (p) => !(await can(userId, p)));
     throw new AuthorizationError(
       permissions.join(' + '),
       `Permission denied: requires all of [${permissions.join(', ')}]`,
@@ -133,8 +136,12 @@ export async function requireAllPermissions(
  * To migrate existing users: assign them UserRole entries via
  * `bunx tsx prisma/seed-user-roles.ts`.
  */
-export async function isAdmin(userId: string | null | undefined): Promise<boolean> {
+export async function isAdmin(
+  userId: string | null | undefined,
+): Promise<boolean> {
   if (!userId) return false;
+  // Admin cookie sessions resolve to the synthetic ADMIN id.
+  if (userId === 'ADMIN') return true;
   try {
     const adminRole = await db.userRole.findFirst({
       where: { userId, role: { key: 'ADMIN' } },
