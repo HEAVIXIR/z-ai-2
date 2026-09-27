@@ -106,14 +106,11 @@ export async function GET(_req: Request, { params }: Args) {
 /* PATCH /api/admin/users/[id] — update role/status/verified/companyName
    (P0-RBAC: requires user.suspend — covers role/status lifecycle operations) */
 export async function PATCH(req: Request, { params }: Args) {
-  // Authorization: legacy admin-cookie path OR user session with `user.suspend`.
-  // The admin-cookie path is legacy (see src/app/admin/layout.tsx) and bypasses RBAC.
-  const adminCookieOk = await isAuthenticated();
-  const sessionUser = adminCookieOk ? null : await getCurrentUser();
-  if (!adminCookieOk && !sessionUser) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (sessionUser && !(await hasPermission(sessionUser.id, "user.suspend"))) {
+  if (!(await hasPermission(sessionUser.id, "user.suspend"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'user.suspend'" },
       { status: 403 },
@@ -151,13 +148,11 @@ export async function PATCH(req: Request, { params }: Args) {
     // NOTE: "role" is deliberately EXCLUDED from allowedFields.
     // Role changes require the `user.role.manage` permission.
     if (body.role !== undefined) {
-      if (!adminCookieOk) {
-        if (!sessionUser || !(await hasPermission(sessionUser.id, "user.role.manage"))) {
-          return NextResponse.json(
-            { error: "Forbidden: missing permission 'user.role.manage' to change user role" },
-            { status: 403 },
-          );
-        }
+      if (!(await hasPermission(sessionUser.id, "user.role.manage"))) {
+        return NextResponse.json(
+          { error: "Forbidden: missing permission 'user.role.manage' to change user role" },
+          { status: 403 },
+        );
       }
       const allowedRoles = ["ADMIN", "SELLER", "BUYER"];
       const r = String(body.role).toUpperCase();
@@ -219,14 +214,11 @@ export async function PATCH(req: Request, { params }: Args) {
     for security administrators; user.suspend covers the non-destructive case.)
 */
 export async function DELETE(_req: Request, { params }: Args) {
-  // Authorization: legacy admin-cookie path OR user session with `security.manage`.
-  // The admin-cookie path is legacy (see src/app/admin/layout.tsx) and bypasses RBAC.
-  const adminCookieOk = await isAuthenticated();
-  const sessionUser = adminCookieOk ? null : await getCurrentUser();
-  if (!adminCookieOk && !sessionUser) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (sessionUser && !(await hasPermission(sessionUser.id, "security.manage"))) {
+  if (!(await hasPermission(sessionUser.id, "security.manage"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'security.manage'" },
       { status: 403 },

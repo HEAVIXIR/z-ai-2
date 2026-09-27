@@ -193,14 +193,11 @@ function generateLogoUrl(nameEn: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  // Authorization: legacy admin-cookie path OR user session with `brand.publish`.
-  // The admin-cookie path is legacy (see src/app/admin/layout.tsx) and bypasses RBAC.
-  const adminCookieOk = await isAuthenticated();
-  const sessionUser = adminCookieOk ? null : await getCurrentUser();
-  if (!adminCookieOk && !sessionUser) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (sessionUser && !(await hasPermission(sessionUser.id, "brand.publish"))) {
+  if (!(await hasPermission(sessionUser.id, "brand.publish"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'brand.publish'" },
       { status: 403 },

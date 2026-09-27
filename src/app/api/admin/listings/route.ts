@@ -110,14 +110,11 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/listings — bulk actions. (P0-RBAC: requires listing.publish) */
 export async function POST(req: Request) {
-  // Authorization: legacy admin-cookie path OR user session with `listing.publish`.
-  // The admin-cookie path is legacy (see src/app/admin/layout.tsx) and bypasses RBAC.
-  const adminCookieOk = await isAuthenticated();
-  const sessionUser = adminCookieOk ? null : await getCurrentUser();
-  if (!adminCookieOk && !sessionUser) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (sessionUser && !(await hasPermission(sessionUser.id, "listing.publish"))) {
+  if (!(await hasPermission(sessionUser.id, "listing.publish"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'listing.publish'" },
       { status: 403 },

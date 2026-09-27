@@ -35,12 +35,11 @@ export async function GET() {
 
 /* PUT /api/admin/site-settings  (P0-RBAC: requires settings.manage) */
 export async function PUT(req: Request) {
-  const adminCookieOk = await isAuthenticated();
-  const sessionUser = adminCookieOk ? null : await getCurrentUser();
-  if (!adminCookieOk && !sessionUser) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (sessionUser && !(await hasPermission(sessionUser.id, "settings.manage"))) {
+  if (!(await hasPermission(sessionUser.id, "settings.manage"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'settings.manage'" },
       { status: 403 },
