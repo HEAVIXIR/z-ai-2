@@ -45,6 +45,7 @@ export const PERMISSIONS = [
   'user.update',
   'user.delete',
   'user.suspend',
+  'user.role.manage',
 
   // Companies
   'company.read',

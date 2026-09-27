@@ -133,7 +133,6 @@ export async function PATCH(req: Request, { params }: Args) {
       "email",
       "mobile",
       "userType",
-      "role",
       "status",
       "companyName",
       "emailVerified",
@@ -149,10 +148,19 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     }
 
-    // P0-2: if admin is changing the role, validate it against the enum.
-    if (data.role) {
+    // NOTE: "role" is deliberately EXCLUDED from allowedFields.
+    // Role changes require the `user.role.manage` permission.
+    if (body.role !== undefined) {
+      if (!adminCookieOk) {
+        if (!sessionUser || !(await hasPermission(sessionUser.id, "user.role.manage"))) {
+          return NextResponse.json(
+            { error: "Forbidden: missing permission 'user.role.manage' to change user role" },
+            { status: 403 },
+          );
+        }
+      }
       const allowedRoles = ["ADMIN", "SELLER", "BUYER"];
-      const r = data.role.toUpperCase();
+      const r = String(body.role).toUpperCase();
       if (!allowedRoles.includes(r)) {
         return NextResponse.json(
           { error: "نقش نامعتبر است" },
