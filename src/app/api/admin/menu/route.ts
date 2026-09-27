@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* GET /api/admin/menu */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.navigation.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.navigation.read" },
+      { status: 403 },
+    );
   }
   try {
     const items = await db.menuItem.findMany({
@@ -39,8 +46,15 @@ function menuData(body: any) {
 
 /* POST /api/admin/menu — create new item. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.navigation.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.navigation.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));
@@ -59,8 +73,15 @@ export async function POST(req: Request) {
 
 /* PUT /api/admin/menu — bulk update (body.items: [{id, ...}]) or single ({id, ...}). */
 export async function PUT(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.navigation.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.navigation.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));
@@ -96,8 +117,15 @@ export async function PUT(req: Request) {
 
 /* DELETE /api/admin/menu?id=... */
 export async function DELETE(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.navigation.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.navigation.manage" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);

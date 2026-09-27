@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,8 +14,15 @@ interface Args {
 
 /* GET /api/admin/companies/[id]/branches — list branches. */
 export async function GET(_req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "company.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.read" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -42,8 +49,15 @@ export async function GET(_req: Request, { params }: Args) {
    Body: { name, address?, cityId?, phone?, isHeadquarters?, active? }
 */
 export async function POST(req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "company.update"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.update" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;

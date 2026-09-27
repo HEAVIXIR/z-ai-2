@@ -2,8 +2,8 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    PUT /api/admin/brands/[id]/logo
@@ -21,8 +21,15 @@ export async function PUT(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "brand.update"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires brand.update" },
+      { status: 403 },
+    );
   }
 
   const { id } = await ctx.params;

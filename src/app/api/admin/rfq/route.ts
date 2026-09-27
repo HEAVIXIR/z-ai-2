@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,9 +21,15 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export async function GET(req: Request) {
-  const authed = await isAuthenticated();
-  if (!authed) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "rfq.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires rfq.read" },
+      { status: 403 },
+    );
   }
   try {
     const { searchParams } = new URL(req.url);
@@ -76,9 +82,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const authed = await isAuthenticated();
-  if (!authed) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "rfq.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires rfq.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));

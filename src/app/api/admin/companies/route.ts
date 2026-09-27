@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,8 +16,15 @@ const ALLOWED_STATUSES = ["ACTIVE", "PENDING", "SUSPENDED", "ARCHIVED"];
      ?q=&status=&verified=&premium=&limit=
 */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "company.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.read" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);
@@ -109,8 +116,15 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/companies — create company. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "company.create"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires company.create" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));

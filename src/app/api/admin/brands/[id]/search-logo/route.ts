@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import ZAI from "z-ai-web-dev-sdk";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    POST /api/admin/brands/[id]/search-logo
@@ -26,8 +26,15 @@ export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "brand.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires brand.read" },
+      { status: 403 },
+    );
   }
 
   const { id } = await ctx.params;

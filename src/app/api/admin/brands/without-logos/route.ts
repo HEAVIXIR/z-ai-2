@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,8 +16,15 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "brand.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires brand.read" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);

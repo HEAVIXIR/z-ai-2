@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +26,15 @@ function serialize(p: any) {
 
    Includes the user's name/mobile for the admin table. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "payment.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires payment.read" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);
@@ -109,8 +116,15 @@ export async function GET(req: Request) {
    Pass `markPaid: false` to create a PENDING manual payment
    (e.g. awaiting bank confirmation). */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "payment.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires payment.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));
