@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
+import { authorizeAdmin } from "@/lib/admin-guard";
 import { matchSavedSearches } from "@/lib/alert-matcher";
 import { logAudit } from "@/lib/audit";
 
@@ -18,13 +18,6 @@ export const dynamic = "force-dynamic";
    Admin-only. Uses the dual-path authorization pattern (legacy
    admin-cookie OR user session with ADMIN role).
    ============================================================ */
-
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
 
 export async function POST() {
   if (!(await authorizeAdmin())) {

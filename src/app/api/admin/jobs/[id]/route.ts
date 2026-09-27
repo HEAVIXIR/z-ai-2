@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
 import { findJob, cancelJob, retryJob, deleteJob } from "@/lib/queue";
 import "@/lib/jobs"; // side-effect: registers built-in handlers
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { authorizeAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,13 +33,6 @@ interface Params {
    FAILED. There is no separate CANCELLED status; a cancelled job
    is recorded as FAILED with `error="Cancelled by admin"`.
    ============================================================ */
-
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
 
 export async function GET(_req: Request, { params }: Params) {
   if (!(await authorizeAdmin())) {

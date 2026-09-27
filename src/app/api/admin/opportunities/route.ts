@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
 import { getOpportunities, runOpportunityScan, updateOpportunityStatus } from "@/lib/opportunity-engine";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { authorizeAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,13 +16,6 @@ export const dynamic = "force-dynamic";
    PATCH — { id, status } update opportunity status
            (SEEN / ACTED_ON / DISMISSED).
    ============================================================ */
-
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
 
 export async function GET(req: Request) {
   if (!(await authorizeAdmin())) {

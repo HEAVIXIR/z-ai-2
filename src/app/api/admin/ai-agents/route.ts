@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
 import { listAgents, runAgent } from "@/lib/ai-agents";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { authorizeAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,13 +18,6 @@ export const dynamic = "force-dynamic";
    does NOT mutate any DB-truth row; it only writes AI_SUGGESTED
    rows with verified=false or side-effect-free audit entries.
    ============================================================ */
-
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
 
 export async function GET() {
   if (!(await authorizeAdmin())) {

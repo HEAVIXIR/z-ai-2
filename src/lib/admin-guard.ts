@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { isAuthenticated, getCurrentUser } from "@/lib/auth";
 import { can, isAdmin } from "@/lib/authorization";
 
 /* ============================================================
@@ -110,4 +110,22 @@ export async function requireOwnership(
   if (userId === resourceOwnerId) return true;
   // Check if user is admin (via RBAC only — no legacy fallback)
   return await isAdmin(userId);
+}
+
+/**
+ * Shared authorizeAdmin() helper — extracted from 6 admin route files
+ * (ai-agents, alerts/match, jobs, opportunities) to eliminate duplication.
+ *
+ * Checks BOTH the legacy admin-cookie path (via isAuthenticated())
+ * AND the modern RBAC path (getCurrentUser() → isAdmin()). The legacy
+ * path is intentionally preserved for backwards compatibility — it will
+ * be removed in PR-7A when the synthetic ADMIN short-circuit is addressed.
+ *
+ * Returns true if either path succeeds, false otherwise.
+ */
+export async function authorizeAdmin(): Promise<boolean> {
+  if (await isAuthenticated()) return true;
+  const user = await getCurrentUser();
+  if (!user) return false;
+  return isAdmin(user.id);
 }

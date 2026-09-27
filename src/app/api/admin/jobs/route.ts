@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { getCurrentUser } from "@/lib/auth";
 import {
   enqueue,
   getQueueStats,
@@ -10,7 +9,7 @@ import {
 } from "@/lib/queue";
 import "@/lib/jobs"; // side-effect: registers built-in handlers
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { authorizeAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,13 +22,6 @@ export const dynamic = "force-dynamic";
           the most-recent job records (for the admin dashboard).
    POST — enqueues a job { type, payload? }. Admin only.
    ============================================================ */
-
-async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}
 
 export async function GET(req: Request) {
   if (!(await authorizeAdmin())) {
