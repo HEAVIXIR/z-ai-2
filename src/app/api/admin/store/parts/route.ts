@@ -35,7 +35,6 @@ export async function GET(req: Request) {
   }
   try {
     await requirePermission(user.id, 'store.read');
-    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.read" }, { status: 403 });
   }

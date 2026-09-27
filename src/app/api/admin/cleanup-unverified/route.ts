@@ -11,10 +11,9 @@ export const dynamic = "force-dynamic";
    param is passed, deactivates) users where:
        verificationDeadline < now  AND  emailVerified = false
 
-   Admin access is granted by EITHER:
-     • the legacy admin cookie (isAuthenticated), OR
-     • a user session with role === "ADMIN"
-   This mirrors the access rule in /admin/layout.tsx.
+   Admin access requires the `security.manage` permission,
+   enforced via `requirePermission(user.id, "security.manage")`.
+   (PR-6B removed the legacy role-string fallback.)
 */
 export async function POST(req: Request) {
   try {
