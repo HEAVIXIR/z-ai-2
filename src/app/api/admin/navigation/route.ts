@@ -14,14 +14,19 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { isAuthenticated, getCurrentUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
+import { requirePermission } from '@/lib/authorization';
 import { getUserPermissions } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   // Legacy admin cookie → show everything
-  const adminAuthed = await isAuthenticated();
+  const user = await getCurrentUser();
+  const adminAuthed = !!user;
+  if (adminAuthed) {
+    try { await requirePermission(user.id, "admin.navigation.read"); } catch { /* permission denied — fall through to user check */ }
+  }
   let userPermissions: Set<string> | null = null;
 
   if (!adminAuthed) {

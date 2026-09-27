@@ -9,7 +9,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { getCurrentUser } from "@/lib/auth";
 import { endAuction, AuctionServiceError } from "@/lib/auction-service";
 
@@ -37,7 +38,7 @@ function toErrorResponse(e: unknown) {
 
 /* POST /api/admin/auctions/[id]/end — end auction + set winner */
 export async function POST(_req: Request, { params }: Args) {
-  const authed = await isAuthenticated();
+  const authed = await getCurrentUser();
   if (!authed) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

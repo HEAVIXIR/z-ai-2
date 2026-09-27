@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseNumber } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -23,9 +24,11 @@ function serialize(i: any) {
 
 /* GET /api/admin/inspections — admin list with filters + stats. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "inspection.read");
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") || undefined;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -21,9 +22,11 @@ function serialize(t: any) {
 
 /* GET /api/admin/transport — admin list with filters. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "transport.read");
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") || undefined;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { rebuildIndex } from "@/lib/search-index";
 import { logAudit } from "@/lib/audit";
 
@@ -18,9 +19,11 @@ export const dynamic = "force-dynamic";
    in well under 2s. For production scale, move to a background
    job + return 202 Accepted. */
 export async function POST() {
-  if (!(await isAuthenticated())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "admin.settings.manage");
   try {
     const stats = await rebuildIndex();
     await logAudit({
