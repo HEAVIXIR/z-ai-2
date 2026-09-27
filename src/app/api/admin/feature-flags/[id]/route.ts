@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated, getCurrentUser } from "@/lib/auth";
 import { parseBool, parseNumber } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/admin-guard";
@@ -42,6 +42,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -86,7 +87,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const updated = await db.featureFlag.update({ where: { id }, data });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "feature-flag.update",
       entityType: "FeatureFlag",
@@ -119,6 +120,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const existing = await db.featureFlag.findUnique({ where: { id } });
@@ -128,7 +130,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     await db.featureFlag.delete({ where: { id } });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "feature-flag.delete",
       entityType: "FeatureFlag",

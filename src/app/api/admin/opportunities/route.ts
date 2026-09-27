@@ -48,6 +48,7 @@ export async function POST(req: Request) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const body = await req.json().catch(() => null);
     const action = body?.action;
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
     }
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "opportunity.scan_triggered",
       entityType: "Opportunity",
@@ -82,6 +83,7 @@ export async function PATCH(req: Request) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.id !== "string" || typeof body.status !== "string") {
@@ -106,7 +108,7 @@ export async function PATCH(req: Request) {
     }
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "opportunity.status_change",
       entityType: "Opportunity",

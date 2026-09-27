@@ -54,6 +54,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -102,7 +103,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const updated = await db.aIAgent.update({ where: { id }, data });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "ai.agent.update",
       entityType: "AIAgent",
@@ -135,6 +136,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const existing = await db.aIAgent.findUnique({ where: { id } });
@@ -144,7 +146,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     await db.aIAgent.delete({ where: { id } });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "ai.agent.delete",
       entityType: "AIAgent",

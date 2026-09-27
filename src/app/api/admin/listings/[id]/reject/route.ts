@@ -52,7 +52,7 @@ export async function POST(req: Request, { params }: Params) {
       },
     });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_rejection.create',
       entityType: 'ListingRejection',
@@ -66,7 +66,7 @@ export async function POST(req: Request, { params }: Params) {
       data: { status: "REJECTED" },
     });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.update',
       entityType: 'Listing',
@@ -86,7 +86,7 @@ export async function POST(req: Request, { params }: Params) {
         },
       });
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: 'ADMIN',
         action: 'marketplace.notification.create',
         entityType: 'Notification',

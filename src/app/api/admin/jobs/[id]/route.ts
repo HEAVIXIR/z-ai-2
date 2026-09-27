@@ -65,6 +65,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -95,7 +96,7 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: "ADMIN",
         action: "job.cancel",
         entityType: "Job",
@@ -121,7 +122,7 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: "ADMIN",
         action: "job.retry",
         entityType: "Job",
@@ -147,7 +148,7 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: "ADMIN",
         action: "job.delete",
         entityType: "Job",
@@ -174,6 +175,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const before = findJob(id);
@@ -188,7 +190,7 @@ export async function DELETE(_req: Request, { params }: Params) {
       );
     }
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "job.delete",
       entityType: "Job",

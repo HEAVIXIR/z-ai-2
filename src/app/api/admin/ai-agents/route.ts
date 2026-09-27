@@ -46,6 +46,7 @@ export async function POST(req: Request) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.key !== "string" || !body.key.trim()) {
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
     // Audit the admin's run request (the agent itself also logs an
     // AI-action audit entry; this entry records the admin trigger).
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "ai.agent.run",
       entityType: "AIAgent",

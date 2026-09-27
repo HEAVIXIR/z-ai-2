@@ -154,7 +154,7 @@ export async function POST(req: Request) {
       },
     });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.product.create',
       entityType: 'Product',

@@ -148,7 +148,7 @@ export async function PATCH(req: Request, { params }: Params) {
       },
     });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_offer.update',
       entityType: 'ListingOffer',
@@ -230,7 +230,7 @@ export async function DELETE(_req: Request, { params }: Params) {
         reason: "حذف پیشنهاد توسط مدیر",
       });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_offer.delete',
       entityType: 'ListingOffer',

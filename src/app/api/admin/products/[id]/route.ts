@@ -146,7 +146,7 @@ export async function PATCH(req: Request, { params }: Args) {
       },
     });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.product.update',
       entityType: 'Product',
@@ -179,7 +179,7 @@ export async function DELETE(_req: Request, { params }: Args) {
     const { id } = await params;
     await db.product.delete({ where: { id } });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.product.delete',
       entityType: 'Product',

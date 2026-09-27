@@ -79,6 +79,7 @@ export async function POST(req: Request) {
   if (!(await authorizeAdmin())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
 
   try {
     const body = await req.json().catch(() => null);
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
     const jobId = enqueue({ type, payload, priority });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: "ADMIN",
       action: "job.enqueue",
       entityType: "Job",

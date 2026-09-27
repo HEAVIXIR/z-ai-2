@@ -128,6 +128,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await getCurrentUser();
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -224,7 +225,7 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.create',
       entityType: 'Listing',
@@ -268,7 +269,7 @@ export async function PATCH(req: Request, { params }: Params) {
     });
 
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.update',
       entityType: 'Listing',
@@ -294,7 +295,7 @@ export async function PATCH(req: Request, { params }: Params) {
         where: { id: { in: body.removeImages.map(String) } },
       });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_image.bulk_deleteMany',
       entityType: 'ListingImage',
@@ -308,7 +309,7 @@ export async function PATCH(req: Request, { params }: Params) {
         data: { isPrimary: false },
       });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_image.bulk_updateMany',
       entityType: 'ListingImage',
@@ -320,7 +321,7 @@ export async function PATCH(req: Request, { params }: Params) {
         data: { isPrimary: true },
       });
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: 'ADMIN',
         action: 'marketplace.listing_image.update',
         entityType: 'ListingImage',
@@ -335,7 +336,7 @@ export async function PATCH(req: Request, { params }: Params) {
         ),
       );
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: 'ADMIN',
         action: 'marketplace.listing_image.bulk_reorder',
         entityType: 'ListingImage',
@@ -392,7 +393,7 @@ export async function PATCH(req: Request, { params }: Params) {
         });
       }
       await logAudit({
-        actorId: null,
+        actorId: user?.id ?? null,
         actorType: 'ADMIN',
         action: 'marketplace.listing_attribute_value.bulk_upsert',
         entityType: 'ListingAttributeValue',
@@ -408,7 +409,7 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       });
     await logAudit({
-      actorId: null,
+      actorId: user?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing_attribute_value.bulk_deleteMany',
       entityType: 'ListingAttributeValue',
@@ -453,7 +454,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params;
     await db.listing.delete({ where: { id } });
     await logAudit({
-      actorId: null,
+      actorId: sessionUser?.id ?? null,
       actorType: 'ADMIN',
       action: 'marketplace.listing.delete',
       entityType: 'Listing',
