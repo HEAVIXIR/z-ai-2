@@ -1062,3 +1062,336 @@ export const servicesConfig: AdminResourceConfig = {
   audit: { enabled: true, entityType: 'ServiceProvider',
     actions: ['store.manage'] },
 };
+
+// ── 11. Store Categories (Auto-parts catalog taxonomy) ─────────
+// Keyed as `store-categories` (NOT `categories`) to preserve domain
+// separation from the marketplace Category resource. The marketplace
+// has its own Category model in the main schema; the Store has its
+// own self-referential Category tree in store-schema.prisma. Both
+// use the existing `store.read`/`store.manage` permission keys.
+export const storeCategoriesConfig: AdminResourceConfig = {
+  key: 'store-categories',
+  titleFa: 'دسته‌بندی‌های فروشگاه',
+  titleEn: 'Store Categories',
+  icon: 'FolderTree',
+  model: 'category',
+  apiBase: '/api/admin/store/categories',
+  adminPath: '/admin/resources/store-categories',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text', sortable: true, filterable: true },
+    { key: 'slug', label: 'اسلاگ', type: 'text', sortable: true, filterable: true },
+    { key: 'icon', label: 'آیکون', type: 'text', visible: false },
+    { key: 'description', label: 'توضیحات', type: 'text', visible: false },
+    { key: 'parentId', label: 'والد', type: 'relation',
+      relation: { model: 'category', labelField: 'name' } },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'parentId', label: 'دسته والد', type: 'text', placeholder: 'شناسه والد (خالی = ریشه)' },
+  ],
+
+  defaultSort: { field: 'name', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['name', 'nameFa', 'slug', 'description'],
+
+  fields: [
+    { key: 'name', label: 'نام (انگلیسی)', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 100,
+        message: 'نام باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text',
+      validation: { maxLength: 100,
+        message: 'نام فارسی نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'name', required: true,
+      validation: { maxLength: 120, pattern: '^[a-z0-9-]+$',
+        message: 'اسلاگ باید با حروف کوچک انگلیسی، اعداد و خط‌فاصله باشد' } },
+    { key: 'icon', label: 'آیکون', type: 'text',
+      helpText: 'نام آیکون از lucide-react (اختیاری)',
+      validation: { maxLength: 100,
+        message: 'نام آیکون نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'description', label: 'توضیحات', type: 'textarea',
+      validation: { maxLength: 2000,
+        message: 'توضیحات نباید بیش از ۲۰۰۰ نویسه باشد' } },
+    { key: 'parentId', label: 'دسته والد', type: 'relation',
+      relation: { model: 'category', labelField: 'name' },
+      helpText: 'خالی = دسته ریشه (top-level)' },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'children', label: 'زیردسته‌ها', type: 'relations' },
+    { key: 'parts', label: 'قطعات', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/categories', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/categories', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Category',
+    actions: ['store.manage'] },
+
+  relations: [
+    { label: 'زیردسته‌ها', resource: 'store-categories', filterField: 'parentId' },
+  ],
+};
+
+// ── 12. Store Brands (Auto-parts brand directory) ───────────────
+// Keyed as `store-brands` (NOT `brands`) to avoid collision with the
+// marketplace `brands` resource (registered in brand.ts with
+// brand.read/create/update/delete/publish). Store Brand is a separate
+// model in store-schema.prisma, accessed via /api/admin/store/brands.
+// Both the marketplace and Store use distinct permission keys.
+export const storeBrandsConfig: AdminResourceConfig = {
+  key: 'store-brands',
+  titleFa: 'برندهای فروشگاه',
+  titleEn: 'Store Brands',
+  icon: 'Tag',
+  model: 'brand',
+  apiBase: '/api/admin/store/brands',
+  adminPath: '/admin/resources/store-brands',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text', sortable: true, filterable: true },
+    { key: 'slug', label: 'اسلاگ', type: 'text', sortable: true, filterable: true },
+    { key: 'logoUrl', label: 'لوگو', type: 'image', visible: false },
+    { key: 'country', label: 'کشور', type: 'text', filterable: true },
+    { key: 'active', label: 'فعال', type: 'boolean', sortable: true, filterable: true },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'active', label: 'وضعیت', type: 'select', options: [
+      { value: 'true', label: 'فعال' },
+      { value: 'false', label: 'غیرفعال' },
+    ]},
+    { key: 'country', label: 'کشور', type: 'text', placeholder: 'مثلاً Japan' },
+  ],
+
+  defaultSort: { field: 'name', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['name', 'nameFa', 'slug', 'country'],
+
+  fields: [
+    { key: 'name', label: 'نام (انگلیسی)', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 100,
+        message: 'نام باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text',
+      validation: { maxLength: 100,
+        message: 'نام فارسی نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'slug', label: 'اسلاگ', type: 'slug', slugFrom: 'name', required: true,
+      validation: { maxLength: 120, pattern: '^[a-z0-9-]+$',
+        message: 'اسلاگ باید با حروف کوچک انگلیسی، اعداد و خط‌فاصله باشد' } },
+    { key: 'logoUrl', label: 'URL لوگو', type: 'media',
+      helpText: 'تصویر لوگو برند' },
+    { key: 'country', label: 'کشور سازنده', type: 'text',
+      validation: { maxLength: 100,
+        message: 'نام کشور نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
+      permissions: { read: 'store.read', write: 'store.manage' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'parts', label: 'قطعات', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/brands', apiMethod: 'PATCH' },
+    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/brands', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/brands', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/brands', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-deactivate', label: 'غیرفعال‌سازی گروهی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Brand',
+    actions: ['store.manage'] },
+
+  relations: [
+    { label: 'قطعات', resource: 'parts', filterField: 'brandId' },
+  ],
+};
+
+// ── 13. Shipments (B2C order-attached shipping ledger) ──────────
+// Distinct from the marketplace `transports` resource (B2B transport
+// request to move cargo between locations). Shipments are B2C: a
+// carrier delivers a customer's order. The Shipment model is in
+// store-schema.prisma (1:1 with Order via orderId @unique). The
+// admin route at /api/admin/store/shipments exposes GET (list) + POST
+// (create) + GET [id] (detail) + PATCH [id] (update). No DELETE —
+// shipments are immutable once created (audit trail).
+//
+// Permission: uses `shipping.read`/`shipping.manage` (existing
+// catalog keys at lines 130-131). These are NOT new permissions —
+// they pre-date this patch and are the keys the actual API enforces.
+// Using them keeps the resource config consistent with the API's
+// runtime enforcement.
+export const shipmentsConfig: AdminResourceConfig = {
+  key: 'shipments',
+  titleFa: 'سفارش‌های ارسالی',
+  titleEn: 'Shipments',
+  icon: 'PackageCheck',
+  model: 'shipment',
+  apiBase: '/api/admin/store/shipments',
+  adminPath: '/admin/resources/shipments',
+
+  permissions: {
+    read: 'shipping.read',
+    create: 'shipping.manage',
+    update: 'shipping.manage',
+    delete: 'shipping.manage',
+    export: 'shipping.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'orderId', label: 'سفارش', type: 'relation', sortable: true, filterable: true,
+      relation: { model: 'order', labelField: 'orderNumber' } },
+    { key: 'carrier', label: 'حامل', type: 'badge', sortable: true, filterable: true },
+    { key: 'trackingCode', label: 'کد ردیابی', type: 'text', filterable: true },
+    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+    { key: 'shippedAt', label: 'تاریخ ارسال', type: 'date', sortable: true },
+    { key: 'deliveredAt', label: 'تاریخ تحویل', type: 'date', sortable: true },
+    { key: 'pickupDate', label: 'تاریخ بارگیری', type: 'date', visible: false },
+    { key: 'proofUrl', label: 'مدرک تحویل', type: 'image', visible: false },
+    { key: 'note', label: 'یادداشت', type: 'text', visible: false },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+    { key: 'updatedAt', label: 'به‌روزرسانی', type: 'date', sortable: true, visible: false },
+  ],
+
+  filters: [
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'PENDING', label: 'در انتظار' },
+      { value: 'DISPATCHED', label: 'ارسال‌شده' },
+      { value: 'IN_TRANSIT', label: 'در حال حمل' },
+      { value: 'DELIVERED', label: 'تحویل‌شده' },
+      { value: 'EXCEPTION', label: 'استثنا' },
+      { value: 'FAILED', label: 'ناموفق' },
+    ]},
+    { key: 'carrier', label: 'حامل', type: 'select', options: [
+      { value: 'POST', label: 'پست' },
+      { value: 'TIPAX', label: 'تیپاکس' },
+      { value: 'CHAPAR', label: 'چاپار' },
+    ]},
+  ],
+
+  defaultSort: { field: 'createdAt', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['trackingCode', 'note', 'orderId'],
+
+  fields: [
+    { key: 'orderId', label: 'سفارش', type: 'relation', required: true,
+      relation: { model: 'order', labelField: 'orderNumber' },
+      validation: { message: 'انتخاب سفارش الزامی است' } },
+    { key: 'carrier', label: 'حامل', type: 'select', required: true, options: [
+      { value: 'POST', label: 'پست' },
+      { value: 'TIPAX', label: 'تیپاکس' },
+      { value: 'CHAPAR', label: 'چاپار' },
+    ], permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'trackingCode', label: 'کد ردیابی', type: 'text',
+      validation: { maxLength: 100,
+        message: 'کد ردیابی نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'PENDING', label: 'در انتظار' },
+      { value: 'DISPATCHED', label: 'ارسال‌شده' },
+      { value: 'IN_TRANSIT', label: 'در حال حمل' },
+      { value: 'DELIVERED', label: 'تحویل‌شده' },
+      { value: 'EXCEPTION', label: 'استثنا' },
+      { value: 'FAILED', label: 'ناموفق' },
+    ], permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'shippedAt', label: 'تاریخ ارسال', type: 'datetime',
+      permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'deliveredAt', label: 'تاریخ تحویل', type: 'datetime',
+      permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'pickupDate', label: 'تاریخ بارگیری', type: 'datetime',
+      permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'proofUrl', label: 'مدرک تحویل (تصویر)', type: 'media',
+      permissions: { read: 'shipping.read', write: 'shipping.manage' } },
+    { key: 'note', label: 'یادداشت', type: 'textarea',
+      validation: { maxLength: 1000,
+        message: 'یادداشت نباید بیش از ۱۰۰۰ نویسه باشد' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'tracking', label: 'تاریخچه ردیابی', type: 'relations' },
+    { key: 'order', label: 'سفارش', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'dispatch', label: 'ارسال', icon: 'Send',
+      permission: 'shipping.manage', type: 'confirm',
+      apiPath: '/api/admin/store/shipments', apiMethod: 'PATCH' },
+    { key: 'mark-delivered', label: 'علامت‌گذاری تحویل', icon: 'CheckCircle2',
+      permission: 'shipping.manage', type: 'confirm',
+      apiPath: '/api/admin/store/shipments', apiMethod: 'PATCH' },
+    { key: 'mark-exception', label: 'ثبت استثنا', icon: 'AlertCircle',
+      permission: 'shipping.manage', type: 'modal',
+      apiPath: '/api/admin/store/shipments', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'shipping.manage', type: 'modal',
+      apiPath: '/api/admin/store/shipments', apiMethod: 'PATCH' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-dispatch', label: 'ارسال گروهی', icon: 'Send',
+      permission: 'shipping.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'shipping.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Shipment',
+    actions: ['shipping.manage'] },
+};

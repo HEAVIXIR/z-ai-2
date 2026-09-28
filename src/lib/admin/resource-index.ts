@@ -21,6 +21,8 @@ import {
   customersConfig, mechanicsConfig, suppliersConfig,
   // Phase S1-B-PATCH-2 — additional Store domain resources
   carModelsConfig, currencyConfig, servicesConfig,
+  // Phase S1-B-PATCH-3 — collision-safe + shipments (shipping.* perms)
+  storeCategoriesConfig, storeBrandsConfig, shipmentsConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -48,6 +50,10 @@ registerResource(suppliersConfig);
 registerResource(carModelsConfig);
 registerResource(currencyConfig);
 registerResource(servicesConfig);
+// Phase S1-B-PATCH-3 — collision-safe (store-* keys) + shipments
+registerResource(storeCategoriesConfig);
+registerResource(storeBrandsConfig);
+registerResource(shipmentsConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';
