@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import ZAI from "z-ai-web-dev-sdk";
 import fs from "fs/promises";
 import path from "path";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
@@ -33,8 +33,15 @@ const PLATFORM_CONFIG: Record<string, { size: string; duration: number }> = {
 };
 
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "reel.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires reel.manage" },
+      { status: 403 },
+    );
   }
 
   // ── Rate limit (UPLOAD preset, 20/h per IP) ──
@@ -164,7 +171,16 @@ export async function POST(req: Request) {
 
 /* GET — list reels */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "reel.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires reel.read" },
+      { status: 403 },
+    );
+  }
   try {
     const url = new URL(req.url);
     const listingId = url.searchParams.get("listingId");

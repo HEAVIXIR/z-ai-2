@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { generateSocialReel } from "@/lib/social-reels";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +10,15 @@ export const maxDuration = 300; // 5 min for video generation
 
 /* GET /api/admin/social-reels — list all reels with listing info. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "social-reel.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires social-reel.read" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);
@@ -69,8 +76,15 @@ export async function GET(req: Request) {
  * Action "generate-async" creates row + returns immediately, generation runs in background.
  */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "social-reel.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires social-reel.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json();

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBool } from "@/lib/api-helpers";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +29,15 @@ const ALIAS_LABELS: Record<string, string> = {
 
 /* GET /api/admin/dictionary/[id] — single term detail. */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "dictionary.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires dictionary.read" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -67,8 +74,15 @@ export async function GET(_req: Request, { params }: Params) {
    Aliases are handled with a REPLACE strategy (delete all, recreate).
 */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "dictionary.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires dictionary.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -167,8 +181,15 @@ export async function PATCH(req: Request, { params }: Params) {
 /* DELETE /api/admin/dictionary/[id] — admin delete.
    TermAlias rows cascade-delete via onDelete: Cascade in the schema. */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "dictionary.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires dictionary.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;

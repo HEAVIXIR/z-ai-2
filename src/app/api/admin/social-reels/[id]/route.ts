@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { buildShareLinks } from "@/lib/social-reels";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +12,15 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "social-reel.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires social-reel.read" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -57,8 +64,15 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "social-reel.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires social-reel.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -88,8 +102,15 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "social-reel.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires social-reel.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;

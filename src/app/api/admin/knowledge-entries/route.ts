@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    /api/admin/knowledge-entries
@@ -13,8 +13,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "knowledge.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires knowledge.read" },
+      { status: 403 },
+    );
+  }
 
   const url = new URL(req.url);
   const entityType = url.searchParams.get("entityType") || "";
@@ -50,8 +58,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "knowledge.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires knowledge.manage" },
+      { status: 403 },
+    );
+  }
 
   try {
     const body = await req.json();

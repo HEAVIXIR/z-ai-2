@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
 import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-image
@@ -24,8 +24,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.execute"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.execute" },
+      { status: 403 },
+    );
   }
 
   // ── Rate limit (UPLOAD preset, 20/h per IP) ──

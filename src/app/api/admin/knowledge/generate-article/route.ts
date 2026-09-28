@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { uniqueSlug } from "@/lib/api-helpers";
 import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-article
@@ -28,8 +28,15 @@ const VALID_CATEGORIES = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.execute"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.execute" },
+      { status: 403 },
+    );
   }
 
   const body = await req.json().catch(() => ({}));
