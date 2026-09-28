@@ -216,6 +216,18 @@ export const PERMISSIONS = [
   'moderation.read',      // moderation queue view
   'moderation.moderate',  // approve/reject moderated content
   'matching.read',        // matching engine admin view
+
+  // ── PR-6E Catalog Expansion — domain-specific resource permissions ──
+  // These complete the permission matrix for admin routes that previously
+  // had no matching permission key (Pattern A "gap" files).
+  // Role assignments follow the existing pattern: MODERATOR gets .read,
+  // ADMIN gets .manage (same as content.* / analytics.*).
+  'dictionary.read',     'dictionary.manage',
+  'hot-search.read',     'hot-search.manage',
+  'knowledge.read',      'knowledge.manage',
+  'reel.read',           'reel.manage',
+  'social-reel.read',    'social-reel.manage',
+  'subscription.read',
 ] as const;
 
 export type PermissionKey = typeof PERMISSIONS[number];
@@ -281,6 +293,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'media.upload', 'media.manage',
     'taxonomy.read',
     'content.read',
+    // PR-6E: domain-specific content read permissions (same pattern as content.read)
+    'dictionary.read',
+    'knowledge.read',
+    'reel.read',
+    'social-reel.read',
     'analytics.read',
     // 16-C: marketplace CP moderation
     'part.read', 'part.update',
