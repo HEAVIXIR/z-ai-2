@@ -8790,3 +8790,64 @@ Total: 56/56 GREEN. warehouses "Service" = ⚠ (bundled in store-inventory-servi
 - 4 Store domain resources wired through existing dedicated routes (apiBase pattern) — Universal UI works end-to-end.
 - All constraints honored: no schema changes, no new permission keys, no scope expansion.
 - NEXT (recommended for separate approval): Catalog Expansion R2 + S1-B (collision-safe registrations) + missing-domain build (attributes, promotions/coupons).
+
+---
+Task ID: INCIDENT-15 (auto-commit)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Auto-commit incident report — S1-B pre-flight detected HEAD change
+
+## Incident Summary
+- Detected at: S1-B PRE-FLIGHT HEAD check
+- SHA before: `ebf4009381f4d307f324bf93d83d14f06e7fbfa3`
+- SHA after:  `6e83acb18ac3f8ed45eebd9f6a93f4c2a1591235`
+- Commit message: `928f9bb2-e739-4a8e-abd4-1ef27f834bb1` (UUID — orchestrator signature)
+- Author: HEAVIX Dev <heavix@local>
+- Parent: `ebf4009381f4d307f324bf93d83d14f06e7fbfa3` (linear descendant — no merge, no force-push)
+- Date: Mon Sep 28 14:55:03 2026 +0000
+
+## Changed Files (4) — verified to match S1-A/S4/S5 work exactly
+
+| File | Change | Verified content |
+|---|---|---|
+| src/app/api/admin/saved-views/[id]/route.ts | +40/-5 | ✅ S4 RBAC fix: isAdmin import + SYSTEM-scope check on PUT/DELETE |
+| src/lib/admin/resource-index.ts | +9 | ✅ 4 new registerResource calls (inventory, warehouse, returns, procurement) |
+| src/lib/admin/resources/store-domain-resources.ts | +438 NEW | ✅ S1-A new file with 4 resource configs |
+| worklog.md | +173 | ✅ S0+S2+S1-A+S3+S4+S5 reports appended |
+
+## Scope Assessment
+
+The auto-commit captured EXACTLY the 4 files I touched during S1-A/S4/S5.
+- No out-of-scope files touched
+- No merge (parent is the linear ancestor)
+- No force-push (origin/main unchanged at 6b609e13f266d9d1267d6ac24ca324a4d3d7f955)
+- No amend (commit hash 6e83acb1 differs from any previous)
+- Content verified line-by-line via `git show 6e83acb1 -- <file>`
+
+## Trigger Analysis
+
+The orchestrator (PID 920, /app/main.py) commits dirty working tree with UUID messages.
+Per past pattern (Incidents 1-14), this happens whenever the working tree is dirty after a session.
+This incident matches that pattern exactly. Not controllable from inside the container.
+
+## Action Taken
+
+- STOPPED per safety protocol: "اگر HEAD هر لحظه تغییر کرد: STOP IMMEDIATELY"
+- Reported all required forensic fields (SHA before/after, message, parent, files, scope)
+- NO push, NO merge, NO reset, NO revert, NO amend executed
+- Waiting for user re-approval to proceed with S1-B READ-ONLY reconciliation
+
+## New Baseline (proposed, pending user acceptance)
+
+- HEAD: `6e83acb18ac3f8ed45eebd9f6a93f4c2a1591235` (was ebf40093)
+- origin/main: `6b609e13f266d9d1267d6ac24ca324a4d3d7f955` (unchanged)
+- Working tree: CLEAN (all S1-A/S4/S5 work now committed)
+- 22 resources registered in resource-index.ts (verified unchanged)
+- Saved-Views PUT/DELETE RBAC gap closed (verified)
+- All quality gates from S5 still hold (HEAD is a clean linear descendant of ebf40093)
+
+## Stage Summary
+
+- 🔴 S1-B pre-flight BLOCKED on Incident 15 (HEAD changed)
+- Content verified correct — Incident is benign (matches my work)
+- NO further action taken without explicit user re-approval
+- Awaiting user instruction to accept new HEAD `6e83acb1` and proceed with S1-B READ-ONLY
