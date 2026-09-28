@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +29,15 @@ function serialize(a: any) {
 
 /* GET /api/admin/auctions/[id] */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "auction.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires auction.read" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -85,8 +92,15 @@ export async function GET(_req: Request, { params }: Params) {
    Status transitions: SCHEDULED | LIVE | ENDED | CANCELLED.
 */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "auction.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires auction.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -233,8 +247,15 @@ export async function PATCH(req: Request, { params }: Params) {
    Note: AuctionBid has onDelete: Cascade, so bids will be removed automatically.
 */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "auction.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires auction.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;

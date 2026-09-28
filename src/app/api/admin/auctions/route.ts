@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,9 +21,15 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export async function GET() {
-  const authed = await isAuthenticated();
-  if (!authed) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "auction.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires auction.read" },
+      { status: 403 },
+    );
   }
   try {
     const auctions = await db.auction.findMany({
@@ -92,9 +98,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const authed = await isAuthenticated();
-  if (!authed) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "auction.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires auction.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));

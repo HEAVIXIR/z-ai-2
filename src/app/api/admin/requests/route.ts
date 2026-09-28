@@ -2,8 +2,9 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBool } from "@/lib/api-helpers";
+import { hasPermission } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
@@ -19,8 +20,15 @@ function serialize(r: any) {
 
 /* GET /api/admin/requests — admin list + stats. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "request.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires request.read" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);
@@ -76,8 +84,15 @@ export async function GET(req: Request) {
 
 /* POST /api/admin/requests — bulk actions. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "request.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires request.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));
