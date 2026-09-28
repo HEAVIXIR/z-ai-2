@@ -3,7 +3,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { parseBig, parseBool, parseNumber } from "@/lib/api-helpers";
@@ -21,8 +21,15 @@ function serialize(l: any) {
 
 /* GET /api/admin/listings — list with filters + stats. */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'listing.read'" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);

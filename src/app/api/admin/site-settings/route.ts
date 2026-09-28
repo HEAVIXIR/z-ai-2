@@ -2,7 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
@@ -10,8 +10,15 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/admin/site-settings */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'admin.settings.manage'" },
+      { status: 403 },
+    );
   }
   try {
     let s = await db.siteSettings.findUnique({ where: { id: "main" } });

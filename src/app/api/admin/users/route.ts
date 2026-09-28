@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
 
@@ -27,8 +27,15 @@ function serialize(u: any) {
 
 /* GET /api/admin/users?q=&role=&status=&emailVerified=&sort=&limit=&offset= */
 export async function GET(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "user.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'user.read'" },
+      { status: 403 },
+    );
   }
   try {
     const url = new URL(req.url);

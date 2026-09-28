@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,8 +16,15 @@ function serialize(s: any) {
 
 /* GET /api/admin/subscriptions — list + stats. */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "subscription.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'subscription.read'" },
+      { status: 403 },
+    );
   }
   try {
     const [items, stats] = await Promise.all([
@@ -50,8 +57,15 @@ export async function GET() {
 
 /* POST /api/admin/subscriptions — create/update. Body: { userId, plan?, ... } */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "subscription.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'subscription.manage'" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));

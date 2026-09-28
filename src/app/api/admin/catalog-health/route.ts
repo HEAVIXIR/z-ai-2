@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* GET /api/admin/catalog-health — health score + issues list. */
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "analytics.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'analytics.read'" },
+      { status: 403 },
+    );
   }
   try {
     const total = await db.listing.count();

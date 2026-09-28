@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,8 +59,15 @@ async function walk(dir: string, base: string): Promise<Array<{
 }
 
 export async function GET() {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "media.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'media.manage'" },
+      { status: 403 },
+    );
   }
   try {
     const files = await walk(UPLOAD_ROOT, UPLOAD_ROOT);

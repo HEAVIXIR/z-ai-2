@@ -3,7 +3,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
@@ -59,8 +59,15 @@ function serialize(l: any) {
 
 /* GET /api/admin/listings/[id] — full detail. */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'listing.read'" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -125,8 +132,15 @@ export async function GET(_req: Request, { params }: Params) {
    (sets publishedAt = now + extends expiresAt by 30 days).
 */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.update"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'listing.update'" },
+      { status: 403 },
+    );
   }
   const user = await getCurrentUser();
   try {
