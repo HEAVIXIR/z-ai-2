@@ -436,3 +436,311 @@ export const procurementConfig: AdminResourceConfig = {
   audit: { enabled: true, entityType: 'ProcurementRequest',
     actions: ['procurement.manage'] },
 };
+
+// ── 5. Customers (Store customer directory — READ-ONLY) ───────
+// Note: customers are auto-created via the order flow (Store schema
+// Order.customerId backref). The admin route exposes GET only — no
+// POST/PATCH/DELETE handlers — so this resource is read-only in the
+// Universal UI. Editing happens implicitly via order management.
+export const customersConfig: AdminResourceConfig = {
+  key: 'customers',
+  titleFa: 'مشتریان فروشگاه',
+  titleEn: 'Store Customers',
+  icon: 'Users',
+  model: 'customer',
+  apiBase: '/api/admin/store/customers',
+  adminPath: '/admin/resources/customers',
+
+  // READ-ONLY: only read + export. No create/update/delete — the
+  // /api/admin/store/customers/route.ts only exposes GET.
+  permissions: {
+    read: 'store.read',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'phone', label: 'تلفن', type: 'text', sortable: true, filterable: true },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'family', label: 'نام خانوادگی', type: 'text', sortable: true, filterable: true },
+    { key: 'nationalCode', label: 'کد ملی', type: 'text', visible: false },
+    { key: 'address', label: 'نشانی', type: 'text', visible: false },
+    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+    { key: 'totalOrders', label: 'تعداد سفارش', type: 'number', sortable: true },
+    { key: 'totalSpentIrr', label: 'مجموع خرید (ریال)', type: 'currency', sortable: true },
+    { key: 'walletBalanceIrr', label: 'موجودی کیف پول (ریال)', type: 'currency' },
+    { key: 'notes', label: 'یادداشت', type: 'text', visible: false },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+    { key: 'updatedAt', label: 'به‌روزرسانی', type: 'date', sortable: true, visible: false },
+  ],
+
+  filters: [
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'BLOCKED', label: 'مسدود' },
+    ]},
+  ],
+
+  defaultSort: { field: 'createdAt', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['phone', 'name', 'family', 'nationalCode'],
+
+  // Fields are listed for the detail view (read-only display).
+  // No write paths because the API has no POST/PATCH/DELETE.
+  fields: [
+    { key: 'phone', label: 'تلفن', type: 'text', required: true,
+      validation: { minLength: 10, maxLength: 15,
+        message: 'تلفن باید بین ۱۰ تا ۱۵ رقم باشد' } },
+    { key: 'name', label: 'نام', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50,
+        message: 'نام باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'family', label: 'نام خانوادگی', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50,
+        message: 'نام خانوادگی باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'nationalCode', label: 'کد ملی', type: 'text',
+      validation: { minLength: 10, maxLength: 10,
+        message: 'کد ملی باید ۱۰ رقم باشد' } },
+    { key: 'address', label: 'نشانی', type: 'textarea',
+      validation: { maxLength: 500,
+        message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'BLOCKED', label: 'مسدود' },
+    ], permissions: { read: 'store.read' } },
+    { key: 'notes', label: 'یادداشت مدیریت', type: 'textarea',
+      validation: { maxLength: 2000,
+        message: 'یادداشت نباید بیش از ۲۰۰۰ نویسه باشد' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'orders', label: 'سفارش‌ها', type: 'relations' },
+    { key: 'payments', label: 'پرداخت‌ها', type: 'relations' },
+    { key: 'wallet', label: 'تراکنش‌های کیف پول', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  // No create/update/delete actions — API has no POST/PATCH/DELETE handlers.
+  // Only bulk-export is exposed (read-only operations).
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Customer',
+    actions: ['store.manage'] },
+};
+
+// ── 6. Mechanics (Store mechanic directory — FULL CRUD) ───────
+export const mechanicsConfig: AdminResourceConfig = {
+  key: 'mechanics',
+  titleFa: 'مکانیک‌ها',
+  titleEn: 'Mechanics',
+  icon: 'Wrench',
+  model: 'mechanic',
+  apiBase: '/api/admin/store/mechanics',
+  adminPath: '/admin/resources/mechanics',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'phone', label: 'تلفن', type: 'text', sortable: true, filterable: true },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'family', label: 'نام خانوادگی', type: 'text', sortable: true, filterable: true },
+    { key: 'shopName', label: 'نام مغازه', type: 'text', filterable: true },
+    { key: 'specialty', label: 'تخصص', type: 'text', filterable: true },
+    { key: 'city', label: 'شهر', type: 'text', filterable: true },
+    { key: 'rating', label: 'امتیاز', type: 'number', sortable: true },
+    { key: 'verified', label: 'تأییدشده', type: 'boolean', sortable: true, filterable: true },
+    { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
+    { key: 'totalOrders', label: 'تعداد سفارش', type: 'number', sortable: true },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+    { key: 'updatedAt', label: 'به‌روزرسانی', type: 'date', sortable: true, visible: false },
+  ],
+
+  filters: [
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'INACTIVE', label: 'غیرفعال' },
+    ]},
+    { key: 'verified', label: 'تأیید', type: 'select', options: [
+      { value: 'true', label: 'تأییدشده' },
+      { value: 'false', label: 'تأییدنشده' },
+    ]},
+  ],
+
+  defaultSort: { field: 'createdAt', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['phone', 'name', 'family', 'shopName', 'specialty', 'city'],
+
+  fields: [
+    { key: 'phone', label: 'تلفن', type: 'text', required: true,
+      validation: { minLength: 10, maxLength: 15,
+        message: 'تلفن باید بین ۱۰ تا ۱۵ رقم باشد' } },
+    { key: 'name', label: 'نام', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50,
+        message: 'نام باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'family', label: 'نام خانوادگی', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 50,
+        message: 'نام خانوادگی باید بین ۲ تا ۵۰ نویسه باشد' } },
+    { key: 'shopName', label: 'نام مغازه', type: 'text',
+      validation: { maxLength: 200,
+        message: 'نام مغازه نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'specialty', label: 'تخصص', type: 'text',
+      validation: { maxLength: 200,
+        message: 'تخصص نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'city', label: 'شهر', type: 'text',
+      validation: { maxLength: 100,
+        message: 'نام شهر نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'address', label: 'نشانی', type: 'textarea',
+      validation: { maxLength: 500,
+        message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
+    { key: 'status', label: 'وضعیت', type: 'select', options: [
+      { value: 'ACTIVE', label: 'فعال' },
+      { value: 'INACTIVE', label: 'غیرفعال' },
+    ], permissions: { read: 'store.read', write: 'store.manage' } },
+    { key: 'verified', label: 'تأییدشده', type: 'boolean', defaultValue: false,
+      permissions: { read: 'store.read', write: 'store.manage' } },
+    { key: 'notes', label: 'یادداشت مدیریت', type: 'textarea',
+      validation: { maxLength: 2000,
+        message: 'یادداشت نباید بیش از ۲۰۰۰ نویسه باشد' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'orders', label: 'سفارش‌ها', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'verify', label: 'تأیید مکانیک', icon: 'BadgeCheck',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/mechanics', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/mechanics', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/mechanics', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'BadgeCheck',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Mechanic',
+    actions: ['store.manage'] },
+};
+
+// ── 7. Suppliers (B2B supplier directory — FULL CRUD) ────────
+export const suppliersConfig: AdminResourceConfig = {
+  key: 'suppliers',
+  titleFa: 'تأمین‌کنندگان',
+  titleEn: 'Suppliers',
+  icon: 'Truck',
+  model: 'supplier',
+  apiBase: '/api/admin/store/suppliers',
+  adminPath: '/admin/resources/suppliers',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text', sortable: true, filterable: true },
+    { key: 'phone', label: 'تلفن', type: 'text', filterable: true },
+    { key: 'email', label: 'ایمیل', type: 'text', filterable: true, visible: false },
+    { key: 'address', label: 'نشانی', type: 'text', visible: false },
+    { key: 'active', label: 'فعال', type: 'boolean', sortable: true, filterable: true },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+    { key: 'updatedAt', label: 'به‌روزرسانی', type: 'date', sortable: true, visible: false },
+  ],
+
+  filters: [
+    { key: 'active', label: 'وضعیت', type: 'select', options: [
+      { value: 'true', label: 'فعال' },
+      { value: 'false', label: 'غیرفعال' },
+    ]},
+  ],
+
+  defaultSort: { field: 'name', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['name', 'nameFa', 'phone', 'email', 'address'],
+
+  fields: [
+    { key: 'name', label: 'نام', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 200,
+        message: 'نام باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text',
+      validation: { maxLength: 200,
+        message: 'نام فارسی نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'phone', label: 'تلفن', type: 'text',
+      validation: { maxLength: 20,
+        message: 'تلفن نباید بیش از ۲۰ نویسه باشد' } },
+    { key: 'email', label: 'ایمیل', type: 'text',
+      validation: { maxLength: 100, pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        message: 'فرمت ایمیل نامعتبر است' } },
+    { key: 'address', label: 'نشانی', type: 'textarea',
+      validation: { maxLength: 500,
+        message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
+      permissions: { read: 'store.read', write: 'store.manage' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'procurements', label: 'درخواست‌های تأمین', type: 'relations' },
+    { key: 'purchaseOrders', label: 'سفارشات خرید', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-deactivate', label: 'غیرفعال‌سازی گروهی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Supplier',
+    actions: ['store.manage'] },
+
+  relations: [
+    { label: 'درخواست‌های تأمین', resource: 'procurement', filterField: 'supplierId' },
+  ],
+};
