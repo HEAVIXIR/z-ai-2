@@ -7,6 +7,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/authorization';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +25,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const existing = await db.adminSavedView.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Only owner or admin can update
-  if (existing.userId && existing.userId !== user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // P1 SECURITY FIX (Phase S4): scope-aware ownership check.
+  //   - PERSONAL/TEAM scope (userId set): only the owner can modify.
+  //   - SYSTEM scope (userId null): requires ADMIN role via RBAC.
+  //     Without this branch, ANY authenticated user could mutate
+  //     SYSTEM-scope views — a privilege-escalation vector.
+  if (existing.userId) {
+    if (existing.userId !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
+    // SYSTEM-scope view: require ADMIN role.
+    const adminOk = await isAdmin(user.id);
+    if (!adminOk) {
+      return NextResponse.json(
+        { error: 'Forbidden: SYSTEM-scope views require admin role' },
+        { status: 403 },
+      );
+    }
   }
 
   const allowed = ['name', 'config', 'isDefault', 'active'];
@@ -56,8 +72,22 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const existing = await db.adminSavedView.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  if (existing.userId && existing.userId !== user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // P1 SECURITY FIX (Phase S4): scope-aware ownership check.
+  //   - PERSONAL/TEAM scope (userId set): only the owner can delete.
+  //   - SYSTEM scope (userId null): requires ADMIN role via RBAC.
+  if (existing.userId) {
+    if (existing.userId !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
+    // SYSTEM-scope view: require ADMIN role.
+    const adminOk = await isAdmin(user.id);
+    if (!adminOk) {
+      return NextResponse.json(
+        { error: 'Forbidden: SYSTEM-scope views require admin role' },
+        { status: 403 },
+      );
+    }
   }
 
   await db.adminSavedView.delete({ where: { id } });

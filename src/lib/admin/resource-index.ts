@@ -14,6 +14,10 @@ import {
   dealConfig, rfqConfig, offerConfig, auctionConfig,
   inspectionConfig, transportConfig, disputeConfig, buyRequestConfig,
 } from './resources/marketplace-resources';
+// Phase S1-A — Store Domain resources (Store-schema models)
+import {
+  inventoryConfig, warehouseConfig, returnsConfig, procurementConfig,
+} from './resources/store-domain-resources';
 
 // Marketplace
 registerResource(listingConfig);
@@ -27,6 +31,11 @@ registerResource(reviewConfig);
 registerResource(dealConfig); registerResource(rfqConfig); registerResource(offerConfig);
 registerResource(auctionConfig); registerResource(inspectionConfig); registerResource(transportConfig);
 registerResource(disputeConfig); registerResource(buyRequestConfig);
+// Phase S1-A — Store Domain (Store-schema models, routed via /api/admin/store/*)
+registerResource(inventoryConfig);
+registerResource(warehouseConfig);
+registerResource(returnsConfig);
+registerResource(procurementConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';
