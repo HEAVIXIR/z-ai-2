@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
+import { getStoreMonitoringStatus } from "@/lib/admin/store-monitoring-registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const VERSION = "1.0";
+const VERSION = "2.0";
 
 /* GET /api/admin/store/health
-   Store Control Plane health-check (Monitoring stub, Layer A).
-   Best-effort: reports DB status + basic stats. HTTP 503 if DB unreachable.
+   Store Control Plane health-check (Batch C upgrade).
+   Reports domain-level DB status + per-resource monitoring for all 13
+   Store CP resources (count, latency, audit/service/test wiring status).
+   HTTP 503 if DB unreachable.
 */
 export async function GET() {
   const timestamp = new Date().toISOString();
@@ -37,5 +40,21 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ status: "ok", timestamp, db: dbStatus, dbLatencyMs, version: VERSION, stats });
+  // Batch C: per-resource monitoring — check each Store CP resource
+  // individually (count, latency, audit/service/test wiring status).
+  // This upgrades monitoring from domain-level to resource-level.
+  let resourceMonitoring: unknown[] = [];
+  try {
+    resourceMonitoring = await getStoreMonitoringStatus();
+  } catch { /* per-resource monitoring is best-effort */ }
+
+  return NextResponse.json({
+    status: "ok",
+    timestamp,
+    db: dbStatus,
+    dbLatencyMs,
+    version: VERSION,
+    stats,
+    resourceMonitoring,
+  });
 }
