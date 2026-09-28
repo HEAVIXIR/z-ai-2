@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,8 +38,15 @@ function serialize(r: any) {
 
 /* GET /api/admin/rejections/[id] */
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.moderate"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires listing.moderate" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -75,8 +82,15 @@ export async function GET(_req: Request, { params }: Params) {
    Editable: reason, reasonLabel, adminNote, status (OPEN | RESOLVED | IGNORED | REOPENED | PENDING).
 */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.moderate"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires listing.moderate" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -152,8 +166,15 @@ export async function PATCH(req: Request, { params }: Params) {
    RejectionMessage has onDelete: Cascade → messages removed automatically.
 */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "listing.moderate"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires listing.moderate" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;

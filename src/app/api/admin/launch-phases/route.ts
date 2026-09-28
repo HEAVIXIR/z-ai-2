@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
-import { requireAdmin } from "@/lib/admin-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 /* ============================================================
    /api/admin/launch-phases
@@ -23,8 +23,16 @@ const DEFAULT_PHASES = [
 ];
 
 export async function GET() {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.settings.manage" },
+      { status: 403 },
+    );
+  }
 
   let phases = await db.launchPhase.findMany({ orderBy: { phase: "asc" } });
 
@@ -59,8 +67,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.settings.manage" },
+      { status: 403 },
+    );
+  }
 
   try {
     const body = await req.json();

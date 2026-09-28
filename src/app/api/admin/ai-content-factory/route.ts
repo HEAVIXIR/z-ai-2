@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import ZAI from "z-ai-web-dev-sdk";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +33,15 @@ const CATEGORY_HINTS: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.execute"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.execute" },
+      { status: 403 },
+    );
   }
 
   try {

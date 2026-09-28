@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseNumber } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,8 +37,15 @@ function parseDate(v: any): Date | null {
 }
 
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.settings.manage" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
@@ -56,8 +63,15 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.settings.manage" },
+      { status: 403 },
+    );
   }
   const user = await getCurrentUser();
   try {
@@ -148,8 +162,15 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires admin.settings.manage" },
+      { status: 403 },
+    );
   }
   const user = await getCurrentUser();
   try {

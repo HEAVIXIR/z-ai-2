@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBool, parseNumber } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { getAIBudget } from "@/lib/ai-policy";
-import { requireAdmin } from "@/lib/admin-guard";
+import { hasPermission } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,13 +21,16 @@ export const dynamic = "force-dynamic";
            (resetDaily, resetMonthly).
    ============================================================ */
 
-async function authed(): Promise<boolean> {
-  return await isAuthenticated();
-}
-
 export async function GET() {
-  if (!(await authed())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.read"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.read" },
+      { status: 403 },
+    );
   }
   try {
     const [budget, policies] = await Promise.all([
@@ -46,8 +49,15 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  if (!(await authed())) {
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.manage"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.manage" },
+      { status: 403 },
+    );
   }
   try {
     const body = await req.json().catch(() => ({}));
