@@ -149,6 +149,17 @@ export interface AdminResourceConfig {
   icon?: string;
   /** Prisma model name (e.g., 'listing' for prisma.listing) */
   model: string;
+  /**
+   * P1 STORE-AWARENESS: Which Prisma client to use.
+   * - 'main' (default): use `db` from '@/lib/db' (main schema)
+   * - 'store': use `storeDb` from '@/lib/store-db' (store-schema.prisma)
+   *
+   * Store-schema resources (StockMovement, Warehouse, Return, Customer,
+   * Mechanic, Supplier, etc.) MUST declare database: 'store'.
+   * Main-schema resources (Listing, Brand, User, Product, etc.) can
+   * omit this field (defaults to 'main').
+   */
+  database?: 'main' | 'store';
   /** API base path (e.g., '/api/admin/listings') */
   apiBase: string;
   /** Admin page path (e.g., '/admin/listings') */

@@ -41,6 +41,7 @@
  */
 
 import { db } from '@/lib/db';
+import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
 import { requirePermission, AuthorizationError } from '@/lib/authorization';
 import { headers } from 'next/headers';
@@ -64,6 +65,13 @@ export interface AuditMutationContext {
   before?: unknown;
   /** Explicit after-state (overrides snapshot) */
   after?: unknown;
+  /**
+   * P1 STORE-AWARENESS: Which Prisma client to use for snapshot capture.
+   * - 'store': use storeDb (for store-schema resources)
+   * - 'main' or undefined: use db (main schema)
+   * Must match the resource's config.database value.
+   */
+  database?: 'main' | 'store';
 }
 
 export interface AuditMutationResult<T> {
@@ -92,6 +100,11 @@ async function getRequestInfo() {
   return { ip, userAgent: ua, requestId: reqId };
 }
 
+// P1 STORE-AWARENESS: Select the right Prisma client for snapshot capture.
+function getClient(database?: 'main' | 'store') {
+  return database === 'store' ? storeDb : db;
+}
+
 // ── Core: auditMutation ────────────────────────────────────
 /**
  * Wraps a mutation operation with before/after audit capture.
@@ -114,7 +127,8 @@ export async function auditMutation<T>(
   let before: unknown = ctx.before ?? null;
   if (ctx.captureSnapshot && ctx.beforeModel && ctx.entityId) {
     try {
-      const model = (db as any)[ctx.beforeModel.charAt(0).toLowerCase() + ctx.beforeModel.slice(1)];
+      const client = getClient(ctx.database);
+      const model = (client as any)[ctx.beforeModel.charAt(0).toLowerCase() + ctx.beforeModel.slice(1)];
       if (model?.findUnique) {
         before = await model.findUnique({ where: { id: ctx.entityId } });
       }
@@ -147,7 +161,8 @@ export async function auditMutation<T>(
   let after: unknown = ctx.after ?? null;
   if (ctx.captureSnapshot && ctx.afterModel && ctx.entityId) {
     try {
-      const model = (db as any)[ctx.afterModel.charAt(0).toLowerCase() + ctx.afterModel.slice(1)];
+      const client = getClient(ctx.database);
+      const model = (client as any)[ctx.afterModel.charAt(0).toLowerCase() + ctx.afterModel.slice(1)];
       if (model?.findUnique) {
         after = await model.findUnique({ where: { id: ctx.entityId } });
       }

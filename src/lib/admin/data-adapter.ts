@@ -13,6 +13,7 @@
  */
 
 import { db } from '@/lib/db';
+import { storeDb } from '@/lib/store-db';
 import type { AdminResourceConfig } from './types';
 import { buildPrismaQuery, buildCountQuery, type AdminQueryParams } from './query/query-builder';
 import { applyFieldPolicy, applyFieldWritePolicyAsync, type FieldPolicyContext } from './field-policy';
@@ -26,12 +27,29 @@ export interface ListResult<T> {
   totalPages: number;
 }
 
+// ── P1 STORE-AWARENESS: Get Prisma client based on config.database ──
+/**
+ * Returns the correct Prisma client for this resource.
+ * - config.database === 'store' → storeDb (store-schema.prisma)
+ * - config.database === 'main' or undefined → db (main schema.prisma)
+ *
+ * This eliminates the need for resources to route via dedicated API
+ * routes just to access the right database. Universal Resource Engine
+ * CRUD now works for both main and store schema resources.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getPrismaClient(config: AdminResourceConfig): any {
+  return config.database === 'store' ? storeDb : db;
+}
+
 // ── Get Prisma model accessor from config ───────────────────
 function getPrismaModel(config: AdminResourceConfig): any {
   const modelKey = config.model.charAt(0).toLowerCase() + config.model.slice(1);
-  const model = (db as any)[modelKey];
+  const client = getPrismaClient(config);
+  const model = (client as any)[modelKey];
   if (!model) {
-    throw new Error(`Prisma model "${modelKey}" not found for resource "${config.key}"`);
+    const schema = config.database === 'store' ? 'store-schema' : 'main schema';
+    throw new Error(`Prisma model "${modelKey}" not found in ${schema} for resource "${config.key}"`);
   }
   return model;
 }

@@ -18,6 +18,7 @@ import '@/lib/admin/resource-index';
 import { registry } from '@/lib/admin/resource-registry';
 import { getResource, updateResource, deleteResource } from '@/lib/admin/data-adapter';
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
+import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { requireAdmin } from '@/lib/admin-guard';
 import { can } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
@@ -78,6 +79,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
 
+  // P1 SERVER-SIDE VALIDATION: Validate payload against resource field config
+  // (required, type, enum, min/max, string constraints, pattern)
+  // This is server-authoritative — client validation is UX only.
+  const validation = validateResourcePayload(config, body);
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: 'Validation failed', errors: validation.errors },
+      { status: 422 },
+    );
+  }
+
   try {
     const result = await auditMutation(
       {
@@ -89,6 +101,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         captureSnapshot: true,
         beforeModel: config.model,
         afterModel: config.model,
+        database: config.database, // P1: route snapshot capture to the right Prisma client
       },
       async () => {
         return await updateResource(config, id, body, { userId: user?.id ?? null });
@@ -152,6 +165,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         captureSnapshot: true,
         beforeModel: config.model,
         // No afterModel — after-state will be null (deleted)
+        database: config.database, // P1: route snapshot capture to the right Prisma client
       },
       async () => {
         // Verify existence before delete (return 404 if not found)

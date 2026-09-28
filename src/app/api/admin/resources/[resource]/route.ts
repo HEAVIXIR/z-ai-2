@@ -37,6 +37,7 @@ import { parseQueryParams } from '@/lib/admin/query/query-builder';
 import { listResources, createResource } from '@/lib/admin/data-adapter';
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
+import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { auditCreate, auditMutation } from '@/lib/audit-foundation';
 import { can } from '@/lib/authorization';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
@@ -139,6 +140,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
+  // P1 SERVER-SIDE VALIDATION: Validate payload against resource field config
+  // (required, type, enum, min/max, string constraints, pattern)
+  // This is server-authoritative — client validation is UX only.
+  const validation = validateResourcePayload(config, body);
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: 'Validation failed', errors: validation.errors },
+      { status: 422 },
+    );
+  }
+
   try {
     // P0-3 HARDENING: Wrap createResource inside auditMutation so:
     //   - If mutation succeeds → audit logged (success)
@@ -153,6 +165,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         entityId: null, // unknown until after create; after-state captures the new entity
         reason: 'Created via Universal Resource API',
         captureSnapshot: false, // no before-state for creates
+        database: config.database, // P1: route snapshot capture to the right Prisma client
       },
       async () => {
         return await createResource(config, body, { userId: user?.id ?? null });

@@ -43,6 +43,7 @@ export const inventoryConfig: AdminResourceConfig = {
   titleEn: 'Inventory (Stock Movements)',
   icon: 'Boxes',
   model: 'stockMovement',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/inventory',
   adminPath: '/admin/resources/inventory',
 
@@ -139,6 +140,7 @@ export const warehouseConfig: AdminResourceConfig = {
   titleEn: 'Warehouses',
   icon: 'Warehouse',
   model: 'warehouse',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/warehouses',
   adminPath: '/admin/resources/warehouses',
 
@@ -228,6 +230,7 @@ export const returnsConfig: AdminResourceConfig = {
   titleEn: 'Returns',
   icon: 'RotateCcw',
   model: 'return',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/returns',
   adminPath: '/admin/resources/returns',
 
@@ -336,6 +339,7 @@ export const procurementConfig: AdminResourceConfig = {
   titleEn: 'Procurement',
   icon: 'ShoppingCart',
   model: 'procurementRequest',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/procurement',
   adminPath: '/admin/resources/procurement',
 
@@ -448,6 +452,7 @@ export const customersConfig: AdminResourceConfig = {
   titleEn: 'Store Customers',
   icon: 'Users',
   model: 'customer',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/customers',
   adminPath: '/admin/resources/customers',
 
@@ -539,6 +544,7 @@ export const mechanicsConfig: AdminResourceConfig = {
   titleEn: 'Mechanics',
   icon: 'Wrench',
   model: 'mechanic',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/mechanics',
   adminPath: '/admin/resources/mechanics',
 
@@ -651,6 +657,7 @@ export const suppliersConfig: AdminResourceConfig = {
   titleEn: 'Suppliers',
   icon: 'Truck',
   model: 'supplier',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/suppliers',
   adminPath: '/admin/resources/suppliers',
 
@@ -755,6 +762,7 @@ export const carModelsConfig: AdminResourceConfig = {
   titleEn: 'Car Models',
   icon: 'Car',
   model: 'carModel',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/car-models',
   adminPath: '/admin/resources/car-models',
 
@@ -852,6 +860,7 @@ export const currencyConfig: AdminResourceConfig = {
   titleEn: 'Currency Rates',
   icon: 'DollarSign',
   model: 'currencyRate',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/currency',
   adminPath: '/admin/resources/currency',
 
@@ -946,6 +955,7 @@ export const servicesConfig: AdminResourceConfig = {
   titleEn: 'Service Providers',
   icon: 'Wrench',
   model: 'serviceProvider',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/services/providers',
   adminPath: '/admin/resources/services',
 
@@ -1075,6 +1085,7 @@ export const storeCategoriesConfig: AdminResourceConfig = {
   titleEn: 'Store Categories',
   icon: 'FolderTree',
   model: 'category',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/categories',
   adminPath: '/admin/resources/store-categories',
 
@@ -1170,6 +1181,7 @@ export const storeBrandsConfig: AdminResourceConfig = {
   titleEn: 'Store Brands',
   icon: 'Tag',
   model: 'brand',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/brands',
   adminPath: '/admin/resources/store-brands',
 
@@ -1282,6 +1294,7 @@ export const shipmentsConfig: AdminResourceConfig = {
   titleEn: 'Shipments',
   icon: 'PackageCheck',
   model: 'shipment',
+  database: 'store',  // P1: Store-schema model (storeDb)
   apiBase: '/api/admin/store/shipments',
   adminPath: '/admin/resources/shipments',
 
