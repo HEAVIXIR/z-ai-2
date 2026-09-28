@@ -37,7 +37,7 @@ import { parseQueryParams } from '@/lib/admin/query/query-builder';
 import { listResources, createResource } from '@/lib/admin/data-adapter';
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
-import { auditCreate } from '@/lib/audit-foundation';
+import { auditCreate, auditMutation } from '@/lib/audit-foundation';
 import { can } from '@/lib/authorization';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 
@@ -140,19 +140,25 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const item = await createResource(config, body, { userId: user?.id ?? null });
-
-    // Audit
-    if (config.audit?.enabled && item?.id) {
-      await auditCreate(
-        user?.id ?? null,
-        config.audit.actions.find(a => a.includes('.create')) || `${config.key}.create`,
-        config.audit.entityType,
-        String(item.id),
-        body,
-        'Created via Universal Resource API',
-      );
-    }
+    // P0-3 HARDENING: Wrap createResource inside auditMutation so:
+    //   - If mutation succeeds → audit logged (success)
+    //   - If mutation fails → audit logged (.failed suffix)
+    //   - Audit captures Who/What/When/Where/Before(null)/After/Why
+    // This makes audit enforcement CENTRAL for Universal Resource API POST.
+    const auditResult = await auditMutation(
+      {
+        actorId: user?.id ?? null,
+        action: config.audit?.actions.find(a => a.includes('.create')) || `${config.key}.create`,
+        entityType: config.audit?.entityType || resourceKey,
+        entityId: null, // unknown until after create; after-state captures the new entity
+        reason: 'Created via Universal Resource API',
+        captureSnapshot: false, // no before-state for creates
+      },
+      async () => {
+        return await createResource(config, body, { userId: user?.id ?? null });
+      },
+    );
+    const item = auditResult.result;
 
     // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
     // Only fires for resources that have Homepage impact (listings, brands, buy-requests).
@@ -168,6 +174,19 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: item }, { status: 201 });
   } catch (err) {
+    // P0-1: Field write permission rejection → 403 (not 500)
+    const errorWithStatus = err as Error & { statusCode?: number; rejectedField?: string; requiredPermission?: string };
+    if (errorWithStatus.statusCode === 403) {
+      console.error(`[resources/${resourceKey}] POST field-write forbidden:`, err);
+      return NextResponse.json(
+        {
+          error: errorWithStatus.message,
+          field: errorWithStatus.rejectedField,
+          requiredPermission: errorWithStatus.requiredPermission,
+        },
+        { status: 403 },
+      );
+    }
     console.error(`[resources/${resourceKey}] POST error:`, err);
     return NextResponse.json(
       { error: 'Failed to create resource', details: (err as Error).message },

@@ -49,6 +49,11 @@ export function applyFieldPolicy(
 }
 
 // ── Apply field policy for WRITE (filters writable fields) ──
+// NOTE (P0-1 HARDENING): The sync version below does NOT enforce
+// field-level write permissions — it includes all fields regardless.
+// Use `applyFieldWritePolicyAsync` for actual enforcement. The sync
+// version is kept only for backward compatibility with callers that
+// haven't migrated yet.
 export function applyFieldWritePolicy(
   config: AdminResourceConfig,
   data: Record<string, unknown>,
@@ -74,6 +79,66 @@ export function applyFieldWritePolicy(
   }
 
   return filtered;
+}
+
+// ── P0-1 HARDENING: Async field write policy with fail-closed enforcement ──
+/**
+ * Async field write policy that ACTUALLY enforces field-level write
+ * permissions via `can(userId, writePermission)`.
+ *
+ * Behavior:
+ *   - Field NOT in config → skipped (unknown fields rejected)
+ *   - Field has NO `permissions.write` → allowed (resource-level check passed)
+ *   - Field HAS `permissions.write` + user HAS permission → allowed
+ *   - Field HAS `permissions.write` + user LACKS permission → FAIL CLOSED
+ *     (entire request rejected, not silently stripped)
+ *
+ * Returns:
+ *   - `{ ok: true, filteredData }` on success
+ *   - `{ ok: false, rejectedField, requiredPermission }` on auth failure
+ */
+export interface FieldWritePolicyResult {
+  ok: boolean;
+  filteredData?: Record<string, unknown>;
+  rejectedField?: string;
+  requiredPermission?: string;
+}
+
+export async function applyFieldWritePolicyAsync(
+  config: AdminResourceConfig,
+  data: Record<string, unknown>,
+  ctx: FieldPolicyContext,
+): Promise<FieldWritePolicyResult> {
+  const filtered: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    const field = config.fields.find(f => f.key === key);
+    if (!field) {
+      // Field not in config — skip (security: don't allow writing unknown fields)
+      continue;
+    }
+
+    const writePerm = (field as any).permissions?.write as string | undefined;
+    if (!writePerm) {
+      // No field-level write permission — allow (resource-level check already passed)
+      filtered[key] = value;
+    } else {
+      // Has field-level write permission — enforce via async can() check
+      const hasPerm = await can(ctx.userId, writePerm);
+      if (!hasPerm) {
+        // FAIL CLOSED: user lacks field-level write permission.
+        // Do NOT silently strip the field — reject the entire request.
+        return {
+          ok: false,
+          rejectedField: key,
+          requiredPermission: writePerm,
+        };
+      }
+      filtered[key] = value;
+    }
+  }
+
+  return { ok: true, filteredData: filtered };
 }
 
 // ── Async field filtering (for API routes) ──────────────────

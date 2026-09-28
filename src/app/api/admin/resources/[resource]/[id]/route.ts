@@ -17,6 +17,7 @@ import { revalidateTag } from 'next/cache';
 import '@/lib/admin/resource-index';
 import { registry } from '@/lib/admin/resource-registry';
 import { getResource, updateResource, deleteResource } from '@/lib/admin/data-adapter';
+import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
 import { can } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
@@ -44,7 +45,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const item = await getResource(config, id, { userId: user?.id ?? null });
     if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ ok: true, data: item });
+
+    // P0-2 HARDENING: Apply field-level read filtering (same as List route).
+    // Sensitive fields with `permissions.read` are removed if user lacks
+    // the required field-level read permission. This makes Detail route
+    // consistent with List route — Detail must not expose fields that
+    // List wouldn't show.
+    const [filteredItem] = await filterReadableFieldsAsync(
+      config,
+      [item as Record<string, unknown>],
+      user?.id ?? null,
+    );
+
+    return NextResponse.json({ ok: true, data: filteredItem });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
   }
@@ -92,6 +105,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: result.result });
   } catch (err) {
+    // P0-1: Field write permission rejection → 403 (not 500)
+    const errorWithStatus = err as Error & { statusCode?: number; rejectedField?: string; requiredPermission?: string };
+    if (errorWithStatus.statusCode === 403) {
+      console.error(`[resources/${resourceKey}] PATCH field-write forbidden:`, err);
+      return NextResponse.json(
+        {
+          error: errorWithStatus.message,
+          field: errorWithStatus.rejectedField,
+          requiredPermission: errorWithStatus.requiredPermission,
+        },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ error: 'Failed to update', details: (err as Error).message }, { status: 500 });
   }
 }
@@ -109,19 +135,35 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (error) return error;
 
   try {
-    // Capture before-state for audit
-    const before = await getResource(config, id, { userId: user?.id ?? null });
-    if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-    await deleteResource(config, id);
-
-    await auditDelete(
-      user?.id ?? null,
-      `${config.key}.delete`,
-      config.audit?.entityType || resourceKey,
-      id,
-      before,
-      'Deleted via Universal Resource API',
+    // P0-3 HARDENING: Wrap deleteResource inside auditMutation so:
+    //   - If mutation succeeds → audit logged (with before-state captured via captureSnapshot)
+    //   - If mutation fails → audit logged (.failed suffix)
+    //   - Audit captures Who/What/When/Where/Before/After(null)/Why
+    // This makes audit enforcement CENTRAL for Universal Resource API DELETE,
+    // consistent with PATCH (which already used auditMutation).
+    // Note: before-state is captured automatically via captureSnapshot + beforeModel.
+    await auditMutation(
+      {
+        actorId: user?.id ?? null,
+        action: `${config.key}.delete`,
+        entityType: config.audit?.entityType || resourceKey,
+        entityId: id,
+        reason: 'Deleted via Universal Resource API',
+        captureSnapshot: true,
+        beforeModel: config.model,
+        // No afterModel — after-state will be null (deleted)
+      },
+      async () => {
+        // Verify existence before delete (return 404 if not found)
+        const existing = await getResource(config, id, { userId: user?.id ?? null });
+        if (!existing) {
+          const notFound = new Error('Not found') as Error & { statusCode: number };
+          notFound.statusCode = 404;
+          throw notFound;
+        }
+        await deleteResource(config, id);
+        return { id, deleted: true };
+      },
     );
 
     // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
@@ -134,6 +176,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: { id, deleted: true } });
   } catch (err) {
+    const errorWithStatus = err as Error & { statusCode?: number };
+    if (errorWithStatus.statusCode === 404) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     return NextResponse.json({ error: 'Failed to delete', details: (err as Error).message }, { status: 500 });
   }
 }

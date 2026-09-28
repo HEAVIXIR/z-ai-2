@@ -15,7 +15,7 @@
 import { db } from '@/lib/db';
 import type { AdminResourceConfig } from './types';
 import { buildPrismaQuery, buildCountQuery, type AdminQueryParams } from './query/query-builder';
-import { applyFieldPolicy, applyFieldWritePolicy, type FieldPolicyContext } from './field-policy';
+import { applyFieldPolicy, applyFieldWritePolicyAsync, type FieldPolicyContext } from './field-policy';
 
 // ── Types ──────────────────────────────────────────────────
 export interface ListResult<T> {
@@ -85,7 +85,12 @@ export async function getResource<T = Record<string, unknown>>(
   return item as T | null;
 }
 
-// ── Create resource (with audit) ───────────────────────────
+// ── Create resource (with field policy enforcement) ────────
+// P0-1 HARDENING: Uses applyFieldWritePolicyAsync for fail-closed
+// field-level write authorization. If the caller provides fieldCtx,
+// fields with `permissions.write` are checked via `can(userId, perm)`.
+// Users lacking field-level write permission cause the ENTIRE request
+// to be rejected (fail-closed), not silently stripped.
 export async function createResource(
   config: AdminResourceConfig,
   data: Record<string, unknown>,
@@ -93,16 +98,28 @@ export async function createResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
-  // Apply field policy (only writable fields)
-  const filteredData = fieldCtx
-    ? applyFieldWritePolicy(config, data, fieldCtx)
-    : data;
+  // Apply field write policy (async, fail-closed if user lacks field-level write permission)
+  let filteredData = data;
+  if (fieldCtx) {
+    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx);
+    if (!policy.ok) {
+      const err = new Error(
+        `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,
+      ) as Error & { statusCode: number; rejectedField: string; requiredPermission: string };
+      err.statusCode = 403;
+      (err as any).rejectedField = policy.rejectedField;
+      (err as any).requiredPermission = policy.requiredPermission;
+      throw err;
+    }
+    filteredData = policy.filteredData!;
+  }
 
   const item = await model.create({ data: filteredData });
   return item;
 }
 
-// ── Update resource (with audit) ───────────────────────────
+// ── Update resource (with field policy enforcement) ────────
+// P0-1 HARDENING: Same fail-closed field write policy as createResource.
 export async function updateResource(
   config: AdminResourceConfig,
   id: string,
@@ -111,10 +128,21 @@ export async function updateResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
-  // Apply field policy (only writable fields)
-  const filteredData = fieldCtx
-    ? applyFieldWritePolicy(config, data, fieldCtx)
-    : data;
+  // Apply field write policy (async, fail-closed if user lacks field-level write permission)
+  let filteredData = data;
+  if (fieldCtx) {
+    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx);
+    if (!policy.ok) {
+      const err = new Error(
+        `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,
+      ) as Error & { statusCode: number; rejectedField: string; requiredPermission: string };
+      err.statusCode = 403;
+      (err as any).rejectedField = policy.rejectedField;
+      (err as any).requiredPermission = policy.requiredPermission;
+      throw err;
+    }
+    filteredData = policy.filteredData!;
+  }
 
   const item = await model.update({ where: { id }, data: filteredData });
   return item;
