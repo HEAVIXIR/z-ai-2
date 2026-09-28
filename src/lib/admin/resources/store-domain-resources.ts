@@ -744,3 +744,321 @@ export const suppliersConfig: AdminResourceConfig = {
     { label: 'درخواست‌های تأمین', resource: 'procurement', filterField: 'supplierId' },
   ],
 };
+
+// ── 8. Car Models (Vehicle selector for parts compatibility) ────
+// Used by the parts catalog to filter compatible vehicles. The admin
+// route at /api/admin/store/car-models exposes full CRUD (GET list +
+// POST create + PATCH [id] + DELETE [id]).
+export const carModelsConfig: AdminResourceConfig = {
+  key: 'car-models',
+  titleFa: 'مدل‌های خودرو',
+  titleEn: 'Car Models',
+  icon: 'Car',
+  model: 'carModel',
+  apiBase: '/api/admin/store/car-models',
+  adminPath: '/admin/resources/car-models',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'brand', label: 'برند', type: 'text', sortable: true, filterable: true },
+    { key: 'model', label: 'مدل', type: 'text', sortable: true, filterable: true },
+    { key: 'yearFrom', label: 'سال شروع', type: 'number', sortable: true },
+    { key: 'yearTo', label: 'سال پایان', type: 'number', sortable: true },
+    { key: 'type', label: 'نوع', type: 'badge', sortable: true, filterable: true },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'type', label: 'نوع', type: 'select', options: [
+      { value: 'PASSENGER', label: 'سواری' },
+      { value: 'HEAVY', label: 'ماشین‌آلات سنگین' },
+    ]},
+    { key: 'brand', label: 'برند', type: 'text', placeholder: 'مثلاً Toyota' },
+  ],
+
+  defaultSort: { field: 'brand', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['brand', 'model'],
+
+  fields: [
+    { key: 'brand', label: 'برند', type: 'text', required: true,
+      helpText: 'Toyota, Hyundai, Peugeot, Volvo, Scania...',
+      validation: { minLength: 2, maxLength: 100,
+        message: 'برند باید بین ۲ تا ۱۰۰ نویسه باشد' } },
+    { key: 'model', label: 'مدل', type: 'text', required: true,
+      helpText: 'Corolla, Elantra, FH16...',
+      validation: { minLength: 1, maxLength: 100,
+        message: 'مدل باید بین ۱ تا ۱۰۰ نویسه باشد' } },
+    { key: 'yearFrom', label: 'سال شروع تولید', type: 'number', required: true,
+      validation: { min: 1900, max: 2100,
+        message: 'سال شروع باید بین ۱۹۰۰ تا ۲۱۰۰ باشد' } },
+    { key: 'yearTo', label: 'سال پایان تولید', type: 'number', required: true,
+      helpText: 'اگر هنوز تولید می‌شود، سال جاری را وارد کنید',
+      validation: { min: 1900, max: 2100,
+        message: 'سال پایان باید بین ۱۹۰۰ تا ۲۱۰۰ باشد' } },
+    { key: 'type', label: 'نوع خودرو', type: 'select', required: true, options: [
+      { value: 'PASSENGER', label: 'سواری' },
+      { value: 'HEAVY', label: 'ماشین‌آلات سنگین' },
+    ], permissions: { read: 'store.read', write: 'store.manage' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'parts', label: 'قطعات سازگار', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/car-models', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/car-models', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'CarModel',
+    actions: ['store.manage'] },
+
+  relations: [
+    { label: 'قطعات سازگار', resource: 'parts', filterField: 'carModelId' },
+  ],
+};
+
+// ── 9. Currency (USD→IRR rate history — APPEND-ONLY) ───────────
+// CurrencyRate is an append-only ledger: one row per date (unique
+// constraint on `date`). The admin route exposes GET (list) + POST
+// (create new date rate) only — no PATCH/DELETE because rate history
+// is immutable. CurrencySetting (singleton row) holds the auto-fetch
+// config but is managed through a separate config endpoint, not the
+// universal resource CRUD.
+export const currencyConfig: AdminResourceConfig = {
+  key: 'currency',
+  titleFa: 'نرخ ارز (USD→ریال)',
+  titleEn: 'Currency Rates',
+  icon: 'DollarSign',
+  model: 'currencyRate',
+  apiBase: '/api/admin/store/currency',
+  adminPath: '/admin/resources/currency',
+
+  // APPEND-ONLY: read + create only. No update/delete — rate history
+  // is immutable (one row per date via @unique on `date`).
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'date', label: 'تاریخ', type: 'text', sortable: true, filterable: true },
+    { key: 'rate', label: 'نرخ (ریال)', type: 'currency', sortable: true },
+    { key: 'marginPercent', label: 'حاشیه (%)', type: 'number', sortable: true },
+    { key: 'source', label: 'منبع', type: 'badge', sortable: true, filterable: true },
+    { key: 'note', label: 'یادداشت', type: 'text', visible: false },
+    { key: 'setById', label: 'تنظیم‌کننده', type: 'relation',
+      relation: { model: 'adminUser', labelField: 'name' } },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'source', label: 'منبع', type: 'select', options: [
+      { value: 'MANUAL', label: 'دستی' },
+      { value: 'TELEGRAM', label: 'تلگرام (خودکار)' },
+    ]},
+  ],
+
+  defaultSort: { field: 'date', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['date', 'note'],
+
+  fields: [
+    { key: 'date', label: 'تاریخ', type: 'text', required: true,
+      helpText: 'فرمت YYYY-MM-DD (مثلاً 2026-09-28)',
+      validation: { pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+        message: 'فرمت تاریخ باید YYYY-MM-DD باشد' } },
+    { key: 'rate', label: 'نرخ (ریال)', type: 'currency', required: true,
+      helpText: 'نرخ USD→IRR خام (قبل از حاشیه)',
+      validation: { min: 0, message: 'نرخ باید عدد نامنفی باشد' } },
+    { key: 'marginPercent', label: 'حاشیه سود (%)', type: 'number', defaultValue: 0,
+      validation: { min: 0, max: 100,
+        message: 'حاشیه باید بین ۰ تا ۱۰۰ باشد' } },
+    { key: 'source', label: 'منبع', type: 'select', defaultValue: 'MANUAL', options: [
+      { value: 'MANUAL', label: 'دستی' },
+      { value: 'TELEGRAM', label: 'تلگرام (خودکار)' },
+    ], permissions: { read: 'store.read', write: 'store.manage' } },
+    { key: 'note', label: 'یادداشت', type: 'textarea',
+      validation: { maxLength: 500,
+        message: 'یادداشت نباید بیش از ۵۰۰ نویسه باشد' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'setBy', label: 'تنظیم‌کننده', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  // APPEND-ONLY: only create action (no edit/delete — history is immutable).
+  actions: [
+    { key: 'add-rate', label: 'افزودن نرخ جدید', icon: 'Plus',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/currency', apiMethod: 'POST' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'CurrencyRate',
+    actions: ['store.manage'] },
+};
+
+// ── 10. Services (ServiceProvider directory + service requests) ─
+// The Store "services" domain has two related models:
+//   - ServiceProvider (the company/technician offering the service)
+//   - ServiceRequest (customer-initiated request for a service)
+// This resource config focuses on ServiceProvider as the primary
+// entity (admin manages providers). ServiceRequest is exposed as a
+// detail-tab relation (a provider's incoming requests). The admin
+// route at /api/admin/store/services/providers exposes full CRUD on
+// ServiceProvider; /api/admin/store/services/requests exposes the
+// request flow separately (managed via custom UI, not universal CRUD
+// for now — could be split into its own resource in a future phase).
+export const servicesConfig: AdminResourceConfig = {
+  key: 'services',
+  titleFa: 'خدمات (ارائه‌دهندگان)',
+  titleEn: 'Service Providers',
+  icon: 'Wrench',
+  model: 'serviceProvider',
+  apiBase: '/api/admin/store/services/providers',
+  adminPath: '/admin/resources/services',
+
+  permissions: {
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'name', label: 'نام', type: 'text', sortable: true, filterable: true },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text', sortable: true, filterable: true },
+    { key: 'type', label: 'نوع خدمت', type: 'badge', sortable: true, filterable: true },
+    { key: 'phone', label: 'تلفن', type: 'text', filterable: true },
+    { key: 'email', label: 'ایمیل', type: 'text', visible: false },
+    { key: 'address', label: 'نشانی', type: 'text', visible: false },
+    { key: 'active', label: 'فعال', type: 'boolean', sortable: true, filterable: true },
+    { key: 'verified', label: 'تأییدشده', type: 'boolean', sortable: true, filterable: true },
+    { key: 'rating', label: 'امتیاز', type: 'number', sortable: true },
+    { key: 'createdAt', label: 'تاریخ ثبت', type: 'date', sortable: true },
+    { key: 'updatedAt', label: 'به‌روزرسانی', type: 'date', sortable: true, visible: false },
+  ],
+
+  filters: [
+    { key: 'type', label: 'نوع خدمت', type: 'select', options: [
+      { value: 'TRANSPORT', label: 'حمل‌ونقل' },
+      { value: 'INSPECTION', label: 'بازرسی' },
+      { value: 'MAINTENANCE', label: 'نگهداری' },
+      { value: 'REPAIR', label: 'تعمیر' },
+      { value: 'INSTALLATION', label: 'نصب' },
+      { value: 'DELIVERY', label: 'تحویل' },
+    ]},
+    { key: 'active', label: 'وضعیت', type: 'select', options: [
+      { value: 'true', label: 'فعال' },
+      { value: 'false', label: 'غیرفعال' },
+    ]},
+    { key: 'verified', label: 'تأیید', type: 'select', options: [
+      { value: 'true', label: 'تأییدشده' },
+      { value: 'false', label: 'تأییدنشده' },
+    ]},
+  ],
+
+  defaultSort: { field: 'createdAt', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['name', 'nameFa', 'phone', 'email', 'address'],
+
+  fields: [
+    { key: 'name', label: 'نام', type: 'text', required: true,
+      validation: { minLength: 2, maxLength: 200,
+        message: 'نام باید بین ۲ تا ۲۰۰ نویسه باشد' } },
+    { key: 'nameFa', label: 'نام فارسی', type: 'text',
+      validation: { maxLength: 200,
+        message: 'نام فارسی نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'type', label: 'نوع خدمت', type: 'select', required: true, options: [
+      { value: 'TRANSPORT', label: 'حمل‌ونقل' },
+      { value: 'INSPECTION', label: 'بازرسی' },
+      { value: 'MAINTENANCE', label: 'نگهداری' },
+      { value: 'REPAIR', label: 'تعمیر' },
+      { value: 'INSTALLATION', label: 'نصب' },
+      { value: 'DELIVERY', label: 'تحویل' },
+    ], permissions: { read: 'store.read', write: 'store.manage' } },
+    { key: 'phone', label: 'تلفن', type: 'text',
+      validation: { maxLength: 20,
+        message: 'تلفن نباید بیش از ۲۰ نویسه باشد' } },
+    { key: 'email', label: 'ایمیل', type: 'text',
+      validation: { maxLength: 100, pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        message: 'فرمت ایمیل نامعتبر است' } },
+    { key: 'address', label: 'نشانی', type: 'textarea',
+      validation: { maxLength: 500,
+        message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
+      permissions: { read: 'store.read', write: 'store.manage' } },
+    { key: 'verified', label: 'تأییدشده', type: 'boolean', defaultValue: false,
+      permissions: { read: 'store.read', write: 'store.manage' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'serviceRequests', label: 'درخواست‌های خدمت', type: 'relations' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'verify', label: 'تأیید ارائه‌دهنده', icon: 'BadgeCheck',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/services/providers', apiMethod: 'PATCH' },
+    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/services/providers', apiMethod: 'PATCH' },
+    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/services/providers', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/services/providers', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/services/providers', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'BadgeCheck',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'ServiceProvider',
+    actions: ['store.manage'] },
+};

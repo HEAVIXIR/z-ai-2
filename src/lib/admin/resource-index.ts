@@ -19,6 +19,8 @@ import {
   inventoryConfig, warehouseConfig, returnsConfig, procurementConfig,
   // Phase S1-B-PATCH-1 — additional Store domain resources
   customersConfig, mechanicsConfig, suppliersConfig,
+  // Phase S1-B-PATCH-2 — additional Store domain resources
+  carModelsConfig, currencyConfig, servicesConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -42,6 +44,10 @@ registerResource(procurementConfig);
 registerResource(customersConfig);
 registerResource(mechanicsConfig);
 registerResource(suppliersConfig);
+// Phase S1-B-PATCH-2 — additional Store domain resources (reuse store.read/manage)
+registerResource(carModelsConfig);
+registerResource(currencyConfig);
+registerResource(servicesConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';
