@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import {
   createShipment,
   listShipments,
@@ -69,6 +70,15 @@ export async function POST(req: Request) {
       note,
       user.id,
     );
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.shipments.create',
+      entityType: 'Shipment',
+      entityId: shipment?.id ?? null,
+      after: { orderId, carrier, trackingCode, note },
+      reason: 'Shipment created via admin API',
+    });
     return NextResponse.json({ success: true, data: shipment });
   } catch (e: any) {
     return toErrorResponse(e);

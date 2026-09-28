@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  listCategories,
+  createCategory,
+  CategoriesServiceError,
+} from "@/lib/store-categories-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
    /api/admin/store/categories — HEAVIX part categories CRUD
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-categories-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
    ============================================================ */
 
 function serialize(c: any) {
@@ -19,6 +27,21 @@ function serialize(c: any) {
     childCount: c._count?.children ?? 0,
     _count: undefined,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof CategoriesServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/categories] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(req: Request) {
@@ -33,34 +56,17 @@ export async function GET(req: Request) {
   }
   try {
     const url = new URL(req.url);
-    const parentId = url.searchParams.get("parentId");
+    const parentId = url.searchParams.get("parentId") ?? undefined;
     const q = url.searchParams.get("q")?.trim() || undefined;
 
-    const where: any = {};
-    if (parentId === "null") where.parentId = null;
-    else if (parentId) where.parentId = parentId;
-    if (q) where.name = { contains: q };
-
-    const items = await storeDb.category.findMany({
-      where,
-      orderBy: { name: "asc" },
-      include: {
-        parent: { select: { id: true, name: true } },
-        _count: { select: { parts: true, children: true } },
-      },
-    });
-
+    const result = await listCategories({ parentId, q });
     return NextResponse.json({
       success: true,
-      data: items.map(serialize),
-      total: items.length,
+      data: result.items.map(serialize),
+      total: result.total,
     });
   } catch (e: any) {
-    console.error("[store/categories GET] error:", e);
-    return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
-      { status: 500 },
-    );
+    return toErrorResponse(e);
   }
 }
 
@@ -77,23 +83,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, slug, icon, parentId } = body;
-    if (!name || !slug) {
-      return NextResponse.json(
-        { success: false, error: "نام و اسلاگ الزامی است" },
-        { status: 400 },
-      );
-    }
-    const existing = await storeDb.category.findUnique({ where: { slug } });
-    if (existing) {
-      return NextResponse.json({ success: false, error: "اسلاگ تکراری است" }, { status: 400 });
-    }
-    const c = await storeDb.category.create({
-      data: { name, slug, icon: icon || null, parentId: parentId || null },
-      include: {
-        parent: { select: { id: true, name: true } },
-        _count: { select: { parts: true, children: true } },
-      },
-    });
+    const c = await createCategory({ name, slug, icon, parentId });
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
@@ -105,7 +95,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: serialize(c) });
   } catch (e: any) {
-    console.error("[store/categories POST] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

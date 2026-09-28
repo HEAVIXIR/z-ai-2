@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import {
+  listCustomers,
+  CustomersServiceError,
+} from "@/lib/store-customers-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
-   /api/admin/store/customers — HEAVIX customers list
+   /api/admin/store/customers — HEAVIX customers list (read-only)
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-customers-service.ts; route handler stays thin.
+   No mutations → no audit. Customers is read-only.
    ============================================================ */
 
 function serialize(c: any) {
@@ -20,6 +26,21 @@ function serialize(c: any) {
     orderCount: c._count?.orders ?? 0,
     _count: undefined,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof CustomersServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/customers] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(req: Request) {
@@ -36,39 +57,15 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
     const status = url.searchParams.get("status") || undefined;
-    const limit = Math.min(200, Number(url.searchParams.get("limit")) || 100);
+    const limit = Number(url.searchParams.get("limit")) || 100;
 
-    const where: any = {};
-    if (status) where.status = status;
-    if (q) {
-      where.OR = [
-        { phone: { contains: q } },
-        { name: { contains: q } },
-        { family: { contains: q } },
-        { nationalCode: { contains: q } },
-      ];
-    }
-
-    const [items, total] = await Promise.all([
-      storeDb.customer.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        include: { _count: { select: { orders: true } } },
-      }),
-      storeDb.customer.count({ where }),
-    ]);
-
+    const result = await listCustomers({ q, status, limit });
     return NextResponse.json({
       success: true,
-      data: items.map(serialize),
-      total,
+      data: result.items.map(serialize),
+      total: result.total,
     });
   } catch (e: any) {
-    console.error("[store/customers GET] error:", e);
-    return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
-      { status: 500 },
-    );
+    return toErrorResponse(e);
   }
 }

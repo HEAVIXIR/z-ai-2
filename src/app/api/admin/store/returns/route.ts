@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import {
   createReturn,
   listReturns,
@@ -80,6 +81,15 @@ export async function POST(req: Request) {
       inspection,
       resolution,
       reference,
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.returns.create',
+      entityType: 'Return',
+      entityId: ret?.id ?? null,
+      after: { orderId, reason, status, inspection, resolution, reference },
+      reason: 'Return created via admin API',
     });
     return NextResponse.json({ success: true, data: ret });
   } catch (e: any) {

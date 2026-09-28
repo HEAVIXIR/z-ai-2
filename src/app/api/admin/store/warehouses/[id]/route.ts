@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { checkCsrf } from "@/lib/csrf";
 import {
   updateWarehouse,
@@ -92,6 +93,15 @@ export async function PATCH(
       { name, code, address, active },
       user.id,
     );
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.warehouse.update',
+      entityType: 'Warehouse',
+      entityId: id,
+      after: { name, code, address, active },
+      reason: 'Warehouse updated via admin API',
+    });
     return NextResponse.json({ success: true, data: warehouse });
   } catch (e: any) {
     return toErrorResponse(e);
@@ -123,6 +133,14 @@ export async function DELETE(
   const { id } = await params;
   try {
     const result = await deleteWarehouse(id, user.id);
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.warehouse.delete',
+      entityType: 'Warehouse',
+      entityId: id,
+      reason: 'Warehouse deleted via admin API',
+    });
     return NextResponse.json({ success: true, data: result });
   } catch (e: any) {
     return toErrorResponse(e);

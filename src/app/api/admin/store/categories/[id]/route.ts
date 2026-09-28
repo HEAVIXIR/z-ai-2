@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  updateCategory,
+  deleteCategory,
+  CategoriesServiceError,
+} from "@/lib/store-categories-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/* ============================================================
+   /api/admin/store/categories/[id] — single category PATCH/DELETE
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-categories-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
+   ============================================================ */
 
 function serialize(c: any) {
   return {
@@ -14,6 +26,21 @@ function serialize(c: any) {
     partCount: c._count?.parts ?? 0,
     _count: undefined,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof CategoriesServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/categories/[id]] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,29 +56,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     const body = await req.json();
-    const existing = await storeDb.category.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-
-    if (body.slug && body.slug !== existing.slug) {
-      const dup = await storeDb.category.findUnique({ where: { slug: body.slug } });
-      if (dup && dup.id !== id) {
-        return NextResponse.json({ success: false, error: "اسلاگ تکراری است" }, { status: 400 });
-      }
-    }
-    const data: any = {};
-    if (body.name !== undefined) data.name = body.name;
-    if (body.slug !== undefined) data.slug = body.slug;
-    if (body.icon !== undefined) data.icon = body.icon || null;
-    if (body.parentId !== undefined) data.parentId = body.parentId || null;
-
-    const c = await storeDb.category.update({
-      where: { id },
-      data,
-      include: {
-        parent: { select: { id: true, name: true } },
-        _count: { select: { parts: true, children: true } },
-      },
-    });
+    const { existing, category: c } = await updateCategory(id, body);
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
@@ -64,7 +69,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true, data: serialize(c) });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
 
@@ -80,10 +85,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
   const { id } = await params;
   try {
-    const existing = await storeDb.category.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    await storeDb.category.delete({ where: { id } });
-
+    const { existing } = await deleteCategory(id);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -95,6 +97,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

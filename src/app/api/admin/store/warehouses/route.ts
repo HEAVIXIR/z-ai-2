@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { checkCsrf } from "@/lib/csrf";
 import {
   createWarehouse,
@@ -92,6 +93,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, code, address } = body;
     const warehouse = await createWarehouse(name, code, address, user.id);
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.warehouse.create',
+      entityType: 'Warehouse',
+      entityId: warehouse?.id ?? null,
+      after: { name, code, address },
+      reason: 'Warehouse created via admin API',
+    });
     return NextResponse.json({ success: true, data: warehouse });
   } catch (e: any) {
     return toErrorResponse(e);

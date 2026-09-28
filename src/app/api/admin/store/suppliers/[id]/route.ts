@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  getSupplier,
+  updateSupplier,
+  deleteSupplier,
+  SuppliersServiceError,
+} from "@/lib/store-suppliers-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +15,10 @@ export const dynamic = "force-dynamic";
 /* ============================================================
    /api/admin/store/suppliers/[id] — single supplier CRUD
    T2-W1-A — Store Gap Domain #3 (Suppliers)
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-suppliers-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
    ============================================================ */
 
 function serialize(s: any) {
@@ -18,6 +27,21 @@ function serialize(s: any) {
     createdAt: s.createdAt?.toISOString?.() ?? null,
     updatedAt: s.updatedAt?.toISOString?.() ?? null,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof SuppliersServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/suppliers/[id]] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -32,11 +56,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   const { id } = await params;
   try {
-    const s = await storeDb.supplier.findUnique({ where: { id } });
-    if (!s) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
+    const s = await getSupplier(id);
     return NextResponse.json({ success: true, data: serialize(s) });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
 
@@ -53,21 +76,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     const body = await req.json();
-    const existing = await storeDb.supplier.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-
-    const data: any = {};
-    if (body.name !== undefined) data.name = body.name;
-    if (body.nameFa !== undefined) data.nameFa = body.nameFa || null;
-    if (body.phone !== undefined) data.phone = body.phone || null;
-    if (body.email !== undefined) data.email = body.email || null;
-    if (body.address !== undefined) data.address = body.address || null;
-    if (body.active !== undefined) data.active = Boolean(body.active);
-
-    const s = await storeDb.supplier.update({
-      where: { id },
-      data,
-    });
+    const { existing, supplier: s } = await updateSupplier(id, body);
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
@@ -80,7 +89,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true, data: serialize(s) });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
 
@@ -96,10 +105,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
   const { id } = await params;
   try {
-    const existing = await storeDb.supplier.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    await storeDb.supplier.delete({ where: { id } });
-
+    const { existing } = await deleteSupplier(id);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -111,6 +117,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

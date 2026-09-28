@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  listCarModels,
+  createCarModel,
+  CarModelsServiceError,
+} from "@/lib/store-car-models-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
    /api/admin/store/car-models — HEAVIX car models CRUD
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-car-models-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
    ============================================================ */
 
 function serialize(c: any) {
@@ -18,6 +26,21 @@ function serialize(c: any) {
     partCount: c._count?.parts ?? 0,
     _count: undefined,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof CarModelsServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/car-models] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(req: Request) {
@@ -36,28 +59,14 @@ export async function GET(req: Request) {
     const type = url.searchParams.get("type") || undefined;
     const brand = url.searchParams.get("brand") || undefined;
 
-    const where: any = {};
-    if (type) where.type = type;
-    if (brand) where.brand = brand;
-    if (q) where.OR = [{ brand: { contains: q } }, { model: { contains: q } }];
-
-    const items = await storeDb.carModel.findMany({
-      where,
-      orderBy: [{ brand: "asc" }, { model: "asc" }],
-      include: { _count: { select: { parts: true } } },
-    });
-
+    const result = await listCarModels({ q, type, brand });
     return NextResponse.json({
       success: true,
-      data: items.map(serialize),
-      total: items.length,
+      data: result.items.map(serialize),
+      total: result.total,
     });
   } catch (e: any) {
-    console.error("[store/car-models GET] error:", e);
-    return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
-      { status: 500 },
-    );
+    return toErrorResponse(e);
   }
 }
 
@@ -74,22 +83,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { brand, model, yearFrom, yearTo, type } = body;
-    if (!brand || !model || !yearFrom || !yearTo) {
-      return NextResponse.json(
-        { success: false, error: "برند، مدل و سال شروع/پایان الزامی است" },
-        { status: 400 },
-      );
-    }
-    const c = await storeDb.carModel.create({
-      data: {
-        brand,
-        model,
-        yearFrom: Number(yearFrom),
-        yearTo: Number(yearTo),
-        type: type || "PASSENGER",
-      },
-      include: { _count: { select: { parts: true } } },
-    });
+    const c = await createCarModel({ brand, model, yearFrom, yearTo, type });
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
@@ -101,7 +95,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: serialize(c) });
   } catch (e: any) {
-    console.error("[store/car-models POST] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

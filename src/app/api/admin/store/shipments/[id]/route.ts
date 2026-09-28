@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import {
   updateShipment,
   ShipmentsServiceError,
@@ -69,6 +70,15 @@ export async function PATCH(req: Request, { params }: Params) {
       body.note,
       user.id,
     );
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'store.shipments.update',
+      entityType: 'Shipment',
+      entityId: id,
+      after: { trackingCode: body.trackingCode, carrier: body.carrier, status: body.status, note: body.note },
+      reason: 'Shipment updated via admin API',
+    });
     return NextResponse.json({ success: true, data: shipment });
   } catch (e: any) {
     return toErrorResponse(e);

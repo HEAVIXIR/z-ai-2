@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  updateMechanic,
+  deleteMechanic,
+  MechanicsServiceError,
+} from "@/lib/store-mechanics-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
    /api/admin/store/mechanics/[id] — HEAVIX mechanic PATCH/DELETE
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-mechanics-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
    ============================================================ */
 
 function serialize(m: any) {
@@ -18,6 +26,21 @@ function serialize(m: any) {
     createdAt: m.createdAt?.toISOString?.() ?? null,
     updatedAt: m.updatedAt?.toISOString?.() ?? null,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof MechanicsServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/mechanics/[id]] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -33,28 +56,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     const body = await req.json();
-    const existing = await storeDb.mechanic.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-
-    if (body.phone && body.phone !== existing.phone) {
-      const dup = await storeDb.mechanic.findUnique({ where: { phone: body.phone } });
-      if (dup && dup.id !== id) {
-        return NextResponse.json({ success: false, error: "تلفن تکراری است" }, { status: 400 });
-      }
-    }
-
-    const data: any = {};
-    for (const k of ["phone", "name", "family", "shopName", "specialty", "city", "address", "status", "notes"]) {
-      if (body[k] !== undefined) data[k] = body[k] || null;
-    }
-    if (body.verified !== undefined) data.verified = !!body.verified;
-    if (body.rating !== undefined) data.rating = Number(body.rating) || 0;
-
-    const m = await storeDb.mechanic.update({
-      where: { id },
-      data,
-      include: { _count: { select: { orders: true } } },
-    });
+    const { existing, mechanic: m } = await updateMechanic(id, body);
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
@@ -67,8 +69,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true, data: serialize(m) });
   } catch (e: any) {
-    console.error("[store/mechanics PATCH] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
 
@@ -84,10 +85,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
   const { id } = await params;
   try {
-    const existing = await storeDb.mechanic.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    await storeDb.mechanic.delete({ where: { id } });
-
+    const { existing } = await deleteMechanic(id);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -99,6 +97,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }

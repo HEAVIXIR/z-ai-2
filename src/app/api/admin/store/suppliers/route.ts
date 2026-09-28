@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import {
+  listSuppliers,
+  createSupplier,
+  SuppliersServiceError,
+} from "@/lib/store-suppliers-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +14,10 @@ export const dynamic = "force-dynamic";
 /* ============================================================
    /api/admin/store/suppliers — HEAVIX supplier directory CRUD
    T2-W1-A — Store Gap Domain #3 (Suppliers)
+   T-A-DEEP-STORE — Business logic extracted to
+   src/lib/store-suppliers-service.ts; route handler stays thin.
+   Audit logging remains in the route to preserve the exact
+   audit JSON shape that existed pre-extraction.
    ============================================================ */
 
 function serialize(s: any) {
@@ -18,6 +26,21 @@ function serialize(s: any) {
     createdAt: s.createdAt?.toISOString?.() ?? null,
     updatedAt: s.updatedAt?.toISOString?.() ?? null,
   };
+}
+
+function toErrorResponse(e: unknown) {
+  if (e instanceof SuppliersServiceError) {
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: e.status },
+    );
+  }
+  const err = e as Error;
+  console.error("[store/suppliers] error:", err);
+  return NextResponse.json(
+    { success: false, error: err?.message ?? "Internal error" },
+    { status: 500 },
+  );
 }
 
 export async function GET(req: Request) {
@@ -33,36 +56,20 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
-    const active = url.searchParams.get("active");
+    const activeParam = url.searchParams.get("active");
+    const active =
+      activeParam === "true" ? true
+      : activeParam === "false" ? false
+      : undefined;
 
-    const where: any = {};
-    if (q) {
-      where.OR = [
-        { name: { contains: q } },
-        { nameFa: { contains: q } },
-        { phone: { contains: q } },
-        { email: { contains: q } },
-      ];
-    }
-    if (active === "true") where.active = true;
-    if (active === "false") where.active = false;
-
-    const items = await storeDb.supplier.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-    });
-
+    const result = await listSuppliers({ q, active });
     return NextResponse.json({
       success: true,
-      data: items.map(serialize),
-      total: items.length,
+      data: result.items.map(serialize),
+      total: result.total,
     });
   } catch (e: any) {
-    console.error("[store/suppliers GET] error:", e);
-    return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
-      { status: 500 },
-    );
+    return toErrorResponse(e);
   }
 }
 
@@ -79,21 +86,13 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, nameFa, phone, email, address, active } = body;
-    if (!name) {
-      return NextResponse.json(
-        { success: false, error: "نام تأمین‌کننده الزامی است" },
-        { status: 400 },
-      );
-    }
-    const s = await storeDb.supplier.create({
-      data: {
-        name,
-        nameFa: nameFa || null,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        active: typeof active === "boolean" ? active : true,
-      },
+    const s = await createSupplier({
+      name,
+      nameFa,
+      phone,
+      email,
+      address,
+      active,
     });
     await logAudit({
       actorId: user.id,
@@ -106,7 +105,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: serialize(s) });
   } catch (e: any) {
-    console.error("[store/suppliers POST] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    return toErrorResponse(e);
   }
 }
