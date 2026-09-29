@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { parseBool } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/admin-guard";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,6 +111,16 @@ export async function POST(req: Request) {
       case "fulfill": data = { status: "FULFILLED" }; break;
       case "delete":
         await db.buyRequest.deleteMany({ where: { id: { in: ids } } });
+        await logAudit({
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.buyRequests.deleteMany",
+          entityType: "BuyRequest",
+          entityId: null,
+          before: { ids },
+          after: { count: ids.length },
+          reason: "via admin API",
+        });
         // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
         try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }
 
@@ -121,6 +132,16 @@ export async function POST(req: Request) {
     const result = await db.buyRequest.updateMany({
       where: { id: { in: ids } },
       data,
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.buyRequests.updateMany",
+      entityType: "BuyRequest",
+      entityId: null,
+      before: { ids, action },
+      after: { action, count: result.count, data },
+      reason: "via admin API",
     });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }

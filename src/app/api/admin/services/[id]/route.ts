@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,15 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await db.service.delete({ where: { id } });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.services.delete",
+      entityType: "Service",
+      entityId: id,
+      before: { key: existing.key, nameFa: existing.nameFa, nameEn: existing.nameEn, active: existing.active, featured: existing.featured },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

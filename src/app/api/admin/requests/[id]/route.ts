@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,16 @@ export async function PATCH(req: Request, { params }: Params) {
     else if (body.action === "activate") data.status = "ACTIVE";
 
     const r = await db.buyRequest.update({ where: { id }, data });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.buyRequests.update",
+      entityType: "BuyRequest",
+      entityId: r.id,
+      before: { title: existing.title, status: existing.status, verified: existing.verified },
+      after: { title: r.title, status: r.status, verified: r.verified, action: body.action ?? null },
+      reason: "via admin API",
+    });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
 
@@ -85,7 +96,17 @@ export async function DELETE(_req: Request, { params }: Params) {
   }
   try {
     const { id } = await params;
+    const before = await db.buyRequest.findUnique({ where: { id } });
     await db.buyRequest.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.buyRequests.delete",
+      entityType: "BuyRequest",
+      entityId: id,
+      before: before ? { title: before.title, status: before.status, verified: before.verified } : null,
+      reason: "via admin API",
+    });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
 

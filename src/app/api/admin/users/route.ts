@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -192,6 +193,16 @@ export async function POST(req: Request) {
       include: {
         _count: { select: { listings: true, offers: true, requests: true } },
       },
+    });
+
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.users.create",
+      entityType: "User",
+      entityId: user.id,
+      after: { firstName: user.firstName, lastName: user.lastName, email: user.email, mobile: user.mobile, role: user.role, status: user.status, companyName: user.companyName },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ success: true, data: serialize(user) });

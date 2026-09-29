@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,15 @@ export async function PUT(req: Request) {
         trustedBrandsTickerSpeed: tickerSpeed,
       },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.siteSettings.upsert",
+      entityType: "SiteSettings",
+      entityId: updated.id,
+      after: { trustedBrandsTitle: updated.trustedBrandsTitle, trustedBrandsLimit: updated.trustedBrandsLimit, trustedBrandsTickerSpeed: updated.trustedBrandsTickerSpeed },
+      reason: "via admin API",
+    });
 
     // Optional: bulk-update BrandDisplay.showOnHomepage from
     // selectedBrandIds. When this field is present, we set
@@ -154,6 +164,15 @@ export async function PUT(req: Request) {
         },
         data: { showOnHomepage: false },
       });
+      await logAudit({
+        actorId: user.id,
+        actorType: "ADMIN",
+        action: "admin.brandDisplay.updateMany",
+        entityType: "BrandDisplay",
+        entityId: null,
+        after: { showOnHomepage: false, excludedBrandIds: Array.from(selectedIds) },
+        reason: "via admin API",
+      });
 
       // Upsert BrandDisplay rows for each selected brand with showOnHomepage=true.
       // Only select brands that actually exist + are active.
@@ -166,6 +185,15 @@ export async function PUT(req: Request) {
           where: { brandId: b.id },
           create: { brandId: b.id, showOnHomepage: true },
           update: { showOnHomepage: true },
+        });
+        await logAudit({
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "admin.brandDisplay.upsert",
+          entityType: "BrandDisplay",
+          entityId: b.id,
+          after: { brandId: b.id, showOnHomepage: true },
+          reason: "via admin API",
         });
         brandUpdateCount++;
       }

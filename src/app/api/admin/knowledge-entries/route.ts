@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    /api/admin/knowledge-entries
@@ -89,6 +90,16 @@ export async function POST(req: NextRequest) {
           aiSuggested: body.aiSuggested ?? false,
         },
       });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.knowledgeEntries.update",
+        entityType: "KnowledgeEntry",
+        entityId: updated.id,
+        before: { value: existing.value, unit: existing.unit, source: existing.source, verified: existing.verified, aiSuggested: existing.aiSuggested },
+        after: { value: updated.value, unit: updated.unit, source: updated.source, verified: updated.verified, aiSuggested: updated.aiSuggested },
+        reason: "via admin API",
+      });
       return NextResponse.json({ success: true, data: updated });
     } else {
       const created = await db.knowledgeEntry.create({
@@ -104,6 +115,15 @@ export async function POST(req: NextRequest) {
           verified: body.verified ?? false,
           aiSuggested: body.aiSuggested ?? false,
         },
+      });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.knowledgeEntries.create",
+        entityType: "KnowledgeEntry",
+        entityId: created.id,
+        after: { entityType: created.entityType, entityId: created.entityId, key: created.key, value: created.value, source: created.source, verified: created.verified, aiSuggested: created.aiSuggested },
+        reason: "via admin API",
       });
       return NextResponse.json({ success: true, data: created });
     }

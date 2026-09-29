@@ -7,6 +7,7 @@ import {
   METRIC_OPTIONS,
   type StatMetric,
 } from "@/lib/site-stats";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,16 @@ export async function POST(req: Request) {
         active: body.active !== false,
       },
     });
+    const sessionUser = await getCurrentUser();
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: "ADMIN",
+      action: "admin.siteStats.create",
+      entityType: "SiteStat",
+      entityId: created.id,
+      after: { key: created.key, labelFa: created.labelFa, metric: created.metric, customValue: created.customValue, active: created.active, sortOrder: created.sortOrder },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true, stat: created });
   } catch (err: any) {
     return NextResponse.json(
@@ -158,6 +169,16 @@ export async function PATCH(req: Request) {
     }
 
     const updated = await db.siteStat.update({ where: { id }, data });
+    const sessionUser = await getCurrentUser();
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: "ADMIN",
+      action: "admin.siteStats.update",
+      entityType: "SiteStat",
+      entityId: updated.id,
+      after: { key: updated.key, labelFa: updated.labelFa, metric: updated.metric, customValue: updated.customValue, active: updated.active, sortOrder: updated.sortOrder },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true, stat: updated });
   } catch (err: any) {
     return NextResponse.json(
@@ -177,7 +198,18 @@ export async function DELETE(req: Request) {
     if (!id) {
       return NextResponse.json({ error: "id query param is required" }, { status: 400 });
     }
+    const before = await db.siteStat.findUnique({ where: { id } });
     await db.siteStat.delete({ where: { id } });
+    const sessionUser = await getCurrentUser();
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: "ADMIN",
+      action: "admin.siteStats.delete",
+      entityType: "SiteStat",
+      entityId: id,
+      before: before ? { key: before.key, labelFa: before.labelFa, metric: before.metric } : null,
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(

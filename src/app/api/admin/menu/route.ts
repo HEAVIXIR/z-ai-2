@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "title is required" }, { status: 400 });
     }
     const item = await db.menuItem.create({ data: menuData(body) });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.create",
+      entityType: "MenuItem",
+      entityId: item.id,
+      after: { title: item.title, href: item.href, parentId: item.parentId, order: item.order, active: item.active },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, item });
   } catch (err: any) {
     return NextResponse.json(
@@ -86,7 +96,7 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     if (Array.isArray(body.items)) {
-      await Promise.all(
+      const updatedItems = await Promise.all(
         body.items.map((it: any) =>
           db.menuItem.update({
             where: { id: String(it.id) },
@@ -94,6 +104,17 @@ export async function PUT(req: Request) {
           }),
         ),
       );
+      for (const u of updatedItems) {
+        await logAudit({
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.menuItems.update",
+          entityType: "MenuItem",
+          entityId: u.id,
+          after: { title: u.title, href: u.href, parentId: u.parentId, order: u.order, active: u.active },
+          reason: "via admin API",
+        });
+      }
       const items = await db.menuItem.findMany({
         orderBy: [{ order: "asc" }, { createdAt: "asc" }],
       });
@@ -105,6 +126,15 @@ export async function PUT(req: Request) {
     const item = await db.menuItem.update({
       where: { id: String(body.id) },
       data: menuData(body),
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.update",
+      entityType: "MenuItem",
+      entityId: item.id,
+      after: { title: item.title, href: item.href, parentId: item.parentId, order: item.order, active: item.active },
+      reason: "via admin API",
     });
     return NextResponse.json({ ok: true, item });
   } catch (err: any) {
@@ -131,7 +161,17 @@ export async function DELETE(req: Request) {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+    const before = await db.menuItem.findUnique({ where: { id }, select: { id: true, title: true, href: true, parentId: true, order: true, active: true } });
     await db.menuItem.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.delete",
+      entityType: "MenuItem",
+      entityId: id,
+      before,
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

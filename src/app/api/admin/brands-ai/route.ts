@@ -2,8 +2,9 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    POST /api/admin/brands-ai
@@ -232,6 +233,15 @@ export async function POST(req: NextRequest) {
           },
         });
         existingSlugs.add(slug);
+        await logAudit({
+          actorId: sessionUser?.id ?? null,
+          actorType: "ADMIN",
+          action: "admin.brands.create",
+          entityType: "Brand",
+          entityId: null,
+          after: { name: b.name, nameEn: b.nameEn, slug, country: b.country, industry: b.industry },
+          reason: "via admin API",
+        });
         added++;
       }
 
@@ -259,6 +269,16 @@ export async function POST(req: NextRequest) {
         await db.brand.update({
           where: { id: b.id },
           data: { logoUrl: generateLogoUrl(b.nameEn ?? b.name) },
+        });
+        await logAudit({
+          actorId: sessionUser?.id ?? null,
+          actorType: "ADMIN",
+          action: "admin.brands.update",
+          entityType: "Brand",
+          entityId: b.id,
+          before: { logoUrl: b.logoUrl },
+          after: { logoUrl: generateLogoUrl(b.nameEn ?? b.name) },
+          reason: "via admin API",
         });
         updated++;
       }

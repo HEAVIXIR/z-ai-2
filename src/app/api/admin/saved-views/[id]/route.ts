@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,9 +58,29 @@ export async function PUT(req: NextRequest, { params }: Params) {
       where: { resourceKey: existing.resourceKey, userId: existing.userId, id: { not: id } },
       data: { isDefault: false },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'admin.savedViews.update',
+      entityType: 'AdminSavedView',
+      entityId: null,
+      before: { resourceKey: existing.resourceKey, scope: existing.scope, isDefault: true },
+      after: { resourceKey: existing.resourceKey, scope: existing.scope, isDefault: false, note: 'unset prior defaults before PUT' },
+      reason: 'via admin API',
+    });
   }
 
   const view = await db.adminSavedView.update({ where: { id }, data: updateData });
+  await logAudit({
+    actorId: user.id,
+    actorType: 'ADMIN',
+    action: 'admin.savedViews.update',
+    entityType: 'AdminSavedView',
+    entityId: view.id,
+    before: { name: existing.name, resourceKey: existing.resourceKey, scope: existing.scope, isDefault: existing.isDefault, active: existing.active },
+    after: { name: view.name, resourceKey: view.resourceKey, scope: view.scope, isDefault: view.isDefault, active: view.active },
+    reason: 'via admin API',
+  });
   return NextResponse.json({ ok: true, data: view });
 }
 
@@ -91,5 +112,14 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   await db.adminSavedView.delete({ where: { id } });
+  await logAudit({
+    actorId: user.id,
+    actorType: 'ADMIN',
+    action: 'admin.savedViews.delete',
+    entityType: 'AdminSavedView',
+    entityId: id,
+    before: { name: existing.name, resourceKey: existing.resourceKey, scope: existing.scope, isDefault: existing.isDefault, active: existing.active },
+    reason: 'via admin API',
+  });
   return NextResponse.json({ ok: true, data: { id, deleted: true } });
 }

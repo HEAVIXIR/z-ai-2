@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify, parseBig } from "@/lib/api-helpers";
 import ZAI from "z-ai-web-dev-sdk";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -244,6 +245,15 @@ async function importListing(s: ScrapeResult) {
       featured: false,
     },
   });
+  await logAudit({
+    actorId: null,
+    actorType: "ADMIN",
+    action: "admin.listings.create",
+    entityType: "Listing",
+    entityId: listing.id,
+    after: { slug: listing.slug, title: listing.title, sourceUrl: listing.sourceUrl, sourceSite: listing.sourceSite, status: listing.status },
+    reason: "via admin API",
+  });
 
   // Attach images — if the scraped listing has real images from Divar/Sheypoor, use those.
   // If NO real images were scraped, generate an AI image matching the exact machine type + brand.
@@ -261,6 +271,15 @@ async function importListing(s: ScrapeResult) {
         isPrimary: idx === 0,
         sortOrder: idx,
       })),
+    });
+    await logAudit({
+      actorId: null,
+      actorType: "ADMIN",
+      action: "admin.listingImages.createMany",
+      entityType: "ListingImage",
+      entityId: listing.id,
+      after: { listingId: listing.id, count: Math.min(imgs.length, 10) },
+      reason: "via admin API",
     });
   }
 
@@ -709,6 +728,15 @@ ${focusHint}
           sourceSite: s.sourceSite || null,
         },
       });
+      await logAudit({
+        actorId: user?.id ?? null,
+        actorType: "ADMIN",
+        action: "admin.listings.create",
+        entityType: "Listing",
+        entityId: listing.id,
+        after: { slug: listing.slug, title: listing.title, status: listing.status, sourceSite: listing.sourceSite },
+        reason: "via admin API",
+      });
 
       // Save images — use the AI-generated image from the suggestion (already generated during scrape).
       // If somehow missing, generate one now as fallback.
@@ -720,6 +748,15 @@ ${focusHint}
       if (imgs.length === 0) imgs = []; // No misleading static fallback — listing will have no image if AI fails
       for (let idx = 0; idx < imgs.length; idx++) {
         await db.listingImage.create({ data: { listingId: listing.id, url: imgs[idx], isPrimary: idx === 0, sortOrder: idx } });
+        await logAudit({
+          actorId: user?.id ?? null,
+          actorType: "ADMIN",
+          action: "admin.listingImages.create",
+          entityType: "ListingImage",
+          entityId: listing.id,
+          after: { listingId: listing.id, url: imgs[idx], isPrimary: idx === 0, sortOrder: idx },
+          reason: "via admin API",
+        });
       }
 
       return NextResponse.json({ ok: true, slug: listing.slug, id: listing.id, message: "آگهی با موفقیت در هویکس ثبت شد." });
@@ -756,6 +793,15 @@ ${focusHint}
               sourceSite: s.sourceSite || null,
             },
           });
+          await logAudit({
+            actorId: user?.id ?? null,
+            actorType: "ADMIN",
+            action: "admin.listings.create",
+            entityType: "Listing",
+            entityId: listing.id,
+            after: { slug: listing.slug, title: listing.title, status: listing.status, sourceSite: listing.sourceSite },
+            reason: "via admin API",
+          });
 
           // Save images — use AI-generated image from suggestion (already generated during scrape).
           // Filter out static fallback images — only keep AI-generated or real scraped images.
@@ -767,6 +813,15 @@ ${focusHint}
           if (imgs.length === 0) imgs = []; // No misleading static fallback — listing will have no image if AI fails
           for (let idx = 0; idx < imgs.length; idx++) {
             await db.listingImage.create({ data: { listingId: listing.id, url: imgs[idx], isPrimary: idx === 0, sortOrder: idx } });
+            await logAudit({
+              actorId: user?.id ?? null,
+              actorType: "ADMIN",
+              action: "admin.listingImages.create",
+              entityType: "ListingImage",
+              entityId: listing.id,
+              after: { listingId: listing.id, url: imgs[idx], isPrimary: idx === 0, sortOrder: idx },
+              reason: "via admin API",
+            });
           }
           results.push({ title, slug: listing.slug, ok: true });
         } catch (e: any) {

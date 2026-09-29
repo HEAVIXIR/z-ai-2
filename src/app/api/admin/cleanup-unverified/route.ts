@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,10 +58,30 @@ export async function POST(req: Request) {
         where: { id: { in: candidates.map((c) => c.id) } },
         data: { status: "BLOCKED", verificationDeadline: null },
       });
+      await logAudit({
+        actorId: user.id,
+        actorType: "ADMIN",
+        action: "admin.users.updateMany",
+        entityType: "User",
+        entityId: null,
+        before: candidates.map((c) => ({ id: c.id, email: c.email, status: "PENDING" })),
+        after: { mode: "deactivate", count: candidates.length, status: "BLOCKED" },
+        reason: "via admin API",
+      });
     } else {
       // Hard delete — cascades to sessions + verificationCodes per schema.
       await db.user.deleteMany({
         where: { id: { in: candidates.map((c) => c.id) } },
+      });
+      await logAudit({
+        actorId: user.id,
+        actorType: "ADMIN",
+        action: "admin.users.deleteMany",
+        entityType: "User",
+        entityId: null,
+        before: candidates.map((c) => ({ id: c.id, email: c.email })),
+        after: { mode: "delete", count: candidates.length },
+        reason: "via admin API",
       });
     }
 

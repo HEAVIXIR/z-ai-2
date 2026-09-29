@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { getComparisonData } from "@/lib/compare-engine";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,9 +82,20 @@ export async function DELETE(
   await requirePermission(user.id, "compare.manage");
   try {
     const { id } = await params;
+    const before = await db.comparisonSession.findUnique({ where: { id }, select: { id: true, name: true, status: true } });
     await db.comparisonSession.update({
       where: { id },
       data: { status: "ARCHIVED" },
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.compareSessions.update",
+      entityType: "ComparisonSession",
+      entityId: id,
+      before: before ? { status: before.status } : null,
+      after: { status: "ARCHIVED" },
+      reason: "via admin API",
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
@@ -118,6 +130,15 @@ export async function PATCH(
       where: { id },
       data: patch,
       select: { id: true, name: true, updatedAt: true },
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.compareSessions.update",
+      entityType: "ComparisonSession",
+      entityId: updated.id,
+      after: { name: updated.name },
+      reason: "via admin API",
     });
     return NextResponse.json({ session: updated });
   } catch (err: any) {

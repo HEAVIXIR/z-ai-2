@@ -8,6 +8,7 @@ import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-image
@@ -115,6 +116,16 @@ export async function POST(req: NextRequest) {
     await db.article.update({
       where: { id: articleId },
       data: { coverImage },
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.articles.update",
+      entityType: "Article",
+      entityId: articleId,
+      before: { coverImage: article.coverImage },
+      after: { coverImage },
+      reason: "via admin API",
     });
   } catch {
     // The image is saved but DB update failed — still return the URL.

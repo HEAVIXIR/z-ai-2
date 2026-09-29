@@ -10,6 +10,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,15 @@ export async function POST(req: NextRequest) {
       where: { resourceKey: body.resourceKey, userId: scope === 'PERSONAL' ? user.id : null },
       data: { isDefault: false },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: 'ADMIN',
+      action: 'admin.savedViews.update',
+      entityType: 'AdminSavedView',
+      entityId: null,
+      after: { resourceKey: body.resourceKey, scope, isDefault: false, note: 'unset prior defaults before create' },
+      reason: 'via admin API',
+    });
   }
 
   const view = await db.adminSavedView.create({
@@ -72,6 +82,21 @@ export async function POST(req: NextRequest) {
       config: body.config,
       isDefault: body.isDefault ?? false,
     },
+  });
+
+  await logAudit({
+    actorId: user.id,
+    actorType: 'ADMIN',
+    action: 'admin.savedViews.create',
+    entityType: 'AdminSavedView',
+    entityId: view.id,
+    after: {
+      name: view.name,
+      resourceKey: view.resourceKey,
+      scope: view.scope,
+      isDefault: view.isDefault,
+    },
+    reason: 'via admin API',
   });
 
   return NextResponse.json({ ok: true, data: view }, { status: 201 });

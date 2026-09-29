@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    /api/admin/sell-in-7-days — admin endpoints for managing
@@ -286,6 +287,16 @@ export async function PATCH(req: NextRequest) {
   const updated = await db.sellIn7DaysApplication.update({
     where: { id },
     data,
+  });
+  await logAudit({
+    actorId: user.id,
+    actorType: "ADMIN",
+    action: "admin.sellIn7DaysApplications.update",
+    entityType: "SellIn7DaysApplication",
+    entityId: updated.id,
+    before: { status: existing.status, currentStep: existing.currentStep, prepaymentPaid: existing.prepaymentPaid, valuationPrice: existing.valuationPrice?.toString() ?? null, salePrice: existing.salePrice?.toString() ?? null, commissionAmount: existing.commissionAmount?.toString() ?? null },
+    after: { status: updated.status, currentStep: updated.currentStep, prepaymentPaid: updated.prepaymentPaid, valuationPrice: updated.valuationPrice?.toString() ?? null, salePrice: updated.salePrice?.toString() ?? null, commissionAmount: updated.commissionAmount?.toString() ?? null, action: action || null },
+    reason: "via admin API",
   });
 
   // Resolve brand + category labels (no Prisma relation on the model).

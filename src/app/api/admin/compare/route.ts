@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { listSessionsForAdmin } from "@/lib/compare-engine";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,7 @@ export async function PUT(req: Request) {
     }
 
     const json = JSON.stringify(ids);
+    const before = await db.siteSettings.findUnique({ where: { id: "main" }, select: { id: true, compareVisibleAttributeIds: true } });
     await db.siteSettings.upsert({
       where: { id: "main" },
       create: {
@@ -102,6 +104,16 @@ export async function PUT(req: Request) {
       update: {
         compareVisibleAttributeIds: json,
       },
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.siteSettings.upsert",
+      entityType: "SiteSettings",
+      entityId: "main",
+      before: before ? { compareVisibleAttributeIds: before.compareVisibleAttributeIds } : null,
+      after: { compareVisibleAttributeIds: json },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ ok: true, visibleAttributeIds: ids });

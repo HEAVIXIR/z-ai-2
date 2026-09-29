@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildShareLinks } from "@/lib/social-reels";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const { platform, prompt, viewCount, shareCount } = body;
+    const before = await db.socialReel.findUnique({ where: { id }, select: { id: true, platform: true, prompt: true, status: true } });
     const reel = await db.socialReel.update({
       where: { id },
       data: {
@@ -86,6 +88,16 @@ export async function PATCH(
         ...(viewCount !== undefined ? { viewCount: Number(viewCount) } : {}),
         ...(shareCount !== undefined ? { shareCount: Number(shareCount) } : {}),
       },
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.socialReels.update",
+      entityType: "SocialReel",
+      entityId: reel.id,
+      before: before ? { platform: before.platform, prompt: before.prompt, status: before.status } : null,
+      after: { platform: reel.platform, prompt: reel.prompt, status: reel.status },
+      reason: "via admin API",
     });
     return NextResponse.json({ success: true, reel });
   } catch (e: any) {
@@ -128,6 +140,15 @@ export async function DELETE(
       }
     }
     await db.socialReel.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.socialReels.delete",
+      entityType: "SocialReel",
+      entityId: id,
+      before: { listingId: reel.listingId, platform: reel.platform, status: reel.status, videoUrl: reel.videoUrl },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch (e: any) {
     console.error("[admin/social-reels/[id]] DELETE error:", e);

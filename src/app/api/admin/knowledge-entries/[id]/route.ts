@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +104,16 @@ export async function PATCH(req: Request, { params }: Params) {
       where: { id },
       data,
     });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.knowledgeEntries.update",
+      entityType: "KnowledgeEntry",
+      entityId: updated.id,
+      before: { entityType: existing.entityType, entityId: existing.entityId, title: existing.title, key: existing.key, value: existing.value, verified: existing.verified, aiSuggested: existing.aiSuggested },
+      after: { entityType: updated.entityType, entityId: updated.entityId, title: updated.title, key: updated.key, value: updated.value, verified: updated.verified, aiSuggested: updated.aiSuggested },
+      reason: "via admin API",
+    });
     return NextResponse.json({
       success: true,
       data: {
@@ -139,6 +150,15 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await db.knowledgeEntry.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.knowledgeEntries.delete",
+      entityType: "KnowledgeEntry",
+      entityId: id,
+      before: { entityType: existing.entityType, entityId: existing.entityId, title: existing.title, key: existing.key, value: existing.value, verified: existing.verified, aiSuggested: existing.aiSuggested },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(

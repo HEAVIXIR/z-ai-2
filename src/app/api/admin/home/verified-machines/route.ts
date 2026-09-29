@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,6 +90,15 @@ export async function PUT(req: Request) {
         verifiedSectionAnimation: animation,
         verifiedSectionVerifiedOnly: verifiedOnly,
       },
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.siteSettings.upsert",
+      entityType: "SiteSettings",
+      entityId: updated.id,
+      after: { verifiedSectionTitle: updated.verifiedSectionTitle, verifiedSectionLimit: updated.verifiedSectionLimit, verifiedSectionAnimation: updated.verifiedSectionAnimation, verifiedSectionVerifiedOnly: updated.verifiedSectionVerifiedOnly },
+      reason: "via admin API",
     });
 
     return NextResponse.json({

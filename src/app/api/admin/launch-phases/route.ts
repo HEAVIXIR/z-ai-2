@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    /api/admin/launch-phases
@@ -93,6 +94,16 @@ export async function POST(req: NextRequest) {
           ...(endDate ? { endDate: new Date(endDate) } : {}),
         },
       });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.launchPhases.update",
+        entityType: "LaunchPhase",
+        entityId: updated.id,
+        before: { phase: existing.phase, status: existing.status, targetValue: existing.targetValue },
+        after: { phase: updated.phase, status: updated.status, targetValue: updated.targetValue },
+        reason: "via admin API",
+      });
       return NextResponse.json({ success: true, data: updated });
     } else {
       const created = await db.launchPhase.create({
@@ -105,6 +116,15 @@ export async function POST(req: NextRequest) {
           status: status || "PENDING",
           ...(startDate ? { startDate: new Date(startDate) } : {}),
         },
+      });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.launchPhases.create",
+        entityType: "LaunchPhase",
+        entityId: created.id,
+        after: { phase: created.phase, title: created.title, targetValue: created.targetValue, status: created.status },
+        reason: "via admin API",
       });
       return NextResponse.json({ success: true, data: created });
     }

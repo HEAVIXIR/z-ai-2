@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,6 +112,17 @@ export async function POST(req: Request) {
     const result = await db.rFQ.updateMany({
       where: { id: { in: ids } },
       data: { status: statusMap[action] },
+    });
+
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.rfqs.updateMany",
+      entityType: "RFQ",
+      entityId: null,
+      before: { ids, action },
+      after: { action, status: statusMap[action], count: result.count },
+      reason: "via admin API",
     });
 
     return NextResponse.json({

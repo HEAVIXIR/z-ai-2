@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -159,6 +160,16 @@ export async function POST(req: Request) {
         endDate,
         status: "SCHEDULED",
       },
+    });
+
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.auctions.create",
+      entityType: "Auction",
+      entityId: auction.id,
+      after: { listingId: auction.listingId, title: auction.title, startPrice: auction.startPrice.toString(), startDate: auction.startDate, endDate: auction.endDate, status: auction.status },
+      reason: "via admin API",
     });
 
     return NextResponse.json({

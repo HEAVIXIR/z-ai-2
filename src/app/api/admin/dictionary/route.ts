@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBool } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,6 +125,16 @@ export async function POST(req: Request) {
         },
       },
       include: { aliases: true },
+    });
+
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.industrialTerms.create",
+      entityType: "IndustrialTerm",
+      entityId: term.id,
+      after: { canonical: term.canonical, entityType: term.entityType, entityId: term.entityId, description: term.description, active: term.active },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ success: true, data: term });

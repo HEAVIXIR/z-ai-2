@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,15 @@ export async function PUT(req: Request) {
       where: { id: "main" },
       create: { id: "main", ...data },
       update: data,
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.heroConfig.upsert",
+      entityType: "HeroConfig",
+      entityId: hero.id,
+      after: { ...data },
+      reason: "via admin API",
     });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.hero, 'default'); } catch (e) { console.error('[hero] revalidateTag failed:', e); }

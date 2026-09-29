@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,15 @@ export async function POST(req: Request) {
       where: { key: String(body.key) },
       create: { key: String(body.key), ...data },
       update: data,
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.siteWidgets.upsert",
+      entityType: "SiteWidget",
+      entityId: widget.id,
+      after: { key: widget.key, title: widget.title, active: widget.active },
+      reason: "via admin API",
     });
     return NextResponse.json({ ok: true, widget });
   } catch (err: any) {

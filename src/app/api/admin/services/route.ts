@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify } from "@/lib/api-helpers";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,16 @@ export async function POST(req: Request) {
         featured: !!body.featured,
       },
     });
+    const sessionUser = await getCurrentUser();
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: "ADMIN",
+      action: "admin.services.create",
+      entityType: "Service",
+      entityId: service.id,
+      after: { key: service.key, nameFa: service.nameFa, nameEn: service.nameEn, active: service.active, featured: service.featured, sortOrder: service.sortOrder },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, service });
   } catch (err: any) {
     return NextResponse.json(
@@ -135,6 +146,17 @@ export async function PATCH(req: Request) {
     }
 
     const service = await db.service.update({ where: { id }, data });
+    const sessionUser = await getCurrentUser();
+    await logAudit({
+      actorId: sessionUser?.id ?? null,
+      actorType: "ADMIN",
+      action: "admin.services.update",
+      entityType: "Service",
+      entityId: service.id,
+      before: { key: existing.key, nameFa: existing.nameFa, nameEn: existing.nameEn, active: existing.active, featured: existing.featured },
+      after: { key: service.key, nameFa: service.nameFa, nameEn: service.nameEn, active: service.active, featured: service.featured, sortOrder: service.sortOrder },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, service });
   } catch (err: any) {
     return NextResponse.json(

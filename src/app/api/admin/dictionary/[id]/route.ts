@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBool } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,6 +124,16 @@ export async function PATCH(req: Request, { params }: Params) {
       where: { id },
       data,
     });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.industrialTerms.update",
+      entityType: "IndustrialTerm",
+      entityId: updated.id,
+      before: { canonical: existing.canonical, entityType: existing.entityType, entityId: existing.entityId, description: existing.description, active: existing.active },
+      after: { canonical: updated.canonical, entityType: updated.entityType, entityId: updated.entityId, description: updated.description, active: updated.active },
+      reason: "via admin API",
+    });
 
     // Aliases — REPLACE strategy if provided.
     if (Array.isArray(body.aliases)) {
@@ -136,6 +147,15 @@ export async function PATCH(req: Request, { params }: Params) {
 
       // Wipe existing aliases.
       await db.termAlias.deleteMany({ where: { termId: id } });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.termAliases.deleteMany",
+        entityType: "TermAlias",
+        entityId: id,
+        before: { termId: id },
+        reason: "via admin API",
+      });
 
       // Recreate (skipping duplicates within the same payload).
       const seen = new Set<string>();
@@ -143,8 +163,17 @@ export async function PATCH(req: Request, { params }: Params) {
         if (seen.has(a.alias)) continue;
         seen.add(a.alias);
         try {
-          await db.termAlias.create({
+          const createdAlias = await db.termAlias.create({
             data: { termId: id, alias: a.alias, aliasType: a.aliasType },
+          });
+          await logAudit({
+            actorId: sessionUser.id,
+            actorType: "ADMIN",
+            action: "admin.termAliases.create",
+            entityType: "TermAlias",
+            entityId: createdAlias.id,
+            after: { termId: id, alias: a.alias, aliasType: a.aliasType },
+            reason: "via admin API",
           });
         } catch {
           // ignore individual insert failures (e.g. race condition)
@@ -200,6 +229,15 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await db.industrialTerm.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.industrialTerms.delete",
+      entityType: "IndustrialTerm",
+      entityId: id,
+      before: { canonical: existing.canonical, entityType: existing.entityType, entityId: existing.entityId, description: existing.description, active: existing.active },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(

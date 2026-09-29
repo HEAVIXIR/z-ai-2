@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,16 @@ export async function PATCH(req: Request, { params }: Args) {
     if ("source" in body) data.source = body.source ?? null;
 
     const edge = await db.compatibilityEdge.update({ where: { id }, data });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.compatibilityEdges.update",
+      entityType: "CompatibilityEdge",
+      entityId: edge.id,
+      before: { verified: existing.verified, verifiedBy: existing.verifiedBy, confidence: existing.confidence, source: existing.source },
+      after: { verified: edge.verified, verifiedBy: edge.verifiedBy, confidence: edge.confidence, source: edge.source },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, edge });
   } catch (err: any) {
     return NextResponse.json(
@@ -56,7 +67,19 @@ export async function DELETE(_req: Request, { params }: Args) {
   await requirePermission(user.id, "compatibility.manage");
   try {
     const { id } = await params;
+    const before = await db.compatibilityEdge.findUnique({ where: { id } });
     await db.compatibilityEdge.delete({ where: { id } });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.compatibilityEdges.delete",
+      entityType: "CompatibilityEdge",
+      entityId: id,
+      before: before
+        ? { sourceEntityType: before.sourceEntityType, sourceEntityId: before.sourceEntityId, targetEntityType: before.targetEntityType, targetEntityId: before.targetEntityId, relationType: before.relationType }
+        : null,
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

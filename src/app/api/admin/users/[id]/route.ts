@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -208,6 +209,17 @@ export async function PATCH(req: Request, { params }: Args) {
       },
     });
 
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.users.update",
+      entityType: "User",
+      entityId: updated.id,
+      before: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email, role: existing.role, status: existing.status, companyName: existing.companyName },
+      after: { firstName: updated.firstName, lastName: updated.lastName, email: updated.email, role: updated.role, status: updated.status, companyName: updated.companyName },
+      reason: "via admin API",
+    });
+
     return NextResponse.json({ success: true, data: serializeUser(updated) });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
@@ -244,6 +256,15 @@ export async function DELETE(_req: Request, { params }: Args) {
     // - Favorite.user: check schema
     // Most user-related tables use Cascade; the listing uses SetNull to preserve ad data.
     await db.user.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.users.delete",
+      entityType: "User",
+      entityId: id,
+      before: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email, role: existing.role, status: existing.status },
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

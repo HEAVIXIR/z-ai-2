@@ -8,6 +8,7 @@ import { hasPermission } from "@/lib/rbac";
 import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +105,15 @@ export async function POST(req: Request) {
     const reel = await db.socialReel.create({
       data: { listingId, platform, duration: config.duration, status: "PROCESSING", prompt, caption, hashtags, thumbnailUrl: mainImage },
     });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.socialReels.create",
+      entityType: "SocialReel",
+      entityId: reel.id,
+      after: { listingId: reel.listingId, platform: reel.platform, status: reel.status, duration: reel.duration },
+      reason: "via admin API",
+    });
 
     // Generate video using AI (image-to-video)
     try {
@@ -148,20 +158,56 @@ export async function POST(req: Request) {
               await fs.writeFile(path.join(dir, filename), buffer);
               const localUrl = `/uploads/reels/${filename}`;
               await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl: localUrl, taskId: task.id } });
+              await logAudit({
+                actorId: sessionUser.id,
+                actorType: "ADMIN",
+                action: "admin.socialReels.update",
+                entityType: "SocialReel",
+                entityId: reel.id,
+                after: { status: "READY", videoUrl: localUrl, taskId: task.id },
+                reason: "via admin API",
+              });
               return NextResponse.json({ ok: true, reelId: reel.id, videoUrl: localUrl, caption, hashtags, status: "READY" });
             }
           } catch {
             // Use remote URL
             await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl, taskId: task.id } });
+            await logAudit({
+              actorId: sessionUser.id,
+              actorType: "ADMIN",
+              action: "admin.socialReels.update",
+              entityType: "SocialReel",
+              entityId: reel.id,
+              after: { status: "READY", videoUrl, taskId: task.id },
+              reason: "via admin API",
+            });
             return NextResponse.json({ ok: true, reelId: reel.id, videoUrl, caption, hashtags, status: "READY" });
           }
         }
       }
 
       await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED", taskId: task.id } });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.socialReels.update",
+        entityType: "SocialReel",
+        entityId: reel.id,
+        after: { status: "FAILED", taskId: task.id },
+        reason: "via admin API",
+      });
       return NextResponse.json({ ok: false, error: "Video generation timed out", reelId: reel.id, caption, hashtags });
     } catch (videoErr: any) {
       await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED" } });
+      await logAudit({
+        actorId: sessionUser.id,
+        actorType: "ADMIN",
+        action: "admin.socialReels.update",
+        entityType: "SocialReel",
+        entityId: reel.id,
+        after: { status: "FAILED", error: videoErr?.message ?? "Video error" },
+        reason: "via admin API",
+      });
       return NextResponse.json({ ok: false, error: videoErr?.message ?? "Video error", reelId: reel.id, caption, hashtags });
     }
   } catch (err: any) {

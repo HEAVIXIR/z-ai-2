@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +70,16 @@ export async function POST(req: Request) {
       include: {
         product: { select: { id: true, canonicalName: true, slug: true } },
       },
+    });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.attachments.create",
+      entityType: "Attachment",
+      entityId: attachment.id,
+      after: { productId: attachment.productId, attachmentType: attachment.attachmentType, capacity: attachment.capacity, condition: attachment.condition, status: attachment.status },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ ok: true, attachment });

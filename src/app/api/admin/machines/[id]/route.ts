@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,16 @@ export async function PATCH(req: Request, { params }: Args) {
     }
 
     const machine = await db.machine.update({ where: { id }, data });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.machines.update",
+      entityType: "Machine",
+      entityId: machine.id,
+      before: { serialNumber: existing.serialNumber, condition: existing.condition, status: existing.status, productId: existing.productId, listingId: existing.listingId, manufactureYear: existing.manufactureYear, hours: existing.hours },
+      after: { serialNumber: machine.serialNumber, condition: machine.condition, status: machine.status, productId: machine.productId, listingId: machine.listingId, manufactureYear: machine.manufactureYear, hours: machine.hours },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, machine });
   } catch (err: any) {
     return NextResponse.json(
@@ -93,7 +104,17 @@ export async function DELETE(_req: Request, { params }: Args) {
   await requirePermission(user.id, "machine.update");
   try {
     const { id } = await params;
+    const before = await db.machine.findUnique({ where: { id } });
     await db.machine.delete({ where: { id } });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.machines.delete",
+      entityType: "Machine",
+      entityId: id,
+      before: before ? { serialNumber: before.serialNumber, condition: before.condition, status: before.status, productId: before.productId, listingId: before.listingId, manufactureYear: before.manufactureYear, hours: before.hours } : null,
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

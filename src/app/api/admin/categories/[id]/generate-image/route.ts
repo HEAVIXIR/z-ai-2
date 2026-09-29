@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
@@ -9,6 +9,7 @@ import ZAI from "z-ai-web-dev-sdk";
 import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    POST /api/admin/categories/[id]/generate-image
@@ -135,9 +136,20 @@ export async function POST(
   const imageUrl = `/uploads/categories/${filename}`;
 
   try {
+    const before = await db.category.findUnique({ where: { id }, select: { id: true, slug: true, imageUrl: true } });
     await db.category.update({
       where: { id },
       data: { imageUrl },
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.categories.update",
+      entityType: "Category",
+      entityId: id,
+      before: before ? { imageUrl: before.imageUrl } : null,
+      after: { imageUrl },
+      reason: "via admin API",
     });
   } catch (e: any) {
     // The image is saved but DB update failed — still return the URL so

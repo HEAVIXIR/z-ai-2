@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    PUT /api/admin/brands/[id]/logo
@@ -50,9 +51,20 @@ export async function PUT(
   }
 
   try {
+    const before = await db.brand.findUnique({ where: { id }, select: { id: true, name: true, slug: true, logoUrl: true } });
     await db.brand.update({
       where: { id },
       data: { logoUrl },
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.brands.update",
+      entityType: "Brand",
+      entityId: id,
+      before: before ? { logoUrl: before.logoUrl } : null,
+      after: { logoUrl },
+      reason: "via admin API",
     });
   } catch (e: any) {
     return NextResponse.json(

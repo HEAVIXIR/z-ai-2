@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +87,16 @@ export async function POST(req: Request) {
       include: {
         product: { select: { id: true, canonicalName: true, slug: true } },
       },
+    });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.machines.create",
+      entityType: "Machine",
+      entityId: machine.id,
+      after: { productId: machine.productId, listingId: machine.listingId, serialNumber: machine.serialNumber, manufactureYear: machine.manufactureYear, hours: machine.hours, condition: machine.condition, status: machine.status },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ ok: true, machine });

@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,15 @@ export async function GET() {
     prefs = await db.adminPreference.create({
       data: { userId: user.id, ...DEFAULTS },
     });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.preferences.create",
+      entityType: "AdminPreference",
+      entityId: prefs.id,
+      after: { userId: prefs.userId, theme: prefs.theme, locale: prefs.locale },
+      reason: "via admin API",
+    });
   }
 
   return NextResponse.json({ ok: true, data: prefs });
@@ -93,6 +103,16 @@ export async function PUT(req: NextRequest) {
     where: { userId: user.id },
     create: { userId: user.id, ...DEFAULTS, ...updateData },
     update: updateData,
+  });
+
+  await logAudit({
+    actorId: user.id,
+    actorType: "ADMIN",
+    action: "admin.preferences.upsert",
+    entityType: "AdminPreference",
+    entityId: prefs.id,
+    after: { userId: prefs.userId, theme: prefs.theme, locale: prefs.locale, density: prefs.density, defaultPageSize: prefs.defaultPageSize },
+    reason: "via admin API",
   });
 
   return NextResponse.json({ ok: true, data: prefs });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -154,6 +155,16 @@ export async function POST(req: Request) {
         verifiedBy: body.verifiedBy ?? null,
         verifiedAt: body.verified ? new Date() : (body.verifiedAt ? new Date(body.verifiedAt) : null),
       },
+    });
+
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.compatibilityEdges.upsert",
+      entityType: "CompatibilityEdge",
+      entityId: edge.id,
+      after: { sourceEntityType: edge.sourceEntityType, sourceEntityId: edge.sourceEntityId, targetEntityType: edge.targetEntityType, targetEntityId: edge.targetEntityId, relationType: edge.relationType, verified: edge.verified, source: edge.source },
+      reason: "via admin API",
     });
 
     return NextResponse.json({ ok: true, edge });

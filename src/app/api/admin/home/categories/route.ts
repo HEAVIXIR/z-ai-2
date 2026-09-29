@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +100,15 @@ export async function PUT(req: Request) {
         homeCategoryGeneration: generation,
         homeCategoryParentId: generation === 2 ? parentId : null,
       },
+    });
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.homeCategoryConfig.upsert",
+      entityType: "HomeCategoryConfig",
+      entityId: cfg.id,
+      after: { generation: cfg.homeCategoryGeneration, parentId: cfg.homeCategoryParentId },
+      reason: "via admin API",
     });
 
     // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache

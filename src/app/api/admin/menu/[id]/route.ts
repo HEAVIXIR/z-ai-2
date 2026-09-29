@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    /api/admin/menu/[id] — update + delete a single menu item.
@@ -26,6 +27,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
+    const before = await db.menuItem.findUnique({ where: { id }, select: { id: true, title: true, href: true, parentId: true, icon: true, order: true, active: true, openInNew: true } });
     const item = await db.menuItem.update({
       where: { id },
       data: {
@@ -37,6 +39,16 @@ export async function PUT(
         active: body.active !== undefined ? Boolean(body.active) : undefined,
         openInNew: body.openInNew !== undefined ? Boolean(body.openInNew) : undefined,
       },
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.update",
+      entityType: "MenuItem",
+      entityId: item.id,
+      before,
+      after: { title: item.title, href: item.href, parentId: item.parentId, icon: item.icon, order: item.order, active: item.active, openInNew: item.openInNew },
+      reason: "via admin API",
     });
     return NextResponse.json({ success: true, data: item });
   } catch (e) {
@@ -75,6 +87,15 @@ export async function PATCH(
     if (body.openInNew !== undefined) data.openInNew = Boolean(body.openInNew);
 
     const item = await db.menuItem.update({ where: { id }, data });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.update",
+      entityType: "MenuItem",
+      entityId: item.id,
+      after: { title: item.title, href: item.href, parentId: item.parentId, icon: item.icon, order: item.order, active: item.active, openInNew: item.openInNew },
+      reason: "via admin API",
+    });
     return NextResponse.json({ ok: true, success: true, item });
   } catch (e) {
     return NextResponse.json({ error: "Patch failed" }, { status: 500 });
@@ -96,7 +117,17 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+    const before = await db.menuItem.findUnique({ where: { id }, select: { id: true, title: true, href: true, parentId: true, order: true, active: true } });
     await db.menuItem.delete({ where: { id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.menuItems.delete",
+      entityType: "MenuItem",
+      entityId: id,
+      before,
+      reason: "via admin API",
+    });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Delete failed" }, { status: 500 });

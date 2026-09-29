@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,14 +61,25 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     if (Array.isArray(body.sections)) {
-      await Promise.all(
-        body.sections.map((s: any) =>
+      const updatedSections = await Promise.all(
+        body.sections.map(async (s: any) =>
           db.homePageSection.update({
             where: { id: String(s.id) },
             data: sectionData(s),
           }),
         ),
       );
+      for (const u of updatedSections) {
+        await logAudit({
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.homePageSections.update",
+          entityType: "HomePageSection",
+          entityId: u.id,
+          after: { key: u.key, title: u.title, order: u.order, active: u.active },
+          reason: "via admin API",
+        });
+      }
       const sections = await db.homePageSection.findMany({
         orderBy: { order: "asc" },
       });
@@ -84,6 +96,15 @@ export async function PUT(req: Request) {
       where: { key: data.key },
       create: data,
       update: data,
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.homePageSections.upsert",
+      entityType: "HomePageSection",
+      entityId: section.id,
+      after: { key: section.key, title: section.title, order: section.order, active: section.active },
+      reason: "via admin API",
     });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.sections, 'default'); } catch (e) { console.error('[homepage-sections] revalidateTag failed:', e); }
@@ -125,6 +146,15 @@ export async function POST(req: Request) {
       );
     }
     const section = await db.homePageSection.create({ data });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.homePageSections.create",
+      entityType: "HomePageSection",
+      entityId: section.id,
+      after: { key: section.key, title: section.title, order: section.order, active: section.active },
+      reason: "via admin API",
+    });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.sections, 'default'); } catch (e) { console.error('[homepage-sections] revalidateTag failed:', e); }
 

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,6 +143,16 @@ export async function PATCH(req: Request, { params }: Params) {
     });
 
     await audit("subscription_plan.update", plan.id, existing, data);
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.subscriptionPlans.update",
+      entityType: "SubscriptionPlan",
+      entityId: plan.id,
+      before: { code: existing.code, nameFa: existing.nameFa, priceMonthly: existing.priceMonthly?.toString() ?? null, active: existing.active },
+      after: { code: plan.code, nameFa: plan.nameFa, priceMonthly: plan.priceMonthly?.toString() ?? null, active: plan.active },
+      reason: "via admin API",
+    });
 
     return NextResponse.json({
       success: true,
@@ -189,6 +200,15 @@ export async function DELETE(_req: Request, { params }: Params) {
     await db.subscriptionPlan.delete({ where: { id } });
 
     await audit("subscription_plan.delete", id, existing, null);
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.subscriptionPlans.delete",
+      entityType: "SubscriptionPlan",
+      entityId: id,
+      before: { code: existing.code, nameFa: existing.nameFa, priceMonthly: existing.priceMonthly?.toString() ?? null, active: existing.active },
+      reason: "via admin API",
+    });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

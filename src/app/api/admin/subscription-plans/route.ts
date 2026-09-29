@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +105,15 @@ export async function POST(req: Request) {
     const plan = await db.subscriptionPlan.create({ data });
 
     await audit("subscription_plan.create", plan.id, null, data);
+    await logAudit({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "admin.subscriptionPlans.create",
+      entityType: "SubscriptionPlan",
+      entityId: plan.id,
+      after: { code: plan.code, nameFa: plan.nameFa, priceMonthly: plan.priceMonthly?.toString() ?? null, active: plan.active, sortOrder: plan.sortOrder },
+      reason: "via admin API",
+    });
 
     return NextResponse.json({
       success: true,

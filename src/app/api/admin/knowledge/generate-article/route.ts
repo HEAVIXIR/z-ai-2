@@ -6,6 +6,7 @@ import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-article
@@ -167,6 +168,16 @@ Topic: """${topic}"""`;
       { status: 500 },
     );
   }
+
+  await logAudit({
+    actorId: sessionUser.id,
+    actorType: "ADMIN",
+    action: "admin.articles.create",
+    entityType: "Article",
+    entityId: article.id,
+    after: { slug: article.slug, title: article.title, category: article.category, status: article.status },
+    reason: "via admin API",
+  });
 
   return NextResponse.json({
     ok: true,

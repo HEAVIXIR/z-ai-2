@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBool, parseNumber } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,6 +142,15 @@ export async function POST(req: Request) {
       where: { key },
       create: { key, ...data },
       update: data,
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.featureFlags.upsert",
+      entityType: "FeatureFlag",
+      entityId: flag.key,
+      after: { key: flag.key, label: flag.label, enabled: flag.enabled, rolloutPct: flag.rolloutPct },
+      reason: "via admin API",
     });
     return NextResponse.json({ success: true, data: flag });
   } catch (err: any) {

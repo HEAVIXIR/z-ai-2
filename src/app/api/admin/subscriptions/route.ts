@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,15 @@ export async function POST(req: Request) {
       where: { userId },
       create: { userId, ...data, startedAt: new Date() },
       update: data,
+    });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.premiumSubscriptions.upsert",
+      entityType: "PremiumSubscription",
+      entityId: s.id,
+      after: { userId: s.userId, plan: s.plan, status: s.status, amount: s.amount?.toString() ?? null, expiresAt: s.expiresAt },
+      reason: "via admin API",
     });
     return NextResponse.json({ ok: true, subscription: serialize(s) });
   } catch (err: any) {
