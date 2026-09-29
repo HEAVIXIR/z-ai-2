@@ -35,6 +35,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH — update page metadata (NOT layout — use versions for that)
+// Phase 7 — STEP 5.4 (Directive 47, SEC-6): added before-snapshot +
+//   logAudit (previously metadata PATCH was unaudited) + basic type
+//   validation on the whitelist fields.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const user = await getCurrentUser();
@@ -45,12 +48,49 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
 
+  // Field whitelist + basic type validation (inline; full zod deferred).
   const allowed = ['title', 'slug', 'pageType', 'seoTitle', 'seoDescription', 'seoCanonical', 'seoOgImage', 'seoRobotsIndex', 'seoRobotsFollow', 'scheduledPublishAt', 'scheduledUnpublishAt'];
+  const stringFields = new Set(['title', 'slug', 'pageType', 'seoTitle', 'seoDescription', 'seoCanonical', 'seoOgImage']);
+  const boolFields = new Set(['seoRobotsIndex', 'seoRobotsFollow']);
+  const dateFields = new Set(['scheduledPublishAt', 'scheduledUnpublishAt']);
   const data: Record<string, unknown> = {};
-  for (const k of allowed) if (k in body) data[k] = body[k];
+  const changes: Record<string, { before: unknown; after: unknown }> = {};
+  for (const k of allowed) {
+    if (!(k in body)) continue;
+    const v = body[k];
+    if (stringFields.has(k) && v !== null && typeof v !== 'string') {
+      return NextResponse.json({ error: `${k} must be a string or null` }, { status: 400 });
+    }
+    if (boolFields.has(k) && typeof v !== 'boolean') {
+      return NextResponse.json({ error: `${k} must be a boolean` }, { status: 400 });
+    }
+    if (dateFields.has(k) && v !== null && typeof v !== 'string') {
+      return NextResponse.json({ error: `${k} must be an ISO string or null` }, { status: 400 });
+    }
+    data[k] = v;
+  }
   data.updatedBy = user.id;
 
+  // before-snapshot for audit
+  const before = await db.adminPage.findUnique({ where: { id } });
+  if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  for (const k of Object.keys(data)) {
+    if (k === 'updatedBy') continue;
+    changes[k] = { before: (before as Record<string, unknown>)[k], after: data[k] };
+  }
+
   const page = await db.adminPage.update({ where: { id }, data });
+
+  const h = await headers();
+  await logAudit({
+    actorId: user.id, actorType: 'ADMIN', action: 'page.update',
+    entityType: 'AdminPage', entityId: id,
+    before: Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.before])),
+    after: Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.after])),
+    reason: `Updated metadata for page "${before.key}"`,
+    ip: h.get('x-forwarded-for') || null, userAgent: h.get('user-agent') || null,
+  });
+
   return NextResponse.json({ ok: true, data: page });
 }
 
