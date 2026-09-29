@@ -122,8 +122,12 @@ async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; 
   const widgetDef = getWidget(widget.key);
   if (!widgetDef) return null; // unknown widget — silently skip (already validated)
 
-  // 1. Check widget permissions (if user is provided, i.e., preview mode)
-  if (widgetDef.permissions && userId !== undefined) {
+  // 1. Check widget permissions only in PREVIEW mode (userId is a real id).
+  //    Public mode (userId === null) skips permission checks — public widgets
+  //    (hero, listing-grid, category-grid, stats, etc.) must render for all visitors.
+  //    NOTE: `!= null` is true only for non-null AND non-undefined values, so
+  //    null (public) and undefined (not provided) both skip the gate correctly.
+  if (widgetDef.permissions && userId != null) {
     for (const perm of widgetDef.permissions) {
       const hasPerm = await can(userId, perm);
       if (!hasPerm) {
@@ -143,7 +147,8 @@ async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; 
     const dsKey = widget.dataSource || widgetDef.defaultDataSource;
     if (dsKey) {
       const ds = getDataSource(dsKey);
-      if (ds?.permissions && userId !== undefined) {
+      // Same preview-only gate as widget permissions (see comment above).
+      if (ds?.permissions && userId != null) {
         for (const perm of ds.permissions) {
           const hasPerm = await can(userId, perm);
           if (!hasPerm) {

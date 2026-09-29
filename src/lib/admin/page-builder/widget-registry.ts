@@ -23,6 +23,17 @@ export const DATA_SOURCES: DataSourceDef[] = [
   { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit=6', cacheTtl: 120, permissions: ['content.read'] },
   { key: 'service.all', label: 'خدمات', apiPath: '/api/services?limit=50', cacheTtl: 600, permissions: ['content.read'] },
   { key: 'stats.site', label: 'آمار سایت', apiPath: '/api/admin/site-stats', cacheTtl: 300, permissions: ['admin.dashboard.read'] },
+  // ── Phase 7 — STEP 4: data sources referenced by the default homepage
+  //    layout in src/app/page.tsx (DEFAULT_HOME_LAYOUT). Previously these
+  //    keys were referenced but missing from DATA_SOURCES, causing
+  //    validateLayout() to reject the layout with "unknown dataSource"
+  //    and the homepage <main> to render only the error string.
+  //    Each entry is DECLARATIVE (key + apiPath + permissions) — the
+  //    PageRenderer fetches the apiPath server-side; no code execution,
+  //    no SQL, no arbitrary logic (V2.3 security contract preserved).
+  { key: 'featured-listings', label: 'آگهی‌های منتخب (هوم)', apiPath: '/api/listings?featured=true&limit=8', cacheTtl: 120, permissions: ['listing.read'] },
+  { key: 'categories', label: 'دسته‌بندی‌ها (هوم)', apiPath: '/api/taxonomy/categories?limit=12', cacheTtl: 300, permissions: ['taxonomy.read'] },
+  { key: 'site-stats', label: 'آمار سایت (هوم)', apiPath: '/api/admin/site-stats', cacheTtl: 300, permissions: ['admin.dashboard.read'] },
 ];
 
 const dsMap = new Map(DATA_SOURCES.map(d => [d.key, d]));

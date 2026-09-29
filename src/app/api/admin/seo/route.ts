@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
+import { requireAdmin } from "@/lib/admin-guard";
+import { logAudit } from "@/lib/audit";
+import { db } from "@/lib/db";
 import {
   getSEO,
-  upsertSEO,
   fetchEntity,
   searchEntities,
   generateMetaTitle,
@@ -30,28 +30,66 @@ export const dynamic = "force-dynamic";
    POST   { entityType, entityId, ...seo }  — upsert via seo-service
    PUT    { entityType, entityId, ...seo }  — legacy upsert (still works)
    PATCH  { entityType, entityId, ...seo }  — alias for POST/PUT
-   Permission: seo.read (GET), seo.manage (POST/PUT/PATCH)
+   DELETE { entityType, entityId }          — delete SEO row
+   ------------------------------------------------------------
+   Phase 7 — STEP 5 (Directive 47, SEC-3/4/5):
+     • Auth unified to `requireAdmin('seo.read' | 'seo.manage')`
+       (central RBAC permission check — no longer a bare isAdmin role gate).
+     • Field-level validation enforced inline (matches seoConfig.fields
+       maxLength/min/max rules; previously the dedicated route bypassed
+       validateResourcePayload, allowing unbounded payloads).
+     • DELETE handler added (previously the UI's Delete button 405'd;
+       seoConfig.actions.delete declared DELETE but no handler existed).
    ============================================================ */
-
-async function authorizeAdmin(): Promise<string | null> {
-  // Legacy admin cookie path — full access
-  const user = await getCurrentUser();
-  if (!user) return null;
-  // Require admin role
-  const adminOk = await isAdmin(user.id);
-  if (!adminOk) return null;
-  return user.id;
-}
 
 function isValidEntityType(t: string): boolean {
   return (SEO_ENTITY_TYPES as readonly string[]).includes(t);
 }
 
-export async function GET(req: Request) {
-  const userId = await authorizeAdmin();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// ── Phase 7 STEP 5.2 — field-level validation (matches seoConfig.fields) ──
+const SITEMAP_FREQS = new Set([
+  "always", "hourly", "daily", "weekly", "monthly", "yearly", "never",
+]);
+
+interface FieldError { field: string; reason: string }
+
+function validateSEOFields(body: Record<string, unknown>): FieldError[] {
+  const errs: FieldError[] = [];
+  const str = (v: unknown, max: number, field: string) => {
+    if (v === undefined || v === null) return; // optional
+    if (typeof v !== "string") { errs.push({ field, reason: `${field} must be a string` }); return; }
+    if (v.length > max) errs.push({ field, reason: `${field} exceeds ${max} chars` });
+  };
+  // Accept both Wave 3B task names and legacy schema names.
+  str(body.title ?? body.metaTitle, 200, "metaTitle");
+  str(body.description ?? body.metaDescription, 500, "metaDescription");
+  str(body.keywords, 500, "keywords");
+  str(body.canonical ?? body.canonicalUrl, 500, "canonicalUrl");
+  str(body.ogTitle, 200, "ogTitle");
+  str(body.ogDescription, 500, "ogDescription");
+  str(body.ogImage, 500, "ogImage");
+  str(body.structuredData, 5000, "structuredData");
+  // sitemapPriority: 0..1
+  const sp = body.sitemapPriority;
+  if (sp !== undefined && sp !== null) {
+    const n = Number(sp);
+    if (!Number.isFinite(n) || n < 0 || n > 1) {
+      errs.push({ field: "sitemapPriority", reason: "must be a number 0..1" });
+    }
   }
+  // sitemapChangeFreq: enum
+  const sf = body.sitemapChangeFreq;
+  if (sf !== undefined && sf !== null) {
+    if (typeof sf !== "string" || !SITEMAP_FREQS.has(sf)) {
+      errs.push({ field: "sitemapChangeFreq", reason: "invalid frequency" });
+    }
+  }
+  return errs;
+}
+
+export async function GET(req: Request) {
+  const [user, error] = await requireAdmin("seo.read");
+  if (error) return error;
   try {
     const url = new URL(req.url);
     const entityType = url.searchParams.get("entityType")?.trim() || "";
@@ -61,9 +99,7 @@ export async function GET(req: Request) {
     const limitParam = url.searchParams.get("limit");
     const limit = limitParam ? Number(limitParam) : undefined;
 
-    // ── List mode (Wave 3B): ?list=1[&entityType=][&entityId=][&limit=]
-    // Returns all SEO rows (optionally filtered by entityType/entityId).
-    // entityType is OPTIONAL here — if omitted, list across all types.
+    // ── List mode (Wave 3B)
     if (listFlag === "1" || listFlag === "true") {
       if (entityType && !isValidEntityType(entityType)) {
         return NextResponse.json(
@@ -104,8 +140,6 @@ export async function GET(req: Request) {
       fetchEntity(entityType, entityId),
     ]);
 
-    // Provide auto-generated defaults so the admin UI can offer
-    // a "تولید خودکار" button even when no SEO row exists yet.
     const generated = entity
       ? {
           metaTitle: generateMetaTitle(entityType, entity),
@@ -143,12 +177,11 @@ export async function GET(req: Request) {
  * Shared body for POST / PUT / PATCH. All three accept the same
  * body shape; we route through the Wave 3B `updateSEO` service
  * so mutations are consistently audit-logged as `seo.update`.
+ * Phase 7 STEP 5.2: field-level validation now enforced before upsert.
  */
 async function handleUpsert(req: Request): Promise<Response> {
-  const userId = await authorizeAdmin();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const [user, error] = await requireAdmin("seo.manage");
+  if (error) return error;
   try {
     const body = await req.json().catch(() => null);
     if (
@@ -168,11 +201,19 @@ async function handleUpsert(req: Request): Promise<Response> {
       );
     }
 
-    // Wave 3B task field names + legacy schema field names — accept both.
+    // ── Phase 7 STEP 5.2: field-level validation (no more unbounded payloads)
+    const fieldErrs = validateSEOFields(body);
+    if (fieldErrs.length > 0) {
+      return NextResponse.json(
+        { error: "Validation failed", fields: fieldErrs },
+        { status: 400 },
+      );
+    }
+
     const input: UpdateSEOInput = {
       entityType: body.entityType,
       entityId: body.entityId,
-      actorId: userId,
+      actorId: user!.id,
       title: body.title ?? body.metaTitle,
       description: body.description ?? body.metaDescription,
       keywords: body.keywords,
@@ -219,13 +260,56 @@ export async function PATCH(req: Request) {
   return handleUpsert(req);
 }
 
-/* ── Legacy: keep the old `upsertSEO`-direct path available for any
-   callers that bypassed the service — used by tests that mock the
-   raw upsert. Exposed as a default-export-less helper. */
-export async function legacyUpsertSEO(
-  entityType: string,
-  entityId: string,
-  fields: Record<string, unknown>,
-) {
-  return upsertSEO(entityType, entityId, fields as any);
+// ── Phase 7 STEP 5.3: DELETE handler (previously missing — UI Delete 405'd)
+//    Deletes the SEOMetadata row by (entityType, entityId) compound unique key.
+export async function DELETE(req: Request) {
+  const [user, error] = await requireAdmin("seo.manage");
+  if (error) return error;
+  try {
+    const url = new URL(req.url);
+    const entityType = url.searchParams.get("entityType")?.trim() || "";
+    const entityId = url.searchParams.get("entityId")?.trim() || "";
+    if (!entityType || !entityId || !isValidEntityType(entityType)) {
+      return NextResponse.json(
+        { error: "entityType و entityId معتبر الزامی هستند." },
+        { status: 400 },
+      );
+    }
+
+    // Compound unique key (entityType, entityId) — delete is a no-op if not found.
+    const existing = await db.sEOMetadata.findUnique({
+      where: { entityType_entityId: { entityType, entityId } },
+    });
+    if (!existing) {
+      return NextResponse.json(
+        { error: "SEO row not found." },
+        { status: 404 },
+      );
+    }
+    await db.sEOMetadata.delete({
+      where: { entityType_entityId: { entityType, entityId } },
+    });
+
+    await logAudit({
+      actorId: user!.id,
+      actorType: "ADMIN",
+      action: "seo.delete",
+      entityType: "SEOMetadata",
+      entityId: existing.id,
+      before: {
+        entityType: existing.entityType,
+        entityId: existing.entityId,
+        metaTitle: existing.metaTitle,
+        canonicalUrl: existing.canonicalUrl,
+      },
+      reason: `Deleted SEO for ${entityType}/${entityId}`,
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
+  }
 }
