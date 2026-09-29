@@ -1,13 +1,13 @@
 // HEAVIX — Industrial heavy-machinery marketplace
-// PostgreSQL production schema (migrated from SQLite per ADR-001)
+// SQLite development schema (PostgreSQL for production — switch provider + url for deployment)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:/home/z/my-project/db/heavix.db"
 }
 
 // ════════════════════════════════════════════════════════════
