@@ -80,7 +80,8 @@ describe('P1-1: Store-Aware Data Adapter', () => {
     expect(fileExists(storeDomainPath)).toBe(true);
     const code = readFile(storeDomainPath);
     const storeCount = (code.match(/database:\s*'store'/g) || []).length;
-    expect(storeCount).toBe(13);
+    // Updated for Phase 3: 13 original S1-A/S1-B configs + 1 promotions config = 14
+    expect(storeCount).toBe(14);
   });
 
   it('audit-foundation.ts imports storeDb', () => {

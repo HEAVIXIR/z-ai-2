@@ -25,6 +25,8 @@ import {
   storeCategoriesConfig, storeBrandsConfig, shipmentsConfig,
   // Phase 3 Batch 1 — Store Domain registration (Settings + Analytics + SEO)
   settingsConfig, analyticsConfig, seoConfig,
+  // Phase 3 Batch 3 — Promotions (Coupon)
+  promotionsConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -60,6 +62,8 @@ registerResource(shipmentsConfig);
 registerResource(settingsConfig);
 registerResource(analyticsConfig);
 registerResource(seoConfig);
+// Phase 3 Batch 3 — Promotions (Coupon)
+registerResource(promotionsConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';

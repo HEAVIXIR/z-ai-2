@@ -228,6 +228,7 @@ export const PERMISSIONS = [
   'reel.read',           'reel.manage',
   'social-reel.read',    'social-reel.manage',
   'subscription.read',
+  'promotions.read',     'promotions.manage',
 ] as const;
 
 export type PermissionKey = typeof PERMISSIONS[number];

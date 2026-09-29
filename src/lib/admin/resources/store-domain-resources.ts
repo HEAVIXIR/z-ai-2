@@ -1660,3 +1660,112 @@ export const seoConfig: AdminResourceConfig = {
   audit: { enabled: true, entityType: 'SEOMetadata',
     actions: ['seo.manage'] },
 };
+
+// ── 17. Promotions (Coupon — discount code management) ───────
+// Phase 3 Batch 3: Registers the existing Coupon model (store-schema)
+// as a Universal Resource. Coupon has: code, type (PERCENT|FIXED),
+// value, expiresAt, usageLimit, usedCount, active, minOrderIrr.
+// Admin CRUD via Universal Resource Engine at /api/admin/resources/promotions.
+// Public validation remains at /api/store/coupons/validate.
+export const promotionsConfig: AdminResourceConfig = {
+  key: 'promotions',
+  titleFa: 'تخفیف‌ها و کدهای تخفیف',
+  titleEn: 'Promotions (Coupons)',
+  icon: 'TicketPercent',
+  model: 'coupon',
+  database: 'store',
+  apiBase: '/api/admin/resources/promotions',
+  adminPath: '/admin/resources/promotions',
+
+  permissions: {
+    read: 'promotions.read',
+    create: 'promotions.manage',
+    update: 'promotions.manage',
+    delete: 'promotions.manage',
+    export: 'promotions.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'code', label: 'کد تخفیف', type: 'text', sortable: true, filterable: true },
+    { key: 'type', label: 'نوع', type: 'badge', sortable: true, filterable: true },
+    { key: 'value', label: 'مقدار', type: 'number', sortable: true },
+    { key: 'expiresAt', label: 'تاریخ انقضا', type: 'date', sortable: true },
+    { key: 'usageLimit', label: 'سقف استفاده', type: 'number', sortable: true },
+    { key: 'usedCount', label: 'استفاده‌شده', type: 'number', sortable: true },
+    { key: 'active', label: 'فعال', type: 'boolean', sortable: true, filterable: true },
+    { key: 'minOrderIrr', label: 'حداقل سفارش (ریال)', type: 'currency', visible: false },
+    { key: 'createdAt', label: 'تاریخ ایجاد', type: 'date', sortable: true },
+  ],
+
+  filters: [
+    { key: 'type', label: 'نوع تخفیف', type: 'select', options: [
+      { value: 'PERCENT', label: 'درصدی' },
+      { value: 'FIXED', label: 'مبلغ ثابت' },
+    ]},
+    { key: 'active', label: 'وضعیت', type: 'select', options: [
+      { value: 'true', label: 'فعال' },
+      { value: 'false', label: 'غیرفعال' },
+    ]},
+  ],
+
+  defaultSort: { field: 'createdAt', order: 'desc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['code'],
+
+  fields: [
+    { key: 'code', label: 'کد تخفیف', type: 'text', required: true,
+      helpText: 'کد یکتای تخفیف (مثلاً SUMMER1403)',
+      validation: { minLength: 3, maxLength: 50, pattern: '^[A-Z0-9]+$',
+        message: 'کد باید با حروف بزرگ انگلیسی و اعداد باشد' } },
+    { key: 'type', label: 'نوع تخفیف', type: 'select', required: true, options: [
+      { value: 'PERCENT', label: 'درصدی' },
+      { value: 'FIXED', label: 'مبلغ ثابت (ریال)' },
+    ], permissions: { read: 'promotions.read', write: 'promotions.manage' } },
+    { key: 'value', label: 'مقدار تخفیف', type: 'number', required: true,
+      helpText: 'درصد (۱-۱۰۰) یا مبلغ به ریال',
+      validation: { min: 0, message: 'مقدار باید عدد نامنفی باشد' } },
+    { key: 'expiresAt', label: 'تاریخ انقضا', type: 'datetime',
+      helpText: 'خالی = نامحدود' },
+    { key: 'usageLimit', label: 'سقف استفاده', type: 'number', defaultValue: 0,
+      helpText: '۰ = نامحدود',
+      validation: { min: 0, message: 'سقف باید عدد نامنفی باشد' } },
+    { key: 'minOrderIrr', label: 'حداقل مبلغ سفارش (ریال)', type: 'currency',
+      validation: { min: 0, message: 'حداقل باید عدد نامنفی باشد' } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
+      permissions: { read: 'promotions.read', write: 'promotions.manage' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
+      permission: 'promotions.manage', type: 'confirm',
+      apiPath: '/api/admin/resources/promotions', apiMethod: 'PATCH' },
+    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
+      permission: 'promotions.manage', type: 'confirm',
+      apiPath: '/api/admin/resources/promotions', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'promotions.manage', type: 'modal',
+      apiPath: '/api/admin/resources/promotions', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'promotions.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/resources/promotions', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
+      permission: 'promotions.manage', type: 'confirm' },
+    { key: 'bulk-deactivate', label: 'غیرفعال‌سازی گروهی', icon: 'ToggleLeft',
+      permission: 'promotions.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'promotions.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Coupon',
+    actions: ['promotions.manage'] },
+};
