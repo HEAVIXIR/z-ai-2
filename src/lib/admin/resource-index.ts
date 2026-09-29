@@ -23,6 +23,8 @@ import {
   carModelsConfig, currencyConfig, servicesConfig,
   // Phase S1-B-PATCH-3 — collision-safe + shipments (shipping.* perms)
   storeCategoriesConfig, storeBrandsConfig, shipmentsConfig,
+  // Phase 3 Batch 1 — Store Domain registration (Settings + Analytics + SEO)
+  settingsConfig, analyticsConfig, seoConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -54,6 +56,10 @@ registerResource(servicesConfig);
 registerResource(storeCategoriesConfig);
 registerResource(storeBrandsConfig);
 registerResource(shipmentsConfig);
+// Phase 3 Batch 1 — Store Domain registration (Settings + Analytics + SEO)
+registerResource(settingsConfig);
+registerResource(analyticsConfig);
+registerResource(seoConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';

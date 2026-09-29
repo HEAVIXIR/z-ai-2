@@ -1408,3 +1408,255 @@ export const shipmentsConfig: AdminResourceConfig = {
   audit: { enabled: true, entityType: 'Shipment',
     actions: ['shipping.manage'] },
 };
+
+// ── 14. Settings (Site-wide configuration) ───────────────────
+// Phase 3 Batch 1: Registers the existing SiteSettings model
+// (main schema) as a Universal Resource. Uses admin.settings.manage
+// permission (already in catalog). API at /api/admin/site-settings.
+export const settingsConfig: AdminResourceConfig = {
+  key: 'settings',
+  titleFa: 'تنظیمات سایت',
+  titleEn: 'Site Settings',
+  icon: 'Settings',
+  model: 'siteSettings',
+  apiBase: '/api/admin/site-settings',
+  adminPath: '/admin/resources/settings',
+
+  permissions: {
+    read: 'admin.settings.manage',
+    update: 'admin.settings.manage',
+    export: 'admin.settings.manage',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'phone', label: 'تلفن', type: 'text' },
+    { key: 'email', label: 'ایمیل', type: 'text' },
+    { key: 'address', label: 'نشانی', type: 'text', visible: false },
+    { key: 'workingHours', label: 'ساعات کاری', type: 'text' },
+    { key: 'logoUrl', label: 'لوگو', type: 'image', visible: false },
+    { key: 'newsletterEnabled', label: 'خبرنامه', type: 'boolean', sortable: true },
+  ],
+
+  defaultSort: { field: 'id', order: 'asc' },
+  pageSize: 1,
+  searchable: false,
+
+  fields: [
+    { key: 'phone', label: 'تلفن', type: 'text',
+      validation: { maxLength: 50, message: 'تلفن نباید بیش از ۵۰ نویسه باشد' } },
+    { key: 'email', label: 'ایمیل', type: 'text',
+      validation: { maxLength: 100, pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        message: 'فرمت ایمیل نامعتبر است' } },
+    { key: 'address', label: 'نشانی', type: 'textarea',
+      validation: { maxLength: 500, message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
+    { key: 'workingHours', label: 'ساعات کاری', type: 'text',
+      validation: { maxLength: 200, message: 'ساعات کاری نباید بیش از ۲۰۰ نویسه باشد' } },
+    { key: 'about', label: 'درباره ما', type: 'textarea',
+      validation: { maxLength: 5000, message: 'متن نباید بیش از ۵۰۰۰ نویسه باشد' } },
+    { key: 'logoUrl', label: 'URL لوگو', type: 'media' },
+    { key: 'newsletterEnabled', label: 'خبرنامه فعال', type: 'boolean', defaultValue: true },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'admin.settings.manage', type: 'modal',
+      apiPath: '/api/admin/site-settings', apiMethod: 'PATCH' },
+  ],
+
+  audit: { enabled: true, entityType: 'SiteSettings',
+    actions: ['admin.settings.manage'] },
+};
+
+// ── 15. Analytics (Site statistics + event tracking) ──────────
+// Phase 3 Batch 1: Registers SiteStat model as a Universal Resource.
+// Read-only for admin (stats are computed). Uses analytics.read/manage.
+export const analyticsConfig: AdminResourceConfig = {
+  key: 'analytics',
+  titleFa: 'آمار و تحلیل',
+  titleEn: 'Analytics',
+  icon: 'BarChart3',
+  model: 'siteStat',
+  apiBase: '/api/admin/site-stats',
+  adminPath: '/admin/resources/analytics',
+
+  permissions: {
+    read: 'analytics.read',
+    create: 'analytics.manage',
+    update: 'analytics.manage',
+    delete: 'analytics.manage',
+    export: 'analytics.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'key', label: 'کلید', type: 'text', sortable: true, filterable: true },
+    { key: 'labelFa', label: 'برچسب', type: 'text', sortable: true, filterable: true },
+    { key: 'metric', label: 'معیار', type: 'badge', filterable: true },
+    { key: 'customValue', label: 'مقدار دل‌نویس', type: 'text', visible: false },
+    { key: 'sortOrder', label: 'ترتیب', type: 'number', sortable: true },
+    { key: 'active', label: 'فعال', type: 'boolean', sortable: true, filterable: true },
+  ],
+
+  filters: [
+    { key: 'active', label: 'وضعیت', type: 'select', options: [
+      { value: 'true', label: 'فعال' },
+      { value: 'false', label: 'غیرفعال' },
+    ]},
+  ],
+
+  defaultSort: { field: 'sortOrder', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['key', 'labelFa', 'metric'],
+
+  fields: [
+    { key: 'key', label: 'کلید', type: 'text', required: true,
+      validation: { maxLength: 50, message: 'کلید نباید بیش از ۵۰ نویسه باشد' } },
+    { key: 'labelFa', label: 'برچسب فارسی', type: 'text', required: true,
+      validation: { maxLength: 100, message: 'برچسب نباید بیش از ۱۰۰ نویسه باشد' } },
+    { key: 'metric', label: 'معیار', type: 'select', required: true, options: [
+      { value: 'categories', label: 'دسته‌بندی‌ها' },
+      { value: 'brands', label: 'برندها' },
+      { value: 'listings', label: 'آگهی‌ها' },
+      { value: 'users', label: 'کاربران' },
+      { value: 'custom_value', label: 'مقدار دل‌نویس' },
+    ] },
+    { key: 'customValue', label: 'مقدار دل‌نویس', type: 'text',
+      validation: { maxLength: 200 } },
+    { key: 'sortOrder', label: 'ترتیب نمایش', type: 'number', defaultValue: 0,
+      validation: { min: 0 } },
+    { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'analytics.manage', type: 'modal',
+      apiPath: '/api/admin/site-stats', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'analytics.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/site-stats', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'analytics.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'SiteStat',
+    actions: ['analytics.manage'] },
+};
+
+// ── 16. SEO (Search Engine Optimization metadata) ─────────────
+// Phase 3 Batch 1: Registers SEOMetadata model as a Universal Resource.
+// Uses seo.read/manage permissions (already in catalog).
+export const seoConfig: AdminResourceConfig = {
+  key: 'seo',
+  titleFa: 'بهینه‌سازی موتور جستجو',
+  titleEn: 'SEO Metadata',
+  icon: 'Search',
+  model: 'sEOMetadata',
+  apiBase: '/api/admin/seo',
+  adminPath: '/admin/resources/seo',
+
+  permissions: {
+    read: 'seo.read',
+    create: 'seo.manage',
+    update: 'seo.manage',
+    delete: 'seo.manage',
+    export: 'seo.read',
+  },
+
+  columns: [
+    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'entityType', label: 'نوع محتوا', type: 'badge', sortable: true, filterable: true },
+    { key: 'entityId', label: 'شناسه محتوا', type: 'text', filterable: true },
+    { key: 'metaTitle', label: 'عنوان متا', type: 'text', visible: false },
+    { key: 'metaDescription', label: 'توضیحات متا', type: 'text', visible: false },
+    { key: 'keywords', label: 'کلمات کلیدی', type: 'text', filterable: true },
+    { key: 'canonicalUrl', label: 'URL کانونیکال', type: 'text', visible: false },
+    { key: 'robotsIndex', label: 'ایندکس', type: 'boolean', sortable: true },
+    { key: 'robotsFollow', label: 'فالو', type: 'boolean', sortable: true },
+  ],
+
+  filters: [
+    { key: 'entityType', label: 'نوع محتوا', type: 'select', options: [
+      { value: 'Category', label: 'دسته‌بندی' },
+      { value: 'Brand', label: 'برند' },
+      { value: 'Product', label: 'محصول' },
+      { value: 'Listing', label: 'آگهی' },
+      { value: 'Article', label: 'مقاله' },
+      { value: 'Page', label: 'صفحه' },
+    ]},
+  ],
+
+  defaultSort: { field: 'entityType', order: 'asc' },
+  pageSize: 25,
+  searchable: true,
+  searchFields: ['entityType', 'entityId', 'metaTitle', 'keywords'],
+
+  fields: [
+    { key: 'entityType', label: 'نوع محتوا', type: 'select', required: true, options: [
+      { value: 'Category', label: 'دسته‌بندی' },
+      { value: 'Brand', label: 'برند' },
+      { value: 'Product', label: 'محصول' },
+      { value: 'Listing', label: 'آگهی' },
+      { value: 'Article', label: 'مقاله' },
+      { value: 'Page', label: 'صفحه' },
+    ] },
+    { key: 'entityId', label: 'شناسه محتوا', type: 'text', required: true,
+      validation: { maxLength: 100 } },
+    { key: 'metaTitle', label: 'عنوان متا', type: 'text',
+      validation: { maxLength: 200 } },
+    { key: 'metaDescription', label: 'توضیحات متا', type: 'textarea',
+      validation: { maxLength: 500 } },
+    { key: 'keywords', label: 'کلمات کلیدی', type: 'text',
+      helpText: 'با کاما جدا کنید',
+      validation: { maxLength: 500 } },
+    { key: 'canonicalUrl', label: 'URL کانونیکال', type: 'text',
+      validation: { maxLength: 500 } },
+    { key: 'ogImage', label: 'تصویر OG', type: 'media' },
+    { key: 'ogTitle', label: 'عنوان OG', type: 'text',
+      validation: { maxLength: 200 } },
+    { key: 'ogDescription', label: 'توضیحات OG', type: 'textarea',
+      validation: { maxLength: 500 } },
+    { key: 'structuredData', label: 'داده‌های ساختاریافته (JSON-LD)', type: 'textarea',
+      validation: { maxLength: 5000 } },
+    { key: 'robotsIndex', label: 'ایندکس شود', type: 'boolean', defaultValue: true },
+    { key: 'robotsFollow', label: 'فالو شود', type: 'boolean', defaultValue: true },
+    { key: 'sitemapPriority', label: 'اولویت نقشه سایت', type: 'number',
+      validation: { min: 0, max: 1, message: 'اولویت باید بین ۰ تا ۱ باشد' } },
+  ],
+
+  detailTabs: [
+    { key: 'overview', label: 'مشاهده کلی', type: 'overview' },
+    { key: 'audit', label: 'ممیزی', type: 'audit' },
+  ],
+
+  actions: [
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'seo.manage', type: 'modal',
+      apiPath: '/api/admin/seo', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'seo.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/seo', apiMethod: 'DELETE' },
+  ],
+
+  bulkActions: [
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'seo.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'SEOMetadata',
+    actions: ['seo.manage'] },
+};
