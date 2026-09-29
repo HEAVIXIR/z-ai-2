@@ -317,7 +317,7 @@ export async function matchRFQ(
     let brandId: string | null = null;
     if (rfq.brandPref) {
       const brand = await db.brand.findFirst({
-        where: { name: { equals: rfq.brandPref, mode: "insensitive" } },
+        where: { name: { equals: rfq.brandPref } },
         select: { id: true },
       });
       brandId = brand?.id ?? null;

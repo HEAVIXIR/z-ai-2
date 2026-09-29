@@ -132,13 +132,22 @@ export async function PUT(req: Request, { params }: Params) {
           select: { id: true },
         });
         if (industries.length > 0) {
-          await db.categoryApplicationIndustry.createMany({
-            data: industries.map((ai) => ({
-              categoryId: id,
-              applicationIndustryId: ai.id,
-            })),
-            skipDuplicates: true,
+          // SQLite Prisma client types skipDuplicates as 'never' —
+          // pre-filter existing links to avoid duplicates instead.
+          const existing = await db.categoryApplicationIndustry.findMany({
+            where: { categoryId: id },
+            select: { applicationIndustryId: true },
           });
+          const existingIds = new Set(existing.map((e) => e.applicationIndustryId));
+          const newIndustries = industries.filter((ai) => !existingIds.has(ai.id));
+          if (newIndustries.length > 0) {
+            await db.categoryApplicationIndustry.createMany({
+              data: newIndustries.map((ai) => ({
+                categoryId: id,
+                applicationIndustryId: ai.id,
+              })),
+            });
+          }
         }
       }
       // Re-fetch with fresh relations

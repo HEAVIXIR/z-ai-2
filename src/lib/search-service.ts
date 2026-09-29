@@ -487,7 +487,7 @@ export async function getSuggestions(
         active: true,
         OR: [
           { name: { contains: normalized } },
-          { nameEn: { contains: normalized, mode: "insensitive" } },
+          { nameEn: { contains: normalized } },
           { slug: { contains: normalized.toLowerCase() } },
           { aliases: { some: { normalizedValue: { contains: aliasNorm } } } },
         ],
@@ -500,7 +500,7 @@ export async function getSuggestions(
         active: true,
         OR: [
           { name: { contains: normalized } },
-          { nameEn: { contains: normalized, mode: "insensitive" } },
+          { nameEn: { contains: normalized } },
           { slug: { contains: normalized.toLowerCase() } },
         ],
       },
