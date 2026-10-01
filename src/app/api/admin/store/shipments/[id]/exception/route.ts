@@ -18,6 +18,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { reportDeliveryException, LogisticsServiceError } from "@/lib/logistics-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,7 @@ export async function POST(req: Request, { params }: Params) {
       String(body.exceptionType),
       body.notes ?? null,
       user.id,
+      createAuthContext(user.id)
     );
     return NextResponse.json({ success: true, data: result });
   } catch (e) {

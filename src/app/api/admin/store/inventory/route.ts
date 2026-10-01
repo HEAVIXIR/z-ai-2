@@ -8,6 +8,7 @@ import {
   adjustStock,
   InventoryServiceError,
 } from "@/lib/store-inventory-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
    T1-DEEP — POST now accepts an optional `warehouseId`. When
    provided, the route calls adjustStock() (per-warehouse path:
    updates InventoryBalance + writes StockMovement with warehouseId
-   set + syncs Part.stock). When omitted, the legacy createMovement()
+   set + syncs Part.stock). When omitted, the legacy createMovement(createAuthContext(user.id))
    path runs (Part.stock only — backward-compat for clients that
    don't know about warehouses).
    GET  : list recent movements with filters (partId, type, limit)
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     // T1-DEEP — when warehouseId is present, use the per-warehouse path
     // (updates InventoryBalance + writes StockMovement with warehouseId
     // set + syncs Part.stock). When absent, fall back to the legacy
-    // createMovement() which only touches Part.stock (backward compat).
+    // createMovement(createAuthContext(user.id)) which only touches Part.stock (backward compat).
     if (warehouseId) {
       const result = await adjustStock(
         partId,
@@ -117,6 +118,7 @@ export async function POST(req: Request) {
       reason,
       reference,
       user.id,
+      createAuthContext(user.id)
     );
     await logAudit({
       actorId: user.id,

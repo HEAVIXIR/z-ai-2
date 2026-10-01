@@ -9,6 +9,7 @@ import {
   getWarehouse,
   InventoryServiceError,
 } from "@/lib/store-inventory-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,7 @@ export async function PATCH(
       id,
       { name, code, address, active },
       user.id,
+      createAuthContext(user.id)
     );
     await logAudit({
       actorId: user.id,
@@ -132,7 +134,8 @@ export async function DELETE(
   }
   const { id } = await params;
   try {
-    const result = await deleteWarehouse(id, user.id);
+    const result = await deleteWarehouse(id, user.id,
+      createAuthContext(user.id));
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',

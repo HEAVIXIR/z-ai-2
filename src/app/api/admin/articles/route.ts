@@ -27,6 +27,7 @@ import {
   createArticle,
   type ArticleStatus,
 } from '@/lib/content-service';
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest) {
       coverImage: body.coverImage ?? null,
       status: (body.status as ArticleStatus) || 'DRAFT',
       authorId: user.id,
-    });
+    }, createAuthContext(user.id));
 
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.articles, 'default'); } catch (e) {
       console.error('[articles] revalidateTag failed:', e);

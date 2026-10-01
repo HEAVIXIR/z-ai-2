@@ -16,6 +16,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { assignShipment, LogisticsServiceError } from "@/lib/logistics-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,7 @@ export async function POST(req: Request, { params }: Params) {
       body.carrier,
       body.trackingCode ?? null,
       user.id,
+      createAuthContext(user.id)
     );
     return NextResponse.json({ success: true, data: shipment });
   } catch (e) {

@@ -54,6 +54,9 @@ import {
   addTrackingEvent,
   ShipmentsServiceError,
 } from "@/lib/store-shipments-service";
+import type { AuthorizationContext } from '@/lib/authorization-context';
+import { can, AuthorizationError } from '@/lib/authorization';
+import { logSecurityEvent } from '@/lib/security-event';
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class LogisticsServiceError extends Error {
@@ -117,7 +120,15 @@ export async function assignShipment(
   carrier: string,
   trackingCode: string | null,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'shipping.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'shipping.manage', reason: 'Service: shipping.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('shipping.manage', 'Service: shipping.manage denied');
+  }
   if (!orderId || !carrier) {
     throw new LogisticsServiceError(
       400,
@@ -160,7 +171,7 @@ export async function assignShipment(
   }
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.shipment.assign',
     entityType: 'Shipment',
@@ -207,7 +218,15 @@ export async function schedulePickup(
   shipmentId: string,
   pickupDate: Date,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'shipping.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'shipping.manage', reason: 'Service: shipping.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('shipping.manage', 'Service: shipping.manage denied');
+  }
   if (!shipmentId) {
     throw new LogisticsServiceError(400, 'shipmentId الزامی است');
   }
@@ -237,7 +256,7 @@ export async function schedulePickup(
   // via the description field. We deliberately skip the tracking-event
   // append (only update the snapshot + audit) to keep the timeline clean.
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.shipment.pickup_scheduled',
     entityType: 'Shipment',
@@ -278,7 +297,15 @@ export async function recordDeliveryAttempt(
   location: string | null,
   notes: string | null,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'shipping.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'shipping.manage', reason: 'Service: shipping.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('shipping.manage', 'Service: shipping.manage denied');
+  }
   if (!shipmentId || !status) {
     throw new LogisticsServiceError(
       400,
@@ -303,7 +330,7 @@ export async function recordDeliveryAttempt(
     // attempt") separately from the data mutation audit. This makes the
     // audit trail queryable by operator workflow, not just by data state.
     await logAudit({
-      actorId: userId ?? null,
+      actorId: authCtx.subjectId,
       actorType: 'ADMIN',
       action: 'store.shipment.delivery_attempt',
       entityType: 'Shipment',
@@ -343,7 +370,15 @@ export async function confirmDelivery(
   shipmentId: string,
   proofUrl: string | null,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'shipping.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'shipping.manage', reason: 'Service: shipping.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('shipping.manage', 'Service: shipping.manage denied');
+  }
   if (!shipmentId) {
     throw new LogisticsServiceError(400, 'shipmentId الزامی است');
   }
@@ -400,7 +435,7 @@ export async function confirmDelivery(
   // 3. Logistics-layer audit — records the operator intent ("delivery
   // confirmed with proof") separately from the data mutation audit.
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.shipment.delivered',
     entityType: 'Shipment',
@@ -446,7 +481,15 @@ export async function reportDeliveryException(
   exceptionType: string,
   notes: string | null,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'shipping.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'shipping.manage', reason: 'Service: shipping.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('shipping.manage', 'Service: shipping.manage denied');
+  }
   if (!shipmentId) {
     throw new LogisticsServiceError(400, 'shipmentId الزامی است');
   }
@@ -487,7 +530,7 @@ export async function reportDeliveryException(
   // Logistics-layer audit — records the operator intent ("exception
   // reported") separately from the data mutation audit.
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.shipment.exception',
     entityType: 'Shipment',

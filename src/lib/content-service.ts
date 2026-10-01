@@ -1,4 +1,3 @@
-import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Phase 3-3C: Content Engine Service
  *
@@ -38,6 +37,9 @@ import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
 import { uniqueSlug } from '@/lib/api-helpers';
 import type { Article, Prisma } from '@prisma/client';
+import type { AuthorizationContext } from '@/lib/authorization-context';
+import { can, AuthorizationError } from '@/lib/authorization';
+import { logSecurityEvent } from '@/lib/security-event';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -143,7 +145,14 @@ export function readBrandId(tags: string | null | undefined): string | null {
  * Create an Article + audit entry.
  * Action key: `content.article.create`.
  */
-export async function createArticle(input: CreateArticleInput): Promise<Article> {
+export async function createArticle(input: CreateArticleInput, authCtx: AuthorizationContext): Promise<Article> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'content.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'content.manage', reason: 'Service: content.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('content.manage', 'Service: content.manage denied');
+  }
   // ── Validate ────────────────────────────────────────────
   if (!input?.title || typeof input.title !== 'string' || input.title.trim().length === 0) {
     throw new ArticleValidationError('title is required');
@@ -206,7 +215,15 @@ export async function updateArticle(
   id: string,
   input: UpdateArticleInput,
   userId?: string | null,
+  authCtx: AuthorizationContext,
 ): Promise<Article> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'content.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'content.manage', reason: 'Service: content.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('content.manage', 'Service: content.manage denied');
+  }
   const existing = await db.article.findUnique({ where: { id } });
   if (!existing) throw new ArticleNotFoundError(id);
 
@@ -256,7 +273,7 @@ export async function updateArticle(
 
   // ── Audit ──────────────────────────────────────────────
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'content.article.update',
     entityType: 'Article',
@@ -326,7 +343,14 @@ export async function getArticle(slug: string): Promise<Article | null> {
  * Idempotent: re-publishing a PUBLISHED article is a no-op for
  * status but still logs the attempt.
  */
-export async function publishArticle(id: string, userId?: string | null): Promise<Article> {
+export async function publishArticle(id: string, authCtx: AuthorizationContext, userId?: string | null): Promise<Article> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'content.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'content.manage', reason: 'Service: content.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('content.manage', 'Service: content.manage denied');
+  }
   const existing = await db.article.findUnique({ where: { id } });
   if (!existing) throw new ArticleNotFoundError(id);
 
@@ -340,7 +364,7 @@ export async function publishArticle(id: string, userId?: string | null): Promis
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'content.article.publish',
     entityType: 'Article',
@@ -363,7 +387,14 @@ export async function publishArticle(id: string, userId?: string | null): Promis
  * so SEO/admin history stays intact, matching the existing
  * page-builder archive-on-delete pattern.
  */
-export async function archiveArticle(id: string, userId?: string | null): Promise<Article> {
+export async function archiveArticle(id: string, authCtx: AuthorizationContext, userId?: string | null): Promise<Article> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'content.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'content.manage', reason: 'Service: content.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('content.manage', 'Service: content.manage denied');
+  }
   const existing = await db.article.findUnique({ where: { id } });
   if (!existing) throw new ArticleNotFoundError(id);
 
@@ -373,7 +404,7 @@ export async function archiveArticle(id: string, userId?: string | null): Promis
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'content.article.archive',
     entityType: 'Article',
