@@ -1,3 +1,4 @@
+import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Store Inventory Service Layer
  *

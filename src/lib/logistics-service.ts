@@ -1,3 +1,4 @@
+import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Logistics Service Layer (PHASE-P9-LOGISTICS)
  * ------------------------------------------------------------

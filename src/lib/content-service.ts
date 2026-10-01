@@ -1,3 +1,4 @@
+import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Phase 3-3C: Content Engine Service
  *

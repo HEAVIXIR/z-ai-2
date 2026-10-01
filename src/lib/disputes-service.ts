@@ -1,3 +1,4 @@
+import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Disputes Service Layer (Wave 2D / Phase Marketplace-Deep)
  * ------------------------------------------------------------
