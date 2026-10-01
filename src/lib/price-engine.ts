@@ -745,6 +745,8 @@ export async function recordObservation(
 
 /* ─────────── createOverride (admin, audited) ─────────── */
 
+import type { AuthorizationContext } from '@/lib/authorization-context';
+
 export async function createOverride(args: {
   listingId: string;
   overridePrice: number;
@@ -752,7 +754,25 @@ export async function createOverride(args: {
   adminId?: string | null;
   ip?: string | null;
   userAgent?: string | null;
+  authCtx?: AuthorizationContext | null;
 }): Promise<{ id: string }> {
+  // V-A (49.2X-07): service-level authorization re-check (ASVS V8.3.1)
+  if (args.authCtx) {
+    const { can } = await import('@/lib/authorization');
+    const allowed = await can(args.authCtx.subjectId, 'price.override');
+    if (!allowed) {
+      const { logSecurityEvent } = await import('@/lib/security-event');
+      await logSecurityEvent({
+        type: 'AUTHZ_DENY',
+        subjectId: args.authCtx.subjectId,
+        requiredPermission: 'price.override',
+        reason: 'Service-level authorization denied for price.override',
+        requestId: args.authCtx.requestId ?? null,
+      });
+      const { AuthorizationError } = await import('@/lib/authorization');
+      throw new AuthorizationError('price.override', 'Service-level: price.override denied');
+    }
+  }
   if (!args.listingId) throw new Error("listingId is required");
   if (!Number.isFinite(args.overridePrice) || args.overridePrice <= 0) {
     throw new Error("overridePrice must be a positive finite number");

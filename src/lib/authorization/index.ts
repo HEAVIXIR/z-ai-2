@@ -17,6 +17,7 @@
 
 import { db } from '@/lib/db';
 import { getUserPermissions } from '@/lib/rbac-legacy';
+import { logSecurityEvent } from '@/lib/security-event';
 
 // ── Error ──────────────────────────────────────────────────
 export class AuthorizationError extends Error {
@@ -47,7 +48,17 @@ export async function can(
   // Admin has all permissions (matches adminGuard's "ADMIN role has all permissions").
   if (userId === 'ADMIN') return true;
   const perms = await getUserPermissions(userId);
-  return perms.includes(permission);
+  const hasPermission = perms.includes(permission);
+  // V-E (49.2X-07): log authorization denial (ASVS V16.3.2)
+  if (!hasPermission) {
+    await logSecurityEvent({
+      type: 'AUTHZ_DENY',
+      subjectId: userId,
+      requiredPermission: permission,
+      reason: `Permission "${permission}" not found in user permissions`,
+    });
+  }
+  return hasPermission;
 }
 
 // ── canAny(userId, permissions[]) ──────────────────────────
