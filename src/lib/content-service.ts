@@ -214,8 +214,8 @@ export async function createArticle(input: CreateArticleInput, authCtx: Authoriz
 export async function updateArticle(
   id: string,
   input: UpdateArticleInput,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<Article> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');

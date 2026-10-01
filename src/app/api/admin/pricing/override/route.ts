@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       listingId,
       overridePrice,
       reason,
-      
+      authCtx: createAuthContext(user.id),
       ip,
       userAgent,
     });

@@ -73,8 +73,8 @@ export async function POST(req: Request, { params }: Params) {
       shipmentId,
       String(body.exceptionType),
       body.notes ?? null,
+      createAuthContext(user.id),
       user.id,
-      createAuthContext(user.id)
     );
     return NextResponse.json({ success: true, data: result });
   } catch (e) {

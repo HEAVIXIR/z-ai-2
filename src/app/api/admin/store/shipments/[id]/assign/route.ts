@@ -65,8 +65,8 @@ export async function POST(req: Request, { params }: Params) {
       orderId,
       body.carrier,
       body.trackingCode ?? null,
+      createAuthContext(user.id),
       user.id,
-      createAuthContext(user.id)
     );
     return NextResponse.json({ success: true, data: shipment });
   } catch (e) {

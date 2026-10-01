@@ -112,28 +112,21 @@ const STATUS_CANCELLED = "CANCELLED";
  * @throws DisputesServiceError(400) on validation failure.
  */
 export async function createDispute(params: {
-  authCtx: AuthorizationContext,
+  authCtx: AuthorizationContext;
   orderId?: string | null;
   dealId?: string | null;
   subject: string;
   description?: string | null;
   openedBy: string;
-  userId?: string | null,
-  authCtx: AuthorizationContext;
+  userId?: string | null;
 }): Promise<{
   id: string;
   status: string;
   reason: string;
   description: string | null;
 }> {
-  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
-  if (!authCtx) throw new Error('AuthorizationContext required');
-  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
-  if (!_authOk) {
-    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
-    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
-  }
   const {
+    authCtx,
     orderId = null,
     dealId = null,
     subject,
@@ -141,6 +134,14 @@ export async function createDispute(params: {
     openedBy,
     userId = null,
   } = params;
+
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
+  }
 
   // ── Validate ──
   if (!subject || subject.trim().length < 3) {
@@ -229,8 +230,8 @@ export async function addEvidence(params: {
   evidenceUrl: string;
   description?: string | null;
   uploadedBy: string;
-  userId?: string | null,
   authCtx: AuthorizationContext;
+  userId?: string | null;
 }): Promise<{
   id: string;
   disputeId: string;
@@ -238,6 +239,16 @@ export async function addEvidence(params: {
   url: string;
   description: string | null;
 }> {
+  const {
+    disputeId,
+    evidenceType,
+    evidenceUrl,
+    description = null,
+    uploadedBy,
+    authCtx,
+    userId = null,
+  } = params;
+
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
   const _authOk = await can(authCtx.subjectId, 'dispute.manage');
@@ -245,14 +256,6 @@ export async function addEvidence(params: {
     await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
     throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
   }
-  const {
-    disputeId,
-    evidenceType,
-    evidenceUrl,
-    description = null,
-    uploadedBy,
-    userId = null,
-  } = params;
 
   // ── Validate ──
   if (!disputeId) {
@@ -385,8 +388,8 @@ export async function listEvidence(
 export async function reviewDispute(
   disputeId: string,
   reviewNotes: string | null,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<{
   id: string;
   status: string;
@@ -464,8 +467,8 @@ export async function resolveDispute(
   disputeId: string,
   resolution: string,
   refundAmount: number | null | undefined,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<{
   id: string;
   status: string;

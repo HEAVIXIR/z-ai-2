@@ -71,8 +71,12 @@ export async function POST(req: Request, { params }: Params) {
         { status: 400 },
       );
     }
-    const shipment = await schedulePickup(shipmentId, pickupDate, user.id,
-      createAuthContext(user.id));
+    const shipment = await schedulePickup(
+      shipmentId,
+      pickupDate,
+      createAuthContext(user.id),
+      user.id,
+    );
     return NextResponse.json({ success: true, data: shipment });
   } catch (e) {
     return toErrorResponse(e);

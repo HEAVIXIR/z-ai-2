@@ -61,8 +61,8 @@ export async function POST(req: Request, { params }: Params) {
     const result = await confirmDelivery(
       shipmentId,
       body.proofUrl ?? null,
+      createAuthContext(user.id),
       user.id,
-      createAuthContext(user.id)
     );
     return NextResponse.json({ success: true, data: result });
   } catch (e) {

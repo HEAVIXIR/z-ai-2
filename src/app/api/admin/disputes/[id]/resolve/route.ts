@@ -60,8 +60,12 @@ export async function POST(req: Request, { params }: Params) {
     // review route explicitly).
     if (reviewNotes != null) {
       try {
-        await reviewDispute(id, reviewNotes, user.id,
-      createAuthContext(user.id));
+        await reviewDispute(
+          id,
+          reviewNotes,
+          createAuthContext(user.id),
+          user.id,
+        );
       } catch {
         // Non-fatal — the dispute may already be UNDER_REVIEW or
         // terminal. The resolve call below will surface the real
@@ -69,8 +73,13 @@ export async function POST(req: Request, { params }: Params) {
       }
     }
 
-    const result = await resolveDispute(id, resolution, refundAmount, user.id,
-      createAuthContext(user.id));
+    const result = await resolveDispute(
+      id,
+      resolution,
+      refundAmount,
+      createAuthContext(user.id),
+      user.id,
+    );
 
     return NextResponse.json({
       ok: true,

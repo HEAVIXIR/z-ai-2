@@ -1,4 +1,3 @@
-import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Store Inventory Service Layer
  *
@@ -38,6 +37,10 @@ import { logAudit } from '@/lib/audit';
 import type { AuthorizationContext } from '@/lib/authorization-context';
 import { can, AuthorizationError } from '@/lib/authorization';
 import { logSecurityEvent } from '@/lib/security-event';
+// V-A (49.2X-09): AuthorizationContext is the canonical trusted-service identity
+// carrier (see src/lib/authorization-context.ts). All service-level mutations
+// require an authCtx positional parameter BEFORE any optional parameters so
+// TypeScript enforces fail-closed at the call site (no required-after-optional).
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_TYPES = [
@@ -96,10 +99,10 @@ export async function createMovement(
   partId: string,
   type: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   reason?: string | null,
   reference?: string | null,
   userId?: string | null,
-  authCtx: AuthorizationContext,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -249,9 +252,9 @@ export async function listMovements(
 export async function createWarehouse(
   name: string,
   code: string,
+  authCtx: AuthorizationContext,
   address?: string | null,
   userId?: string | null,
-  authCtx: AuthorizationContext,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -304,8 +307,8 @@ export async function updateWarehouse(
     address?: string | null;
     active?: boolean;
   },
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -362,8 +365,8 @@ export async function updateWarehouse(
  */
 export async function deleteWarehouse(
   id: string,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<{ id: string; deleted: true }> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -472,10 +475,18 @@ export async function adjustStock(
   warehouseId: string,
   quantity: number,
   type: string,
+  authCtx: AuthorizationContext,
   reason?: string | null,
   reference?: string | null,
   userId?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || !type || quantity === undefined) {
     throw new InventoryServiceError(
       400,
@@ -639,9 +650,17 @@ export async function reserveStock(
   partId: string,
   warehouseId: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   userId?: string | null,
   reason?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || quantity === undefined) {
     throw new InventoryServiceError(
       400,
@@ -708,9 +727,17 @@ export async function releaseStock(
   partId: string,
   warehouseId: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   userId?: string | null,
   reason?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || quantity === undefined) {
     throw new InventoryServiceError(
       400,

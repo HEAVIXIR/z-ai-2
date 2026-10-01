@@ -92,8 +92,8 @@ export async function PATCH(
     const warehouse = await updateWarehouse(
       id,
       { name, code, address, active },
+      createAuthContext(user.id),
       user.id,
-      createAuthContext(user.id)
     );
     await logAudit({
       actorId: user.id,
@@ -134,8 +134,11 @@ export async function DELETE(
   }
   const { id } = await params;
   try {
-    const result = await deleteWarehouse(id, user.id,
-      createAuthContext(user.id));
+    const result = await deleteWarehouse(
+      id,
+      createAuthContext(user.id),
+      user.id,
+    );
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',

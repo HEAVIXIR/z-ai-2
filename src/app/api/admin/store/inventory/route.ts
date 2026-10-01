@@ -95,6 +95,7 @@ export async function POST(req: Request) {
         warehouseId,
         quantity,
         type,
+        createAuthContext(user.id),
         reason,
         reference,
         user.id,
@@ -115,10 +116,10 @@ export async function POST(req: Request) {
       partId,
       type,
       quantity,
+      createAuthContext(user.id),
       reason,
       reference,
       user.id,
-      createAuthContext(user.id)
     );
     await logAudit({
       actorId: user.id,

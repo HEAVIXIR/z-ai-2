@@ -1,4 +1,3 @@
-import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Logistics Service Layer (PHASE-P9-LOGISTICS)
  * ------------------------------------------------------------
@@ -54,9 +53,13 @@ import {
   addTrackingEvent,
   ShipmentsServiceError,
 } from "@/lib/store-shipments-service";
-import type { AuthorizationContext } from '@/lib/authorization-context';
 import { can, AuthorizationError } from '@/lib/authorization';
 import { logSecurityEvent } from '@/lib/security-event';
+import type { AuthorizationContext } from '@/lib/authorization-context';
+// V-A (49.2X-09): AuthorizationContext is the canonical trusted-service identity
+// carrier (see src/lib/authorization-context.ts). All service-level mutations
+// require an authCtx positional parameter BEFORE any optional parameters so
+// TypeScript enforces fail-closed at the call site (no required-after-optional).
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class LogisticsServiceError extends Error {
@@ -119,8 +122,8 @@ export async function assignShipment(
   orderId: string,
   carrier: string,
   trackingCode: string | null,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -217,8 +220,8 @@ export async function assignShipment(
 export async function schedulePickup(
   shipmentId: string,
   pickupDate: Date,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -296,8 +299,8 @@ export async function recordDeliveryAttempt(
   status: string,
   location: string | null,
   notes: string | null,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -369,8 +372,8 @@ export async function recordDeliveryAttempt(
 export async function confirmDelivery(
   shipmentId: string,
   proofUrl: string | null,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
@@ -480,8 +483,8 @@ export async function reportDeliveryException(
   shipmentId: string,
   exceptionType: string,
   notes: string | null,
-  userId?: string | null,
   authCtx: AuthorizationContext,
+  userId?: string | null,
 ): Promise<any> {
   // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
   if (!authCtx) throw new Error('AuthorizationContext required');
