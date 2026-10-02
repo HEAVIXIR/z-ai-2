@@ -142,7 +142,6 @@ export async function PATCH(req: Request, { params }: Params) {
       data,
     });
 
-    await audit("subscription_plan.update", plan.id, existing, data);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -199,7 +198,6 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     await db.subscriptionPlan.delete({ where: { id } });
 
-    await audit("subscription_plan.delete", id, existing, null);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -235,24 +233,3 @@ function normalizeJson(v: any): string | null {
   }
 }
 
-async function audit(
-  action: string,
-  entityId: string,
-  before: any,
-  after: any,
-) {
-  try {
-    await db.auditLog.create({
-      data: {
-        actorType: "ADMIN",
-        action,
-        entityType: "SubscriptionPlan",
-        entityId,
-        beforeJson: before ? JSON.stringify(before).slice(0, 4000) : null,
-        afterJson: after ? JSON.stringify(after).slice(0, 4000) : null,
-      },
-    });
-  } catch {
-    /* best-effort */
-  }
-}
