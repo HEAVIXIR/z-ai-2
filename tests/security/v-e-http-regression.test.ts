@@ -288,4 +288,234 @@ describe("V-E HTTP Regression — AUTHZ_DENY persistence", () => {
       expect(finalAuditCount).toBe(baselineAuditLog);
     }
   });
+
+  /* ============================================================
+     49.2X-17.2 — Positive Control
+     ------------------------------------------------------------
+     Create a user WITH analytics.read permission → GET should
+     succeed (200) and NOT generate AUTHZ_DENY.
+     ============================================================ */
+  it("positive control: user WITH analytics.read gets 200 and no AUTHZ_DENY", async () => {
+    const runId = `17x2-${Date.now()}`;
+    const baselineAuditLog = await prisma.auditLog.count();
+
+    // 1. Create test fixture: Permission + Role + RolePermission + User + UserRole
+    const permission = await prisma.permission.create({
+      data: {
+        key: "analytics.read",
+        nameFa: "Analytics Read",
+        nameEn: "Analytics Read",
+        description: "VA-test permission for analytics.read",
+        resource: "analytics",
+      },
+    });
+
+    const role = await prisma.role.create({
+      data: {
+        key: `VA-TEST-ROLE-${runId}`,
+        nameFa: "VA Test Role",
+        nameEn: "VA Test Role",
+        description: "VA-test role for positive control",
+      },
+    });
+
+    await prisma.rolePermission.create({
+      data: {
+        roleId: role.id,
+        permissionId: permission.id,
+      },
+    });
+
+    const mobile = `va-test-${runId}`;
+    const password = `va-pass-${runId}`;
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        mobile,
+        email: `${runId}@va-test.local`,
+        firstName: "VA",
+        lastName: "TestPos",
+        passwordHash,
+        status: "ACTIVE",
+        userType: "INDIVIDUAL",
+        role: "BUYER",
+      },
+      select: { id: true, mobile: true },
+    });
+
+    await prisma.userRole.create({
+      data: {
+        userId: user.id,
+        roleId: role.id,
+      },
+    });
+
+    // 2. Verify user has the permission via getUserPermissions
+    const userRoles = await prisma.userRole.findMany({
+      where: { userId: user.id },
+      select: {
+        role: {
+          select: {
+            permissions: {
+              select: { permission: { select: { key: true } } },
+            },
+          },
+        },
+      },
+    });
+    const perms: string[] = [];
+    for (const ur of userRoles) {
+      for (const rp of ur.role.permissions) {
+        perms.push(rp.permission.key);
+      }
+    }
+    expect(perms).toContain("analytics.read");
+
+    // 3. Login via HTTP → get session cookie
+    const cookie = await loginViaHttp(user.mobile, password);
+
+    // 4. GET /api/analytics/events with cookie → expect 200 (NOT 403)
+    const resp = await fetch(
+      `http://localhost:${SERVER_PORT}/api/analytics/events`,
+      {
+        headers: { Cookie: cookie },
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+
+    // 5. Assert request succeeded (200) — NOT denied
+    expect(resp.status).toBe(200);
+
+    // 6. Assert NO AUTHZ_DENY was generated for this user
+    const afterAuditLog = await prisma.auditLog.count();
+    expect(afterAuditLog).toBe(baselineAuditLog); // delta = 0
+
+    const denyRow = await prisma.auditLog.findFirst({
+      where: {
+        action: "security.authz.deny",
+        actorId: user.id,
+      },
+    });
+    expect(denyRow).toBeNull(); // no false denial
+
+    // 7. Verify response contract (success path returns { success, total, data })
+    const body = await resp.json();
+    expect(body).toHaveProperty("success");
+    expect(body).toHaveProperty("total");
+    expect(body).toHaveProperty("data");
+
+    // 8. No business mutation (GET is read-only — no new articles/orders/etc.)
+    // (analytics events route is read-only — no business record created)
+
+    // 9. Cleanup in FK-safe order
+    await prisma.userRole.deleteMany({ where: { userId: user.id } });
+    await prisma.user.deleteMany({ where: { id: user.id } });
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: role.id },
+    });
+    await prisma.role.deleteMany({ where: { id: role.id } });
+    await prisma.permission.deleteMany({
+      where: { key: "analytics.read" },
+    });
+
+    // 10. Verify cleanup
+    const finalUserCount = await prisma.user.count({
+      where: { mobile: { contains: "va-test" } },
+    });
+    expect(finalUserCount).toBe(0);
+    const finalRoleCount = await prisma.role.count({
+      where: { key: { contains: "VA-TEST" } },
+    });
+    expect(finalRoleCount).toBe(0);
+    const finalPermCount = await prisma.permission.count({
+      where: { key: "analytics.read" },
+    });
+    expect(finalPermCount).toBe(0);
+    const finalAuditCount = await prisma.auditLog.count();
+    expect(finalAuditCount).toBe(baselineAuditLog);
+  });
+
+  it("positive control repeatability: 2 independent users with analytics.read", async () => {
+    for (let i = 0; i < 2; i++) {
+      const runId = `17x2-rep${i}-${Date.now()}`;
+      const baselineAuditLog = await prisma.auditLog.count();
+
+      // Create fixture: Permission + Role + RolePermission + User + UserRole
+      const perm = await prisma.permission.upsert({
+        where: { key: "analytics.read" },
+        create: {
+          key: "analytics.read",
+          nameFa: "Analytics Read",
+          nameEn: "Analytics Read",
+          description: "VA-test",
+          resource: "analytics",
+        },
+        update: {},
+      });
+
+      const role = await prisma.role.create({
+        data: {
+          key: `VA-TEST-ROLE-${runId}`,
+          nameFa: "VA Test",
+          nameEn: "VA Test",
+        },
+      });
+
+      await prisma.rolePermission.create({
+        data: { roleId: role.id, permissionId: perm.id },
+      });
+
+      const mobile = `va-test-${runId}`;
+      const password = `va-pass-${runId}`;
+      const ph = await bcrypt.hash(password, 10);
+      const u = await prisma.user.create({
+        data: {
+          mobile,
+          email: `${runId}@va-test.local`,
+          firstName: "VA",
+          lastName: "TestPos",
+          passwordHash: ph,
+          status: "ACTIVE",
+          userType: "INDIVIDUAL",
+          role: "BUYER",
+        },
+        select: { id: true, mobile: true },
+      });
+
+      await prisma.userRole.create({
+        data: { userId: u.id, roleId: role.id },
+      });
+
+      // Login + GET → expect 200
+      const cookie = await loginViaHttp(u.mobile, password);
+      const resp = await fetch(
+        `http://localhost:${SERVER_PORT}/api/analytics/events`,
+        {
+          headers: { Cookie: cookie },
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+      expect(resp.status).toBe(200);
+
+      // No AUTHZ_DENY
+      const denyRow = await prisma.auditLog.findFirst({
+        where: { action: "security.authz.deny", actorId: u.id },
+      });
+      expect(denyRow).toBeNull();
+
+      // Cleanup
+      await prisma.userRole.deleteMany({ where: { userId: u.id } });
+      await prisma.user.deleteMany({ where: { id: u.id } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: role.id },
+      });
+      await prisma.role.deleteMany({ where: { id: role.id } });
+      await prisma.permission.deleteMany({
+        where: { key: "analytics.read" },
+      });
+
+      const finalAudit = await prisma.auditLog.count();
+      expect(finalAudit).toBe(baselineAuditLog);
+    }
+  });
 });
