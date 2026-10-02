@@ -8851,3 +8851,43 @@ This incident matches that pattern exactly. Not controllable from inside the con
 - Content verified correct — Incident is benign (matches my work)
 - NO further action taken without explicit user re-approval
 - Awaiting user instruction to accept new HEAD `6e83acb1` and proceed with S1-B READ-ONLY
+
+---
+Task ID: 49.2X-11.16
+Agent: Main Orchestrator (Z.ai Code)
+Task: Complete V-A authorization propagation fix on security/49.2X-08-vA-vE-completion branch — push to GitHub and reconcile.
+
+Work Log:
+- Read previous worklog context (Incidents 1-19, security branch state at 9826688 with broken V-A propagation).
+- Created isolated git worktree at /home/z/sec-worktree off security/49.2X-08-vA-vE-completion (HEAD = 9826688).
+- Confirmed via tsc --noEmit: 37 errors across 6 files (TS2300 duplicate identifier, TS1016 required-after-optional, TS2304 not-destructured, TS2345 wrong-call-order).
+- Fixed disputes-service.ts: removed duplicate authCtx in createDispute params, added authCtx to destructure in createDispute + addEvidence, moved authCtx before userId? in reviewDispute + resolveDispute.
+- Fixed content-service.ts: moved authCtx before userId? in updateArticle.
+- Fixed store-inventory-service.ts: removed duplicate AuthorizationContext import at line 1; moved authCtx before optional params in createMovement/createWarehouse/updateWarehouse/deleteWarehouse; ADDED authCtx as new positional param to adjustStock/reserveStock/releaseStock (which were using authCtx.subjectId in body without declaring authCtx); ADDED V-A authorization gate (can() + logSecurityEvent AUTHZ_DENY + AuthorizationError) to all 3 functions.
+- Fixed logistics-service.ts: removed duplicate AuthorizationContext import at line 1; moved authCtx before userId? in assignShipment/schedulePickup/recordDeliveryAttempt/confirmDelivery/reportDeliveryException.
+- Fixed all 12 affected route call-sites: articles/[id], disputes/[id]/resolve, pricing/override (added missing authCtx field), store/inventory, store/inventory/reserve (added createAuthContext import), store/inventory/release (added createAuthContext import), store/shipments/[id]/{assign,deliver,exception,pickup}, store/warehouses/[id], store/warehouses.
+- Confirmed tsc = 0 errors after fixes.
+- Confirmed lint = 0 errors (8 pre-existing warnings in untouched files).
+- Confirmed no forbidden bypasses (no `as any`/`@ts-ignore`/`@ts-expect-error`/`undefined as unknown`/`{} as AuthorizationContext`).
+- Confirmed no prisma/schema/migration/seed changes.
+- Confirmed exactly 16 files in scope (4 service + 12 route).
+- Wrote V-A negative test script at /home/z/va-verify.mjs (OUTSIDE the repo to preserve scope): 5 services × 4 scenarios = 20 tests.
+- Ran V-A tests: 15 PASS / 0 FAIL / 5 NOT_VERIFIED (V-A gate verified for all 5 services; AUTHZ_DENY log persistence NOT_VERIFIED because logSecurityEvent depends on next/headers which is unavailable when service is called from a Bun script outside Next.js request scope — per directive 11.13 allowance).
+- Mutation safety: 3 services explicitly verified (DB count 0→0/1→1/0→0 on deny paths); 2 services implicit (V-A gate runs before any storeDb call).
+- Created local commit ad247f9 "fix(security): complete V-A authorization propagation" on security/49.2X-08-vA-vE-completion (parent = 9826688).
+- Verified ad247f9 locally contains exactly the V-A fixes (adjustStock/reserveStock/releaseStock have authCtx param + V-A gate; no duplicate imports; createMovement/createWarehouse/updateWarehouse/deleteWarehouse have canonical signature).
+- User authorized push.
+- Recreated sec-worktree (was marked prunable after sandbox cleanup) at /home/z/sec-worktree off security branch (HEAD = ad247f9).
+- Pushed ad247f9 to origin/security/49.2X-08-vA-vE-completion via fast-forward (no force-push): 9826688..ad247f9.
+- Reconciled 4 SHAs after push: origin/main=98614cd (UNCHANGED), origin/security=ad247f9 (UPDATED), local security HEAD=ad247f9 (matches remote), parent(ad247f9)=9826688 (proves fast-forward).
+
+Stage Summary:
+- Commit `ad247f9d97c84dac2f4d53eda91aefd0d14ec46e` is now LIVE on GitHub security/49.2X-08-vA-vE-completion.
+- 16 files changed (+114 / -52 lines).
+- All 20 mutation functions across 5 services (disputes, content, store-inventory, logistics, price-engine) now have canonical V-A gate: authCtx required positional param BEFORE optional params + `if (!authCtx) throw` + `can(authCtx.subjectId, '<permission>')` + AUTHZ_DENY log on deny + AuthorizationError thrown BEFORE any DB mutation.
+- TypeScript compilation: 0 errors (was 37 before fix).
+- ESLint: 0 errors (8 pre-existing warnings in untouched files).
+- V-A gate behavior verified via 20-test negative test suite (15 PASS + 5 NOT_VERIFIED for V-E persistence + 0 FAIL).
+- Invariants respected: main = FROZEN at 98614cd; MERGE = FORBIDDEN (none performed); DEPLOY = FORBIDDEN; MIGRATION = FORBIDDEN (no schema changes); SEED = FORBIDDEN; FORCE-PUSH = FORBIDDEN (fast-forward only).
+- V-E persistence (AUTHZ_DENY log write) remains NOT_VERIFIED in test environment — requires HTTP request scope (next/headers). Testable in production via real HTTP requests through route handlers.
+- Awaiting user authorization for next phase: V-B (object/field authorization), V-C (schema validation), V-D (mass assignment) remain FORBIDDEN until 49.2X-11 independently verified by user as production-ready.
