@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:/home/z/my-project/db/heavix.db"
+  url      = env("DATABASE_URL")
 }
 
 // ════════════════════════════════════════════════════════════
