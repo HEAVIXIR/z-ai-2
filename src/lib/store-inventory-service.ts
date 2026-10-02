@@ -34,6 +34,13 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import type { AuthorizationContext } from '@/lib/authorization-context';
+import { can, AuthorizationError } from '@/lib/authorization';
+import { logSecurityEvent } from '@/lib/security-event';
+// V-A (49.2X-09): AuthorizationContext is the canonical trusted-service identity
+// carrier (see src/lib/authorization-context.ts). All service-level mutations
+// require an authCtx positional parameter BEFORE any optional parameters so
+// TypeScript enforces fail-closed at the call site (no required-after-optional).
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_TYPES = [
@@ -92,10 +99,18 @@ export async function createMovement(
   partId: string,
   type: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   reason?: string | null,
   reference?: string | null,
   userId?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !type || quantity === undefined) {
     throw new InventoryServiceError(400, 'partId، نوع و تعداد الزامی هستند');
   }
@@ -132,7 +147,7 @@ export async function createMovement(
       balanceAfter,
       reason: reason || null,
       reference: reference || null,
-      createdBy: userId ?? null,
+      createdBy: authCtx.subjectId,
     },
     include: {
       part: {
@@ -151,7 +166,7 @@ export async function createMovement(
 
   // Audit 1: the ledger entry is the primary audit hook for this route.
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.inventory.movement.create',
     entityType: 'StockMovement',
@@ -169,7 +184,7 @@ export async function createMovement(
   // Audit 2: the Part.stock update is a side-effect mutation, so it gets
   // its own audit entry (mirrors payments/[id] side-effect pattern).
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.part.update',
     entityType: 'Part',
@@ -237,9 +252,17 @@ export async function listMovements(
 export async function createWarehouse(
   name: string,
   code: string,
+  authCtx: AuthorizationContext,
   address?: string | null,
   userId?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!name || !code) {
     throw new InventoryServiceError(400, 'نام و کد انبار الزامی است');
   }
@@ -258,7 +281,7 @@ export async function createWarehouse(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.warehouse.create',
     entityType: 'Warehouse',
@@ -284,8 +307,16 @@ export async function updateWarehouse(
     address?: string | null;
     active?: boolean;
   },
+  authCtx: AuthorizationContext,
   userId?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   const existing = await storeDb.warehouse.findUnique({ where: { id } });
   if (!existing) {
     throw new InventoryServiceError(404, 'انبار یافت نشد');
@@ -310,7 +341,7 @@ export async function updateWarehouse(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.warehouse.update',
     entityType: 'Warehouse',
@@ -334,8 +365,16 @@ export async function updateWarehouse(
  */
 export async function deleteWarehouse(
   id: string,
+  authCtx: AuthorizationContext,
   userId?: string | null,
 ): Promise<{ id: string; deleted: true }> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   const existing = await storeDb.warehouse.findUnique({ where: { id } });
   if (!existing) {
     throw new InventoryServiceError(404, 'انبار یافت نشد');
@@ -354,7 +393,7 @@ export async function deleteWarehouse(
   await storeDb.warehouse.delete({ where: { id } });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.warehouse.delete',
     entityType: 'Warehouse',
@@ -436,10 +475,18 @@ export async function adjustStock(
   warehouseId: string,
   quantity: number,
   type: string,
+  authCtx: AuthorizationContext,
   reason?: string | null,
   reference?: string | null,
   userId?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || !type || quantity === undefined) {
     throw new InventoryServiceError(
       400,
@@ -512,7 +559,7 @@ export async function adjustStock(
       balanceAfter: newPartStock,
       reason: reason || null,
       reference: reference || null,
-      createdBy: userId ?? null,
+      createdBy: authCtx.subjectId,
       warehouseId,
     },
     include: {
@@ -544,7 +591,7 @@ export async function adjustStock(
   //    c. The InventoryBalance update (so the warehouse-scoped mutation
   //       is auditable independently of the Part snapshot).
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.inventory.movement.create',
     entityType: 'StockMovement',
@@ -561,7 +608,7 @@ export async function adjustStock(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.part.update',
     entityType: 'Part',
@@ -571,7 +618,7 @@ export async function adjustStock(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.inventory.balance.update',
     entityType: 'InventoryBalance',
@@ -603,9 +650,17 @@ export async function reserveStock(
   partId: string,
   warehouseId: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   userId?: string | null,
   reason?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || quantity === undefined) {
     throw new InventoryServiceError(
       400,
@@ -645,7 +700,7 @@ export async function reserveStock(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.inventory.reserve',
     entityType: 'InventoryBalance',
@@ -672,9 +727,17 @@ export async function releaseStock(
   partId: string,
   warehouseId: string,
   quantity: number,
+  authCtx: AuthorizationContext,
   userId?: string | null,
   reason?: string | null,
 ): Promise<any> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'inventory.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'inventory.manage', reason: 'Service: inventory.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('inventory.manage', 'Service: inventory.manage denied');
+  }
   if (!partId || !warehouseId || quantity === undefined) {
     throw new InventoryServiceError(
       400,
@@ -714,7 +777,7 @@ export async function releaseStock(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: 'ADMIN',
     action: 'store.inventory.release',
     entityType: 'InventoryBalance',

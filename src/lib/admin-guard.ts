@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated, getCurrentUser } from "@/lib/auth";
 import { can, isAdmin } from "@/lib/authorization";
+import { logSecurityEvent } from "@/lib/security-event";
 
 /* ============================================================
    HEAVIX — Central Admin API Guard (STEP 03 hardened).
@@ -88,9 +89,21 @@ export async function requireAdmin(
 ): Promise<[{ id: string; firstName?: string } | null, NextResponse | null]> {
   const result = await adminGuard(permissionKey);
   if (result === null) {
+    // V-E (49.2X-07): log authentication failure (ASVS V16.3.1)
+    await logSecurityEvent({
+      type: 'AUTH_FAIL',
+      reason: 'Not authenticated — no valid session',
+    });
     return [null, NextResponse.json({ error: "Unauthorized" }, { status: 401 })];
   }
   if (result === false) {
+    // V-E (49.2X-07): log authorization denial (ASVS V16.3.2)
+    await logSecurityEvent({
+      type: 'AUTHZ_DENY',
+      reason: permissionKey
+        ? `Admin access denied; required permission: "${permissionKey}"`
+        : 'Admin role required but not assigned',
+    });
     return [null, NextResponse.json(
       { error: permissionKey ? `Forbidden: requires "${permissionKey}"` : "Forbidden: admin access required" },
       { status: 403 },

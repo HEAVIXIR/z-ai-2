@@ -1,3 +1,4 @@
+import type { AuthorizationContext } from '@/lib/authorization-context';
 /**
  * HEAVIX — Disputes Service Layer (Wave 2D / Phase Marketplace-Deep)
  * ------------------------------------------------------------
@@ -60,6 +61,8 @@
 import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
 import { logAudit } from "@/lib/audit";
+import { can, AuthorizationError } from '@/lib/authorization';
+import { logSecurityEvent } from '@/lib/security-event';
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class DisputesServiceError extends Error {
@@ -109,6 +112,7 @@ const STATUS_CANCELLED = "CANCELLED";
  * @throws DisputesServiceError(400) on validation failure.
  */
 export async function createDispute(params: {
+  authCtx: AuthorizationContext;
   orderId?: string | null;
   dealId?: string | null;
   subject: string;
@@ -122,6 +126,7 @@ export async function createDispute(params: {
   description: string | null;
 }> {
   const {
+    authCtx,
     orderId = null,
     dealId = null,
     subject,
@@ -129,6 +134,14 @@ export async function createDispute(params: {
     openedBy,
     userId = null,
   } = params;
+
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
+  }
 
   // ── Validate ──
   if (!subject || subject.trim().length < 3) {
@@ -180,7 +193,7 @@ export async function createDispute(params: {
 
   // ── Audit ──
   await logAudit({
-    actorId: userId ?? openedBy,
+    actorId: authCtx.subjectId ?? openedBy,
     actorType: "ADMIN",
     action: "marketplace.dispute.create",
     entityType: "Dispute",
@@ -217,6 +230,7 @@ export async function addEvidence(params: {
   evidenceUrl: string;
   description?: string | null;
   uploadedBy: string;
+  authCtx: AuthorizationContext;
   userId?: string | null;
 }): Promise<{
   id: string;
@@ -231,8 +245,17 @@ export async function addEvidence(params: {
     evidenceUrl,
     description = null,
     uploadedBy,
+    authCtx,
     userId = null,
   } = params;
+
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
+  }
 
   // ── Validate ──
   if (!disputeId) {
@@ -290,7 +313,7 @@ export async function addEvidence(params: {
 
   // ── Audit ──
   await logAudit({
-    actorId: userId ?? uploadedBy,
+    actorId: authCtx.subjectId ?? uploadedBy,
     actorType: "ADMIN",
     action: "marketplace.dispute.evidence.add",
     entityType: "DisputeEvidence",
@@ -365,12 +388,20 @@ export async function listEvidence(
 export async function reviewDispute(
   disputeId: string,
   reviewNotes: string | null,
+  authCtx: AuthorizationContext,
   userId?: string | null,
 ): Promise<{
   id: string;
   status: string;
   reason: string;
 }> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
+  }
   if (!disputeId) {
     throw new DisputesServiceError(400, "disputeId الزامی است");
   }
@@ -399,7 +430,7 @@ export async function reviewDispute(
   });
 
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: "ADMIN",
     action: "marketplace.dispute.review",
     entityType: "Dispute",
@@ -436,6 +467,7 @@ export async function resolveDispute(
   disputeId: string,
   resolution: string,
   refundAmount: number | null | undefined,
+  authCtx: AuthorizationContext,
   userId?: string | null,
 ): Promise<{
   id: string;
@@ -445,6 +477,13 @@ export async function resolveDispute(
   walletTxnId: string | null;
   storeCustomerId: string | null;
 }> {
+  // V-A (49.2X-09): service-level authorization (ASVS V8.3.1)
+  if (!authCtx) throw new Error('AuthorizationContext required');
+  const _authOk = await can(authCtx.subjectId, 'dispute.manage');
+  if (!_authOk) {
+    await logSecurityEvent({ type: 'AUTHZ_DENY', subjectId: authCtx.subjectId, requiredPermission: 'dispute.manage', reason: 'Service: dispute.manage denied', requestId: authCtx.requestId ?? null });
+    throw new AuthorizationError('dispute.manage', 'Service: dispute.manage denied');
+  }
   if (!disputeId) {
     throw new DisputesServiceError(400, "disputeId الزامی است");
   }
@@ -539,7 +578,7 @@ export async function resolveDispute(
           });
           // Side-effect audit: Customer.walletBalanceIrr changed by refund.
           await logAudit({
-            actorId: userId ?? null,
+            actorId: authCtx.subjectId,
             actorType: "ADMIN",
             action: "marketplace.dispute.resolve",
             entityType: "Customer",
@@ -562,7 +601,7 @@ export async function resolveDispute(
 
   // ── 3. Primary audit (entityType: Dispute) ──
   await logAudit({
-    actorId: userId ?? null,
+    actorId: authCtx.subjectId,
     actorType: "ADMIN",
     action: "marketplace.dispute.resolve",
     entityType: "Dispute",
@@ -581,7 +620,7 @@ export async function resolveDispute(
   // ── 4. Side-effect audit: WalletTransaction (if created) ──
   if (walletTxnId) {
     await logAudit({
-      actorId: userId ?? null,
+      actorId: authCtx.subjectId,
       actorType: "ADMIN",
       action: "marketplace.dispute.resolve",
       entityType: "WalletTransaction",

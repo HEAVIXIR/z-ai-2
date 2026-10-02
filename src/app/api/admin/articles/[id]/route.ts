@@ -18,6 +18,7 @@ import {
   archiveArticle,
   type ArticleStatus,
 } from '@/lib/content-service';
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         tags: normalised.tags,
         coverImage: normalised.coverImage,
       },
+      createAuthContext(user.id),
       user.id,
     );
 
@@ -124,7 +126,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   try {
     const { id } = await params;
-    const article = await archiveArticle(id, user.id);
+    const article = await archiveArticle(
+      id,
+      createAuthContext(user.id),
+      user.id,
+    );
     return NextResponse.json({ ok: true, article });
   } catch (err: any) {
     const status = err?.statusCode ?? 500;

@@ -104,7 +104,6 @@ export async function POST(req: Request) {
 
     const plan = await db.subscriptionPlan.create({ data });
 
-    await audit("subscription_plan.create", plan.id, null, data);
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -143,24 +142,3 @@ function normalizeJson(v: any): string | null {
   }
 }
 
-async function audit(
-  action: string,
-  entityId: string,
-  before: any,
-  after: any,
-) {
-  try {
-    await db.auditLog.create({
-      data: {
-        actorType: "ADMIN",
-        action,
-        entityType: "SubscriptionPlan",
-        entityId,
-        beforeJson: before ? JSON.stringify(before).slice(0, 4000) : null,
-        afterJson: after ? JSON.stringify(after).slice(0, 4000) : null,
-      },
-    });
-  } catch {
-    /* best-effort */
-  }
-}

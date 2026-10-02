@@ -8,6 +8,7 @@ import {
   listWarehouses,
   InventoryServiceError,
 } from "@/lib/store-inventory-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,13 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, code, address } = body;
-    const warehouse = await createWarehouse(name, code, address, user.id);
+    const warehouse = await createWarehouse(
+      name,
+      code,
+      createAuthContext(user.id),
+      address,
+      user.id,
+    );
     await logAudit({
       actorId: user.id,
       actorType: 'ADMIN',
