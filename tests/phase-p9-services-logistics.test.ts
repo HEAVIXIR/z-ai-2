@@ -186,43 +186,43 @@ describe('Phase P9 — Services Marketplace + Logistics Deep', () => {
       expect(fs.existsSync(LOGISTICS_SVC)).toBe(true);
     });
 
-    it('should export assignShipment(orderId, carrier, trackingCode, userId)', () => {
+    it('should export assignShipment(orderId, carrier, trackingCode, authCtx, userId?)', () => {
       const c = read(LOGISTICS_SVC);
       expect(c).toContain('export async function assignShipment');
       expect(c).toMatch(
-        /assignShipment\(\s*orderId:\s*string\s*,\s*carrier:\s*string\s*,\s*trackingCode:\s*string \| null\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
+        /assignShipment\(\s*orderId:\s*string\s*,\s*carrier:\s*string\s*,\s*trackingCode:\s*string \| null\s*,\s*authCtx:\s*AuthorizationContext\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
       );
     });
 
-    it('should export schedulePickup(shipmentId, pickupDate, userId)', () => {
+    it('should export schedulePickup(shipmentId, pickupDate, authCtx, userId?)', () => {
       const c = read(LOGISTICS_SVC);
       expect(c).toContain('export async function schedulePickup');
       expect(c).toMatch(
-        /schedulePickup\(\s*shipmentId:\s*string\s*,\s*pickupDate:\s*Date\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
+        /schedulePickup\(\s*shipmentId:\s*string\s*,\s*pickupDate:\s*Date\s*,\s*authCtx:\s*AuthorizationContext\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
       );
     });
 
-    it('should export recordDeliveryAttempt(shipmentId, status, location, notes, userId)', () => {
+    it('should export recordDeliveryAttempt(shipmentId, status, location, notes, authCtx, userId?)', () => {
       const c = read(LOGISTICS_SVC);
       expect(c).toContain('export async function recordDeliveryAttempt');
       expect(c).toMatch(
-        /recordDeliveryAttempt\(\s*shipmentId:\s*string\s*,\s*status:\s*string\s*,\s*location:\s*string \| null\s*,\s*notes:\s*string \| null\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
+        /recordDeliveryAttempt\(\s*shipmentId:\s*string\s*,\s*status:\s*string\s*,\s*location:\s*string \| null\s*,\s*notes:\s*string \| null\s*,\s*authCtx:\s*AuthorizationContext\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
       );
     });
 
-    it('should export confirmDelivery(shipmentId, proofUrl, userId)', () => {
+    it('should export confirmDelivery(shipmentId, proofUrl, authCtx, userId?)', () => {
       const c = read(LOGISTICS_SVC);
       expect(c).toContain('export async function confirmDelivery');
       expect(c).toMatch(
-        /confirmDelivery\(\s*shipmentId:\s*string\s*,\s*proofUrl:\s*string \| null\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
+        /confirmDelivery\(\s*shipmentId:\s*string\s*,\s*proofUrl:\s*string \| null\s*,\s*authCtx:\s*AuthorizationContext\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
       );
     });
 
-    it('should export reportDeliveryException(shipmentId, exceptionType, notes, userId)', () => {
+    it('should export reportDeliveryException(shipmentId, exceptionType, notes, authCtx, userId?)', () => {
       const c = read(LOGISTICS_SVC);
       expect(c).toContain('export async function reportDeliveryException');
       expect(c).toMatch(
-        /reportDeliveryException\(\s*shipmentId:\s*string\s*,\s*exceptionType:\s*string\s*,\s*notes:\s*string \| null\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
+        /reportDeliveryException\(\s*shipmentId:\s*string\s*,\s*exceptionType:\s*string\s*,\s*notes:\s*string \| null\s*,\s*authCtx:\s*AuthorizationContext\s*,\s*userId\?\s*:\s*string \| null\s*,?\s*\)/,
       );
     });
 
