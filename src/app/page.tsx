@@ -47,7 +47,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "listing-grid",
           props: { title: "آگهی‌های منتخب", limit: 8 },
-          dataSource: "featured-listings",
+          dataSource: "listing.featured",
         }],
       }],
     },
@@ -57,7 +57,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "category-grid",
           props: { title: "دسته‌بندی‌ها", limit: 12 },
-          dataSource: "categories",
+          dataSource: "brand.popular",
         }],
       }],
     },
@@ -67,7 +67,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "stats",
           props: { title: "آمار سایت" },
-          dataSource: "site-stats",
+          dataSource: "stats.site",
         }],
       }],
     },
