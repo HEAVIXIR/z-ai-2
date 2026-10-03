@@ -244,6 +244,37 @@ export function UniversalTable({ config }: UniversalTableProps) {
 
   const visibleColumns = config.columns.filter(c => columnVisibility.has(c.key));
 
+  // ── Export mutation (calls EXISTING Export API endpoint) ────
+  // Server-side fail-closed: requireAdmin() + canExport(userId, resourceKey)
+  // + field whitelist against config.columns + take:5000 row limit + logAudit().
+  // Client dispatches only; server authoritatively authorizes.
+  // UI visibility (config.permissions.export defined) ≠ authorization —
+  // server enforces canExport() independently (defense in depth).
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('format', 'csv');
+      params.set('fields', visibleColumns.map(c => c.key).join(','));
+      const res = await fetch(
+        `/api/admin/resources/${config.key}/export?${params.toString()}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err?.error || err?.details || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const rowCount = res.headers.get('X-Export-Row-Count') ?? '?';
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch?.[1] ?? `${config.key}-export.csv`;
+      return { blob, rowCount, filename };
+    },
+    onError: (err: Error) => {
+      toast.error('خطا در دریافت خروجی', { description: err.message });
+    },
+  });
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -363,6 +394,44 @@ export function UniversalTable({ config }: UniversalTableProps) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Export — UI affordance only; server enforces canExport() independently */}
+        {config.permissions.export && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-xs"
+            disabled={exportMutation.isPending}
+            title="دریافت خروجی CSV از داده‌های فعلی"
+            onClick={async () => {
+              try {
+                const result = await exportMutation.mutateAsync();
+                // Trigger file download via temporary anchor element
+                const url = URL.createObjectURL(result.blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = result.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                // Cleanup object URL to prevent memory leak
+                URL.revokeObjectURL(url);
+                toast.success('خروجی دریافت شد', {
+                  description: `${result.rowCount} رکورد به‌صورت CSV دریافت شد`,
+                });
+              } catch {
+                // Error toast already handled by mutation onError
+              }
+            }}
+          >
+            {exportMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+            خروجی
+          </Button>
+        )}
 
         {/* Refresh */}
         <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => refetch()}>
