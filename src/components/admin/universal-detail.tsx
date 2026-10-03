@@ -3,8 +3,9 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   ArrowRight, Pencil, Trash2, Activity, History, Shield, Loader2,
 } from 'lucide-react';
@@ -68,6 +69,46 @@ export function UniversalDetail({ config, resourceId, onEdit, onDelete }: Univer
 
   const item = data?.data;
   const auditLogs = auditData?.data?.items ?? [];
+
+  // ── Action mutation (calls EXISTING Action API endpoint) ────
+  // Server-side fail-closed security boundary:
+  //   requireAdmin() → can(userId, action.permission) → executeAction()
+  //   → auditMutation() [captures before/after snapshots]
+  // The client merely dispatches; the server authoritatively authorizes.
+  // UI visibility of the action button is NOT a security layer — the
+  // server enforces permission independently (defense in depth).
+  const queryClient = useQueryClient();
+  const actionMutation = useMutation({
+    mutationFn: async (actionKey: string) => {
+      const res = await fetch(
+        `/api/admin/resources/${config.key}/${resourceId}/action`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: actionKey }),
+          credentials: 'include',
+        },
+      );
+      const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok || !json?.ok || !json?.data?.success) {
+        throw new Error(json?.error || json?.data?.message || `HTTP ${res.status}`);
+      }
+      return json.data;
+    },
+    onSuccess: (_data, actionKey) => {
+      toast.success('عملیات انجام شد', {
+        description: `«${actionKey}» روی «${config.titleFa}» اجرا شد`,
+      });
+      // Invalidate detail + audit + list queries so the UI reflects the new
+      // state. Pattern follows use-admin-api.ts (repository-standard).
+      queryClient.invalidateQueries({ queryKey: ['admin-resource-detail', config.key, resourceId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-resource-audit', config.key, resourceId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-resource-list', config.key] });
+    },
+    onError: (err: Error) => {
+      toast.error('خطا در اجرای عملیات', { description: err.message });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -135,16 +176,29 @@ export function UniversalDetail({ config, resourceId, onEdit, onDelete }: Univer
               size="sm"
               className="h-8 gap-1.5 text-xs"
               onClick={() => {
+                // Confirmation only for sensitive actions (existing UI pattern:
+                // action.type === 'confirm'). User must explicitly confirm.
                 if (action.type === 'confirm') {
-                  if (confirm(action.confirmMessage ?? `انجام عملیات: ${action.label}?`)) {
-                    // TODO: call action API
-                    console.log(`Action: ${action.key}`, resourceId);
+                  if (!confirm(action.confirmMessage ?? `انجام عملیات: ${action.label}?`)) {
+                    return;
                   }
                 }
+                // Call EXISTING Action API endpoint (replaces previous TODO no-op).
+                // Server enforces: requireAdmin() + can(userId, action.permission)
+                // + executeAction() + auditMutation() — fail-closed.
+                actionMutation.mutate(action.key);
+                // Existing contract preserved: delete action delegates to onDelete
+                // (parent UI side effect, e.g., navigate away from detail view).
                 if (action.key === 'delete' && onDelete) onDelete();
               }}
+              disabled={actionMutation.isPending}
             >
-              <Pencil className="size-3" /> {action.label}
+              {actionMutation.isPending && actionMutation.variables === action.key ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Pencil className="size-3" />
+              )}
+              {action.label}
             </Button>
           ))}
           {onEdit && (
