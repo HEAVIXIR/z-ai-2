@@ -27,6 +27,8 @@ import {
   settingsConfig, analyticsConfig, seoConfig,
   // Phase 3 Batch 3 — Promotions (Coupon)
   promotionsConfig,
+  // Wave B (M3) — Gap resources: Orders, Payments, Parts, Rentals
+  ordersConfig, paymentsConfig, partsConfig, rentalsConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -64,6 +66,11 @@ registerResource(analyticsConfig);
 registerResource(seoConfig);
 // Phase 3 Batch 3 — Promotions (Coupon)
 registerResource(promotionsConfig);
+// Wave B (M3) — Gap resources: Orders, Payments, Parts, Rentals
+registerResource(ordersConfig);
+registerResource(paymentsConfig);
+registerResource(partsConfig);
+registerResource(rentalsConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';
 export type { AdminResourceConfig } from './types';
