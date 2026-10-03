@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2, Save, X, AlertCircle } from 'lucide-react';
+import { Loader2, Save, X, AlertCircle, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -160,7 +160,15 @@ export function UniversalForm({ config, resourceId, onSuccess, onCancel }: Unive
       const data: Record<string, any> = {};
       for (const field of config.fields) {
         if (!isFieldVisible(field)) continue;
-        if (field.permissions?.write) continue; // field-level write check (TODO: async)
+        // Field-level write policy — client-side UX enforcement only.
+        // Fields declaring `permissions.write` are NOT sent in the
+        // mutation payload from the client. The authoritative security
+        // boundary is the server-side `applyFieldWritePolicyAsync`
+        // (fail-closed: rejects the entire request if the user lacks the
+        // field-level write permission). On the client, such fields are
+        // rendered visible but disabled so the user is not silently
+        // misled into editing a value that would be dropped.
+        if (field.permissions?.write) continue;
         data[field.key] = values[field.key];
       }
 
@@ -306,14 +314,29 @@ function FormField({
     field.width === 'third' ? 'md:col-span-1 lg:col-span-1' :
     'md:col-span-2 lg:col-span-3';
 
+  // Field-level write permission — client-side UX enforcement.
+  // Restricted fields stay visible (readable) but are rendered disabled
+  // so the user is aware they cannot edit them. Server-side
+  // `applyFieldWritePolicyAsync` is the authoritative security boundary.
+  const isReadOnly = !!field.permissions?.write;
+
   return (
     <div className={cn('space-y-1.5', widthClass)}>
       <Label htmlFor={field.key} className="text-xs">
         {field.label}
         {field.required && <span className="mr-0.5 text-rose-500">*</span>}
+        {isReadOnly && (
+          <span
+            className="mr-1 inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[9px] font-normal text-muted-foreground"
+            title="این فیلد نیاز به مجوز خاص دارد و به‌صورت فقط‌خواندنی نمایش داده می‌شود"
+          >
+            <Lock className="size-2.5" />
+            فقط‌خواندنی
+          </span>
+        )}
       </Label>
 
-      {renderField(field, value, onChange, config, allValues)}
+      {renderField(field, value, onChange, config, allValues, isReadOnly)}
 
       {field.helpText && (
         <p className="text-[10px] text-muted-foreground">{field.helpText}</p>
@@ -332,6 +355,7 @@ function renderField(
   onChange: (v: unknown) => void,
   config: AdminResourceConfig,
   allValues: Record<string, any>,
+  disabled?: boolean,
 ): React.ReactNode {
   const inputId = field.key;
 
@@ -347,6 +371,7 @@ function renderField(
           placeholder={field.placeholder}
           className="text-xs"
           readOnly={field.type === 'slug' && !!field.slugFrom}
+          disabled={disabled}
         />
       );
 
@@ -359,6 +384,7 @@ function renderField(
           placeholder={field.placeholder}
           rows={3}
           className="text-xs"
+          disabled={disabled}
         />
       );
 
@@ -372,15 +398,17 @@ function renderField(
           onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
           placeholder={field.placeholder}
           className="text-xs"
+          disabled={disabled}
         />
       );
 
     case 'boolean':
       return (
-        <div className="flex h-9 items-center gap-2 rounded-md border px-3">
+        <div className={cn('flex h-9 items-center gap-2 rounded-md border px-3', disabled && 'opacity-60')}>
           <Switch
             checked={Boolean(value)}
             onCheckedChange={onChange}
+            disabled={disabled}
           />
           <span className="text-xs">{Boolean(value) ? 'بله' : 'خیر'}</span>
         </div>
@@ -388,7 +416,7 @@ function renderField(
 
     case 'select':
       return (
-        <Select value={(value as string) ?? ''} onValueChange={onChange}>
+        <Select value={(value as string) ?? ''} onValueChange={onChange} disabled={disabled}>
           <SelectTrigger className="h-9 text-xs"><SelectValue placeholder={field.placeholder ?? 'انتخاب...'} /></SelectTrigger>
           <SelectContent>
             {field.options?.map(opt => (
@@ -407,6 +435,7 @@ function renderField(
           value={(value as string) ?? ''}
           onChange={e => onChange(e.target.value)}
           className="text-xs"
+          disabled={disabled}
         />
       );
 
@@ -419,28 +448,30 @@ function renderField(
           onChange={e => onChange(e.target.value)}
           placeholder={field.placeholder ?? '••••••••'}
           className="text-xs"
+          disabled={disabled}
         />
       );
 
     case 'color':
       return (
-        <div className="flex items-center gap-2">
+        <div className={cn('flex items-center gap-2', disabled && 'opacity-60')}>
           <input
             type="color"
             value={(value as string) ?? '#000000'}
             onChange={e => onChange(e.target.value)}
             className="h-9 w-12 rounded border p-1"
+            disabled={disabled}
           />
           <span className="font-mono text-xs">{(value as string) ?? ''}</span>
         </div>
       );
 
     case 'relation':
-      return <RelationField field={field} value={value} onChange={onChange} config={config} />;
+      return <RelationField field={field} value={value} onChange={onChange} config={config} disabled={disabled} />;
 
     case 'media':
       return (
-        <div className="flex items-center gap-2 rounded-md border p-2">
+        <div className={cn('flex items-center gap-2 rounded-md border p-2', disabled && 'opacity-60')}>
           {value ? <img src={String(value)} alt="" className="size-8 rounded object-cover" /> : null}
           <Input
             id={inputId}
@@ -449,6 +480,7 @@ function renderField(
             onChange={e => onChange(e.target.value)}
             placeholder="URL تصویر"
             className="flex-1 text-xs"
+            disabled={disabled}
           />
         </div>
       );
@@ -465,6 +497,7 @@ function renderField(
           rows={4}
           className="font-mono text-xs"
           placeholder='{"key": "value"}'
+          disabled={disabled}
         />
       );
 
@@ -477,6 +510,7 @@ function renderField(
           onChange={e => onChange(e.target.value)}
           placeholder={field.placeholder}
           className="text-xs"
+          disabled={disabled}
         />
       );
   }
@@ -484,12 +518,13 @@ function renderField(
 
 // ── Relation field (async dropdown) ───────────────────────
 function RelationField({
-  field, value, onChange, config,
+  field, value, onChange, config, disabled,
 }: {
   field: AdminField;
   value: unknown;
   onChange: (v: unknown) => void;
   config: AdminResourceConfig;
+  disabled?: boolean;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['relation', field.relation?.model],
@@ -507,7 +542,7 @@ function RelationField({
   const labelField = field.relation?.labelField ?? 'name';
 
   return (
-    <Select value={(value as string) ?? ''} onValueChange={onChange}>
+    <Select value={(value as string) ?? ''} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="انتخاب..." /></SelectTrigger>
       <SelectContent>
         {isLoading ? (
