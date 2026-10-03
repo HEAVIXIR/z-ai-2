@@ -460,6 +460,9 @@ export const customersConfig: AdminResourceConfig = {
   // /api/admin/store/customers/route.ts only exposes GET.
   permissions: {
     read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
     export: 'store.read',
   },
 
@@ -869,6 +872,8 @@ export const currencyConfig: AdminResourceConfig = {
   permissions: {
     read: 'store.read',
     create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
     export: 'store.read',
   },
 
@@ -1424,12 +1429,14 @@ export const settingsConfig: AdminResourceConfig = {
 
   permissions: {
     read: 'admin.settings.manage',
+    create: 'admin.settings.manage',
+    delete: 'admin.settings.manage',
     update: 'admin.settings.manage',
     export: 'admin.settings.manage',
   },
 
   columns: [
-    { key: 'id', label: 'شناسه', type: 'text', visible: false },
+    { key: 'id', label: 'شناسه', type: 'text', visible: false, sortable: true },
     { key: 'phone', label: 'تلفن', type: 'text' },
     { key: 'email', label: 'ایمیل', type: 'text' },
     { key: 'address', label: 'نشانی', type: 'text', visible: false },
