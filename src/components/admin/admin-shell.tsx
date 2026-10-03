@@ -18,6 +18,7 @@ import {
   LineChart,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { usePreferences } from '@/hooks/admin/use-preferences';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -76,13 +77,31 @@ function HealthIndicator() {
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const { prefs, update: updatePrefs } = usePreferences();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
+
+  // Sync prefs.theme (server-side AdminPreference) with next-themes (client-side).
+  // Server enforces auth+permission via /api/admin/preferences (requirePermission).
+  // Client is UI affordance only; server is authoritative security boundary.
+  React.useEffect(() => {
+    if (mounted && prefs.theme && prefs.theme !== 'system' && prefs.theme !== theme) {
+      setTheme(prefs.theme);
+    }
+  }, [mounted, prefs.theme, theme, setTheme]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    // Persist to AdminPreference (server-side, audited via logAudit)
+    updatePrefs({ theme: newTheme });
+  };
+
   return (
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      onClick={toggleTheme}
       className="size-8"
       aria-label="Toggle theme"
     >

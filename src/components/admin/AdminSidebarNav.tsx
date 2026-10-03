@@ -9,9 +9,10 @@ import {
   LayoutDashboard, Wrench, Megaphone, Building2, FolderTree, Users, Settings,
   MonitorSmartphone, Activity, Wallet, BookOpen, Brain, ShieldCheck, ShieldAlert,
   Crown, Image as ImageIcon, Images, Menu as MenuIcon, Target, Sparkles,
-  FileText,
+  FileText, Pin, EyeOff, PanelLeftClose, PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
+import { usePreferences } from "@/hooks/admin/use-preferences";
 
 /* ============================================================
    AdminSidebarNav — Phase 12 DB-driven + permission-aware.
@@ -65,6 +66,33 @@ export default function AdminSidebarNav() {
 
   // Track which groups are open (by key)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+
+  // Personalization — wired to existing usePreferences() hook.
+  // Server enforces auth+permission via /api/admin/preferences (requirePermission).
+  // Client is UI affordance only; server is authoritative security boundary.
+  const { prefs, update: updatePrefs } = usePreferences();
+
+  const hiddenSet = new Set(prefs.hiddenItems ?? []);
+  const pinnedSet = new Set(prefs.pinnedItems ?? []);
+  const isCollapsed = prefs.sidebarCollapsed;
+
+  function togglePin(itemKey: string) {
+    const current = new Set(prefs.pinnedItems ?? []);
+    if (current.has(itemKey)) current.delete(itemKey);
+    else current.add(itemKey);
+    updatePrefs({ pinnedItems: Array.from(current) });
+  }
+
+  function toggleHide(itemKey: string) {
+    const current = new Set(prefs.hiddenItems ?? []);
+    if (current.has(itemKey)) current.delete(itemKey);
+    else current.add(itemKey);
+    updatePrefs({ hiddenItems: Array.from(current) });
+  }
+
+  function toggleSidebar() {
+    updatePrefs({ sidebarCollapsed: !prefs.sidebarCollapsed });
+  }
 
   useEffect(() => {
     fetch("/api/admin/navigation", { credentials: "include" })
@@ -134,23 +162,62 @@ export default function AdminSidebarNav() {
 
   return (
     <div className="space-y-1">
-      {/* Standalone items first (dashboard, listings, etc.) */}
-      {nav.standalone.map((item) => {
+      {/* Sidebar collapse toggle — wired to AdminPreference.sidebarCollapsed */}
+      <button
+        onClick={toggleSidebar}
+        className="flex w-full items-center justify-end rounded-lg px-3 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
+        title={isCollapsed ? "بازکردن منو" : "جمع کردن منو"}
+      >
+        {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+      </button>
+
+      {/* Standalone items first (dashboard, listings, etc.) — filtered + sorted by prefs */}
+      {nav.standalone
+        .filter((item) => !hiddenSet.has(item.key))
+        .sort((a, b) => {
+          const aPinned = pinnedSet.has(a.key);
+          const bPinned = pinnedSet.has(b.key);
+          return aPinned === bPinned ? 0 : aPinned ? -1 : 1;
+        })
+        .map((item) => {
         const Icon = getIcon(item.icon);
         const active = pathname === item.href || pathname.startsWith(item.href + "/");
         return (
-          <Link
-            key={item.key}
-            href={item.href}
-            className={`flex min-h-11 items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-              active
-                ? "bg-[#F58220]/15 text-[#F58220]"
-                : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
-            }`}
-          >
-            <Icon size={19} className="shrink-0" />
-            <span className="truncate">{item.titleFa}</span>
-          </Link>
+          <div key={item.key} className="group relative">
+            <Link
+              href={item.href}
+              className={`flex min-h-11 items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                active
+                  ? "bg-[#F58220]/15 text-[#F58220]"
+                  : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              } ${isCollapsed ? "justify-center" : ""}`}
+            >
+              <Icon size={19} className="shrink-0" />
+              {!isCollapsed && <span className="truncate">{item.titleFa}</span>}
+              {pinnedSet.has(item.key) && !isCollapsed && (
+                <Pin size={11} className="mr-auto shrink-0 text-amber-500" />
+              )}
+            </Link>
+            {/* Pin/Hide actions (visible on hover, not in collapsed mode) */}
+            {!isCollapsed && (
+              <div className="absolute left-full top-1/2 z-50 ml-1 hidden -translate-y-1/2 flex-row gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1 group-hover:flex">
+                <button
+                  onClick={(e) => { e.preventDefault(); togglePin(item.key); }}
+                  className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-amber-500"
+                  title={pinnedSet.has(item.key) ? "برداشتن سنجاق" : "سنجاق کردن"}
+                >
+                  <Pin size={12} />
+                </button>
+                <button
+                  onClick={(e) => { e.preventDefault(); toggleHide(item.key); }}
+                  className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-rose-400"
+                  title="پنهان کردن"
+                >
+                  <EyeOff size={12} />
+                </button>
+              </div>
+            )}
+          </div>
         );
       })}
 
@@ -181,7 +248,7 @@ export default function AdminSidebarNav() {
             </button>
             {isOpen && (
               <div className="mr-6 mt-1 space-y-1 border-r border-zinc-800 pr-3">
-                {group.items.map((item) => {
+                {group.items.filter((item) => !hiddenSet.has(item.key)).map((item) => {
                   const active =
                     pathname === item.href || pathname.startsWith(item.href + "/");
                   return (
