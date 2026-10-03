@@ -1,11 +1,19 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Eye, EyeOff,
   Download, RefreshCw, CheckSquare, Square, MoreHorizontal, Loader2,
+  Bookmark, Save, Trash2, Star,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +46,8 @@ interface UniversalTableProps {
 }
 
 export function UniversalTable({ config }: UniversalTableProps) {
+  const queryClient = useQueryClient();
+
   // URL-backed state
   const [searchParams, setSearchParams] = useSearchParams(config);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -45,6 +55,140 @@ export function UniversalTable({ config }: UniversalTableProps) {
   const [columnVisibility, setColumnVisibility] = React.useState<Set<string>>(
     () => new Set(config.columns.filter(c => c.visible !== false).map(c => c.key)),
   );
+
+  // Saved view state
+  const [saveViewName, setSaveViewName] = React.useState('');
+  const [showSaveDialog, setShowSaveDialog] = React.useState(false);
+  const [editingViewId, setEditingViewId] = React.useState<string | null>(null);
+
+  // Fetch saved views for this resource
+  const { data: savedViewsData } = useQuery({
+    queryKey: ['saved-views', config.key],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/saved-views?resourceKey=${config.key}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+  });
+  const savedViews = savedViewsData?.data ?? [];
+
+  // Save current view as new
+  const saveViewMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const viewConfig = {
+        filters: Object.fromEntries(
+          Array.from(searchParams.entries()).filter(([k]) => k.startsWith('filter.') || config.filters?.some(f => f.key === k)),
+        ),
+        sort: searchParams.get('sort') || undefined,
+        columns: Array.from(columnVisibility),
+        pageSize: searchParams.get('pageSize') || undefined,
+        search: searchParams.get('search') || undefined,
+      };
+      const res = await fetch('/api/admin/saved-views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, resourceKey: config.key, config: viewConfig }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-views', config.key] });
+      setShowSaveDialog(false);
+      setSaveViewName('');
+      toast.success('نمای ذخیره شد');
+    },
+    onError: (err) => toast.error('خطا در ذخیره‌سازی', { description: (err as Error).message }),
+  });
+
+  // Update existing view
+  const updateViewMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name?: string }) => {
+      const viewConfig = {
+        filters: Object.fromEntries(
+          Array.from(searchParams.entries()).filter(([k]) => k.startsWith('filter.') || config.filters?.some(f => f.key === k)),
+        ),
+        sort: searchParams.get('sort') || undefined,
+        columns: Array.from(columnVisibility),
+        pageSize: searchParams.get('pageSize') || undefined,
+        search: searchParams.get('search') || undefined,
+      };
+      const body: Record<string, unknown> = { config: viewConfig };
+      if (name) body.name = name;
+      const res = await fetch(`/api/admin/saved-views/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-views', config.key] });
+      setEditingViewId(null);
+      toast.success('نمای به‌روزرسانی شد');
+    },
+    onError: (err) => toast.error('خطا در به‌روزرسانی', { description: (err as Error).message }),
+  });
+
+  // Delete view
+  const deleteViewMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/saved-views/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-views', config.key] });
+      toast.success('نمای حذف شد');
+    },
+    onError: (err) => toast.error('خطا در حذف', { description: (err as Error).message }),
+  });
+
+  // Apply a saved view's config to current state
+  function applyView(viewConfig: { filters?: Record<string, string>; sort?: string; columns?: string[]; pageSize?: string; search?: string }) {
+    const updates: Record<string, string> = {};
+    // Clear existing filter params first
+    for (const key of Array.from(searchParams.keys())) {
+      if (key.startsWith('filter.') || config.filters?.some(f => f.key === key)) {
+        updates[key] = '';
+      }
+    }
+    // Apply saved filters
+    if (viewConfig.filters) {
+      for (const [k, v] of Object.entries(viewConfig.filters)) {
+        updates[k] = v;
+      }
+    }
+    // Apply sort
+    updates['sort'] = viewConfig.sort || '';
+    // Apply search
+    updates['search'] = viewConfig.search || '';
+    // Apply page size
+    if (viewConfig.pageSize) updates['pageSize'] = viewConfig.pageSize;
+    updates['page'] = '1';
+    setSearchParams(updates);
+    // Apply column visibility
+    if (viewConfig.columns) {
+      setColumnVisibility(new Set(viewConfig.columns));
+    }
+  }
+
+  // Auto-load default view on mount
+  React.useEffect(() => {
+    if (savedViews.length > 0) {
+      const defaultView = savedViews.find((v: any) => v.isDefault);
+      if (defaultView && !searchParams.get('sort') && !searchParams.get('search') && !searchParams.toString()) {
+        applyView(defaultView.config as any);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedViews]);
 
   // Data fetching
   const { data, isLoading, error, refetch } = useQuery({
@@ -159,10 +303,102 @@ export function UniversalTable({ config }: UniversalTableProps) {
           ستون‌ها
         </Button>
 
+        {/* Saved Views */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs">
+              <Bookmark className="size-3.5" />
+              نمای‌ها
+              {savedViews.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[9px]">{savedViews.length}</Badge>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {savedViews.length === 0 ? (
+              <DropdownMenuItem disabled className="text-xs text-muted-foreground">نمای ذخیره‌شده‌ای وجود ندارد</DropdownMenuItem>
+            ) : (
+              savedViews.map((view: any) => (
+                <DropdownMenuItem
+                  key={view.id}
+                  className="flex items-center gap-2 text-xs"
+                  onSelect={(e) => { e.preventDefault(); applyView(view.config); }}
+                >
+                  {view.isDefault && <Star className="size-3 text-amber-500" />}
+                  <span className="flex-1 truncate">{view.name}</span>
+                  <span className="text-[9px] text-muted-foreground">{view.scope === 'SYSTEM' ? 'سیستم' : 'شخصی'}</span>
+                </DropdownMenuItem>
+              ))
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-xs"
+              onSelect={(e) => { e.preventDefault(); setShowSaveDialog(true); }}
+            >
+              <Save className="mr-2 size-3" /> ذخیره نمای فعلی
+            </DropdownMenuItem>
+            {savedViews.length > 0 && (
+              <>
+                <DropdownMenuItem
+                  className="text-xs"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    const view = savedViews[0];
+                    if (view) updateViewMutation.mutate({ id: view.id });
+                  }}
+                >
+                  <RefreshCw className="mr-2 size-3" /> به‌روزرسانی نمای اول
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs text-rose-500"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    const view = savedViews[0];
+                    if (view) deleteViewMutation.mutate(view.id);
+                  }}
+                >
+                  <Trash2 className="mr-2 size-3" /> حذف نمای اول
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {/* Refresh */}
         <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => refetch()}>
           <RefreshCw className="size-3.5" />
         </Button>
+
+        {/* Save View Dialog */}
+        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>ذخیره نمای فعلی</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Input
+                placeholder="نام نمای..."
+                value={saveViewName}
+                onChange={(e) => setSaveViewName(e.target.value)}
+                className="h-9 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                فیلترها، مرتب‌سازی، ستون‌های قابل‌مشاهده و تنظیمات فعلی ذخیره می‌شوند.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setShowSaveDialog(false)}>انصراف</Button>
+              <Button
+                size="sm"
+                disabled={!saveViewName || saveViewMutation.isPending}
+                onClick={() => saveViewMutation.mutate(saveViewName)}
+              >
+                {saveViewMutation.isPending && <Loader2 className="mr-1 size-3 animate-spin" />}
+                ذخیره
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Bulk actions */}
         {selected.size > 0 && config.bulkActions && config.bulkActions.length > 0 && (
