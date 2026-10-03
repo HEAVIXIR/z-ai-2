@@ -49,7 +49,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 // Import AFTER vi.mock so the rbac module picks up the mock.
-const { ForbiddenError, getUserPermissions, hasPermission, requirePermission, isAdmin, hasRole } =
+const { ForbiddenError, AuthorizationError, getUserPermissions, hasPermission, requirePermission, isAdmin, hasRole } =
   await import("@/lib/rbac");
 
 beforeEach(() => {
@@ -154,20 +154,20 @@ describe("requirePermission", () => {
     await expect(requirePermission("user-1", "taxonomy.write")).resolves.toBeUndefined();
   });
 
-  it("throws ForbiddenError when the user lacks the permission", async () => {
+  it("throws AuthorizationError when the user lacks the permission", async () => {
     mockImpl.userRole.findMany = async () => [];
     await expect(requirePermission("user-1", "taxonomy.write")).rejects.toBeInstanceOf(
-      ForbiddenError,
+      AuthorizationError,
     );
   });
 
-  it("the thrown ForbiddenError mentions the required permission", async () => {
+  it("the thrown AuthorizationError mentions the required permission", async () => {
     mockImpl.userRole.findMany = async () => [];
     try {
       await requirePermission("user-1", "user.suspend");
       throw new Error("should have thrown");
     } catch (e: any) {
-      expect(e).toBeInstanceOf(ForbiddenError);
+      expect(e).toBeInstanceOf(AuthorizationError);
       expect(e.message).toContain("user.suspend");
     }
   });
@@ -179,16 +179,16 @@ describe("isAdmin", () => {
     expect(await isAdmin("user-1")).toBe(true);
   });
 
-  it("falls back to legacy User.role='ADMIN'", async () => {
+  it("does NOT fall back to legacy User.role='ADMIN' (removed in STEP 02)", async () => {
     mockImpl.userRole.findFirst = async () => null;
     mockImpl.user.findUnique = async () => ({ role: "ADMIN" });
-    expect(await isAdmin("user-legacy-admin")).toBe(true);
+    expect(await isAdmin("user-legacy-admin")).toBe(false);
   });
 
-  it("falls back to legacy User.role='SUPERADMIN' (case-insensitive)", async () => {
+  it("does NOT fall back to legacy User.role='SUPERADMIN' (removed in STEP 02)", async () => {
     mockImpl.userRole.findFirst = async () => null;
     mockImpl.user.findUnique = async () => ({ role: "superadmin" });
-    expect(await isAdmin("user-legacy-super")).toBe(true);
+    expect(await isAdmin("user-legacy-super")).toBe(false);
   });
 
   it("returns false for a BUYER (no ADMIN role, no legacy fallback)", async () => {
@@ -216,12 +216,16 @@ describe("isAdmin", () => {
 
 describe("hasRole", () => {
   it("returns true when the user has the role (single key)", async () => {
-    mockImpl.userRole.findFirst = async () => ({ id: "ur-1" });
+    mockImpl.userRole.findMany = async () => [
+      { role: { key: "SELLER", permissions: [{ permission: { key: "seller.access" } }] } },
+    ];
     expect(await hasRole("user-1", "SELLER")).toBe(true);
   });
 
   it("returns true when the user has ANY of the role keys (array)", async () => {
-    mockImpl.userRole.findFirst = async () => ({ id: "ur-1" });
+    mockImpl.userRole.findMany = async () => [
+      { role: { key: "MODERATOR", permissions: [{ permission: { key: "moderator.access" } }] } },
+    ];
     expect(await hasRole("user-1", ["ADMIN", "MODERATOR"])).toBe(true);
   });
 

@@ -94,7 +94,7 @@ describe("Permission matrix — canonical keys are present", () => {
     // least two segments (e.g. `user.read`, `admin.dashboard.read`).
     for (const key of PERMISSIONS) {
       expect(
-        typeof key === "string" && /^[a-z_]+(\.[a-z_]+)+$/i.test(key),
+        typeof key === "string" && /^[a-z_-]+(\.[a-z_-]+)+$/i.test(key),
         `permission key "${key}" does not match the dotted resource.action pattern`,
       ).toBe(true);
     }

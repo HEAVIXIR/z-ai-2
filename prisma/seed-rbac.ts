@@ -11,6 +11,7 @@
      bun run db:seed-rbac
 */
 import { PrismaClient } from "@prisma/client";
+import { PERMISSIONS as CANONICAL_PERMISSIONS, ROLE_PERMISSIONS as CANONICAL_ROLE_PERMISSIONS } from "../src/lib/authorization/permissions";
 
 const db = new PrismaClient();
 
@@ -101,40 +102,36 @@ const PERMISSIONS: PermissionSeed[] = [
   { key: "settings.manage", nameFa: "مدیریت تنظیمات",     nameEn: "Manage settings", resource: "settings", description: "ویرایش تنظیمات سایت" },
 ];
 
+// ── Reconciliation: ensure ALL canonical permissions are seeded ──
+// The local PERMISSIONS array above has 20 hand-crafted entries with
+// proper Persian/English names. The canonical PERMISSIONS from
+// src/lib/authorization/permissions.ts has 127 keys. This loop adds
+// the 107 missing keys with auto-generated metadata so the seed
+// creates a complete RBAC matrix.
+{
+  const _existingKeys = new Set(PERMISSIONS.map(p => p.key));
+  for (const key of CANONICAL_PERMISSIONS) {
+    if (!_existingKeys.has(key)) {
+      const parts = key.split(".");
+      const resource = parts[0] || key;
+      const action = parts.slice(1).join(".") || "manage";
+      PERMISSIONS.push({
+        key,
+        nameFa: `${action} ${resource}`,
+        nameEn: `${action} ${resource}`,
+        resource,
+        description: `${action} permission for ${resource}`,
+      });
+    }
+  }
+}
+
 /* ───────────── Role → Permission matrix ───────────── */
 
+// Use canonical ROLE_PERMISSIONS from permissions.ts + local SUPPORT additions
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  // ADMIN — all permissions
-  ADMIN: PERMISSIONS.map((p) => p.key),
-
-  // MODERATOR — content moderation tools
-  MODERATOR: [
-    "taxonomy.read",
-    "brand.read",
-    "listing.read",
-    "listing.moderate",
-    "review.moderate",
-    "user.suspend",
-    "audit.read",
-    "media.upload",
-  ],
-
-  // SELLER — manage own listings + media
-  SELLER: [
-    "listing.read",
-    "listing.publish",
-    "media.upload",
-    "rfq.manage",
-    "brand.read",
-  ],
-
-  // BUYER — browse + upload
-  BUYER: [
-    "listing.read",
-    "media.upload",
-  ],
-
-  // SUPPORT — read-only + suspend
+  ...CANONICAL_ROLE_PERMISSIONS,
+  // SUPPORT is not in canonical ROLE_PERMISSIONS — add locally
   SUPPORT: [
     "user.read",
     "user.suspend",
