@@ -25,6 +25,7 @@ export {
   canAccessResource,
   canBulkAction,
   canExport,
+  hasRole,
   AuthorizationError,
 } from '@/lib/authorization';
 
