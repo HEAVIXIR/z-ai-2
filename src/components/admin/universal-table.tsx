@@ -275,6 +275,40 @@ export function UniversalTable({ config }: UniversalTableProps) {
     },
   });
 
+  // ── Bulk action mutation (calls EXISTING Bulk API endpoint) ────
+  // Server-side fail-closed: requireAdmin() + can(permission) +
+  // canBulkAction('bulk-'+action) + executeBulkAction + logAudit.
+  // Client dispatches only; server authoritatively authorizes.
+  // UI visibility ≠ authorization (defense in depth).
+  const bulkMutation = useMutation({
+    mutationFn: async ({ action, ids }: { action: string; ids: string[] }) => {
+      const res = await fetch(
+        `/api/admin/resources/${config.key}/bulk`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ids }),
+          credentials: 'include',
+        },
+      );
+      const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      return json.data;
+    },
+    onSuccess: (data) => {
+      toast.success('عملیات گروهی انجام شد', {
+        description: `${data.succeeded} موفق، ${data.failed} ناموفق از ${data.total}`,
+      });
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['admin-resource', config.key] });
+    },
+    onError: (err: Error) => {
+      toast.error('خطا در عملیات گروهی', { description: err.message });
+    },
+  });
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -469,7 +503,7 @@ export function UniversalTable({ config }: UniversalTableProps) {
           </DialogContent>
         </Dialog>
 
-        {/* Bulk actions */}
+        {/* Bulk actions — wired to existing POST /api/admin/resources/${config.key}/bulk */}
         {selected.size > 0 && config.bulkActions && config.bulkActions.length > 0 && (
           <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1">
             <span className="text-xs font-medium">{selected.size} انتخاب شده</span>
@@ -479,12 +513,24 @@ export function UniversalTable({ config }: UniversalTableProps) {
                 size="sm"
                 variant={action.variant === 'destructive' ? 'destructive' : 'outline'}
                 className="h-7 gap-1 text-[11px]"
+                disabled={bulkMutation.isPending}
                 onClick={() => {
-                  // TODO: bulk action API call
-                  console.log(`Bulk action: ${action.key}`, Array.from(selected));
-                  setSelected(new Set());
+                  const ids = Array.from(selected);
+                  if (ids.length === 0) return;
+                  // Confirmation for type='confirm' actions (GAP-UI-02)
+                  if (action.type === 'confirm') {
+                    if (!confirm(action.confirmMessage ?? `انجام عملیات گروهی: ${action.label} روی ${ids.length} مورد؟`)) {
+                      return;
+                    }
+                  }
+                  // Call existing Bulk API endpoint (GAP-UI-01)
+                  // Server enforces: requireAdmin + can(permission) + canBulkAction + executeBulkAction + audit
+                  bulkMutation.mutate({ action: action.key, ids });
                 }}
               >
+                {bulkMutation.isPending && bulkMutation.variables?.action === action.key ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : null}
                 {action.label}
               </Button>
             ))}
