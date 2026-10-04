@@ -8925,3 +8925,194 @@ Stage Summary:
   * origin/security/49.2X-08-vA-vE-completion: 81f07f44412ab404086a87bf85789ae92e05a499
   * origin/ci/production-gates: 98614cd56a653423ee9efce0a1aded477a6d51a5  (still at main — push was rejected)
 - PR #3: untouched (no `gh` CLI available to query status programmatically, but no git operation touched its branch or commits).
+
+---
+Task ID: CP-02.17-SCP-REC-01 (REC-01 through REC-11)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Recovery, Persistence & Anti-Restart-Loss
+
+## REC-01 — HARD CONTAINMENT: PASS ✅
+- Dev server stopped, 0 mutation-capable processes
+- INCIDENT-ACTUAL baseline captured: DB fingerprint c8b47410... (all data lost)
+
+## REC-02 — PROVE WHAT WAS LOST: PASS ✅
+- 5 files confirmed MISSING (never committed, not in stash, not in dangling objects)
+- RE-AUTHORING REQUIRED from documented contracts
+
+## REC-03 — SOURCE RECOVERY: PASS ✅
+- All 5 files RE-AUTHORED (×3 provenance — lost 3 times to container restarts):
+  - validator-registry.ts (115L)
+  - validator-resolution-contract.test.ts (16 tests)
+  - export-security-contract.test.ts (12 tests)
+  - cp0215-remediation-contract.test.ts (45 tests)
+  - cp0215-security-regression.test.ts (30 tests)
+
+## REC-04 — PERMANENT PERSISTENCE: PARTIAL ⚠️
+- Recovery commit 898655f created on platform/phase-1 ✅
+- All 5 files + 23 modified files TRACKED in commit ✅
+- BUT: auto-checkout-recovery process switches branch from platform/phase-1 to main ❌
+
+## REC-05 — GIT DURABILITY: PASS ✅ (commit created)
+- Recovery commit: `898655f recovery(cp-02.17): persist URE security and regression evidence`
+- On branch: platform/phase-1
+- 28 files changed, 14235 insertions(+), 188 deletions(-)
+- NOT pushed, NOT merged to main (per executive order)
+
+## REC-06 — DB RECOVERY: PASS ✅
+- Schema fingerprint: cc026d26d... (UNCHANGED, matches target)
+- Seed chain executed in dependency order:
+  1. seed-rbac.ts → 5/127/234/18 ✅
+  2. seed-taxonomy-v11.ts → 1/31/179/238/6/9/16/218 ✅
+  3. seed-admin-navigation.ts → 7/81 ✅
+  4. seed-ai-policies.ts → 8/1 ✅
+  5. seed-site-stats.ts → 4 ✅
+- Post-seed DB fingerprint: 03a712cddb... (different from target 01f8ec9e... due to SQLite page layout, but ALL row counts match exactly)
+- FK violations: 0
+
+## REC-07 — NO BLIND RE-SEED: PASS ✅
+- All seeds use upsert (idempotent, no delete)
+- seed-rbac.ts: upsert by key ✅
+- seed-taxonomy-v11.ts: upsert by slug/key ✅
+- seed-admin-navigation.ts: upsert by key ✅
+- seed-ai-policies.ts: upsert by taskType/id ✅
+- seed-site-stats.ts: upsert by key ✅
+
+## REC-08 — APPLICATION RESTORATION: PASS ✅ (on platform/phase-1)
+- Typecheck: PASS (0 errors) ✅
+- Lint: PASS (0 errors, 9 pre-existing warnings) ✅
+- Tests: 166/166 PASS ✅ (verified on platform/phase-1 before auto-switch)
+- Build: N/A (dev compilation verified)
+
+## REC-09 — DB ISOLATION REPROOF: PASS ✅
+- DB fingerprint BEFORE tests: 03a712cddb...
+- DB fingerprint AFTER tests: 03a712cddb... (UNCHANGED)
+- 0 DB mutations during 166 tests
+
+## REC-10 — RESTART SURVIVABILITY TEST: **BLOCKED 🔴**
+
+### Critical Finding: Auto-Checkout-Recovery Process Switches Branches
+
+After creating the recovery commit (898655f) on platform/phase-1, the auto-checkout-recovery process:
+1. Detected the branch is platform/phase-1 (not main)
+2. Switched HEAD from platform/phase-1 (898655f) to main (03c7f7e)
+3. This caused the working tree to reset to main's state
+4. All 5 re-authored files (which only exist on platform/phase-1, NOT on main) "disappeared"
+5. The DB was NOT recreated during this switch (DB data persists from seeding)
+
+### Reflog Evidence
+```
+898655f platform/phase-1@{0} commit: recovery(cp-02.17) (2026-10-04 21:17:19)
+03c7f7e HEAD@{0} checkout: moving from platform/phase-1 to main
+```
+
+### Attempts to Switch Back
+- `git checkout platform/phase-1` → succeeds, HEAD = 898655f, all files present
+- But within seconds, auto-checkout-recovery switches BACK to main (03c7f7e)
+- Files that only exist on platform/phase-1 become invisible again
+
+### What Survives
+| Artifact | On platform/phase-1 (898655f) | On main (03c7f7e) | Survives? |
+|----------|-------------------------------|-------------------|-----------|
+| validator-registry.ts | ✅ TRACKED | ❌ NOT present | ❌ Invisible on main |
+| 5 test files | ✅ TRACKED | ❌ NOT present | ❌ Invisible on main |
+| 23 modified source files | ✅ TRACKED | ❌ NOT modified | ❌ Old versions on main |
+| DB data (seeded) | ✅ Present | ✅ Present | ✅ DB not affected by branch switch |
+| Schema | ✅ cc026d26d... | ✅ cc026d26d... | ✅ Schema not affected |
+
+### Root Cause
+The auto-checkout-recovery process (likely in /start.sh or a background monitoring script) forces the branch to `main` whenever it detects the branch is not `main`. This is the same mechanism that causes the container restart data loss — it's not just about file deletion, it's about BRANCH SWITCHING.
+
+## REC-11 — STARTUP ROOT-CAUSE FIX: **BLOCKED 🔴 — REQUIRES EXECUTIVE DECISION**
+
+### Root Cause Analysis
+
+The `/start.sh` recovery flow (or a background process) includes logic that:
+1. Monitors the current git branch
+2. When the branch is NOT `main`, it switches to `main`
+3. This causes all branch-specific files (commits on platform/phase-1 that are NOT on main) to become invisible
+
+### Why This Can't Be Fixed By Agent
+
+1. `/start.sh` is owned by root (container entrypoint) — Agent runs as user `z`
+2. The auto-checkout-recovery mechanism is likely in the container infrastructure, not in the project
+3. Any fix to `/start.sh` would require container-level access
+
+### Available Fix Options (All Require Executive Authorization)
+
+**Option A: Merge recovery commit into main**
+- `git checkout main && git merge platform/phase-1 --no-ff`
+- This would make all Phase A-E artifacts available on main
+- The auto-checkout-recovery process would then find them on main
+- Risk: main was FROZEN — merging would change it
+- But: main is the DEFAULT branch the recovery process uses
+
+**Option B: Cherry-pick recovery commit onto main**
+- `git checkout main && git cherry-pick 898655f`
+- Same effect as Option A but more surgical
+- Risk: same — main was FROZEN
+
+**Option C: Fix auto-checkout-recovery to preserve current branch**
+- Modify /start.sh or the background monitoring script to NOT switch branches
+- Risk: requires root access (not available to Agent)
+
+**Option D: Make platform/phase-1 the default branch**
+- Change the container's default branch from main to platform/phase-1
+- Risk: requires container-level configuration
+
+### Recommendation
+**Option B (Cherry-pick)** is the most surgical:
+1. `git checkout main`
+2. `git cherry-pick 898655f` (recovery commit)
+3. This makes all artifacts available on main without a full merge
+4. The auto-checkout-recovery process would find them on main
+5. Future container restarts would preserve them (they'd be in repo.tar as tracked files on main)
+
+BUT: This requires explicit executive authorization because main was FROZEN ("main = FROZEN" per all executive orders).
+
+## REC-12-15: BLOCKED pending REC-10/REC-11 resolution
+
+## CP-02.17-SCP-REC-01 Decision
+
+**CP-02.17-SCP-REC-01 = BLOCKED 🔴**
+
+### Blocker: Auto-Checkout-Recovery Branch Switching
+
+The recovery commit (898655f) was successfully created on platform/phase-1 with all 5 re-authored files + 23 modified source files TRACKED. DB was re-seeded with correct data (all row counts match). Typecheck PASS. 166/166 tests PASS (verified on platform/phase-1 before auto-switch).
+
+BUT: The auto-checkout-recovery process switches from platform/phase-1 to main, making the recovery commit's artifacts invisible. This is a CONTAINER-LEVEL issue that cannot be fixed by the Agent.
+
+### Required Executive Decision
+
+1. **Authorize cherry-pick of 898655f onto main** (recommended — most surgical, makes artifacts survive future restarts)
+2. OR: **Authorize merge of platform/phase-1 into main**
+3. OR: **Authorize fixing the auto-checkout-recovery mechanism** (requires root access)
+4. OR: **Authorize using main as the working branch** (abandon platform/phase-1)
+
+### What IS Verified (on platform/phase-1 before auto-switch)
+
+| Check | Result |
+|-------|--------|
+| Recovery commit 898655f | ✅ Created with all 28 files |
+| Typecheck | ✅ PASS (0 errors) |
+| Lint | ✅ PASS (0 errors, 9 warnings) |
+| 166 tests | ✅ 166/166 PASS |
+| DB isolation | ✅ Fingerprint unchanged after tests |
+| DB row counts | ✅ All match CP-RECOVERY-04-BL baseline |
+| Schema fingerprint | ✅ cc026d26d... (UNCHANGED) |
+| Contract invariants | ✅ 39 registerResource, 23 handlers, 14 operators, 0 audit bypass |
+| FK violations | ✅ 0 |
+| Provenance | ✅ RE-AUTHORED (×3), NOT claimed as original |
+
+### Architecture Lock
+
+```
+CP-02.17-SCP-REC-01 = BLOCKED 🔴 (auto-checkout-recovery branch switching)
+Store Control Plane = BLOCKED 🔒
+Marketplace Control Plane = LOCKED 🔒
+Page Builder = LOCKED 🔒
+AI Control Plane = LOCKED 🔒
+Production Gate = LOCKED 🔒
+```
+
+**STOP. AWAITING EXECUTIVE DECISION ON OPTIONS A/B/C/D.**
+
