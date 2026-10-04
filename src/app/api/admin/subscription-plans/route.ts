@@ -104,7 +104,9 @@ export async function POST(req: Request) {
 
     const plan = await db.subscriptionPlan.create({ data });
 
-    await audit("subscription_plan.create", plan.id, null, data);
+    // CP-02.15.10: local audit() function removed; canonical logAudit() captures
+    // actorId/actorType/action/entityType/entityId/after/reason with full context
+    // (ip/userAgent/requestId captured automatically by logAudit).
     await logAudit({
       actorId: user.id,
       actorType: "ADMIN",
@@ -143,24 +145,7 @@ function normalizeJson(v: any): string | null {
   }
 }
 
-async function audit(
-  action: string,
-  entityId: string,
-  before: any,
-  after: any,
-) {
-  try {
-    await db.auditLog.create({
-      data: {
-        actorType: "ADMIN",
-        action,
-        entityType: "SubscriptionPlan",
-        entityId,
-        beforeJson: before ? JSON.stringify(before).slice(0, 4000) : null,
-        afterJson: after ? JSON.stringify(after).slice(0, 4000) : null,
-      },
-    });
-  } catch {
-    /* best-effort */
-  }
-}
+// CP-02.15.10: local audit() function REMOVED.
+// All audit logging now goes through the canonical `logAudit()` from
+// `@/lib/audit`, which captures actorId, ip, userAgent, requestId in
+// addition to action/entityType/entityId/before/after. One audit pipeline.

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { can, isAdmin } from "@/lib/authorization";
 
 /* ============================================================
@@ -113,19 +113,18 @@ export async function requireOwnership(
 }
 
 /**
- * Shared authorizeAdmin() helper — extracted from 6 admin route files
- * (ai-agents, alerts/match, jobs, opportunities) to eliminate duplication.
+ * CP-02.15.3: authorizeAdmin() legacy hybrid function REMOVED.
  *
- * Checks BOTH the legacy admin-cookie path (via isAuthenticated())
- * AND the modern RBAC path (getCurrentUser() → isAdmin()). The legacy
- * path is intentionally preserved for backwards compatibility — it will
- * be removed in PR-7A when the synthetic ADMIN short-circuit is addressed.
+ * All 6 former consumers (opportunities, ai-agents list + [id],
+ * jobs list + [id], alerts/match, seo) have been migrated to the
+ * canonical `requireAdmin(perm)` path which uses fine-grained
+ * permission keys + the canonical authorization chain:
+ *   getCurrentUser() → User → UserRole → Role → RolePermission → Permission
  *
- * Returns true if either path succeeds, false otherwise.
+ * The legacy hybrid path (admin-cookie short-circuit OR RBAC) was
+ * a permission bypass (see CP-02 FINDING-5). Removing it eliminates
+ * the bypass for these 6 routes; the synthetic ADMIN id short-circuit
+ * in can()/isAdmin() is still present (CP-02 FINDING-1) and will be
+ * addressed in CP-03 (Legacy Auth Removal) under separate executive
+ * authorization.
  */
-export async function authorizeAdmin(): Promise<boolean> {
-  if (await isAuthenticated()) return true;
-  const user = await getCurrentUser();
-  if (!user) return false;
-  return isAdmin(user.id);
-}

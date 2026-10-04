@@ -112,15 +112,17 @@ export async function GET(_req: Request, { params }: Args) {
 }
 
 /* PATCH /api/admin/users/[id] — update role/status/verified/companyName
-   (P0-RBAC: requires user.suspend — covers role/status lifecycle operations) */
+   (P0-RBAC: requires user.update — CP-02.15.7 unified action semantics.
+    If body.status is being changed, additionally requires user.suspend.
+    Role changes still require user.role.manage.) */
 export async function PATCH(req: Request, { params }: Args) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await hasPermission(sessionUser.id, "user.suspend"))) {
+  if (!(await hasPermission(sessionUser.id, "user.update"))) {
     return NextResponse.json(
-      { error: "Forbidden: missing permission 'user.suspend'" },
+      { error: "Forbidden: missing permission 'user.update'" },
       { status: 403 },
     );
   }
@@ -130,6 +132,17 @@ export async function PATCH(req: Request, { params }: Args) {
 
     const existing = await db.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // CP-02.15.7: status changes (e.g. SUSPENDED) require an additional
+    // user.suspend permission — separates general update from suspend-lifecycle.
+    if ("status" in body && body.status !== existing.status) {
+      if (!(await hasPermission(sessionUser.id, "user.suspend"))) {
+        return NextResponse.json(
+          { error: "Forbidden: missing permission 'user.suspend' to change user status" },
+          { status: 403 },
+        );
+      }
+    }
 
     const data: any = {};
     const allowedFields = [

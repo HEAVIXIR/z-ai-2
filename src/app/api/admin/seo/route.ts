@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { isAdmin } from "@/lib/rbac";
 import {
   getSEO,
   upsertSEO,
@@ -16,6 +14,7 @@ import {
   listSEO,
   type UpdateSEOInput,
 } from "@/lib/seo-service";
+import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,25 +32,16 @@ export const dynamic = "force-dynamic";
    Permission: seo.read (GET), seo.manage (POST/PUT/PATCH)
    ============================================================ */
 
-async function authorizeAdmin(): Promise<string | null> {
-  // Legacy admin cookie path — full access
-  const user = await getCurrentUser();
-  if (!user) return null;
-  // Require admin role
-  const adminOk = await isAdmin(user.id);
-  if (!adminOk) return null;
-  return user.id;
-}
+// CP-02.15.3: local authorizeAdmin() removed; replaced with canonical requireAdmin("seo.read") / requireAdmin("seo.manage")
 
 function isValidEntityType(t: string): boolean {
   return (SEO_ENTITY_TYPES as readonly string[]).includes(t);
 }
 
 export async function GET(req: Request) {
-  const userId = await authorizeAdmin();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from local authorizeAdmin() to canonical requireAdmin(perm)
+  const [, error] = await requireAdmin("seo.read");
+  if (error) return error;
   try {
     const url = new URL(req.url);
     const entityType = url.searchParams.get("entityType")?.trim() || "";
@@ -145,10 +135,10 @@ export async function GET(req: Request) {
  * so mutations are consistently audit-logged as `seo.update`.
  */
 async function handleUpsert(req: Request): Promise<Response> {
-  const userId = await authorizeAdmin();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from local authorizeAdmin() to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("seo.manage");
+  if (error) return error;
+  const userId = user?.id ?? null;
   try {
     const body = await req.json().catch(() => null);
     if (

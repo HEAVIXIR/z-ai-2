@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { authorizeAdmin } from "@/lib/admin-guard";
 import { matchSavedSearches } from "@/lib/alert-matcher";
 import { logAudit } from "@/lib/audit";
+import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,14 +19,13 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export async function POST() {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("analytics.manage");
+  if (error) return error;
 
   try {
     const result = await matchSavedSearches();
 
-    const user = await getCurrentUser().catch(() => null);
     await logAudit({
       actorId: user?.id ?? null,
       actorType: "ADMIN",

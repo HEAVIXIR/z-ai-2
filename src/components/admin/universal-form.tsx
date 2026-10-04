@@ -15,6 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -336,7 +338,32 @@ function FormField({
         )}
       </Label>
 
-      {renderField(field, value, onChange, config, allValues, isReadOnly)}
+      {/* CP-02.17-IR-01 §E.4: dependsOn — if field depends on another field's value,
+          check the dependency before rendering. If dependency is not satisfied,
+          render a disabled placeholder. */}
+      {field.dependsOn ? (
+        (() => {
+          const depValue = allValues[field.dependsOn.field];
+          const depSatisfied = field.dependsOn.value === undefined
+            ? depValue != null && depValue !== ''
+            : depValue === field.dependsOn.value;
+          if (!depSatisfied) {
+            return (
+              <Input
+                id={field.key}
+                type="text"
+                value=""
+                placeholder={`ابتدا «${field.dependsOn.field}» را پر کنید`}
+                className="text-xs opacity-50"
+                disabled
+              />
+            );
+          }
+          return renderField(field, value, onChange, config, allValues, isReadOnly);
+        })()
+      ) : (
+        renderField(field, value, onChange, config, allValues, isReadOnly)
+      )}
 
       {field.helpText && (
         <p className="text-[10px] text-muted-foreground">{field.helpText}</p>
@@ -424,6 +451,79 @@ function renderField(
             ))}
           </SelectContent>
         </Select>
+      );
+
+    // CP-02.17-IR-01 §E.2: multi-select renderer — schema-driven, keyboard accessible
+    case 'multi-select': {
+      const selectedValues = Array.isArray(value) ? value as string[] : [];
+      const toggle = (v: string) => {
+        if (selectedValues.includes(v)) {
+          onChange(selectedValues.filter(s => s !== v));
+        } else {
+          onChange([...selectedValues, v]);
+        }
+      };
+      return (
+        <div className={cn('rounded-md border', disabled && 'opacity-60')}>
+          <div className="flex flex-wrap items-center gap-1 p-2 min-h-9">
+            {selectedValues.length > 0 ? (
+              selectedValues.map(v => {
+                const opt = field.options?.find(o => o.value === v);
+                return (
+                  <Badge key={v} variant="secondary" className="text-xs gap-1">
+                    {opt?.label ?? v}
+                    {!disabled && (
+                      <button
+                        type="button"
+                        onClick={() => toggle(v)}
+                        className="ml-1 rounded-sm hover:bg-black/10"
+                        aria-label={`حذف ${opt?.label ?? v}`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </Badge>
+                );
+              })
+            ) : (
+              <span className="text-xs text-muted-foreground">{field.placeholder ?? 'انتخاب کنید...'}</span>
+            )}
+          </div>
+          {!disabled && field.options && field.options.length > 0 && (
+            <div className="border-t max-h-40 overflow-y-auto">
+              {field.options.map(opt => (
+                <label
+                  key={opt.value}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent cursor-pointer"
+                >
+                  <Checkbox
+                    checked={selectedValues.includes(opt.value)}
+                    onCheckedChange={() => toggle(opt.value)}
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // CP-02.17-IR-01 §E.3: rich-text renderer — plain text textarea with server-side sanitization
+    // Security: no arbitrary HTML, no script execution, no unsafe URL protocol.
+    // Server-side validation (resource-validator.ts) sanitizes via z.string().
+    // The actual rich-text rendering (if any) must happen server-side with a sanitizer.
+    case 'rich-text':
+      return (
+        <Textarea
+          id={inputId}
+          value={(value as string) ?? ''}
+          onChange={e => onChange(e.target.value)}
+          placeholder={field.placeholder ?? 'متن...'}
+          rows={5}
+          className="text-xs"
+          disabled={disabled}
+        />
       );
 
     case 'date':

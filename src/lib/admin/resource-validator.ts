@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 import type { AdminResourceConfig, AdminField } from './types';
+import { resolveValidator } from './validator-registry';
 
 // ── Types ──────────────────────────────────────────────────
 export interface ValidationError {
@@ -164,7 +165,48 @@ export function validateResourcePayload(
   const result = schema.safeParse(data);
 
   if (result.success) {
-    return { ok: true, errors: [], data: result.data as Record<string, unknown> };
+    // ── CP-02.17-IR-01 §04: Custom validator resolution ──
+    // After zod schema validation passes, run custom validators
+    // for fields that declare `validator?: string` in their validation config.
+    //
+    // Security: No eval(), no dynamic import — uses allowlisted registry.
+    // Unknown validator names FAIL CLOSED (reject the input).
+    const validatedData = result.data as Record<string, unknown>;
+    const customErrors: ValidationError[] = [];
+
+    for (const field of config.fields) {
+      const validatorName = field.validation?.validator;
+      if (!validatorName) continue;
+
+      // Only run custom validator if the field is present in the payload
+      if (!(field.key in validatedData)) continue;
+
+      const fn = resolveValidator(validatorName);
+      if (!fn) {
+        // FAIL CLOSED: unknown validator name → reject
+        customErrors.push({
+          field: field.key,
+          message: `اعتبارسنج ناشناخته: ${validatorName}`,
+          code: 'custom',
+        });
+        continue;
+      }
+
+      const errMsg = fn(validatedData[field.key], field, validatedData);
+      if (errMsg) {
+        customErrors.push({
+          field: field.key,
+          message: errMsg,
+          code: 'custom',
+        });
+      }
+    }
+
+    if (customErrors.length > 0) {
+      return { ok: false, errors: customErrors };
+    }
+
+    return { ok: true, errors: [], data: validatedData };
   }
 
   // Convert zod errors to ValidationError format

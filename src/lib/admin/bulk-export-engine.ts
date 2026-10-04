@@ -20,6 +20,7 @@ import { executeAction, type ActionResult, type ActionContext } from './action-e
 import { registry } from './resource-registry';
 import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
+import { filterReadableFieldsAsync } from './field-policy';
 
 // ── Types ──────────────────────────────────────────────────
 export interface BulkActionResult {
@@ -202,16 +203,38 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
   }
 
   // 2. Determine fields to export
-  const exportFields = fields?.length
+  // CP-02.17-IR-01 §05: Field-policy enforcement — filter out columns
+  // with permissions.read restrictions that the user doesn't have.
+  // Previously used `visible !== false` only (SECURITY GAP — now fixed).
+  const canFieldRead = async (col: any) => {
+    if (!col.permissions?.read) return true; // no read restriction → visible
+    return await can(ctx.userId, col.permissions.read);
+  };
+
+  const allExportableColumns = fields?.length
     ? config.columns.filter(c => fields.includes(c.key))
     : config.columns.filter(c => c.visible !== false);
 
+  // Filter to only columns the user has permission to read
+  const readableChecks = await Promise.all(
+    allExportableColumns.map(async col => ({ col, canRead: await canFieldRead(col) }))
+  );
+  const exportFields = readableChecks
+    .filter(check => check.canRead)
+    .map(check => check.col);
+
   // 3. Query data (no pagination — export all matching records)
   const model = (db as any)[config.model];
-  const items = await model.findMany({
+  const rawItems = await model.findMany({
     where: filters || {},
     take: 5000, // safety limit
   });
+
+  // CP-02.17-IR-01 §05: Apply field-read policy to strip restricted fields
+  // from the queried data. This is defense-in-depth — the exportFields filter
+  // above already excludes restricted columns from the header, but this ensures
+  // that raw DB data with restricted fields is also stripped from each row.
+  const items = await filterReadableFieldsAsync(config, rawItems, ctx.userId);
 
   // 4. Log export audit
   await logAudit({

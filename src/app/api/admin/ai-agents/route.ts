@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
 import { listAgents, runAgent } from "@/lib/ai-agents";
 import { logAudit } from "@/lib/audit";
-import { authorizeAdmin } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +19,9 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export async function GET() {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [, error] = await requireAdmin("ai.read");
+  if (error) return error;
   try {
     const agents = await listAgents();
     return NextResponse.json({ ok: true, agents });
@@ -35,10 +34,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = await getCurrentUser();
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("ai.manage");
+  if (error) return error;
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.key !== "string" || !body.key.trim()) {

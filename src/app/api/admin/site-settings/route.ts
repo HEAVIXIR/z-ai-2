@@ -41,15 +41,15 @@ export async function GET() {
   }
 }
 
-/* PUT /api/admin/site-settings  (P0-RBAC: requires settings.manage) */
+/* PUT /api/admin/site-settings  (P0-RBAC: requires admin.settings.manage — CP-02.15.6 unified with GET) */
 export async function PUT(req: Request) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await hasPermission(sessionUser.id, "settings.manage"))) {
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
     return NextResponse.json(
-      { error: "Forbidden: missing permission 'settings.manage'" },
+      { error: "Forbidden: missing permission 'admin.settings.manage'" },
       { status: 403 },
     );
   }

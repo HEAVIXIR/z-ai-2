@@ -26,10 +26,12 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ taskType: string }> },
 ) {
+  // CP-02.15.9: added canonical authorization check (ai.read) — was missing.
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "ai.read");
   const { taskType } = await ctx.params;
   const policy = await db.aITaskPolicy.findUnique({ where: { taskType } });
   if (!policy) {

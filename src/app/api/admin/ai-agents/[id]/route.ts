@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { authorizeAdmin } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,9 +23,9 @@ interface Params {
    ============================================================ */
 
 export async function GET(_req: Request, { params }: Params) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [, error] = await requireAdmin("ai.read");
+  if (error) return error;
   try {
     const { id } = await params;
     const agent = await db.aIAgent.findUnique({ where: { id } });
@@ -43,10 +42,9 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = await getCurrentUser();
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("ai.manage");
+  if (error) return error;
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -125,10 +123,9 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = await getCurrentUser();
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("ai.manage");
+  if (error) return error;
   try {
     const { id } = await params;
     const existing = await db.aIAgent.findUnique({ where: { id } });

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
 import { getOpportunities, runOpportunityScan, updateOpportunityStatus } from "@/lib/opportunity-engine";
 import { logAudit } from "@/lib/audit";
-import { authorizeAdmin } from "@/lib/admin-guard";
+import { requireAdmin } from "@/lib/admin-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +17,9 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export async function GET(req: Request) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [, error] = await requireAdmin("analytics.read");
+  if (error) return error;
   try {
     const url = new URL(req.url);
     const type = url.searchParams.get("type")?.trim() || undefined;
@@ -37,10 +36,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = await getCurrentUser();
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("analytics.manage");
+  if (error) return error;
   try {
     const body = await req.json().catch(() => null);
     const action = body?.action;
@@ -72,10 +70,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  if (!(await authorizeAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const user = await getCurrentUser();
+  // CP-02.15.3: migrated from authorizeAdmin() legacy hybrid to canonical requireAdmin(perm)
+  const [user, error] = await requireAdmin("analytics.manage");
+  if (error) return error;
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.id !== "string" || typeof body.status !== "string") {

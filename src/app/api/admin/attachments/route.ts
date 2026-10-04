@@ -9,10 +9,12 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/admin/attachments */
 export async function GET(req: Request) {
+  // CP-02.15.9: added canonical authorization check (media.manage) — was missing.
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await requirePermission(user.id, "media.manage");
   try {
     const url = new URL(req.url);
     const productId = url.searchParams.get("productId") || undefined;

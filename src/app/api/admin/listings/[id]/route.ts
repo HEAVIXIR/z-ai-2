@@ -156,12 +156,17 @@ export async function PATCH(req: Request, { params }: Params) {
     const action = queryAction ?? bodyAction;
 
     const data: any = {};
+    // CP-02.15.8: sellerId removed from allowedFields — seller reassignment via
+    // PATCH body is a privilege/ownership escalation risk. A formal ownership
+    // transfer path with separate permission (e.g. listing.transfer) and
+    // dedicated audit must exist before sellerId can be reassigned. Until
+    // then, sellerId is immutable in this PATCH contract.
     const allowedFields = [
       "title", "description", "shortDesc", "priceType", "listingType",
       "condition", "province", "city", "year", "workingHours", "status",
       "featured", "verified", "showInLatest", "sellerPhone", "sellerName",
       "sourceUrl", "sourceSite", "adminNotes", "brandId", "categoryId", "modelId",
-      "sellerId", "companyId", "publishedAt",
+      "companyId", "publishedAt",
       // P1-5/6 — canonical Location + Transaction normalization
       "transactionTypeId", "countryId", "provinceId", "cityId", "productId",
     ];

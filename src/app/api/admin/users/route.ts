@@ -120,15 +120,15 @@ export async function GET(req: Request) {
 }
 
 /* POST /api/admin/users — admin creates a user.
-   (P0-RBAC: requires user.suspend — covers role/status lifecycle operations) */
+   (P0-RBAC: requires user.create — CP-02.15.7 unified action semantics) */
 export async function POST(req: Request) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await hasPermission(sessionUser.id, "user.suspend"))) {
+  if (!(await hasPermission(sessionUser.id, "user.create"))) {
     return NextResponse.json(
-      { error: "Forbidden: missing permission 'user.suspend'" },
+      { error: "Forbidden: missing permission 'user.create'" },
       { status: 403 },
     );
   }

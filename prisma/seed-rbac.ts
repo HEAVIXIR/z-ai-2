@@ -128,16 +128,16 @@ const PERMISSIONS: PermissionSeed[] = [
 
 /* ───────────── Role → Permission matrix ───────────── */
 
-// Use canonical ROLE_PERMISSIONS from permissions.ts + local SUPPORT additions
+// CP-RECOVERY-04.R1: removed the stale SUPPORT override that was incorrectly
+// replacing canonical SUPPORT (18 permissions in permissions.ts:316-329)
+// with only 4 local permissions. The override was based on an incorrect
+// comment claiming "SUPPORT is not in canonical ROLE_PERMISSIONS" — but
+// permissions.ts:316-329 DOES define SUPPORT with 18 permissions. Now we
+// use the canonical ROLE_PERMISSIONS verbatim, which includes all 5 roles
+// (ADMIN, SELLER, BUYER, MODERATOR, SUPPORT) with their canonical permission
+// sets.
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   ...CANONICAL_ROLE_PERMISSIONS,
-  // SUPPORT is not in canonical ROLE_PERMISSIONS — add locally
-  SUPPORT: [
-    "user.read",
-    "user.suspend",
-    "listing.read",
-    "audit.read",
-  ],
 };
 
 /* ───────────── Run ───────────── */

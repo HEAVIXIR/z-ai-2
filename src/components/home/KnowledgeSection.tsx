@@ -138,7 +138,10 @@ function AnimatedKnowledgeCarousel({ articles }: { articles: KnowledgeCard[] }) 
                 alt={current.title}
                 className="h-full w-full object-cover"
                 style={{
-                  animation: isTransitioning ? "none" : "imgWipeIn 700ms cubic-bezier(0.25,0.46,0.45,0.94) both",
+                  animationName: isTransitioning ? "none" : "imgWipeIn",
+                  animationDuration: isTransitioning ? "0ms" : "700ms",
+                  animationTimingFunction: isTransitioning ? "ease" : "cubic-bezier(0.25,0.46,0.45,0.94)",
+                  animationFillMode: isTransitioning ? "none" : "both",
                 }}
               />
             ) : (
@@ -157,7 +160,10 @@ function AnimatedKnowledgeCarousel({ articles }: { articles: KnowledgeCard[] }) 
                 CATEGORY_COLORS[current.category] || "bg-white/10 text-white/60"
               }`}
               style={{
-                animation: isTransitioning ? "none" : "badgeSlideIn 400ms 300ms both",
+                animationName: isTransitioning ? "none" : "badgeSlideIn",
+                animationDuration: isTransitioning ? "0ms" : "400ms",
+                animationDelay: isTransitioning ? "0ms" : "300ms",
+                animationFillMode: isTransitioning ? "none" : "both",
               }}
             >
               {CATEGORY_LABELS[current.category] || current.category}
@@ -173,8 +179,10 @@ function AnimatedKnowledgeCarousel({ articles }: { articles: KnowledgeCard[] }) 
               <p
                 className="mt-4 line-clamp-3 text-sm leading-6 text-white/50"
                 style={{
-                  animation: isTransitioning ? "none" : "excerptFadeUp 500ms both",
-                  animationDelay: `${300 + current.title.length * 45 + 200}ms`,
+                  animationName: isTransitioning ? "none" : "excerptFadeUp",
+                  animationDuration: isTransitioning ? "0ms" : "500ms",
+                  animationDelay: isTransitioning ? "0ms" : `${300 + current.title.length * 45 + 200}ms`,
+                  animationFillMode: isTransitioning ? "none" : "both",
                 }}
               >
                 {current.excerpt}
@@ -185,8 +193,10 @@ function AnimatedKnowledgeCarousel({ articles }: { articles: KnowledgeCard[] }) 
             <div
               className="mt-5 flex items-center gap-4"
               style={{
-                animation: isTransitioning ? "none" : "excerptFadeUp 500ms both",
-                animationDelay: `${300 + current.title.length * 45 + 400}ms`,
+                animationName: isTransitioning ? "none" : "excerptFadeUp",
+                animationDuration: isTransitioning ? "0ms" : "500ms",
+                animationDelay: isTransitioning ? "0ms" : `${300 + current.title.length * 45 + 400}ms`,
+                animationFillMode: isTransitioning ? "none" : "both",
               }}
             >
               <Link
@@ -300,7 +310,9 @@ function TypingText({ text, play }: { text: string; play: boolean }) {
             background: "#F58220",
             marginLeft: "2px",
             verticalAlign: "text-bottom",
-            animation: "cursorBlink 0.8s infinite",
+            animationName: "cursorBlink",
+            animationDuration: "0.8s",
+            animationIterationCount: "infinite",
           }}
         />
       )}
