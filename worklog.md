@@ -22831,3 +22831,126 @@ INCIDENT REMEDIATION RECOMMENDATION (for Infrastructure Authority, NOT for Agent
 3. Agent has NOT attempted any repair per §01 rule "هیچ reset یا repair خودکار مجاز نیست"
 
 STOP. STATE C — INFRASTRUCTURE HOLD 🔴. Awaiting Infrastructure Authority.
+
+---
+Task ID: CP-02.17-SCP-REC-04-CONTROL-V1 — §04A + §04B/§04C/§04D status
+Agent: primary orchestrator
+Task: Incident Containment + Infrastructure Snapshot Order documentation
+
+Work Log:
+- §04A.1 — DYNAMIC HEAD verification (READ-ONLY, no hardcoded SHA):
+  - Timestamp: 2026-10-04T22:31:32Z
+  - HEAD_SHA (git rev-parse HEAD) = 79eda006ffe174e3f25c0656d0151a83e0ce122b
+  - MAIN_SHA (git rev-parse main) = 79eda006ffe174e3f25c0656d0151a83e0ce122b (matches HEAD)
+  - BRANCH = main
+  - ORIGIN_SHA = 03c7f7e110d32616b6271e17bbc2e812c25d5348 (FROZEN)
+  - Condition checks per §B1: ALL PASS (HEAD_SHA==MAIN_SHA, BRANCH==main, working tree CLEAN with dirty=0)
+  - main 6 commits ahead of origin/main, origin 0 commits ahead
+  - git fsck exit 0 (dangling commits exist but not reachable from HEAD — normal)
+  - Stale-evidence audit: previous report's "79eda00" matches current HEAD prefix — no drift in stale-evidence reporting from previous report
+
+- §04A.2 — Incident Containment verification (READ-ONLY):
+  - Contaminated tar metadata (preserved as forensic evidence):
+    - owner=root, group=root, mode=777 (still world-writable — unchanged from R-03B)
+    - size=207566942 bytes (R-03B baseline 207566937 — +5 bytes confirms contamination)
+    - mtime=2026-10-04 22:21:14 (this is the time of the echo >> test, NOT the original 20:53:23)
+  - Current (post-incident) SHA256: 8ba984e063d1052ba3987cb4d2928da59698d7365c6d6ef529674ed95389b1f4
+  - R-03B baseline (historical, pre-incident) SHA256: 884eb678c5d004b3e3b686d2f521623fda171a752b417ffe7d2ff0a91a1b1158
+  - DRIFT confirmed — tar does NOT match R-03B baseline (expected)
+  - tar -tzf still lists 5639 files with warning "trailing garbage ignored" (functional readability YES, integrity validity NO)
+  - /start.sh metadata UNCHANGED:
+    - owner=root, mode=755, size=18206, mtime=2026-09-21 11:34:29
+    - SHA256 c36a315314f8e6aa4537c8533202d737e79d1951946d06c19a17225bd00ed5cb (matches baseline — NOT contaminated)
+
+- §04A.2.7 — Incident reclassification (per §04A executive order):
+  - Incident is INDEPENDENT Integrity Incident, NOT a side note
+  - "Functional readability ≠ Integrity validity" — the contaminated tar is FUNCTIONALLY readable but NOT integrity-valid
+  - Therefore: contaminated tar is FORENSIC EVIDENCE ONLY, NOT a valid persistence source
+  - Must NOT be used as source for persistence recovery — Infrastructure Authority must build NEW snapshot
+
+- §04A.2.8 — No further mutations since Incident report (commit 79eda00):
+  - Agent has NOT executed any: echo >>, touch, truncate, cp, mv, rm, tar -cf, tar -xf, sed -i, chmod, chown
+  - Only read-only operations performed: stat, sha256sum, tar -tzf, git rev-parse/status/log/fsck
+
+- §04A.3 — Working tree canonical state verification (READ-ONLY):
+  - All 5 recovery artifacts present in working tree + git tracked + HEAD blob exists:
+    - src/lib/admin/validator-registry.ts (2709 bytes, blob 9e15535e...)
+    - tests/contract/validator-resolution-contract.test.ts (7006 bytes, blob 1dd2a480...)
+    - tests/contract/export-security-contract.test.ts (3396 bytes, blob f77cdbd8...)
+    - tests/contract/cp0215-remediation-contract.test.ts (12785 bytes, blob d8023d34...)
+    - tests/security/cp0215-security-regression.test.ts (9784 bytes, blob e0d1f5b9...)
+  - All 7 recovery-modified source files present:
+    - resource-validator.ts (8321 bytes), bulk-export-engine.ts (9125 bytes)
+    - universal-form.tsx (25509 bytes), KnowledgeSection.tsx (11220 bytes)
+    - admin-guard.ts (4856 bytes), seed-rbac.ts (10040 bytes), seed-admin-navigation.ts (15958 bytes)
+  - Schema fingerprint unchanged: cc0d726db...
+  - All 3 critical branch refs preserved:
+    - main: 79eda006... (current HEAD)
+    - platform/phase-1: 898655f... (recovery commit on platform/phase-1)
+    - cp-02.17-pre-recovery-main: 447b940... (rollback branch)
+
+Stage Summary:
+- §04A PASS: HEAD dynamically verified (79eda006...), Incident contained, no further mutations
+- §04B NOT EXECUTED by Agent (requires Infrastructure Authority with root)
+  - PASS MATRIX documented below for Infrastructure Authority
+- §04C NOT AUTHORIZED (REC-04B must PASS first)
+- §04D NOT AUTHORIZED (REC-04C must PASS first)
+- Contaminated tar PRESERVED as forensic evidence (not repaired, not truncated, not overwritten)
+- Working tree is now CANONICAL source for snapshot reconstruction
+- All recovery artifacts + sources + schema + refs verified present in working tree
+
+REC-04B PASS MATRIX (for Infrastructure Authority execution):
+
+| # | Control | Required | Status |
+|---|---------|----------|--------|
+| 1 | Archive newly generated | Snapshot built from CURRENT verified repository (not patched) | PENDING (Infrastructure Authority) |
+| 2 | New SHA256 recorded | sha256sum of new tar documented | PENDING |
+| 3 | Archive structurally readable | tar -tzf exits cleanly (no trailing garbage warning) | PENDING |
+| 4 | .git/HEAD = main | tar's .git/HEAD = "ref: refs/heads/main" (NOT platform/phase-1) | PENDING |
+| 5 | main == verified HEAD | tar's .git/refs/heads/main = $(git rev-parse HEAD) at snapshot time | PENDING |
+| 6 | HEAD commit object exists | git cat-file -t <HEAD> returns "commit" | PENDING |
+| 7 | HEAD ancestry complete | git rev-list --objects <HEAD> matches tar's git objects (HEAD closure) | PENDING |
+| 8 | Recovery commits preserved | 7bc6369, ed7e8b6, afe33f3, 79eda00 objects in tar | PENDING |
+| 9 | Recovery artifacts preserved | All 5 files in working tree + blob objects in tar | PENDING |
+| 10 | Artifact blobs preserved | 9e15535e..., 1dd2a480..., f77cdbd8..., d8023d34..., e0d1f5b9... blobs in tar | PENDING |
+| 11 | Current source versions preserved | 8 recovery-modified source files at HEAD versions (NOT b7b6031 stale versions) | PENDING |
+| 12 | Recovery refs preserved | platform/phase-1 ref + 898655f object; cp-02.17-pre-recovery-main ref + 447b940 object | PENDING |
+| 13 | No stale platform/phase-1 HEAD | tar's .git/HEAD ≠ "ref: refs/heads/platform/phase-1" | PENDING |
+| 14 | Working tree snapshot matches canonical state | All files match git HEAD | PENDING |
+
+(Any FAIL → REC-04B FAIL → STOP → NO RESTART)
+
+REC-04C (REAL RESTART ORDER) — NOT AUTHORIZED YET:
+- Pre-restart evidence must be captured: HEAD, branch, status, HEAD tree hash, critical source hashes, artifact hashes, schema fingerprint, DB fingerprint
+- Restart authorized only with separate authorization
+- Post-restart first commands: git rev-parse HEAD, git branch --show-current, git status --short --untracked-files=all
+- Assertion: POST_RESTART_HEAD == PRE_RESTART_HEAD, POST_RESTART_BRANCH == PRE_RESTART_BRANCH, POST_RESTART_TREE == PRE_RESTART_TREE
+- /start.sh must be verified separately (it's a critical persistence dependency)
+- If repository returns to platform/phase-1: REC-04C = FAIL, no exceptions
+
+REC-04D (REGRESSION ORDER) — NOT AUTHORIZED YET:
+- Must execute same execution profile as PRE_RESTART baseline
+- Criterion: POST_FAILURES - PRE_EXISTING_FAILURES = NEW_FAILURES, where NEW_FAILURES = 0
+- NOT "TOTAL FAILURES = 0" (impossible due to 125 pre-existing)
+- NOT "TOTAL_POST <= TOTAL_PRE" (insufficient)
+- Any NEW_FAILURE > 0 → FAIL → STOP
+
+CRITICAL INSTRUCTION (per user's final note):
+- 79eda00 is the SHA I dynamically verified in §04A.1
+- However: BEFORE any next decision, this SHA must be re-verified with `git rev-parse HEAD`
+- If repository has moved since this verification (e.g., another commit added), the value 79eda00 immediately becomes STALE
+- Infrastructure Authority MUST capture SHA dynamically at snapshot time, not hard-code
+
+Architecture lock (unchanged):
+- CP-02.17-SCP-REC-03 = STATE C / BLOCKED
+- CP-02.17-SCP-REC-04 = NOT PASSED (§01 PASS, §02 VIOLATION INCIDENT, §03-§15 NOT EXECUTED)
+- REC-04B = NOT STARTED (pending Infrastructure Authority)
+- REC-04C = NOT AUTHORIZED
+- REC-04D = NOT AUTHORIZED
+- Store Control Plane = LOCKED
+- Marketplace = LOCKED
+- Page/Widget Builder = LOCKED
+- AI Control Plane = LOCKED
+- Production Gate = LOCKED
+
+Hard Freeze honored: no push, no merge, no rebase, no reset, no migration, no seed, no DB mutation, no feature implementation, no branch switching, no /home/sync/repo.tar modification (since Incident), no /start.sh modification, no restart, no write-tests (since §04A order).
