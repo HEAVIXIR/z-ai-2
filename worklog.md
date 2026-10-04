@@ -9116,3 +9116,81 @@ Production Gate = LOCKED 🔒
 
 **STOP. AWAITING EXECUTIVE DECISION ON OPTIONS A/B/C/D.**
 
+
+---
+Task ID: CP-02.17-SCP-REC-02 §05 (CHERRY-PICK CONFLICT — STOP)
+Agent: Main Orchestrator (Z.ai Code)
+Task: Controlled cherry-pick of recovery commit 898655f onto main
+
+## §05 — CONTROLLED CHERRY-PICK: CONFLICT — STOP PER EXECUTIVE ORDER 🔴
+
+### Conflict Details
+
+**Cherry-pick command**: `git cherry-pick 898655f`
+**Conflict file**: `src/components/home/KnowledgeSection.tsx` (UU — both modified)
+**Conflict regions**: 2 (lines 182-190 and 201-209)
+
+### What Applied Successfully (27 of 28 files)
+
+| Status | Files |
+|--------|-------|
+| A (Added/new) | 5: validator-registry.ts, validator-resolution-contract.test.ts, export-security-contract.test.ts, cp0215-remediation-contract.test.ts, cp0215-security-regression.test.ts |
+| M (Modified, auto-merged) | 22: all CP-02.15 source files + Phase A/E modifications + worklog.md |
+| UU (Conflict) | 1: KnowledgeSection.tsx |
+
+### Root Cause of Conflict
+
+The conflict is because KnowledgeSection.tsx went through TWO rounds of fixes:
+
+1. **Commit b7b6031** (platform/phase-1): Changed `animation:` shorthand to non-shorthand with `undefined` values
+2. **Recovery commit 898655f** working tree: Changed `undefined` to explicit stop values (`"none"`, `"0ms"`)
+
+On main (447b940 → 03c7f7e):
+- KnowledgeSection.tsx has the ORIGINAL version (with `animation:` shorthand)
+- It does NOT have b7b6031's intermediate fix (the `undefined` version)
+
+When cherry-picking 898655f's delta (b7b6031→explicit-stop-values) onto main's original version, the context lines don't match because main skipped the intermediate b7b6031 state.
+
+### Conflict Content (simplified)
+
+**HEAD (main)** — line 182:
+```tsx
+animation: isTransitioning ? "none" : `excerptFadeUp 500ms ${...}ms both`,
+```
+
+**898655f (recovery)** — line 182:
+```tsx
+animationName: isTransitioning ? "none" : "excerptFadeUp",
+animationDuration: isTransitioning ? "0ms" : "500ms",
+animationDelay: isTransitioning ? "0ms" : `${...}ms`,
+animationFillMode: isTransitioning ? "none" : "both",
+```
+
+### Resolution Path (Requires Executive Authorization)
+
+The correct resolution is to take 898655f's version (the recovery commit's explicit stop values). This is the version that:
+1. Resolves the animation conflict warning (UI-01 through UI-08)
+2. Was tested (166/166 tests PASS on platform/phase-1)
+3. Has explicit stop values per the UI executive order
+
+**Proposed approach**:
+1. Manually apply the KnowledgeSection.tsx fix (same fix as UI-01 through UI-08 — not re-authoring a lost file, just applying the same animation fix to main's version)
+2. Commit this fix on main
+3. Then re-attempt cherry-pick of 898655f (should succeed because KnowledgeSection.tsx would already have the correct version)
+4. OR: simply resolve the conflict by taking 898655f's version and continue
+
+**Per executive order**: STOP. DO NOT auto-resolve. Report and await decision.
+
+### Cherry-pick Aborted
+
+Per executive order §05: "DO NOT continue cherry-pick"
+- `git cherry-pick --abort` executed
+- HEAD restored to 447b940 (main, pre-cherry-pick state)
+- Working tree clean
+
+### Rollback Point Preserved
+
+- `cp-02.17-pre-recovery-main` branch at 447b940 (main before cherry-pick attempt)
+
+## §05 = STOP — CONFLICT IN KnowledgeSection.tsx — AWAITING EXECUTIVE DECISION
+
