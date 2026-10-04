@@ -22670,3 +22670,82 @@ Stage Summary:
 Prohibitions honored: No git push, no merge, no rebase, no reset, no force push, no DB reset, no DB seed, no schema migration, no Store/Marketplace/Page Builder/Production implementation throughout this gate.
 
 Final STOP. Recovery durable NOW, NOT durable across restart. Awaiting external infrastructure authority decision on repo.tar update.
+
+---
+Task ID: CP-02.17-SCP-REC-03 — GATE R-03A + R-03B
+Agent: primary orchestrator
+Task: State Reconciliation + Persistence Evidence (post-executive-control-order)
+
+Work Log:
+- GATE R-03A — State Reconciliation (READ-ONLY):
+  - HEAD = ed7e8b60f44751de27bf6291c4c9ebf96bdc1e9e (worklog commit, NOT 7bc6369 as previously claimed)
+  - main = ed7e8b6 (same as HEAD)
+  - origin/main = 03c7f7e (FROZEN)
+  - HEAD~1 = 7bc6369 (recovery commit, parent of HEAD)
+  - 7bc6369^ = 467352f (auto-snapshot, parent of recovery)
+  - merge-base(main, origin/main) = 03c7f7e
+  - main ahead of origin/main: 4 commits (NOT 3 as previously claimed)
+  - origin/main ahead of main: 0
+  - working tree CLEAN, untracked=NONE
+  - branch=main
+  - HEAD commit details: subject "worklog: append CP-02.17-SCP-REC-03 gate execution record", parent 7bc6369
+
+- STALE EVIDENCE CORRECTION:
+  - Previous report claimed HEAD = 7bc6369 — STALE, marked as such
+  - Previous report claimed main 3 commits ahead of origin — STALE, actual is 4
+  - Root cause: previous report was authored AFTER ed7e8b6 worklog commit but mistakenly cited pre-worklog HEAD
+  - Actual lineage: ed7e8b6 (HEAD) → 7bc6369 (HEAD~1, recovery) → 467352f (HEAD~2, auto-snapshot) → 447b940 (HEAD~3, rollback branch) → 03c7f7e (HEAD~4, origin/main FROZEN)
+
+- GATE R-03B — Persistence Evidence (READ-ONLY tar inspection):
+  - /home/sync/repo.tar metadata:
+    - Size: 207566937 bytes (198M)
+    - Mtime: 2026-10-04 20:53:23 +0000 (BEFORE recovery commit 7bc6369 at 21:17 author / 21:43 commit; BEFORE worklog commit ed7e8b6 at 21:59)
+    - Owner: root
+    - SHA256: 884eb678c5d004b3e3b686d2f521623fda171a752b417ffe7d2ff0a91a1b1158
+  - tar's .git/HEAD = ref: refs/heads/platform/phase-1 (NOT main — would switch branches on restart)
+  - tar's .git/refs/heads/main = 03c7f7e (FROZEN origin/main, NO recovery commit)
+  - tar's .git/refs/heads/platform/phase-1 = b7b6031 (BEFORE recovery commit 898655f)
+  - tar's .git/refs/heads/cp-02.17-pre-recovery-main = NOT IN TAR (rollback branch absent)
+  - tar's .git/packed-refs main entry = c665c34 (Sep 24 commit, very old)
+  - tar has 4010 git objects total (structurally valid tar)
+  - tar HAS b7b6031 object (platform/phase-1 HEAD at snapshot)
+  - tar HAS 03c7f7e object (main HEAD at snapshot)
+  - tar does NOT have 7bc6369 object (main's recovery commit — would be LOST on restart)
+  - tar does NOT have 898655f object (platform/phase-1's recovery commit — would be LOST on restart)
+  - tar does NOT have ed7e8b6 object (worklog commit — would be LOST on restart)
+  - tar does NOT have 447b940 object (rollback branch commit — would be LOST on restart)
+  - tar does NOT have 467352f object (auto-snapshot commit — would be LOST on restart)
+  - tar does NOT have any of 5 recovery artifacts (working tree files):
+    - src/lib/admin/validator-registry.ts — NOT IN TAR
+    - tests/contract/validator-resolution-contract.test.ts — NOT IN TAR
+    - tests/contract/export-security-contract.test.ts — NOT IN TAR
+    - tests/contract/cp0215-remediation-contract.test.ts — NOT IN TAR
+    - tests/security/cp0215-security-regression.test.ts — NOT IN TAR
+  - tar does NOT have any of 5 recovery artifact blob objects (would be unrecoverable from git objects)
+  - tar DOES have KnowledgeSection.tsx with explicit animation properties (matches current version, no diff) — animation fix was in b7b6031 (before recovery commit)
+  - /start.sh metadata: 18206 bytes, mtime Sep 21 11:34, owner root, sha256 c36a315314f8e6aa4537c8533202d737e79d1951946d06c19a17225bd00ed5cb
+  - /start.sh tar-extraction logic (lines 60-105):
+    - If /home/sync/repo.tar exists:
+      1. find /home/z/my-project -mindepth 1 -maxdepth 1 ! -path "/home/z/my-project/upload" -exec rm -rf {} + (wipe everything except /upload)
+      2. tar xf /home/sync/repo.tar -C /home/z/my-project --exclude='./upload' --exclude='upload' (extract stale tar)
+    - Result: HEAD switches to platform/phase-1 at b7b6031, main ref becomes 03c7f7e, all recovery commits + 5 artifacts LOST
+
+Stage Summary:
+- R-03A PASS: HEAD/main/origin/main/HEAD~1/merge-base/ahead-behind/working tree/branch all verified read-only
+- R-03B PASS: tar metadata + all internal refs + all 5 recovery artifacts + all 5 recovery commit objects verified read-only
+- Verdict: STATE C — BLOCKED remains (RESTART would cause data loss)
+- The tar is the SAME stale state identified in §11/§12 of the previous gate
+- No agent-level action can remediate: tar is root-owned, agent lacks root authorization per §12 rule
+- REQUIRED NEXT GATE: REC-04 — Infrastructure Recovery, must be executed by Infrastructure Authority with root access
+- REC-04 scope (per executive order):
+  - Update /home/sync/repo.tar to include:
+    - .git/HEAD = ref: refs/heads/main
+    - .git/refs/heads/main = ed7e8b6 (current verified main HEAD)
+    - recovery commit object 7bc6369 in .git/objects
+    - worklog commit object ed7e8b6 in .git/objects
+    - all 5 recovery artifacts in working tree + their blob objects in .git/objects
+    - optionally preserve cp-02.17-pre-recovery-main ref (447b940) and platform/phase-1 (898655f) for rollback
+- After REC-04: REC-04B (snapshot verification), REC-04C (real restart verification), REC-04D (post-restart regression)
+- Until REC-04 PASS: Store/Marketplace/Page Builder/AI/Production all LOCKED
+
+Hard Freeze honored: no push, no merge, no rebase, no reset, no migration, no seed, no DB mutation, no feature implementation, no branch switching, no /home/sync/repo.tar modification.
