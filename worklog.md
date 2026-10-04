@@ -22635,3 +22635,38 @@ Same recovery path as CP-RECOVERY-04:
 
 **STOP. FREEZE. CAPTURE. REPORT. AWAIT EXECUTIVE DECISION.**
 
+
+---
+Task ID: CP-02.17-SCP-REC-03
+Agent: primary orchestrator
+Task: Post-Recovery Persistence, Main Integrity & Store-Release Readiness Gate
+
+Work Log:
+- §01 Hard Fence: PASS — branch=main, HEAD=7bc6369ec32f56e9aa4854db18dfa3a006620a47, working tree CLEAN, untracked=NONE
+- §02 Recovery Content Proof: PASS — all 5 artifacts TRACKED (ls-files --error-unmatch success), tree contents retrievable (validator-registry.ts 81L, validator-resolution-contract.test.ts 139L, export-security-contract.test.ts 64L, cp0215-remediation-contract.test.ts 101L, cp0215-security-regression.test.ts 80L)
+- §03 Content Provenance: PASS — all 9 recovery artifacts + 18 other recovery source files IDENTICAL to 898655f (git diff EMPTY); worklog.md has 868 diff lines (documented exception — auto-merge)
+- §04 Main/Origin Boundary: PASS — main=7bc6369, origin/main=03c7f7e (FROZEN), merge-base=03c7f7e, main 3 commits ahead of origin (linear), 447b940 IS ancestor of main (EXIT=0), 898655f NOT ancestor (EXIT=1, cherry-pick semantic, expected per §05-R.3)
+- §05 Recovery Commit Forensics: PASS — 28 files (5 Added, 23 Modified, 0 Deleted), no prohibited-scope files (no action-engine/policy-engine/audit-writer/page-builder/migrations)
+- §06 Schema/Contract Immutability: PASS — schema.prisma fingerprint cc0d726db... UNCHANGED across 898655f/447b940/origin/main/HEAD, schema NOT in recovery commit's modified files
+- §07 Typecheck/Lint: PASS — tsc 0 errors, lint 0 errors + 9 pre-existing warnings (all in files NOT touched by recovery)
+- §08 Recovery Test Gate: PASS — 166/166 (16+12+45+30+63)
+- §09 Full Suite Reconciliation: PASS — 2297 pass / 125 fail / 1 error across 2422 tests in 64 files. ALL 16 failing test files have 0 diff vs 447b940 baseline (recovery didn't touch any failing test file). All 125 failures + 1 error are PRE-EXISTING in locked control plane work (Store/Marcketplace/AI/Phase X). 0 failures introduced by recovery.
+- §10 DB Hard Fence: PASS (read-only) — Role=5, Permission=127, RolePermission=234, SUPPORT=18, 0 duplicate permission keys, User count=0 (explains Phase 11 test error at db.user.count()), SiteSettings=1. No mutation.
+- §11 Restart Survivability: CANNOT FULLY EXECUTE — agent lacks root access to restart container per §12 rule. Pre-restart snapshot captured. Forensic analysis (§12) forensically proves restart WOULD cause data loss.
+- §12 Auto-Recovery Forensics: INFRASTRUCTURE BLOCKER — /home/sync/repo.tar dated Oct 4 20:53 (BEFORE recovery commit 7bc6369 at Oct 4 21:43). tar's .git/refs/heads/main=03c7f7e (FROZEN origin/main), tar's .git/HEAD=ref: refs/heads/platform/phase-1 (NOT main!), tar's .git/refs/heads/platform/phase-1=b7b6031 (BEFORE 898655f recovery). All 5 recovery artifacts NOT in tar. Recovery commit 7bc655f NOT in tar. /start.sh would extract stale tar on restart → lose recovery commit + 5 artifacts + switch to platform/phase-1 branch. SAME root cause as CP-INCIDENT-03/CP-RECOVERY-04/CP-02.17-SCP-REC-01.
+- §13 Security Regression: PASS — all 9 security behaviors verified (166/166 recovery tests), no eval/dynamic-exec in recovery-modified files (only comments mentioning "No eval()"). validator-registry.ts explicitly documents "No eval()" as security invariant.
+- §14 Store Readiness Audit: STORE NOT RELEASE-READY — extensive scaffolding (30+ models in store-schema.prisma, store-domain-resources.ts configs, many store API routes, store services for most domains, store-monitoring-registry.ts Batch C 13 resources) but contract definitions incomplete (order-contract expects 8 fields, has 7; payment-contract expects 7 fields, has 8; part-contract validation.maxLength undefined). Store permission keys NOT in seed-rbac.ts.
+
+Stage Summary:
+- FINAL VERDICT: §15 STATE C — BLOCKED 🔴
+- Recovery content IS on main HEAD NOW (7bc6369) with all gates §01-§10, §13 PASS
+- BUT §11/§12 forensically prove restart would LOSE recovery (restart loss + branch switching)
+- 125 pre-existing failures fully reconciled (0 introduced by recovery)
+- Store Control Plane NOT release-ready (scaffolding incomplete)
+- Required remediation BEFORE STATE A: external root-authorized update of /home/sync/repo.tar to include 7bc6369 + 5 artifacts + main HEAD ref + main branch ref; then re-verify §11
+- Architecture lock unchanged: Push/Merge/PR/Production/Store implementation PROHIBITED
+- Next gate must be separate executive order (CP-02.17-SCP-STORE-G0 or REC-04 tar update authorization)
+
+Prohibitions honored: No git push, no merge, no rebase, no reset, no force push, no DB reset, no DB seed, no schema migration, no Store/Marketplace/Page Builder/Production implementation throughout this gate.
+
+Final STOP. Recovery durable NOW, NOT durable across restart. Awaiting external infrastructure authority decision on repo.tar update.
