@@ -10,7 +10,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:/home/z/my-project/db/store.db"
+  url = env("STORE_DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------------
