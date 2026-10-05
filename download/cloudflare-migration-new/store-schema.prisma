@@ -1,0 +1,780 @@
+// MEKANIX Auto-Parts Marketplace — separate PostgreSQL DB
+// Managed by HEAVIX admin via a dedicated PrismaClient
+// (output to src/lib/generated/store-client so it does NOT clash
+//  with the main HEAVIX @prisma/client).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/lib/generated/store-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:/home/z/my-project/db/store.db"
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN AUTH (separate from customer accounts)
+// ---------------------------------------------------------------------------
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("ADMIN") // SUPER_ADMIN | ADMIN | OPERATOR
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  payments        Payment[]      @relation("PaymentReviewer")
+  currencyRates   CurrencyRate[]
+  // auditLogs removed — store audit writes to main PostgreSQL (cross-DB design)
+  reviewedReviews Review[]       @relation("ReviewModerator")
+}
+
+// ---------------------------------------------------------------------------
+// CUSTOMERS & MECHANICS (main app)
+// ---------------------------------------------------------------------------
+model Customer {
+  id               String   @id @default(cuid())
+  phone            String   @unique
+  name             String
+  family           String
+  nationalCode     String?
+  address          String?
+  status           String   @default("ACTIVE") // ACTIVE | BLOCKED
+  totalOrders      Int      @default(0)
+  totalSpentIrr    Float    @default(0)
+  walletBalanceIrr Float    @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  orders        Order[]
+  payments      Payment[]
+  reviews       Review[]
+  wishlists     Wishlist[]
+  walletTxns    WalletTransaction[]
+  notifications Notification[]
+}
+
+model Mechanic {
+  id          String   @id @default(cuid())
+  phone       String   @unique
+  name        String
+  family      String
+  shopName    String?
+  specialty   String?
+  city        String?
+  address     String?
+  rating      Float    @default(0)
+  verified    Boolean  @default(false)
+  status      String   @default("ACTIVE")
+  totalOrders Int      @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders Order[]
+}
+
+// ---------------------------------------------------------------------------
+// CATALOG (Car models for vehicle selector, Categories, Brands, Parts)
+// ---------------------------------------------------------------------------
+model CarModel {
+  id        String   @id @default(cuid())
+  brand     String // Toyota, Hyundai, Peugeot, Volvo, Scania...
+  model     String // Corolla, Elantra, FH16...
+  yearFrom  Int
+  yearTo    Int
+  type      String   @default("PASSENGER") // PASSENGER | HEAVY (سواری | ماشین‌آلات سنگین)
+  createdAt DateTime @default(now())
+
+  parts Part[]
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  nameFa      String?
+  slug        String     @unique
+  icon        String?
+  description String?
+  parentId    String?
+  parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryParent")
+  parts       Part[]
+  createdAt   DateTime   @default(now())
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String
+  nameFa    String?
+  slug      String   @unique
+  logoUrl   String?
+  country   String?
+  active    Boolean  @default(true)
+  parts     Part[]
+  createdAt DateTime @default(now())
+}
+
+model Part {
+  id                String     @id @default(cuid())
+  name              String
+  nameFa            String?
+  sku               String     @unique
+  categoryId        String
+  category          Category   @relation(fields: [categoryId], references: [id])
+  brandId           String?
+  brand             Brand?     @relation(fields: [brandId], references: [id])
+  description       String?
+  priceUsd          Float
+  oldPriceUsd       Float? // for showing discounts
+  // contactForPrice: when true, the part has no public price — the store
+  // shows "تماس بگیرید" instead. Set by the AI parts scraper when the
+  // source site has no price, or manually by the admin.
+  contactForPrice   Boolean    @default(false)
+  stock             Int        @default(0)
+  lowStockThreshold Int        @default(5)
+  images            String     @default("[]")
+  compatibleCars    String     @default("[]")
+  carModels         CarModel[] // structured vehicle compatibility
+  // sourceUrl: original web URL the part was scraped from (AI scraper only).
+  sourceUrl         String?
+  active            Boolean    @default(true)
+  featured          Boolean    @default(false)
+  views             Int        @default(0)
+  soldCount         Int        @default(0)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  orderItems     OrderItem[]
+  reviews        Review[]
+  wishlists      Wishlist[]
+  stockMovements StockMovement[]
+  // T1-DEEP — per-warehouse inventory balances (one row per part per warehouse).
+  // Stock is still summarized on Part.stock for backward compat with the
+  // public storefront; InventoryBalance is the source of truth for the
+  // admin inventory domain (warehouse-level reservations + low-stock).
+  inventoryBalances InventoryBalance[]
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — PO line items that sourced this Part.
+  // Back-relation for PurchaseOrderItem.part; the procurement flow is the writer.
+  purchaseOrderItems PurchaseOrderItem[]
+}
+
+// ---------------------------------------------------------------------------
+// ORDERS & PAYMENTS
+// ---------------------------------------------------------------------------
+model Order {
+  id                   String    @id @default(cuid())
+  orderNumber          String    @unique
+  customerId           String
+  customer             Customer  @relation(fields: [customerId], references: [id])
+  // Optional link to the HEAVIX User (main DB) who placed this order.
+  // Kept optional for backwards compat with phone-only orders placed
+  // before the HEAVIX user integration. When present, the user can
+  // view this order from their HEAVIX dashboard without entering a
+  // phone number.
+  userId               String?
+  mechanicId           String?
+  mechanic             Mechanic? @relation(fields: [mechanicId], references: [id])
+  status               String    @default("PENDING")
+  subtotalUsd          Float
+  shippingUsd          Float     @default(0)
+  discountIrr          Float     @default(0)
+  totalUsd             Float
+  totalIrr             Float
+  currencyRateAtOrder  Float
+  marginPercentAtOrder Float
+  couponCode           String?
+  shippingAddress      String?
+  notes                String?
+  paymentStatus        String    @default("UNPAID")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  items    OrderItem[]
+  payments Payment[]
+  shipment Shipment?
+  returns  Return[]
+}
+
+model OrderItem {
+  id               String @id @default(cuid())
+  orderId          String
+  order            Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId           String
+  part             Part   @relation(fields: [partId], references: [id])
+  partNameSnapshot String
+  quantity         Int
+  unitPriceUsd     Float
+  unitPriceIrr     Float
+  lineTotalUsd     Float
+  lineTotalIrr     Float
+
+  // T2-DEEP — back-relation for ReturnItem lines that reference this
+  // OrderItem. Read-only on this side; the Return flow is the writer.
+  returnItems ReturnItem[]
+}
+
+model Payment {
+  id              String     @id @default(cuid())
+  orderId         String
+  order           Order      @relation(fields: [orderId], references: [id])
+  customerId      String
+  customer        Customer   @relation(fields: [customerId], references: [id])
+  amountIrr       Float
+  amountUsd       Float
+  method          String     @default("CARD") // CARD | WALLET | CASH | GATEWAY
+  status          String     @default("PENDING") // PENDING | APPROVED | REJECTED | REFUNDED
+  receiptImageUrl String?
+  referenceCode   String?
+  payerName       String?
+  payerCard       String?
+  note            String?
+  // Gateway (Zarinpal) fields
+  gateway         String? // ZARINPAL | MOCK | null
+  authority       String? // Zarinpal authority code
+  refId           String? // Zarinpal reference id after verify
+  gatewayUrl      String? // redirect URL
+  reviewedById    String?
+  reviewedBy      AdminUser? @relation("PaymentReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Shipment {
+  id           String    @id @default(cuid())
+  orderId      String    @unique
+  order        Order     @relation(fields: [orderId], references: [id])
+  carrier      String // پست | تیپاکس | چاپار
+  trackingCode String?
+  status       String    @default("PENDING") // PENDING | DISPATCHED | IN_TRANSIT | DELIVERED | EXCEPTION | FAILED
+  shippedAt    DateTime?
+  deliveredAt  DateTime?
+  note         String?
+  // PHASE-P9-LOGISTICS — snapshot fields kept in sync by the logistics
+  // service for queryability. The ShipmentTracking append-only rows are
+  // the source of truth; these fields are convenience snapshots (mirrors
+  // the shippedAt/deliveredAt pattern).
+  pickupDate   DateTime?
+  proofUrl     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — append-only tracking history.
+  // Each carrier scan / status update appends a ShipmentTracking row
+  // (rather than mutating the parent Shipment fields in place). The
+  // parent's status/shippedAt/deliveredAt are kept in sync as a snapshot
+  // for storefront queries; ShipmentTracking is the source of truth for
+  // the audit trail.
+  tracking     ShipmentTracking[]
+}
+
+// ---------------------------------------------------------------------------
+// CURRENCY (USD -> IRR) with REAL Telegram channel auto-fetch
+// ---------------------------------------------------------------------------
+model CurrencyRate {
+  id            String     @id @default(cuid())
+  date          String     @unique // YYYY-MM-DD (Asia/Tehran)
+  rate          Float // USD -> IRR (raw, before margin)
+  marginPercent Float      @default(0)
+  source        String     @default("MANUAL") // MANUAL | TELEGRAM
+  note          String?
+  setById       String?
+  setBy         AdminUser? @relation(fields: [setById], references: [id])
+  createdAt     DateTime   @default(now())
+}
+
+model CurrencySetting {
+  id                String    @id @default("singleton")
+  defaultRate       Float     @default(230000)
+  marginPercent     Float     @default(3)
+  autoUpdateEnabled Boolean   @default(true) // auto-fetch from Telegram ON by default
+  autoSource        String    @default("telegram")
+  lastAutoRate      Float?
+  lastAutoStatus    String? // معامله | خرید | فروش
+  lastAutoFetchAt   DateTime?
+  updatedAt         DateTime  @updatedAt
+}
+
+model Setting {
+  id        String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWS, WISHLIST, COUPONS, WALLET, NOTIFICATIONS
+// ---------------------------------------------------------------------------
+model Review {
+  id           String     @id @default(cuid())
+  partId       String
+  part         Part       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  customerId   String
+  customer     Customer   @relation(fields: [customerId], references: [id])
+  rating       Int // 1-5
+  title        String?
+  comment      String?
+  approved     Boolean    @default(false)
+  reviewedById String?
+  reviewedBy   AdminUser? @relation("ReviewModerator", fields: [reviewedById], references: [id])
+  createdAt    DateTime   @default(now())
+}
+
+model Wishlist {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  partId     String
+  part       Part     @relation(fields: [partId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, partId])
+}
+
+model Coupon {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  type        String // PERCENT | FIXED
+  value       Float // percent or IRR amount
+  expiresAt   DateTime?
+  usageLimit  Int       @default(0) // 0 = unlimited
+  usedCount   Int       @default(0)
+  active      Boolean   @default(true)
+  minOrderIrr Float     @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  amount      Float // + credit, - debit
+  type        String // CREDIT | DEBIT | ORDER | DEPOSIT
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  type       String // ORDER | PAYMENT | STOCK | SYSTEM
+  title      String
+  message    String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// SUPPLIERS (T2-W1-A — Store Gap Domain #3)
+// Lightweight supplier directory used by procurement + Parts sourcing.
+// No relation to Part yet — procurement flow will add a SupplierPart join
+// table when its write route is wired (T2-W2). For now this is a CRUD
+// directory: name + bilingual label + contact details + active flag.
+// ---------------------------------------------------------------------------
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  nameFa    String?
+  phone     String?
+  email     String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  procurements ProcurementRequest[]
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — POs awarded to this supplier.
+  purchaseOrders PurchaseOrder[]
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG — removed (Track A P0 fix)
+// Store audit hooks use logAudit() from src/lib/admin/audit.ts which writes
+// to the MAIN PostgreSQL AuditLog table (cross-DB design, verified E2E-07).
+// This store-schema AuditLog model was dead code (never written to, never
+// read from, different field shape from main schema). Removed for clarity.
+// See: docs/STORE-MARKETPLACE-CONTROL-PLANE.md for cross-DB audit design.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// T2-W2-A — INVENTORY MOVEMENT LEDGER
+// Architecture: Warehouse → InventoryBalance (Part.stock snapshot) →
+// StockMovement (append-only ledger of RECEIVE/SALE/RETURN/TRANSFER/
+// ADJUSTMENT/DAMAGE). Every mutation to Part.stock MUST be recorded as a
+// StockMovement so the ledger reconstructs the balance at any point in time.
+//
+// T1-DEEP — Warehouse + InventoryBalance introduced so the ledger can be
+// segmented per-warehouse. StockMovement.warehouseId is OPTIONAL for
+// backward-compat with existing movements that pre-date warehouses.
+// ---------------------------------------------------------------------------
+model StockMovement {
+  id           String   @id @default(cuid())
+  partId       String
+  part         Part     @relation(fields: [partId], references: [id])
+  type         String // RECEIVE | SALE | RETURN | TRANSFER | ADJUSTMENT | DAMAGE
+  quantity     Int // positive for in, negative for out
+  balanceAfter Int // snapshot of Part.stock after this movement
+  reason       String?
+  reference    String? // order ID, PO ID, etc
+  createdBy    String?
+  // T1-DEEP — optional warehouse reference. NULL for legacy movements
+  // (pre-T1-DEEP) created before warehouses existed, or for system-wide
+  // adjustments that don't belong to a specific warehouse.
+  warehouseId  String?
+  warehouse    Warehouse? @relation(fields: [warehouseId], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([partId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// T1-DEEP — WAREHOUSE
+// Lightweight warehouse directory: name + unique code + address + active
+// flag. Each InventoryBalance row is scoped to one Warehouse so the admin
+// can manage multi-warehouse stock (main warehouse + returns + damaged).
+// ---------------------------------------------------------------------------
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventoryBalances InventoryBalance[]
+  stockMovements    StockMovement[]
+}
+
+// ---------------------------------------------------------------------------
+// T1-DEEP — INVENTORY BALANCE
+// One row per (part, warehouse) pair. The single source of truth for the
+// admin inventory domain. `quantity` is the on-hand count, `reserved` is
+// the soft-reserved count (held for an order/invoice that hasn't shipped
+// yet). `lowStockThreshold` triggers low-stock alerts when quantity <= it.
+//
+// Note: Part.stock is still the canonical public count for the storefront
+// (so the public catalog doesn't need a join). When the admin adjusts a
+// WarehouseInventoryBalance row, the service layer also updates Part.stock
+// to keep the public snapshot in sync.
+// ---------------------------------------------------------------------------
+model InventoryBalance {
+  id                String   @id @default(cuid())
+  partId            String
+  part              Part     @relation(fields: [partId], references: [id])
+  warehouseId       String
+  warehouse         Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity          Int      @default(0)
+  reserved          Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([partId, warehouseId])
+  @@index([warehouseId])
+  @@index([partId])
+}
+
+// ---------------------------------------------------------------------------
+// T2-W2-B — RETURNS
+// Architecture: Return → Order → Items → Reason → Status → Inspection →
+// Resolution → Refund → Audit. A Return is a customer-initiated request to
+// send back items from a delivered order. Status flows REQUESTED → APPROVED
+// → INSPECTED → RESOLVED (or REJECTED at any stage).
+// ---------------------------------------------------------------------------
+model Return {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  reason     String
+  status     String   @default("REQUESTED") // REQUESTED | APPROVED | INSPECTED | RESOLVED | REJECTED
+  inspection String? // notes from inspection step
+  resolution String? // REFUND | EXCHANGE | REJECT
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // T2-DEEP — per-line return items. A Return is composed of 1+ ReturnItems
+  // (each tied to an OrderItem). Inspection marks each item as restockable
+  // or not; the resolve step aggregates item outcomes into a single refund
+  // amount + wallet transaction. For backward-compat with Returns created
+  // before T2-DEEP, a Return can have zero items (legacy single-reason
+  // returns). The list/detail endpoints include items always.
+  items      ReturnItem[]
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// T2-DEEP — RETURN ITEM
+// One row per returned OrderItem line. `condition` is the customer-stated
+// reason for return on the item (UNOPENED | DAMAGED | WRONG_ITEM | OTHER).
+// `restockable` is set by the admin during the inspection step: true means
+// the item is in sellable condition and can be added back to inventory;
+// false means it's damaged/unsellable and should be written off.
+// ---------------------------------------------------------------------------
+model ReturnItem {
+  id          String   @id @default(cuid())
+  returnId    String
+  return      Return   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  quantity    Int
+  reason      String?
+  condition   String?  // UNOPENED | DAMAGED | WRONG_ITEM | OTHER
+  restockable Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([returnId])
+  @@index([orderItemId])
+}
+
+// ---------------------------------------------------------------------------
+// T2-W2-C — PROCUREMENT (B2B tender)
+// ProcurementRequest represents an internal purchasing need: a part/service
+// the store wants to source. Status flows DRAFT → PUBLISHED → QUOTING →
+// AWARDED → COMPLETED (or CANCELLED). Optionally linked to a Supplier once
+// awarded. The admin page at /admin/procurement manages this lifecycle.
+// ---------------------------------------------------------------------------
+model ProcurementRequest {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  quantity    Int
+  budgetMin   Float?
+  budgetMax   Float?
+  deadline    DateTime?
+  status      String    @default("DRAFT") // DRAFT | PUBLISHED | QUOTING | AWARDED | COMPLETED | CANCELLED
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // PHASE1-PROCUREMENT-SHIPPING-DEEP — POs issued against this procurement
+  // tender. A procurement may have 0..N POs over its lifetime (re-orders,
+  // split shipments, etc.). POs are the operational layer; the
+  // ProcurementRequest is the strategic (tender) layer.
+  purchaseOrders PurchaseOrder[]
+
+  @@index([status])
+  @@index([supplierId])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — PURCHASE ORDER (PO)
+// ---------------------------------------------------------------------------
+// A PurchaseOrder is the operational document issued against a
+// ProcurementRequest once the tender is awarded (or directly without a
+// tender for spot-buys). Status flow:
+//   DRAFT → SUBMITTED → APPROVED → RECEIVED (or CANCELLED from any state).
+//
+// Each PO has 1..N PurchaseOrderItem lines (per-Part quantity + unitPrice +
+// partial `received` counter for split shipments). When all items are fully
+// received the PO auto-flips to RECEIVED + receivedAt is stamped.
+//
+// `approvedBy` / `approvedAt` capture the 3-way separation of duty: the
+// submitter ≠ the approver (approvePurchaseOrder enforces this by recording
+// the approver's userId distinct from the submitter, but we don't hard-refuse
+// same-user approve — that's a UI policy, not a data invariant).
+// ---------------------------------------------------------------------------
+model PurchaseOrder {
+  id              String   @id @default(cuid())
+  procurementId   String
+  procurement     ProcurementRequest @relation(fields: [procurementId], references: [id])
+  supplierId      String?
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  status          String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | RECEIVED | CANCELLED
+  totalAmount     Float?
+  currency        String   @default("USD")
+  notes           String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  receivedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  items           PurchaseOrderItem[]
+
+  @@index([procurementId])
+  @@index([supplierId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — PURCHASE ORDER ITEM (per-Part line)
+// ---------------------------------------------------------------------------
+// One row per Part ordered on a PO. `received` is the partial-receive
+// counter (incremented by receivePurchaseOrderItem up to `quantity`).
+// `unitPrice` is captured at PO-create time (price snapshot, immune to
+// later Part.priceUsd changes — mirrors the OrderItem.partNameSnapshot
+// pattern in the customer-facing order flow).
+// ---------------------------------------------------------------------------
+model PurchaseOrderItem {
+  id              String   @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  partId          String
+  part            Part     @relation(fields: [partId], references: [id])
+  quantity        Int
+  unitPrice       Float
+  received        Int      @default(0) // partial receiving
+  createdAt       DateTime @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([partId])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE1-PROCUREMENT-SHIPPING-DEEP — SHIPMENT TRACKING (append-only history)
+// ---------------------------------------------------------------------------
+// Each carrier scan / status update appends a ShipmentTracking row. The
+// parent Shipment.status + shippedAt/deliveredAt are kept in sync as a
+// snapshot by addTrackingEvent, but ShipmentTracking is the source of truth
+// for the audit trail (you can reconstruct the full delivery timeline from
+// these rows). Status values: DISPATCHED | IN_TRANSIT | OUT_FOR_DELIVERY |
+// DELIVERED | EXCEPTION.
+// ---------------------------------------------------------------------------
+model ShipmentTracking {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id])
+  status      String   // DISPATCHED | IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | EXCEPTION
+  location    String?
+  description String?
+  timestamp   DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE-P8-TRANSACTION — RENTAL DOMAIN (part-time leasing of equipment)
+// ---------------------------------------------------------------------------
+// RentalListing is the catalog row for a rentable Part (or HEAVIX Listing —
+// the partId is optional so the rental flow can be reused for the marketplace
+// heavy-machinery side via listingId). The listing is the rate + policy
+// layer (daily/weekly/monthly rates, deposit, min/max duration). A listing
+// has 0..N RentalBookings — the booking lifecycle is:
+//   REQUESTED → APPROVED → ACTIVE → COMPLETED  (or → CANCELLED from any state).
+//
+// `available` is a manual gate (admin can hide a listing) — the actual
+// availability check (no overlapping ACTIVE/REQUESTED booking) lives in
+// the rental-service.checkAvailability() helper.
+// ---------------------------------------------------------------------------
+model RentalListing {
+  id           String   @id @default(cuid())
+  partId       String?
+  listingId    String?
+  dailyRate    Float
+  weeklyRate   Float?
+  monthlyRate  Float?
+  deposit      Float?
+  available    Boolean  @default(true)
+  minDuration  Int      @default(1) // days
+  maxDuration  Int?     // null = unlimited
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  bookings     RentalBooking[]
+
+  @@index([partId])
+  @@index([listingId])
+  @@index([available])
+}
+
+// RentalBooking — a single customer reservation against a RentalListing.
+// `dailyRate` is snapshotted at booking time (immune to later rate edits,
+// mirrors the OrderItem.unitPrice pattern in the commerce flow).
+// `totalAmount` = dailyRate × dayCount (computed in requestBooking).
+// `depositPaid` gates the APPROVED→ACTIVE transition (the admin starts the
+// rental after the deposit payment is confirmed; this is a manual flag for
+// now — the auto-link to the store Payment flow is a future deepening).
+model RentalBooking {
+  id               String   @id @default(cuid())
+  rentalListingId  String
+  rentalListing    RentalListing @relation(fields: [rentalListingId], references: [id], onDelete: Cascade)
+  customerId       String
+  startDate        DateTime
+  endDate          DateTime
+  status           String   @default("REQUESTED") // REQUESTED | APPROVED | ACTIVE | COMPLETED | CANCELLED
+  dailyRate        Float
+  totalAmount      Float
+  depositPaid      Boolean  @default(false)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([rentalListingId])
+  @@index([customerId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE-P9-SERVICES — SERVICES MARKETPLACE
+// ---------------------------------------------------------------------------
+// ServiceProvider is the catalog row for an external or in-house service
+// provider (transport, inspection, maintenance, repair, installation,
+// delivery). The provider is the rate/scheduling layer; a ServiceRequest
+// is the operational job row. The ServiceRequest state machine:
+//   REQUESTED → (provider quote) → QUOTED
+//   QUOTED    → (customer/admin accept) → ACCEPTED
+//   ACCEPTED  → (admin schedule) → SCHEDULED
+//   SCHEDULED → (admin start) → IN_PROGRESS
+//   IN_PROGRESS → (admin complete) → COMPLETED
+//   any state → (admin cancel) → CANCELLED
+//
+// `customerId` is a plain String (no FK to Customer) — mirrors the
+// RentalBooking pattern: the services marketplace can be requested on
+// behalf of a customer (Customer.id), a HEAVIX User.id, or an external
+// customer reference. The reference resolution is UI-side policy, not a
+// data invariant.
+// ---------------------------------------------------------------------------
+model ServiceProvider {
+  id           String   @id @default(cuid())
+  name         String
+  nameFa       String?
+  type         String   // TRANSPORT | INSPECTION | MAINTENANCE | REPAIR | INSTALLATION | DELIVERY
+  phone        String?
+  email        String?
+  address      String?
+  active       Boolean  @default(true)
+  verified     Boolean  @default(false)
+  rating       Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  serviceRequests ServiceRequest[]
+
+  @@index([type])
+  @@index([active])
+  @@index([verified])
+}
+
+model ServiceRequest {
+  id           String   @id @default(cuid())
+  providerId   String?
+  provider     ServiceProvider? @relation(fields: [providerId], references: [id])
+  customerId   String
+  type         String   // TRANSPORT | INSPECTION | MAINTENANCE | REPAIR | INSTALLATION | DELIVERY
+  status       String   @default("REQUESTED") // REQUESTED | QUOTED | ACCEPTED | SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
+  description  String?
+  scheduledDate DateTime?
+  completedAt  DateTime?
+  price        Float?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([customerId])
+  @@index([type])
+  @@index([status])
+}
