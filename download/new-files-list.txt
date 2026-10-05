@@ -1,2 +1,0 @@
-?? download/cloudflare-migration-changes.patch
-?? download/new-files-list.txt
