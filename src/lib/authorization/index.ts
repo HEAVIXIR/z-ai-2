@@ -43,11 +43,12 @@ export async function can(
   permission: string,
 ): Promise<boolean> {
   if (!userId) return false;
-  // E2E-06 GAP FIX: admin sessions return id='ADMIN' from getCurrentUser().
-  // Admin has all permissions (matches adminGuard's "ADMIN role has all permissions").
-  if (userId === 'ADMIN') return true;
-  const perms = await getUserPermissions(userId);
-  return perms.includes(permission);
+  try {
+    const perms = await getUserPermissions(userId);
+    return perms.includes(permission);
+  } catch {
+    return false;
+  }
 }
 
 // ── canAny(userId, permissions[]) ──────────────────────────
@@ -56,10 +57,12 @@ export async function canAny(
   permissions: string[],
 ): Promise<boolean> {
   if (!userId || permissions.length === 0) return false;
-  // The server-issued admin session uses the synthetic ADMIN id.
-  if (userId === 'ADMIN') return true;
-  const perms = await getUserPermissions(userId);
-  return permissions.some((p) => perms.includes(p));
+  try {
+    const perms = await getUserPermissions(userId);
+    return permissions.some((p) => perms.includes(p));
+  } catch {
+    return false;
+  }
 }
 
 // ── canAll(userId, permissions[]) ──────────────────────────
@@ -68,10 +71,12 @@ export async function canAll(
   permissions: string[],
 ): Promise<boolean> {
   if (!userId) return false;
-  // The server-issued admin session has unrestricted permissions.
-  if (userId === 'ADMIN') return true;
-  const perms = await getUserPermissions(userId);
-  return permissions.every((p) => perms.includes(p));
+  try {
+    const perms = await getUserPermissions(userId);
+    return permissions.every((p) => perms.includes(p));
+  } catch {
+    return false;
+  }
 }
 
 // ── requirePermission(userId, permission) ──────────────────
@@ -140,8 +145,6 @@ export async function isAdmin(
   userId: string | null | undefined,
 ): Promise<boolean> {
   if (!userId) return false;
-  // Admin cookie sessions resolve to the synthetic ADMIN id.
-  if (userId === 'ADMIN') return true;
   try {
     const adminRole = await db.userRole.findFirst({
       where: { userId, role: { key: 'ADMIN' } },

@@ -82,19 +82,6 @@ async function userHasAnyRole(
 ): Promise<boolean> {
   // Try the new RBAC UserRole table first.
   if (await hasRole(userId, roles)) return true;
-  // Fall back to the legacy User.role column so existing users
-  // that haven't been migrated to UserRole aren't locked out.
-  try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-    if (!user) return false;
-    const r = (user.role ?? "").toUpperCase();
-    return roles.includes(r);
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -339,7 +326,7 @@ export async function preflightAIRequest(params: {
   | { ok: false; statusCode: number; reason: string }
 > {
   const { taskType, user, inputLength } = params;
-  const actorId = user?.id ?? "admin";
+  const actorId = user?.id ?? "anonymous";
 
   // 1. Policy exists & active — deny by default.
   const policy = await getTaskPolicy(taskType);
