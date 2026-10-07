@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { addEvidence, listEvidence } from "@/lib/disputes-service";
 import { logAudit } from "@/lib/audit";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,7 +106,8 @@ export async function POST(req: Request, { params }: Params) {
       description,
       uploadedBy: user.id,
       userId: user.id,
-    });
+    
+      authCtx: createAuthContext(user.id)});
 
     return NextResponse.json({ ok: true, evidence });
   } catch (err: any) {

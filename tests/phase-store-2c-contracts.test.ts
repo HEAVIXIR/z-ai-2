@@ -634,12 +634,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 3. AUDIT FIELD CORRECTNESS (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('3. Audit Field Correctness', () => {
-    it('every logAudit call uses actorId from user (user.id or userId ?? null)', () => {
+    it('every logAudit call uses actorId from user (user.id, userId ?? null, or authCtx.subjectId)', () => {
       const files = readAllStoreFiles();
       for (const { content } of files) {
         const auditBlocks = content.match(/await logAudit\(\{[\s\S]*?\}\);/g) || [];
         for (const block of auditBlocks) {
-          expect(block).toMatch(/actorId:\s*(user\.id|userId\s*\?\?\s*null)/);
+          expect(block).toMatch(/actorId:\s*(user\.id|userId\s*\?\?\s*null|authCtx\.subjectId)/);
         }
       }
     });

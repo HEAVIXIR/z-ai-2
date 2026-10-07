@@ -6,6 +6,7 @@ import {
   reserveStock,
   InventoryServiceError,
 } from "@/lib/store-inventory-service";
+import { createAuthContext } from '@/lib/authorization-context';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
       partId,
       warehouseId,
       quantity,
+      createAuthContext(user.id),
       user.id,
       reason ?? null,
     );
