@@ -86,9 +86,14 @@ describe("Auth boundary — edge middleware", () => {
     expect(mw).toMatch(/NextResponse\.redirect/);
   });
 
-  it("middleware reads the heavix-admin cookie (presence-only check)", () => {
+  it("middleware reads the heavix-user cookie (canonical session path)", () => {
+    // R45-16: legacy `heavix-admin` cookie path REMOVED.
+    // Middleware must read the canonical `heavix-user` cookie
+    // (USER_COOKIE in src/lib/auth.ts). Any reference to
+    // `heavix-admin` here would indicate a regression.
     const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/heavix-admin/);
+    expect(mw).toMatch(/heavix-user/);
+    expect(mw).not.toMatch(/heavix-admin/);
   });
 });
 
@@ -102,9 +107,21 @@ describe("Auth boundary — health endpoints are public", () => {
     expect(mw).toMatch(/return NextResponse\.next\(\)/);
   });
 
-  it("PUBLIC_ROUTES list documents /api/health as never intercepted", () => {
+  it("health endpoints short-circuit before the auth check (R45-16 canonical)", () => {
+    // R45-16: the old PUBLIC_ROUTES block was removed; middleware
+    // now short-circuits any path ending in `/health` to
+    // NextResponse.next() before the cookie check.
     const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/\/api\/health/);
+    expect(mw).toMatch(/endsWith\(['"]\/health['"]\)/);
+    expect(mw).toMatch(/return NextResponse\.next\(\)/);
+  });
+
+  it("/api/health remains unauthenticated under the canonical contract", () => {
+    // Indirect coverage: `endsWith('/health')` matches both
+    // `/health` and `/api/health` because both end with the
+    // suffix. This is the R45-16 canonical pattern.
+    const mw = read(MIDDLEWARE_PATH);
+    expect(mw).toMatch(/endsWith\(['"]\/health['"]\)/);
   });
 });
 

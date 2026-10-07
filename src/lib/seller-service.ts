@@ -120,16 +120,25 @@ export async function registerSeller(params: {
     throw new SellerServiceError(404, "کاربر یافت نشد");
   }
 
-  // ── 1. Update User.role → SELLER (+ optional companyId link) ──
-  const userData: { role: string; companyId?: string | null } = {
-    role: "SELLER",
-  };
-  if (companyId) userData.companyId = companyId;
+  // ── 1. Assign canonical SELLER UserRole (+ optional companyId link) ──
+  const sellerRole = await db.role.findUnique({
+    where: { key: "SELLER" },
+    select: { id: true, key: true },
+  });
+  if (!sellerRole) {
+    throw new SellerServiceError(500, "نقش SELLER در RBAC تعریف نشده است");
+  }
 
   const updatedUser = await db.user.update({
     where: { id: userId },
-    data: userData,
-    select: { id: true, role: true, companyId: true },
+    data: companyId ? { companyId } : {},
+    select: { id: companyId ? true : true, companyId: true },
+  });
+
+  await db.userRole.upsert({
+    where: { userId_roleId: { userId, roleId: sellerRole.id } },
+    create: { userId, roleId: sellerRole.id },
+    update: {},
   });
 
   // ── 2. Upsert FoundingSeller in PENDING state (active=false) ──
@@ -155,7 +164,7 @@ export async function registerSeller(params: {
     entityId: founding.id,
     after: {
       userId,
-      role: "SELLER",
+      role: sellerRole.key,
       companyId: companyId ?? null,
       foundingStatusId: founding.id,
       foundingActive: false,
@@ -166,7 +175,7 @@ export async function registerSeller(params: {
   return {
     id: updatedUser.id,
     userId: updatedUser.id,
-    role: updatedUser.role,
+    role: sellerRole.key,
     companyId: updatedUser.companyId ?? null,
     foundingStatusId: founding.id,
     foundingActive: founding.active,
