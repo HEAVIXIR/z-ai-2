@@ -3,7 +3,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
-import { logAudit } from "@/lib/audit";
 import {
   updateReturnStatus,
   inspectReturn,
@@ -150,29 +149,18 @@ export async function PATCH(
         Array.isArray(body.itemConditions) ? body.itemConditions : [],
         user.id,
       );
-      await logAudit({
-        actorId: user.id,
-        actorType: 'ADMIN',
-        action: 'store.returns.update',
-        entityType: 'Return',
-        entityId: id,
-        after: { action: 'inspect', inspection: body.inspection ?? null, itemConditions: body.itemConditions ?? [] },
-        reason: 'Return inspection via admin API',
-      });
+      // P2 (Contract Drift Remediation): Removed the route-scope
+      // store.returns.update audit — inspectReturn() already audits
+      // this in the service as store.return.inspect (with before/after).
+      // The route audit was missing before: and used a plural action key.
       return NextResponse.json({ success: true, data: ret });
     }
 
     if (body.action === "resolve") {
       const ret = await resolveReturn(id, body.resolution, user.id);
-      await logAudit({
-        actorId: user.id,
-        actorType: 'ADMIN',
-        action: 'store.returns.update',
-        entityType: 'Return',
-        entityId: id,
-        after: { action: 'resolve', resolution: body.resolution },
-        reason: 'Return resolution via admin API',
-      });
+      // P2: Same as above — resolveReturn() already audits this in the
+      // service as store.return.resolve (with before/after). Removed
+      // the redundant route-scope store.returns.update audit.
       return NextResponse.json({ success: true, data: ret });
     }
 
@@ -185,15 +173,9 @@ export async function PATCH(
       user.id,
       { reason: body.reason },
     );
-    await logAudit({
-      actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.returns.update',
-      entityType: 'Return',
-      entityId: id,
-      after: { action: 'update_status', status: body.status, inspection: body.inspection, resolution: body.resolution, reason: body.reason },
-      reason: 'Return status updated via admin API',
-    });
+    // P2: Same as above — updateReturnStatus() already audits this in
+    // the service as store.return.update (with before: existing + after).
+    // Removed the redundant route-scope store.returns.update audit.
     return NextResponse.json({ success: true, data: ret });
   } catch (e: any) {
     return toErrorResponse(e);

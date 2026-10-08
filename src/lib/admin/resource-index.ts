@@ -27,8 +27,13 @@ import {
   settingsConfig, analyticsConfig, seoConfig,
   // Phase 3 Batch 3 — Promotions (Coupon)
   promotionsConfig,
-  // Wave B (M3) — Gap resources: Orders, Payments, Parts, Rentals
-  ordersConfig, paymentsConfig, partsConfig, rentalsConfig,
+  // Wave B (M3) — Gap resource: Rentals
+  // P2 (Contract Drift Remediation): Orders, Payments, Parts duplicate
+  // configs were REMOVED from store-domain-resources.ts — the canonical
+  // versions in store-resources.ts (registered above) are the single
+  // source of truth and now carry the store database flag. Only Rentals
+  // remains here (no canonical duplicate exists in store-resources.ts).
+  rentalsConfig,
 } from './resources/store-domain-resources';
 
 // Marketplace
@@ -66,10 +71,7 @@ registerResource(analyticsConfig);
 registerResource(seoConfig);
 // Phase 3 Batch 3 — Promotions (Coupon)
 registerResource(promotionsConfig);
-// Wave B (M3) — Gap resources: Orders, Payments, Parts, Rentals
-registerResource(ordersConfig);
-registerResource(paymentsConfig);
-registerResource(partsConfig);
+// Wave B (M3) — Gap resource: Rentals
 registerResource(rentalsConfig);
 
 export { registry, getResource, registerResource } from './resource-registry';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateLogin, ADMIN_CREDENTIALS } from "@/lib/auth";
+import * as authModule from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 /* ============================================================
@@ -7,62 +7,76 @@ import { hashPassword, verifyPassword } from "@/lib/password";
    HEAVIX-SECURITY-BASELINE-V1.md §2  (Authentication Hardening)
    HEAVIX-P0-IMPLEMENTATION-PLAN.md   STEP 2 (Authentication)
    ------------------------------------------------------------
-   What this file actually runs:
-     • `validateLogin` against ADMIN_CREDENTIALS — the primary
-       authenticator that mints a cryptographically secure session
-       on success.
-     • The password hash/verify cycle end-to-end (this is the
-       per-user auth path used by /api/auth/login and register).
-
-   What this file only documents (NOT runnable without a test DB):
-     • register → verify-email → login flow.
-     • createSession / destroySession cookie lifecycle.
-     • Session table pruning of expired rows.
-     • createUserSession / destroyUserSession (User path).
-   Those need a running Prisma + SQLite test DB; their spec is
-   written below as `describe.skip` blocks with the exact steps a
-   future e2e harness should execute. See tests/README.md for the
-   test DB setup plan.
+   R45-16 CANONICAL AUTH CONTRACT (replaces legacy validateLogin):
+   The legacy admin authenticator (`validateLogin`, `ADMIN_CREDENTIALS`,
+   `ADMIN_COOKIE`, `AdminSession`, synthetic `id="ADMIN"` User) was
+   REMOVED by R45-16. The canonical identity path is:
+       USER_COOKIE → Session.token → Session.userId → User
+   These tests verify the canonical contract:
+     1. Only canonical exports exist (no legacy admin symbols).
+     2. The password hash/verify cycle (user auth path) works.
    ============================================================ */
 
-describe("validateLogin (admin primary authenticator)", () => {
-  it("returns true for the configured admin credentials", () => {
-    expect(
-      validateLogin(ADMIN_CREDENTIALS.username, ADMIN_CREDENTIALS.password),
-    ).toBe(true);
-  });
+describe("R45-16 canonical auth contract", () => {
+  it("exports ONLY the canonical session-based API (no legacy admin symbols)", () => {
+    const exportedKeys = Object.keys(authModule).sort();
 
-  it("returns false for a wrong password", () => {
-    expect(
-      validateLogin(ADMIN_CREDENTIALS.username, "definitely-wrong-password"),
-    ).toBe(false);
-  });
-
-  it("returns false for a wrong username", () => {
-    expect(
-      validateLogin("not-an-admin", ADMIN_CREDENTIALS.password),
-    ).toBe(false);
-  });
-
-  it("returns false for empty inputs", () => {
-    expect(validateLogin("", "")).toBe(false);
-    expect(validateLogin(ADMIN_CREDENTIALS.username, "")).toBe(false);
-    expect(validateLogin("", ADMIN_CREDENTIALS.password)).toBe(false);
-  });
-
-  it("is case-sensitive for the password (no silent lowercase)", () => {
-    // The contract is exact match — callers must not silently
-    // lowercase the password. Uppercasing the password must fail
-    // (the admin username is digits-only so we cannot use it for
-    // case-sensitivity testing, but the password contains letters).
-    const pw = ADMIN_CREDENTIALS.password;
-    // Only test this if the configured password actually contains
-    // letters — otherwise the test is a no-op pass.
-    if (/[a-zA-Z]/.test(pw) && pw.toUpperCase() !== pw) {
-      expect(
-        validateLogin(ADMIN_CREDENTIALS.username, pw.toUpperCase()),
-      ).toBe(false);
+    // Canonical exports that MUST exist.
+    const required = [
+      "USER_COOKIE",
+      "createUserSession",
+      "destroyUserSession",
+      "getCurrentUser",
+      "getCurrentUserId",
+      "isAuthenticated",
+      "destroySession",
+    ];
+    for (const key of required) {
+      expect(exportedKeys).toContain(key);
     }
+
+    // Legacy admin symbols that MUST NOT exist (removed by R45-16).
+    const forbidden = [
+      "validateLogin",
+      "ADMIN_CREDENTIALS",
+      "ADMIN_COOKIE",
+      "createSession",        // legacy admin session creator
+      "getCurrentAdmin",      // legacy admin resolver
+    ];
+    for (const key of forbidden) {
+      expect(exportedKeys).not.toContain(key);
+    }
+  });
+
+  it("USER_COOKIE is the canonical 'heavix-user' cookie (not a legacy admin cookie)", () => {
+    expect(authModule.USER_COOKIE).toBe("heavix-user");
+  });
+
+  it("does not import or reference the legacy AdminSession model", async () => {
+    // Read the auth.ts source to ensure no legacy admin path remains.
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/auth.ts"),
+      "utf8",
+    );
+    // Legacy symbols that must not appear in the canonical auth module.
+    expect(src).not.toMatch(/ADMIN_COOKIE/);
+    expect(src).not.toMatch(/validateLogin/);
+    expect(src).not.toMatch(/ADMIN_CREDENTIALS/);
+    expect(src).not.toMatch(/adminSession/i);
+    expect(src).not.toMatch(/id:\s*["']ADMIN["']/);
+  });
+
+  it("canonical session functions are async (DB-backed, not synthetic)", () => {
+    expect(typeof authModule.createUserSession).toBe("function");
+    expect(authModule.createUserSession.constructor.name).toBe("AsyncFunction");
+    expect(typeof authModule.destroyUserSession).toBe("function");
+    expect(authModule.destroyUserSession.constructor.name).toBe("AsyncFunction");
+    expect(typeof authModule.getCurrentUser).toBe("function");
+    expect(authModule.getCurrentUser.constructor.name).toBe("AsyncFunction");
+    expect(typeof authModule.isAuthenticated).toBe("function");
+    expect(authModule.isAuthenticated.constructor.name).toBe("AsyncFunction");
   });
 });
 

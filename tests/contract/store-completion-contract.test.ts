@@ -205,8 +205,32 @@ describe('Store Completion Matrix — 13 Resources', () => {
         const idCode = fileExists(idRoutePath) ? readFile(idRoutePath) : '';
 
         const allCode = mainCode + idCode;
-        // At least one audit call should exist
-        expect(allCode).toMatch(/logAudit|auditMutation|auditCreate|auditDelete/);
+        // At least one audit call should exist — either inline in the
+        // route OR in the delegated service file (T-A-DEEP-STORE +
+        // PHASE1-PROCUREMENT-SHIPPING-DEEP architecture: thin routes
+        // delegate mutations + audits to the service layer).
+        // P2 (Contract Drift Remediation): Extended to also accept the
+        // service-delegation pattern. The 4 delegated resources
+        // (inventory, warehouses, returns, shipments) had redundant
+        // inline route audits that were missing `before:` fields and
+        // used non-canonical action keys (store.returns.update vs
+        // store.return.update, store.shipments.create vs
+        // store.shipment.create, store.inventory.adjust vs
+        // store.inventory.balance.update). P2 removed the redundant
+        // route audits — the service-layer audits (which have proper
+        // before/after fields and canonical action keys) are the
+        // single source of truth. This test now verifies the audit
+        // invariant by checking the COMBINED route + service code.
+        const hasInlineAudit = !!allCode.match(/logAudit|auditMutation|auditCreate|auditDelete/);
+        let hasServiceAudit = false;
+        if (r.serviceFile) {
+          const servicePath = `src/lib/${r.serviceFile}.ts`;
+          if (fileExists(servicePath)) {
+            const serviceCode = readFile(servicePath);
+            hasServiceAudit = !!serviceCode.match(/logAudit|auditMutation|auditCreate|auditDelete/);
+          }
+        }
+        expect(hasInlineAudit || hasServiceAudit).toBe(true);
       });
     }
 

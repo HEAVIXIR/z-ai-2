@@ -20,6 +20,7 @@ import { can } from '@/lib/authorization';
 import { auditMutation } from '@/lib/audit-foundation';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 import { registry } from './resource-registry';
+import { getPrismaModel } from './data-adapter';
 import type { AdminResourceConfig, AdminAction } from './types';
 
 // ── Types ──────────────────────────────────────────────────
@@ -96,7 +97,7 @@ export function registerActionHandler(actionKey: string, handler: ActionHandler)
 
 // Built-in action handlers
 registerActionHandler('publish', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { status: 'PUBLISHED', publishedAt: new Date() },
@@ -104,7 +105,7 @@ registerActionHandler('publish', async (item) => {
 });
 
 registerActionHandler('unpublish', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { status: 'DRAFT' },
@@ -112,7 +113,7 @@ registerActionHandler('unpublish', async (item) => {
 });
 
 registerActionHandler('feature', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { featured: true },
@@ -120,7 +121,7 @@ registerActionHandler('feature', async (item) => {
 });
 
 registerActionHandler('unfeature', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { featured: false },
@@ -134,7 +135,7 @@ registerActionHandler('unfeature', async (item) => {
 // has neither — Prisma threw `PrismaClientValidationError: Unknown arg`.
 // Fix: model-aware writes. Different model → different field(s).
 registerActionHandler('verify', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   const modelName = String(item.__model ?? '');
   const updateData: Record<string, unknown> = {};
 
@@ -170,7 +171,7 @@ registerActionHandler('verify', async (item) => {
 });
 
 registerActionHandler('suspend', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { status: 'SUSPENDED' },
@@ -178,7 +179,7 @@ registerActionHandler('suspend', async (item) => {
 });
 
 registerActionHandler('activate', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { status: 'ACTIVE' },
@@ -186,7 +187,7 @@ registerActionHandler('activate', async (item) => {
 });
 
 registerActionHandler('delete', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   // Soft delete if possible, hard delete otherwise
   if (item.deletedAt !== undefined) {
     return await model.update({
@@ -225,7 +226,7 @@ function makeStatusHandler(
   timestampField?: string,
 ): ActionHandler {
   return async (item) => {
-    const model = (db as any)[getModelName(item.__model as string)];
+    const model = (item as any).__prismaModel;
     // First try: status + timestamp (if both provided)
     if (timestampField) {
       try {
@@ -279,7 +280,7 @@ registerActionHandler('hide', makeStatusHandler('HIDDEN', 'hiddenAt'));
 
 // User lifecycle (R3 users): verify-email
 registerActionHandler('verify-email', async (item) => {
-  const model = (db as any)[getModelName(item.__model as string)];
+  const model = (item as any).__prismaModel;
   return await model.update({
     where: { id: item.id },
     data: { emailVerified: true },
@@ -317,7 +318,11 @@ export async function executeAction(
   }
 
   // 3. Fetch current state (before)
-  const model = (db as any)[config.model];
+  // P4 (Database Ownership Remediation): use the store-aware routing from
+  // data-adapter instead of `(db as any)[config.model]`. Store-domain
+  // resources (inventory, warehouses, returns, etc.) have their models in
+  // storeDb, not main db.
+  const model = getPrismaModel(config);
   let before: Record<string, unknown> | null = null;
   try {
     before = await model.findUnique({ where: { id: entityId } });
@@ -327,8 +332,10 @@ export async function executeAction(
     return { success: false, action: actionKey, entityId, message: 'Entity not found' };
   }
 
-  // Tag the item with the model name for the handler
+  // Tag the item with the model name AND the prisma model accessor so that
+  // handlers can mutate the correct database without re-deriving it.
   before.__model = config.model;
+  (before as any).__prismaModel = model;
 
   // 4. Execute with audit
   try {

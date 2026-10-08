@@ -1,14 +1,24 @@
 # HEAVIX — Store + Marketplace Control Plane Summary
 
 > **Status:** Layer A implementation COMPLETE. Batch Gate PENDING (deferred to joint runtime verification).
-> **Date:** 2026-09-25
+> **Date:** 2026-09-25 (last revised 2026-10-08 — P4/P5 reconciliation)
 > **Baseline:** commit `562e5f7` (frozen)
-> **Current HEAD:** commit `5862d9f` (synced to GitHub)
+> **Current HEAD:** commit `f80a389` (R45-16 canonical auth hardening)
 > **Commits since baseline:** 18 (all Store 2A-2D + Marketplace 2A-2C + monitoring + docs)
 
 ---
 
 ## Architecture Position
+
+> **P5 RECONCILIATION (2026-10-08):** The original statement below said the
+> Control Planes are "NOT part of the Universal Resource Engine." This is
+> **superseded by ADR-002** — the Store and Marketplace resource configs ARE
+> registered in `src/lib/admin/resource-index.ts` and ARE managed by the
+> Universal Resource Engine (Table/Form/Detail/Actions/Bulk/Export). The
+> "independent layer" concept remains true at the **schema** level (main vs
+> store databases), but at the **admin UI** level, all resources use the same
+> Universal Engine components. See `docs/ADR-002-resource-architecture.md`
+> for the full architecture decision.
 
 The Store and Marketplace Control Planes are **independent, configurable admin layers** — NOT part of the Universal Resource Engine. Per project documents, each Control Plane is a separate layer with its own Schema, Service, API, Permission, UI, Audit, and Tests.
 

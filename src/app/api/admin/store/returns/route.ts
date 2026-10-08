@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import {
   createReturn,
   listReturns,
@@ -82,15 +81,11 @@ export async function POST(req: Request) {
       resolution,
       reference,
     });
-    await logAudit({
-      actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.returns.create',
-      entityType: 'Return',
-      entityId: ret?.id ?? null,
-      after: { orderId, reason, status, inspection, resolution, reference },
-      reason: 'Return created via admin API',
-    });
+    // P2 (Contract Drift Remediation): Removed the route-scope
+    // store.returns.create audit — createReturn() already audits this
+    // in the service as store.return.create (with after: ret). The
+    // route audit used a plural `returns` action key inconsistent with
+    // the service's singular `return` convention.
     return NextResponse.json({ success: true, data: ret });
   } catch (e: any) {
     return toErrorResponse(e);

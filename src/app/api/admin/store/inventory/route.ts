@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import {
   createMovement,
   listMovements,
@@ -98,15 +97,11 @@ export async function POST(req: Request) {
         reference,
         user.id,
       );
-      await logAudit({
-        actorId: user.id,
-        actorType: 'ADMIN',
-        action: 'store.inventory.adjust',
-        entityType: 'StockMovement',
-        entityId: result?.id ?? null,
-        after: { partId, warehouseId, quantity, type, reason, reference },
-        reason: 'Stock adjustment via admin inventory API',
-      });
+      // P2 (Contract Drift Remediation): Removed the route-scope
+      // store.inventory.adjust audit — the service adjustStock() already
+      // audits this operation as store.inventory.balance.update (with
+      // the proper before/after fields). The duplicate route audit was
+      // missing before: and used a non-canonical action key.
       return NextResponse.json({ success: true, data: result });
     }
 
@@ -118,15 +113,9 @@ export async function POST(req: Request) {
       reference,
       user.id,
     );
-    await logAudit({
-      actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.inventory.create',
-      entityType: 'StockMovement',
-      entityId: movement?.id ?? null,
-      after: { partId, type, quantity, reason, reference },
-      reason: 'Stock movement created via admin inventory API',
-    });
+    // P2: Same as above — createMovement() audits as
+    // store.inventory.movement.create in the service. Removed the
+    // duplicate route-scope store.inventory.create audit.
     return NextResponse.json({ success: true, data: movement });
   } catch (e: any) {
     return toErrorResponse(e);

@@ -119,7 +119,19 @@ describe('Phase 6D — Estimate + Confidence Tests', () => {
       // MODERATOR section should have price.override
       const modIdx = content.indexOf('MODERATOR:');
       expect(modIdx).toBeGreaterThan(-1);
-      const modSection = content.substring(modIdx, modIdx + 900);
+      // P2 (Contract Drift Remediation): The previous 900-char window
+      // was too small — the MODERATOR array grew past 900 chars during
+      // STEP 16-C (marketplace CP moderation permissions: part.read,
+      // part.update, machine.read, machine.update, offer.*, auction.*,
+      // inspection.*, transport.*, request.*, dispute.*). The
+      // price.override permission IS assigned to MODERATOR (line 313 in
+      // permissions.ts) but fell outside the 900-char window, causing a
+      // false-negative. Fix: scan to the closing `]` of the MODERATOR
+      // array (the section terminator) instead of a hardcoded window.
+      // Evidence: grep -n "price.override" src/lib/authorization/permissions.ts
+      //   → line 210 (PERMISSIONS array), line 313 (MODERATOR role array).
+      const modCloseIdx = content.indexOf('],', modIdx);
+      const modSection = content.substring(modIdx, modCloseIdx);
       expect(modSection).toContain("'price.override'");
     });
   });

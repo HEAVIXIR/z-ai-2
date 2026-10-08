@@ -43,7 +43,12 @@ function getPrismaClient(config: AdminResourceConfig): any {
 }
 
 // ── Get Prisma model accessor from config ───────────────────
-function getPrismaModel(config: AdminResourceConfig): any {
+// P4 (Database Ownership Remediation): EXPORTED so that action-engine.ts
+// and bulk-export-engine.ts use the SAME store-aware routing as the
+// data-adapter. Previously those engines used `(db as any)[config.model]`
+// which silently failed for store-domain resources (inventory, warehouses,
+// returns, etc.) because the model only exists in storeDb, not main db.
+export function getPrismaModel(config: AdminResourceConfig): any {
   const modelKey = config.model.charAt(0).toLowerCase() + config.model.slice(1);
   const client = getPrismaClient(config);
   const model = (client as any)[modelKey];

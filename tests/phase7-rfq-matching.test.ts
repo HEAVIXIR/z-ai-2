@@ -141,9 +141,32 @@ describe("Phase 7 — RFQ / Wanted / Matching Tests", () => {
       expect(count).toBeGreaterThan(0);
     });
 
-    it("should support CANCELLED status (via DELETE API)", () => {
+    it("should support CLOSED status (via DELETE API — soft-delete lifecycle)", () => {
+      // P2 (Contract Drift Remediation): The original test asserted the
+      // literal string "CANCELLED" in src/app/api/wanted/[id]/route.ts.
+      // Investigation outcome: the wanted domain standardized on CLOSED
+      // (not CANCELLED) for the soft-delete lifecycle. Evidence:
+      //   - src/lib/wanted-service.ts line 80: `const STATUS_CLOSED = "CLOSED";`
+      //   - src/lib/wanted-service.ts closeWanted() flips status → CLOSED
+      //     (audited as marketplace.wanted.close).
+      //   - src/app/api/admin/requests/[id]/route.ts line 58: admin PATCH
+      //     action="close" → data.status = "CLOSED".
+      //   - src/app/api/admin/requests/route.ts line 67: stats query counts
+      //     `status: "CLOSED"`.
+      //   - prisma/schema.prisma BuyRequest model: status String
+      //     @default("ACTIVE") — no enum constraint, but the codebase
+      //     consistently uses CLOSED for the terminal soft-delete state.
+      // The DELETE handler at /api/wanted/[id] delegates to PATCH which
+      // calls closeWanted() — so the actual status set is CLOSED. The
+      // previous "CANCELLED" expectation was stale (the project never
+      // used CANCELLED in the wanted domain). Fixed the test to assert
+      // the real status string with this evidence.
       const content = fs.readFileSync("src/app/api/wanted/[id]/route.ts", "utf8");
-      expect(content).toContain("CANCELLED");
+      expect(content).toContain("closeWanted");
+      // The DELETE handler delegates to PATCH → closeWanted → CLOSED.
+      // Verify the soft-delete lifecycle is wired (DELETE → PATCH → close).
+      expect(content).toMatch(/export async function DELETE/);
+      expect(content).toMatch(/export async function PATCH/);
     });
   });
 });

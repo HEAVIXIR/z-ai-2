@@ -6,6 +6,7 @@ export const productConfig: AdminResourceConfig = {
   titleEn: 'Products',
   icon: 'Package',
   model: 'product',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/products',
   adminPath: '/admin/resources/products',
 
@@ -90,6 +91,7 @@ export const partConfig: AdminResourceConfig = {
   titleEn: 'Parts',
   icon: 'Wrench',
   model: 'part',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/parts',
   adminPath: '/admin/resources/parts',
 
@@ -165,6 +167,7 @@ export const orderConfig: AdminResourceConfig = {
   titleEn: 'Orders',
   icon: 'ShoppingCart',
   model: 'order',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/resources/orders',
   adminPath: '/admin/resources/orders',
 
@@ -254,6 +257,7 @@ export const paymentConfig: AdminResourceConfig = {
   titleEn: 'Payments',
   icon: 'CreditCard',
   model: 'payment',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/payments',
   adminPath: '/admin/resources/payments',
 
@@ -349,6 +353,7 @@ export const companyConfig: AdminResourceConfig = {
   titleEn: 'Companies',
   icon: 'Building2',
   model: 'company',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/companies',
   adminPath: '/admin/resources/companies',
 
@@ -444,6 +449,7 @@ export const machineConfig: AdminResourceConfig = {
   titleEn: 'Machines',
   icon: 'Truck',
   model: 'machine',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/machines',
   adminPath: '/admin/resources/machines',
 
@@ -525,6 +531,7 @@ export const reviewConfig: AdminResourceConfig = {
   titleEn: 'Reviews',
   icon: 'Star',
   model: 'review',
+  database: 'main',  // P4: explicit main-schema ownership (marketplace domain)
   apiBase: '/api/admin/resources/reviews',
   adminPath: '/admin/resources/reviews',
 

@@ -76,12 +76,39 @@ describe('P1-1: Store-Aware Data Adapter', () => {
     expect(modelSection![0]).not.toMatch(/^\s*const model = \(db as any\)/m);
   });
 
-  it('store-domain-resources.ts declares database: store for all 13 configs', () => {
+  it('store-domain-resources.ts declares database: store for all 15 store-domain configs', () => {
     expect(fileExists(storeDomainPath)).toBe(true);
     const code = readFile(storeDomainPath);
     const storeCount = (code.match(/database:\s*'store'/g) || []).length;
-    // Updated for Phase 3: 13 original S1-A/S1-B configs + 1 promotions config = 14
-    expect(storeCount).toBe(14);
+    // P2 (Contract Drift Remediation): Updated expected count from 14
+    // to 15 to match the REAL count of store-domain configs in the file.
+    // Evidence (post-P2 cleanup): the file declares 15 configs that map
+    // to store-schema models (each with `database: 'store'`):
+    //   1.  inventoryConfig        (InventoryBalance / StockMovement)
+    //   2.  warehouseConfig        (Warehouse)
+    //   3.  returnsConfig          (Return)
+    //   4.  procurementConfig      (ProcurementRequest)
+    //   5.  customersConfig        (Customer)
+    //   6.  mechanicsConfig        (Mechanic)
+    //   7.  suppliersConfig        (Supplier)
+    //   8.  carModelsConfig        (CarModel)
+    //   9.  currencyConfig         (CurrencyRate / CurrencySetting)
+    //   10. servicesConfig         (ServiceProvider / ServiceRequest)
+    //   11. storeCategoriesConfig  (Category)
+    //   12. storeBrandsConfig      (Brand)
+    //   13. shipmentsConfig        (Shipment / ShipmentTracking)
+    //   14. promotionsConfig       (Coupon)
+    //   15. rentalsConfig          (RentalListing)
+    // The 3 main-schema configs (settingsConfig, analyticsConfig,
+    // seoConfig — SiteSettings / SiteStat / SEOConfig) intentionally do
+    // NOT carry `database: 'store'` because they map to main-schema
+    // models accessed via `db`, not `storeDb`.
+    // P2 change: removed the 3 duplicate Orders/Payments/Parts configs
+    // that previously lived here (they collided with the canonical
+    // versions in store-resources.ts — see P2 worklog). This dropped
+    // the count from 18 to 15. The previous expected count of 14 was
+    // stale (pre-Wave-B-M3 baseline).
+    expect(storeCount).toBe(15);
   });
 
   it('audit-foundation.ts imports storeDb', () => {

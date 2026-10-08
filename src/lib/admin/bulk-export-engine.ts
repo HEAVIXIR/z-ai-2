@@ -18,7 +18,7 @@
 import { can, canBulkAction } from '@/lib/authorization';
 import { executeAction, type ActionResult, type ActionContext } from './action-engine';
 import { registry } from './resource-registry';
-import { db } from '@/lib/db';
+import { getPrismaModel } from './data-adapter';
 import { logAudit } from '@/lib/audit';
 
 // ── Types ──────────────────────────────────────────────────
@@ -207,7 +207,8 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
     : config.columns.filter(c => c.visible !== false);
 
   // 3. Query data (no pagination — export all matching records)
-  const model = (db as any)[config.model];
+  // P4 (Database Ownership Remediation): use store-aware routing.
+  const model = getPrismaModel(config);
   const items = await model.findMany({
     where: filters || {},
     take: 5000, // safety limit
