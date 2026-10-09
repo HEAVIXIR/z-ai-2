@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -17,13 +18,21 @@ interface Args {
    /api/listings/[id] — seller-scoped listing endpoint.
 
    Sellers can GET / PATCH / DELETE their OWN listings only.
-   Admins (isAuthenticated) can also operate on any listing.
+   Admins (RBAC ADMIN role) can also operate on any listing.
+
+   STEP 11.33 NEW-C2 FIX: previously `authorize()` used
+   `isAuthenticated()` (any logged-in user) as the `isAdmin` flag.
+   This meant ANY logged-in BUYER could GET/PATCH/DELETE ANY seller's
+   listing. Now we use `isAdmin()` from @/lib/authorization (RBAC-only,
+   no legacy fallback) to correctly identify admins.
    ============================================================ */
 
 async function authorize(listingId: string) {
-  const isAdmin = await isAuthenticated();
+  // STEP 11.33 NEW-C2 FIX: use RBAC isAdmin (UserRole with ADMIN role),
+  // NOT isAuthenticated() (which just checks if any session exists).
+  const adminFlag = await rbacIsAdmin(getCurrentUserId() ? await getCurrentUserId() : "");
   const userId = await getCurrentUserId();
-  if (!isAdmin && !userId) {
+  if (!adminFlag && !userId) {
     return { ok: false as const, status: 401, error: "Unauthorized" };
   }
   const listing = await db.listing.findUnique({
@@ -33,10 +42,10 @@ async function authorize(listingId: string) {
   if (!listing) {
     return { ok: false as const, status: 404, error: "Not found" };
   }
-  if (!isAdmin && listing.sellerId !== userId) {
+  if (!adminFlag && listing.sellerId !== userId) {
     return { ok: false as const, status: 403, error: "Forbidden" };
   }
-  return { ok: true as const, isAdmin, userId, listing };
+  return { ok: true as const, isAdmin: adminFlag, userId, listing };
 }
 
 /* GET /api/listings/[id] — seller's own listing detail. */

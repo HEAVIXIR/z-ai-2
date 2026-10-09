@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,8 +119,10 @@ export async function PUT(req: Request, { params }: Args) {
     }
 
     // Auth: admin OR the listing's seller.
-    const isAdmin = await isAuthenticated();
+    // STEP 11.33 NEW-C2 FIX: use RBAC isAdmin (not isAuthenticated which
+    // returns true for ANY logged-in user). Same fix as the sibling route.
     const userId = await getCurrentUserId();
+    const isAdmin = userId ? await rbacIsAdmin(userId) : false;
     if (!isAdmin && !userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
