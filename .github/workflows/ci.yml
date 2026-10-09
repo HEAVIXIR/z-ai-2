@@ -64,6 +64,12 @@ jobs:
       - name: Security tests
         run: bun run test:security
 
+      - name: Seed RBAC (roles + permissions for integration tests)
+        run: bun run db:seed-rbac
+
+      - name: Integration tests (real PostgreSQL — PR-SC-00 tenant-scoping negative tests)
+        run: bunx tsx tests/integration/tenant-scope-real.ts
+
       - name: Static contract tests (no DB dependency)
         run: bunx vitest run tests/contract/auction-contract.test.ts tests/contract/buy-request-contract.test.ts tests/contract/dispute-contract.test.ts tests/contract/inspection-contract.test.ts tests/contract/machine-contract.test.ts tests/contract/part-contract.test.ts tests/contract/payment-contract.test.ts tests/contract/product-contract.test.ts tests/contract/resource-contract.test.ts tests/contract/rfq-contract.test.ts tests/contract/transport-contract.test.ts tests/contract/user-contract.test.ts tests/contract/r45-canonical-auth-contract.test.ts tests/unit/
 
