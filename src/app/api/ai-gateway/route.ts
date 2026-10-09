@@ -302,9 +302,30 @@ export async function POST(req: NextRequest) {
 
 /* ============================================================
    GET /api/ai-gateway — admin view of AI gateway logs + budget
+
+   STEP 11.34 P1-A FIX: previously had NO auth check. Anonymous
+   callers could read the last 50 AIGatewayLog entries (which include
+   userId, taskType, model, cost, input/output snippets) + the AI
+   budget singleton (daily/monthly spend). Now admin-only.
    ============================================================ */
 
 export async function GET(req: NextRequest) {
+  // STEP 11.34 P1-A FIX: require ADMIN role. This endpoint exposes
+  // AI gateway logs (including userId + input/output snippets) and
+  // the global AI budget — admin-only, like other /api/admin/* routes.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { isAdmin } = await import("@/lib/authorization");
+  const admin = await isAdmin(user.id);
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Forbidden: admin access required" },
+      { status: 403 },
+    );
+  }
+
   const url = new URL(req.url);
   const taskType = url.searchParams.get("task");
 
