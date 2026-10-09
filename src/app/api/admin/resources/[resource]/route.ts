@@ -60,9 +60,22 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // 2. Check read permission
+  //    STEP 11.10 (Universal Resource Authorization Closure): pass
+  //    `readPerm` to requireAdmin() so non-admin users WITH `payment.read`
+  //    can access the Universal Resource API. Previously `requireAdmin()`
+  //    (no arg) required the user to be an ADMIN — blocking ALL non-admin
+  //    users regardless of their RBAC permissions. This made field-level
+  //    READ/EXPORT policy untestable at the API level (User B with
+  //    `payment.read` got 403 before field policy could run).
+  //    With the fix, `requireAdmin(readPerm)` does:
+  //      (a) check the user is authenticated (401 if not)
+  //      (b) check the user is ADMIN OR has `readPerm` (403 if neither)
+  //    The follow-up `can(user.id, readPerm)` is now redundant for
+  //    non-admins (requireAdmin already verified) but kept for the admin
+  //    path (admin without `readPerm` is denied — Model B contract).
   const readPerm = config.permissions.read;
   if (readPerm) {
-    const [user, error] = await requireAdmin();
+    const [user, error] = await requireAdmin(readPerm);
     if (error) return error;
 
     // Check if user has the specific read permission

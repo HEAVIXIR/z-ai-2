@@ -164,6 +164,15 @@ export function validateResourcePayload(
   const result = schema.safeParse(data);
 
   if (result.success) {
+    // STEP 11.14 (Form Engine Closure): post-Zod conditional-required check.
+    // Zod's static schema can't express "required only when X === Y" — that
+    // requires runtime evaluation of `requiredWhen` against the submitted data.
+    // We run it AFTER Zod passes (so type/length constraints are already
+    // validated) and merge any new errors into the result.
+    const requiredWhenErrors = checkRequiredWhen(config, result.data as Record<string, unknown>);
+    if (requiredWhenErrors.length > 0) {
+      return { ok: false, errors: requiredWhenErrors };
+    }
     return { ok: true, errors: [], data: result.data as Record<string, unknown> };
   }
 
@@ -195,5 +204,86 @@ export function validateResourcePayload(
     return { field, message, code };
   });
 
+  // STEP 11.14: also run checkRequiredWhen on FAILED parses — Zod may have
+  // skipped required-checks for fields it couldn't even type-check. We want
+  // to surface "this field is required when X" rather than "invalid type".
+  const requiredWhenErrors = checkRequiredWhen(config, data);
+  // Merge: prefer Zod errors for fields Zod caught, add requiredWhen errors
+  // for fields Zod didn't catch (to avoid duplicate error messages).
+  const existingFields = new Set(errors.map(e => e.field));
+  for (const reqErr of requiredWhenErrors) {
+    if (!existingFields.has(reqErr.field)) {
+      errors.push(reqErr);
+    }
+  }
+
   return { ok: false, errors };
+}
+
+// ── STEP 11.14: Conditional-required post-validation ──────
+/**
+ * Evaluates `field.requiredWhen` conditions against the submitted data and
+ * returns errors for any field that:
+ *   (a) declares `requiredWhen`
+ *   (b) ALL conditions are met (AND logic — same as `conditions` visibility)
+ *   (c) the field value is empty (null, undefined, '', or [] for arrays)
+ *
+ * This is the SERVER-SIDE enforcement of conditional required. The
+ * CLIENT-SIDE enforcement is in universal-form.tsx `isFieldRequired()`
+ * (renders the `*` indicator + blocks submit via validateField()).
+ *
+ * Why post-Zod? Zod's static schema can't express "required when X === Y"
+ * — that requires runtime evaluation against the submitted data. We run
+ * it AFTER Zod so type/length constraints are already validated (we don't
+ * re-implement Zod's job here, just the conditional-required layer).
+ */
+export function checkRequiredWhen(
+  config: AdminResourceConfig,
+  data: Record<string, unknown>,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  for (const field of config.fields) {
+    if (!field.requiredWhen || field.requiredWhen.length === 0) continue;
+
+    // ALL conditions must be met (AND logic — same as `conditions` visibility)
+    const allMet = field.requiredWhen.every(cond => evaluateCondition(cond, data));
+    if (!allMet) continue;
+
+    // Condition is met → field is required. Check if value is empty.
+    const value = data[field.key];
+    if (isEmpty(value)) {
+      errors.push({
+        field: field.key,
+        message: `${field.label} الزامی است`,
+        code: 'required',
+      });
+    }
+  }
+
+  return errors;
+}
+
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
+}
+
+function evaluateCondition(
+  cond: { field: string; operator: string; value?: unknown },
+  values: Record<string, unknown>,
+): boolean {
+  const val = values[cond.field];
+  switch (cond.operator) {
+    case 'eq': return val === cond.value;
+    case 'neq': return val !== cond.value;
+    case 'in': return Array.isArray(cond.value) && cond.value.includes(val);
+    case 'notNull': return val !== null && val !== undefined;
+    case 'isNull': return val === null || val === undefined;
+    case 'gt': return typeof val === 'number' && typeof cond.value === 'number' && val > cond.value;
+    case 'lt': return typeof val === 'number' && typeof cond.value === 'number' && val < cond.value;
+    default: return true;
+  }
 }

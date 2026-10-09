@@ -37,7 +37,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const readPerm = config.permissions.read;
   if (!readPerm) return NextResponse.json({ error: 'No read permission' }, { status: 500 });
 
-  const [user, error] = await requireAdmin();
+  // STEP 11.10: pass readPerm to requireAdmin so non-admin users WITH the
+  // resource read permission can access Detail view. See [resource]/route.ts
+  // GET handler for full rationale.
+  const [user, error] = await requireAdmin(readPerm);
   if (error) return error;
 
   const hasReadPerm = await can(user?.id ?? null, readPerm);

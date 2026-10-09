@@ -63,14 +63,21 @@ export async function adminGuard(
     return false; // Forbidden → 403
   }
 
-  // 3. If permission required, check it (ADMIN role has all permissions,
-  //    but we still verify for audit trail + future fine-grained control)
+  // 3. If permission required, check it.
+  //    STEP 11.6 (Phase B.3 — Model B): NO ADMIN SUPERUSER BYPASS.
+  //    The ADMIN role is granted all 127 permissions via the RBAC seed
+  //    (seed-rbac.ts), so in practice ADMIN always passes `can()`.
+  //    But as an AUTHORIZATION CONTRACT, we do NOT bypass the check —
+  //    if an ADMIN somehow lacks the permission (e.g., partial RBAC
+  //    assignment, custom role), the request is denied with 403.
+  //    This closes the silent-bypass hole found in the STEP 11.5 audit
+  //    (admin-guard.ts:70-74 had an empty `if (!hasPerm)` body that
+  //    effectively granted ADMIN superuser access regardless of
+  //    permission checks).
   if (permissionKey) {
     const hasPerm = await can(user.id, permissionKey);
     if (!hasPerm) {
-      // Admin without this specific permission — still allow if ADMIN role
-      // (ADMIN role is superuser; individual permission gaps are logged)
-      // In a future hardening, this could be denied.
+      return false; // Forbidden → 403 (no bypass — Model B contract)
     }
   }
 

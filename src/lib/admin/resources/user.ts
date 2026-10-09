@@ -70,7 +70,7 @@ export const userConfig: AdminResourceConfig = {
       } },
     { key: 'passwordHash', label: 'رمز عبور', type: 'password', helpText: 'فقط هنگام ایجاد کاربر جدید',
       validation: { minLength: 8, maxLength: 128, message: 'رمز عبور باید حداقل ۸ نویسه باشد' },
-      permissions: { read: 'admin.dashboard.read', write: 'user.update' } },
+      permissions: { read: 'admin.dashboard.read', write: 'user.update', export: 'system.manage' } },
     { key: 'userType', label: 'نوع کاربر', type: 'select', options: [
       { value: 'INDIVIDUAL', label: 'حقیقی' },
       { value: 'COMPANY', label: 'حقوقی' },

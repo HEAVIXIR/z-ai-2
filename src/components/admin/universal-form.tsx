@@ -109,9 +109,36 @@ export function UniversalForm({ config, resourceId, onSuccess, onCancel }: Unive
     return field.conditions.every(cond => evaluateCondition(cond, values));
   }
 
+  // ── STEP 11.14: Conditional required check ─────────────────
+  // A field is required if EITHER:
+  //   (a) `field.required` is true (static), OR
+  //   (b) `field.requiredWhen` declares conditions AND ALL of them are met
+  //       against the current form values (AND logic, same as `conditions`).
+  function isFieldRequired(field: AdminField): boolean {
+    if (field.required) return true;
+    if (!field.requiredWhen || field.requiredWhen.length === 0) return false;
+    return field.requiredWhen.every(cond => evaluateCondition(cond, values));
+  }
+
+  // ── STEP 11.14: Conditional readonly check ─────────────────
+  // A field is read-only if EITHER:
+  //   (a) `field.permissions.write` is declared (server-enforced — rendered
+  //       disabled on the client as a UX cue), OR
+  //   (b) `field.readonlyWhen` declares conditions AND ALL of them are met
+  //       against the current form values.
+  function isFieldReadonly(field: AdminField): boolean {
+    if (field.permissions?.write) return true;
+    if (!field.readonlyWhen || field.readonlyWhen.length === 0) return false;
+    return field.readonlyWhen.every(cond => evaluateCondition(cond, values));
+  }
+
   // ── Validation ────────────────────────────────────────────
   function validateField(field: AdminField, value: unknown): string | null {
-    if (field.required && (value === null || value === undefined || value === '')) {
+    // STEP 11.14: use isFieldRequired() so conditional-required is enforced
+    // client-side too (matches server-side checkRequiredWhen).
+    const required = isFieldRequired(field);
+    if (required && (value === null || value === undefined || value === '' ||
+        (Array.isArray(value) && value.length === 0))) {
       return `${field.label} الزامی است`;
     }
     const v = field.validation;
@@ -314,17 +341,27 @@ function FormField({
     field.width === 'third' ? 'md:col-span-1 lg:col-span-1' :
     'md:col-span-2 lg:col-span-3';
 
+  // STEP 11.14: Compute required + readonly from BOTH static fields AND
+  // conditional declarations (requiredWhen / readonlyWhen). The conditional
+  // logic uses `allValues` (the current form state) so the field dynamically
+  // becomes required/readonly as the user fills in other fields.
+  const isRequired = field.required ||
+    (field.requiredWhen && field.requiredWhen.length > 0 &&
+      field.requiredWhen.every(cond => evaluateCondition(cond, allValues)));
+
   // Field-level write permission — client-side UX enforcement.
   // Restricted fields stay visible (readable) but are rendered disabled
   // so the user is aware they cannot edit them. Server-side
   // `applyFieldWritePolicyAsync` is the authoritative security boundary.
-  const isReadOnly = !!field.permissions?.write;
+  const isReadOnly = !!field.permissions?.write ||
+    (field.readonlyWhen && field.readonlyWhen.length > 0 &&
+      field.readonlyWhen.every(cond => evaluateCondition(cond, allValues)));
 
   return (
     <div className={cn('space-y-1.5', widthClass)}>
       <Label htmlFor={field.key} className="text-xs">
         {field.label}
-        {field.required && <span className="mr-0.5 text-rose-500">*</span>}
+        {isRequired && <span className="mr-0.5 text-rose-500">*</span>}
         {isReadOnly && (
           <span
             className="mr-1 inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[9px] font-normal text-muted-foreground"
@@ -424,6 +461,70 @@ function renderField(
             ))}
           </SelectContent>
         </Select>
+      );
+
+    // STEP 11.14 (Form Engine Closure): multi-select renders a checkbox list.
+    // Stores value as string[] (array of selected option values). Clicking a
+    // checkbox toggles membership in the array. Disabled state propagates
+    // to all checkboxes (e.g., when field has permissions.write or
+    // readonlyWhen condition is met).
+    case 'multi-select': {
+      const selectedValues: string[] = Array.isArray(value)
+        ? value.map(String)
+        : value != null ? [String(value)] : [];
+      const toggle = (optValue: string) => {
+        if (disabled) return;
+        const next = selectedValues.includes(optValue)
+          ? selectedValues.filter(v => v !== optValue)
+          : [...selectedValues, optValue];
+        onChange(next);
+      };
+      return (
+        <div className={cn('space-y-1 rounded-md border p-2', disabled && 'opacity-60')}>
+          {field.options && field.options.length > 0 ? (
+            field.options.map(opt => {
+              const checked = selectedValues.includes(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-muted',
+                    disabled && 'cursor-not-allowed',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(opt.value)}
+                    disabled={disabled}
+                    className="size-3.5"
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              );
+            })
+          ) : (
+            <p className="px-2 py-1 text-[10px] text-muted-foreground">گزینه‌ای تعریف نشده است</p>
+          )}
+        </div>
+      );
+    }
+
+    // STEP 11.14 (Form Engine Closure): rich-text renders an enhanced
+    // textarea with a basic formatting toolbar (B/I/H/• buttons). The
+    // toolbar inserts Markdown-style markers around the selection
+    // (or at the cursor). For production use, replace this with a
+    // full WYSIWYG editor (TipTap / Quill / etc.) — this implementation
+    // is intentionally dependency-free and covers the basic use case
+    // (product descriptions, article bodies, knowledge entries).
+    case 'rich-text':
+      return (
+        <RichTextField
+          value={typeof value === 'string' ? value : ''}
+          onChange={onChange}
+          placeholder={field.placeholder}
+          disabled={disabled}
+        />
       );
 
     case 'date':
@@ -558,6 +659,103 @@ function RelationField({
         )}
       </SelectContent>
     </Select>
+  );
+}
+
+// ── Rich-text field (STEP 11.14) ───────────────────────────
+// Extracted into its own component so `React.useRef` is called inside a
+// proper React function component (not the renderField switch function).
+// The eslint `react-hooks/rules-of-hooks` rule requires hooks to be
+// called only inside components or custom hooks — renderField is a
+// regular function that returns ReactNode, so it can't host hooks.
+function RichTextField({
+  value, onChange, placeholder, disabled,
+}: {
+  value: string;
+  onChange: (v: unknown) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const wrapSelection = (before: string, after: string = before) => {
+    if (disabled) return;
+    const ta = textareaRef.current;
+    if (!ta) {
+      onChange(value + before + after);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = value.slice(start, end);
+    const newValue = value.slice(0, start) + before + selected + after + value.slice(end);
+    onChange(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + before.length, end + before.length);
+    });
+  };
+
+  const insertLinePrefix = (prefix: string) => {
+    if (disabled) return;
+    const ta = textareaRef.current;
+    if (!ta) {
+      onChange(value + '\n' + prefix);
+      return;
+    }
+    const start = ta.selectionStart;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const newValue = value.slice(0, lineStart) + prefix + value.slice(lineStart);
+    onChange(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + prefix.length, start + prefix.length);
+    });
+  };
+
+  return (
+    <div className={cn('space-y-1 rounded-md border p-1', disabled && 'opacity-60')}>
+      <div className="flex flex-wrap items-center gap-0.5 border-b pb-1">
+        <button
+          type="button"
+          onClick={() => wrapSelection('**')}
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-xs font-bold hover:bg-muted disabled:opacity-40"
+          title="پررنگ"
+        >B</button>
+        <button
+          type="button"
+          onClick={() => wrapSelection('_')}
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-xs italic hover:bg-muted disabled:opacity-40"
+          title="کج"
+        >I</button>
+        <span className="mx-1 text-muted-foreground">|</span>
+        <button
+          type="button"
+          onClick={() => insertLinePrefix('## ')}
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
+          title="تیتر"
+        >H</button>
+        <button
+          type="button"
+          onClick={() => insertLinePrefix('- ')}
+          disabled={disabled}
+          className="rounded px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-40"
+          title="لیست"
+        >•</button>
+      </div>
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={5}
+        className="text-xs"
+        disabled={disabled}
+      />
+    </div>
   );
 }
 

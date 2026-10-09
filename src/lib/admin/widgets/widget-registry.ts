@@ -1,6 +1,34 @@
 /**
  * HEAVIX — STEP 11: Widget Registry
  *
+ * STEP 11.6 STATUS: ASPIRATIONAL / NOT YET WIRED.
+ *
+ * This file declares `WIDGET_TYPES` (a design contract for the future
+ * Dashboard Builder) but is NOT imported by any runtime code. The actual
+ * dashboard at src/app/admin/dashboard/page.tsx is HARDCODED with inline
+ * `db.*` calls (19 of them) and does NOT consume this registry.
+ *
+ * Verified via grep: `widgets/widget-registry` returns 0 matches in src/
+ * outside this file. `dashboardLayout` (AdminPreference field that would
+ * store the user's widget grid) is WRITTEN via the preferences API but
+ * NEVER READ by any renderer.
+ *
+ * This file is KEPT (not deleted) because:
+ *   1. It documents the intended widget taxonomy (9 widgets, permissions,
+ *      data sources, refresh intervals) — useful design contract for
+ *      the future Dashboard Builder implementation.
+ *   2. Removing it would lose the design intent; the codebase would
+ *      have to re-derive the widget list when the Dashboard Builder
+ *      is implemented (STEP 11+ follow-up, see ADR-004 §F.1).
+ *
+ * WHEN THE DASHBOARD BUILDER IS IMPLEMENTED:
+ *   - The dashboard page should import `listWidgetTypes()` to render
+ *     the widget picker.
+ *   - The dashboard page should read `usePreferences().dashboardLayout`
+ *     to render the user's saved grid.
+ *   - The widget grid component should call each widget's
+ *     `dataSource.apiPath` to fetch data + apply `permission` filtering.
+ *
  * Defines dashboard widget types. Each widget has:
  *   - key: unique identifier
  *   - label: display name
