@@ -48,7 +48,7 @@ jobs:
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
-          psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
 
       - name: Push schemas
         run: |
