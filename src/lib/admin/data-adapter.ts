@@ -143,11 +143,12 @@ export async function createResource(
 
 // ── Update resource (with field policy enforcement) ────────
 // P0-1 HARDENING: Same fail-closed field write policy as createResource.
-// STEP 11.19: For updates, load the PERSISTED record before evaluating
-// readonlyWhen conditions. Previously, conditions were evaluated against
-// the submitted data only — a user could omit the controlling field and
-// bypass the rule. Now we merge persisted state with submitted data for
-// condition evaluation.
+// STEP 11.22: The read-evaluate-update sequence is now wrapped in a
+// db.$transaction for main-DB resources. This closes the TOCTOU race
+// condition where a record could change between the read (for
+// readonlyWhen evaluation) and the write. For store-DB resources,
+// cross-DB transactions aren't supported — we fall back to the
+// non-transactional path (KNOWN LIMITATION, same as audit).
 export async function updateResource(
   config: AdminResourceConfig,
   id: string,
@@ -156,30 +157,76 @@ export async function updateResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
-  // STEP 11.21: Load persisted record for readonlyWhen evaluation.
-  // FAIL-CLOSED: If the load fails or the record doesn't exist, reject
-  // the update. Previously, errors were silently swallowed (`catch { /* non-fatal */ }`),
-  // which meant readonlyWhen could be evaluated against null — bypassing
-  // the rule entirely if the controlling field was in the submitted data.
+  // For store-DB resources, use non-transactional path (cross-DB limitation)
+  if (config.database === 'store') {
+    return updateResourceNonTransactional(config, model, id, data, fieldCtx);
+  }
+
+  // STEP 11.22: For main-DB resources, wrap read+evaluate+update in a
+  // transaction. This ensures the persisted record read for readonlyWhen
+  // evaluation is in the same transaction as the update — preventing
+  // TOCTOU race conditions.
+  return await db.$transaction(async (tx) => {
+    const txModel = (tx as any)[config.model];
+
+    // Load persisted record INSIDE the transaction
+    let persistedRecord: Record<string, unknown> | null = null;
+    try {
+      persistedRecord = await txModel.findUnique({ where: { id } }) as Record<string, unknown> | null;
+    } catch (err) {
+      throw new Error(
+        `Failed to load persisted record for field policy evaluation: ${(err as Error).message}`,
+      );
+    }
+    if (!persistedRecord) {
+      throw new Error(`Record not found: ${config.key}/${id} — cannot evaluate field policy`);
+    }
+
+    // Apply field write policy
+    let filteredData = data;
+    if (fieldCtx) {
+      const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
+      if (!policy.ok) {
+        const err = new Error(
+          `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,
+        ) as Error & { statusCode: number; rejectedField: string; requiredPermission: string };
+        err.statusCode = 403;
+        (err as any).rejectedField = policy.rejectedField;
+        (err as any).requiredPermission = policy.requiredPermission;
+        throw err;
+      }
+      filteredData = policy.filteredData!;
+    }
+
+    // Perform the update INSIDE the same transaction
+    const item = await txModel.update({ where: { id }, data: filteredData });
+    return item;
+  });
+}
+
+// Non-transactional update path for store-DB resources (cross-DB limitation)
+async function updateResourceNonTransactional(
+  config: AdminResourceConfig,
+  model: ReturnType<typeof getPrismaModel>,
+  id: string,
+  data: Record<string, unknown>,
+  fieldCtx?: FieldPolicyContext,
+): Promise<Record<string, unknown>> {
+  // Load persisted record (fail-closed)
   let persistedRecord: Record<string, unknown> | null = null;
   try {
     persistedRecord = await model.findUnique({ where: { id } }) as Record<string, unknown> | null;
   } catch (err) {
-    // DB error loading persisted record — FAIL CLOSED
     throw new Error(
-      `Failed to load persisted record for field policy evaluation: ${(err as Error).message}`,
+      `Failed to load persisted record: ${(err as Error).message}`,
     );
   }
   if (!persistedRecord) {
-    // Record not found — FAIL CLOSED (can't evaluate readonlyWhen without state)
-    throw new Error(`Record not found: ${config.key}/${id} — cannot evaluate field policy`);
+    throw new Error(`Record not found: ${config.key}/${id}`);
   }
 
-  // Apply field write policy (async, fail-closed if user lacks field-level write permission)
   let filteredData = data;
   if (fieldCtx) {
-    // STEP 11.19: Pass persistedRecord so readonlyWhen can evaluate against
-    // authoritative server state, not client-submitted data.
     const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
     if (!policy.ok) {
       const err = new Error(
@@ -193,8 +240,7 @@ export async function updateResource(
     filteredData = policy.filteredData!;
   }
 
-  const item = await model.update({ where: { id }, data: filteredData });
-  return item;
+  return await model.update({ where: { id }, data: filteredData });
 }
 
 // ── Delete resource (soft or hard) ────────────────────────
