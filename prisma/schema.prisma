@@ -624,6 +624,37 @@ model Lead {
   viewerName  String?
   note        String?
   createdAt   DateTime @default(now())
+
+  // ── PR-SC-01 — Lead CRM Foundation (additive; ADR-005 §3) ──
+  // status: CRM pipeline state. Backfill: all existing leads → "NEW".
+  // Allowed values: NEW | CONTACTED | QUALIFIED | CLOSED | LOST.
+  // Validated in the app layer (src/lib/crm/lead-status.ts); kept as a
+  // plain String (not a Postgres enum) so the migration is a single
+  // additive ALTER TABLE with a safe default and no blocking enum cast.
+  status      String   @default("NEW")
+  // assignedToId: optional sales-team member (User) responsible for
+  // follow-up. Nullable: unassigned leads are valid (the NEW bucket).
+  assignedToId String?
+  assignedTo   User?   @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  // Deterministic Lead Score v1 (see src/lib/crm/lead-score.ts).
+  // Cached value; recalculation is a separate job (PR-SC-06).
+  // scoreVersion: "v1" (algorithm) | "v1-override" (human-corrected).
+  score              Int?
+  scoreVersion       String?
+  scoreBreakdown     Json?
+  scoredAt           DateTime?
+  // Human override (audited via auditMutationTransactional in the
+  // PATCH handler). Setting any override field flips scoreVersion
+  // to "v1-override" so the UI can distinguish algorithm vs human.
+  scoreOverrideById  String?
+  scoreOverrideBy    User?  @relation("LeadScoreOverride", fields: [scoreOverrideById], references: [id], onDelete: SetNull)
+  scoreOverrideReason String?
+  scoreOverrideNote  String?
+  scoreOverrideAt    DateTime?
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([listingId, status])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1600,6 +1631,13 @@ model User {
   reviewsWritten  Review[] @relation("ReviewAuthor")
   dealsAsBuyer    Deal[] @relation("DealBuyer")
   dealsAsSeller   Deal[] @relation("DealSeller")
+
+  // ── PR-SC-01 — Lead CRM back-relations ──
+  // assignedLeads: leads this user is responsible for following up (Lead.assignedToId).
+  // scoreOverrideLeads: leads whose algorithmic score this user manually overrode
+  //   (Lead.scoreOverrideById). Kept for audit traceability.
+  assignedLeads       Lead[] @relation("LeadAssignee")
+  scoreOverrideLeads  Lead[] @relation("LeadScoreOverride")
 }
 
 model Session {

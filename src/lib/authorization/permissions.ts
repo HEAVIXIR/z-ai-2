@@ -113,6 +113,11 @@ export const PERMISSIONS = [
   // Store
   'store.read',
   'store.manage',
+  // ── PR-SC-01 — Store Center CRM permissions (ADR-005 §7) ──
+  // store.crm.read: view leads + CRM pipeline (seller scope: own company's leads)
+  // store.crm.manage: update lead status, assign, override score
+  'store.crm.read',
+  'store.crm.manage',
 
   // Inventory
   'inventory.read',
@@ -260,6 +265,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'media.upload',
     'analytics.read',
     'price.read',                     // 6D.4: view price estimates
+    // PR-SC-01: Store Center CRM — seller can read + manage their own company's leads
+    'store.crm.read',
+    'store.crm.manage',
   ],
 
   BUYER: [
