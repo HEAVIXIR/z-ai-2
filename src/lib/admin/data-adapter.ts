@@ -162,27 +162,41 @@ export async function updateResource(
     return updateResourceNonTransactional(config, model, id, data, fieldCtx);
   }
 
-  // STEP 11.22: For main-DB resources, wrap read+evaluate+update in a
-  // transaction. This ensures the persisted record read for readonlyWhen
-  // evaluation is in the same transaction as the update — preventing
-  // TOCTOU race conditions.
+  // STEP 11.23: For main-DB resources, wrap read+evaluate+update in a
+  // transaction with SELECT FOR UPDATE row locking. This closes the TOCTOU
+  // race condition: under PostgreSQL's default Read Committed isolation,
+  // a plain findUnique does NOT lock the row — another transaction could
+  // modify it between our read and write. Using $queryRaw with
+  // 'SELECT ... FOR UPDATE' acquires a row-level lock that blocks concurrent
+  // writes until our transaction commits or rolls back.
   return await db.$transaction(async (tx) => {
     const txModel = (tx as any)[config.model];
 
-    // Load persisted record INSIDE the transaction
+    // STEP 11.23: Use SELECT FOR UPDATE to lock the row for the duration
+    // of this transaction. This prevents a concurrent request from
+    // modifying the controlling field between our policy evaluation
+    // and our write.
+    //
+    // We use $queryRaw because Prisma's findUnique does not support
+    // FOR UPDATE. The table name is derived from the model name
+    // (Prisma uses the model name as-is for the table name by default).
+    const tableName = config.model.charAt(0).toUpperCase() + config.model.slice(1);
     let persistedRecord: Record<string, unknown> | null = null;
     try {
-      persistedRecord = await txModel.findUnique({ where: { id } }) as Record<string, unknown> | null;
+      const rows = await tx.$queryRaw`
+        SELECT * FROM "${tableName}" WHERE "id" = ${id} FOR UPDATE
+      ` as Record<string, unknown>[];
+      persistedRecord = rows.length > 0 ? rows[0] : null;
     } catch (err) {
       throw new Error(
-        `Failed to load persisted record for field policy evaluation: ${(err as Error).message}`,
+        `Failed to load persisted record (FOR UPDATE): ${(err as Error).message}`,
       );
     }
     if (!persistedRecord) {
       throw new Error(`Record not found: ${config.key}/${id} — cannot evaluate field policy`);
     }
 
-    // Apply field write policy
+    // Apply field write policy (readonlyWhen evaluated against locked persisted state)
     let filteredData = data;
     if (fieldCtx) {
       const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
@@ -198,7 +212,7 @@ export async function updateResource(
       filteredData = policy.filteredData!;
     }
 
-    // Perform the update INSIDE the same transaction
+    // Perform the update INSIDE the same transaction (row is still locked)
     const item = await txModel.update({ where: { id }, data: filteredData });
     return item;
   });
