@@ -156,11 +156,24 @@ export async function updateResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
-  // STEP 11.19: Load persisted record for readonlyWhen evaluation
+  // STEP 11.21: Load persisted record for readonlyWhen evaluation.
+  // FAIL-CLOSED: If the load fails or the record doesn't exist, reject
+  // the update. Previously, errors were silently swallowed (`catch { /* non-fatal */ }`),
+  // which meant readonlyWhen could be evaluated against null — bypassing
+  // the rule entirely if the controlling field was in the submitted data.
   let persistedRecord: Record<string, unknown> | null = null;
   try {
     persistedRecord = await model.findUnique({ where: { id } }) as Record<string, unknown> | null;
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    // DB error loading persisted record — FAIL CLOSED
+    throw new Error(
+      `Failed to load persisted record for field policy evaluation: ${(err as Error).message}`,
+    );
+  }
+  if (!persistedRecord) {
+    // Record not found — FAIL CLOSED (can't evaluate readonlyWhen without state)
+    throw new Error(`Record not found: ${config.key}/${id} — cannot evaluate field policy`);
+  }
 
   // Apply field write policy (async, fail-closed if user lacks field-level write permission)
   let filteredData = data;

@@ -154,16 +154,14 @@ export async function applyFieldWritePolicyAsync(
       continue;
     }
 
-    // STEP 11.20: Server-side readonlyWhen enforcement using PERSISTED state.
-    // The condition is evaluated against the CURRENT persisted record, NOT
-    // the submitted data. This prevents:
-    //   1. Omitting the controlling field → persisted value used
-    //   2. Fabricating a controlling value → persisted value used (ignored)
-    //   3. Changing controlling + protected together → persisted value used
-    //      (the record is still in its current state until the update commits)
+    // STEP 11.21: Server-side readonlyWhen enforcement using PERSISTED state.
+    // FAIL-CLOSED for unknown operators: if an operator is not recognized,
+    // the field is treated as READ-ONLY (rejected) rather than writable.
+    // This prevents a misconfigured or tampered condition from silently
+    // allowing a write that should be blocked.
     if (field.readonlyWhen && field.readonlyWhen.length > 0) {
+      let unknownOperator = false;
       const allConditionsMet = field.readonlyWhen.every(cond => {
-        // Use readonlyWhenState (persisted for UPDATE, submitted for CREATE)
         const val = readonlyWhenState[cond.field];
         switch (cond.operator) {
           case 'eq': return val === cond.value;
@@ -173,9 +171,20 @@ export async function applyFieldWritePolicyAsync(
           case 'isNull': return val === null || val === undefined;
           case 'gt': return typeof val === 'number' && typeof cond.value === 'number' && val > cond.value;
           case 'lt': return typeof val === 'number' && typeof cond.value === 'number' && val < cond.value;
-          default: return false; // unknown operator → condition NOT met (not readonly)
+          default:
+            // STEP 11.21: Unknown operator → FAIL CLOSED
+            unknownOperator = true;
+            return true; // treat as condition met → field is readonly
         }
       });
+      if (unknownOperator) {
+        // Unknown operator in readonlyWhen → reject (fail closed)
+        return {
+          ok: false,
+          rejectedField: key,
+          requiredPermission: 'FIELD_READONLY_UNKNOWN_OPERATOR',
+        };
+      }
       if (allConditionsMet) {
         return {
           ok: false,
