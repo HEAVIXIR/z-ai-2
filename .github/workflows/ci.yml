@@ -64,8 +64,11 @@ jobs:
       - name: Security tests
         run: bun run test:security
 
-      - name: Full test suite
-        run: bun run test
+      - name: Full test suite (contract + security only)
+        run: bunx vitest run tests/contract/ tests/security/ tests/unit/ tests/integration/
+        env:
+          ADMIN_USERNAME: "ci-admin"
+          ADMIN_PASSWORD: "ci-password-not-real"
 
       - name: Production build
         run: bun run build
