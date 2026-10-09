@@ -9,6 +9,27 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      ADMIN_USERNAME: "ci-admin"
+      ADMIN_PASSWORD: "ci-password-not-real"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,9 +44,16 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store-schema.prisma
-        env:
-          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
-          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+
+      - name: Create store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+
+      - name: Push schemas
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
 
       - name: Typecheck
         run: bun run typecheck
@@ -35,6 +63,9 @@ jobs:
 
       - name: Security tests
         run: bun run test:security
-        env:
-          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
-          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+
+      - name: Full test suite
+        run: bun run test
+
+      - name: Production build
+        run: bun run build
