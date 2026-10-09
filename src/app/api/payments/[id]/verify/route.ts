@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
@@ -20,13 +21,28 @@ export const dynamic = "force-dynamic";
    On PAID, sets paidAt = now. If the payment has a subscriptionId
    and the type is SUBSCRIPTION, also flips the linked
    PremiumSubscription.status to ACTIVE (so a manual verify
-   immediately unlocks the plan features). */
+   immediately unlocks the plan features).
+
+   STEP 11.37 P1 FIX: previously used isAuthenticated() (any
+   logged-in user) as the sole gate. Any BUYER could mark payments
+   as PAID and activate premium subscriptions. Now requires
+   payment.manage permission (RBAC). */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await isAuthenticated())) {
+  // STEP 11.37 P1 FIX: require payment.manage permission (RBAC).
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "payment.manage");
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires 'payment.manage' permission" },
+      { status: 403 },
+    );
   }
   try {
     const { id } = await params;
