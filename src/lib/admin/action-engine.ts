@@ -37,6 +37,14 @@ export interface ActionContext {
   userId: string | null;
   reason?: string | null;
   metadata?: Record<string, unknown>;
+  /**
+   * PR-SC-00: optional tenant access context. When provided and the
+   * resource declares ownership, executeAction verifies the loaded
+   * record belongs to the user (or the user is admin/moderator) BEFORE
+   * running the action handler. Non-owners get a "not found" result
+   * (fail-closed, no existence leak).
+   */
+  tenantCtx?: import('./tenant-scope').TenantAccessContext;
 }
 
 // ── Action handlers ────────────────────────────────────────
@@ -334,6 +342,17 @@ export async function executeAction(
 
   if (!before) {
     return { success: false, action: actionKey, entityId, message: 'Entity not found' };
+  }
+
+  // PR-SC-00: row-level ownership check. If the resource declares ownership
+  // and a tenantCtx was provided, verify the user owns this record (or is
+  // admin / moderator). Non-owners get "not found" — fail-closed, no leak.
+  if (ctx.tenantCtx && config.ownership) {
+    const { checkRowOwnership } = await import('./tenant-scope');
+    const ownCheck = checkRowOwnership(config, ctx.tenantCtx, before);
+    if (!ownCheck.allowed) {
+      return { success: false, action: actionKey, entityId, message: 'Entity not found' };
+    }
   }
 
   // Tag the item with the model name AND the prisma model accessor so that

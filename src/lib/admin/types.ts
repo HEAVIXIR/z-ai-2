@@ -287,6 +287,57 @@ export interface AdminResourceConfig {
     resource: string;      // another resource key
     filterField: string;  // field on the related resource that points to this one
   }[];
+
+  /**
+   * PR-SC-00 — Row-level tenant / ownership scoping.
+   *
+   * When declared, the Universal Resource API enforces that a non-admin,
+   * non-moderator user can only READ / LIST / UPDATE / DELETE rows they
+   * own. The owner identity is derived from the authenticated server-side
+   * session (never from a client-supplied userId / sellerId / tenant).
+   *
+   * - ADMIN role → sees all rows (no filter).
+   * - User with `moderatePermission` → sees all rows (cross-tenant oversight).
+   * - Any other user → sees only rows where the owner field equals their userId
+   *   (direct) OR where the relation-chain resolves to their userId (indirect).
+   *
+   * If omitted (undefined), the resource is treated as NOT seller-scoped and
+   * current (action-level only) behavior is preserved. A registry of which
+   * resources still need ownership config is maintained in
+   * docs/product/PR-SC-00-SCOPE.md.
+   *
+   * Enforcement is fail-closed: if ownership is declared but the owner
+   * field cannot be resolved for a row, the row is treated as NOT owned
+   * (denied) — never silently exposed.
+   */
+  ownership?: AdminOwnershipConfig;
+}
+
+export interface AdminOwnershipConfig {
+  /**
+   * Direct ownership: the column on this model that holds the owner's userId.
+   * Example: Listing.sellerId → ownerField: 'sellerId'.
+   * Mutually exclusive with `relation`.
+   */
+  ownerField?: string;
+  /**
+   * Indirect (relation-based) ownership: navigate a relation to find the owner.
+   * Example: Lead has no sellerId, but Lead.listing.sellerId is the owner.
+   * Produces a Prisma nested where: { listing: { sellerId: userId } }.
+   * Mutually exclusive with `ownerField`.
+   */
+  relation?: {
+    /** Relation field on this model (e.g. 'listing'). Must match a Prisma relation. */
+    field: string;
+    /** Owner field on the related model (e.g. 'sellerId'). */
+    ownerField: string;
+  };
+  /**
+   * Permission that grants cross-tenant visibility (e.g. 'listing.moderate').
+   * If the user holds this permission, the tenant filter is NOT applied.
+   * Use for moderators / support / catalog-overseers who need global view.
+   */
+  moderatePermission?: string;
 }
 
 // ── Registry ────────────────────────────────────────────────

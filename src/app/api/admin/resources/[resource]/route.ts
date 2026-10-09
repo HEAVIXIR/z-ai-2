@@ -39,12 +39,29 @@ import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { auditCreate, auditMutation } from '@/lib/audit-foundation';
-import { can } from '@/lib/authorization';
+import { can, isAdmin } from '@/lib/authorization';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
+import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string }> };
+
+// PR-SC-00: resolve the server-side tenant access context. The userId is
+// the authenticated session user; isAdmin + hasModeratePerm are resolved
+// via RBAC (never from the request body / query). Returns null if the
+// user is not authenticated (caller already handled 401 via requireAdmin).
+async function resolveTenantCtx(
+  userId: string | null,
+  config: { ownership?: { moderatePermission?: string } },
+): Promise<TenantAccessContext> {
+  const admin = userId ? await isAdmin(userId) : false;
+  let hasModeratePerm = false;
+  if (userId && config.ownership?.moderatePermission) {
+    hasModeratePerm = await can(userId, config.ownership.moderatePermission);
+  }
+  return { userId, isAdmin: admin, hasModeratePerm };
+}
 
 // ── GET: List resources ────────────────────────────────────
 export async function GET(req: NextRequest, { params }: Params) {
@@ -60,25 +77,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // 2. Check read permission
-  //    STEP 11.10 (Universal Resource Authorization Closure): pass
-  //    `readPerm` to requireAdmin() so non-admin users WITH `payment.read`
-  //    can access the Universal Resource API. Previously `requireAdmin()`
-  //    (no arg) required the user to be an ADMIN — blocking ALL non-admin
-  //    users regardless of their RBAC permissions. This made field-level
-  //    READ/EXPORT policy untestable at the API level (User B with
-  //    `payment.read` got 403 before field policy could run).
-  //    With the fix, `requireAdmin(readPerm)` does:
-  //      (a) check the user is authenticated (401 if not)
-  //      (b) check the user is ADMIN OR has `readPerm` (403 if neither)
-  //    The follow-up `can(user.id, readPerm)` is now redundant for
-  //    non-admins (requireAdmin already verified) but kept for the admin
-  //    path (admin without `readPerm` is denied — Model B contract).
   const readPerm = config.permissions.read;
   if (readPerm) {
     const [user, error] = await requireAdmin(readPerm);
     if (error) return error;
 
-    // Check if user has the specific read permission
     const hasReadPerm = await can(user?.id ?? null, readPerm);
     if (!hasReadPerm) {
       return NextResponse.json(
@@ -91,9 +94,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     const url = new URL(req.url);
     const queryParams = parseQueryParams(url.searchParams, config);
 
-    // 4. Execute query via Data Adapter
+    // PR-SC-00: resolve tenant context from the authenticated session.
+    const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
+    // 4. Execute query via Data Adapter (with tenant scoping)
     try {
-      const result = await listResources(config, queryParams, { userId: user?.id ?? null });
+      const result = await listResources(config, queryParams, { userId: user?.id ?? null }, tenantCtx);
 
       // 5. Apply field policy (filter restricted fields)
       const filteredItems = await filterReadableFieldsAsync(
@@ -154,8 +160,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // P1 SERVER-SIDE VALIDATION: Validate payload against resource field config
-  // (required, type, enum, min/max, string constraints, pattern)
-  // This is server-authoritative — client validation is UX only.
   const validation = validateResourcePayload(config, body);
   if (!validation.ok) {
     return NextResponse.json(
@@ -164,12 +168,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
+  // PR-SC-00: resolve tenant context for create (enforces owner).
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   try {
-    // P0-3 HARDENING: Wrap createResource inside auditMutation so:
-    //   - If mutation succeeds → audit logged (success)
-    //   - If mutation fails → audit logged (.failed suffix)
-    //   - Audit captures Who/What/When/Where/Before(null)/After/Why
-    // This makes audit enforcement CENTRAL for Universal Resource API POST.
     const auditResult = await auditMutation(
       {
         actorId: user?.id ?? null,
@@ -181,29 +183,25 @@ export async function POST(req: NextRequest, { params }: Params) {
         database: config.database, // P1: route snapshot capture to the right Prisma client
       },
       async () => {
-        return await createResource(config, body, { userId: user?.id ?? null });
+        return await createResource(config, body, { userId: user?.id ?? null }, tenantCtx);
       },
     );
     const item = auditResult.result;
 
     // STEP 15-B.5.4-C.2-P1: Invalidate Homepage cache for affected resources
-    // Only fires for resources that have Homepage impact (listings, brands, buy-requests).
-    // Other resources have no cache tags and are silently skipped.
     const cacheTags = getHomepageCacheTags(resourceKey);
     for (const tag of cacheTags) {
       try { revalidateTag(tag, 'default'); } catch (e) {
-        // Per Cache Contract §11: invalidation failure must not block the mutation.
-        // Log but don't throw — the mutation already succeeded.
         console.error(`[resources/${resourceKey}] revalidateTag('${tag}') failed:`, e);
       }
     }
 
     return NextResponse.json({ ok: true, data: item }, { status: 201 });
   } catch (err) {
-    // P0-1: Field write permission rejection → 403 (not 500)
+    // P0-1 / PR-SC-00: Field write permission OR tenant-scope rejection → 403 (not 500)
     const errorWithStatus = err as Error & { statusCode?: number; rejectedField?: string; requiredPermission?: string };
     if (errorWithStatus.statusCode === 403) {
-      console.error(`[resources/${resourceKey}] POST field-write forbidden:`, err);
+      console.error(`[resources/${resourceKey}] POST forbidden:`, err);
       return NextResponse.json(
         {
           error: errorWithStatus.message,

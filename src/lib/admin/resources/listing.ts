@@ -17,6 +17,16 @@ export const listingConfig: AdminResourceConfig = {
     export: 'listing.export',
   },
 
+  // PR-SC-00 — Row-level tenant scoping for the primary seller-owned resource.
+  // Listing.sellerId is the owner column. A SELLER sees/edits only their own
+  // listings; a user with `listing.moderate` (moderators/admins) sees all;
+  // ADMIN sees all. The owner identity is resolved server-side from the
+  // authenticated session — never from a client-supplied sellerId.
+  ownership: {
+    ownerField: 'sellerId',
+    moderatePermission: 'listing.moderate',
+  },
+
   columns: [
     { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true, visible: true },
     { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true, visible: true },

@@ -16,12 +16,26 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeAction } from '@/lib/admin/action-engine';
 import { requireAdmin } from '@/lib/admin-guard';
-import { can } from '@/lib/authorization';
+import { can, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
+import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string; id: string }> };
+
+// PR-SC-00: resolve server-side tenant access context.
+async function resolveTenantCtx(
+  userId: string | null,
+  config: { ownership?: { moderatePermission?: string } },
+): Promise<TenantAccessContext> {
+  const admin = userId ? await isAdmin(userId) : false;
+  let hasModeratePerm = false;
+  if (userId && config.ownership?.moderatePermission) {
+    hasModeratePerm = await can(userId, config.ownership.moderatePermission);
+  }
+  return { userId, isAdmin: admin, hasModeratePerm };
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
@@ -34,7 +48,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   const actionDef = config.actions?.find(a => a.key === body.action);
   if (!actionDef) return NextResponse.json({ error: 'Action not defined' }, { status: 400 });
 
-  // STEP 11.10: Auth with the action's permission key (was bare requireAdmin()).
   const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
 
@@ -43,11 +56,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: `Forbidden: requires "${actionDef.permission}"` }, { status: 403 });
   }
 
+  // PR-SC-00: resolve tenant context so executeAction can enforce ownership.
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   // Execute
   const result = await executeAction(resourceKey, id, body.action, {
     userId: user?.id ?? null,
     reason: body.reason,
     metadata: body.metadata,
+    tenantCtx,
   });
 
   return NextResponse.json({ ok: result.success, data: result }, { status: result.success ? 200 : 400 });
