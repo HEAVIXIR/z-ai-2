@@ -100,6 +100,9 @@ const PERMISSIONS: PermissionSeed[] = [
   { key: "auction.manage", nameFa: "مدیریت مزایده",       nameEn: "Manage auction",  resource: "auction",  description: "مدیریت مزایده‌های ماشین‌آلات" },
   // settings
   { key: "settings.manage", nameFa: "مدیریت تنظیمات",     nameEn: "Manage settings", resource: "settings", description: "ویرایش تنظیمات سایت" },
+  // ── PR-SC-01 — Store Center CRM permissions (hand-crafted Persian names) ──
+  { key: "store.crm.read",  nameFa: "مشاهده سرنخ‌ها و CRM",  nameEn: "Read store CRM",  resource: "store",    description: "مشاهده سرنخ‌ها و جریان پیگیری فروش (محدود به سرنخ‌های شرکت خود)" },
+  { key: "store.crm.manage", nameFa: "مدیریت سرنخ‌ها و CRM", nameEn: "Manage store CRM", resource: "store",    description: "به‌روزرسانی وضعیت سرنخ، تخصیص، و اصلاح امتیاز سرنخ" },
 ];
 
 // ── Reconciliation: ensure ALL canonical permissions are seeded ──
