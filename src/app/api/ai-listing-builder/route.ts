@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -7,8 +8,15 @@ export const dynamic = "force-dynamic";
 /* POST /api/ai-listing-builder — description → LLM extracts structured data.
    Body: { description, brandName?, categoryName? }
    Returns: { title, brand, model, year, hours, condition, price, location, ... }
+
+   STEP 11.32 R-3 FIX: added getCurrentUser() auth check.
 */
 export async function POST(req: Request) {
+  // STEP 11.32 R-3 FIX: require authentication.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
     const description = String(body.description ?? "").trim();

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin } from "@/lib/authorization";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -7,8 +9,18 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/ai-seller-assistant?listingId=...
    Returns listing improvement suggestions.
+
+   STEP 11.32 R-3 FIX: added getCurrentUser() auth check + ownership
+   check (IDOR fix). Previously this route had NO authentication —
+   anyone could call it and read any listing's data. Now only the
+   listing's owner or an admin can access it.
 */
 export async function GET(req: Request) {
+  // STEP 11.32 R-3 FIX: require authentication.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const url = new URL(req.url);
     const id = url.searchParams.get("listingId");
@@ -26,6 +38,14 @@ export async function GET(req: Request) {
     });
     if (!listing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // STEP 11.32 R-3 FIX: ownership check (IDOR fix). Only the listing's
+    // seller or an admin can access AI suggestions for this listing.
+    const isOwner = listing.sellerId === user.id;
+    const is_admin = await isAdmin(user.id);
+    if (!isOwner && !is_admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Heuristic checks

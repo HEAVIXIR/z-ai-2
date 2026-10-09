@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { parseNumber } from "@/lib/api-helpers";
 import ZAI from "z-ai-web-dev-sdk";
 
@@ -9,8 +10,15 @@ export const dynamic = "force-dynamic";
 /* POST /api/ai-price-suggestion
    Body: { brandId?, categoryId?, year?, condition?, workingHours?, province?, description? }
    Returns: { min, max, suggested, currency, samples, confidence }
+
+   STEP 11.32 R-3 FIX: added getCurrentUser() auth check.
 */
 export async function POST(req: Request) {
+  // STEP 11.32 R-3 FIX: require authentication.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
 

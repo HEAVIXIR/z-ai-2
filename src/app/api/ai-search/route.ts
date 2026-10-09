@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
 import { searchListings } from "@/lib/search";
 import ZAI from "z-ai-web-dev-sdk";
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
    Returns: { filters, intent, listings }
    Side-effects: logs zero-result searches as DemandSignal records.
 
+   STEP 11.32 R-3 FIX: added getCurrentUser() auth check. Previously
+   this route had NO authentication — anyone could call it.
+
    P1-18: the listing fetch is routed through `searchListings`
    (src/lib/search.ts) so Persian normalization is applied uniformly.
    The price / condition / year filters that searchListings doesn't
@@ -20,6 +24,11 @@ export const dynamic = "force-dynamic";
    leave enough results to satisfy the caller's `limit`.
 */
 export async function POST(req: Request) {
+  // STEP 11.32 R-3 FIX: require authentication.
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
     const query = String(body.query ?? "").trim();
