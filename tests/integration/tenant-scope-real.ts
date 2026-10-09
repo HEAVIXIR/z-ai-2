@@ -98,7 +98,7 @@ async function main() {
 
   // ═══════════════════════════════════════════════════════════
   console.log("\n── 1. LIST: Seller A sees only their own listings ──");
-  const aListResult = await listResources(config, queryParams, { userId: sellerA.id }, sellerACtx);
+  const aListResult = await listResources(config, queryParams, undefined, sellerACtx);
   const aListIds = (aListResult.items as { id: string }[]).map((i) => i.id).sort();
   assert(aListIds.includes(aList1.id), "Seller A sees their own listing aList1");
   assert(aListIds.includes(aList2.id), "Seller A sees their own listing aList2");
@@ -106,26 +106,26 @@ async function main() {
   assert(aListResult.total === 2, `Seller A total = 2 (got ${aListResult.total})`);
 
   console.log("\n── 2. LIST: Seller B sees only their own listing ──");
-  const bListResult = await listResources(config, queryParams, { userId: sellerB.id }, sellerBCtx);
+  const bListResult = await listResources(config, queryParams, undefined, sellerBCtx);
   const bListIds = (bListResult.items as { id: string }[]).map((i) => i.id);
   assert(bListIds.includes(bList1.id), "Seller B sees their own listing bList1");
   assert(!bListIds.includes(aList1.id), "Seller B does NOT see Seller A's listing (NEGATIVE)");
   assert(bListResult.total === 1, `Seller B total = 1 (got ${bListResult.total})`);
 
   console.log("\n── 3. LIST: Admin sees all listings ──");
-  const adminListResult = await listResources(config, queryParams, { userId: adminUser.id }, adminCtx);
+  const adminListResult = await listResources(config, queryParams, undefined, adminCtx);
   assert(adminListResult.total >= 3, `Admin sees all 3+ listings (got ${adminListResult.total})`);
 
   console.log("\n── 4. GET: Seller A cannot fetch Seller B's listing by id ──");
-  const crossGet = await getResource(config, bList1.id, { userId: sellerA.id }, sellerACtx);
+  const crossGet = await getResource(config, bList1.id, undefined, sellerACtx);
   assert(crossGet === null, "Seller A GET on B's listing returns null (NEGATIVE — no cross-tenant read)");
 
   console.log("\n── 5. GET: Seller A can fetch their own listing ──");
-  const ownGet = await getResource(config, aList1.id, { userId: sellerA.id }, sellerACtx);
+  const ownGet = await getResource(config, aList1.id, undefined, sellerACtx);
   assert(ownGet !== null, "Seller A GET on own listing returns the row (POSITIVE)");
 
   console.log("\n── 6. GET: Admin can fetch any listing ──");
-  const adminGet = await getResource(config, bList1.id, { userId: adminUser.id }, adminCtx);
+  const adminGet = await getResource(config, bList1.id, undefined, adminCtx);
   assert(adminGet !== null, "Admin GET on B's listing returns the row (POSITIVE)");
 
   console.log("\n── 7. UPDATE: Seller A cannot update Seller B's listing ──");

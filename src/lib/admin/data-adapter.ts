@@ -182,8 +182,12 @@ export async function createResource(
   }
 
   // PR-SC-00: enforce owner on create.
+  // IMPORTANT: run assertCreateOwner on the RAW `data` (before field-policy
+  // stripping), not on `filteredData`. Otherwise a forged `sellerId` in the
+  // payload could be silently stripped by field policy before the owner
+  // check sees it — turning an explicit rejection into a silent overwrite.
   if (tenantCtx) {
-    const ownerCheck = assertCreateOwner(config, tenantCtx, filteredData);
+    const ownerCheck = assertCreateOwner(config, tenantCtx, data);
     if (!ownerCheck.ok) {
       const err = new Error(ownerCheck.error) as Error & { statusCode: number };
       err.statusCode = 403;
@@ -245,15 +249,26 @@ export async function updateResource(
     const denyAll = 'denyAll' in tenantResult;
     const tenantWhere = 'where' in tenantResult ? tenantResult.where : {};
 
-    // STEP 11.23: Use SELECT FOR UPDATE to lock the row for the duration
-    // of this transaction. This prevents a concurrent request from
-    // modifying the controlling field between our policy evaluation
-    // and our write.
+    // STEP 11.23 + PR-SC-00 B1 FIX: Use SELECT FOR UPDATE to lock the row.
     //
-    // We use $queryRaw because Prisma's findUnique does not support
-    // FOR UPDATE. The table name is derived from the model name
-    // (Prisma uses the model name as-is for the table name by default).
+    // B1 BUG (caught by STEP 11.31 integration test): Prisma's $queryRaw
+    // tagged-template treats ${tableName} as a BIND PARAMETER, not an
+    // identifier → PostgreSQL emits `SELECT * FROM "$1" WHERE "id" = $2`
+    // → `ERROR: relation "$1" does not exist` (SQLSTATE 42P01). This broke
+    // ALL Universal API PATCH on main-DB resources. Never caught before
+    // because no prior test exercised the real DB path.
+    //
+    // FIX: use $queryRawUnsafe with the table name as a string literal
+    // (validated against a safe-identifier pattern to prevent SQL injection)
+    // and the id as a $1 bind parameter.
     const tableName = config.model.charAt(0).toUpperCase() + config.model.slice(1);
+    // Defense-in-depth: validate tableName is a safe SQL identifier.
+    // config.model is hardcoded in resource configs (not user input), but
+    // we validate anyway in case a future config is misconfigured.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
+      throw new Error(`Invalid table name: "${tableName}"`);
+    }
+    const lockSql = `SELECT * FROM "${tableName}" WHERE "id" = $1 FOR UPDATE`;
     let persistedRecord: Record<string, unknown> | null = null;
     if (denyAll) {
       // Tenant filter is deny-all → treat as not found (fail-closed).
@@ -270,15 +285,11 @@ export async function updateResource(
           if (!locked) {
             persistedRecord = null;
           } else {
-            const rows = await tx.$queryRaw`
-              SELECT * FROM "${tableName}" WHERE "id" = ${id} FOR UPDATE
-            ` as Record<string, unknown>[];
+            const rows = await tx.$queryRawUnsafe(lockSql, id) as Record<string, unknown>[];
             persistedRecord = rows.length > 0 ? rows[0] : null;
           }
         } else {
-          const rows = await tx.$queryRaw`
-            SELECT * FROM "${tableName}" WHERE "id" = ${id} FOR UPDATE
-          ` as Record<string, unknown>[];
+          const rows = await tx.$queryRawUnsafe(lockSql, id) as Record<string, unknown>[];
           persistedRecord = rows.length > 0 ? rows[0] : null;
         }
       } catch (err) {
@@ -319,13 +330,14 @@ export async function updateResource(
       filteredData = policy.filteredData!;
     }
 
-    // PR-SC-00: prevent a non-admin from re-assigning the owner field to
-    // another user via the update payload. If the resource has a direct
-    // ownerField and the payload tries to change it to a different userId,
-    // reject (fail-closed).
+    // PR-SC-00 H2 FIX: prevent a non-admin from re-assigning the owner field
+    // to another user via the update payload. Check the RAW `data` (before
+    // field-policy stripping), not `filteredData` — otherwise the field policy
+    // may strip `sellerId` before this guard runs, making the guard unreachable
+    // and allowing a forged reassignment to silently pass through.
     if (tenantCtx && config.ownership?.ownerField && !tenantCtx.isAdmin && !tenantCtx.hasModeratePerm) {
       const ownerField = config.ownership.ownerField;
-      const newOwner = filteredData[ownerField];
+      const newOwner = data[ownerField];
       if (newOwner !== undefined && newOwner !== null && String(newOwner) !== tenantCtx.userId) {
         const err = new Error(
           `Forbidden: cannot reassign ownership field "${ownerField}" to another user`,
@@ -401,10 +413,10 @@ async function updateResourceNonTransactional(
     filteredData = policy.filteredData!;
   }
 
-  // PR-SC-00: prevent ownership reassignment.
+  // PR-SC-00 H2 FIX: prevent ownership reassignment — check RAW data (not filteredData).
   if (tenantCtx && config.ownership?.ownerField && !tenantCtx.isAdmin && !tenantCtx.hasModeratePerm) {
     const ownerField = config.ownership.ownerField;
-    const newOwner = filteredData[ownerField];
+    const newOwner = data[ownerField];
     if (newOwner !== undefined && newOwner !== null && String(newOwner) !== tenantCtx.userId) {
       const err = new Error(
         `Forbidden: cannot reassign ownership field "${ownerField}" to another user`,
