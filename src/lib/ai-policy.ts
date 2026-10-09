@@ -87,9 +87,18 @@ async function userHasAnyRole(
 /**
  * Check whether the caller is authorised to invoke `taskType`.
  *
- * `user` may be null when the request comes through the admin-cookie
- * path (legacy admin). In that case we only allow it if ADMIN is in
- * the policy's allowedRoles — the admin cookie IS the admin identity.
+ * STEP 11.33 R-3-A1 FIX: the previous implementation granted anonymous
+ * access ({ok:true}) when `user` was null AND `roles.includes("ADMIN")`.
+ * This was intended to support the "admin-cookie path" but the Gateway
+ * route handler (ai-gateway/route.ts) never actually verified an admin
+ * cookie — it computed `adminOk` but did NOT pass it to preflight. The
+ * net effect was: any anonymous attacker could call /api/ai-gateway with
+ * any task type whose policy allowed ADMIN (all 8 seeded policies do).
+ *
+ * Fix (fail-closed): if `user` is null, ALWAYS deny. The admin-cookie
+ * path, if genuinely needed, must be handled by the caller BEFORE
+ * calling preflight — the caller must resolve a real user object (via
+ * getCurrentUser or an explicit admin-session check) and pass it.
  *
  * ADMIN always passes (subject to the policy existing at all).
  */
@@ -100,18 +109,16 @@ export async function checkAIAuth(
   const raw = (policy.allowedRoles ?? "").trim();
   if (!raw) return { ok: false, reason: "policy has no allowedRoles" };
 
+  // STEP 11.33 R-3-A1 FIX: fail-closed for anonymous. No anonymous
+  // access to AI tasks, regardless of allowedRoles. The caller must
+  // authenticate the user before invoking the Gateway.
+  if (!user) {
+    return { ok: false, reason: "authentication required" };
+  }
+
   const roles = raw === "*"
     ? ["ADMIN", "SELLER", "BUYER", "MODERATOR", "SUPPORT"]
     : raw.split(",").map((r) => r.trim().toUpperCase()).filter(Boolean);
-
-  // No user → only the admin-cookie path can satisfy this, and only
-  // if ADMIN is in the allow-list. (The route handler is responsible
-  // for verifying the admin cookie before reaching this point.)
-  if (!user) {
-    return roles.includes("ADMIN")
-      ? { ok: true }
-      : { ok: false, reason: "authentication required" };
-  }
 
   // ADMIN always passes (least surprise for super-users).
   if (await isAdmin(user.id)) return { ok: true };
