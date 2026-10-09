@@ -129,15 +129,23 @@ export async function applyFieldWritePolicyAsync(
 ): Promise<FieldWritePolicyResult> {
   const filtered: Record<string, unknown> = {};
 
-  // STEP 11.19: Build the authoritative state for readonlyWhen evaluation.
-  // For UPDATEs, merge persisted state with submitted data (submitted overrides).
-  // For CREATEs (no persistedRecord), use submitted data only.
-  // This prevents bypass via omitting the controlling field.
-  const authoritativeState: Record<string, unknown> = {};
-  if (persistedRecord) {
-    Object.assign(authoritativeState, persistedRecord);
-  }
-  Object.assign(authoritativeState, data); // submitted data overrides persisted
+  // STEP 11.20 FIX: For readonlyWhen evaluation, use PERSISTED state only
+  // (NOT merged with submitted data). This closes the bypass where a user
+  // simultaneously changes the controlling field (e.g., status: DRAFT) and
+  // the protected field (e.g., price: 100) in one request.
+  //
+  // Rationale: readonlyWhen is a DATA INTEGRITY rule based on the CURRENT
+  // persisted state of the record — "if this record is PUBLISHED, price is
+  // read-only." Changing the controlling field in the same request does NOT
+  // change the CURRENT state — the record is still PUBLISHED until the
+  // update commits. Therefore, the protected field must remain read-only
+  // for this request.
+  //
+  // For CREATEs (no persistedRecord), use submitted data only — there is no
+  // prior state to enforce against.
+  const readonlyWhenState: Record<string, unknown> = persistedRecord
+    ? { ...persistedRecord }
+    : { ...data };
 
   for (const [key, value] of Object.entries(data)) {
     const field = config.fields.find(f => f.key === key);
@@ -146,18 +154,17 @@ export async function applyFieldWritePolicyAsync(
       continue;
     }
 
-    // STEP 11.19: Server-side readonlyWhen enforcement using AUTHORITATIVE state.
-    // Uses persistedRecord (if available) merged with submitted data.
-    // This prevents bypass via:
-    //   1. Omitting the controlling field from the request
-    //   2. Sending a fabricated controlling value
-    //   3. Changing both the controlling field and protected field in one request
-    // If the controlling field's authoritative value meets the condition, the
-    // protected field is read-only → FAIL CLOSED.
+    // STEP 11.20: Server-side readonlyWhen enforcement using PERSISTED state.
+    // The condition is evaluated against the CURRENT persisted record, NOT
+    // the submitted data. This prevents:
+    //   1. Omitting the controlling field → persisted value used
+    //   2. Fabricating a controlling value → persisted value used (ignored)
+    //   3. Changing controlling + protected together → persisted value used
+    //      (the record is still in its current state until the update commits)
     if (field.readonlyWhen && field.readonlyWhen.length > 0) {
       const allConditionsMet = field.readonlyWhen.every(cond => {
-        // Use authoritativeState (persisted + submitted), NOT just data
-        const val = authoritativeState[cond.field];
+        // Use readonlyWhenState (persisted for UPDATE, submitted for CREATE)
+        const val = readonlyWhenState[cond.field];
         switch (cond.operator) {
           case 'eq': return val === cond.value;
           case 'neq': return val !== cond.value;
@@ -166,7 +173,7 @@ export async function applyFieldWritePolicyAsync(
           case 'isNull': return val === null || val === undefined;
           case 'gt': return typeof val === 'number' && typeof cond.value === 'number' && val > cond.value;
           case 'lt': return typeof val === 'number' && typeof cond.value === 'number' && val < cond.value;
-          default: return false; // unknown operator → fail open for condition (NOT readonly)
+          default: return false; // unknown operator → condition NOT met (not readonly)
         }
       });
       if (allConditionsMet) {
