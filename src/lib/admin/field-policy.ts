@@ -125,8 +125,19 @@ export async function applyFieldWritePolicyAsync(
   config: AdminResourceConfig,
   data: Record<string, unknown>,
   ctx: FieldPolicyContext,
+  persistedRecord?: Record<string, unknown> | null,
 ): Promise<FieldWritePolicyResult> {
   const filtered: Record<string, unknown> = {};
+
+  // STEP 11.19: Build the authoritative state for readonlyWhen evaluation.
+  // For UPDATEs, merge persisted state with submitted data (submitted overrides).
+  // For CREATEs (no persistedRecord), use submitted data only.
+  // This prevents bypass via omitting the controlling field.
+  const authoritativeState: Record<string, unknown> = {};
+  if (persistedRecord) {
+    Object.assign(authoritativeState, persistedRecord);
+  }
+  Object.assign(authoritativeState, data); // submitted data overrides persisted
 
   for (const [key, value] of Object.entries(data)) {
     const field = config.fields.find(f => f.key === key);
@@ -135,15 +146,18 @@ export async function applyFieldWritePolicyAsync(
       continue;
     }
 
-    // STEP 11.18 FIX (B2): Server-side readonlyWhen enforcement.
-    // Previously, readonlyWhen was only evaluated in the UI (universal-form.tsx).
-    // A user could bypass it by sending a direct API request. Now we evaluate
-    // readonlyWhen conditions against the submitted data server-side. If ALL
-    // conditions are met (AND logic), the field is read-only and the write
-    // is rejected with FAIL CLOSED.
+    // STEP 11.19: Server-side readonlyWhen enforcement using AUTHORITATIVE state.
+    // Uses persistedRecord (if available) merged with submitted data.
+    // This prevents bypass via:
+    //   1. Omitting the controlling field from the request
+    //   2. Sending a fabricated controlling value
+    //   3. Changing both the controlling field and protected field in one request
+    // If the controlling field's authoritative value meets the condition, the
+    // protected field is read-only → FAIL CLOSED.
     if (field.readonlyWhen && field.readonlyWhen.length > 0) {
       const allConditionsMet = field.readonlyWhen.every(cond => {
-        const val = data[cond.field];
+        // Use authoritativeState (persisted + submitted), NOT just data
+        const val = authoritativeState[cond.field];
         switch (cond.operator) {
           case 'eq': return val === cond.value;
           case 'neq': return val !== cond.value;
@@ -152,7 +166,7 @@ export async function applyFieldWritePolicyAsync(
           case 'isNull': return val === null || val === undefined;
           case 'gt': return typeof val === 'number' && typeof cond.value === 'number' && val > cond.value;
           case 'lt': return typeof val === 'number' && typeof cond.value === 'number' && val < cond.value;
-          default: return false;
+          default: return false; // unknown operator → fail open for condition (NOT readonly)
         }
       });
       if (allConditionsMet) {

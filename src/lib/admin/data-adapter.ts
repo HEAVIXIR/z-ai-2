@@ -143,6 +143,11 @@ export async function createResource(
 
 // ── Update resource (with field policy enforcement) ────────
 // P0-1 HARDENING: Same fail-closed field write policy as createResource.
+// STEP 11.19: For updates, load the PERSISTED record before evaluating
+// readonlyWhen conditions. Previously, conditions were evaluated against
+// the submitted data only — a user could omit the controlling field and
+// bypass the rule. Now we merge persisted state with submitted data for
+// condition evaluation.
 export async function updateResource(
   config: AdminResourceConfig,
   id: string,
@@ -151,10 +156,18 @@ export async function updateResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
+  // STEP 11.19: Load persisted record for readonlyWhen evaluation
+  let persistedRecord: Record<string, unknown> | null = null;
+  try {
+    persistedRecord = await model.findUnique({ where: { id } }) as Record<string, unknown> | null;
+  } catch { /* non-fatal */ }
+
   // Apply field write policy (async, fail-closed if user lacks field-level write permission)
   let filteredData = data;
   if (fieldCtx) {
-    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx);
+    // STEP 11.19: Pass persistedRecord so readonlyWhen can evaluate against
+    // authoritative server state, not client-submitted data.
+    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
     if (!policy.ok) {
       const err = new Error(
         `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,

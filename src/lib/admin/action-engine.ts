@@ -121,14 +121,25 @@ registerActionHandler('verify', async (item) => {
       // The `verify` action on users maps to email verification.
       updateData.emailVerified = true;
       break;
-    case 'payment':
-      // STEP 11.18 FIX: Payment has neither `verified` nor `verification` field.
-      // The correct business transition for "verify payment" (precondition: status=PENDING)
-      // is to mark it as PAID with paidAt timestamp. 'VERIFIED' is NOT a valid
-      // Payment status (valid: PENDING, AUTHORIZED, PAID, FAILED, CANCELLED, REFUNDED).
-      updateData.status = 'PAID';
-      updateData.paidAt = new Date();
-      break;
+    case 'payment': {
+      // STEP 11.19: ATOMIC CONDITIONAL UPDATE for payment verify.
+      // "verify" means admin confirms a PENDING payment as PAID (e.g., manual
+      // bank confirmation). We use updateMany with expected status to prevent
+      // race conditions: two concurrent verify requests cannot both succeed.
+      // The precondition (status=PENDING) was already checked, but this
+      // conditional update is the authoritative atomic guard.
+      const currentStatus = String(item.status ?? '');
+      const verifyResult = await model.updateMany({
+        where: { id: item.id, status: currentStatus },
+        data: { status: 'PAID', paidAt: new Date() },
+      });
+      if (verifyResult.count === 0) {
+        throw new Error(
+          `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
+        );
+      }
+      return await model.findUnique({ where: { id: item.id } });
+    }
     default:
       // Generic fallback: try setting `verified` Boolean first; if model doesn't
       // have it, the caller's try/catch will surface the error.
@@ -221,7 +232,30 @@ registerActionHandler('confirm', makeStatusHandler('CONFIRMED', 'confirmedAt'));
 registerActionHandler('cancel',  makeStatusHandler('CANCELLED', 'cancelledAt'));
 
 // Payment lifecycle (R7 payments): refund
-registerActionHandler('refund', makeStatusHandler('REFUNDED', 'refundedAt'));
+// STEP 11.19: Uses ATOMIC CONDITIONAL UPDATE (updateMany with expected status)
+// instead of plain update. This prevents race conditions where two concurrent
+// requests both pass the precondition check and both execute the refund.
+// updateMany with { id, status: expectedStatus } in the WHERE clause ensures
+// exactly one request succeeds — the other gets count=0 and we throw.
+registerActionHandler('refund', async (item) => {
+  const model = (item as any).__prismaModel;
+  const currentStatus = String(item.status ?? '');
+
+  // Conditional update: only succeeds if status is still what we expect
+  const result = await model.updateMany({
+    where: { id: item.id, status: currentStatus },
+    data: { status: 'REFUNDED' },
+  });
+
+  if (result.count === 0) {
+    throw new Error(
+      `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
+    );
+  }
+
+  // Return the updated item (re-fetch to get the full record)
+  return await model.findUnique({ where: { id: item.id } });
+});
 
 // Closure lifecycle (R12 rfqs, R18 buy-requests): close
 registerActionHandler('close', makeStatusHandler('CLOSED', 'closedAt'));

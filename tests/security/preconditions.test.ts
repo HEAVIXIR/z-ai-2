@@ -109,14 +109,24 @@ describe("Action preconditions — payment.refund", () => {
     });
 
     // auditMutationTransactional should be called (action.transactional=true)
-    // STEP 11.18: The transactional callback now re-fetches the entity inside
-    // the transaction (for race-condition prevention). The mock txClient must
-    // include findUnique on the payment model.
+    // STEP 11.19: The transactional callback re-fetches inside tx and the
+    // refund handler now uses updateMany (atomic conditional update).
+    // The mock txClient must include findUnique + updateMany on payment model.
+    // First findUnique (inside tx) returns PAID (same as initial — no race).
+    // Second findUnique (after updateMany) returns REFUNDED.
+    let callCount = 0;
     spies.auditMutationTransactional.mockImplementation(async (_ctx, op) => {
       const txClient = {
         payment: {
-          findUnique: vi.fn().mockResolvedValue({ ...mockPayment }),
-          update: vi.fn().mockResolvedValue({ ...mockPayment, status: "REFUNDED" }),
+          findUnique: vi.fn().mockImplementation(async () => {
+            callCount++;
+            // First call (re-check inside tx): still PAID
+            // Second call (after updateMany): REFUNDED
+            return callCount === 1
+              ? { ...mockPayment }
+              : { ...mockPayment, status: "REFUNDED" };
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
       };
       const result = await op(txClient as any);
