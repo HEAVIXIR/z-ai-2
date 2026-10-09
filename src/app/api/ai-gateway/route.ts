@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { AI } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -42,12 +42,19 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   // ── Rate limit (P0-6) — applied before any LLM call ──
-  // Authenticated users are throttled by userId; admin path by IP.
+  // Authenticated users are throttled by userId; anonymous by IP.
   const user = await getCurrentUser();
-  const adminOk = !user ? await isAuthenticated() : false;
-  const actorId = user?.id ?? (adminOk ? "admin" : null);
+  // STEP 11.33 R-3-A1 FIX: the AI Gateway is now fail-closed for
+  // anonymous. Previously, `adminOk` was computed but never passed to
+  // preflight — so anonymous callers bypassed checkAIAuth via the
+  // `roles.includes("ADMIN")` branch. Now checkAIAuth denies null
+  // users unconditionally, and we 401 here before any policy lookup.
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const actorId = user.id;
   const ip = getClientIp(req);
-  const rlKey = rateLimitKey(actorId ?? ip, AI.label);
+  const rlKey = rateLimitKey(actorId, AI.label);
   const rl = rateLimit({
     key: rlKey,
     limit: AI.limit,
