@@ -26,18 +26,30 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeExport } from '@/lib/admin/bulk-export-engine';
 import { requireAdmin } from '@/lib/admin-guard';
+import { can, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
+import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string }> };
 
+// PR-SC-00: resolve server-side tenant access context.
+async function resolveTenantCtx(
+  userId: string | null,
+  config: { ownership?: { moderatePermission?: string } },
+): Promise<TenantAccessContext> {
+  const admin = userId ? await isAdmin(userId) : false;
+  let hasModeratePerm = false;
+  if (userId && config.ownership?.moderatePermission) {
+    hasModeratePerm = await can(userId, config.ownership.moderatePermission);
+  }
+  return { userId, isAdmin: admin, hasModeratePerm };
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
 
-  // STEP 11.10: Look up config to derive export permission (matches the
-  // engine's canExport policy: prefer permissions.export, fall back to
-  // permissions.read).
   const config = registry.get(resourceKey);
   if (!config) {
     return NextResponse.json(
@@ -47,9 +59,6 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
   const exportPerm = config.permissions.export || config.permissions.read;
 
-  // STEP 11.10: Auth with the export permission (was bare requireAdmin()).
-  // Non-admin users WITH the export permission can now export. Previously
-  // they got 403 because requireAdmin() (no arg) required ADMIN role.
   const [user, authError] = await requireAdmin(exportPerm);
   if (authError) return authError;
 
@@ -65,13 +74,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
   }
 
+  // PR-SC-00: resolve tenant context so executeExport restricts the exported
+  // rows to the user's own (unless admin / moderator).
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   try {
     const result = await executeExport({
       resourceKey,
       format,
       fields,
       filters,
-      ctx: { userId: user?.id ?? null },
+      ctx: { userId: user?.id ?? null, tenantCtx },
     });
 
     // Return as downloadable file

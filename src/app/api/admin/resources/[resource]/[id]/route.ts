@@ -20,13 +20,27 @@ import { getResource, updateResource, deleteResource } from '@/lib/admin/data-ad
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { requireAdmin } from '@/lib/admin-guard';
-import { can } from '@/lib/authorization';
+import { can, isAdmin } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
+import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string; id: string }> };
+
+// PR-SC-00: resolve server-side tenant access context (mirrors [resource]/route.ts).
+async function resolveTenantCtx(
+  userId: string | null,
+  config: { ownership?: { moderatePermission?: string } },
+): Promise<TenantAccessContext> {
+  const admin = userId ? await isAdmin(userId) : false;
+  let hasModeratePerm = false;
+  if (userId && config.ownership?.moderatePermission) {
+    hasModeratePerm = await can(userId, config.ownership.moderatePermission);
+  }
+  return { userId, isAdmin: admin, hasModeratePerm };
+}
 
 // ── GET: Single resource ───────────────────────────────────
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -37,24 +51,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const readPerm = config.permissions.read;
   if (!readPerm) return NextResponse.json({ error: 'No read permission' }, { status: 500 });
 
-  // STEP 11.10: pass readPerm to requireAdmin so non-admin users WITH the
-  // resource read permission can access Detail view. See [resource]/route.ts
-  // GET handler for full rationale.
   const [user, error] = await requireAdmin(readPerm);
   if (error) return error;
 
   const hasReadPerm = await can(user?.id ?? null, readPerm);
   if (!hasReadPerm) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  // PR-SC-00: tenant-scoped fetch — non-owners get 404.
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   try {
-    const item = await getResource(config, id, { userId: user?.id ?? null });
+    const item = await getResource(config, id, { userId: user?.id ?? null }, tenantCtx);
     if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     // P0-2 HARDENING: Apply field-level read filtering (same as List route).
-    // Sensitive fields with `permissions.read` are removed if user lacks
-    // the required field-level read permission. This makes Detail route
-    // consistent with List route — Detail must not expose fields that
-    // List wouldn't show.
     const [filteredItem] = await filterReadableFieldsAsync(
       config,
       [item as Record<string, unknown>],
@@ -82,9 +92,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
 
-  // P1 SERVER-SIDE VALIDATION: Validate payload against resource field config
-  // (required, type, enum, min/max, string constraints, pattern)
-  // This is server-authoritative — client validation is UX only.
+  // P1 SERVER-SIDE VALIDATION
   const validation = validateResourcePayload(config, body);
   if (!validation.ok) {
     return NextResponse.json(
@@ -92,6 +100,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       { status: 422 },
     );
   }
+
+  // PR-SC-00: tenant-scoped update — non-owners get 404.
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
 
   try {
     const result = await auditMutation(
@@ -104,10 +115,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         captureSnapshot: true,
         beforeModel: config.model,
         afterModel: config.model,
-        database: config.database, // P1: route snapshot capture to the right Prisma client
+        database: config.database,
       },
       async () => {
-        return await updateResource(config, id, body, { userId: user?.id ?? null });
+        return await updateResource(config, id, body, { userId: user?.id ?? null }, tenantCtx);
       },
     );
 
@@ -121,10 +132,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: result.result });
   } catch (err) {
-    // P0-1: Field write permission rejection → 403 (not 500)
     const errorWithStatus = err as Error & { statusCode?: number; rejectedField?: string; requiredPermission?: string };
+    // PR-SC-00: tenant-scope rejection → 404 (not-found, don't leak existence)
+    if (errorWithStatus.statusCode === 404) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    // P0-1 / PR-SC-00: field-write OR ownership-reassignment rejection → 403
     if (errorWithStatus.statusCode === 403) {
-      console.error(`[resources/${resourceKey}] PATCH field-write forbidden:`, err);
+      console.error(`[resources/${resourceKey}] PATCH forbidden:`, err);
       return NextResponse.json(
         {
           error: errorWithStatus.message,
@@ -150,14 +165,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const [user, error] = await requireAdmin(deletePerm);
   if (error) return error;
 
+  // PR-SC-00: tenant-scoped delete — non-owners get 404.
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   try {
-    // P0-3 HARDENING: Wrap deleteResource inside auditMutation so:
-    //   - If mutation succeeds → audit logged (with before-state captured via captureSnapshot)
-    //   - If mutation fails → audit logged (.failed suffix)
-    //   - Audit captures Who/What/When/Where/Before/After(null)/Why
-    // This makes audit enforcement CENTRAL for Universal Resource API DELETE,
-    // consistent with PATCH (which already used auditMutation).
-    // Note: before-state is captured automatically via captureSnapshot + beforeModel.
     await auditMutation(
       {
         actorId: user?.id ?? null,
@@ -167,18 +178,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         reason: 'Deleted via Universal Resource API',
         captureSnapshot: true,
         beforeModel: config.model,
-        // No afterModel — after-state will be null (deleted)
-        database: config.database, // P1: route snapshot capture to the right Prisma client
+        database: config.database,
       },
       async () => {
-        // Verify existence before delete (return 404 if not found)
-        const existing = await getResource(config, id, { userId: user?.id ?? null });
+        // PR-SC-00: pre-check existence under tenant filter (return 404 if not found / not owner).
+        const existing = await getResource(config, id, { userId: user?.id ?? null }, tenantCtx);
         if (!existing) {
           const notFound = new Error('Not found') as Error & { statusCode: number };
           notFound.statusCode = 404;
           throw notFound;
         }
-        await deleteResource(config, id);
+        await deleteResource(config, id, tenantCtx);
         return { id, deleted: true };
       },
     );

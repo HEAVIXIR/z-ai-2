@@ -21,6 +21,7 @@ import { registry } from './resource-registry';
 import { getPrismaModel } from './data-adapter';
 import { logAudit } from '@/lib/audit';
 import { filterExportableFieldsAsync, buildExportPermissionMap } from './field-policy';
+import { buildTenantWhere, mergeTenantWhere, type TenantAccessContext } from './tenant-scope';
 // STEP 11.10 + 11.11: field-level export policy + resource-aware bulk.
 
 // ── Types ──────────────────────────────────────────────────
@@ -182,7 +183,7 @@ export interface ExportParams {
   format: 'csv' | 'json';
   fields?: string[]; // if null, export all visible fields
   filters?: Record<string, unknown>;
-  ctx: { userId: string | null };
+  ctx: { userId: string | null; tenantCtx?: TenantAccessContext };
 }
 
 export interface ExportResult {
@@ -215,9 +216,13 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
 
   // 3. Query data (no pagination — export all matching records)
   // P4 (Database Ownership Remediation): use store-aware routing.
+  // PR-SC-00: merge tenant filter so non-admin / non-moderator users only
+  // export their own rows.
   const model = getPrismaModel(config);
+  const tenantResult = ctx.tenantCtx ? buildTenantWhere(config, ctx.tenantCtx) : { where: {} as Record<string, unknown> };
+  const exportWhere = mergeTenantWhere(filters as Record<string, unknown> | undefined, tenantResult);
   const rawItems = await model.findMany({
-    where: filters || {},
+    where: exportWhere,
     take: 5000,
   });
   const items = await filterExportableFieldsAsync(config, rawItems as Record<string, unknown>[], ctx.userId);

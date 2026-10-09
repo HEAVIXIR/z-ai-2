@@ -19,12 +19,26 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeBulkAction } from '@/lib/admin/bulk-export-engine';
 import { requireAdmin } from '@/lib/admin-guard';
-import { can, canBulkAction } from '@/lib/authorization';
+import { can, canBulkAction, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
+import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string }> };
+
+// PR-SC-00: resolve server-side tenant access context.
+async function resolveTenantCtx(
+  userId: string | null,
+  config: { ownership?: { moderatePermission?: string } },
+): Promise<TenantAccessContext> {
+  const admin = userId ? await isAdmin(userId) : false;
+  let hasModeratePerm = false;
+  if (userId && config.ownership?.moderatePermission) {
+    hasModeratePerm = await can(userId, config.ownership.moderatePermission);
+  }
+  return { userId, isAdmin: admin, hasModeratePerm };
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
@@ -37,35 +51,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Permission check — find the declared action.
-  // STEP 11.10: look up by the single-item action key (e.g., "verify") —
-  // the bulk variant ("bulk-verify") is declared in bulkActions[] and
-  // checked separately via canBulkAction.
   const actionDef = config.actions?.find(a => a.key === body.action)
     ?? config.bulkActions?.find(ba => ba.key === body.action);
   if (!actionDef) {
     return NextResponse.json({ error: 'Action not defined' }, { status: 400 });
   }
 
-  // STEP 11.10: Auth with the action's permission key.
   const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
 
-  // Permission check (resource-aware bulk lookup).
-  // STEP 11.10: Pass resourceKey so canBulkAction looks up the resource's
-  // declared bulkActions[] (resource-aware) instead of the legacy 6-entry
-  // hardcoded map (which only knew listing/user/company).
   const hasPerm = await can(user?.id ?? null, actionDef.permission);
   const canBulk = await canBulkAction(user?.id ?? null, `bulk-${body.action}`, resourceKey);
   if (!hasPerm && !canBulk) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  // PR-SC-00: resolve tenant context so executeAction (called per-id inside
+  // executeBulkAction) enforces ownership on each item.
+  const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
+
   // Execute bulk
   const result = await executeBulkAction({
     resourceKey,
     actionKey: body.action,
     ids: body.ids,
-    ctx: { userId: user?.id ?? null, reason: body.reason },
+    ctx: { userId: user?.id ?? null, reason: body.reason, tenantCtx },
   });
 
   return NextResponse.json({
