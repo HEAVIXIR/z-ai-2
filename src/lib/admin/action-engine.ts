@@ -122,8 +122,12 @@ registerActionHandler('verify', async (item) => {
       updateData.emailVerified = true;
       break;
     case 'payment':
-      // Payment has neither field — use status transition to mark as verified/paid
-      updateData.status = 'VERIFIED';
+      // STEP 11.18 FIX: Payment has neither `verified` nor `verification` field.
+      // The correct business transition for "verify payment" (precondition: status=PENDING)
+      // is to mark it as PAID with paidAt timestamp. 'VERIFIED' is NOT a valid
+      // Payment status (valid: PENDING, AUTHORIZED, PAID, FAILED, CANCELLED, REFUNDED).
+      updateData.status = 'PAID';
+      updateData.paidAt = new Date();
       break;
     default:
       // Generic fallback: try setting `verified` Boolean first; if model doesn't
@@ -363,13 +367,42 @@ export async function executeAction(
             // enter this branch when config.database !== 'store').
           },
           async (txClient) => {
-            // Tag the before snapshot with the TRANSACTION client so the
-            // handler writes through `tx` (atomic with the audit insert).
-            // The handler reads `item.__prismaModel` to know where to write.
-            (before as any).__prismaModel = (txClient as any)[config.model];
+            // STEP 11.18 FIX (Race Condition): Re-fetch the entity INSIDE the
+            // transaction and re-check the precondition. Without this, two
+            // concurrent requests could both read status=PAID outside the tx,
+            // both pass the precondition, and both execute the refund.
+            // By re-fetching inside the tx (which holds a row lock or at least
+            // sees the latest committed state), we detect if another request
+            // already changed the status.
+            const txModel = (txClient as any)[config.model];
+            let txBefore: Record<string, unknown> | null = null;
+            try {
+              txBefore = await txModel.findUnique({ where: { id: entityId } });
+            } catch { /* non-fatal — fall back to stale before */ }
+
+            if (!txBefore) {
+              throw new Error('Entity not found (re-checked inside transaction)');
+            }
+
+            // Re-check precondition inside the transaction
+            if (action.precondition) {
+              const txPreconditionResult = action.precondition(txBefore, {
+                userId: ctx.userId,
+                reason: ctx.reason,
+              });
+              if (!txPreconditionResult.ok) {
+                throw new Error(
+                  `PRECONDITION_FAILED_INSIDE_TX: ${txPreconditionResult.message || 'Entity state changed'}`,
+                );
+              }
+            }
+
+            // Tag the FRESH before snapshot with the TRANSACTION client
+            txBefore.__model = config.model;
+            (txBefore as any).__prismaModel = txModel;
             const handler = actionHandlers.get(actionKey);
             if (handler) {
-              return await handler(before!, ctx);
+              return await handler(txBefore, ctx);
             }
             throw new Error(
               `No handler for action "${actionKey}". Configure a handler via registerActionHandler().`,

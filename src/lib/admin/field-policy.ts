@@ -135,6 +135,35 @@ export async function applyFieldWritePolicyAsync(
       continue;
     }
 
+    // STEP 11.18 FIX (B2): Server-side readonlyWhen enforcement.
+    // Previously, readonlyWhen was only evaluated in the UI (universal-form.tsx).
+    // A user could bypass it by sending a direct API request. Now we evaluate
+    // readonlyWhen conditions against the submitted data server-side. If ALL
+    // conditions are met (AND logic), the field is read-only and the write
+    // is rejected with FAIL CLOSED.
+    if (field.readonlyWhen && field.readonlyWhen.length > 0) {
+      const allConditionsMet = field.readonlyWhen.every(cond => {
+        const val = data[cond.field];
+        switch (cond.operator) {
+          case 'eq': return val === cond.value;
+          case 'neq': return val !== cond.value;
+          case 'in': return Array.isArray(cond.value) && cond.value.includes(val);
+          case 'notNull': return val !== null && val !== undefined;
+          case 'isNull': return val === null || val === undefined;
+          case 'gt': return typeof val === 'number' && typeof cond.value === 'number' && val > cond.value;
+          case 'lt': return typeof val === 'number' && typeof cond.value === 'number' && val < cond.value;
+          default: return false;
+        }
+      });
+      if (allConditionsMet) {
+        return {
+          ok: false,
+          rejectedField: key,
+          requiredPermission: 'FIELD_IS_READONLY',
+        };
+      }
+    }
+
     const writePerm = field.permissions?.write;
     if (!writePerm) {
       filtered[key] = value;
@@ -143,7 +172,6 @@ export async function applyFieldWritePolicyAsync(
       const hasPerm = await can(ctx.userId, writePerm);
       if (!hasPerm) {
         // FAIL CLOSED: user lacks field-level write permission.
-        // Do NOT silently strip the field — reject the entire request.
         return {
           ok: false,
           rejectedField: key,
