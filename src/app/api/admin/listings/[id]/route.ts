@@ -6,7 +6,14 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { isAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
+
+// STEP 11.32 NEW-C1 FIX: these legacy admin routes are ADMIN-ONLY.
+// See src/app/api/admin/listings/route.ts for full rationale.
+async function requireAdminRole(userId: string): Promise<boolean> {
+  return await isAdmin(userId);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +69,13 @@ export async function GET(_req: Request, { params }: Params) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // STEP 11.32 NEW-C1 FIX: ADMIN-ONLY. Sellers use /api/admin/resources/listings/[id] (tenant-scoped).
+  if (!(await requireAdminRole(sessionUser.id))) {
+    return NextResponse.json(
+      { error: "Forbidden: admin access required" },
+      { status: 403 },
+    );
   }
   if (!(await hasPermission(sessionUser.id, "listing.read"))) {
     return NextResponse.json(
@@ -136,6 +150,13 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // STEP 11.32 NEW-C1 FIX: ADMIN-ONLY. Sellers cannot modify other sellers' listings.
+  if (!(await requireAdminRole(sessionUser.id))) {
+    return NextResponse.json(
+      { error: "Forbidden: admin access required" },
+      { status: 403 },
+    );
+  }
   if (!(await hasPermission(sessionUser.id, "listing.update"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'listing.update'" },
@@ -161,7 +182,12 @@ export async function PATCH(req: Request, { params }: Params) {
       "condition", "province", "city", "year", "workingHours", "status",
       "featured", "verified", "showInLatest", "sellerPhone", "sellerName",
       "sourceUrl", "sourceSite", "adminNotes", "brandId", "categoryId", "modelId",
-      "sellerId", "companyId", "publishedAt",
+      // STEP 11.32 NEW-C1 FIX: sellerId and companyId REMOVED from
+      // allowedFields. Even admins should not reassign listing ownership
+      // via this generic PATCH endpoint — it enabled listing theft. If
+      // ownership transfer is genuinely needed, it must go through a
+      // dedicated, audited endpoint with explicit confirmation.
+      "publishedAt",
       // P1-5/6 — canonical Location + Transaction normalization
       "transactionTypeId", "countryId", "provinceId", "cityId", "productId",
     ];

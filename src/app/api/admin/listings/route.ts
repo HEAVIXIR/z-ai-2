@@ -6,7 +6,18 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
+import { isAdmin } from "@/lib/authorization";
 import { parseBig, parseBool, parseNumber } from "@/lib/api-helpers";
+
+// STEP 11.32 NEW-C1 FIX: these legacy admin routes are ADMIN-ONLY.
+// A SELLER with listing.read/listing.publish could previously access
+// ALL listings (cross-tenant) via these routes — bypassing the
+// tenant-scoped Universal Resource API (/api/admin/resources/listings)
+// fixed in PR #11 (PR-SC-00). Now we require the ADMIN role: sellers
+// use the Universal API (tenant-scoped) or /api/listings/* (authorize()-checked).
+async function requireAdminRole(userId: string): Promise<boolean> {
+  return await isAdmin(userId);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +35,13 @@ export async function GET(req: Request) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // STEP 11.32 NEW-C1 FIX: ADMIN-ONLY. Sellers use /api/admin/resources/listings (tenant-scoped).
+  if (!(await requireAdminRole(sessionUser.id))) {
+    return NextResponse.json(
+      { error: "Forbidden: admin access required" },
+      { status: 403 },
+    );
   }
   if (!(await hasPermission(sessionUser.id, "listing.read"))) {
     return NextResponse.json(
@@ -120,6 +138,13 @@ export async function POST(req: Request) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // STEP 11.32 NEW-C1 FIX: ADMIN-ONLY. Sellers cannot bulk-modify other sellers' listings.
+  if (!(await requireAdminRole(sessionUser.id))) {
+    return NextResponse.json(
+      { error: "Forbidden: admin access required" },
+      { status: 403 },
+    );
   }
   if (!(await hasPermission(sessionUser.id, "listing.publish"))) {
     return NextResponse.json(
