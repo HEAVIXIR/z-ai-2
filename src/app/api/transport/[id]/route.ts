@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -25,8 +26,9 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  // STEP 11.35 FIX: use RBAC isAdmin (not isAuthenticated).
   const user = await getCurrentUser();
-  const admin = await isAuthenticated();
+  const admin = user ? await rbacIsAdmin(user.id) : false;
   if (!user && !admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -65,7 +67,9 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const admin = await isAuthenticated();
+  // STEP 11.35 FIX: use RBAC isAdmin (not isAuthenticated).
+  const user = await getCurrentUser();
+  const admin = user ? await rbacIsAdmin(user.id) : false;
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

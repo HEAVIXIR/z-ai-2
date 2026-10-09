@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUserId, isAuthenticated } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig } from "@/lib/api-helpers";
 
 export const runtime = "nodejs";
@@ -29,7 +30,8 @@ export async function PATCH(req: Request, { params }: Params) {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const userId = await getCurrentUserId();
-    const adminOk = await isAuthenticated();
+    // STEP 11.35 FIX: use RBAC isAdmin (not isAuthenticated).
+    const adminOk = userId ? await rbacIsAdmin(userId) : false;
 
     const offer = await db.listingOffer.findUnique({
       where: { id },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 
@@ -31,8 +32,9 @@ async function resolveCompany(req: Request, body?: any): Promise<{ companyId: st
     return { error: NextResponse.json({ error: "companyId is required" }, { status: 400 }) };
   }
 
-  // Check admin cookie first.
-  const adminOk = await isAuthenticated();
+  // STEP 11.35 FIX: use RBAC isAdmin (not isAuthenticated).
+  const user0 = await getCurrentUser();
+  const adminOk = user0 ? await rbacIsAdmin(user0.id) : false;
   if (adminOk) {
     const exists = await db.company.findUnique({ where: { id: companyId }, select: { id: true } });
     if (!exists) {

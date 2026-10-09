@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 
@@ -25,7 +26,7 @@ interface Args {
 
 async function authorize(partner: { companyId: string; partnerId: string }) {
   // Admin short-circuits.
-  const adminOk = await isAuthenticated();
+  const adminOk = (await getCurrentUser()) ? await rbacIsAdmin((await getCurrentUser())!.id) : false;
   if (adminOk) return { ok: true as const, mode: "ADMIN" as const };
   const user = await getCurrentUser();
   if (!user) return { ok: false as const, mode: "USER" as const };
@@ -55,7 +56,7 @@ export async function PATCH(req: Request, { params }: Args) {
     const overrideCompanyId = url.searchParams.get("companyId");
 
     // Admin override bypasses the ownership check.
-    const adminOk = await isAuthenticated();
+    const adminOk = (await getCurrentUser()) ? await rbacIsAdmin((await getCurrentUser())!.id) : false;
     if (!adminOk) {
       const user = await getCurrentUser();
       if (!user || !user.companyId) {
@@ -114,7 +115,7 @@ export async function DELETE(req: Request, { params }: Args) {
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     // Either company can remove the partnership.
-    const adminOk = await isAuthenticated();
+    const adminOk = (await getCurrentUser()) ? await rbacIsAdmin((await getCurrentUser())!.id) : false;
     if (!adminOk) {
       const user = await getCurrentUser();
       if (!user || !user.companyId) {
