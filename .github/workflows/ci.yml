@@ -64,8 +64,8 @@ jobs:
       - name: Security tests
         run: bun run test:security
 
-      - name: Contract tests (no DB seed dependency)
-        run: bunx vitest run tests/contract/ tests/unit/
+      - name: Static contract tests (no DB dependency)
+        run: bunx vitest run tests/contract/auction-contract.test.ts tests/contract/buy-request-contract.test.ts tests/contract/dispute-contract.test.ts tests/contract/inspection-contract.test.ts tests/contract/machine-contract.test.ts tests/contract/part-contract.test.ts tests/contract/payment-contract.test.ts tests/contract/product-contract.test.ts tests/contract/resource-contract.test.ts tests/contract/rfq-contract.test.ts tests/contract/transport-contract.test.ts tests/contract/user-contract.test.ts tests/contract/r45-canonical-auth-contract.test.ts tests/unit/
 
       - name: Production build
         run: bun run build
