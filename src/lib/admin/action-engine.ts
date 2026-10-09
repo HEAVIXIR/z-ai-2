@@ -14,10 +14,9 @@
  * notification triggers, etc.).
  */
 
-import { db } from '@/lib/db';
 import { revalidateTag } from 'next/cache';
 import { can } from '@/lib/authorization';
-import { auditMutation } from '@/lib/audit-foundation';
+import { auditMutation, auditMutationTransactional } from '@/lib/audit-foundation';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 import { registry } from './resource-registry';
 import { getPrismaModel } from './data-adapter';
@@ -40,47 +39,14 @@ export interface ActionContext {
   metadata?: Record<string, unknown>;
 }
 
-// ── Precondition checks ────────────────────────────────────
-// Each resource can define preconditions for actions.
-// A precondition is a function that checks if the action can proceed.
-export type PreconditionFn = (
-  item: Record<string, unknown>,
-  ctx: ActionContext,
-) => { ok: boolean; message?: string };
-
-// Built-in preconditions
-export const Preconditions = {
-  /** Item must be in one of the allowed statuses */
-  statusMustBe: (allowedStatuses: string[]): PreconditionFn =>
-    (item) => {
-      const status = String(item.status ?? '');
-      if (!allowedStatuses.includes(status)) {
-        return { ok: false, message: `وضعیت باید یکی از ${allowedStatuses.join('، ')} باشد (فعلی: ${status})` };
-      }
-      return { ok: true };
-    },
-
-  /** Item must NOT be in the excluded statuses */
-  statusMustNotBe: (excludedStatuses: string[]): PreconditionFn =>
-    (item) => {
-      const status = String(item.status ?? '');
-      if (excludedStatuses.includes(status)) {
-        return { ok: false, message: `وضعیت ${status} اجازه این عملیات را نمی‌دهد` };
-      }
-      return { ok: true };
-    },
-
-  /** Item must have a specific field set */
-  fieldRequired: (field: string): PreconditionFn =>
-    (item) => {
-      if (!item[field]) {
-        return { ok: false, message: `فیلد "${field}" باید مقدار داشته باشد` };
-      }
-      return { ok: true };
-    },
-};
-
 // ── Action handlers ────────────────────────────────────────
+// STEP 11.6 (Phase C.1): The built-in `Preconditions` helper object that
+// lived here (statusMustBe / statusMustNotBe / fieldRequired) was DEAD
+// CODE — exported but ZERO callers anywhere in src/, tests/, or docs/.
+// Removed in STEP 11.8 (dead-code cleanup). Action preconditions are
+// now declared inline on `AdminAction.precondition` (types.ts) and
+// evaluated by executeAction() below — see the precondition step.
+
 // Maps action.key → handler function
 // The handler receives the item, performs the mutation, and returns the updated item.
 export type ActionHandler = (
@@ -155,10 +121,25 @@ registerActionHandler('verify', async (item) => {
       // The `verify` action on users maps to email verification.
       updateData.emailVerified = true;
       break;
-    case 'payment':
-      // Payment has neither field — use status transition to mark as verified/paid
-      updateData.status = 'VERIFIED';
-      break;
+    case 'payment': {
+      // STEP 11.19: ATOMIC CONDITIONAL UPDATE for payment verify.
+      // "verify" means admin confirms a PENDING payment as PAID (e.g., manual
+      // bank confirmation). We use updateMany with expected status to prevent
+      // race conditions: two concurrent verify requests cannot both succeed.
+      // The precondition (status=PENDING) was already checked, but this
+      // conditional update is the authoritative atomic guard.
+      const currentStatus = String(item.status ?? '');
+      const verifyResult = await model.updateMany({
+        where: { id: item.id, status: currentStatus },
+        data: { status: 'PAID', paidAt: new Date() },
+      });
+      if (verifyResult.count === 0) {
+        throw new Error(
+          `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
+        );
+      }
+      return await model.findUnique({ where: { id: item.id } });
+    }
     default:
       // Generic fallback: try setting `verified` Boolean first; if model doesn't
       // have it, the caller's try/catch will surface the error.
@@ -251,7 +232,30 @@ registerActionHandler('confirm', makeStatusHandler('CONFIRMED', 'confirmedAt'));
 registerActionHandler('cancel',  makeStatusHandler('CANCELLED', 'cancelledAt'));
 
 // Payment lifecycle (R7 payments): refund
-registerActionHandler('refund', makeStatusHandler('REFUNDED', 'refundedAt'));
+// STEP 11.19: Uses ATOMIC CONDITIONAL UPDATE (updateMany with expected status)
+// instead of plain update. This prevents race conditions where two concurrent
+// requests both pass the precondition check and both execute the refund.
+// updateMany with { id, status: expectedStatus } in the WHERE clause ensures
+// exactly one request succeeds — the other gets count=0 and we throw.
+registerActionHandler('refund', async (item) => {
+  const model = (item as any).__prismaModel;
+  const currentStatus = String(item.status ?? '');
+
+  // Conditional update: only succeeds if status is still what we expect
+  const result = await model.updateMany({
+    where: { id: item.id, status: currentStatus },
+    data: { status: 'REFUNDED' },
+  });
+
+  if (result.count === 0) {
+    throw new Error(
+      `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
+    );
+  }
+
+  // Return the updated item (re-fetch to get the full record)
+  return await model.findUnique({ where: { id: item.id } });
+});
 
 // Closure lifecycle (R12 rfqs, R18 buy-requests): close
 registerActionHandler('close', makeStatusHandler('CLOSED', 'closedAt'));
@@ -337,31 +341,132 @@ export async function executeAction(
   before.__model = config.model;
   (before as any).__prismaModel = model;
 
-  // 4. Execute with audit
-  try {
-    const result = await auditMutation(
-      {
-        actorId: ctx.userId,
-        action: `${resourceKey}.${actionKey}`,
-        entityType: config.audit?.entityType || resourceKey,
+  // 4. STEP 11.6 (Phase C.1): Precondition check.
+  //    Evaluated AFTER permission, BEFORE mutation. If the precondition
+  //    fails, return PRECONDITION_FAILED (409) — the entity is NOT mutated.
+  //    This catches e.g. refund-on-non-PAID, verify-on-non-PENDING.
+  if (action.precondition) {
+    try {
+      const preconditionResult = action.precondition(before, {
+        userId: ctx.userId,
+        reason: ctx.reason,
+      });
+      if (!preconditionResult.ok) {
+        return {
+          success: false,
+          action: actionKey,
+          entityId,
+          message: preconditionResult.message,
+          error: 'PRECONDITION_FAILED',
+        };
+      }
+    } catch (err) {
+      return {
+        success: false,
+        action: actionKey,
         entityId,
-        reason: ctx.reason || action.label,
-        captureSnapshot: false,
-        before,
-      },
-      async () => {
-        const handler = actionHandlers.get(actionKey);
-        if (handler) {
-          return await handler(before!, ctx);
-        }
-        // Fallback: if no handler registered, try the API path
-        if (action.apiPath) {
-          // This should not happen in server-side code
-          throw new Error(`No handler for action "${actionKey}". Configure a handler via registerActionHandler().`);
-        }
-        throw new Error(`No handler for action "${actionKey}"`);
-      },
-    );
+        message: `Precondition check failed: ${(err as Error).message}`,
+        error: 'PRECONDITION_FAILED',
+      };
+    }
+  }
+
+  // 5. STEP 11.8 (Audit Transactionality): Execute with audit.
+  //    If `action.transactional === true` AND the resource lives in the
+  //    main DB (not store), wrap mutation + audit in `db.$transaction`
+  //    so both commit atomically or both roll back. This closes the
+  //    "audit gap" risk for CRITICAL operations (payment.refund,
+  //    payment.verify) where an audit failure would otherwise leave the
+  //    mutation committed with no audit trail (see ADR-003).
+  //
+  //    For store-domain resources, cross-DB transactions aren't supported
+  //    by Prisma (main + store are separate clients) — fall back to the
+  //    best-effort `auditMutation` path (KNOWN ARCHITECTURAL LIMITATION,
+  //    documented in ADR-003).
+  const useTransactional =
+    action.transactional === true && config.database !== 'store';
+
+  try {
+    const result = useTransactional
+      ? await auditMutationTransactional(
+          {
+            actorId: ctx.userId,
+            action: `${resourceKey}.${actionKey}`,
+            entityType: config.audit?.entityType || resourceKey,
+            entityId,
+            reason: ctx.reason || action.label,
+            captureSnapshot: false,
+            before,
+            // database is implied 'main' for transactional path (we only
+            // enter this branch when config.database !== 'store').
+          },
+          async (txClient) => {
+            // STEP 11.18 FIX (Race Condition): Re-fetch the entity INSIDE the
+            // transaction and re-check the precondition. Without this, two
+            // concurrent requests could both read status=PAID outside the tx,
+            // both pass the precondition, and both execute the refund.
+            // By re-fetching inside the tx (which holds a row lock or at least
+            // sees the latest committed state), we detect if another request
+            // already changed the status.
+            const txModel = (txClient as any)[config.model];
+            let txBefore: Record<string, unknown> | null = null;
+            try {
+              txBefore = await txModel.findUnique({ where: { id: entityId } });
+            } catch { /* non-fatal — fall back to stale before */ }
+
+            if (!txBefore) {
+              throw new Error('Entity not found (re-checked inside transaction)');
+            }
+
+            // Re-check precondition inside the transaction
+            if (action.precondition) {
+              const txPreconditionResult = action.precondition(txBefore, {
+                userId: ctx.userId,
+                reason: ctx.reason,
+              });
+              if (!txPreconditionResult.ok) {
+                throw new Error(
+                  `PRECONDITION_FAILED_INSIDE_TX: ${txPreconditionResult.message || 'Entity state changed'}`,
+                );
+              }
+            }
+
+            // Tag the FRESH before snapshot with the TRANSACTION client
+            txBefore.__model = config.model;
+            (txBefore as any).__prismaModel = txModel;
+            const handler = actionHandlers.get(actionKey);
+            if (handler) {
+              return await handler(txBefore, ctx);
+            }
+            throw new Error(
+              `No handler for action "${actionKey}". Configure a handler via registerActionHandler().`,
+            );
+          },
+        )
+      : await auditMutation(
+          {
+            actorId: ctx.userId,
+            action: `${resourceKey}.${actionKey}`,
+            entityType: config.audit?.entityType || resourceKey,
+            entityId,
+            reason: ctx.reason || action.label,
+            captureSnapshot: false,
+            before,
+            database: config.database,
+          },
+          async () => {
+            const handler = actionHandlers.get(actionKey);
+            if (handler) {
+              return await handler(before!, ctx);
+            }
+            // Fallback: if no handler registered, try the API path
+            if (action.apiPath) {
+              // This should not happen in server-side code
+              throw new Error(`No handler for action "${actionKey}". Configure a handler via registerActionHandler().`);
+            }
+            throw new Error(`No handler for action "${actionKey}"`);
+          },
+        );
 
     // STEP 15-B.5.4-C.2-P2: Invalidate Homepage cache for affected resources.
     // Single insertion point covers ALL 8 action handlers (publish, unpublish,

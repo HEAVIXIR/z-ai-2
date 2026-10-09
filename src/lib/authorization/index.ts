@@ -198,15 +198,69 @@ export async function canAccessResource(
 // ── Bulk Action Authorization ─────────────────────────────
 /**
  * Check if user can perform a bulk action.
- * Bulk actions require BOTH:
- *   1. The specific action permission (e.g., 'listing.delete')
- *   2. No hidden escalation (e.g., can't bulk-delete if only has listing.read)
+ *
+ * STEP 11.6 (Phase B.5 — Resource-aware): The previous version used a
+ * hardcoded 6-entry map (BULK_PERMISSION_MAP) that mapped action keys
+ * like `bulk-delete` → `listing.delete`. This was WRONG for any resource
+ * other than the original 6 — e.g., `bulk-delete` on `users` mapped to
+ * `listing.delete` (silent privilege escalation risk if user had
+ * `listing.delete` but not `user.delete`).
+ *
+ * The fix makes canBulkAction RESOURCE-AWARE:
+ *   - If `resourceKey` is provided, look up the resource config and find
+ *     the matching `bulkActions[]` entry. Use its declared `permission`.
+ *   - If `resourceKey` is provided but no matching bulkAction is declared,
+ *     FAIL CLOSED (return false). The resource explicitly did NOT
+ *     authorize this bulk action.
+ *   - If `resourceKey` is omitted (legacy callers), fall back to the
+ *     legacy map for backward compatibility. This path is deprecated —
+ *     all callers should pass `resourceKey`.
+ *
+ * Usage (preferred — resource-aware):
+ *   await canBulkAction(userId, 'bulk-delete', 'users');
+ *   → looks up userConfig.bulkActions, finds 'bulk-delete', returns
+ *     can(userId, 'user.delete')
+ *
+ * Usage (legacy — fallback map):
+ *   await canBulkAction(userId, 'bulk-delete');
+ *   → looks up BULK_PERMISSION_MAP['bulk-delete'] = 'listing.delete'
+ *     → returns can(userId, 'listing.delete')
  */
 export async function canBulkAction(
   userId: string | null | undefined,
   action: string,
+  resourceKey?: string,
 ): Promise<boolean> {
-  // Map bulk actions to required permissions
+  // Resource-aware path (preferred)
+  if (resourceKey) {
+    try {
+      // Lazy-load the registry to avoid circular import at module init.
+      // (resource-registry imports from types.ts, which is fine; but the
+      // authorization module is imported by many low-level modules.)
+      const { registry } = await import('@/lib/admin/resource-registry');
+      const config = registry.get(resourceKey);
+      if (!config) {
+        // Unknown resource — fail closed.
+        return false;
+      }
+      const bulkAction = config.bulkActions?.find(ba => ba.key === action);
+      if (!bulkAction) {
+        // Resource doesn't declare this bulk action — fail closed.
+        // (Previously, the legacy map would fall through to a literal
+        // string lookup like `can(userId, 'bulk-delete')` which always
+        // returned false because no Permission has that key — same
+        // outcome, but explicit fail-closed is clearer.)
+        return false;
+      }
+      return can(userId, bulkAction.permission);
+    } catch {
+      // Registry lookup failed (e.g., import error) — fail closed.
+      return false;
+    }
+  }
+
+  // Legacy fallback path (deprecated — all callers should pass resourceKey).
+  // Kept for backward compatibility with callers that haven't migrated yet.
   const BULK_PERMISSION_MAP: Record<string, string> = {
     'bulk-delete': 'listing.delete',
     'bulk-publish': 'listing.publish',

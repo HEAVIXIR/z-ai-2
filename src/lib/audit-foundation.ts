@@ -191,6 +191,111 @@ export async function auditMutation<T>(
   return { result, before, after, audited: true };
 }
 
+// ── STEP 11.8: Transactional mutation + audit ──────────────
+/**
+ * Wraps a mutation operation + audit log entry in a single
+ * `db.$transaction` so BOTH commit atomically or BOTH roll back.
+ *
+ * Use for CRITICAL operations where audit gaps are unacceptable:
+ *   - Financial mutations (payment.refund, payment.verify)
+ *   - Identity changes (user.suspend, user.role-manage)
+ *   - Irreversible state transitions
+ *
+ * Behavior:
+ *   - If mutation succeeds + audit succeeds → both commit
+ *   - If mutation fails → audit rolled back (no `.failed` entry
+ *     created via this path; the caller's try/catch handles it)
+ *   - If audit fails → mutation rolled back (audit gap PREVENTED,
+ *     the entire operation aborts)
+ *
+ * Store-schema limitation:
+ *   This function uses the MAIN `db` client only. For store-schema
+ *   resources (config.database === 'store'), use `auditMutation`
+ *   (best-effort) — Prisma does not support cross-DB transactions
+ *   between the main client and the store client. See ADR-003.
+ *
+ * The operation callback receives the transaction client (`tx`) so
+ * it can write through the SAME transaction as the audit insert.
+ * The audit insert is performed via `tx.auditLog.create` (not
+ * `logAudit`, which uses the standalone client).
+ *
+ * Usage (in action-engine.ts executeAction):
+ *
+ *   await auditMutationTransactional(
+ *     {
+ *       actorId: ctx.userId,
+ *       action: `payments.refund`,
+ *       entityType: 'Payment',
+ *       entityId: paymentId,
+ *       reason: 'Customer dispute',
+ *       before,  // captured before the transaction starts
+ *     },
+ *     async (tx) => {
+ *       // `tx` is the Prisma transaction client — writes here are
+ *       // atomic with the audit insert below.
+ *       return await tx.payment.update({
+ *         where: { id: paymentId },
+ *         data: { status: 'REFUNDED', refundedAt: new Date() },
+ *       });
+ *     },
+ *   );
+ */
+export async function auditMutationTransactional<T>(
+  ctx: AuditMutationContext,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<AuditMutationResult<T>> {
+  // `before` is captured BEFORE the transaction starts (outside the
+  // tx callback) so we can pass it to the audit row even if the
+  // operation reads-modifies-writes the same row.
+  const before: unknown = ctx.before ?? null;
+  const reqInfo = await getRequestInfo();
+
+  // Run mutation + audit in a single $transaction. If either throws,
+  // both roll back.
+  const result = await db.$transaction(async (tx) => {
+    // 1. Run the operation through the transaction client.
+    //    The operation is expected to use `tx` (not `db`) for writes.
+    const opResult = await operation(tx);
+
+    // 2. Capture after-state from the operation result.
+    //    (We do NOT re-read via tx.findUnique — the operation already
+    //    returned the updated entity, which is the authoritative
+    //    after-state within this transaction.)
+    const after: unknown = opResult && typeof opResult === 'object'
+      ? opResult
+      : null;
+
+    // 3. Insert the audit log entry THROUGH THE SAME TRANSACTION.
+    //    If this insert fails (e.g., DB constraint, serialization
+    //    conflict), the transaction aborts → the mutation rolls back.
+    //    This is the ATOMICITY guarantee: no mutation without audit.
+    await tx.auditLog.create({
+      data: {
+        actorId: ctx.actorId,
+        actorType: ctx.actorType ?? 'USER',
+        action: ctx.action,
+        entityType: ctx.entityType,
+        entityId: ctx.entityId,
+        beforeJson: safeStringify(before),
+        afterJson: safeStringify(after),
+        reason: ctx.reason,
+        ip: reqInfo.ip,
+        userAgent: reqInfo.userAgent,
+        requestId: reqInfo.requestId,
+      },
+    });
+
+    return { result: opResult, before, after };
+  });
+
+  return {
+    result: result.result,
+    before: result.before,
+    after: result.after,
+    audited: true,
+  };
+}
+
 // ── Combined: requirePermissionAndAudit ────────────────────
 /**
  * Combines STEP 02 (RBAC permission check) with STEP 04 (audit logging)
@@ -321,3 +426,5 @@ export async function getActorActivity(
     take: limit,
   });
 }
+
+// STEP 11.8 — TRANSACTIONAL AUDIT

@@ -361,7 +361,7 @@ export const inspectionConfig: AdminResourceConfig = {
   apiBase: '/api/admin/inspections',
   adminPath: '/admin/resources/inspections',
 
-  permissions: { read: 'inspection.read', create: 'inspection.read', update: 'inspection.read', delete: 'inspection.read', export: 'inspection.read' },
+  permissions: { read: 'inspection.read', create: 'inspection.manage', update: 'inspection.manage', delete: 'inspection.manage', export: 'inspection.read' },
 
   columns: [
     { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
@@ -410,9 +410,9 @@ export const inspectionConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
-    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.read', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+    { key: 'schedule', label: 'برنامه‌ریزی', icon: 'Calendar', permission: 'inspection.manage', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle', permission: 'inspection.manage', type: 'confirm', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'inspection.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/inspections', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -429,7 +429,7 @@ export const inspectionConfig: AdminResourceConfig = {
     { label: 'معامله مرتبط', resource: 'deals', filterField: 'inspectionId' },
   ],
 
-  audit: { enabled: true, entityType: 'Inspection', actions: ['inspection.read'] },
+  audit: { enabled: true, entityType: 'Inspection', actions: ['inspection.manage', 'inspection.read'] },
 };
 
 export const transportConfig: AdminResourceConfig = {
@@ -441,7 +441,7 @@ export const transportConfig: AdminResourceConfig = {
   apiBase: '/api/admin/transport',
   adminPath: '/admin/resources/transports',
 
-  permissions: { read: 'transport.read', create: 'transport.read', update: 'transport.read', delete: 'transport.read', export: 'transport.read' },
+  permissions: { read: 'transport.read', create: 'transport.manage', update: 'transport.manage', delete: 'transport.manage', export: 'transport.read' },
 
   columns: [
     { key: 'origin', label: 'مبدا', type: 'text', filterable: true },
@@ -522,9 +522,9 @@ export const transportConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
-    { key: 'deliver', label: 'تحویل', icon: 'Package', permission: 'transport.read', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
-    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+    { key: 'accept', label: 'پذیرش', icon: 'CheckCircle', permission: 'transport.manage', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+    { key: 'deliver', label: 'تحویل', icon: 'Package', permission: 'transport.manage', type: 'confirm', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'X', permission: 'transport.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/transports', apiMethod: 'PATCH' },
   ],
 
   bulkActions: [
@@ -541,7 +541,7 @@ export const transportConfig: AdminResourceConfig = {
     { label: 'معامله مرتبط', resource: 'deals', filterField: 'transportId' },
   ],
 
-  audit: { enabled: true, entityType: 'TransportRequest', actions: ['transport.read'] },
+  audit: { enabled: true, entityType: 'TransportRequest', actions: ['transport.manage', 'transport.read'] },
 };
 
 export const disputeConfig: AdminResourceConfig = {
@@ -630,7 +630,7 @@ export const buyRequestConfig: AdminResourceConfig = {
   apiBase: '/api/admin/requests',
   adminPath: '/admin/resources/buy-requests',
 
-  permissions: { read: 'request.read', create: 'request.read', update: 'request.read', delete: 'request.read', export: 'request.read' },
+  permissions: { read: 'request.read', create: 'request.manage', update: 'request.manage', delete: 'request.manage', export: 'request.read' },
 
   columns: [
     { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },
@@ -686,9 +686,9 @@ export const buyRequestConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
-    { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.read', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.read', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'DELETE' },
+    { key: 'verify', label: 'تأیید', icon: 'ShieldCheck', permission: 'request.manage', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+    { key: 'close', label: 'بستن', icon: 'Lock', permission: 'request.manage', type: 'confirm', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2', permission: 'request.manage', type: 'confirm', variant: 'destructive', apiPath: '/api/admin/resources/buy-requests', apiMethod: 'DELETE' },
   ],
 
   bulkActions: [
@@ -705,5 +705,5 @@ export const buyRequestConfig: AdminResourceConfig = {
     { label: 'پیشنهادهای مرتبط', resource: 'offers', filterField: 'buyRequestId' },
   ],
 
-  audit: { enabled: true, entityType: 'BuyRequest', actions: ['request.read'] },
+  audit: { enabled: true, entityType: 'BuyRequest', actions: ['request.manage', 'request.read'] },
 };

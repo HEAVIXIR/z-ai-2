@@ -270,10 +270,28 @@ export const paymentConfig: AdminResourceConfig = {
   columns: [
     { key: 'amount', label: 'مبلغ', type: 'currency', sortable: true },
     { key: 'currency', label: 'ارز', type: 'badge' },
-    { key: 'type', label: 'نوع', type: 'badge', filterable: true },
+    // STEP 11.11 (Causal Export Policy): `type` is the FIRST visible AdminColumn
+    // in production to declare a field-level `permissions.export`. This makes
+    // `permissions.export` CAUSALLY VERIFIABLE at the API level: a user with
+    // `payment.read` (not `payment.manage`) sees `type` in List/Detail (READ)
+    // but it is ABSENT from CSV/JSON export. Granting `payment.manage`
+    // restores it in export. Same dataset, same user, only permission changes
+    // → different export result. See ADR-004 §STEP 11.11.
+    {
+      key: 'type', label: 'نوع', type: 'badge', filterable: true,
+      permissions: { export: 'payment.manage' },
+    },
     { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
     { key: 'gateway', label: 'درگاه', type: 'badge', filterable: true, visible: false },
-    { key: 'trackingCode', label: 'کد پیگیری', type: 'text', visible: false },
+    // STEP 11.6 (Phase B.1 + B.2): trackingCode has field-level READ permission
+    // on the AdminField surface. STEP 11.11 adds EXPORT permission here on the
+    // AdminColumn surface so that the unified permission map enforces BOTH
+    // READ (filterReadableFieldsAsync) and EXPORT (filterExportableFieldsAsync)
+    // — closing the silent-bypass hole found in the STEP 11.5 audit.
+    {
+      key: 'trackingCode', label: 'کد پیگیری', type: 'text', visible: false,
+      permissions: { export: 'payment.manage' },
+    },
     { key: 'providerReference', label: 'مرجع درگاه', type: 'text', visible: false },
     { key: 'paidAt', label: 'پرداخت', type: 'date', sortable: true },
     { key: 'createdAt', label: 'تاریخ ایجاد', type: 'date', sortable: true },
@@ -319,10 +337,10 @@ export const paymentConfig: AdminResourceConfig = {
     ]},
     { key: 'trackingCode', label: 'کد پیگیری', type: 'text',
       validation: { maxLength: 100, message: 'کد پیگیری نباید بیش از ۱۰۰ نویسه باشد' },
-      permissions: { read: 'payment.read', write: 'payment.manage' } },
+      permissions: { read: 'payment.read', write: 'payment.manage', export: 'payment.manage' } },
     { key: 'idempotencyKey', label: 'کلید Idempotency', type: 'text', visible: false,
       validation: { maxLength: 64, message: 'کلید Idempotency نباید بیش از ۶۴ نویسه باشد' },
-      permissions: { read: 'payment.manage', write: 'payment.manage' } },
+      permissions: { read: 'payment.manage', write: 'payment.manage', export: 'payment.manage' } },
   ],
 
   detailTabs: [
@@ -331,8 +349,46 @@ export const paymentConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    { key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.', apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH' },
-    { key: 'verify', label: 'تأیید پرداخت', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH' },
+    // STEP 11.6 (Phase C.1) + STEP 11.8 (Audit Transactionality):
+    // refund requires status ∈ {PAID, AUTHORIZED} (precondition) AND
+    // runs inside `db.$transaction` (transactional: true) so the audit
+    // entry commits atomically with the status mutation. This closes the
+    // "audit gap" risk for financial mutations (see ADR-003).
+    {
+      key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund',
+      type: 'confirm', variant: 'destructive',
+      confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.',
+      apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH',
+      transactional: true,
+      precondition: (item) => {
+        const status = String(item.status ?? '');
+        if (!['PAID', 'AUTHORIZED'].includes(status)) {
+          return {
+            ok: false,
+            message: `بازگشت وجه فقط برای پرداخت‌های پرداخت‌شده/تأییدشده امکان‌پذیر است (فعلی: ${status})`,
+          };
+        }
+        return { ok: true };
+      },
+    },
+    // verify requires status === PENDING (precondition) AND runs in a
+    // transaction (transactional: true) — audit is critical for
+    // financial trust reconciliation.
+    {
+      key: 'verify', label: 'تأیید پرداخت', icon: 'CheckCircle', permission: 'payment.manage',
+      type: 'confirm', apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH',
+      transactional: true,
+      precondition: (item) => {
+        const status = String(item.status ?? '');
+        if (status !== 'PENDING') {
+          return {
+            ok: false,
+            message: `تأیید فقط برای پرداخت‌های در انتظار امکان‌پذیر است (فعلی: ${status})`,
+          };
+        }
+        return { ok: true };
+      },
+    },
   ],
 
   bulkActions: [

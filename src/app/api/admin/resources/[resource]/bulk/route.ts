@@ -6,6 +6,13 @@
  *
  * Executes a bulk action with partial failure handling.
  * Returns: { succeeded, failed, results: [{id, success, error}] }
+ *
+ * STEP 11.10 (Authorization Closure):
+ *   - Pass `actionDef.permission` to requireAdmin() so non-admin users
+ *     with the specific action permission can perform bulk operations.
+ *   - Pass `resourceKey` to canBulkAction() so the resource-aware lookup
+ *     finds the declared `bulkActions[]` permission (was using the
+ *     hardcoded 6-entry map which only knew about listing/user/company).
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -29,18 +36,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'action and ids[] required' }, { status: 400 });
   }
 
-  // Auth
-  const [user, authError] = await requireAdmin();
-  if (authError) return authError;
-
-  // Permission check
-  const actionDef = config.actions?.find(a => a.key === body.action);
+  // Permission check — find the declared action.
+  // STEP 11.10: look up by the single-item action key (e.g., "verify") —
+  // the bulk variant ("bulk-verify") is declared in bulkActions[] and
+  // checked separately via canBulkAction.
+  const actionDef = config.actions?.find(a => a.key === body.action)
+    ?? config.bulkActions?.find(ba => ba.key === body.action);
   if (!actionDef) {
     return NextResponse.json({ error: 'Action not defined' }, { status: 400 });
   }
 
+  // STEP 11.10: Auth with the action's permission key.
+  const [user, authError] = await requireAdmin(actionDef.permission);
+  if (authError) return authError;
+
+  // Permission check (resource-aware bulk lookup).
+  // STEP 11.10: Pass resourceKey so canBulkAction looks up the resource's
+  // declared bulkActions[] (resource-aware) instead of the legacy 6-entry
+  // hardcoded map (which only knew listing/user/company).
   const hasPerm = await can(user?.id ?? null, actionDef.permission);
-  const canBulk = await canBulkAction(user?.id ?? null, `bulk-${body.action}`);
+  const canBulk = await canBulkAction(user?.id ?? null, `bulk-${body.action}`, resourceKey);
   if (!hasPerm && !canBulk) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

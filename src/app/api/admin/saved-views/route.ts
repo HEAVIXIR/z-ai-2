@@ -3,7 +3,23 @@
  * GET  /api/admin/saved-views?resourceKey=listings — list views for resource
  * POST /api/admin/saved-views — create a new saved view
  *
- * Scopes: PERSONAL (userId set), TEAM (scope=TEAM), SYSTEM (userId=null, scope=SYSTEM)
+ * Scopes:
+ *   - PERSONAL (userId set): only visible to the owning user.
+ *   - SYSTEM   (userId=null, scope=SYSTEM): visible to all admins.
+ *   - TEAM     (scope=TEAM): NOT YET IMPLEMENTED.
+ *
+ * STEP 11.6 (Phase D — Dead-code classification): TEAM scope is declared
+ * in the schema (AdminSavedView.scope is a String column, not an enum,
+ * to accept 'TEAM' for forward compatibility) but is intentionally
+ * NOT exposed via this API:
+ *   - GET filters out TEAM (only PERSONAL + SYSTEM are returned).
+ *   - POST forces non-SYSTEM scope to PERSONAL (TEAM is rejected).
+ * TEAM scope requires Team + TeamMember models that DO NOT EXIST in the
+ * current schema. This is documented as a FOLLOW-UP in ADR-004 §D.1.
+ *
+ * Once Team/TeamMember models are added, this API should:
+ *   - GET: OR-clause adds TEAM views where user is a TeamMember.
+ *   - POST: accept scope=TEAM with teamId (validated against TeamMember).
  */
 
 import { NextResponse, type NextRequest } from 'next/server';

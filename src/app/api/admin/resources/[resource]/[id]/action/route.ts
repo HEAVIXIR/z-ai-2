@@ -6,6 +6,10 @@
  *
  * Executes a single resource action (publish, suspend, verify, etc.)
  * with permission check + precondition + audit.
+ *
+ * STEP 11.10 (Authorization Closure): pass `actionDef.permission` to
+ * requireAdmin() so non-admin users WITH the action's permission can
+ * execute the action (was bare requireAdmin()).
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -30,8 +34,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const actionDef = config.actions?.find(a => a.key === body.action);
   if (!actionDef) return NextResponse.json({ error: 'Action not defined' }, { status: 400 });
 
-  // Auth + permission
-  const [user, authError] = await requireAdmin();
+  // STEP 11.10: Auth with the action's permission key (was bare requireAdmin()).
+  const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
 
   const hasPerm = await can(user?.id ?? null, actionDef.permission);

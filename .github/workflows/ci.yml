@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'feature/**']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      ADMIN_USERNAME: "ci-admin"
+      ADMIN_PASSWORD: "ci-password-not-real"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+
+      - name: Create store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+
+      - name: Push schemas
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Security tests
+        run: bun run test:security
+
+      - name: Static contract tests (no DB dependency)
+        run: bunx vitest run tests/contract/auction-contract.test.ts tests/contract/buy-request-contract.test.ts tests/contract/dispute-contract.test.ts tests/contract/inspection-contract.test.ts tests/contract/machine-contract.test.ts tests/contract/part-contract.test.ts tests/contract/payment-contract.test.ts tests/contract/product-contract.test.ts tests/contract/resource-contract.test.ts tests/contract/rfq-contract.test.ts tests/contract/transport-contract.test.ts tests/contract/user-contract.test.ts tests/contract/r45-canonical-auth-contract.test.ts tests/unit/
+
+      - name: Production build
+        run: bun run build

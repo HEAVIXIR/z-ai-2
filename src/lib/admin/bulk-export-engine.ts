@@ -16,10 +16,12 @@
  */
 
 import { can, canBulkAction } from '@/lib/authorization';
-import { executeAction, type ActionResult, type ActionContext } from './action-engine';
+import { executeAction, type ActionContext } from './action-engine';
 import { registry } from './resource-registry';
 import { getPrismaModel } from './data-adapter';
 import { logAudit } from '@/lib/audit';
+import { filterExportableFieldsAsync, buildExportPermissionMap } from './field-policy';
+// STEP 11.10 + 11.11: field-level export policy + resource-aware bulk.
 
 // ── Types ──────────────────────────────────────────────────
 export interface BulkActionResult {
@@ -75,7 +77,12 @@ export async function executeBulkAction(
   }
 
   // 1. Check bulk permission
-  const canBulk = await canBulkAction(ctx.userId, `bulk-${actionKey}`);
+  // STEP 11.10: pass resourceKey so canBulkAction is RESOURCE-AWARE — looks
+  // up config.bulkActions[] for the matching permission key. Without
+  // resourceKey, the legacy 6-entry map would be used (which only knows
+  // about listing/user/company bulk actions → silent fail-closed for
+  // any other resource).
+  const canBulk = await canBulkAction(ctx.userId, `bulk-${actionKey}`, resourceKey);
   const actionConfig = config.actions?.find(a => a.key === actionKey);
   const hasPerm = actionConfig ? await can(ctx.userId, actionConfig.permission) : false;
 
@@ -209,12 +216,53 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
   // 3. Query data (no pagination — export all matching records)
   // P4 (Database Ownership Remediation): use store-aware routing.
   const model = getPrismaModel(config);
-  const items = await model.findMany({
+  const rawItems = await model.findMany({
     where: filters || {},
-    take: 5000, // safety limit
+    take: 5000,
   });
+  const items = await filterExportableFieldsAsync(config, rawItems as Record<string, unknown>[], ctx.userId);
 
-  // 4. Log export audit
+  // 4. STEP 11.11 (Causal Export Policy): field-level EXPORT filtering.
+  //    filterExportableFieldsAsync walks the unified permission map
+  //    (config.columns + config.fields) and strips any field where the
+  //    user lacks `permissions.export`. This is CAUSAL: granting the
+  //    permission restores the field in export; denying it removes the
+  //    field. Same dataset, same user, only permission changes → different
+  //    export result. Verified at the HTTP level in STEP 11.11.
+  //
+  //    If no fields declare `permissions.export`, this is a no-op (fast path).
+  const exportableItems = await filterExportableFieldsAsync(
+    config,
+    items as Record<string, unknown>[],
+    ctx.userId,
+  );
+
+  // 5. STEP 11.11 (CRITICAL FIX): filter fieldKeys by export-permission map.
+  //    Previously, fieldKeys was derived from `exportFields` (visible
+  //    columns) BEFORE filterExportableFieldsAsync ran. The filter
+  //    stripped keys from ITEMS, but fieldKeys still included them —
+  //    relying on JSON.stringify dropping undefined values (fragile,
+  //    and BROKEN for CSV where empty string is emitted). The fix:
+  //    derive fieldKeys from the EXPORT PERMISSION MAP so denied keys
+  //    are also removed from the field key list (and thus from the CSV
+  //    header + JSON object shape).
+  const deniedExportKeys = new Set<string>();
+  const exportPermMap = buildExportPermissionMap(config);
+  if (exportPermMap.size > 0) {
+    // Re-check each restricted field for this user (some may be allowed,
+    // some denied — we only remove the denied ones from fieldKeys).
+    await Promise.all(
+      Array.from(exportPermMap.entries()).map(async ([key, perm]) => {
+        const allowed = await can(ctx.userId, perm);
+        if (!allowed) deniedExportKeys.add(key);
+      }),
+    );
+  }
+  const filteredExportFields = exportFields.filter(
+    c => !deniedExportKeys.has(c.key),
+  );
+
+  // 6. Log export audit
   await logAudit({
     actorId: ctx.userId,
     actorType: 'ADMIN',
@@ -223,19 +271,19 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
     entityId: null,
     after: {
       format,
-      fieldCount: exportFields.length,
-      rowCount: items.length,
+      fieldCount: filteredExportFields.length,
+      rowCount: exportableItems.length,
     },
-    reason: `Exported ${items.length} ${resourceKey} as ${format}`,
+    reason: `Exported ${exportableItems.length} ${resourceKey} as ${format}`,
   });
 
-  // 5. Format data
-  const fieldKeys = exportFields.map(c => c.key);
-  const fieldLabels = exportFields.map(c => c.label);
+  // 7. Format data
+  const fieldKeys = filteredExportFields.map(c => c.key);
+  const fieldLabels = filteredExportFields.map(c => c.label);
 
   if (format === 'json') {
     const json = JSON.stringify(
-      items.map((item: Record<string, unknown>) => {
+      exportableItems.map((item: Record<string, unknown>) => {
         const filtered: Record<string, unknown> = {};
         for (const key of fieldKeys) {
           filtered[key] = item[key];
@@ -249,7 +297,7 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
       format,
       filename: `${resourceKey}-${Date.now()}.json`,
       data: json,
-      rowCount: items.length,
+      rowCount: exportableItems.length,
       fields: fieldKeys,
     };
   }
@@ -265,7 +313,7 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
   };
 
   const header = fieldLabels.map(escapeCSV).join(',');
-  const rows = items.map((item: Record<string, unknown>) =>
+  const rows = exportableItems.map((item: Record<string, unknown>) =>
     fieldKeys.map(key => escapeCSV(item[key])).join(','),
   );
 
@@ -276,7 +324,7 @@ export async function executeExport(params: ExportParams): Promise<ExportResult>
     format,
     filename: `${resourceKey}-${Date.now()}.csv`,
     data: csv,
-    rowCount: items.length,
+    rowCount: exportableItems.length,
     fields: fieldKeys,
   };
 }

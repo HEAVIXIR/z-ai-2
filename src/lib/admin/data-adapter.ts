@@ -143,6 +143,12 @@ export async function createResource(
 
 // ── Update resource (with field policy enforcement) ────────
 // P0-1 HARDENING: Same fail-closed field write policy as createResource.
+// STEP 11.22: The read-evaluate-update sequence is now wrapped in a
+// db.$transaction for main-DB resources. This closes the TOCTOU race
+// condition where a record could change between the read (for
+// readonlyWhen evaluation) and the write. For store-DB resources,
+// cross-DB transactions aren't supported — we fall back to the
+// non-transactional path (KNOWN LIMITATION, same as audit).
 export async function updateResource(
   config: AdminResourceConfig,
   id: string,
@@ -151,10 +157,91 @@ export async function updateResource(
 ): Promise<Record<string, unknown>> {
   const model = getPrismaModel(config);
 
-  // Apply field write policy (async, fail-closed if user lacks field-level write permission)
+  // For store-DB resources, use non-transactional path (cross-DB limitation)
+  if (config.database === 'store') {
+    return updateResourceNonTransactional(config, model, id, data, fieldCtx);
+  }
+
+  // STEP 11.23: For main-DB resources, wrap read+evaluate+update in a
+  // transaction with SELECT FOR UPDATE row locking. This closes the TOCTOU
+  // race condition: under PostgreSQL's default Read Committed isolation,
+  // a plain findUnique does NOT lock the row — another transaction could
+  // modify it between our read and write. Using $queryRaw with
+  // 'SELECT ... FOR UPDATE' acquires a row-level lock that blocks concurrent
+  // writes until our transaction commits or rolls back.
+  return await db.$transaction(async (tx) => {
+    const txModel = (tx as any)[config.model];
+
+    // STEP 11.23: Use SELECT FOR UPDATE to lock the row for the duration
+    // of this transaction. This prevents a concurrent request from
+    // modifying the controlling field between our policy evaluation
+    // and our write.
+    //
+    // We use $queryRaw because Prisma's findUnique does not support
+    // FOR UPDATE. The table name is derived from the model name
+    // (Prisma uses the model name as-is for the table name by default).
+    const tableName = config.model.charAt(0).toUpperCase() + config.model.slice(1);
+    let persistedRecord: Record<string, unknown> | null = null;
+    try {
+      const rows = await tx.$queryRaw`
+        SELECT * FROM "${tableName}" WHERE "id" = ${id} FOR UPDATE
+      ` as Record<string, unknown>[];
+      persistedRecord = rows.length > 0 ? rows[0] : null;
+    } catch (err) {
+      throw new Error(
+        `Failed to load persisted record (FOR UPDATE): ${(err as Error).message}`,
+      );
+    }
+    if (!persistedRecord) {
+      throw new Error(`Record not found: ${config.key}/${id} — cannot evaluate field policy`);
+    }
+
+    // Apply field write policy (readonlyWhen evaluated against locked persisted state)
+    let filteredData = data;
+    if (fieldCtx) {
+      const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
+      if (!policy.ok) {
+        const err = new Error(
+          `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,
+        ) as Error & { statusCode: number; rejectedField: string; requiredPermission: string };
+        err.statusCode = 403;
+        (err as any).rejectedField = policy.rejectedField;
+        (err as any).requiredPermission = policy.requiredPermission;
+        throw err;
+      }
+      filteredData = policy.filteredData!;
+    }
+
+    // Perform the update INSIDE the same transaction (row is still locked)
+    const item = await txModel.update({ where: { id }, data: filteredData });
+    return item;
+  });
+}
+
+// Non-transactional update path for store-DB resources (cross-DB limitation)
+async function updateResourceNonTransactional(
+  config: AdminResourceConfig,
+  model: ReturnType<typeof getPrismaModel>,
+  id: string,
+  data: Record<string, unknown>,
+  fieldCtx?: FieldPolicyContext,
+): Promise<Record<string, unknown>> {
+  // Load persisted record (fail-closed)
+  let persistedRecord: Record<string, unknown> | null = null;
+  try {
+    persistedRecord = await model.findUnique({ where: { id } }) as Record<string, unknown> | null;
+  } catch (err) {
+    throw new Error(
+      `Failed to load persisted record: ${(err as Error).message}`,
+    );
+  }
+  if (!persistedRecord) {
+    throw new Error(`Record not found: ${config.key}/${id}`);
+  }
+
   let filteredData = data;
   if (fieldCtx) {
-    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx);
+    const policy = await applyFieldWritePolicyAsync(config, data, fieldCtx, persistedRecord);
     if (!policy.ok) {
       const err = new Error(
         `Forbidden: field "${policy.rejectedField}" requires "${policy.requiredPermission}" permission`,
@@ -167,8 +254,7 @@ export async function updateResource(
     filteredData = policy.filteredData!;
   }
 
-  const item = await model.update({ where: { id }, data: filteredData });
-  return item;
+  return await model.update({ where: { id }, data: filteredData });
 }
 
 // ── Delete resource (soft or hard) ────────────────────────
