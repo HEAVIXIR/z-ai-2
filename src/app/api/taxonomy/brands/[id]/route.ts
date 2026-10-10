@@ -2,7 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
 
@@ -68,9 +68,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 /* PATCH /api/taxonomy/brands/[id] */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -255,9 +253,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 /* DELETE /api/taxonomy/brands/[id] */
 export async function DELETE(_req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     await db.brand.delete({ where: { id } });
