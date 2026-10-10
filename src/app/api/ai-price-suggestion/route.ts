@@ -92,6 +92,12 @@ export async function POST(req: Request) {
     const { policy } = preflight;
     const startTime = Date.now();
 
+    // STEP 11.43 TIMEOUT HARDENING: abort the LLM call if it exceeds
+    // policy.timeoutMs. The signal is passed to zai.chat.completions.create;
+    // an AbortError is detected in the inner catch block and surfaced as 504.
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
     // LLM refinement (optional, falls back to median if AI fails)
     let suggested = Math.round(median);
     let aiNote = "";
@@ -127,7 +133,8 @@ export async function POST(req: Request) {
           },
         ],
         thinking: { type: "disabled" },
-      });
+        signal: controller.signal,
+      } as any);
       const raw = completion?.choices?.[0]?.message?.content || "";
       const m = raw.match(/\{[\s\S]*\}/);
       if (m) {
@@ -139,6 +146,7 @@ export async function POST(req: Request) {
       // STEP 11.42 GATEWAY PHASE 1: record cost + success log
       const latencyMs = Date.now() - startTime;
       const recordedCost = policy.costCeilingUsd;
+      clearTimeout(timeoutTimer);
       try {
         await recordAICost("PRICE_ANALYSIS", recordedCost, user.id);
       } catch { /* best-effort */ }
@@ -157,6 +165,12 @@ export async function POST(req: Request) {
         });
       } catch { /* best-effort */ }
     } catch (err: any) {
+      // STEP 11.43 TIMEOUT HARDENING: detect AbortError. The LLM here is
+      // OPTIONAL — on timeout we still fall back to the median (existing
+      // behavior, API compatibility preserved) but log the timeout to
+      // AIGatewayLog so budget/quota tracking stays accurate.
+      clearTimeout(timeoutTimer);
+      const isTimeout = err?.name === "AbortError" || controller.signal.aborted;
       // fallback (existing behavior) — but log the LLM failure
       try {
         await db.aIGatewayLog.create({
@@ -168,7 +182,9 @@ export async function POST(req: Request) {
             latencyMs: Date.now() - startTime,
             cost: 0,
             success: false,
-            error: err?.message ?? "unknown",
+            error: isTimeout
+              ? `timeout after ${policy?.timeoutMs ?? 30000}ms`
+              : (err?.message ?? "unknown"),
             userId: user.id,
           },
         });

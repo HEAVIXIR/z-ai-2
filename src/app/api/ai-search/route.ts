@@ -49,6 +49,12 @@ export async function POST(req: Request) {
   const { policy } = preflight;
   const startTime = Date.now();
 
+  // STEP 11.43 TIMEOUT HARDENING: abort the LLM call if it exceeds
+  // policy.timeoutMs. The signal is passed to zai.chat.completions.create;
+  // an AbortError is detected in the catch block and surfaced as 504.
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
   try {
     const zai = await ZAI.create();
     const sys = `You are HEAVIX search assistant. From a Persian natural-language search query about heavy machinery, extract structured JSON with these keys (omit any that don't apply):
@@ -83,7 +89,8 @@ Return ONLY the JSON object.`;
         { role: "user", content: query },
       ],
       thinking: { type: "disabled" },
-    });
+      signal: controller.signal,
+    } as any);
     const raw = completion?.choices?.[0]?.message?.content || "";
     const jsonStr = raw.replace(/```json|```/g, "").trim();
     const start = jsonStr.indexOf("{");
@@ -186,6 +193,7 @@ Return ONLY the JSON object.`;
     // STEP 11.41 GATEWAY PILOT: record cost + log to AIGatewayLog
     const latencyMs = Date.now() - startTime;
     const recordedCost = policy.costCeilingUsd;
+    clearTimeout(timeoutTimer);
     try {
       await recordAICost("SEARCH", recordedCost, user.id);
     } catch { /* best-effort */ }
@@ -216,7 +224,32 @@ Return ONLY the JSON object.`;
       })),
     });
   } catch (err: any) {
+    // STEP 11.43 TIMEOUT HARDENING: detect AbortError → 504 Gateway Timeout
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      clearTimeout(timeoutTimer);
+      const latencyMs = Date.now() - startTime;
+      try {
+        await db.aIGatewayLog.create({
+          data: {
+            taskType: "SEARCH",
+            model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+            input: JSON.stringify(body).substring(0, 500),
+            output: null,
+            latencyMs,
+            cost: 0,
+            success: false,
+            error: `timeout after ${policy?.timeoutMs ?? 30000}ms`,
+            userId: user.id,
+          },
+        });
+      } catch { /* best-effort */ }
+      return NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    }
     // STEP 11.41 GATEWAY PILOT: log failure to AIGatewayLog
+    clearTimeout(timeoutTimer);
     const latencyMs = Date.now() - startTime;
     try {
       await db.aIGatewayLog.create({

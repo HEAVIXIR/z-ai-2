@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify, parseBig } from "@/lib/api-helpers";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 import { logAudit } from "@/lib/audit";
 
@@ -169,8 +170,16 @@ async function scrapeUrl(zai: any, url: string): Promise<ScrapeResult> {
   }
 }
 
-async function getZai() {
-  return await ZAI.create();
+async function getZai(signal?: AbortSignal) {
+  const zai = await ZAI.create();
+  // STEP 11.43: inject AbortController signal into every chat.completions.create
+  // call without refactoring the helpers that take `zai: any` as a parameter.
+  if (signal) {
+    const origCreate = zai.chat.completions.create.bind(zai.chat.completions);
+    (zai as any).chat.completions.create = (body: any) =>
+      origCreate({ ...body, signal });
+  }
+  return zai;
 }
 
 /** Convert a scraped result into a HEAVIX listing draft in DB. */
@@ -426,18 +435,32 @@ async function generateAIListingImage(title: string, brand?: string): Promise<st
    { mode: "scrape", url }            → scrape a single URL
    { mode: "import", scraped }        → import a scraped result
    { mode: "bulk-import", urls: [] }  → scrape + import all
-*/
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  await requirePermission(user.id, "ai.scraper.execute");
-  try {
-    const body = await req.json().catch(() => ({}));
-    const action = String(body.action ?? "");
-    const mode = String(body.mode ?? "");
 
+   STEP 11.43 GATEWAY PHASE 2 (SCRAPER MIGRATION): added
+   preflightAIRequest (auth + quota + budget + size cap),
+   recordAICost (cost tracking), AIGatewayLog (usage logging),
+   and AbortController timeout. The existing auth checks
+   (getCurrentUser + requirePermission) are KEPT (defense-in-depth).
+   The route's business logic is unchanged — only Gateway controls
+   are added in a thin wrapper. The preflight is run AFTER the
+   existing auth check so unauthorized requests don't consume
+   budget/quota. The signal is injected into chat.completions.create
+   calls via a wrapped zai instance (see getZai above).
+*/
+
+// Inner POST handler — runs the existing business logic with a
+// pre-parsed body and an AbortController-aware zai instance. The
+// outer POST wrapper handles Gateway controls (preflight + cost +
+// logging + timeout) so this function stays focused on the scrape.
+async function _doPost(
+  body: any,
+  user: { id: string },
+  controller: AbortController,
+): Promise<NextResponse> {
+  const action = String(body.action ?? "");
+  const mode = String(body.mode ?? "");
+
+  try {
     // ════════════════════════════════════════════════
     // A) FRONTEND "action" FORMAT
     // ════════════════════════════════════════════════
@@ -446,7 +469,7 @@ export async function POST(req: Request) {
     if (action === "scrape") {
       const limit = Math.min(Number(body.limit ?? 8) || 8, 20);
       const categoryFilter = body.categoryFilter ?? null;
-      const zai = await getZai();
+      const zai = await getZai(controller.signal);
 
       // Fetch brands + ALL categories (not just roots — include L1/L2/L3) from DB
       const [brands, allCategories] = await Promise.all([
@@ -835,7 +858,7 @@ ${focusHint}
     // ════════════════════════════════════════════════
     // B) DIRECT "mode" FORMAT (programmatic)
     // ════════════════════════════════════════════════
-    const zai = await getZai();
+    const zai = await getZai(controller.signal);
 
     if (mode === "search") {
       const query = String(body.query ?? "").trim();
@@ -874,6 +897,108 @@ ${focusHint}
 
     return NextResponse.json({ error: "Unknown action or mode" }, { status: 400 });
   } catch (err: any) {
+    // STEP 11.43: detect AbortError → 504 Gateway Timeout. The signal
+    // is injected via getZai(controller.signal), so an aborted LLM call
+    // surfaces here. (Helpers like llmExtract swallow errors internally,
+    // so a true timeout may not always reach this point — but if it
+    // does, we honor the contract.)
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      return NextResponse.json(
+        { error: `Gateway Timeout: timeout after ${controller.signal.aborted ? "policy timeout" : "unknown"}ms` },
+        { status: 504 },
+      );
+    }
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
+}
+
+/* Outer POST — wraps _doPost with Gateway controls:
+   1. Existing auth (getCurrentUser + requirePermission) — defense-in-depth
+   2. preflightAIRequest (policy + RBAC + quota + budget + size cap)
+   3. AbortController + setTimeout(policy.timeoutMs)
+   4. _doPost runs the existing business logic
+   5. On success: recordAICost + AIGatewayLog(success)
+   6. On failure: AIGatewayLog(failure) — including AbortError → 504
+*/
+export async function POST(req: Request) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  await requirePermission(user.id, "ai.scraper.execute");
+
+  // ── Parse body once (used for both preflight inputLength + downstream) ──
+  const body = await req.json().catch(() => ({}));
+
+  // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "SCRAPER",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  // ── STEP 11.43: AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
+  );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(body, user, controller);
+    // Best-effort: extract result summary from the response body for logging.
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("SCRAPER", policy.costCeilingUsd, user.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SCRAPER",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }
