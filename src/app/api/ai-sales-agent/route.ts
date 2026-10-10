@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 
 /* ============================================================
    GET /api/ai-sales-agent (Priority #39)
    AI classifies seller's leads and suggests responses.
+
+   STEP 11.42 GATEWAY PHASE 1: added preflightAIRequest (auth + quota +
+   budget + size cap), recordAICost (cost tracking), and AIGatewayLog
+   (usage logging). The route keeps its existing logic + output format
+   — only Gateway controls are added, no API breaking change.
+
+   NOTE: this is a GET route with no request body. The "input" logged
+   to AIGatewayLog is a synthetic summary of the leads/offers passed
+   to the LLM (best-effort, truncated). The LLM call is wrapped in a
+   try/catch with a heuristic fallback — on LLM failure the route
+   still returns success:true with the fallback classification, but
+   we log the failure to AIGatewayLog for budget/quota tracking.
    ============================================================ */
 
 export const runtime = "nodejs";
@@ -37,6 +50,29 @@ export async function GET() {
       include: { listing: { select: { title: true, price: true } } },
     }),
   ]);
+
+  // STEP 11.42 GATEWAY PHASE 1: pre-flight check (policy + auth + quota + budget)
+  // Synthetic input summary — used for both inputLength and the AIGatewayLog
+  // input field (best-effort, truncated). No real req body on a GET.
+  const inputSummary = {
+    listingCount: userListings.length,
+    leadCount: leads.length,
+    offerCount: offers.length,
+  };
+  const inputLen = Math.min(1_000_000, JSON.stringify(inputSummary).length);
+  const preflight = await preflightAIRequest({
+    taskType: "SELLER_ASSISTANT",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
 
   // Classify leads using AI
   let classification: any = { highPriority: [], mediumPriority: [], lowPriority: [], suggestions: [] };
@@ -76,8 +112,29 @@ export async function GET() {
     const content = llmRes.choices?.[0]?.message?.content ?? "";
     const m = content.match(/\{[\s\S]*\}/);
     if (m) classification = JSON.parse(m[0]);
-  } catch (e) {
-    // Fallback classification
+
+    // STEP 11.42 GATEWAY PHASE 1: record cost + success log
+    const latencyMs = Date.now() - startTime;
+    const recordedCost = policy.costCeilingUsd;
+    try {
+      await recordAICost("SELLER_ASSISTANT", recordedCost, user.id);
+    } catch { /* best-effort */ }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SELLER_ASSISTANT",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(inputSummary).substring(0, 500),
+          output: JSON.stringify(classification).substring(0, 500),
+          latencyMs,
+          cost: recordedCost || null,
+          success: true,
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  } catch (err: any) {
+    // Fallback classification (existing behavior)
     classification = {
       highPriority: offers.filter((o) => o.status === "PENDING").map((o) => `پیشنهاد قیمت برای ${o.listing?.title}`),
       mediumPriority: leads.filter((l) => l.leadType === "OFFER" || l.leadType === "CONTACT").map((l) => `تماس برای ${l.listing?.title}`),
@@ -88,6 +145,23 @@ export async function GET() {
         "تصاویر آگهی‌ها را بهبود دهید",
       ],
     };
+
+    // STEP 11.42 GATEWAY PHASE 1: log failure to AIGatewayLog
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SELLER_ASSISTANT",
+          model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+          input: JSON.stringify(inputSummary).substring(0, 500),
+          output: null,
+          latencyMs: Date.now() - startTime,
+          cost: 0,
+          success: false,
+          error: err?.message ?? "unknown",
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
   }
 
   return NextResponse.json({

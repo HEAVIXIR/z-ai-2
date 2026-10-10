@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseNumber } from "@/lib/api-helpers";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -12,6 +13,15 @@ export const dynamic = "force-dynamic";
    Returns: { min, max, suggested, currency, samples, confidence }
 
    STEP 11.32 R-3 FIX: added getCurrentUser() auth check.
+   STEP 11.42 GATEWAY PHASE 1: added preflightAIRequest (auth + quota +
+   budget + size cap), recordAICost (cost tracking), and AIGatewayLog
+   (usage logging). The route keeps its existing logic + output format
+   — only Gateway controls are added, no API breaking change.
+
+   NOTE: the LLM call here is OPTIONAL — it refines the median estimate.
+   If the LLM fails, the route falls back to the median (existing
+   behavior). We still log both success and failure of the LLM call to
+   AIGatewayLog so budget/quota tracking stays accurate.
 */
 export async function POST(req: Request) {
   // STEP 11.32 R-3 FIX: require authentication.
@@ -65,6 +75,23 @@ export async function POST(req: Request) {
     const min = prices[0];
     const max = prices[prices.length - 1];
 
+    // STEP 11.42 GATEWAY PHASE 1: pre-flight check (policy + auth + quota + budget)
+    // Run before invoking the LLM (the LLM is optional but still gated).
+    const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+    const preflight = await preflightAIRequest({
+      taskType: "PRICE_ANALYSIS",
+      user: { id: user.id },
+      inputLength: inputLen,
+    });
+    if (!preflight.ok) {
+      return NextResponse.json(
+        { error: preflight.reason },
+        { status: preflight.statusCode },
+      );
+    }
+    const { policy } = preflight;
+    const startTime = Date.now();
+
     // LLM refinement (optional, falls back to median if AI fails)
     let suggested = Math.round(median);
     let aiNote = "";
@@ -108,8 +135,44 @@ export async function POST(req: Request) {
         if (parsed.price) suggested = Math.round(Number(parsed.price));
         if (parsed.note) aiNote = String(parsed.note);
       }
-    } catch {
-      /* fallback */
+
+      // STEP 11.42 GATEWAY PHASE 1: record cost + success log
+      const latencyMs = Date.now() - startTime;
+      const recordedCost = policy.costCeilingUsd;
+      try {
+        await recordAICost("PRICE_ANALYSIS", recordedCost, user.id);
+      } catch { /* best-effort */ }
+      try {
+        await db.aIGatewayLog.create({
+          data: {
+            taskType: "PRICE_ANALYSIS",
+            model: policy.model === "default" ? "z-ai-default" : policy.model,
+            input: JSON.stringify(body).substring(0, 500),
+            output: JSON.stringify({ suggested, aiNote }).substring(0, 500),
+            latencyMs,
+            cost: recordedCost || null,
+            success: true,
+            userId: user.id,
+          },
+        });
+      } catch { /* best-effort */ }
+    } catch (err: any) {
+      // fallback (existing behavior) — but log the LLM failure
+      try {
+        await db.aIGatewayLog.create({
+          data: {
+            taskType: "PRICE_ANALYSIS",
+            model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+            input: JSON.stringify(body).substring(0, 500),
+            output: null,
+            latencyMs: Date.now() - startTime,
+            cost: 0,
+            success: false,
+            error: err?.message ?? "unknown",
+            userId: user.id,
+          },
+        });
+      } catch { /* best-effort */ }
     }
 
     const confidence =
