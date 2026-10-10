@@ -20,13 +20,31 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/authorization", () => ({
   isAdmin: async () => mockIsAdminResult,
 }));
+// STEP 11.42: routes now depend on the AI Gateway pre-flight. Mock it
+// to pass so the R-3 auth/ownership assertions remain the test focus.
+vi.mock("@/lib/ai-policy", () => ({
+  preflightAIRequest: async () => ({
+    ok: true,
+    policy: { model: "default", costCeilingUsd: 0.05, timeoutMs: 30000 },
+    budget: {},
+    actorId: "user-1",
+  }),
+  recordAICost: vi.fn(async () => {}),
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     listing: {
       findUnique: vi.fn(async () => null),
       findMany: vi.fn(async () => []),
       count: vi.fn(async () => 0),
+      aggregate: vi.fn(async () => ({ _avg: { price: 1000 } })),
     },
+    buyRequest: { count: vi.fn(async () => 0) },
+    brand: { findMany: vi.fn(async () => []) },
+    category: { findMany: vi.fn(async () => []) },
+    lead: { findMany: vi.fn(async () => []) },
+    listingOffer: { findMany: vi.fn(async () => []) },
+    aIGatewayLog: { create: vi.fn(async () => ({})) },
   },
 }));
 vi.mock("@/lib/search", () => ({

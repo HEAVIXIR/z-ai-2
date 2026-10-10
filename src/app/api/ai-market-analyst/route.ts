@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -9,16 +10,46 @@ export const dynamic = "force-dynamic";
 /* POST /api/ai-market-analyst
    Body: { question }
    Admin-only. Aggregates market data and asks AI to analyze it.
+
+   STEP 11.42 GATEWAY PHASE 1: added preflightAIRequest (auth + quota +
+   budget + size cap), recordAICost (cost tracking), and AIGatewayLog
+   (usage logging). The route keeps its existing logic + output format
+   — only Gateway controls are added, no API breaking change.
+
+   DEFENSE-IN-DEPTH: requireAdminPermission("ai.execute") is KEPT. The
+   preflight also runs RBAC (checkAIAuth on the policy's allowedRoles)
+   and adds the policy/quota/budget gates that requireAdminPermission
+   does not provide. Both checks run.
 */
 export async function POST(req: Request) {
-  const __auth = await requireAdminPermission("ai.execute"); if (__auth.error) return __auth.error;
-  try {
-    const body = await req.json().catch(() => ({}));
-    const question = String(body.question ?? "").trim();
-    if (!question) {
-      return NextResponse.json({ error: "question is required" }, { status: 400 });
-    }
+  // STEP 11.38: defense-in-depth — explicit RBAC permission check.
+  const __auth = await requireAdminPermission("ai.execute");
+  if (__auth.error) return __auth.error;
+  const user = __auth.user;
 
+  const body = await req.json().catch(() => ({}));
+  const question = String(body.question ?? "").trim();
+  if (!question) {
+    return NextResponse.json({ error: "question is required" }, { status: 400 });
+  }
+
+  // STEP 11.42 GATEWAY PHASE 1: pre-flight check (policy + auth + quota + budget)
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "MARKET_ANALYST",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  try {
     // Gather market context
     const totalListings = await db.listing.count();
     const published = await db.listing.count({ where: { status: "PUBLISHED" } });
@@ -84,12 +115,49 @@ export async function POST(req: Request) {
     });
     const answer = completion?.choices?.[0]?.message?.content || "";
 
+    // STEP 11.42 GATEWAY PHASE 1: record cost + log to AIGatewayLog
+    const latencyMs = Date.now() - startTime;
+    const recordedCost = policy.costCeilingUsd;
+    try {
+      await recordAICost("MARKET_ANALYST", recordedCost, user.id);
+    } catch { /* best-effort */ }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "MARKET_ANALYST",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: JSON.stringify({ answer }).substring(0, 500),
+          latencyMs,
+          cost: recordedCost || null,
+          success: true,
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+
     return NextResponse.json({
       question,
       answer,
       context,
     });
   } catch (err: any) {
+    // STEP 11.42 GATEWAY PHASE 1: log failure to AIGatewayLog
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "MARKET_ANALYST",
+          model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+          input: JSON.stringify(body).substring(0, 500),
+          output: null,
+          latencyMs: Date.now() - startTime,
+          cost: 0,
+          success: false,
+          error: err?.message ?? "unknown",
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },
