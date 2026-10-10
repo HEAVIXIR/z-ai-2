@@ -1,0 +1,85 @@
+# HEAVIX — Production Docker Compose
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# This file defines the production deployment:
+# - HEAVIX Next.js app (port 3000)
+# - Main PostgreSQL (port 5432)
+# - Store PostgreSQL (port 5433)
+# - Caddy gateway (port 80/443, auto-TLS)
+#
+# Prerequisites:
+# - .env.production file with real secrets
+# - Domain name pointing to the host
+# - Caddy will auto-provision TLS certificates
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public
+      - STORE_DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@store-db:5432/heavix_store?schema=public
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      store-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heavix
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: heavix
+    volumes:
+      - heavix_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heavix -d heavix"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  store-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heavix
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: heavix_store
+    volumes:
+      - heavix_store_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heavix -d heavix_store"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  heavix_db_data:
+  heavix_store_db_data:
+  caddy_data:
+  caddy_config:

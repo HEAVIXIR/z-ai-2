@@ -4,48 +4,49 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const VERSION = "1.0";
+/* ============================================================
+   GET /api/health — liveness + readiness check.
 
-/* GET /api/health
-   --------------------------------
-   Public health-check endpoint. Returns:
-     {
-       status:   "ok" | "error",
-       timestamp: ISO string,
-       db:        "connected" | "error",
-       version:   "1.0",
-       dbLatencyMs?: number   (when connected)
-     }
+   Returns 200 if the application process is alive and the main
+   database is reachable. Does NOT expose secrets, connection
+   strings, or internal details.
 
-   DB probe: `$queryRaw` SELECT 1 — fastest possible round-trip
-   that doesn't depend on any table existing. Failures are
-   caught, logged via trackError, and surfaced as db:"error"
-   (with HTTP 503 so load balancers can drain). */
+   Response: { status: "ok" | "degraded", checks: { db: "up" | "down" } }
+
+   The store database is checked best-effort — if it's down, the
+   health status is "degraded" (not "down") because the main
+   marketplace functionality (listings, search, auth) does not
+   depend on the store DB.
+   ============================================================ */
+
 export async function GET() {
-  const timestamp = new Date().toISOString();
-  let dbStatus: "connected" | "error" = "error";
-  let dbLatencyMs: number | undefined;
+  const checks: Record<string, string> = {};
+  let allOk = true;
 
+  // Check main database
   try {
-    const t0 = Date.now();
     await db.$queryRaw`SELECT 1`;
-    dbLatencyMs = Date.now() - t0;
-    dbStatus = "connected";
-  } catch (err: any) {
-    // Don't trackError here — health probes can be frequent and
-    // we don't want to flood the audit log. Just log to console.
-    console.error("[health] db probe failed:", err?.message ?? err);
+    checks.db = "up";
+  } catch {
+    checks.db = "down";
+    allOk = false;
   }
 
-  const ok = dbStatus === "connected";
+  // Check store database (best-effort — degraded, not down)
+  try {
+    const { storeDb } = await import("@/lib/store-db");
+    await storeDb.$queryRaw`SELECT 1`;
+    checks.storeDb = "up";
+  } catch {
+    checks.storeDb = "down";
+    // Don't set allOk = false — store DB is not critical for main marketplace
+  }
+
+  const status = allOk ? "ok" : "degraded";
+  const httpStatus = allOk ? 200 : 503;
+
   return NextResponse.json(
-    {
-      status: ok ? "ok" : "error",
-      timestamp,
-      db: dbStatus,
-      version: VERSION,
-      ...(dbLatencyMs !== undefined ? { dbLatencyMs } : {}),
-    },
-    { status: ok ? 200 : 503 },
+    { status, checks, timestamp: new Date().toISOString() },
+    { status: httpStatus },
   );
 }
