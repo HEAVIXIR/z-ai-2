@@ -15,6 +15,17 @@ export const dealConfig: AdminResourceConfig = {
 
   permissions: { read: 'deal.read', create: 'deal.manage', update: 'deal.manage', delete: 'deal.manage', export: 'deal.read' },
 
+  // PR-SC-00 — Row-level tenant scoping for the seller side of a Deal.
+  // Deal.sellerId is the owner column (seller is the primary commercial
+  // actor). A SELLER sees/edits only their own deals; a user with
+  // `deal.manage` (moderators/admins) sees all; ADMIN sees all. The owner
+  // identity is resolved server-side from the authenticated session —
+  // never from a client-supplied sellerId.
+  ownership: {
+    ownerField: 'sellerId',
+    moderatePermission: 'deal.manage',
+  },
+
   columns: [
     { key: 'dealNumber', label: 'شماره معامله', type: 'text', sortable: true, filterable: true },
     { key: 'sourceType', label: 'منبع', type: 'badge', filterable: true },
@@ -108,6 +119,17 @@ export const rfqConfig: AdminResourceConfig = {
 
   permissions: { read: 'rfq.read', create: 'rfq.manage', update: 'rfq.manage', delete: 'rfq.manage', export: 'rfq.read' },
 
+  // PR-SC-00 — Row-level tenant scoping for RFQs.
+  // RFQ.buyerId is the owner column (the user who created the RFQ).
+  // A buyer sees/edits only their own RFQs; a user with `rfq.manage`
+  // (moderators/admins) sees all; ADMIN sees all. The owner identity is
+  // resolved server-side from the authenticated session — never from a
+  // client-supplied buyerId.
+  ownership: {
+    ownerField: 'buyerId',
+    moderatePermission: 'rfq.manage',
+  },
+
   columns: [
     { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },
     { key: 'machineType', label: 'نوع دستگاه', type: 'text', filterable: true },
@@ -198,6 +220,18 @@ export const offerConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/offers',
 
   permissions: { read: 'listing.read', create: 'listing.read', update: 'listing.update', delete: 'listing.update', export: 'listing.read' },
+
+  // PR-SC-00 — Row-level tenant scoping for ListingOffers.
+  // ListingOffer has no direct sellerId; ownership is relation-based:
+  // the seller who owns the parent Listing receives (and acts on) the
+  // offer. The scope is { listing: { sellerId: userId } }. A user with
+  // `offer.update` (moderators/admins) sees all; ADMIN sees all. The owner
+  // identity is resolved server-side from the authenticated session — never
+  // from a client-supplied sellerId.
+  ownership: {
+    relation: { field: 'listing', ownerField: 'sellerId' },
+    moderatePermission: 'offer.update',
+  },
 
   columns: [
     { key: 'offerAmount', label: 'مبلغ پیشنهاد', type: 'currency', sortable: true, filterable: true },
@@ -363,6 +397,17 @@ export const inspectionConfig: AdminResourceConfig = {
 
   permissions: { read: 'inspection.read', create: 'inspection.manage', update: 'inspection.manage', delete: 'inspection.manage', export: 'inspection.read' },
 
+  // PR-SC-00 — Row-level tenant scoping for Inspections.
+  // Inspection.requestedBy is the owner column (the user who requested the
+  // inspection). A user sees/edits only their own inspection requests; a
+  // user with `inspection.manage` (moderators/admins) sees all; ADMIN sees
+  // all. The owner identity is resolved server-side from the authenticated
+  // session — never from a client-supplied requestedBy.
+  ownership: {
+    ownerField: 'requestedBy',
+    moderatePermission: 'inspection.manage',
+  },
+
   columns: [
     { key: 'status', label: 'وضعیت', type: 'badge', sortable: true, filterable: true },
     { key: 'requestedBy', label: 'درخواست‌کننده', type: 'text' },
@@ -442,6 +487,17 @@ export const transportConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/transports',
 
   permissions: { read: 'transport.read', create: 'transport.manage', update: 'transport.manage', delete: 'transport.manage', export: 'transport.read' },
+
+  // PR-SC-00 — Row-level tenant scoping for TransportRequests.
+  // TransportRequest.requestedBy is the owner column (the user who requested
+  // transport). A user sees/edits only their own transport requests; a user
+  // with `transport.manage` (moderators/admins) sees all; ADMIN sees all.
+  // The owner identity is resolved server-side from the authenticated
+  // session — never from a client-supplied requestedBy.
+  ownership: {
+    ownerField: 'requestedBy',
+    moderatePermission: 'transport.manage',
+  },
 
   columns: [
     { key: 'origin', label: 'مبدا', type: 'text', filterable: true },
@@ -555,6 +611,17 @@ export const disputeConfig: AdminResourceConfig = {
 
   permissions: { read: 'deal.read', create: 'deal.manage', update: 'deal.manage', delete: 'deal.manage', export: 'deal.read' },
 
+  // PR-SC-00 — Row-level tenant scoping for Disputes.
+  // Dispute.openedBy is the owner column (the user who filed the dispute).
+  // A user sees/edits only their own disputes; a user with `dispute.manage`
+  // (moderators/admins) sees all; ADMIN sees all. The owner identity is
+  // resolved server-side from the authenticated session — never from a
+  // client-supplied openedBy.
+  ownership: {
+    ownerField: 'openedBy',
+    moderatePermission: 'dispute.manage',
+  },
+
   columns: [
     { key: 'reason', label: 'دلیل', type: 'text', filterable: true },
     { key: 'description', label: 'توضیحات', type: 'text', visible: false },
@@ -631,6 +698,17 @@ export const buyRequestConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/buy-requests',
 
   permissions: { read: 'request.read', create: 'request.manage', update: 'request.manage', delete: 'request.manage', export: 'request.read' },
+
+  // PR-SC-00 — Row-level tenant scoping for BuyRequests.
+  // BuyRequest.userId is the owner column (the user who created the
+  // request). A user sees/edits only their own buy requests; a user with
+  // `request.manage` (moderators/admins) sees all; ADMIN sees all. The
+  // owner identity is resolved server-side from the authenticated session
+  // — never from a client-supplied userId.
+  ownership: {
+    ownerField: 'userId',
+    moderatePermission: 'request.manage',
+  },
 
   columns: [
     { key: 'title', label: 'عنوان', type: 'text', sortable: true, filterable: true },

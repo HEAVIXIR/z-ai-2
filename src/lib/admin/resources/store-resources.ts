@@ -596,6 +596,17 @@ export const reviewConfig: AdminResourceConfig = {
     update: 'review.moderate', delete: 'review.moderate',
   },
 
+  // PR-SC-00 — Row-level tenant scoping for Reviews.
+  // Review.authorId is the owner column (the user who wrote the review).
+  // An author sees/edits only their own reviews; a user with
+  // `review.moderate` (moderators/admins) sees all; ADMIN sees all. The
+  // owner identity is resolved server-side from the authenticated session
+  // — never from a client-supplied authorId.
+  ownership: {
+    ownerField: 'authorId',
+    moderatePermission: 'review.moderate',
+  },
+
   columns: [
     { key: 'rating', label: 'امتیاز', type: 'number', sortable: true, filterable: true },
     { key: 'title', label: 'عنوان', type: 'text', filterable: true },
