@@ -27,6 +27,19 @@ if [ ! -f "$BACKUP_DIR/main.sql" ] || [ ! -f "$BACKUP_DIR/store.sql" ]; then
 fi
 
 echo "→ Restoring from $BACKUP_DIR"
+echo ""
+echo "⚠️  WARNING: This will DROP and recreate both databases!"
+echo "    Main DB:  $DB_NAME"
+echo "    Store DB: $STORE_DB_NAME"
+echo ""
+
+# STEP 11.50 FIX: require explicit confirmation before destructive operation
+read -p "Type 'CONFIRM' to proceed with database restore: " CONFIRMATION
+if [ "$CONFIRMATION" != "CONFIRM" ]; then
+  echo "Aborted. Database restore cancelled."
+  exit 0
+fi
+echo ""
 
 # Load env
 if [ -f .env ]; then
