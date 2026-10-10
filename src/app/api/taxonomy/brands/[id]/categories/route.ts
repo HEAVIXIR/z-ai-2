@@ -1,7 +1,7 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 
 /* ============================================================
    /api/taxonomy/brands/[id]/categories
@@ -30,8 +30,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
 
   try {
     const { id } = await params;
@@ -64,8 +63,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authed = await isAuthenticated();
-  if (!authed) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
 
   try {
     const { id } = await params;
