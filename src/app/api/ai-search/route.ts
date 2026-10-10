@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
 import { searchListings } from "@/lib/search";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -13,15 +14,11 @@ export const dynamic = "force-dynamic";
    Returns: { filters, intent, listings }
    Side-effects: logs zero-result searches as DemandSignal records.
 
-   STEP 11.32 R-3 FIX: added getCurrentUser() auth check. Previously
-   this route had NO authentication — anyone could call it.
-
-   P1-18: the listing fetch is routed through `searchListings`
-   (src/lib/search.ts) so Persian normalization is applied uniformly.
-   The price / condition / year filters that searchListings doesn't
-   (yet) expose are applied as a post-filter on the returned hits —
-   the helper over-fetches (limit:100) so the post-filters still
-   leave enough results to satisfy the caller's `limit`.
+   STEP 11.32 R-3 FIX: added getCurrentUser() auth check.
+   STEP 11.41 GATEWAY PILOT: added preflightAIRequest (auth + quota +
+   budget + size cap), recordAICost (cost tracking), and AIGatewayLog
+   (usage logging). The route keeps its existing logic + output format
+   — only Gateway controls are added, no API breaking change.
 */
 export async function POST(req: Request) {
   // STEP 11.32 R-3 FIX: require authentication.
@@ -29,13 +26,30 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  try {
-    const body = await req.json().catch(() => ({}));
-    const query = String(body.query ?? "").trim();
-    if (!query) {
-      return NextResponse.json({ error: "query is required" }, { status: 400 });
-    }
 
+  // STEP 11.41 GATEWAY PILOT: pre-flight check (policy + auth + quota + budget)
+  const body = await req.json().catch(() => ({}));
+  const query = String(body.query ?? "").trim();
+  if (!query) {
+    return NextResponse.json({ error: "query is required" }, { status: 400 });
+  }
+
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "SEARCH",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  try {
     const zai = await ZAI.create();
     const sys = `You are HEAVIX search assistant. From a Persian natural-language search query about heavy machinery, extract structured JSON with these keys (omit any that don't apply):
 {
@@ -169,6 +183,27 @@ Return ONLY the JSON object.`;
       verified: l.verified,
     }));
 
+    // STEP 11.41 GATEWAY PILOT: record cost + log to AIGatewayLog
+    const latencyMs = Date.now() - startTime;
+    const recordedCost = policy.costCeilingUsd;
+    try {
+      await recordAICost("SEARCH", recordedCost, user.id);
+    } catch { /* best-effort */ }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SEARCH",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: JSON.stringify({ filters, intent: normalizedIntent, count: listings.length }).substring(0, 500),
+          latencyMs,
+          cost: recordedCost || null,
+          success: true,
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+
     return NextResponse.json({
       success: true,
       filters,
@@ -181,6 +216,23 @@ Return ONLY the JSON object.`;
       })),
     });
   } catch (err: any) {
+    // STEP 11.41 GATEWAY PILOT: log failure to AIGatewayLog
+    const latencyMs = Date.now() - startTime;
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SEARCH",
+          model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+          input: JSON.stringify(body).substring(0, 500),
+          output: null,
+          latencyMs,
+          cost: 0,
+          success: false,
+          error: err?.message ?? "unknown",
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },
