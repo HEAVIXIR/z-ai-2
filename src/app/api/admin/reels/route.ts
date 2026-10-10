@@ -9,6 +9,7 @@ import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
 import { logAudit } from "@/lib/audit";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,13 @@ export const maxDuration = 300;
    - Uses AI to generate a 5-second promotional video
    - Also generates a caption + hashtags for social media
    - Saves the video locally + creates a SocialReel record
+
+   STEP 11.44 GATEWAY PHASE 3: added preflightAIRequest
+   (auth + quota + budget + size cap), recordAICost (cost
+   tracking), AIGatewayLog (usage logging), and
+   AbortController timeout. Existing auth (getCurrentUser +
+   hasPermission + rate limit) KEPT (defense-in-depth).
+   Output format UNCHANGED. Business logic UNCHANGED.
    ============================================================ */
 
 const PLATFORM_CONFIG: Record<string, { size: string; duration: number }> = {
@@ -33,7 +41,177 @@ const PLATFORM_CONFIG: Record<string, { size: string; duration: number }> = {
   TELEGRAM: { size: "1280x720", duration: 5 },
 };
 
+/* Inner POST — runs the existing business logic with a
+   pre-parsed body and an AbortController. The outer POST
+   wrapper handles Gateway controls. */
+async function _doPost(
+  body: any,
+  sessionUser: { id: string },
+  controller: AbortController,
+): Promise<NextResponse> {
+  const { listingId, platform = "INSTAGRAM", duration = 5 } = body;
+
+  if (!listingId) return NextResponse.json({ error: "listingId is required" }, { status: 400 });
+
+  const listing = await db.listing.findUnique({
+    where: { id: listingId },
+    include: {
+      images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 3 },
+      brand: { select: { name: true, nameEn: true } },
+      category: { select: { name: true, nameEn: true } },
+    },
+  });
+  if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+
+  const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.INSTAGRAM;
+  const mainImage = listing.images[0]?.url;
+  if (!mainImage) return NextResponse.json({ error: "Listing has no image" }, { status: 400 });
+
+  const brandName = listing.brand?.nameEn || listing.brand?.name || "";
+  const categoryName = listing.category?.name || "ماشین‌آلات";
+  const priceText = listing.price ? `${Number(listing.price).toLocaleString("fa-IR")} تومان` : "توافقی";
+  const prompt = `Dynamic promotional video of a ${brandName} ${categoryName}. The machine is showcased with smooth cinematic camera movement. Professional industrial setting. High quality, engaging.`;
+
+  // Generate social media caption + hashtags using LLM
+  let caption = "";
+  let hashtags = "";
+  try {
+    const zai = await ZAI.create();
+    const captionRes = await zai.chat.completions.create({
+      messages: [{
+        role: "user",
+        content: `برای آگهی زیر یک کپشن کوتاه و جذاب برای ${platform} بنویس + ۵ هشتگ مرتبط:
+
+عنوان: ${listing.title}
+برند: ${brandName}
+دسته: ${categoryName}
+قیمت: ${priceText}
+شهر: ${listing.city || "—"}
+
+فقط JSON: {"caption":"متن","hashtags":"#هشتگ۱,#هشتگ۲"}`,
+      }],
+      thinking: { type: "disabled" },
+      signal: controller.signal,
+    } as any);
+    const content = captionRes.choices?.[0]?.message?.content ?? "";
+    const m = content.match(/\{[\s\S]*\}/);
+    if (m) { const obj = JSON.parse(m[0]); caption = obj.caption || ""; hashtags = obj.hashtags || ""; }
+  } catch { caption = `${listing.title} — ${priceText}`; hashtags = "#هویکس #ماشین‌آلات"; }
+
+  // Create SocialReel record
+  const reel = await db.socialReel.create({
+    data: { listingId, platform, duration: config.duration, status: "PROCESSING", prompt, caption, hashtags, thumbnailUrl: mainImage },
+  });
+  await logAudit({
+    actorId: sessionUser.id,
+    actorType: "ADMIN",
+    action: "admin.socialReels.create",
+    entityType: "SocialReel",
+    entityId: reel.id,
+    after: { listingId: reel.listingId, platform: reel.platform, status: reel.status, duration: reel.duration },
+    reason: "via admin API",
+  });
+
+  // Generate video using AI (image-to-video)
+  try {
+    const zai = await ZAI.create();
+
+    // Read image and convert to base64
+    let imageBase64: string | undefined;
+    const localPath = path.join(process.cwd(), "public", mainImage);
+    try {
+      const buffer = await fs.readFile(localPath);
+      const ext = path.extname(mainImage).toLowerCase();
+      const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+      imageBase64 = `data:${mime};base64,${buffer.toString("base64")}`;
+    } catch {
+      if (mainImage.startsWith("http")) imageBase64 = mainImage;
+    }
+
+    const task = await zai.video.generations.create({
+      prompt, image_url: imageBase64, quality: "speed", size: config.size, fps: 30, duration: config.duration,
+      signal: controller.signal,
+    } as any);
+
+    // Poll for result
+    let result = await zai.async.result.query(task.id);
+    let pollCount = 0;
+    while (result.task_status === "PROCESSING" && pollCount < 60) {
+      pollCount++;
+      await new Promise((r) => setTimeout(r, 5000));
+      result = await zai.async.result.query(task.id);
+    }
+
+    if (result.task_status === "SUCCESS") {
+      const videoUrl = result.video_result?.[0]?.url || result.video_url || result.url;
+      if (videoUrl) {
+        // Download and save locally
+        try {
+          const resp = await fetch(videoUrl);
+          if (resp.ok) {
+            const buffer = Buffer.from(await resp.arrayBuffer());
+            const dir = path.join(process.cwd(), "public", "uploads", "reels");
+            await fs.mkdir(dir, { recursive: true });
+            const filename = `reel-${reel.id}.mp4`;
+            await fs.writeFile(path.join(dir, filename), buffer);
+            const localUrl = `/uploads/reels/${filename}`;
+            await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl: localUrl, taskId: task.id } });
+            await logAudit({
+              actorId: sessionUser.id,
+              actorType: "ADMIN",
+              action: "admin.socialReels.update",
+              entityType: "SocialReel",
+              entityId: reel.id,
+              after: { status: "READY", videoUrl: localUrl, taskId: task.id },
+              reason: "via admin API",
+            });
+            return NextResponse.json({ ok: true, reelId: reel.id, videoUrl: localUrl, caption, hashtags, status: "READY" });
+          }
+        } catch {
+          // Use remote URL
+          await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl, taskId: task.id } });
+          await logAudit({
+            actorId: sessionUser.id,
+            actorType: "ADMIN",
+            action: "admin.socialReels.update",
+            entityType: "SocialReel",
+            entityId: reel.id,
+            after: { status: "READY", videoUrl, taskId: task.id },
+            reason: "via admin API",
+          });
+          return NextResponse.json({ ok: true, reelId: reel.id, videoUrl, caption, hashtags, status: "READY" });
+        }
+      }
+    }
+
+    await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED", taskId: task.id } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.socialReels.update",
+      entityType: "SocialReel",
+      entityId: reel.id,
+      after: { status: "FAILED", taskId: task.id },
+      reason: "via admin API",
+    });
+    return NextResponse.json({ ok: false, error: "Video generation timed out", reelId: reel.id, caption, hashtags });
+  } catch (videoErr: any) {
+    await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED" } });
+    await logAudit({
+      actorId: sessionUser.id,
+      actorType: "ADMIN",
+      action: "admin.socialReels.update",
+      entityType: "SocialReel",
+      entityId: reel.id,
+      after: { status: "FAILED", error: videoErr?.message ?? "Video error" },
+      reason: "via admin API",
+    });
+    return NextResponse.json({ ok: false, error: videoErr?.message ?? "Video error", reelId: reel.id, caption, hashtags });
+  }
+}
+
 export async function POST(req: Request) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -46,173 +224,81 @@ export async function POST(req: Request) {
   }
 
   // ── Rate limit (UPLOAD preset, 20/h per IP) ──
-  // This route generates + writes a video file to
-  // /public/uploads/reels, so it is resource-consuming.
   const rl = enforceRateLimit(getClientIp(req), UPLOAD);
   if (!rl.ok) return rl.response;
 
-  try {
-    const body = await req.json().catch(() => ({}));
-    const { listingId, platform = "INSTAGRAM", duration = 5 } = body;
+  // ── Parse body once (used for preflight inputLength + downstream) ──
+  const body = await req.json().catch(() => ({}));
 
-    if (!listingId) return NextResponse.json({ error: "listingId is required" }, { status: 400 });
-
-    const listing = await db.listing.findUnique({
-      where: { id: listingId },
-      include: {
-        images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 3 },
-        brand: { select: { name: true, nameEn: true } },
-        category: { select: { name: true, nameEn: true } },
-      },
-    });
-    if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-
-    const config = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.INSTAGRAM;
-    const mainImage = listing.images[0]?.url;
-    if (!mainImage) return NextResponse.json({ error: "Listing has no image" }, { status: 400 });
-
-    const brandName = listing.brand?.nameEn || listing.brand?.name || "";
-    const categoryName = listing.category?.name || "ماشین‌آلات";
-    const priceText = listing.price ? `${Number(listing.price).toLocaleString("fa-IR")} تومان` : "توافقی";
-    const prompt = `Dynamic promotional video of a ${brandName} ${categoryName}. The machine is showcased with smooth cinematic camera movement. Professional industrial setting. High quality, engaging.`;
-
-    // Generate social media caption + hashtags using LLM
-    let caption = "";
-    let hashtags = "";
-    try {
-      const zai = await ZAI.create();
-      const captionRes = await zai.chat.completions.create({
-        messages: [{
-          role: "user",
-          content: `برای آگهی زیر یک کپشن کوتاه و جذاب برای ${platform} بنویس + ۵ هشتگ مرتبط:
-
-عنوان: ${listing.title}
-برند: ${brandName}
-دسته: ${categoryName}
-قیمت: ${priceText}
-شهر: ${listing.city || "—"}
-
-فقط JSON: {"caption":"متن","hashtags":"#هشتگ۱,#هشتگ۲"}`,
-        }],
-        thinking: { type: "disabled" },
-      });
-      const content = captionRes.choices?.[0]?.message?.content ?? "";
-      const m = content.match(/\{[\s\S]*\}/);
-      if (m) { const obj = JSON.parse(m[0]); caption = obj.caption || ""; hashtags = obj.hashtags || ""; }
-    } catch { caption = `${listing.title} — ${priceText}`; hashtags = "#هویکس #ماشین‌آلات"; }
-
-    // Create SocialReel record
-    const reel = await db.socialReel.create({
-      data: { listingId, platform, duration: config.duration, status: "PROCESSING", prompt, caption, hashtags, thumbnailUrl: mainImage },
-    });
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.socialReels.create",
-      entityType: "SocialReel",
-      entityId: reel.id,
-      after: { listingId: reel.listingId, platform: reel.platform, status: reel.status, duration: reel.duration },
-      reason: "via admin API",
-    });
-
-    // Generate video using AI (image-to-video)
-    try {
-      const zai = await ZAI.create();
-
-      // Read image and convert to base64
-      let imageBase64: string | undefined;
-      const localPath = path.join(process.cwd(), "public", mainImage);
-      try {
-        const buffer = await fs.readFile(localPath);
-        const ext = path.extname(mainImage).toLowerCase();
-        const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-        imageBase64 = `data:${mime};base64,${buffer.toString("base64")}`;
-      } catch {
-        if (mainImage.startsWith("http")) imageBase64 = mainImage;
-      }
-
-      const task = await zai.video.generations.create({
-        prompt, image_url: imageBase64, quality: "speed", size: config.size, fps: 30, duration: config.duration,
-      });
-
-      // Poll for result
-      let result = await zai.async.result.query(task.id);
-      let pollCount = 0;
-      while (result.task_status === "PROCESSING" && pollCount < 60) {
-        pollCount++;
-        await new Promise((r) => setTimeout(r, 5000));
-        result = await zai.async.result.query(task.id);
-      }
-
-      if (result.task_status === "SUCCESS") {
-        const videoUrl = result.video_result?.[0]?.url || result.video_url || result.url;
-        if (videoUrl) {
-          // Download and save locally
-          try {
-            const resp = await fetch(videoUrl);
-            if (resp.ok) {
-              const buffer = Buffer.from(await resp.arrayBuffer());
-              const dir = path.join(process.cwd(), "public", "uploads", "reels");
-              await fs.mkdir(dir, { recursive: true });
-              const filename = `reel-${reel.id}.mp4`;
-              await fs.writeFile(path.join(dir, filename), buffer);
-              const localUrl = `/uploads/reels/${filename}`;
-              await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl: localUrl, taskId: task.id } });
-              await logAudit({
-                actorId: sessionUser.id,
-                actorType: "ADMIN",
-                action: "admin.socialReels.update",
-                entityType: "SocialReel",
-                entityId: reel.id,
-                after: { status: "READY", videoUrl: localUrl, taskId: task.id },
-                reason: "via admin API",
-              });
-              return NextResponse.json({ ok: true, reelId: reel.id, videoUrl: localUrl, caption, hashtags, status: "READY" });
-            }
-          } catch {
-            // Use remote URL
-            await db.socialReel.update({ where: { id: reel.id }, data: { status: "READY", videoUrl, taskId: task.id } });
-            await logAudit({
-              actorId: sessionUser.id,
-              actorType: "ADMIN",
-              action: "admin.socialReels.update",
-              entityType: "SocialReel",
-              entityId: reel.id,
-              after: { status: "READY", videoUrl, taskId: task.id },
-              reason: "via admin API",
-            });
-            return NextResponse.json({ ok: true, reelId: reel.id, videoUrl, caption, hashtags, status: "READY" });
-          }
-        }
-      }
-
-      await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED", taskId: task.id } });
-      await logAudit({
-        actorId: sessionUser.id,
-        actorType: "ADMIN",
-        action: "admin.socialReels.update",
-        entityType: "SocialReel",
-        entityId: reel.id,
-        after: { status: "FAILED", taskId: task.id },
-        reason: "via admin API",
-      });
-      return NextResponse.json({ ok: false, error: "Video generation timed out", reelId: reel.id, caption, hashtags });
-    } catch (videoErr: any) {
-      await db.socialReel.update({ where: { id: reel.id }, data: { status: "FAILED" } });
-      await logAudit({
-        actorId: sessionUser.id,
-        actorType: "ADMIN",
-        action: "admin.socialReels.update",
-        entityType: "SocialReel",
-        entityId: reel.id,
-        after: { status: "FAILED", error: videoErr?.message ?? "Video error" },
-        reason: "via admin API",
-      });
-      return NextResponse.json({ ok: false, error: videoErr?.message ?? "Video error", reelId: reel.id, caption, hashtags });
-    }
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+  // ── STEP 11.44 GATEWAY PHASE 3: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "REEL_GENERATION",
+    user: { id: sessionUser.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
   }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  // ── AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
+  );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(body, sessionUser, controller);
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("REEL_GENERATION", policy.costCeilingUsd, sessionUser.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "REEL_GENERATION",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: sessionUser.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }
 
 /* GET — list reels */

@@ -234,6 +234,38 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      // ── STEP 11.44 PHASE 3: 6 admin AI routes ──
+      // Each task type below is handled by a dedicated admin route that
+      // internalizes Gateway controls (preflight + recordAICost +
+      // AIGatewayLog + AbortController timeout). These stub cases exist
+      // so preflightAIRequest succeeds for these task types — the actual
+      // logic lives in the dedicated routes (defense-in-depth pattern
+      // established in Phase 2 for SCRAPER).
+      case "CONTENT_FACTORY": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+      case "LOGO_SEARCH": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+      case "IMAGE_GENERATION": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+      case "ARTICLE_GENERATION": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+      case "KNOWLEDGE_IMAGE": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+      case "REEL_GENERATION": {
+        result = { message: `Use the dedicated admin route for ${task}` };
+        break;
+      }
+
       default:
         clearTimeout(timeoutTimer);
         return NextResponse.json(

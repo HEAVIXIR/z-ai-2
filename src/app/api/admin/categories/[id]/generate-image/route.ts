@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/rbac";
 import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 import path from "path";
 import { promises as fs } from "fs";
@@ -29,60 +30,27 @@ import { logAudit } from "@/lib/audit";
    `/api/admin/taxonomy/categories` (POST) which does not exist in
    this codebase — this is the only category-mutating endpoint, so
    the permission is enforced here. See worklog P0-RBAC for details.
+
+   STEP 11.44 GATEWAY PHASE 3: added preflightAIRequest
+   (auth + quota + budget + size cap), recordAICost (cost
+   tracking), AIGatewayLog (usage logging), and
+   AbortController timeout. Existing auth (getCurrentUser +
+   hasPermission + rate limit) KEPT (defense-in-depth).
+   Output format UNCHANGED.
    ============================================================ */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  const sessionUser = await getCurrentUser();
-  if (!sessionUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!(await hasPermission(sessionUser.id, "taxonomy.write"))) {
-    return NextResponse.json(
-      { error: "Forbidden: missing permission 'taxonomy.write'" },
-      { status: 403 },
-    );
-  }
-
-  // ── Rate limit (UPLOAD preset, 20/h per identity) ──
-  // This route writes a generated PNG to /public/uploads/categories,
-  // so it is resource-consuming. Authenticated callers are keyed by
-  // userId; the admin-cookie path falls back to IP (per preset).
-  const uploadIdentity = sessionUser?.id ?? getClientIp(req);
-  const rl = enforceRateLimit(uploadIdentity, UPLOAD);
-  if (!rl.ok) return rl.response;
-
-  const { id } = await ctx.params;
-
-  let category: any = null;
-  try {
-    category = await db.category.findUnique({ where: { id } });
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: "DB lookup failed: " + (e?.message ?? "unknown") },
-      { status: 500 },
-    );
-  }
-
-  if (!category) {
-    return NextResponse.json(
-      { error: "دسته‌بندی یافت نشد." },
-      { status: 404 },
-    );
-  }
-
-  // Parse body — ignore JSON errors (allow empty body)
-  let body: any = {};
-  try {
-    body = await req.json().catch(() => ({}));
-  } catch {
-    body = {};
-  }
+/* Inner POST — runs the existing business logic with a
+   pre-parsed body, resolved category, and an AbortController.
+   The outer POST wrapper handles Gateway controls. */
+async function _doPost(
+  category: any,
+  body: any,
+  sessionUser: { id: string },
+  controller: AbortController,
+): Promise<NextResponse> {
   const userPrompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
 
   const prompt =
@@ -101,7 +69,8 @@ export async function POST(
     const resp = await zai.images.generations.create({
       prompt,
       size: "1344x768", // landscape, suitable for category hero
-    });
+      signal: controller.signal,
+    } as any);
     base64 = resp?.data?.[0]?.base64 ?? null;
   } catch (e: any) {
     return NextResponse.json(
@@ -136,9 +105,9 @@ export async function POST(
   const imageUrl = `/uploads/categories/${filename}`;
 
   try {
-    const before = await db.category.findUnique({ where: { id }, select: { id: true, slug: true, imageUrl: true } });
+    const before = await db.category.findUnique({ where: { id: category.id }, select: { id: true, slug: true, imageUrl: true } });
     await db.category.update({
-      where: { id },
+      where: { id: category.id },
       data: { imageUrl },
     });
     await logAudit({
@@ -146,7 +115,7 @@ export async function POST(
       actorType: "ADMIN",
       action: "admin.categories.update",
       entityType: "Category",
-      entityId: id,
+      entityId: category.id,
       before: before ? { imageUrl: before.imageUrl } : null,
       after: { imageUrl },
       reason: "via admin API",
@@ -166,6 +135,125 @@ export async function POST(
   }
 
   return NextResponse.json({ ok: true, imageUrl, prompt });
+}
+
+export async function POST(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "taxonomy.write"))) {
+    return NextResponse.json(
+      { error: "Forbidden: missing permission 'taxonomy.write'" },
+      { status: 403 },
+    );
+  }
+
+  // ── Rate limit (UPLOAD preset, 20/h per identity) ──
+  const uploadIdentity = sessionUser?.id ?? getClientIp(req);
+  const rl = enforceRateLimit(uploadIdentity, UPLOAD);
+  if (!rl.ok) return rl.response;
+
+  const { id } = await ctx.params;
+
+  let category: any = null;
+  try {
+    category = await db.category.findUnique({ where: { id } });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "DB lookup failed: " + (e?.message ?? "unknown") },
+      { status: 500 },
+    );
+  }
+
+  if (!category) {
+    return NextResponse.json(
+      { error: "دسته‌بندی یافت نشد." },
+      { status: 404 },
+    );
+  }
+
+  // ── Parse body once (used for preflight inputLength + downstream) ──
+  let body: any = {};
+  try {
+    body = await req.json().catch(() => ({}));
+  } catch {
+    body = {};
+  }
+
+  // ── STEP 11.44 GATEWAY PHASE 3: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "IMAGE_GENERATION",
+    user: { id: sessionUser.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  // ── AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
+  );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(category, body, sessionUser, controller);
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("IMAGE_GENERATION", policy.costCeilingUsd, sessionUser.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "IMAGE_GENERATION",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: sessionUser.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }
 
 /* Build a descriptive English prompt for industrial photography. */

@@ -7,6 +7,7 @@ import { promises as fs } from "fs";
 import crypto from "crypto";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-article
@@ -19,6 +20,12 @@ import { logAudit } from "@/lib/audit";
    Body: { topic: string, category?: string, generateImage?: boolean }
    Returns: { ok, article: { id, slug, title, content, excerpt,
                               coverImage, status } }
+
+   STEP 11.44 GATEWAY PHASE 3: added preflightAIRequest
+   (auth + quota + budget + size cap), recordAICost (cost
+   tracking), AIGatewayLog (usage logging), and
+   AbortController timeout. Existing auth (getCurrentUser +
+   hasPermission) KEPT (defense-in-depth). Output format UNCHANGED.
    ============================================================ */
 
 export const runtime = "nodejs";
@@ -28,19 +35,14 @@ const VALID_CATEGORIES = new Set([
   "GUIDE", "COMPARISON", "REVIEW", "NEWS", "TUTORIAL",
 ]);
 
-export async function POST(req: NextRequest) {
-  const sessionUser = await getCurrentUser();
-  if (!sessionUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!(await hasPermission(sessionUser.id, "ai.execute"))) {
-    return NextResponse.json(
-      { error: "Forbidden: requires ai.execute" },
-      { status: 403 },
-    );
-  }
-
-  const body = await req.json().catch(() => ({}));
+/* Inner POST — runs the existing business logic with a
+   pre-parsed body and an AbortController. The outer POST
+   wrapper handles Gateway controls. */
+async function _doPost(
+  body: any,
+  sessionUser: { id: string },
+  controller: AbortController,
+): Promise<NextResponse> {
   const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
   if (!topic || topic.length < 3) {
     return NextResponse.json(
@@ -94,7 +96,8 @@ Topic: """${topic}"""`;
         { role: "user", content: topic },
       ],
       thinking: { type: "disabled" },
-    });
+      signal: controller.signal,
+    } as any);
     const raw = completion?.choices?.[0]?.message?.content ?? "";
     // Strip code fences + extract first JSON object
     const jsonStr = raw
@@ -135,7 +138,8 @@ Topic: """${topic}"""`;
       const imgResp = await zai.images.generations.create({
         prompt: imagePrompt,
         size: "1344x768",
-      });
+        signal: controller.signal,
+      } as any);
       const base64 = imgResp?.data?.[0]?.base64 ?? null;
       if (base64) {
         coverImage = await persistCoverImage(base64, title);
@@ -191,6 +195,93 @@ Topic: """${topic}"""`;
       status: article.status,
     },
   });
+}
+
+export async function POST(req: NextRequest) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await hasPermission(sessionUser.id, "ai.execute"))) {
+    return NextResponse.json(
+      { error: "Forbidden: requires ai.execute" },
+      { status: 403 },
+    );
+  }
+
+  // ── Parse body once (used for preflight inputLength + downstream) ──
+  const body = await req.json().catch(() => ({}));
+
+  // ── STEP 11.44 GATEWAY PHASE 3: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "ARTICLE_GENERATION",
+    user: { id: sessionUser.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  // ── AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
+  );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(body, sessionUser, controller);
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("ARTICLE_GENERATION", policy.costCeilingUsd, sessionUser.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "ARTICLE_GENERATION",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: sessionUser.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }
 
 /* ─── Helpers ─── */
