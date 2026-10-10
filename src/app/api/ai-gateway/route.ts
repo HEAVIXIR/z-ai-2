@@ -222,6 +222,18 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "SCRAPER": {
+        // STEP 11.43 SCRAPER MIGRATION: scraper is handled by dedicated
+        // admin routes that now internalize Gateway controls (preflight +
+        // recordAICost + AIGatewayLog + AbortController timeout). This
+        // case exists so preflightAIRequest succeeds for the SCRAPER task
+        // type. The actual scraping logic lives in:
+        //   - /api/admin/ai-scraper       (HEAVIX marketplace listings)
+        //   - /api/admin/store/ai-scraper (HEAVIX store parts)
+        result = { message: "Use /api/admin/ai-scraper for scraping" };
+        break;
+      }
+
       default:
         clearTimeout(timeoutTimer);
         return NextResponse.json(

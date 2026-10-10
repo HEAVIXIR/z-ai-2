@@ -4,6 +4,8 @@ import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { storeDb } from "@/lib/store-db";
 import { slugify } from "@/lib/api-helpers";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
+import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -47,8 +49,16 @@ interface WebSearchHit {
   snippet?: string;
 }
 
-async function getZai() {
-  return await ZAI.create();
+async function getZai(signal?: AbortSignal) {
+  const zai = await ZAI.create();
+  // STEP 11.43: inject AbortController signal into every chat.completions.create
+  // call without refactoring the helpers that take `zai: any` as a parameter.
+  if (signal) {
+    const origCreate = zai.chat.completions.create.bind(zai.chat.completions);
+    (zai as any).chat.completions.create = (body: any) =>
+      origCreate({ ...body, signal });
+  }
+  return zai;
 }
 
 /** Extract image URLs from raw HTML. */
@@ -410,22 +420,31 @@ async function importPartIntoStore(
 
 /* ============================================================
    POST handler
+
+   STEP 11.43 GATEWAY PHASE 2 (SCRAPER MIGRATION): added
+   preflightAIRequest (auth + quota + budget + size cap),
+   recordAICost (cost tracking), AIGatewayLog (usage logging),
+   and AbortController timeout. The existing auth checks
+   (getCurrentUser + requirePermission) are KEPT (defense-in-depth).
+   The route's business logic is unchanged — only Gateway controls
+   are added in a thin wrapper. The preflight is run AFTER the
+   existing auth check so unauthorized requests don't consume
+   budget/quota. The signal is injected into chat.completions.create
+   calls via a wrapped zai instance (see getZai above).
    ============================================================ */
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  try {
-    await requirePermission(user.id, 'store.manage');
-  } catch {
-    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
-  }
+
+// Inner POST handler — runs the existing business logic with a
+// pre-parsed body and an AbortController-aware zai instance. The
+// outer POST wrapper handles Gateway controls (preflight + cost +
+// logging + timeout) so this function stays focused on the scrape.
+async function _doPost(
+  body: any,
+  user: { id: string },
+  controller: AbortController,
+): Promise<NextResponse> {
+  const action = String(body.action ?? "");
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const action = String(body.action ?? "");
-
     // ─────────────────────────────────────────────
     // SCRAPE — search + preview suggestions
     // ─────────────────────────────────────────────
@@ -438,7 +457,7 @@ export async function POST(req: Request) {
         );
       }
       const limit = Math.max(1, Math.min(15, Number(body.limit) || 8));
-      const zai = await getZai();
+      const zai = await getZai(controller.signal);
 
       const hits = await searchIranianPartsSites(zai, query, limit + 4);
 
@@ -549,10 +568,111 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   } catch (err: any) {
+    // STEP 11.43: detect AbortError → 504 Gateway Timeout.
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      return NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    }
     console.error("[store/ai-scraper POST] error:", err);
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Server error" },
       { status: 500 },
     );
   }
+}
+
+/* Outer POST — wraps _doPost with Gateway controls:
+   1. Existing auth (getCurrentUser + requirePermission) — defense-in-depth
+   2. preflightAIRequest (policy + RBAC + quota + budget + size cap)
+   3. AbortController + setTimeout(policy.timeoutMs)
+   4. _doPost runs the existing business logic
+   5. On success: recordAICost + AIGatewayLog(success)
+   6. On failure: AIGatewayLog(failure) — including AbortError → 504
+*/
+export async function POST(req: Request) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, 'store.manage');
+  } catch {
+    return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
+  }
+
+  // ── Parse body once (used for both preflight inputLength + downstream) ──
+  const body = await req.json().catch(() => ({}));
+
+  // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "SCRAPER",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
+  }
+  const { policy } = preflight;
+  const startTime = Date.now();
+
+  // ── STEP 11.43: AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
+  );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(body, user, controller);
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("SCRAPER", policy.costCeilingUsd, user.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SCRAPER",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }

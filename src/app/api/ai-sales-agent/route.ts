@@ -74,6 +74,12 @@ export async function GET() {
   const { policy } = preflight;
   const startTime = Date.now();
 
+  // STEP 11.43 TIMEOUT HARDENING: abort the LLM call if it exceeds
+  // policy.timeoutMs. The signal is passed to zai.chat.completions.create;
+  // an AbortError is detected in the catch block and surfaced as 504.
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
   // Classify leads using AI
   let classification: any = { highPriority: [], mediumPriority: [], lowPriority: [], suggestions: [] };
 
@@ -107,7 +113,8 @@ export async function GET() {
         },
       ],
       thinking: { type: "disabled" },
-    });
+      signal: controller.signal,
+    } as any);
 
     const content = llmRes.choices?.[0]?.message?.content ?? "";
     const m = content.match(/\{[\s\S]*\}/);
@@ -116,6 +123,7 @@ export async function GET() {
     // STEP 11.42 GATEWAY PHASE 1: record cost + success log
     const latencyMs = Date.now() - startTime;
     const recordedCost = policy.costCeilingUsd;
+    clearTimeout(timeoutTimer);
     try {
       await recordAICost("SELLER_ASSISTANT", recordedCost, user.id);
     } catch { /* best-effort */ }
@@ -134,6 +142,13 @@ export async function GET() {
       });
     } catch { /* best-effort */ }
   } catch (err: any) {
+    // STEP 11.43 TIMEOUT HARDENING: detect AbortError. The LLM here has
+    // a heuristic fallback — on timeout we still return the fallback
+    // classification (existing behavior, API compatibility preserved)
+    // but log the timeout to AIGatewayLog so budget/quota tracking
+    // stays accurate.
+    clearTimeout(timeoutTimer);
+    const isTimeout = err?.name === "AbortError" || controller.signal.aborted;
     // Fallback classification (existing behavior)
     classification = {
       highPriority: offers.filter((o) => o.status === "PENDING").map((o) => `پیشنهاد قیمت برای ${o.listing?.title}`),
@@ -157,7 +172,9 @@ export async function GET() {
           latencyMs: Date.now() - startTime,
           cost: 0,
           success: false,
-          error: err?.message ?? "unknown",
+          error: isTimeout
+            ? `timeout after ${policy?.timeoutMs ?? 30000}ms`
+            : (err?.message ?? "unknown"),
           userId: user.id,
         },
       });

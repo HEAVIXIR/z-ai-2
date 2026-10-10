@@ -49,6 +49,12 @@ export async function POST(req: Request) {
   const { policy } = preflight;
   const startTime = Date.now();
 
+  // STEP 11.43 TIMEOUT HARDENING: abort the LLM call if it exceeds
+  // policy.timeoutMs. The signal is passed to zai.chat.completions.create;
+  // an AbortError is detected in the catch block and surfaced as 504.
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
   try {
     // Gather market context
     const totalListings = await db.listing.count();
@@ -112,12 +118,14 @@ export async function POST(req: Request) {
         },
       ],
       thinking: { type: "disabled" },
-    });
+      signal: controller.signal,
+    } as any);
     const answer = completion?.choices?.[0]?.message?.content || "";
 
     // STEP 11.42 GATEWAY PHASE 1: record cost + log to AIGatewayLog
     const latencyMs = Date.now() - startTime;
     const recordedCost = policy.costCeilingUsd;
+    clearTimeout(timeoutTimer);
     try {
       await recordAICost("MARKET_ANALYST", recordedCost, user.id);
     } catch { /* best-effort */ }
@@ -142,7 +150,32 @@ export async function POST(req: Request) {
       context,
     });
   } catch (err: any) {
+    // STEP 11.43 TIMEOUT HARDENING: detect AbortError → 504 Gateway Timeout
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      clearTimeout(timeoutTimer);
+      const latencyMs = Date.now() - startTime;
+      try {
+        await db.aIGatewayLog.create({
+          data: {
+            taskType: "MARKET_ANALYST",
+            model: policy?.model === "default" ? "z-ai-default" : (policy?.model ?? "z-ai-default"),
+            input: JSON.stringify(body).substring(0, 500),
+            output: null,
+            latencyMs,
+            cost: 0,
+            success: false,
+            error: `timeout after ${policy?.timeoutMs ?? 30000}ms`,
+            userId: user.id,
+          },
+        });
+      } catch { /* best-effort */ }
+      return NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    }
     // STEP 11.42 GATEWAY PHASE 1: log failure to AIGatewayLog
+    clearTimeout(timeoutTimer);
     try {
       await db.aIGatewayLog.create({
         data: {

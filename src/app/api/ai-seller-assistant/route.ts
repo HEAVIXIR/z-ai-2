@@ -118,6 +118,12 @@ export async function GET(req: Request) {
     const { policy } = preflight;
     const startTime = Date.now();
 
+    // STEP 11.43 TIMEOUT HARDENING: abort the LLM call if it exceeds
+    // policy.timeoutMs. The signal is passed to zai.chat.completions.create;
+    // an AbortError is detected in the catch block and surfaced as 504.
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
     // LLM suggestions
     let aiSuggestions: string[] = [];
     try {
@@ -135,7 +141,8 @@ export async function GET(req: Request) {
           },
         ],
         thinking: { type: "disabled" },
-      });
+        signal: controller.signal,
+      } as any);
       const raw = completion?.choices?.[0]?.message?.content || "";
       const m = raw.match(/\[[\s\S]*\]/);
       if (m) {
@@ -146,6 +153,7 @@ export async function GET(req: Request) {
       // STEP 11.42 GATEWAY PHASE 1: record cost + success log
       const latencyMs = Date.now() - startTime;
       const recordedCost = policy.costCeilingUsd;
+      clearTimeout(timeoutTimer);
       try {
         await recordAICost("SELLER_ASSISTANT", recordedCost, user.id);
       } catch { /* best-effort */ }
@@ -164,6 +172,13 @@ export async function GET(req: Request) {
         });
       } catch { /* best-effort */ }
     } catch (err: any) {
+      // STEP 11.43 TIMEOUT HARDENING: detect AbortError. The LLM here
+      // has a heuristic fallback (empty array) — on timeout we still
+      // return the listing with empty aiSuggestions (existing behavior,
+      // API compatibility preserved) but log the timeout to AIGatewayLog
+      // so budget/quota tracking stays accurate.
+      clearTimeout(timeoutTimer);
+      const isTimeout = err?.name === "AbortError" || controller.signal.aborted;
       // ignore (existing behavior — fallback to empty array)
       // STEP 11.42 GATEWAY PHASE 1: log failure to AIGatewayLog
       try {
@@ -176,7 +191,9 @@ export async function GET(req: Request) {
             latencyMs: Date.now() - startTime,
             cost: 0,
             success: false,
-            error: err?.message ?? "unknown",
+            error: isTimeout
+              ? `timeout after ${policy?.timeoutMs ?? 30000}ms`
+              : (err?.message ?? "unknown"),
             userId: user.id,
           },
         });
