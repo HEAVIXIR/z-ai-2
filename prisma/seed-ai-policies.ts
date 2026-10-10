@@ -121,6 +121,73 @@ const POLICIES: PolicySeed[] = [
     timeoutMs: 15000,
     costCeilingUsd: 0.01,
   },
+  // ── STEP 11.44 Phase 3: Admin AI route policies ──
+  {
+    taskType: "CONTENT_FACTORY",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 10,
+    dailyLimit: 30,
+    maxInputChars: 5000,
+    maxOutputTokens: 2000,
+    model: "default",
+    timeoutMs: 45000,
+    costCeilingUsd: 0.05,
+  },
+  {
+    taskType: "LOGO_SEARCH",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 20,
+    dailyLimit: 50,
+    maxInputChars: 1000,
+    maxOutputTokens: 500,
+    model: "default",
+    timeoutMs: 20000,
+    costCeilingUsd: 0.02,
+  },
+  {
+    taskType: "IMAGE_GENERATION",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 10,
+    dailyLimit: 30,
+    maxInputChars: 2000,
+    maxOutputTokens: 1000,
+    model: "default",
+    timeoutMs: 60000,
+    costCeilingUsd: 0.08,
+  },
+  {
+    taskType: "ARTICLE_GENERATION",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 5,
+    dailyLimit: 20,
+    maxInputChars: 5000,
+    maxOutputTokens: 3000,
+    model: "default",
+    timeoutMs: 60000,
+    costCeilingUsd: 0.1,
+  },
+  {
+    taskType: "KNOWLEDGE_IMAGE",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 10,
+    dailyLimit: 30,
+    maxInputChars: 2000,
+    maxOutputTokens: 1000,
+    model: "default",
+    timeoutMs: 60000,
+    costCeilingUsd: 0.08,
+  },
+  {
+    taskType: "REEL_GENERATION",
+    allowedRoles: "ADMIN", // admin only
+    hourlyLimit: 10,
+    dailyLimit: 30,
+    maxInputChars: 3000,
+    maxOutputTokens: 1500,
+    model: "default",
+    timeoutMs: 45000,
+    costCeilingUsd: 0.05,
+  },
 ];
 
 /* ───────────── Budget singleton ───────────── */
