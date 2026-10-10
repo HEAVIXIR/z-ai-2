@@ -3,9 +3,12 @@
 #
 # Build: docker build -t heavix .
 # Run:   docker run -p 3000:3000 --env-file .env.production heavix
+#
+# STEP 11.50 FIX: pinned Bun version + non-root user
 
 # ── Stage 1: Build ──
-FROM oven/bun:1 AS builder
+# STEP 11.50 FIX: pin Bun version for reproducible builds
+FROM oven/bun:1.2.19 AS builder
 
 WORKDIR /app
 
@@ -26,7 +29,8 @@ RUN bunx prisma generate --schema=prisma/store-schema.prisma
 RUN bun run build
 
 # ── Stage 2: Runtime ──
-FROM oven/bun:1-slim AS runtime
+# STEP 11.50 FIX: pin Bun version for reproducible builds
+FROM oven/bun:1.2.19-slim AS runtime
 
 WORKDIR /app
 
@@ -47,6 +51,9 @@ COPY --from=builder /app/src/lib/generated ./src/lib/generated
 
 # Copy package.json for scripts
 COPY --from=builder /app/package.json ./package.json
+
+# STEP 11.50 FIX: run as non-root user (oven/bun images include a 'bun' user)
+USER bun
 
 # Expose port
 EXPOSE 3000
