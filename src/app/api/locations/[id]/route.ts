@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +11,7 @@ interface Args {
 
 /* PATCH /api/locations/[id]?level=country|province|city — admin update. */
 export async function PATCH(req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const { searchParams } = new URL(req.url);
@@ -66,9 +64,7 @@ export async function PATCH(req: Request, { params }: Args) {
 
 /* DELETE /api/locations/[id]?level=country|province|city — admin delete. */
 export async function DELETE(req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const { searchParams } = new URL(req.url);

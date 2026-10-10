@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import ZAI from "z-ai-web-dev-sdk";
 
 export const runtime = "nodejs";
@@ -11,9 +11,7 @@ export const dynamic = "force-dynamic";
    Admin-only. Aggregates market data and asks AI to analyze it.
 */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("ai.execute"); if (__auth.error) return __auth.error;
   try {
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();

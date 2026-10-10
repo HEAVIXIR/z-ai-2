@@ -2,7 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
 
@@ -84,9 +84,7 @@ export async function GET(req: Request) {
 
 /* POST /api/taxonomy/brands — create. */
 export async function POST(req: Request) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const body = await req.json().catch(() => ({}));
     if (!body.name) {

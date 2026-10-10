@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +20,7 @@ interface Args {
    and avoids the diff-dance for option id stability.
    ============================================================ */
 export async function PATCH(req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -130,9 +128,7 @@ export async function PATCH(req: Request, { params }: Args) {
    - ListingAttributeValue (onDelete: Cascade)
    ============================================================ */
 export async function DELETE(_req: Request, { params }: Args) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const existing = await db.attributeDefinition.findUnique({

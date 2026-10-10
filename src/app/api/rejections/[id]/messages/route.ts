@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated } from "@/lib/auth";
+import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +11,7 @@ interface Params {
 
 /* POST /api/rejections/[id]/messages — admin reply. Body: { message } */
 export async function POST(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("moderation.moderate"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -49,9 +47,7 @@ export async function POST(req: Request, { params }: Params) {
 
 /* PATCH /api/rejections/[id]/messages — resolve/reopen. Body: { status } */
 export async function PATCH(req: Request, { params }: Params) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireAdminPermission("moderation.moderate"); if (__auth.error) return __auth.error;
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
