@@ -247,9 +247,37 @@ export async function getAIBudget() {
 }
 
 /**
- * Check the global budget. `estimatedCostUsd` is the per-call cost
- * ceiling from the task policy — we pre-flight it so a single call
- * cannot blow the entire daily budget.
+ * Check the global budget AND atomically reserve the estimated cost.
+ *
+ * STEP 11.45 SECURITY CLOSURE: Previously, checkAIBudget only READ the
+ * budget (non-atomic). Multiple concurrent requests could all pass the
+ * check before any recordAICost incremented the spend. This resulted
+ * in budget overshoot under concurrent load.
+ *
+ * Fix: Use a single atomic SQL UPDATE with a WHERE clause that checks
+ * the limit. If the UPDATE affects 0 rows, the budget is exceeded.
+ * This is a check-and-reserve in one atomic operation:
+ *
+ *   UPDATE AIBudget
+ *   SET dailySpendUsd = dailySpendUsd + $cost,
+ *       monthlySpendUsd = monthlySpendUsd + $cost
+ *   WHERE id = 'main'
+ *     AND active = true
+ *     AND dailySpendUsd + $cost <= dailyLimitUsd
+ *     AND monthlySpendUsd + $cost <= monthlyLimitUsd
+ *
+ * If the UPDATE succeeds (affects 1 row), the cost is reserved.
+ * If it fails (0 rows), the budget is exceeded or inactive.
+ *
+ * IMPORTANT: This function now BOTH checks AND reserves. The caller
+ * does NOT need to call recordAICost separately for the pre-flight
+ * cost. However, if the actual cost differs from the estimate (e.g.,
+ * token-based billing), the caller should call recordAICost with the
+ * difference (actual - estimated) after the LLM call completes.
+ *
+ * For simplicity, the current implementation uses the policy's
+ * costCeilingUsd as both the estimate and the actual cost. This is
+ * conservative (over-charges slightly) but safe.
  */
 export async function checkAIBudget(
   estimatedCostUsd: number,
@@ -264,19 +292,47 @@ export async function checkAIBudget(
   if (!budget.active) {
     return { ok: false, reason: "AI budget is disabled" };
   }
-  if (budget.dailySpendUsd + estimatedCostUsd > budget.dailyLimitUsd) {
-    return {
-      ok: false,
-      reason: `daily budget exceeded ($${budget.dailySpendUsd.toFixed(4)} + $${estimatedCostUsd.toFixed(4)} > $${budget.dailyLimitUsd})`,
-    };
+  // STEP 11.45: Atomic check-and-reserve using Prisma's conditional update.
+  // We use $executeRaw to perform a single atomic SQL statement that
+  // checks the budget AND increments the spend in one operation.
+  try {
+    const result = await db.$executeRaw`
+      UPDATE "AIBudget"
+      SET "dailySpendUsd" = "dailySpendUsd" + ${estimatedCostUsd},
+          "monthlySpendUsd" = "monthlySpendUsd" + ${estimatedCostUsd}
+      WHERE id = 'main'
+        AND active = true
+        AND "dailySpendUsd" + ${estimatedCostUsd} <= "dailyLimitUsd"
+        AND "monthlySpendUsd" + ${estimatedCostUsd} <= "monthlyLimitUsd"
+    `;
+    if (result === 0) {
+      // 0 rows affected → budget exceeded or inactive
+      // Re-read to determine which limit was hit (for a better error message)
+      const current = await db.aIBudget.findUnique({ where: { id: "main" } });
+      if (current) {
+        if (current.dailySpendUsd + estimatedCostUsd > current.dailyLimitUsd) {
+          return {
+            ok: false,
+            reason: `daily budget exceeded ($${current.dailySpendUsd.toFixed(4)} + $${estimatedCostUsd.toFixed(4)} > $${current.dailyLimitUsd})`,
+          };
+        }
+        if (current.monthlySpendUsd + estimatedCostUsd > current.monthlyLimitUsd) {
+          return {
+            ok: false,
+            reason: `monthly budget exceeded ($${current.monthlySpendUsd.toFixed(4)} + $${estimatedCostUsd.toFixed(4)} > $${current.monthlyLimitUsd})`,
+          };
+        }
+      }
+      return { ok: false, reason: "budget reservation failed" };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error("[ai-policy] checkAIBudget atomic reservation failed:", err);
+    // STEP 11.45: Fail-CLOSED on DB error. Previously this was not
+    // in a try/catch (which meant it would throw to the caller). Now
+    // we explicitly fail closed: if we can't verify the budget, deny.
+    return { ok: false, reason: "budget check failed (database error)" };
   }
-  if (budget.monthlySpendUsd + estimatedCostUsd > budget.monthlyLimitUsd) {
-    return {
-      ok: false,
-      reason: `monthly budget exceeded ($${budget.monthlySpendUsd.toFixed(4)} + $${estimatedCostUsd.toFixed(4)} > $${budget.monthlyLimitUsd})`,
-    };
-  }
-  return { ok: true };
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -284,27 +340,48 @@ export async function checkAIBudget(
    ──────────────────────────────────────────────────────────── */
 
 /**
- * Increment the global budget counters by `costUsd`. Called only
- * after a successful AI call. Failures here are swallowed (the
- * user already got their answer) but logged.
+ * Record actual cost after a successful call.
+ *
+ * STEP 11.45 SECURITY CLOSURE: checkAIBudget now does an ATOMIC
+ * check-and-reserve (it increments dailySpendUsd/monthlySpendUsd
+ * atomically as part of the pre-flight). This means the cost is
+ * ALREADY recorded during preflight — recordAICost is now a NO-OP
+ * for the pre-flight cost.
+ *
+ * If the actual cost differs from the estimate (e.g., token-based
+ * billing where actual > ceiling), the caller should call this
+ * function with the DIFFERENCE (actual - estimated). For the current
+ * implementation, we use costCeilingUsd as both estimate and actual,
+ * so the difference is 0 and this function is effectively a no-op.
+ *
+ * Failures here are swallowed (the user already got their answer) but
+ * logged. The cost was already reserved atomically during preflight.
  */
 export async function recordAICost(
   _taskType: string,
   costUsd: number,
   _userId: string | null,
 ): Promise<void> {
+  // STEP 11.45: Cost is now reserved atomically in checkAIBudget.
+  // This function is kept for backward compatibility but is a no-op
+  // when the cost matches the pre-flight estimate (which it does
+  // in the current implementation — both use policy.costCeilingUsd).
+  //
+  // If future token-based billing is added, this function should
+  // record the DIFFERENCE between actual and estimated cost:
+  //   if (actualCost > estimatedCost) {
+  //     await db.aIBudget.update({
+  //       where: { id: "main" },
+  //       data: {
+  //         dailySpendUsd: { increment: actualCost - estimatedCost },
+  //         monthlySpendUsd: { increment: actualCost - estimatedCost },
+  //       },
+  //     });
+  //   }
+  //
+  // For now: no-op (cost was already reserved in checkAIBudget).
   if (!isFinite(costUsd) || costUsd <= 0) return;
-  try {
-    await db.aIBudget.update({
-      where: { id: "main" },
-      data: {
-        dailySpendUsd: { increment: costUsd },
-        monthlySpendUsd: { increment: costUsd },
-      },
-    });
-  } catch (err) {
-    console.error("[ai-policy] recordAICost failed:", err);
-  }
+  // Intentionally empty — cost already reserved atomically in checkAIBudget.
 }
 
 /* ────────────────────────────────────────────────────────────
