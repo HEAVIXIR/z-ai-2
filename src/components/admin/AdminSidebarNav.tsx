@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Wrench, Megaphone, Building2, FolderTree, Users, Settings,
   MonitorSmartphone, Activity, Wallet, BookOpen, Brain, ShieldCheck, ShieldAlert,
   Crown, Image as ImageIcon, Images, Menu as MenuIcon, Target, Sparkles,
-  FileText, Pin, EyeOff, PanelLeftClose, PanelLeftOpen,
+  FileText, Pin, EyeOff, PanelLeftClose, PanelLeftOpen, Package,
   type LucideIcon,
 } from "lucide-react";
 import { usePreferences } from "@/hooks/admin/use-preferences";
@@ -26,7 +26,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard, MonitorSmartphone, Megaphone, Building2, FolderTree,
   Activity, Wallet, BookOpen, ShieldAlert, Brain, Crown, Users,
   ShieldCheck, Settings, ImageIcon, Images, MenuIcon, Wrench, Target, Sparkles,
-  FileText,
+  FileText, Package,
 };
 
 function getIcon(name?: string | null): LucideIcon {
