@@ -116,6 +116,32 @@ const GROUPS: Group[] = [
       { titleFa: 'کارهای پس‌زمینه', href: '/admin/jobs', permissionKey: 'system.manage' },
     ],
   },
+  // ── STEP 11.82: Store group — unified navigation for all store admin pages ──
+  // Previously, only 3 of 15 store pages were in navigation (as scattered standalone
+  // items). This group consolidates ALL store admin pages under a single "فروشگاه"
+  // (Store) section, making the full store manageable from the admin sidebar.
+  // sortOrder: 3.5 — placed between companies (sortOrder: 3) and taxonomy (sortOrder: 4).
+  {
+    key: 'store', titleFa: 'فروشگاه', icon: 'Package', sortOrder: 3.5,
+    items: [
+      { titleFa: 'داشبورد فروشگاه', href: '/admin/store', permissionKey: 'store.read' },
+      { titleFa: 'قطعات', href: '/admin/store/parts', permissionKey: 'part.read' },
+      { titleFa: 'برندها', href: '/admin/store/brands', permissionKey: 'brand.read' },
+      { titleFa: 'مدل خودرو', href: '/admin/store/car-models', permissionKey: 'store.read' },
+      { titleFa: 'دسته‌بندی', href: '/admin/store/categories', permissionKey: 'store.read' },
+      { titleFa: 'موجودی', href: '/admin/store/inventory', permissionKey: 'inventory.read' },
+      { titleFa: 'سفارشات', href: '/admin/store/orders', permissionKey: 'order.read' },
+      { titleFa: 'پرداخت‌ها', href: '/admin/store/payments', permissionKey: 'payment.read' },
+      { titleFa: 'مشتریان', href: '/admin/store/customers', permissionKey: 'store.read' },
+      { titleFa: 'مکانیک‌ها', href: '/admin/store/mechanics', permissionKey: 'store.read' },
+      { titleFa: 'تأمین‌کنندگان', href: '/admin/store/suppliers', permissionKey: 'store.read' },
+      { titleFa: 'انبارها', href: '/admin/store/warehouses', permissionKey: 'store.read' },
+      { titleFa: 'محموله‌ها', href: '/admin/store/shipments', permissionKey: 'shipping.read' },
+      { titleFa: 'مرتجعات', href: '/admin/store/returns', permissionKey: 'returns.read' },
+      { titleFa: 'ارز', href: '/admin/store/currency', permissionKey: 'store.read' },
+      { titleFa: 'اسکرپر فروشگاه', href: '/admin/store/ai-scraper', permissionKey: 'ai.execute' },
+    ],
+  },
 ];
 
 // ── Standalone items (no group) ─────────────────────────────
@@ -156,12 +182,13 @@ const STANDALONES: Standalone[] = [
   { key: 'settings', titleFa: 'تنظیمات', href: '/admin/settings', icon: 'Settings', sortOrder: 13, permissionKey: 'system.manage' },
 
   // ── T-A: Store Domain Completion — store admin sub-pages ──
-  // Fine-grained permission keys (inventory.read / returns.read / shipping.read)
-  // were added to src/lib/authorization/permissions.ts. ADMIN gets them all
-  // via the [...PERMISSIONS] spread.
-  { key: 'store-inventory', titleFa: 'موجودی', href: '/admin/store/inventory', icon: 'Boxes', sortOrder: 14.1, permissionKey: 'inventory.read' },
-  { key: 'store-returns', titleFa: 'مرتجعات', href: '/admin/store/returns', icon: 'Undo2', sortOrder: 14.2, permissionKey: 'returns.read' },
-  { key: 'store-shipments', titleFa: 'محموله‌ها', href: '/admin/store/shipments', icon: 'Truck', sortOrder: 14.3, permissionKey: 'shipping.read' },
+  // STEP 11.82: These 3 standalone items have been MOVED to the 'store' GROUP
+  // above. They are commented out here to avoid duplicate navigation entries.
+  // The seed is idempotent (upsert by key), so old items remain in DB but are
+  // set to active=false by the seed's update logic if they're not in the array.
+  // { key: 'store-inventory', titleFa: 'موجودی', href: '/admin/store/inventory', icon: 'Boxes', sortOrder: 14.1, permissionKey: 'inventory.read' },
+  // { key: 'store-returns', titleFa: 'مرتجعات', href: '/admin/store/returns', icon: 'Undo2', sortOrder: 14.2, permissionKey: 'returns.read' },
+  // { key: 'store-shipments', titleFa: 'محموله‌ها', href: '/admin/store/shipments', icon: 'Truck', sortOrder: 14.3, permissionKey: 'shipping.read' },
   // ── Wave 3A: Media Infrastructure — canonical media library ──
   // New canonical media library backed by src/lib/media-service.ts
   // (filesystem + sidecar JSON metadata). Differs from the legacy
