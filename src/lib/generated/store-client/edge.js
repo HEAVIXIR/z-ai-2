@@ -586,7 +586,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/home/z/heavix/src/lib/generated/store-client",
+      "value": "/tmp/heavix-12.58/src/lib/generated/store-client",
       "fromEnvVar": null
     },
     "config": {
@@ -600,7 +600,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/home/z/heavix/prisma/store-schema.prisma",
+    "sourceFilePath": "/tmp/heavix-12.58/prisma/store-schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

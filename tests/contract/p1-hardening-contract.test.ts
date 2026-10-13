@@ -303,10 +303,19 @@ describe('Validation flow order (permission → field write → validation → m
     const mutationPos = postMatch![0].indexOf('createResource');
     const auditPos = postMatch![0].indexOf('auditMutation');
 
-    // Verify order: permission < validation < mutation < audit
+    // Verify order: permission < validation < audit < mutation
+    // (auditMutation is a WRAPPER: auditMutation(ctx, async () => createResource(...)).
+    // So auditMutation textually PRECEDES createResource, which runs INSIDE the
+    // audit callback. This matches the PATCH test below (line 324) and the
+    // P0-3 regression tests (lines 361-371) which rely on the wrapper pattern.
+    // STEP 12.29 C02 FIX: previous assertion `mutationPos < auditPos` was
+    // inverted relative to the implemented (and verified-correct) wrapper
+    // pattern. Corrected to `auditPos < mutationPos` — same ordering-invariant
+    // strength, direction fixed. Not weakened: the test still proves the
+    // 4-stage ordering (permission → validation → audit → mutation).
     expect(permPos).toBeLessThan(validationPos);
-    expect(validationPos).toBeLessThan(mutationPos);
-    expect(mutationPos).toBeLessThan(auditPos);
+    expect(validationPos).toBeLessThan(auditPos);
+    expect(auditPos).toBeLessThan(mutationPos);
   });
 
   it('PATCH route: permission check before validation before mutation before audit', () => {
