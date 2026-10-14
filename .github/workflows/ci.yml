@@ -61,11 +61,11 @@ jobs:
       - name: Lint
         run: bun run lint
 
-      - name: Security tests
-        run: bun run test:security
-
       - name: Seed RBAC (roles + permissions for integration tests)
         run: bun run db:seed-rbac
+
+      - name: Security tests
+        run: bun run test:security
 
       - name: Integration tests (real PostgreSQL — PR-SC-00 tenant-scoping negative tests)
         run: bunx tsx tests/integration/tenant-scope-real.ts

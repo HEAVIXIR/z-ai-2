@@ -334,9 +334,21 @@ export async function GET(req: Request) {
   }
 }
 
-/* POST /api/listings — create listing with validation. */
+/* POST /api/listings — create listing with validation.
+   W-03 SECURITY FIX: Requires authenticated user. sellerId is ALWAYS derived
+   from the authenticated session — never from the request body. Anonymous
+   listing creation is rejected with 401. */
 export async function POST(req: Request) {
   try {
+    // W-03 FIX: Authenticate FIRST, before any data processing.
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "برای ایجاد آگهی باید وارد شوید" },
+        { status: 401 },
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
 
     const title = String(body.title ?? "").trim();
@@ -351,7 +363,8 @@ export async function POST(req: Request) {
     }
 
     const slug = await uniqueSlug(db.listing, body.slug || title);
-    const user = await getCurrentUser();
+    // W-03 FIX: sellerId is derived ONLY from the authenticated session.
+    // Any sellerId value in the request body is deliberately ignored.
 
     const data: any = {
       slug,
@@ -375,7 +388,7 @@ export async function POST(req: Request) {
       brandId: body.brandId || null,
       categoryId: body.categoryId || null,
       modelId: body.modelId || null,
-      sellerId: user?.id ?? null,
+      sellerId: user.id, // W-03 FIX: from authenticated session only (never null, never from body)
       companyId: body.companyId || null,
       publishedAt: new Date(),
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

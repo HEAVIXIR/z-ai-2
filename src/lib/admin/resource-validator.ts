@@ -82,32 +82,39 @@ function buildFieldSchema(field: AdminField): z.ZodTypeAny | null {
   }
 
   // Apply validation rules from field.validation
+  // STEP 12.29 P1-VAL-01 FIX: chain constraints on the CUMULATIVE schema (`s`/`n`),
+  // not the original `stringSchema`/`numberSchema`. The previous code reassigned
+  // `schema = stringSchema.max(...)` / `stringSchema.regex(...)` which OVERWROTE
+  // the earlier `.min()` — silently dropping minLength when maxLength was also
+  // declared. Same bug in the number branch (min overwritten by max).
   const v = field.validation;
   if (v) {
     if (schema instanceof z.ZodString) {
-      const stringSchema = schema as z.ZodString;
+      let s = schema as z.ZodString;
       if (v.minLength !== undefined) {
-        schema = stringSchema.min(v.minLength, v.message ?? `حداقل ${v.minLength} نویسه`);
+        s = s.min(v.minLength, v.message ?? `حداقل ${v.minLength} نویسه`);
       }
       if (v.maxLength !== undefined) {
-        schema = stringSchema.max(v.maxLength, v.message ?? `حداکثر ${v.maxLength} نویسه`);
+        s = s.max(v.maxLength, v.message ?? `حداکثر ${v.maxLength} نویسه`);
       }
       if (v.pattern) {
         try {
           const regex = new RegExp(v.pattern);
-          schema = stringSchema.regex(regex, v.message ?? `فرمت نامعتبر`);
+          s = s.regex(regex, v.message ?? `فرمت نامعتبر`);
         } catch {
           // Invalid pattern — skip regex
         }
       }
+      schema = s;
     } else if (schema instanceof z.ZodNumber) {
-      const numberSchema = schema as z.ZodNumber;
+      let n = schema as z.ZodNumber;
       if (v.min !== undefined) {
-        schema = numberSchema.min(v.min, v.message ?? `حداقل ${v.min}`);
+        n = n.min(v.min, v.message ?? `حداقل ${v.min}`);
       }
       if (v.max !== undefined) {
-        schema = numberSchema.max(v.max, v.message ?? `حداکثر ${v.max}`);
+        n = n.max(v.max, v.message ?? `حداکثر ${v.max}`);
       }
+      schema = n;
     }
   }
 

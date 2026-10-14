@@ -38,8 +38,54 @@ import {
   Truck,
   Handshake,
 } from "lucide-react";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+// W-05 SEO: generate per-listing metadata for social sharing + SEO.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const listing = await db.listing.findUnique({
+    where: { slug },
+    select: {
+      title: true,
+      shortDesc: true,
+      description: true,
+      price: true,
+      priceType: true,
+      condition: true,
+      city: true,
+      province: true,
+      brand: { select: { name: true } },
+      category: { select: { name: true } },
+      images: { take: 1, orderBy: [{ isPrimary: "desc" }] },
+    },
+  });
+  if (!listing) {
+    return { title: "آگهی یافت نشد" };
+  }
+  const title = `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
+  const description =
+    listing.shortDesc ||
+    (listing.description ?? "").slice(0, 155) ||
+    `خرید، فروش یا اجاره ${listing.title} در ${listing.city || "ایران"}. وضعیت: ${listing.condition}.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/listings/${slug}` },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      locale: "fa_IR",
+      images: listing.images[0]?.url ? [{ url: listing.images[0].url }] : undefined,
+    },
+  };
+}
 
 export default async function ListingDetailPage({
   params,

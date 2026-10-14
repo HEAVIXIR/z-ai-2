@@ -101,6 +101,7 @@ export const PERMISSIONS = [
   // Deals
   'deal.read',
   'deal.manage',
+  'deal.moderate', // STEP 12.30 P0-DEAL-01: separate moderation perm (SELLER has deal.manage for CRUD on OWN deals, NOT deal.moderate → tenant scope applies)
 
   // Reviews
   'review.read',
@@ -109,6 +110,7 @@ export const PERMISSIONS = [
   // RFQ
   'rfq.read',
   'rfq.manage',
+  'rfq.moderate', // STEP 12.30 P0-RFQ-01: same pattern as deal.moderate
 
   // Store
   'store.read',
@@ -201,6 +203,7 @@ export const PERMISSIONS = [
   'review.publish',
   'offer.read',
   'offer.update',
+  'offer.moderate', // STEP 12.30 P0-OFFER-01: same pattern as deal.moderate
   'inspection.read',
   'inspection.manage',
   'transport.read',
@@ -256,12 +259,17 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'deal.read', 'deal.manage',
     'review.read',
     'rfq.read', 'rfq.manage',
-    'offer.read', 'offer.update',   // 16-C: offers on listings
+    'offer.read', 'offer.update',
     'auction.read',                 // 16-C: bidding access
     'request.read',                 // 16-C: receive buy-requests
     'dispute.read',                 // 16-C: involved in disputes
     'inspection.read',              // 16-C: request inspections
     'transport.read',               // 16-C: ship items
+    // NOTE: SELLER does NOT get deal.moderate / rfq.moderate / offer.moderate.
+    // STEP 12.30 P0-DEAL-01/RPQ-01/OFFER-01: those are moderation perms that
+    // bypass tenant scope. SELLER keeps deal.manage/rfq.manage/offer.update
+    // for CRUD on OWN resources, but tenant scope (buildTenantWhere) now
+    // correctly restricts non-moderators to own rows only.
     'media.upload',
     'analytics.read',
     'price.read',                     // 6D.4: view price estimates
@@ -311,12 +319,14 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // 16-C: marketplace CP moderation
     'part.read', 'part.update',
     'machine.read', 'machine.update',
-    'offer.read', 'offer.update',
+    'offer.read', 'offer.update', 'offer.moderate', // STEP 12.30: moderate offers
     'auction.read', 'auction.update', 'auction.manage',
     'inspection.read', 'inspection.manage',
     'transport.read', 'transport.manage',
     'request.read', 'request.manage',
     'dispute.read', 'dispute.manage',
+    'deal.read', 'deal.moderate',   // STEP 12.30: moderate deals (MODERATOR was missing deal access)
+    'rfq.read', 'rfq.moderate',     // STEP 12.30: moderate rfqs
     'price.read',                     // 6D.4: moderate price estimates
     'price.override',                 // 6D.4: override estimates
   ],

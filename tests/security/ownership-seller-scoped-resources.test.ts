@@ -71,7 +71,7 @@ describe("listingConfig (baseline) ownership", () => {
 // ── 2. offerConfig — relation-based via listing.sellerId ──
 
 describe("offerConfig ownership — relation-based (listing.sellerId)", () => {
-  it("declares relation ownership via listing.sellerId with offer.update", async () => {
+  it("declares relation ownership via listing.sellerId with offer.moderate", async () => {
     const mod = await import("@/lib/admin/resources/marketplace-resources");
     expect(mod.offerConfig.ownership).toBeDefined();
     expect(mod.offerConfig.ownership?.ownerField).toBeUndefined();
@@ -79,7 +79,7 @@ describe("offerConfig ownership — relation-based (listing.sellerId)", () => {
       field: "listing",
       ownerField: "sellerId",
     });
-    expect(mod.offerConfig.ownership?.moderatePermission).toBe("offer.update");
+    expect(mod.offerConfig.ownership?.moderatePermission).toBe("offer.moderate");
   });
 
   it("non-admin seller gets a nested { listing: { sellerId } } where filter", async () => {
@@ -96,7 +96,7 @@ describe("offerConfig ownership — relation-based (listing.sellerId)", () => {
     expect(buildTenantWhere(offerConfig, adminCtx)).toEqual({ where: {} });
   });
 
-  it("moderator with offer.update sees all (no filter)", async () => {
+  it("moderator with offer.moderate sees all (no filter)", async () => {
     const { offerConfig } = await import("@/lib/admin/resources/marketplace-resources");
     expect(buildTenantWhere(offerConfig, moderatorCtx)).toEqual({ where: {} });
   });
@@ -141,11 +141,11 @@ describe("buyRequestConfig ownership — direct (userId)", () => {
 // ── 4. dealConfig — direct, sellerId ──
 
 describe("dealConfig ownership — direct (sellerId)", () => {
-  it("declares direct ownership on sellerId with deal.manage", async () => {
+  it("declares direct ownership on sellerId with deal.moderate", async () => {
     const { dealConfig } = await import("@/lib/admin/resources/marketplace-resources");
     expect(dealConfig.ownership).toBeDefined();
     expect(dealConfig.ownership?.ownerField).toBe("sellerId");
-    expect(dealConfig.ownership?.moderatePermission).toBe("deal.manage");
+    expect(dealConfig.ownership?.moderatePermission).toBe("deal.moderate");
     expect(dealConfig.ownership?.relation).toBeUndefined();
   });
 
@@ -265,11 +265,11 @@ describe("disputeConfig ownership — direct (openedBy)", () => {
 // ── 8. rfqConfig — direct, buyerId ──
 
 describe("rfqConfig ownership — direct (buyerId)", () => {
-  it("declares direct ownership on buyerId with rfq.manage", async () => {
+  it("declares direct ownership on buyerId with rfq.moderate", async () => {
     const { rfqConfig } = await import("@/lib/admin/resources/marketplace-resources");
     expect(rfqConfig.ownership).toBeDefined();
     expect(rfqConfig.ownership?.ownerField).toBe("buyerId");
-    expect(rfqConfig.ownership?.moderatePermission).toBe("rfq.manage");
+    expect(rfqConfig.ownership?.moderatePermission).toBe("rfq.moderate");
     expect(rfqConfig.ownership?.relation).toBeUndefined();
   });
 

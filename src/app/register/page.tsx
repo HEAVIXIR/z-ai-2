@@ -46,7 +46,7 @@ export default function RegisterPage() {
 
       if (res.ok && data.ok) {
         setUserId(data.userId);
-        setDevCode(data.devCode ?? "");
+        setDevCode(data.devEmailCode ?? "");
         setStep("verify");
       } else {
         setError(data.error ?? "ثبت‌نام ناموفق بود.");
@@ -205,7 +205,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="text-center text-xl font-black text-white">تأیید ایمیل</h1>
             <p className="mt-2 text-center text-xs text-white/45">
-              کد ۵ رقمی به شماره موبایل <span className="font-bold text-white/70" dir="ltr">{mobile}</span> ارسال شد
+              کد ۶ رقمی به ایمیل شما ارسال شد. در صورت عدم دریافت، پوشه هرزنامه را بررسی کنید.
             </p>
 
             {devCode && (
@@ -226,15 +226,15 @@ export default function RegisterPage() {
                 onChange={(e) => setCode(e.target.value)}
                 required
                 dir="ltr"
-                maxLength={5}
+                maxLength={6}
                 className={inputCls + " text-center text-2xl tracking-[0.5em] font-black"}
-                placeholder="-----"
+                placeholder="------"
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading || code.length !== 5}
+              disabled={loading || code.length !== 6}
               className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#F58220] text-sm font-bold text-white shadow-lg shadow-orange-600/20 transition hover:bg-[#ff8c38] disabled:opacity-50"
             >
               {loading ? (

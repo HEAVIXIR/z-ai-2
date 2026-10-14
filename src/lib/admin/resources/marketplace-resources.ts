@@ -18,12 +18,19 @@ export const dealConfig: AdminResourceConfig = {
   // PR-SC-00 — Row-level tenant scoping for the seller side of a Deal.
   // Deal.sellerId is the owner column (seller is the primary commercial
   // actor). A SELLER sees/edits only their own deals; a user with
-  // `deal.manage` (moderators/admins) sees all; ADMIN sees all. The owner
+  // `deal.moderate` (moderators/admins) sees all; ADMIN sees all. The owner
   // identity is resolved server-side from the authenticated session —
   // never from a client-supplied sellerId.
+  //
+  // STEP 12.30 P0-DEAL-01 FIX: moderatePermission changed from 'deal.manage'
+  // to 'deal.moderate'. Previously, SELLER had deal.manage (CRUD perm) which
+  // ALSO served as moderatePermission → hasModeratePerm=true for ALL sellers
+  // → buildTenantWhere returned {where:{}} → tenant scope bypassed. Now
+  // SELLER keeps deal.manage (CRUD on own deals) but lacks deal.moderate →
+  // tenant scope correctly restricts to own rows.
   ownership: {
     ownerField: 'sellerId',
-    moderatePermission: 'deal.manage',
+    moderatePermission: 'deal.moderate',
   },
 
   columns: [
@@ -127,7 +134,7 @@ export const rfqConfig: AdminResourceConfig = {
   // client-supplied buyerId.
   ownership: {
     ownerField: 'buyerId',
-    moderatePermission: 'rfq.manage',
+    moderatePermission: 'rfq.moderate',
   },
 
   columns: [
@@ -230,7 +237,7 @@ export const offerConfig: AdminResourceConfig = {
   // from a client-supplied sellerId.
   ownership: {
     relation: { field: 'listing', ownerField: 'sellerId' },
-    moderatePermission: 'offer.update',
+    moderatePermission: 'offer.moderate',
   },
 
   columns: [

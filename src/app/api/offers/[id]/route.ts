@@ -90,14 +90,23 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-/* DELETE /api/offers/[id] — buyer cancels their own offer. */
+/* DELETE /api/offers/[id] — buyer cancels their own offer.
+   W-04 SECURITY FIX: Only the offer's buyer (owner) can delete it.
+   Prior code used '(!userId || (offer.buyerId !== userId && !offer.buyerPhone))'
+   which was always equivalent to '(!userId)' because buyerPhone is required at
+   POST time → !offer.buyerPhone was always false → any authenticated user
+   could delete any offer. */
 export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     const userId = await getCurrentUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
     const offer = await db.listingOffer.findUnique({ where: { id } });
     if (!offer) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (!userId || (offer.buyerId !== userId && !offer.buyerPhone)) {
+    // W-04 FIX: strict ownership check — only the buyer who created the offer.
+    if (offer.buyerId !== userId) {
       return NextResponse.json(
         { error: "فقط خریدار می‌تواند لغو کند" },
         { status: 403 },
