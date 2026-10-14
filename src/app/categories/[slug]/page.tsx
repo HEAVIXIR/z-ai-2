@@ -6,8 +6,32 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingCard from "@/components/listings/ListingCard";
 import { ArrowLeft, FolderTree } from "lucide-react";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+// W-05 SEO: per-category metadata.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
+  const category = await db.category.findFirst({
+    where: { slug },
+    select: { name: true, slug: true },
+  });
+  if (!category) return { title: "دسته‌بندی یافت نشد" };
+  const title = `${category.name} — خرید و اجاره ماشین‌آلات سنگین`;
+  const description = `لیست آگهی‌های ${category.name} — خرید، فروش و اجاره ماشین‌آلات سنگین ${category.name} در سراسر ایران. مقایسه قیمت و ارتباط مستقیم با فروشنده.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/categories/${category.slug}` },
+    openGraph: { title, description, type: "website", locale: "fa_IR" },
+  };
+}
 
 export default async function CategoryPage({
   params,

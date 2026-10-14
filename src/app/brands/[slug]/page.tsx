@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
 import {
@@ -28,6 +29,26 @@ import {
 import { toFa } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+// W-05 SEO: per-brand metadata.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
+  const brand = await resolveBrandBySlugOrAlias(slug);
+  if (!brand) return { title: "برند یافت نشد" };
+  const title = `${brand.name} — ماشین‌آلات سنگین ${brand.name}`;
+  const description = `لیست آگهی‌های ماشین‌آلات سنگین ${brand.name} — خرید، فروش و اجاره در سراسر ایران. بررسی مدل‌ها، قیمت‌ها و مشخصات فنی.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/brands/${brand.slug}` },
+    openGraph: { title, description, type: "website", locale: "fa_IR" },
+  };
+}
 
 export default async function BrandPage({
   params,
