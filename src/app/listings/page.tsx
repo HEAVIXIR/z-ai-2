@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "بازار ماشین‌آلات سنگین — خرید، فروش و اجاره",
+  description: "جستجوی آگهی‌های ماشین‌آلات سنگین: بیل مکانیکی، لودر، بلدوزر، گریدر، دامپ‌تراک، جرثقیل و قطعات یدکی. مقایسه قیمت و ارتباط مستقیم با فروشنده.",
+  alternates: { canonical: "/listings" },
+  openGraph: { title: "بازار ماشین‌آلات سنگین — هویکس", description: "جستجوی آگهی‌های ماشین‌آلات سنگین در سراسر ایران.", type: "website", locale: "fa_IR" },
+};
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";

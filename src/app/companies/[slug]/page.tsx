@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
@@ -17,6 +18,39 @@ import {
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+// STEP 12.98 FIX: generateMetadata for company detail pages.
+// Prevents inheriting canonical "/companies" from the parent layout.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
+  const company = await db.company.findFirst({
+    where: { slug, status: "ACTIVE" },
+    select: { name: true, slug: true, description: true, city: true },
+  });
+  if (!company) {
+    return { title: "شرکت یافت نشد" };
+  }
+  const title = `${company.name} — ماشین‌آلات سنگین`;
+  const description =
+    company.description?.slice(0, 155) ||
+    `مشاهده آگهی‌های ماشین‌آلات سنگین ${company.name}${company.city ? ` در ${company.city}` : ""}. اطلاعات تماس، تخصص‌ها و لیست تجهیزات.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/companies/${company.slug}` },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      locale: "fa_IR",
+    },
+  };
+}
 
 export default async function CompanyPage({
   params,
