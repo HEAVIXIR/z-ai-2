@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "اجاره ماشین‌آلات سنگین — اجاره بیل، لودر، جرثقیل",
+  description: "آگهی‌های اجاره ماشین‌آلات سنگین: اجاره بیل مکانیکی، لودر، جرثقیل، گریدر و سایر تجهیزات با قیمت و شرایط اجاره.",
+  alternates: { canonical: "/rentals" },
+  openGraph: { title: "اجاره ماشین‌آلات سنگین | هویکس", description: "آگهی‌های اجاره ماشین‌آلات سنگین.", type: "website", locale: "fa_IR" },
+};
 import { db } from "@/lib/db";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
