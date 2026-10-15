@@ -1,21 +1,35 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
+import { getStoreUser } from "@/lib/store-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
-   /api/store/wishlist — PUBLIC wishlist endpoints
+   /api/store/wishlist — Authenticated wishlist endpoints
 
-   GET  ?phone=X               → list partIds in this customer's wishlist
-   POST body:                  → add/remove
-     { phone, partId, action: "add" | "remove" }
+   STEP 12.84 P0 SECURITY FIX:
+   Previously this endpoint was PUBLIC — anyone with a phone number
+   could view or mutate another customer's wishlist. Now requires
+   authenticated session. The session user's mobile is used to
+   resolve the customer — phone from request body is ignored for
+   authorization purposes (only used to CREATE a customer record
+   if none exists, and only if it matches the session user's mobile).
+
+   GET  (authenticated)      → list partIds in session user's wishlist
+   POST (authenticated)      → add/remove
+     { partId, action: "add" | "remove" }
    ============================================================ */
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const phone = (url.searchParams.get("phone") || "").trim();
+    // P0 FIX: Require authenticated session.
+    const sessionUser = await getStoreUser();
+    if (!sessionUser) {
+      return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
+
+    const phone = sessionUser.mobile;
     if (!phone || phone.length < 8) {
       return NextResponse.json({ partIds: [] });
     }
@@ -23,6 +37,12 @@ export async function GET(req: Request) {
     const customer = await storeDb.customer.findUnique({ where: { phone } });
     if (!customer) {
       return NextResponse.json({ partIds: [] });
+    }
+
+    // P0 FIX: Verify ownership — customer phone must match session user's mobile.
+    // (Customer model has no userId field; phone is the ownership key.)
+    if (customer.phone !== sessionUser.mobile) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
     const rows = await storeDb.wishlist.findMany({
@@ -42,14 +62,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    // P0 FIX: Require authenticated session.
+    const sessionUser = await getStoreUser();
+    if (!sessionUser) {
+      return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
+
     const body = await req.json();
-    const phone = String(body.phone || "").trim();
     const partId = String(body.partId || "");
     const action = body.action === "remove" ? "remove" : "add";
 
-    if (!phone || phone.length < 8) {
-      return NextResponse.json({ error: "شماره موبایل معتبر نیست" }, { status: 400 });
-    }
     if (!partId) {
       return NextResponse.json({ error: "partId الزامی است" }, { status: 400 });
     }
@@ -59,11 +81,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "قطعه یافت نشد" }, { status: 404 });
     }
 
+    // P0 FIX: Use session user's phone, NOT body phone.
+    const phone = sessionUser.mobile;
+    if (!phone || phone.length < 8) {
+      return NextResponse.json({ error: "شماره موبایل کاربر معتبر نیست" }, { status: 400 });
+    }
+
     const customer = await storeDb.customer.upsert({
       where: { phone },
       update: {},
-      create: { phone, name: "مشتری", family: "" },
+      create: { phone, name: sessionUser.firstName || "مشتری", family: sessionUser.lastName || "" },
     });
+
+    // P0 FIX: Verify ownership — customer phone must match session user's mobile.
+    if (customer.phone !== sessionUser.mobile) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
+    }
 
     if (action === "add") {
       try {

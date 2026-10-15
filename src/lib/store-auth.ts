@@ -1,4 +1,5 @@
-import { getCurrentUser, isAuthenticated } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 
 /**
  * HEAVIX store — auth bridge.
@@ -14,6 +15,13 @@ import { getCurrentUser, isAuthenticated } from "@/lib/auth";
  * from `@/lib/auth`) and returns a normalized user shape that the store
  * API routes / components can consume. It does NOT touch the store DB —
  * it only bridges the HEAVIX user into the store context.
+ *
+ * STEP 12.84 P0 SECURITY FIX:
+ * `isStoreAdmin()` now uses canonical RBAC (`isAdmin()` from
+ * `@/lib/authorization`) which checks the UserRole table for the ADMIN
+ * role. Previously it called `isAuthenticated()` which only checked if
+ * a session existed — allowing ANY logged-in user to be treated as
+ * admin. This was a P0 access control bypass.
  */
 
 export interface StoreUser {
@@ -24,7 +32,7 @@ export interface StoreUser {
   mobile: string;
   role: string;
   status: string;
-  /** Convenience: "ADMIN" if the HEAVIX admin cookie is present. */
+  /** Convenience: true if the HEAVIX user has the ADMIN role (RBAC). */
   isAdmin: boolean;
   /** Full display name "firstName lastName". */
   fullName: string;
@@ -58,12 +66,18 @@ export async function getStoreUser(): Promise<StoreUser | null> {
 
 /**
  * Returns true if the current request carries a HEAVIX admin session
- * (`heavix-admin` cookie). This is checked separately from the user
- * session — an admin may or may not also be a registered HEAVIX User.
+ * AND the user has the ADMIN role in the RBAC system.
+ *
+ * STEP 12.84 P0 FIX: Previously called `isAuthenticated()` which only
+ * checked session existence — ANY logged-in user was treated as admin.
+ * Now uses `isAdmin()` from `@/lib/authorization` which checks the
+ * UserRole table for the ADMIN role. Fails closed on any error.
  */
 export async function isStoreAdmin(): Promise<boolean> {
   try {
-    return await isAuthenticated();
+    const user = await getCurrentUser();
+    if (!user) return false;
+    return await rbacIsAdmin(user.id);
   } catch {
     return false;
   }
@@ -73,25 +87,15 @@ export async function isStoreAdmin(): Promise<boolean> {
  * Returns the store user, but with `isAdmin` populated. Use this in
  * store routes that need to differentiate admin (full access to all
  * orders) from a regular user (only their own orders).
+ *
+ * STEP 12.84 P0 FIX: Removed synthetic admin identity. Admin access
+ * now requires BOTH a valid session AND the ADMIN role in RBAC.
+ * No synthetic admin shape is returned — if there's no user, there's
+ * no admin, period.
  */
 export async function getStoreUserWithRole(): Promise<StoreUser | null> {
-  const [user, admin] = await Promise.all([getStoreUser(), isStoreAdmin()]);
-  if (!user && !admin) return null;
-  if (!user) {
-    // Admin-only session (no User record) — return a synthetic admin
-    // shape so admin routes can identify the actor. The `id` is empty
-    // so it won't accidentally match any order's `userId`.
-    return {
-      id: "",
-      firstName: "Admin",
-      lastName: "",
-      email: "",
-      mobile: "",
-      role: "ADMIN",
-      status: "ACTIVE",
-      isAdmin: true,
-      fullName: "ادمین هویکس",
-    };
-  }
+  const user = await getStoreUser();
+  if (!user) return null;
+  const admin = await isStoreAdmin();
   return { ...user, isAdmin: admin };
 }

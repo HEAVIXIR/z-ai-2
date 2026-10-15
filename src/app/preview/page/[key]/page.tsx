@@ -11,8 +11,15 @@ import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
 import { PageRenderer } from '@/components/page-renderer/page-renderer';
 import type { NextRequest } from 'next/server';
+import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
+
+// STEP 12.86 P0 FIX: Preview pages must NEVER be indexed by search engines.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+  title: 'پیش‌نمایش — هویکس',
+};
 
 type Params = { params: Promise<{ key: string }> };
 
