@@ -7,7 +7,11 @@ const VAZIRMATN_URL =
   "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
 
 export const metadata: Metadata = {
-  title: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://havix.ir"),
+  title: {
+    default: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
+    template: "%s | هویکس",
+  },
   description:
     "خرید، فروش و اجاره ماشین‌آلات سنگین: بیل مکانیکی، لودر، بلدوزر، گریدر، دامپ‌تراک، جرثقیل و قطعات یدکی. شبکه سراسری دیلرها و متخصصین.",
   keywords: [
@@ -25,6 +29,15 @@ export const metadata: Metadata = {
     "HEAVIX",
   ],
   authors: [{ name: "آریا ماشین جم" }],
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "هویکس | مارکت‌پلیس ماشین‌آلات سنگین ایران",
+    description: "بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران.",
+    type: "website",
+    locale: "fa_IR",
+    siteName: "هویکس",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
