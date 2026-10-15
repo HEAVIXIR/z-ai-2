@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/seo";
+import { SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — robots.ts (P2-28)
@@ -7,14 +8,16 @@ import { absoluteUrl } from "@/lib/seo";
    ------------------------------------------------------------
    Next.js metadata-route robots.txt.
    Allow all, point to the sitemap.
+
+   STEP 13.00: SITE_BASE_URL is now imported from @/lib/site-config
+   (single source of truth). The previous local fallback to
+   "https://havix.ir" is removed.
    ============================================================ */
 
 export const revalidate = 3600; // 1 hour
 export const runtime = "nodejs";
 
 export default function robots(): MetadataRoute.Robots {
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://havix.ir";
   return {
     rules: [
       {
@@ -25,6 +28,6 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: absoluteUrl("/sitemap.xml"),
-    host: base,
+    host: SITE_BASE_URL,
   };
 }

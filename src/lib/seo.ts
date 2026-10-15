@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { SEOMetadata } from "@prisma/client";
+import { SITE_BASE_URL, SITE_NAME, absoluteUrl } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — Advanced SEO Automation (P2-28)
@@ -20,11 +21,17 @@ import type { SEOMetadata } from "@prisma/client";
    Auto-generators are pure fns — no DB writes, no AI calls.
    They produce deterministic, sane defaults that the admin can
    then tweak. The admin remains the canonical authority.
+
+   STEP 13.00: SITE_BASE_URL / SITE_NAME / absoluteUrl are imported
+   from @/lib/site-config (single source of truth for the canonical
+   domain). absoluteUrl is re-exported below for backward
+   compatibility with existing consumers (robots.ts, sitemap.ts,
+   seo-service.ts) that import it from this module.
    ============================================================ */
 
-const SITE_NAME = "هویکس";
-const SITE_BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://havix.ir";
+// Re-export absoluteUrl so existing consumers that import it from
+// "@/lib/seo" keep working without code churn in this hotfix.
+export { absoluteUrl };
 
 export async function getSEO(
   entityType: string,
@@ -340,13 +347,8 @@ export async function searchEntities(
 }
 
 /* ── helpers ──────────────────────────────────────────────── */
-export function absoluteUrl(maybeRelative: string): string {
-  if (!maybeRelative) return SITE_BASE_URL;
-  if (/^https?:\/\//i.test(maybeRelative)) return maybeRelative;
-  if (maybeRelative.startsWith("//")) return `https:${maybeRelative}`;
-  if (maybeRelative.startsWith("/")) return `${SITE_BASE_URL}${maybeRelative}`;
-  return `${SITE_BASE_URL}/${maybeRelative}`;
-}
+// absoluteUrl is now imported from @/lib/site-config and re-exported
+// at the top of this file (STEP 13.00 single-source-of-truth).
 
 export const SEO_ENTITY_TYPES = [
   "Category",

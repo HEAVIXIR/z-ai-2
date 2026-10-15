@@ -25,11 +25,12 @@ import {
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
 import { logAudit } from "@/lib/audit";
+import { SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
 
-const SITE_BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://havix.ir";
-
-const SITE_NAME = "هویکس";
+/* STEP 13.00: SITE_BASE_URL / SITE_NAME now imported from the single
+   source of truth (@/lib/site-config). The previous local fallback
+   to "https://havix.ir" is removed — it caused split-brain against
+   layout.tsx which used "https://heavix.ir". */
 
 const STATIC_PATHS: { url: string; priority: number; changeFreq: string }[] = [
   { url: "/", priority: 1.0, changeFreq: "daily" },
