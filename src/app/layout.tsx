@@ -7,7 +7,7 @@ const VAZIRMATN_URL =
   "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://havix.ir"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://heavix.ir"),
   title: {
     default: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
     template: "%s | هویکس",
