@@ -106,18 +106,27 @@ export async function POST(req: Request) {
       orderNumber: order.orderNumber,
     });
 
-    const payment = await storeDb.payment.create({
-      data: {
-        orderId: order.id,
-        customerId: order.customerId,
-        amountIrr,
-        amountUsd: order.currencyRateAtOrder > 0 ? amountIrr / (order.currencyRateAtOrder * (1 + (order.marginPercentAtOrder || 0) / 100)) : 0,
-        method: "GATEWAY",
-        status: "PENDING",
-        gateway: method,
-        authority,
-        gatewayUrl,
-      },
+    // STEP 12.94 RACE FIX: Use transaction to atomically check + create
+    const payment = await storeDb.$transaction(async (tx: any) => {
+      const existingPending = await tx.payment.findFirst({
+        where: { orderId: order.id, method: "GATEWAY", status: "PENDING" },
+      });
+      if (existingPending) {
+        return existingPending;
+      }
+      return tx.payment.create({
+        data: {
+          orderId: order.id,
+          customerId: order.customerId,
+          amountIrr,
+          amountUsd: order.currencyRateAtOrder > 0 ? amountIrr / (order.currencyRateAtOrder * (1 + (order.marginPercentAtOrder || 0) / 100)) : 0,
+          method: "GATEWAY",
+          status: "PENDING",
+          gateway: method,
+          authority,
+          gatewayUrl,
+        },
+      });
     });
 
     return NextResponse.json({

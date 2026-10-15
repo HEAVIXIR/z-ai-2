@@ -64,6 +64,7 @@ const mockStoreDb = {
   },
   payment: {
     create: vi.fn(async (args: any) => ({ id: "pay-1", ...args.data })),
+    findFirst: vi.fn(async () => null),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
   },
@@ -73,6 +74,15 @@ const mockStoreDb = {
     deleteMany: vi.fn(async () => ({})),
   },
   part: { findUnique: vi.fn(async () => ({ id: "part-1" })) },
+  $transaction: vi.fn(async (fn: any) => {
+    // Mock transaction: pass a mock tx that has same methods as storeDb
+    const tx = {
+      payment: mockStoreDb.payment,
+      order: mockStoreDb.order,
+      customer: mockStoreDb.customer,
+    };
+    return fn(tx);
+  }),
 };
 vi.mock("@/lib/store-db", () => ({ storeDb: mockStoreDb }));
 
