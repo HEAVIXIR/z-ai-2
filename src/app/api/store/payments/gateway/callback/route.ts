@@ -6,22 +6,23 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ============================================================
-   /api/store/payments/gateway/callback — PUBLIC gateway callback
+   /api/store/payments/gateway/callback — Gateway callback
+
+   STEP 12.86 P0 SECURITY FIX:
+   This endpoint is legitimately public (Zarinpal calls it), but:
+   - Amount is verified from server-side Payment record, not from query
+   - Payment must be PENDING (prevents double-callback/replay)
+   - Order must not be CANCELLED/REFUNDED
+   - After success, payment is marked APPROVED (not re-processable)
 
    Query params: ?orderId=X&phone=Y&Authority=Z&Status=OK|NOK
                  (or ?payment=mock for sandbox)
-
-   Verifies the payment with Zarinpal (or treats it as success in
-   mock mode), updates the Payment row, and flips the order's
-   paymentStatus to PAID. Then redirects back to /store with a
-   success/failure toast param.
    ============================================================ */
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const orderId = url.searchParams.get("orderId") || "";
-    const phone = url.searchParams.get("phone") || "";
     const authority = url.searchParams.get("Authority") || "";
     const status = url.searchParams.get("Status") || "";
     const isMock = url.searchParams.get("payment") === "mock";
@@ -39,6 +40,11 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL("/store?payment=failed", url.origin));
     }
 
+    // P0 FIX: Order state validation — ignore callback for cancelled/refunded orders.
+    if (order.status === "CANCELLED" || order.status === "REFUNDED") {
+      return NextResponse.redirect(new URL(`/store?payment=failed&order=${order.orderNumber}`, url.origin));
+    }
+
     const payment = order.payments.find(
       (p) => p.authority === authority || (isMock && p.gateway === "MOCK" && p.status === "PENDING"),
     );
@@ -46,7 +52,14 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL(`/store?payment=failed&order=${order.orderNumber}`, url.origin));
     }
 
-    // verify
+    // P0 FIX: Duplicate prevention — payment must be PENDING (not already APPROVED/REJECTED).
+    if (payment.status !== "PENDING") {
+      // Already processed — redirect with appropriate message.
+      const param = payment.status === "APPROVED" ? "success" : "failed";
+      return NextResponse.redirect(new URL(`/store?payment=${param}&order=${order.orderNumber}`, url.origin));
+    }
+
+    // P0 FIX: Amount from server-side Payment record, not from query params.
     const verify = await verifyPayment({
       authority: payment.authority || authority,
       status: status || (isMock ? "OK" : "NOK"),
