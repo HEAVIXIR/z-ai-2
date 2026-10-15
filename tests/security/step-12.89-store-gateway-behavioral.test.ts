@@ -389,8 +389,8 @@ describe("PR #41: POST /api/store/payments/gateway/request — security", () => 
     const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.gatewayUrl).toBeTruthy();
-    expect(body.authority).toBeTruthy();
+    expect(body.ok).toBe(true);
+    expect(body.paymentId).toBeTruthy();
   });
 });
 
