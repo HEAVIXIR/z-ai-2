@@ -680,7 +680,15 @@ export async function listRFQs(params: {
  *
  * @throws RFQServiceError(404) when the RFQ doesn't exist.
  */
-export async function getRFQ(id: string): Promise<{
+export async function getRFQ(
+  id: string,
+  // STEP 13.01-R1 P0-2 FIX v2: viewerUserId is now REQUIRED (was optional).
+  // The service contract enforces that every caller must identify the
+  // viewer. A missing viewerUserId means PII is redacted for everyone
+  // (treated as anonymous) — but the type-level requirement forces
+  // callers to be explicit about who is viewing.
+  viewerUserId: string,
+): Promise<{
   id: string;
   title: string;
   description: string | null;
@@ -695,7 +703,7 @@ export async function getRFQ(id: string): Promise<{
   terms: string | null;
   status: string;
   buyerName: string | null;
-  buyerPhone: string;
+  buyerPhone: string | null;
   buyerEmail: string | null;
   buyerId: string | null;
   createdAt: Date;
@@ -703,7 +711,7 @@ export async function getRFQ(id: string): Promise<{
     id: string;
     sellerId: string | null;
     sellerName: string;
-    sellerPhone: string;
+    sellerPhone: string | null;
     sellerEmail: string | null;
     unitPrice: string;
     totalPrice: string;
@@ -742,6 +750,15 @@ export async function getRFQ(id: string): Promise<{
     throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
   }
 
+  // STEP 13.01 P0-2 FIX: PII redaction based on viewer identity.
+  // Only the buyer themselves sees buyer PII (phone/email/id) and
+  // seller PII (phone/email) in quotes. All other viewers (anonymous,
+  // other sellers, etc.) see only non-PII fields (names are kept for
+  // trust; phone/email/internal ids are redacted). This prevents the
+  // public PII harvest chain that existed when getRFQ was called
+  // without a viewer context.
+  const isBuyer = !!viewerUserId && !!rfq.buyerId && viewerUserId === rfq.buyerId;
+
   return {
     id: rfq.id,
     title: rfq.title,
@@ -756,15 +773,25 @@ export async function getRFQ(id: string): Promise<{
     deadline: rfq.deadline,
     terms: rfq.terms,
     status: rfq.status,
+    // buyerName is kept (trust signal); phone/email/id are PII.
     buyerName: rfq.buyerName,
-    buyerPhone: rfq.buyerPhone,
-    buyerEmail: rfq.buyerEmail,
-    buyerId: rfq.buyerId,
+    buyerPhone: isBuyer ? rfq.buyerPhone : null,
+    buyerEmail: isBuyer ? rfq.buyerEmail : null,
+    buyerId: isBuyer ? rfq.buyerId : null,
     createdAt: rfq.createdAt,
     quotes: rfq.quotes.map((q) => ({
-      ...q,
+      id: q.id,
+      // sellerName is kept; phone/email/id are PII (only buyer sees them).
+      sellerId: isBuyer ? q.sellerId : null,
+      sellerName: q.sellerName,
+      sellerPhone: isBuyer ? q.sellerPhone : null,
+      sellerEmail: isBuyer ? q.sellerEmail : null,
       unitPrice: q.unitPrice.toString(),
       totalPrice: q.totalPrice.toString(),
+      deliveryTime: q.deliveryTime,
+      notes: q.notes,
+      status: q.status,
+      createdAt: q.createdAt,
     })),
   };
 }
