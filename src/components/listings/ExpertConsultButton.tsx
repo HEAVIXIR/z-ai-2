@@ -5,7 +5,18 @@ import { HardHat, Send, Loader2, X, CheckCircle2 } from "lucide-react";
 
 /* ============================================================
    ExpertConsultButton — opens modal, posts to /api/expert-consult.
+   *
+   * STEP 13.01-R1 P0-3 FIX v2: The expert-consult API is currently
+   * DISABLED (returns 503, see src/app/api/expert-consult/route.ts).
+   * The button is now hidden entirely to prevent showing a disabled
+   * feature as active (senior manager directive: 'جلوگیری از نمایش
+   * قابلیت غیرفعال به‌عنوان فعال'). When the ExpertConsultation
+   * model is implemented in a future PR, set FEATURE_ENABLED to true
+   * to restore the button.
    ============================================================ */
+
+// Feature flag: set to true when expert-consult API is re-enabled.
+const FEATURE_ENABLED = false;
 
 export default function ExpertConsultButton({
   listingId,
@@ -56,6 +67,11 @@ export default function ExpertConsultButton({
     }
     setSubmitting(false);
   };
+
+  // STEP 13.01-R1 P0-3 FIX v2: hide button when feature is disabled.
+  if (!FEATURE_ENABLED) {
+    return null;
+  }
 
   return (
     <>
