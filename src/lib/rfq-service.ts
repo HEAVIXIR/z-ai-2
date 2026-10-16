@@ -200,7 +200,13 @@ export async function createRFQ(params: {
   categoryId?: string | null;
   brandId?: string | null;
   specs?: unknown;
-  userId?: string | null;
+  // STEP 13.01-R1 P0-5 FIX v2: userId is now REQUIRED (was optional).
+  // The service contract enforces that every caller must identify
+  // the actor. A missing or empty userId is rejected before any PII
+  // lookup happens. This closes the defense-in-depth gap where the
+  // previous `if (userId && ...)` guard was skipped when userId was
+  // falsy.
+  userId: string;
 }): Promise<{ id: string; status: string }> {
   const {
     title,
@@ -211,7 +217,7 @@ export async function createRFQ(params: {
     categoryId = null,
     brandId = null,
     specs = null,
-    userId = null,
+    userId,
   } = params;
 
   // ── Validate ──
@@ -223,6 +229,25 @@ export async function createRFQ(params: {
   }
   if (!buyerId) {
     throw new RFQServiceError(400, "buyerId الزامی است");
+  }
+
+  // STEP 13.01-R1 P0-5 FIX v2: userId is required and MUST match
+  // buyerId. The previous `if (userId && buyerId !== userId)` guard
+  // was skipped when userId was falsy (null/undefined/""), allowing
+  // a caller that omitted userId to bypass the impersonation check.
+  // Now userId is required by the type system AND checked at runtime
+  // — if it's missing or empty, we reject before any PII lookup.
+  if (!userId || typeof userId !== "string" || userId.trim() === "") {
+    throw new RFQServiceError(
+      403,
+      "هویت کاربر برای ثبت استعلام الزامی است",
+    );
+  }
+  if (buyerId !== userId) {
+    throw new RFQServiceError(
+      403,
+      "شما مجاز به ثبت استعلام به نام کاربر دیگری نیستید",
+    );
   }
 
   // ── Resolve categoryId/brandId ──
