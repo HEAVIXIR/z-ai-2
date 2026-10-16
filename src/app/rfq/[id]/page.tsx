@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import RFQQuoteForm from "./RFQQuoteForm";
@@ -42,6 +43,15 @@ type Params = { params: Promise<{ id: string }> };
 
 export default async function RFQDetailPage({ params }: Params) {
   const { id } = await params;
+
+  // STEP 13.01 P0-2 FIX: require authentication to view RFQ detail.
+  // Previously this page was public, rendering buyer PII (name/phone/
+  // email) and every seller's PII in quotes to any anonymous visitor.
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect(`/login?redirect=/rfq/${id}`);
+  }
+
   const rfq = await db.rFQ.findUnique({
     where: { id },
     include: {
@@ -52,18 +62,31 @@ export default async function RFQDetailPage({ params }: Params) {
 
   if (!rfq) notFound();
 
+  // STEP 13.01 P0-2 FIX: PII redaction. Only the buyer themselves
+  // sees buyer contact info (phone/email) and seller contact info in
+  // quotes. Other authenticated viewers (sellers browsing open RFQs)
+  // see only non-PII fields (names kept for trust).
+  const isBuyer = !!rfq.buyerId && rfq.buyerId === user!.id;
+
   const status = STATUS_BADGES[rfq.status] ?? STATUS_BADGES.OPEN;
   const canQuote = rfq.status === "OPEN" || rfq.status === "QUOTING";
 
-  // BigInt → string for client serialization
+  // BigInt → string for client serialization + PII redaction
   const safeRfq = {
     ...rfq,
     budgetMin: rfq.budgetMin ? rfq.budgetMin.toString() : null,
     budgetMax: rfq.budgetMax ? rfq.budgetMax.toString() : null,
+    // Redact buyer PII for non-buyer viewers.
+    buyerPhone: isBuyer ? rfq.buyerPhone : null,
+    buyerEmail: isBuyer ? rfq.buyerEmail : null,
+    buyer: isBuyer ? rfq.buyer : null,
     quotes: rfq.quotes.map((q) => ({
       ...q,
       unitPrice: q.unitPrice.toString(),
       totalPrice: q.totalPrice.toString(),
+      // Redact seller PII for non-buyer viewers.
+      sellerPhone: isBuyer ? q.sellerPhone : null,
+      sellerEmail: isBuyer ? q.sellerEmail : null,
     })),
   };
 
