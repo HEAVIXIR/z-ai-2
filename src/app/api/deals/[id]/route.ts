@@ -57,12 +57,39 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    // STEP 13.26 P1 FIX: Explicit DTO allowlist for the detail endpoint.
+    // The previous `...deal` spread leaked every scalar Deal field
+    // (including cancelReason, notes, updatedAt) and would also surface
+    // any future field added to the model. This allowlist mirrors the
+    // GET /api/deals list contract (STEP 13.22) and adds the bounded
+    // `disputes` relation, which is already constrained at the query
+    // layer above (select: { id, status, reason }).
+    //
+    // Excluded internal fields: cancelReason, notes, updatedAt.
+    // Excluded relations: buyer, seller (User PII), review.
+    // Bounded relations: listing {id,title,slug}, order {id,orderNumber,status},
+    //   disputes {id,status,reason}.
     return NextResponse.json({
       deal: {
-        ...deal,
-        agreedAmount: deal.agreedAmount
-          ? deal.agreedAmount.toString()
-          : null,
+        id: deal.id,
+        dealNumber: deal.dealNumber,
+        sourceType: deal.sourceType,
+        sourceId: deal.sourceId,
+        buyerId: deal.buyerId,
+        sellerId: deal.sellerId,
+        listingId: deal.listingId,
+        agreedAmount: deal.agreedAmount ? deal.agreedAmount.toString() : null,
+        currency: deal.currency,
+        transactionType: deal.transactionType,
+        status: deal.status,
+        agreedAt: deal.agreedAt,
+        confirmedAt: deal.confirmedAt,
+        completedAt: deal.completedAt,
+        cancelledAt: deal.cancelledAt,
+        createdAt: deal.createdAt,
+        listing: deal.listing,
+        order: deal.order,
+        disputes: deal.disputes,
       },
     });
   } catch (err: unknown) {

@@ -68,17 +68,28 @@ vi.mock("@/lib/auth", () => ({
 describe("RUNTIME: Deals POST — behavioral tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // STEP 13.26 P2 FIX: logAudit must return a resolved Promise so the
+    // handler's `logAudit(...).catch(() => {})` chain does not throw on
+    // undefined. Without this, success-path tests return 500 instead of
+    // 200, which masked the false-pass in the buyerId/agreedAmount tests.
+    mockAuditLog.mockResolvedValue(undefined);
   });
 
   // ── P0: buyerId/sellerId NOT accepted from body ────────
+  // STEP 13.26 P2 FIX: previous version had a FALSE-PASS — the mock
+  // offer buyerId was "buyer-from-offer" (not the authed "user-test-123"),
+  // so party-membership check returned 403 BEFORE create() was called,
+  // and the `if (mockDealCreate.mock.calls.length > 0)` guard silently
+  // skipped the core assertions. Now the authed user IS the buyer so
+  // create() is genuinely invoked, and assertions are UNCONDITIONAL.
 
   it("does NOT accept buyerId from body (uses source)", async () => {
-    // Mock LISTING_OFFER source
+    // Mock LISTING_OFFER source — authed user IS the buyer (party).
     mockListingOfferFindUnique.mockResolvedValue({
       id: "offer-1",
       status: "ACCEPTED",
       offerAmount: 500000000n,
-      buyerId: "buyer-from-offer",
+      buyerId: "user-test-123", // authed user is the buyer → party-membership passes
       listingId: "listing-1",
       listing: { sellerId: "seller-from-listing" },
     });
@@ -98,30 +109,26 @@ describe("RUNTIME: Deals POST — behavioral tests", () => {
       });
     });
 
-    // Send buyerId in body (should be ignored)
+    // Send buyerId/sellerId in body (must be ignored)
     const req = makeReq({
       sourceType: "LISTING_OFFER",
       sourceId: "offer-1",
-      buyerId: "attacker-buyer-id", // should be ignored
-      sellerId: "attacker-seller-id", // should be ignored
+      buyerId: "attacker-buyer-id", // must be ignored
+      sellerId: "attacker-seller-id", // must be ignored
     });
 
     const res = await POST(req);
-    const json = await res.json();
+    expect(res.status).toBe(200); // success, NOT 403
 
-    // Should succeed (user-test-123 is buyer-from-offer or seller-from-listing)
-    // If neither, should get 403
-    expect(res.status).toBeGreaterThanOrEqual(200);
-    expect(res.status).toBeLessThan(500);
+    // UNCONDITIONAL: create MUST have been called (party-membership passed)
+    expect(mockDealCreate).toHaveBeenCalledTimes(1);
 
-    // Verify create was called with source-derived values, not body
-    if (mockDealCreate.mock.calls.length > 0) {
-      const createData = mockDealCreate.mock.calls[0][0].data;
-      expect(createData.buyerId).toBe("buyer-from-offer");
-      expect(createData.sellerId).toBe("seller-from-listing");
-      expect(createData.buyerId).not.toBe("attacker-buyer-id");
-      expect(createData.sellerId).not.toBe("attacker-seller-id");
-    }
+    // Persisted buyerId/sellerId MUST come from the source entity, not body
+    const createData = mockDealCreate.mock.calls[0][0].data;
+    expect(createData.buyerId).toBe("user-test-123"); // from offer, not body
+    expect(createData.sellerId).toBe("seller-from-listing"); // from listing, not body
+    expect(createData.buyerId).not.toBe("attacker-buyer-id");
+    expect(createData.sellerId).not.toBe("attacker-seller-id");
   });
 
   // ── P0: agreedAmount from source (not body) ────────────
@@ -131,7 +138,7 @@ describe("RUNTIME: Deals POST — behavioral tests", () => {
       id: "offer-1",
       status: "ACCEPTED",
       offerAmount: 500000000n,
-      buyerId: "user-test-123", // user is buyer
+      buyerId: "user-test-123", // user is buyer → party-membership passes
       listingId: "listing-1",
       listing: { sellerId: "seller-1" },
     });
@@ -140,14 +147,14 @@ describe("RUNTIME: Deals POST — behavioral tests", () => {
       return cb({
         deal: {
           findFirst: vi.fn().mockResolvedValue(null),
-          create: vi.fn().mockResolvedValue({
+          create: mockDealCreate.mockResolvedValue({
             id: "deal-1", dealNumber: "DEAL-T", status: "PENDING_CONFIRMATION",
           }),
         },
       });
     });
 
-    // Send agreedAmount in body (should be ignored)
+    // Send agreedAmount in body (must be ignored)
     const req = makeReq({
       sourceType: "LISTING_OFFER",
       sourceId: "offer-1",
@@ -155,18 +162,21 @@ describe("RUNTIME: Deals POST — behavioral tests", () => {
     });
 
     const res = await POST(req);
+    expect(res.status).toBe(200); // success
 
-    // Check that create was called with source amount (500000000), not body (1)
-    if (mockDealCreate.mock.calls.length > 0) {
-      const createData = mockDealCreate.mock.calls[0][0].data;
-      expect(createData.agreedAmount).toBe(500000000n);
-      expect(createData.agreedAmount).not.toBe(1n);
-    }
+    // UNCONDITIONAL: create MUST have been called
+    expect(mockDealCreate).toHaveBeenCalledTimes(1);
+
+    // Persisted amount MUST be the source amount (500000000), not body (1)
+    const createData = mockDealCreate.mock.calls[0][0].data;
+    expect(createData.agreedAmount).toBe(500000000n);
+    expect(createData.agreedAmount).not.toBe(1n);
   });
 
   // ── P0: Party-membership check ─────────────────────────
+  // STEP 13.26 P2 FIX: also assert create() is NOT called (negative case)
 
-  it("REJECTS user who is NOT party to the deal (403)", async () => {
+  it("REJECTS user who is NOT party to the deal (403) and does NOT create", async () => {
     mockListingOfferFindUnique.mockResolvedValue({
       id: "offer-1",
       status: "ACCEPTED",
@@ -180,10 +190,18 @@ describe("RUNTIME: Deals POST — behavioral tests", () => {
     const req = makeReq({
       sourceType: "LISTING_OFFER",
       sourceId: "offer-1",
+      // Attacker also tries to inject identities — must still be rejected
+      buyerId: "user-test-123",
+      sellerId: "user-test-123",
     });
 
     const res = await POST(req);
     expect(res.status).toBe(403);
+
+    // CRITICAL: create() MUST NOT be called for a non-party
+    expect(mockDealCreate).not.toHaveBeenCalled();
+    // And the transaction body must not even run
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   // ── P0: Invalid sourceType ─────────────────────────────
