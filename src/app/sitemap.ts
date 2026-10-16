@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
+import { SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — sitemap.ts (P2-28)
@@ -14,6 +15,10 @@ import { absoluteUrl } from "@/lib/seo";
      • all PUBLISHED listings
      • all published articles
    Uses sitemapPriority from SEOMetadata when available.
+
+   STEP 13.00: SITE_BASE_URL is now imported from @/lib/site-config
+   (single source of truth). The previous local fallback to
+   "https://havix.ir" is removed.
    ============================================================ */
 
 export const revalidate = 3600; // 1 hour
@@ -68,7 +73,7 @@ async function getSEOOverridesByType(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://havix.ir";
+  const base = SITE_BASE_URL;
 
   // Fetch all public entities in parallel.
   const [categories, brands, listings, articles] = await Promise.all([

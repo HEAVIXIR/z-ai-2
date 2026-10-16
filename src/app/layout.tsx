@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import MobileNav from "@/components/layout/MobileNav";
+import { SITE_BASE_URL } from "@/lib/site-config";
 
 const VAZIRMATN_URL =
   "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://heavix.ir"),
+  // STEP 13.00: SITE_BASE_URL is the single source of truth for the
+  // canonical domain. Previously this used a local fallback string;
+  // now it consumes @/lib/site-config so all URL-emitting code agrees.
+  metadataBase: new URL(SITE_BASE_URL),
   title: {
     default: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
     template: "%s | هویکس",
