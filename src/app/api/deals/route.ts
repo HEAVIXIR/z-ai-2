@@ -66,10 +66,29 @@ export async function GET(req: Request) {
       },
     });
 
+    // STEP 13.22: Explicit DTO — no spread of internal model fields.
+    // Allowlist: only fields consumers need. Internal fields (cancelReason,
+    // notes, updatedAt, order/disputes/review relations) are excluded.
     return NextResponse.json({
       deals: deals.map((d) => ({
-        ...d,
+        id: d.id,
+        dealNumber: d.dealNumber,
+        sourceType: d.sourceType,
+        sourceId: d.sourceId,
+        buyerId: d.buyerId,
+        sellerId: d.sellerId,
+        listingId: d.listingId,
         agreedAmount: d.agreedAmount ? d.agreedAmount.toString() : null,
+        currency: d.currency,
+        transactionType: d.transactionType,
+        status: d.status,
+        agreedAt: d.agreedAt,
+        confirmedAt: d.confirmedAt,
+        completedAt: d.completedAt,
+        cancelledAt: d.cancelledAt,
+        createdAt: d.createdAt,
+        listing: d.listing,
+        order: d.order,
       })),
     });
   } catch (err: unknown) {
