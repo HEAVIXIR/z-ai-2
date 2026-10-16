@@ -225,6 +225,20 @@ export async function createRFQ(params: {
     throw new RFQServiceError(400, "buyerId الزامی است");
   }
 
+  // STEP 13.01 P0-5 FIX (defense in depth): when a userId (the
+  // authenticated actor) is provided, it MUST match buyerId. This
+  // prevents any caller (even if a future route handler mistakenly
+  // forwards a body-supplied buyerId) from attributing an RFQ to
+  // another user and harvesting their PII via the buyer lookup
+  // below. Admin-creates-on-behalf must use a separate, RBAC-checked
+  // code path — not this function.
+  if (userId && buyerId !== userId) {
+    throw new RFQServiceError(
+      403,
+      "شما مجاز به ثبت استعلام به نام کاربر دیگری نیستید",
+    );
+  }
+
   // ── Resolve categoryId/brandId ──
   const [categoryName, brandName] = await Promise.all([
     category_idToName(categoryId),
