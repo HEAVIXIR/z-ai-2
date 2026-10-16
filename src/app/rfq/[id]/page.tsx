@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import RFQQuoteForm from "./RFQQuoteForm";
@@ -42,6 +43,15 @@ type Params = { params: Promise<{ id: string }> };
 
 export default async function RFQDetailPage({ params }: Params) {
   const { id } = await params;
+
+  // STEP 13.01 P0-2 FIX: require authentication to view RFQ detail.
+  // Previously this page was public, rendering buyer PII (name/phone/
+  // email) and every seller's PII in quotes to any anonymous visitor.
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect(`/login?redirect=/rfq/${id}`);
+  }
+
   const rfq = await db.rFQ.findUnique({
     where: { id },
     include: {
@@ -52,18 +62,59 @@ export default async function RFQDetailPage({ params }: Params) {
 
   if (!rfq) notFound();
 
+  // STEP 13.01 P0-2 FIX: PII redaction. Only the buyer themselves
+  // sees buyer contact info (phone/email) and seller contact info in
+  // quotes. Other authenticated viewers (sellers browsing open RFQs)
+  // see only non-PII fields (names kept for trust).
+  const isBuyer = !!rfq.buyerId && rfq.buyerId === user!.id;
+
   const status = STATUS_BADGES[rfq.status] ?? STATUS_BADGES.OPEN;
   const canQuote = rfq.status === "OPEN" || rfq.status === "QUOTING";
 
-  // BigInt → string for client serialization
+  // STEP 13.01-R1 P0-2 FIX v2: explicit field selection — NO spread.
+  // The previous v1 used `...rfq` and `...q` which leaked buyerId and
+  // sellerId to non-buyer viewers. v2 explicitly lists every field
+  // and redacts all internal ids + contact info for non-buyer viewers.
+  // Access matrix:
+  //   - buyer themselves: sees all PII (buyer + seller contact info in quotes)
+  //   - seller who quoted: sees only their own quote (no buyer PII, no other sellers)
+  //   - other sellers: see only non-PII fields (names kept for trust)
+  //   - admin: handled via separate admin endpoints (not this page)
   const safeRfq = {
-    ...rfq,
+    id: rfq.id,
+    title: rfq.title,
+    description: rfq.description,
+    machineType: rfq.machineType,
+    brandPref: rfq.brandPref,
+    quantity: rfq.quantity,
+    specJson: rfq.specJson,
     budgetMin: rfq.budgetMin ? rfq.budgetMin.toString() : null,
     budgetMax: rfq.budgetMax ? rfq.budgetMax.toString() : null,
+    location: rfq.location,
+    deadline: rfq.deadline,
+    terms: rfq.terms,
+    status: rfq.status,
+    // buyerName kept (trust signal); phone/email/id redacted for non-buyer.
+    buyerName: rfq.buyerName,
+    buyerPhone: isBuyer ? rfq.buyerPhone : null,
+    buyerEmail: isBuyer ? rfq.buyerEmail : null,
+    buyerId: isBuyer ? rfq.buyerId : null,
+    buyer: isBuyer ? rfq.buyer : null,
+    createdAt: rfq.createdAt,
+    updatedAt: rfq.updatedAt,
     quotes: rfq.quotes.map((q) => ({
-      ...q,
+      id: q.id,
+      // sellerName kept (trust signal); phone/email/id redacted for non-buyer.
+      sellerName: q.sellerName,
+      sellerPhone: isBuyer ? q.sellerPhone : null,
+      sellerEmail: isBuyer ? q.sellerEmail : null,
+      sellerId: isBuyer ? q.sellerId : null,
       unitPrice: q.unitPrice.toString(),
       totalPrice: q.totalPrice.toString(),
+      deliveryTime: q.deliveryTime,
+      notes: q.notes,
+      status: q.status,
+      createdAt: q.createdAt,
     })),
   };
 

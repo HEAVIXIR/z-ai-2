@@ -86,3 +86,6 @@ tool-results/
 
 # STEP 12.79: test artifacts from DB-bound test runs
 public/uploads/articles/test-article-*.png
+
+# STEP 13.14: Prevent credential files from being committed
+/upload/

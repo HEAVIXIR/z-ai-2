@@ -200,7 +200,7 @@ export async function createRFQ(params: {
   categoryId?: string | null;
   brandId?: string | null;
   specs?: unknown;
-  userId?: string | null;
+  userId: string;
 }): Promise<{ id: string; status: string }> {
   const {
     title,
@@ -211,7 +211,7 @@ export async function createRFQ(params: {
     categoryId = null,
     brandId = null,
     specs = null,
-    userId = null,
+    userId,
   } = params;
 
   // ── Validate ──
@@ -223,6 +223,12 @@ export async function createRFQ(params: {
   }
   if (!buyerId) {
     throw new RFQServiceError(400, "buyerId الزامی است");
+  }
+  if (!userId || typeof userId !== "string" || userId.trim() === "") {
+    throw new RFQServiceError(403, "هویت کاربر برای ثبت استعلام الزامی است");
+  }
+  if (buyerId !== userId) {
+    throw new RFQServiceError(403, "شما مجاز به ثبت استعلام به نام کاربر دیگری نیستید");
   }
 
   // ── Resolve categoryId/brandId ──
@@ -351,7 +357,7 @@ export async function submitQuote(
     deliveryTime?: string | null;
     validity?: string | null;
     notes?: string | null;
-    userId?: string | null;
+    userId: string;
   },
 ): Promise<{ id: string; status: string }> {
   if (!rfqId) {
@@ -680,7 +686,15 @@ export async function listRFQs(params: {
  *
  * @throws RFQServiceError(404) when the RFQ doesn't exist.
  */
-export async function getRFQ(id: string): Promise<{
+export async function getRFQ(
+  id: string,
+  // STEP 13.01-R1 P0-2 FIX v2: viewerUserId is now REQUIRED (was optional).
+  // The service contract enforces that every caller must identify the
+  // viewer. A missing viewerUserId means PII is redacted for everyone
+  // (treated as anonymous) — but the type-level requirement forces
+  // callers to be explicit about who is viewing.
+  viewerUserId: string,
+): Promise<{
   id: string;
   title: string;
   description: string | null;
@@ -695,15 +709,16 @@ export async function getRFQ(id: string): Promise<{
   terms: string | null;
   status: string;
   buyerName: string | null;
-  buyerPhone: string;
+  buyerPhone: string | null;
   buyerEmail: string | null;
   buyerId: string | null;
   createdAt: Date;
+  quoteCount: number;
   quotes: Array<{
     id: string;
     sellerId: string | null;
     sellerName: string;
-    sellerPhone: string;
+    sellerPhone: string | null;
     sellerEmail: string | null;
     unitPrice: string;
     totalPrice: string;
@@ -742,6 +757,41 @@ export async function getRFQ(id: string): Promise<{
     throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
   }
 
+  // STEP 13.01 P0-2 FIX: PII redaction based on viewer identity.
+  // Only the buyer themselves sees buyer PII (phone/email/id) and
+  // seller PII (phone/email) in quotes. All other viewers (anonymous,
+  // other sellers, etc.) see only non-PII fields (names are kept for
+  // trust; phone/email/internal ids are redacted). This prevents the
+  // public PII harvest chain that existed when getRFQ was called
+  // without a viewer context.
+  //
+  // STEP 13.02 P0-2 FIX v3: Quote visibility filtering.
+  // Senior manager directive: 'فروشنده‌ای که پیشنهاد داده فقط
+  // پیشنهاد خودش را می‌بیند'. v2 only redacted PII but returned ALL
+  // quotes to every viewer. v3 filters the quotes array:
+  //   - buyer: sees ALL quotes (with full PII) — needs to compare
+  //   - seller who quoted: sees ONLY their own quote (no competitor data)
+  //   - other sellers / anonymous: see NO quotes (only quoteCount)
+  const isBuyer = !!viewerUserId && !!rfq.buyerId && viewerUserId === rfq.buyerId;
+  // Check if the viewer is one of the sellers who quoted on this RFQ.
+  const viewerQuote = viewerUserId
+    ? rfq.quotes.find((q) => q.sellerId === viewerUserId)
+    : undefined;
+  const isSellerWhoQuoted = !!viewerQuote;
+
+  // Determine which quotes to return based on viewer role.
+  let visibleQuotes: typeof rfq.quotes;
+  if (isBuyer) {
+    // Buyer sees all quotes with full PII (to contact sellers).
+    visibleQuotes = rfq.quotes;
+  } else if (isSellerWhoQuoted && viewerQuote) {
+    // Seller who quoted sees ONLY their own quote.
+    visibleQuotes = [viewerQuote];
+  } else {
+    // Other sellers / anonymous: see NO quotes (only count).
+    visibleQuotes = [];
+  }
+
   return {
     id: rfq.id,
     title: rfq.title,
@@ -756,15 +806,28 @@ export async function getRFQ(id: string): Promise<{
     deadline: rfq.deadline,
     terms: rfq.terms,
     status: rfq.status,
+    // buyerName is kept (trust signal); phone/email/id are PII.
     buyerName: rfq.buyerName,
-    buyerPhone: rfq.buyerPhone,
-    buyerEmail: rfq.buyerEmail,
-    buyerId: rfq.buyerId,
+    buyerPhone: isBuyer ? rfq.buyerPhone : null,
+    buyerEmail: isBuyer ? rfq.buyerEmail : null,
+    buyerId: isBuyer ? rfq.buyerId : null,
     createdAt: rfq.createdAt,
-    quotes: rfq.quotes.map((q) => ({
-      ...q,
+    // STEP 13.02 P0-2 FIX v3: quoteCount is always visible (trust signal).
+    // The quotes array is filtered based on viewer role (see above).
+    quoteCount: rfq.quotes.length,
+    quotes: visibleQuotes.map((q) => ({
+      id: q.id,
+      // sellerName is kept; phone/email/id are PII (only buyer sees them).
+      sellerId: isBuyer ? q.sellerId : null,
+      sellerName: q.sellerName,
+      sellerPhone: isBuyer ? q.sellerPhone : null,
+      sellerEmail: isBuyer ? q.sellerEmail : null,
       unitPrice: q.unitPrice.toString(),
       totalPrice: q.totalPrice.toString(),
+      deliveryTime: q.deliveryTime,
+      notes: q.notes,
+      status: q.status,
+      createdAt: q.createdAt,
     })),
   };
 }
