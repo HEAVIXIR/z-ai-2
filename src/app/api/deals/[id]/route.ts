@@ -1,4 +1,15 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
+/**
+ * HEAVIX — Deal Detail API (Phase 9 — Transactions)
+ * ------------------------------------------------------------
+ * STEP 13.01 P0-4 FIX: @ts-nocheck removed; full TypeScript types
+ * restored. Auth checks (buyer/seller ownership) were already in
+ * place — this change just makes the types visible so future
+ * regressions are caught at compile time.
+ *
+ * Routes:
+ *   GET   /api/deals/[id] — get a single deal (buyer or seller only)
+ *   PATCH /api/deals/[id] — transition deal status (state machine)
+ */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
@@ -10,22 +21,26 @@ export const dynamic = "force-dynamic";
 
 // Valid state transitions
 const TRANSITIONS: Record<string, string[]> = {
-  "DRAFT": ["PENDING_CONFIRMATION", "CANCELLED"],
-  "PENDING_CONFIRMATION": ["CONFIRMED", "CANCELLED", "EXPIRED"],
-  "CONFIRMED": ["IN_PROGRESS", "CANCELLED"],
-  "IN_PROGRESS": ["COMPLETED", "DISPUTED", "CANCELLED"],
-  "COMPLETED": [],
-  "CANCELLED": [],
-  "DISPUTED": ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
-  "EXPIRED": [],
+  DRAFT: ["PENDING_CONFIRMATION", "CANCELLED"],
+  PENDING_CONFIRMATION: ["CONFIRMED", "CANCELLED", "EXPIRED"],
+  CONFIRMED: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["COMPLETED", "DISPUTED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
+  DISPUTED: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+  EXPIRED: [],
 };
 
 /* GET /api/deals/[id] — get a single deal. */
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
     const userId = await getCurrentUserId();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const deal = await db.deal.findUnique({
       where: { id },
@@ -36,7 +51,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
 
-    if (!deal) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!deal)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (deal.buyerId !== userId && deal.sellerId !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -44,44 +60,65 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({
       deal: {
         ...deal,
-        agreedAmount: deal.agreedAmount ? deal.agreedAmount.toString() : null,
+        agreedAmount: deal.agreedAmount
+          ? deal.agreedAmount.toString()
+          : null,
       },
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 /* PATCH /api/deals/[id] — transition deal status (state machine). */
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { id } = await params;
     const userId = await getCurrentUserId();
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const deal = await db.deal.findUnique({ where: { id } });
-    if (!deal) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const deal = await db.deal.findUnique({
+      where: { id },
+      include: { order: { select: { id: true } } },
+    });
+    if (!deal)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (deal.buyerId !== userId && deal.sellerId !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
-    const newStatus = String(body.status ?? "");
+    const newStatus = String((body as { status?: unknown }).status ?? "");
 
     // Validate transition
     const allowed = TRANSITIONS[deal.status] || [];
     if (!allowed.includes(newStatus)) {
-      return NextResponse.json({
-        error: `Invalid transition: ${deal.status} → ${newStatus}. Allowed: ${allowed.join(", ") || "none"}`,
-      }, { status: 409 });
+      return NextResponse.json(
+        {
+          error: `Invalid transition: ${deal.status} → ${newStatus}. Allowed: ${allowed.join(", ") || "none"}`,
+        },
+        { status: 409 },
+      );
     }
 
-    const updateData: any = { status: newStatus };
+    const updateData: {
+      status: string;
+      confirmedAt?: Date;
+      completedAt?: Date;
+      cancelledAt?: Date;
+      cancelReason?: string | null;
+    } = { status: newStatus };
     if (newStatus === "CONFIRMED") updateData.confirmedAt = new Date();
     if (newStatus === "COMPLETED") updateData.completedAt = new Date();
     if (newStatus === "CANCELLED") {
       updateData.cancelledAt = new Date();
-      updateData.cancelReason = body.cancelReason || null;
+      updateData.cancelReason =
+        (body as { cancelReason?: string }).cancelReason || null;
     }
 
     const updated = await db.deal.update({ where: { id }, data: updateData });
@@ -89,8 +126,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // If deal is confirmed and no order exists, create one
     if (newStatus === "CONFIRMED" && !deal.order) {
       const orderNumber = "ORD-" + Date.now().toString(36).toUpperCase();
-      const listing = deal.listingId ? await db.listing.findUnique({ where: { id: deal.listingId }, select: { title: true } }) : null;
-      
+      const listing = deal.listingId
+        ? await db.listing.findUnique({
+            where: { id: deal.listingId },
+            select: { title: true },
+          })
+        : null;
+
       await db.order.create({
         data: {
           orderNumber,
@@ -127,8 +169,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ip: getClientIp(req),
     }).catch(() => {});
 
-    return NextResponse.json({ ok: true, id: updated.id, status: updated.status });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      id: updated.id,
+      status: updated.status,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
