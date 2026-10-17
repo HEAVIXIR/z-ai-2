@@ -294,7 +294,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
       const { executeAction } = await import("@/lib/admin/action-engine");
 
       const result = await executeAction("payments", testPayment.id, "refund", {
-        userId: "admin-test",
+        userId: precondBuyer.id,  // STEP 13.49: use the user that has ADMIN role
         reason: "Integration test — precondition scenario",
       });
 
