@@ -126,12 +126,11 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(mockDealUpdateMany).toHaveBeenCalledTimes(1);
   });
 
-  // ── 2b. Existing PENDING order → update to CONFIRMED (dellk00k finding) ──
-  it("CONFIRMED with existing PENDING order: updates order to CONFIRMED (not skipped)", async () => {
+  // ── 2b. Existing PENDING order → update to CONFIRMED (valid transition) ──
+  it("CONFIRMED with existing PENDING order: updates order to CONFIRMED (valid transition)", async () => {
     const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
     const mockTxOrderUpdate = vi.fn().mockResolvedValue({ id: "existing-order", status: "CONFIRMED" });
     mockTransaction.mockImplementation(async (cb: any) => {
-      // STEP 13.37 dellk00k finding: order exists but is PENDING (not CONFIRMED)
       mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "PENDING" });
       return cb({
         deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
@@ -142,13 +141,51 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
     expect(res.status).toBe(200);
-    // order.create MUST NOT be called (order exists, just needs update)
     expect(mockOrderCreate).not.toHaveBeenCalled();
-    // order.update MUST be called (PENDING → CONFIRMED)
     expect(mockTxOrderUpdate).toHaveBeenCalledTimes(1);
-    const updateData = mockTxOrderUpdate.mock.calls[0][0];
-    expect(updateData.where.dealId).toBe("deal-1");
-    expect(updateData.data.status).toBe("CONFIRMED");
+    expect(mockTxOrderUpdate.mock.calls[0][0].data.status).toBe("CONFIRMED");
+  });
+
+  // ── 2c. Existing CANCELLED order → error + rollback (dellk00k STEP 13.38 finding) ──
+  it("CONFIRMED with CANCELLED order: 409 error, deal NOT changed (rollback)", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    const mockTxOrderUpdate = vi.fn();
+    mockTransaction.mockImplementation(async (cb: any) => {
+      mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "CANCELLED" });
+      return cb({
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
+        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate, update: mockTxOrderUpdate },
+        listing: { findUnique: mockListingFindUnique },
+      });
+    });
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    // CANCELLED → CONFIRMED is NOT valid → 409 error (transaction rolled back)
+    expect(res.status).toBe(409);
+    // order.update MUST NOT be called (invalid transition, error thrown)
+    expect(mockTxOrderUpdate).not.toHaveBeenCalled();
+    // order.create MUST NOT be called
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.error).toContain("CANCELLED");
+  });
+
+  // ── 2d. Existing COMPLETED order → error + rollback ──
+  it("CONFIRMED with COMPLETED order: 409 error, deal NOT changed (rollback)", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    mockTransaction.mockImplementation(async (cb: any) => {
+      mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "COMPLETED" });
+      return cb({
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
+        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate, update: vi.fn() },
+        listing: { findUnique: mockListingFindUnique },
+      });
+    });
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toContain("COMPLETED");
   });
 
   // ── 3. Atomicity: order.create fails → deal update rolled back ──

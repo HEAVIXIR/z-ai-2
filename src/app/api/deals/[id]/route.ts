@@ -28,6 +28,20 @@ class ConcurrentTransitionError extends Error {
   }
 }
 
+// STEP 13.38 P2-A: thrown when an order's status does not allow a valid
+// transition to CONFIRMED (e.g., CANCELLED, PROCESSING, FULFILLED, COMPLETED).
+class InvalidOrderTransitionError extends Error {
+  constructor(
+    public fromStatus: string,
+    public toStatus: string,
+  ) {
+    super(
+      `Invalid order transition: ${fromStatus} -> ${toStatus}. Only PENDING -> CONFIRMED is allowed when confirming a deal.`,
+    );
+    this.name = "InvalidOrderTransitionError";
+  }
+}
+
 // Valid state transitions
 const TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["PENDING_CONFIRMATION", "CANCELLED"],
@@ -238,12 +252,8 @@ export async function PATCH(
                 after: { dealId: deal.id, status: "CONFIRMED" },
                 ip: getClientIp(req),
               }).catch(() => {});
-            } else if (existingOrder.status !== "CONFIRMED") {
-              // STEP 13.37 P2-A FIX (dellk00k finding): order exists but is
-              // NOT CONFIRMED (e.g., PENDING). This is an inconsistent state —
-              // the deal is being confirmed but its order is not. We must NOT
-              // silently skip. Update the order to CONFIRMED to maintain
-              // consistency (the deal transition is atomic with this update).
+            } else if (existingOrder.status === "PENDING") {
+              // PENDING -> CONFIRMED is a valid transition. Update the order.
               await tx.order.update({
                 where: { dealId: id },
                 data: { status: "CONFIRMED", confirmedAt: new Date() },
@@ -257,8 +267,18 @@ export async function PATCH(
                 after: { dealId: deal.id, status: "CONFIRMED" },
                 ip: getClientIp(req),
               }).catch(() => {});
+            } else if (existingOrder.status === "CONFIRMED") {
+              // Already CONFIRMED -> idempotent, skip (no duplicate action)
+            } else {
+              // CANCELLED, PROCESSING, FULFILLED, COMPLETED, or any other
+              // status -> NOT a valid transition. The deal cannot be confirmed
+              // when its order is in a terminal or advanced state.
+              // Throw to abort the transaction -- deal update is rolled back.
+              throw new InvalidOrderTransitionError(
+                existingOrder.status,
+                "CONFIRMED",
+              );
             }
-            // If existingOrder.status === "CONFIRMED" → skip (idempotent, already done)
           }
 
           return dealUpdated;
@@ -266,10 +286,18 @@ export async function PATCH(
         { isolationLevel: "Serializable" },
       );
     } catch (err: unknown) {
-      // ConcurrentTransitionError → 409 (another request changed status first)
+      // ConcurrentTransitionError -> 409 (another request changed status first)
       if (err instanceof ConcurrentTransitionError) {
         return NextResponse.json(
           { error: "وضعیت معامله توسط درخواست دیگری تغییر کرد؛ لطفاً دوباره تلاش کنید" },
+          { status: 409 },
+        );
+      }
+      // InvalidOrderTransitionError -> 409 (order is in terminal/advanced state)
+      // The deal update is rolled back by the transaction.
+      if (err instanceof InvalidOrderTransitionError) {
+        return NextResponse.json(
+          { error: `سفارش در وضعیت ${err.fromStatus} است و نمی‌تواند به ${err.toStatus} تغییر کند` },
           { status: 409 },
         );
       }
