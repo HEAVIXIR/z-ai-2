@@ -227,11 +227,26 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     // executeAction will fetch it, evaluate the refund precondition
     // (requires status ∈ {PAID, AUTHORIZED}), and return PRECONDITION_FAILED.
 
-    // Create a real order + payment with status=REFUNDED
+    // Create a real Deal + Order + Payment with status=REFUNDED
+    // (Order.dealId is required + @unique — must reference a real Deal)
+    const testDeal = await db.deal.create({
+      data: {
+        dealNumber: "PRECOND-DEAL-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER",
+        sourceId: "precondition-test",
+        buyerId, sellerId,
+        agreedAmount: 1000n,
+        currency: "IRR",
+        transactionType: "SALE",
+        status: "CANCELLED",
+        agreedAt: new Date(),
+      },
+    });
+
     const testOrder = await db.order.create({
       data: {
         orderNumber: "ORD-PRECOND-" + Date.now().toString(36),
-        // dealId is optional — no Deal needed for this test
+        dealId: testDeal.id,
         titleSnapshot: "Precondition Test",
         priceSnapshot: 1000n,
         currencySnapshot: "IRR",
@@ -285,6 +300,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
       const cleanupErrors: string[] = [];
       await db.payment.delete({ where: { id: testPayment.id } }).catch((e) => { cleanupErrors.push(`payment: ${e}`); });
       await db.order.delete({ where: { id: testOrder.id } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
+      await db.deal.delete({ where: { id: testDeal.id } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
       if (cleanupErrors.length > 0) {
         throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
