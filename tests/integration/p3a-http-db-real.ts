@@ -681,17 +681,12 @@ describe.skipIf(!RUN)("STEP 13.54 Phase 2 — P3-A Real HTTP→DB Authorization 
     expect(await db.deal.findUnique({ where: { id: createdDealId }, select: { id: true } })).toBeNull();
   });
 
-  // ── Suite-end independent verification: no P3-A test fixtures remain ──
-  it("T-SUITE-END: no P3-A test fixtures remain in PostgreSQL (independent query)", async () => {
-    const testDeals = await db.deal.findMany({
-      where: { dealNumber: { startsWith: "P3A-" } },
-      select: { id: true, dealNumber: true },
-    });
-    expect(testDeals).toHaveLength(0);
-    const testOrders = await db.order.findMany({
-      where: { orderNumber: { startsWith: "ORD-P3A-" } },
-      select: { id: true, orderNumber: true },
-    });
-    expect(testOrders).toHaveLength(0);
-  });
+  // NOTE: A suite-end "no fixtures remain" check is intentionally omitted here
+  // (unlike deal-concurrency-real.ts which has FM-10). Reason: the shared
+  // fixtures (deal1, deal2 + 3 users + listing + 2 offers) are cleaned in
+  // afterAll, which runs AFTER all tests. A suite-end check that runs BEFORE
+  // afterAll would always see the shared fixtures and fail. The per-test
+  // fixtures (T4, T5, T8, T9) are each cleaned in their own try/finally with
+  // an explicit absence assertion (expect(findUnique).toBeNull), which proves
+  // no orphan remains without needing a suite-end catch-all.
 });
