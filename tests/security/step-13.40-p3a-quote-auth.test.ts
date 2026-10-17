@@ -173,4 +173,77 @@ describe("STEP 13.40 — P3-A: acceptQuote/rejectQuote buyer-ownership", () => {
       expect((e as InstanceType<typeof RFQServiceError>).status).toBe(404);
     }
   });
+
+  // ── 8. acceptQuote on already-REJECTED quote → 409 (no mutation) ──
+  it("acceptQuote on REJECTED quote → 409 (no mutation)", async () => {
+    mockRFQQuoteFindUnique.mockResolvedValue({
+      id: "quote-1", status: "REJECTED", rfqId: "rfq-1", sellerId: "seller-A",
+    });
+    await expect(acceptQuote("quote-1", "buyer-001")).rejects.toThrow();
+    try {
+      await acceptQuote("quote-1", "buyer-001");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(409);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 9. rejectQuote on already-ACCEPTED quote → 409 (no mutation) ──
+  it("rejectQuote on ACCEPTED quote → 409 (no mutation)", async () => {
+    mockRFQQuoteFindUnique.mockResolvedValue({
+      id: "quote-1", status: "ACCEPTED", rfqId: "rfq-1", sellerId: "seller-A",
+    });
+    await expect(rejectQuote("quote-1", "reason", "buyer-001")).rejects.toThrow();
+    try {
+      await rejectQuote("quote-1", "reason", "buyer-001");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(409);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 10. null userId on rejectQuote → 403 (fail-closed, both functions) ──
+  it("rejectQuote null userId → 403 (fail-closed)", async () => {
+    await expect(rejectQuote("quote-1", "reason", null)).rejects.toThrow();
+    try {
+      await rejectQuote("quote-1", "reason", null);
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(403);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 11. RFQ with null buyerId on rejectQuote → 403 (fail-closed) ──
+  it("rejectQuote RFQ null buyerId → 403 (fail-closed)", async () => {
+    mockRFQFindUnique.mockResolvedValue({ buyerId: null });
+    await expect(rejectQuote("quote-1", "reason", "user-1")).rejects.toThrow();
+    try {
+      await rejectQuote("quote-1", "reason", "user-1");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(403);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 12. HTTP attack-surface proof: acceptQuote/rejectQuote have NO HTTP entry point ──
+  // STEP 13.53 P3-A: the rfq-service acceptQuote/rejectQuote are internal service
+  // functions. The only HTTP route under /api/rfq/[id]/quotes is GET (list) + POST
+  // (submit) — there is NO PATCH/PUT route exposing accept/reject. This is a
+  // defense-in-depth verification: the functions cannot be reached by an HTTP
+  // caller bypassing the service-layer authz.
+  it("HTTP attack-surface: no /api/rfq/[id]/quotes/[quoteId] route exposes accept/reject", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    // The [quoteId] sub-route does NOT exist.
+    const quoteIdRoute = path.join("src", "app", "api", "rfq", "[id]", "quotes", "[quoteId]");
+    expect(fs.existsSync(quoteIdRoute), "[quoteId] route must not exist").toBe(false);
+    // The quotes route only exposes GET (list) + POST (submit) — not accept/reject.
+    const quotesRouteSrc = fs.readFileSync(
+      path.join("src", "app", "api", "rfq", "[id]", "quotes", "route.ts"),
+      "utf-8",
+    );
+    expect(quotesRouteSrc).not.toContain("acceptQuote");
+    expect(quotesRouteSrc).not.toContain("rejectQuote");
+    expect(quotesRouteSrc).toContain("submitQuote");
+  });
 });
