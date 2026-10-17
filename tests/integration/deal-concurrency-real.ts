@@ -414,7 +414,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
   });
 
   // ── STEP 13.41 P2-A: order-create fails → deal cleaned up (no orphan) ──
-  it("order create fails → deal is cleaned up (no orphan record)", async () => {
+  it("order create fails → deal is cleaned up (verify deal ABSENT from DB after cleanup)", async () => {
     let testDealId: string | undefined;
     try {
       const testDeal = await db.deal.create({
@@ -429,8 +429,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       });
       testDealId = testDeal.id;
 
-      // Simulate order create failure by trying to create an order
-      // with a duplicate dealId (Order.dealId is @unique)
+      // First order create succeeds
       await db.order.create({
         data: {
           orderNumber: "ORD-ORPHAN1-" + Date.now().toString(36),
@@ -461,6 +460,21 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         try { await db.deal.delete({ where: { id: testDealId } }); }
         catch (e) { console.error("CLEANUP ERROR (deal cleanup):", e); }
       }
+    }
+
+    // STEP 13.42: verify deal record is ABSENT from DB after cleanup
+    // (not just that cleanup ran — verify the actual DB state)
+    if (testDealId) {
+      const dealStillExists = await db.deal.findUnique({
+        where: { id: testDealId },
+        select: { id: true },
+      });
+      expect(dealStillExists).toBeNull();
+
+      const ordersStillExist = await db.order.count({
+        where: { dealId: testDealId },
+      });
+      expect(ordersStillExist).toBe(0);
     }
   });
 });
