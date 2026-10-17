@@ -229,12 +229,20 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
 
     // Create a real Deal + Order + Payment with status=REFUNDED
     // (Order.dealId is required + @unique — must reference a real Deal)
+    const precondBuyer = await db.user.create({
+      data: { mobile: "09129999001", email: "precond-buyer@test.com", firstName: "P", lastName: "B", passwordHash: "h" },
+    });
+    const precondSeller = await db.user.create({
+      data: { mobile: "09129999002", email: "precond-seller@test.com", firstName: "P", lastName: "S", passwordHash: "h" },
+    });
+
     const testDeal = await db.deal.create({
       data: {
         dealNumber: "PRECOND-DEAL-" + Date.now().toString(36),
         sourceType: "LISTING_OFFER",
         sourceId: "precondition-test",
-        buyerId, sellerId,
+        buyerId: precondBuyer.id,
+        sellerId: precondSeller.id,
         agreedAmount: 1000n,
         currency: "IRR",
         transactionType: "SALE",
@@ -257,7 +265,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
 
     const testPayment = await db.payment.create({
       data: {
-        userId: buyerId,  // Payment.userId is required (non-null)
+        userId: precondBuyer.id,  // Payment.userId is required (non-null)
         orderId: testOrder.id,
         amount: 1000n,
         currency: "IRR",
@@ -301,6 +309,8 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
       await db.payment.delete({ where: { id: testPayment.id } }).catch((e) => { cleanupErrors.push(`payment: ${e}`); });
       await db.order.delete({ where: { id: testOrder.id } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
       await db.deal.delete({ where: { id: testDeal.id } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
+      await db.user.delete({ where: { id: precondSeller.id } }).catch((e) => { cleanupErrors.push(`seller: ${e}`); });
+      await db.user.delete({ where: { id: precondBuyer.id } }).catch((e) => { cleanupErrors.push(`buyer: ${e}`); });
       if (cleanupErrors.length > 0) {
         throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
