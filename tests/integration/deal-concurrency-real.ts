@@ -103,7 +103,10 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     listingId = listing.id;
     const deal = await db.deal.create({
       data: {
-        dealNumber: "FM-CONC-" + Date.now().toString(36),
+        // NOTE: shared long-lived fixture uses the "CONC-" prefix (NOT "FM-")
+        // so the FM-10 suite-end catch-all (startsWith "FM-") does not flag it.
+        // It is cleaned in afterAll, which runs AFTER FM-10.
+        dealNumber: "CONC-" + Date.now().toString(36),
         sourceType: "LISTING_OFFER",
         sourceId: "fm-concurrency",
         buyerId,
