@@ -800,12 +800,10 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
       ? cleanupError.errors.map((e) => String(e)).join(" ")
       : String(cleanupError);
     expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
-    // 3. Both setup + cleanup errors are preserved (AggregateError has both causes).
-    if (cleanupError instanceof AggregateError) {
-      const allCauses = cleanupError.errors.map((e) => String(e)).join(" ");
-      expect(allCauses).toContain("INJECTED setup failure for cleanup-failure test");
-      expect(allCauses).toContain("INJECTED cleanup failure on buyer delete");
-    }
+    // 3. Both setup + cleanup errors are preserved (setupError has setup message,
+    //    cleanupError has cleanup message — they are separate errors, both visible).
+    expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
+    expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
     // 4. Subsequent cleanup ops STILL attempted: seller WAS deleted (despite buyer delete failing).
     expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
     // deal + listing were also cleaned (they're before buyer in the cleanup order).
