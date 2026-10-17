@@ -93,8 +93,12 @@ export async function GET(
       },
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // STEP 13.31 P2-C FIX: do not leak raw err.message to client.
+    console.error("[api/deals/[id] GET] unexpected error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -148,42 +152,83 @@ export async function PATCH(
         (body as { cancelReason?: string }).cancelReason || null;
     }
 
-    const updated = await db.deal.update({ where: { id }, data: updateData });
+    // STEP 13.31 P2-A FIX: wrap deal.update + order.create in a single
+    // Serializable transaction so that:
+    //  1. If order.create fails, the deal update is rolled back (atomicity).
+    //  2. Concurrent CONFIRMED transitions cannot create duplicate orders:
+    //     we re-check for an existing order INSIDE the txn (the pre-update
+    //     `deal.order` fetch outside is stale by the time we create).
+    // The order.create uses dealId as a unique key (@unique on Order.dealId
+    // in the schema), so a concurrent insert would also be rejected by the
+    // unique constraint — the Serializable isolation + re-check is
+    // defense-in-depth.
+    const updated = await db
+      .$transaction(
+        async (tx) => {
+          const dealUpdated = await tx.deal.update({
+            where: { id },
+            data: updateData,
+          });
 
-    // If deal is confirmed and no order exists, create one
-    if (newStatus === "CONFIRMED" && !deal.order) {
-      const orderNumber = "ORD-" + Date.now().toString(36).toUpperCase();
-      const listing = deal.listingId
-        ? await db.listing.findUnique({
-            where: { id: deal.listingId },
-            select: { title: true },
-          })
-        : null;
+          // Only create an order if transitioning to CONFIRMED.
+          if (newStatus === "CONFIRMED") {
+            // Re-check for an existing order inside the txn (idempotency).
+            const existingOrder = await tx.order.findUnique({
+              where: { dealId: id },
+              select: { id: true },
+            });
 
-      await db.order.create({
-        data: {
-          orderNumber,
-          dealId: deal.id,
-          titleSnapshot: listing?.title || "Deal " + deal.dealNumber,
-          priceSnapshot: deal.agreedAmount || 0n,
-          currencySnapshot: deal.currency,
-          sellerSnapshot: deal.sellerId,
-          buyerSnapshot: deal.buyerId,
-          quantity: 1,
-          status: "CONFIRMED",
-          confirmedAt: new Date(),
+            if (!existingOrder) {
+              const orderNumber =
+                "ORD-" + Date.now().toString(36).toUpperCase();
+              const listing = deal.listingId
+                ? await tx.listing.findUnique({
+                    where: { id: deal.listingId },
+                    select: { title: true },
+                  })
+                : null;
+
+              await tx.order.create({
+                data: {
+                  orderNumber,
+                  dealId: deal.id,
+                  titleSnapshot: listing?.title || "Deal " + deal.dealNumber,
+                  priceSnapshot: deal.agreedAmount || 0n,
+                  currencySnapshot: deal.currency,
+                  sellerSnapshot: deal.sellerId,
+                  buyerSnapshot: deal.buyerId,
+                  quantity: 1,
+                  status: "CONFIRMED",
+                  confirmedAt: new Date(),
+                },
+              });
+
+              await logAudit({
+                actorId: userId,
+                actorType: "USER",
+                action: "order.created",
+                entityType: "Order",
+                after: { dealId: deal.id, status: "CONFIRMED" },
+                ip: getClientIp(req),
+              }).catch(() => {});
+            }
+          }
+
+          return dealUpdated;
         },
+        { isolationLevel: "Serializable" },
+      )
+      .catch((err: unknown) => {
+        // P2002 = unique constraint violation on Order.dealId (concurrent
+        // CONFIRMED created the order first). Treat as success — the deal
+        // was already confirmed + order already exists.
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("P2002") || msg.includes("Unique constraint")) {
+          // Return a minimal deal object; the caller only needs id + status.
+          return { id: deal.id, status: newStatus };
+        }
+        throw err;
       });
-
-      await logAudit({
-        actorId: userId,
-        actorType: "USER",
-        action: "order.created",
-        entityType: "Order",
-        after: { dealId: deal.id, status: "CONFIRMED" },
-        ip: getClientIp(req),
-      }).catch(() => {});
-    }
 
     await logAudit({
       actorId: userId,
@@ -202,7 +247,11 @@ export async function PATCH(
       status: updated.status,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // STEP 13.31 P2-C FIX: do not leak raw err.message to client.
+    console.error("[api/deals/[id] PATCH] unexpected error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

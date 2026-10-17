@@ -70,8 +70,17 @@ jobs:
       - name: Integration tests (real PostgreSQL — PR-SC-00 tenant-scoping negative tests)
         run: bunx tsx tests/integration/tenant-scope-real.ts
 
-      - name: Static contract tests (no DB dependency)
-        run: bunx vitest run tests/contract/auction-contract.test.ts tests/contract/buy-request-contract.test.ts tests/contract/dispute-contract.test.ts tests/contract/inspection-contract.test.ts tests/contract/machine-contract.test.ts tests/contract/part-contract.test.ts tests/contract/payment-contract.test.ts tests/contract/product-contract.test.ts tests/contract/resource-contract.test.ts tests/contract/rfq-contract.test.ts tests/contract/transport-contract.test.ts tests/contract/user-contract.test.ts tests/contract/r45-canonical-auth-contract.test.ts tests/unit/
+      - name: All contract + unit tests (STEP 13.31 P2-B: expanded from 13 to all 26 contract files)
+        run: bunx vitest run tests/contract/ tests/unit/
+
+      - name: Integration test files (real PostgreSQL)
+        run: bunx vitest run tests/integration/*.test.ts
+
+      - name: Phase integration tests (real PostgreSQL)
+        run: bunx vitest run tests/phase*.test.ts
+
+      - name: E2E smoke tests
+        run: bunx vitest run tests/e2e/
 
       - name: Production build
         run: bun run build

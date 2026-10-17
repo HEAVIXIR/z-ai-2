@@ -70,13 +70,16 @@ export async function GET(
     });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq/[id]/quotes GET] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
@@ -116,13 +119,16 @@ export async function POST(
     });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq/[id]/quotes POST] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

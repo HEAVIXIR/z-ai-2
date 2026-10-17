@@ -43,13 +43,16 @@ export async function GET(
     return NextResponse.json({ success: true, data: rfq });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq/[id] GET] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

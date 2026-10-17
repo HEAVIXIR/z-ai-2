@@ -92,8 +92,14 @@ export async function GET(req: Request) {
       })),
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // STEP 13.31 P2-C FIX: do not leak raw err.message to client
+    // (could expose DB connection strings, internal paths, library
+    // internals). Log server-side; return generic message.
+    console.error("[api/deals GET] unexpected error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -305,7 +311,13 @@ export async function POST(req: Request) {
       status: deal.status,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // STEP 13.31 P2-C FIX: do not leak raw err.message to client.
+    // (The inner $transaction catch handles DealAlreadyExistsError +
+    // P2034 with controlled messages; anything reaching here is unknown.)
+    console.error("[api/deals POST] unexpected error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
