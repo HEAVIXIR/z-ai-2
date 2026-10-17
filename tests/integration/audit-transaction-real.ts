@@ -242,10 +242,11 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
 
     const testPayment = await db.payment.create({
       data: {
+        userId: buyerId,  // Payment.userId is required (non-null)
         orderId: testOrder.id,
         amount: 1000n,
         currency: "IRR",
-        type: "PAYMENT",
+        type: "ORDER_PAYMENT",
         status: "REFUNDED", // precondition requires PAID or AUTHORIZED
         gateway: "test",
       },
