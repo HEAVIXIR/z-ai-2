@@ -94,11 +94,11 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
     // Cleanup
     if (dealId) {
       await db.order.deleteMany({ where: { dealId } });
-      await db.deal.delete({ where: { id: dealId } }).catch(() => {});
+      await db.deal.delete({ where: { id: dealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
     }
-    if (listingId) await db.listing.delete({ where: { id: listingId } }).catch(() => {});
-    if (buyerId) await db.user.delete({ where: { id: buyerId } }).catch(() => {});
-    if (sellerId) await db.user.delete({ where: { id: sellerId } }).catch(() => {});
+    if (listingId) await db.listing.delete({ where: { id: listingId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+    if (buyerId) await db.user.delete({ where: { id: buyerId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+    if (sellerId) await db.user.delete({ where: { id: sellerId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
   });
 
   it("two concurrent CONFIRMED → exactly one 200, one 409", async () => {
@@ -245,7 +245,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       // Restore original $transaction
       (realDb as any).$transaction = originalTransaction;
       // Cleanup
-      await db.deal.delete({ where: { id: rollbackDeal.id } }).catch(() => {});
+      await db.deal.delete({ where: { id: rollbackDeal.id } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
     }
   });
 
@@ -320,7 +320,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         confirmedAt: orderBefore!.confirmedAt,
       });
     } finally {
-      // STEP 13.41: visible cleanup — no .catch(()=>{}), errors logged
+      // STEP 13.41: visible cleanup — cleanup failure throws
       if (cancelledOrderId) {
         try { await db.order.delete({ where: { id: cancelledOrderId } }); }
         catch (e) { throw new Error(`Cleanup failed (order): ${e}`); }
@@ -491,8 +491,8 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       (realDb as any).$transaction = originalTransaction;
       if (testDealId) {
         // Cleanup failure → throw (test FAILS, not just log)
-        await db.order.deleteMany({ where: { dealId: testDealId } }).catch(() => {});
-        await db.deal.delete({ where: { id: testDealId } }).catch(() => {});
+        await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
       }
     }
 
