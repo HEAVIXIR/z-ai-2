@@ -36,6 +36,7 @@
     "db:seed-rbac": "tsx prisma/seed-rbac.ts",
     "db:seed-user-roles": "tsx prisma/seed-user-roles.ts",
     "db:seed-test-fixtures": "tsx prisma/seed-test-fixtures.ts",
+    "db:seed-phase-catalog": "tsx prisma/seed-phase-catalog.ts",
     "db:seed-ai-policies": "tsx prisma/seed-ai-policies.ts",
     "db:seed-prices": "tsx prisma/seed-price-records.ts",
     "db:seed-price-observations": "tsx prisma/seed-price-observations.ts",

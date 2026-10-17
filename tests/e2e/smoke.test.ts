@@ -106,7 +106,8 @@ describe("Smoke — E2E + security vitest configs exist", () => {
   it("vitest.security.config.ts exists and targets tests/security/**", () => {
     const cfgPath = path.join(ROOT, "vitest.security.config.ts");
     expect(exists(cfgPath)).toBe(true);
-    expect(read(cfgPath)).toMatch(/tests\/security\/\*\*\/\*\.test\.ts/);
+    // STEP 13.35 P2-B: updated to accept .test.{ts,tsx} glob (JSX security tests)
+    expect(read(cfgPath)).toMatch(/tests\/security\/\*\*\/\*\.test\.\{ts,tsx\}/);
   });
 
   it("package.json wires test:e2e + test:security scripts", () => {
