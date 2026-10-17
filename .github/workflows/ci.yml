@@ -85,6 +85,8 @@ jobs:
         run: bunx vitest run tests/e2e/
       - name: Production build
         run: bun run build
+      - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-real-server-http.ts
 
   # ── REQUIRED CHECK: audit-transaction-real (independent job, real status) ──
   # STEP 13.53 Phase F: this check IS in required_status_checks for branch main
