@@ -320,14 +320,16 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         confirmedAt: orderBefore!.confirmedAt,
       });
     } finally {
-      // STEP 13.41: visible cleanup — cleanup failure throws
+      // STEP 13.46: try ALL deletions independently, collect errors, throw at end
+      const cleanupErrors: string[] = [];
       if (cancelledOrderId) {
-        try { await db.order.delete({ where: { id: cancelledOrderId } }); }
-        catch (e) { throw new Error(`Cleanup failed (order): ${e}`); }
+        await db.order.delete({ where: { id: cancelledOrderId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
       }
       if (testDealId) {
-        try { await db.deal.delete({ where: { id: testDealId } }); }
-        catch (e) { throw new Error(`Cleanup failed (deal): ${e}`); }
+        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
+      }
+      if (cleanupErrors.length > 0) {
+        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
     }
   });
@@ -402,13 +404,16 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         confirmedAt: orderBefore!.confirmedAt,
       });
     } finally {
+      // STEP 13.46: try ALL deletions independently, collect errors, throw at end
+      const cleanupErrors: string[] = [];
       if (completedOrderId) {
-        try { await db.order.delete({ where: { id: completedOrderId } }); }
-        catch (e) { throw new Error(`Cleanup failed (order): ${e}`); }
+        await db.order.delete({ where: { id: completedOrderId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
       }
       if (testDealId) {
-        try { await db.deal.delete({ where: { id: testDealId } }); }
-        catch (e) { throw new Error(`Cleanup failed (deal): ${e}`); }
+        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
+      }
+      if (cleanupErrors.length > 0) {
+        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
     }
   });
@@ -487,12 +492,15 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       const orderCount = await db.order.count({ where: { dealId: testDeal.id } });
       expect(orderCount).toBe(0);
     } finally {
-      // STEP 13.44: restore $transaction AND cleanup — both in finally
+      // STEP 13.46: restore $transaction AND cleanup — try ALL deletions independently
       (realDb as any).$transaction = originalTransaction;
+      const cleanupErrors: string[] = [];
       if (testDealId) {
-        // Cleanup failure → throw (test FAILS, not just log)
-        await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
-        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+        await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
+        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
+      }
+      if (cleanupErrors.length > 0) {
+        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
     }
 
