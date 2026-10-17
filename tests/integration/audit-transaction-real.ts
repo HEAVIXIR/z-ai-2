@@ -231,7 +231,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     const testOrder = await db.order.create({
       data: {
         orderNumber: "ORD-PRECOND-" + Date.now().toString(36),
-        dealId: "precondition-test-deal-" + Date.now(),
+        // dealId is optional — no Deal needed for this test
         titleSnapshot: "Precondition Test",
         priceSnapshot: 1000n,
         currencySnapshot: "IRR",
