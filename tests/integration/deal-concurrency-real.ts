@@ -433,10 +433,12 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
   // 3. 0 orders exist (rolled back)
   // 4. After cleanup, deal ABSENT from DB
   it("PATCH: order.create fails inside transaction → deal rolled back + 0 orders (real DB proof)", async () => {
-    // STEP 13.44: deal creation INSIDE try/finally so cleanup covers ALL paths
+    // STEP 13.48: deal creation INSIDE try, primary error captured,
+    // cleanup uses AggregateError to preserve BOTH errors
     let testDealId: string | undefined;
     const { db: realDb } = await import("@/lib/db");
     const originalTransaction = realDb.$transaction.bind(realDb);
+    let primaryError: Error | null = null;
 
     try {
       const testDeal = await db.deal.create({
@@ -495,20 +497,29 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       // 3. Verify 0 orders
       const orderCount = await db.order.count({ where: { dealId: testDeal.id } });
       expect(orderCount).toBe(0);
+    } catch (e) {
+      // STEP 13.48: capture primary error — don't let finally mask it
+      primaryError = e as Error;
+      throw e;
     } finally {
-      // STEP 13.47: restore $transaction AND cleanup — independent, doesn't mask primary error
+      // STEP 13.48: restore $transaction AND cleanup
+      // Use independent deletions + AggregateError to preserve BOTH errors
       (realDb as any).$transaction = originalTransaction;
       const cleanupErrors: string[] = [];
       if (testDealId) {
         await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
         await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
       }
-      // Note: if primary test assertion threw, that error propagates first.
-      // Cleanup errors are only thrown if no primary error occurred.
-      // If both occurred, vitest reports the primary error (thrown from try block).
       if (cleanupErrors.length > 0) {
-        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
+        const cleanupMsg = `Cleanup failed: ${cleanupErrors.join("; ")}`;
+        if (primaryError) {
+          // BOTH primary and cleanup errors — use AggregateError to preserve both
+          throw new AggregateError([primaryError, new Error(cleanupMsg)], "Primary test error + cleanup error");
+        } else {
+          throw new Error(cleanupMsg);
+        }
       }
+      // If only primary error (no cleanup errors), it was already rethrown in catch
     }
 
     // 4. Verify deal ABSENT from DB after cleanup
