@@ -481,16 +481,21 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     expect(deal1Attempted).toBe(true);
     // deal2 deletion WAS STILL attempted despite deal1's failure.
     expect(deal2Attempted).toBe(true);
-    // Cleanup reported the error (no silent success).
+    // Cleanup reported the error (no silent success). Assert on the AggregateError's
+    // inner .errors — String(AggregateError) only surfaces the top message, not sub-errors.
     expect(cleanupError).toBeInstanceOf(AggregateError);
-    expect(String(cleanupError)).toContain("SIMULATED deletion failure FM-03");
+    const agg03 = (cleanupError as AggregateError).errors.map((e) => String(e));
+    expect(agg03.some((m) => m.includes("SIMULATED deletion failure FM-03"))).toBe(true);
 
-    // Independent DB verification: deal1 STILL EXISTS (its delete genuinely failed), deal2 GONE.
-    expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeTruthy();
-    expect(await db.deal.findUnique({ where: { id: deal2.id }, select: { id: true } })).toBeNull();
-
-    // Real cleanup of deal1 (survived the failed delete) — FM-10 per-scenario.
-    await origDelete({ where: { id: deal1.id } }).catch(() => {});
+    // Guarantee deal1 cleanup even if an assertion below throws (FM-10 per-scenario).
+    try {
+      // Independent DB verification: deal1 STILL EXISTS (its delete genuinely failed), deal2 GONE.
+      expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeTruthy();
+      expect(await db.deal.findUnique({ where: { id: deal2.id }, select: { id: true } })).toBeNull();
+    } finally {
+      // Real cleanup of deal1 (survived the failed delete).
+      await origDelete({ where: { id: deal1.id } }).catch(() => {});
+    }
     expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeNull();
   });
 
@@ -521,8 +526,10 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
       }
 
       // FM-04: cleanup failure was REPORTED (AggregateError), not silent success.
+      // Assert on inner .errors — String(AggregateError) only surfaces the top message.
       expect(cleanupError).toBeInstanceOf(AggregateError);
-      expect(String(cleanupError)).toContain("SIMULATED cleanup-only failure FM-04");
+      const agg04 = (cleanupError as AggregateError).errors.map((e) => String(e));
+      expect(agg04.some((m) => m.includes("SIMULATED cleanup-only failure FM-04"))).toBe(true);
 
       // Independent DB verification: deal STILL EXISTS (the failed cleanup did not delete it).
       expect(await db.deal.findUnique({ where: { id: testDeal.id }, select: { id: true } })).toBeTruthy();
