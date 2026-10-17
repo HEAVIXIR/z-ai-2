@@ -84,9 +84,9 @@ jobs:
       - name: Production build
         run: bun run build
 
-  # ── INFORMATIONAL: audit-transaction-real (independent job, real status) ──
-  # Pre-existing failure in scenario 4. Shows REAL failure status.
-  # NOT in required_status_checks — does not block merge.
+  # ── REQUIRED CHECK: audit-transaction-real (independent job, real status) ──
+  # STEP 13.53 Phase F: this check IS in required_status_checks for branch main
+  # (alongside verify and phase-tests). A failure blocks merge.
   audit-transaction:
     runs-on: ubuntu-latest
     services:
@@ -137,11 +137,12 @@ jobs:
       - name: audit-transaction-real (real status, no masking)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/audit-transaction-real.ts
 
-  # ── INFORMATIONAL: Phase tests (independent job, real status) ──
-  # STEP 13.53 Phase C (P2-B): now seeded by `db:seed-phase-catalog`
-  # so the phase1..phase9 contract tests have the catalog/marketplace/
-  # location/moderation/deal/search data they assert against.
-  # Shows REAL failure status. NOT in required_status_checks.
+  # ── REQUIRED CHECK: Phase tests (independent job, real status) ──
+  # STEP 13.53 Phase C (P2-B): seeded by `db:seed-phase-catalog` so phase1..phase9
+  # contract tests have the catalog/marketplace/location/moderation/deal/search
+  # data they assert against.
+  # STEP 13.53 Phase F: this check IS in required_status_checks for branch main
+  # (alongside verify and audit-transaction). A failure blocks merge.
   phase-tests:
     runs-on: ubuntu-latest
     services:
