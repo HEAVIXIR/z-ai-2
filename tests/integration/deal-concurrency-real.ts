@@ -14,7 +14,15 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+
+// Mock auth so the route handler can use getCurrentUserId without a session
+const mockGetCurrentUserId = vi.fn();
+vi.mock("@/lib/auth", () => ({
+  getCurrentUserId: mockGetCurrentUserId,
+  getCurrentUser: vi.fn(),
+}));
+vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/request-context", () => ({ getClientIp: () => "127.0.0.1" }));
 
 const RUN =
   process.env.DATABASE_URL?.startsWith("postgresql://") ||
@@ -100,8 +108,8 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
     const { PATCH } = await import("@/app/api/deals/[id]/route");
 
     // Mock auth to return the buyer
-    const authModule = await import("@/lib/auth");
-    vi.mocked(authModule.getCurrentUserId).mockResolvedValue(buyerId);
+    
+    mockGetCurrentUserId.mockResolvedValue(buyerId);
 
     const makeReq = () =>
       new Request(`http://localhost/api/deals/${dealId}`, {
@@ -148,8 +156,8 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
 
   it("third CONFIRMED request (after already confirmed) → 409 (invalid transition)", async () => {
     const { PATCH } = await import("@/app/api/deals/[id]/route");
-    const authModule = await import("@/lib/auth");
-    vi.mocked(authModule.getCurrentUserId).mockResolvedValue(buyerId);
+    
+    mockGetCurrentUserId.mockResolvedValue(buyerId);
 
     const res = await PATCH(
       new Request(`http://localhost/api/deals/${dealId}`, {
