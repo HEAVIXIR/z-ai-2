@@ -64,6 +64,12 @@ jobs:
       - name: Seed RBAC (roles + permissions for integration tests)
         run: bun run db:seed-rbac
 
+      - name: Seed catalog data (brands + test fixtures for contract/phase tests)
+        run: |
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-test-fixtures || true
+
       - name: Security tests
         run: bun run test:security
 
