@@ -433,14 +433,17 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
   // 3. 0 orders exist (rolled back)
   // 4. After cleanup, deal ABSENT from DB
   it("PATCH: order.create fails inside transaction → deal rolled back + 0 orders (real DB proof)", async () => {
-    // STEP 13.48: deal creation INSIDE try, primary error captured,
-    // cleanup uses AggregateError to preserve BOTH errors
+    // STEP 13.50: ALL setup inside try/finally — no state creation outside
     let testDealId: string | undefined;
-    const { db: realDb } = await import("@/lib/db");
-    const originalTransaction = realDb.$transaction.bind(realDb);
+    let realDb: any;
+    let originalTransaction: any;
     let primaryError: Error | null = null;
 
     try {
+      // ALL imports and setup INSIDE try
+      realDb = (await import("@/lib/db")).db;
+      originalTransaction = realDb.$transaction.bind(realDb);
+
       const testDeal = await db.deal.create({
         data: {
           dealNumber: "PATCHROLL-" + Date.now().toString(36),
@@ -460,7 +463,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       expect(dealBefore?.status).toBe("PENDING_CONFIRMATION");
 
       // Intercept db.$transaction: make tx.order.create throw inside PATCH
-      (realDb as any).$transaction = async (cb: any, opts?: any) => {
+      realDb.$transaction = async (cb: any, opts?: any) => {
         return originalTransaction(async (tx: any) => {
           tx.order.create = async () => {
             throw new Error("SIMULATED order.create failure inside PATCH transaction");
@@ -498,13 +501,14 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       const orderCount = await db.order.count({ where: { dealId: testDeal.id } });
       expect(orderCount).toBe(0);
     } catch (e) {
-      // STEP 13.48: capture primary error — don't let finally mask it
       primaryError = e as Error;
       throw e;
     } finally {
-      // STEP 13.48: restore $transaction AND cleanup
-      // Use independent deletions + AggregateError to preserve BOTH errors
-      (realDb as any).$transaction = originalTransaction;
+      // Restore $transaction if it was overridden
+      if (realDb && originalTransaction) {
+        realDb.$transaction = originalTransaction;
+      }
+      // Independent cleanup — collect all errors
       const cleanupErrors: string[] = [];
       if (testDealId) {
         await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
@@ -513,13 +517,11 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       if (cleanupErrors.length > 0) {
         const cleanupMsg = `Cleanup failed: ${cleanupErrors.join("; ")}`;
         if (primaryError) {
-          // BOTH primary and cleanup errors — use AggregateError to preserve both
           throw new AggregateError([primaryError, new Error(cleanupMsg)], "Primary test error + cleanup error");
         } else {
           throw new Error(cleanupMsg);
         }
       }
-      // If only primary error (no cleanup errors), it was already rethrown in catch
     }
 
     // 4. Verify deal ABSENT from DB after cleanup
