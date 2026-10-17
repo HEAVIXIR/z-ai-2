@@ -86,7 +86,7 @@ jobs:
         run: bunx tsx tests/integration/payment-concurrency-real.ts
 
       - name: Integration — audit-transaction-real (blocking, real PostgreSQL)
-        run: bunx vitest run tests/integration/audit-transaction-real.ts
+        run: bunx vitest run --include 'tests/integration/audit-transaction-real.ts'
 
       - name: Integration test files (blocking, real PostgreSQL)
         run: bunx vitest run tests/integration/*.test.ts
