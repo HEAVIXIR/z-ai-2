@@ -117,12 +117,15 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     ids: SetupIds;
   }): Promise<{ setupError: Error | null; cleanupError: Error | null }> {
     const { ids } = opts;
+    // Unique suffix per call so multiple FM-SETUP invocations don't collide on @unique
+    // email/mobile (each test calls setupSharedFixtures once; the suffix isolates them).
+    const suffix = opts.failAfter ? `-${opts.failAfter}-${Date.now()}` : "";
     let setupError: Error | null = null;
     try {
       const buyer = await db.user.create({
         data: {
-          mobile: opts.failAfter === "buyer" ? "09129990061" : "09129990001",
-          email: opts.failAfter ? "fm-setupfail-buyer@test.com" : "fm-buyer@test.com",
+          mobile: opts.failAfter ? `09129990${opts.failAfter === "buyer" ? "61" : opts.failAfter === "seller" ? "62" : "63"}` : "09129990001",
+          email: opts.failAfter ? `fm-setupfail-buyer${suffix}@test.com` : "fm-buyer@test.com",
           firstName: "FM", lastName: "Buyer", passwordHash: "hash",
         },
       });
@@ -131,8 +134,8 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       const seller = await db.user.create({
         data: {
-          mobile: opts.failAfter === "seller" ? "09129990062" : "09129990002",
-          email: opts.failAfter ? "fm-setupfail-seller@test.com" : "fm-seller@test.com",
+          mobile: opts.failAfter ? `09129990${opts.failAfter === "seller" ? "72" : opts.failAfter === "listing" ? "73" : "71"}` : "09129990002",
+          email: opts.failAfter ? `fm-setupfail-seller${suffix}@test.com` : "fm-seller@test.com",
           firstName: "FM", lastName: "Seller", passwordHash: "hash",
         },
       });
@@ -141,7 +144,7 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       const listing = await db.listing.create({
         data: {
-          slug: (opts.failAfter ? "fm-setupfail-listing-" : "fm-listing-") + Date.now(),
+          slug: (opts.failAfter ? `fm-setupfail-listing${suffix}-` : "fm-listing-") + Date.now(),
           title: "FM Test Listing", sellerId: ids.sellerId!, sellerName: "FM Seller",
           status: "PUBLISHED", price: 500000000n,
         },
@@ -579,14 +582,13 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
       fm03Primary = e as Error;
     }
     // STEP 13.53 P2-A finding #1/#3 (dellk00k): recovery cleanup must NOT swallow errors.
-    // Real recovery delete of deal1/deal2 (deal1 survived the injected failure; deal2 was
-    // deleted during cleanup but we re-attempt to be safe) + absence check. By this point
-    // the db.deal.delete override is already restored (inner finally), so db.deal.delete is
+    // Real recovery delete of deal1 ONLY (it survived the injected failure; deal2 was
+    // already deleted during the independentCleanup above). By this point the
+    // db.deal.delete override is already restored (inner finally), so db.deal.delete is
     // the real Prisma client. Errors collected via finalizeCollecting, combined with any
     // primary error via throwCombined.
     const fm03FinalizeErrors = await finalizeCollecting([
       () => (deal1Id ? db.deal.delete({ where: { id: deal1Id } }) : Promise.resolve()),
-      () => (deal2Id ? db.deal.delete({ where: { id: deal2Id } }) : Promise.resolve()),
       async () => { if (deal1Id) expect(await db.deal.findUnique({ where: { id: deal1Id }, select: { id: true } })).toBeNull(); },
       async () => { if (deal2Id) expect(await db.deal.findUnique({ where: { id: deal2Id }, select: { id: true } })).toBeNull(); },
     ]);
@@ -718,8 +720,9 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     expect(ids.sellerId).toBeUndefined();
     expect(ids.listingId).toBeUndefined();
     expect(ids.dealId).toBeUndefined();
-    // Independent PostgreSQL verification: the buyer created before the failure was CLEANED.
-    expect(await db.user.findUnique({ where: { email: "fm-setupfail-buyer@test.com" }, select: { id: true } })).toBeNull();
+    // Independent PostgreSQL verification: the buyer created before the failure was CLEANED
+    // (look up by the tracked id — stronger than email-prefix match).
+    expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
   });
 
   it("FM-SETUP real shared-path: failure after seller → both users cleaned, no orphans (independent PostgreSQL proof)", async () => {
@@ -730,9 +733,9 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     expect(ids.buyerId).toBeTruthy();
     expect(ids.sellerId).toBeTruthy();
     expect(ids.listingId).toBeUndefined(); // listing not created (failure before it)
-    // Independent PostgreSQL verification: both users cleaned.
-    expect(await db.user.findUnique({ where: { email: "fm-setupfail-buyer@test.com" }, select: { id: true } })).toBeNull();
-    expect(await db.user.findUnique({ where: { email: "fm-setupfail-seller@test.com" }, select: { id: true } })).toBeNull();
+    // Independent PostgreSQL verification: both users cleaned (by tracked id).
+    expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
+    expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
   });
 
   it("FM-SETUP real shared-path: failure after listing → all 3 fixtures cleaned, no orphans (independent PostgreSQL proof)", async () => {
@@ -744,10 +747,10 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     expect(ids.sellerId).toBeTruthy();
     expect(ids.listingId).toBeTruthy();
     expect(ids.dealId).toBeUndefined(); // deal not created (failure before it)
-    // Independent PostgreSQL verification: all 3 fixtures cleaned.
-    expect(await db.user.findUnique({ where: { email: "fm-setupfail-buyer@test.com" }, select: { id: true } })).toBeNull();
-    expect(await db.user.findUnique({ where: { email: "fm-setupfail-seller@test.com" }, select: { id: true } })).toBeNull();
-    expect(await db.listing.findFirst({ where: { slug: { startsWith: "fm-setupfail-listing-" } }, select: { id: true } })).toBeNull();
+    // Independent PostgreSQL verification: all 3 fixtures cleaned (by tracked id).
+    expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
+    expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
+    expect(await db.listing.findUnique({ where: { id: ids.listingId! }, select: { id: true } })).toBeNull();
   });
 
   // ── FM-10: suite-end independent verification — no test fixtures remain in PostgreSQL ──
