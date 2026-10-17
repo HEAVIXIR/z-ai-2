@@ -26,6 +26,9 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { db } from "@/lib/db";
+// STEP 13.49: import resource-index to register all admin resources
+// (executeAction relies on the registry being populated)
+import "@/lib/admin/resource-index";
 
 // Skip the entire suite if DATABASE_URL is not set (CI without DB).
 const RUN_TESTS = !!process.env.DATABASE_URL;
