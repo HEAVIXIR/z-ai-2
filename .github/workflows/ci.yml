@@ -64,10 +64,11 @@ jobs:
       - name: Seed RBAC (roles + permissions for integration tests)
         run: bun run db:seed-rbac
 
-      - name: Seed catalog data (brands + test fixtures for contract/integration tests)
+      - name: Seed catalog data (brands + user-roles + test fixtures for contract/integration tests)
         run: |
           bun run db:seed-brands-a
           bun run db:seed-brands-b
+          bun run db:seed-user-roles
           bun run db:seed-test-fixtures
 
       # ── BLOCKING test suites (any failure fails the workflow) ──
