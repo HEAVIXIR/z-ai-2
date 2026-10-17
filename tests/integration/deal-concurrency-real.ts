@@ -63,73 +63,139 @@ async function independentCleanup(
   if (primaryError) throw primaryError;
 }
 
-describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", () => {
-  let dealId: string;
-  let buyerId: string;
-  let sellerId: string;
-  let listingId: string;
+/**
+ * Finalize helper: runs cleanup ops AND absence-check ops, collecting EVERY error
+ * (cleanup failures + absence-assertion failures) WITHOUT swallowing any. Returns
+ * the collected errors so the caller can combine them with a primary error and throw
+ * a single AggregateError that preserves all causes. A failure on one op NEVER
+ * prevents the remaining ops from being attempted.
+ *
+ * This is the counterpart to independentCleanup for the recovery phase: it does NOT
+ * throw by itself, so the caller controls how errors are surfaced (combined with a
+ * primary error, rethrown, etc.).
+ */
+async function finalizeCollecting(ops: Array<() => Promise<unknown>>): Promise<Error[]> {
+  const errors: Error[] = [];
+  for (const op of ops) {
+    try {
+      await op();
+    } catch (e) {
+      errors.push(e as Error);
+    }
+  }
+  return errors;
+}
 
+/** Combine a primary error (if any) with finalize errors into a single thrown AggregateError. */
+function throwCombined(primaryError: Error | null, finalizeErrors: Error[], label: string): void {
+  if (primaryError && finalizeErrors.length > 0) {
+    throw new AggregateError([primaryError, ...finalizeErrors], `${label}: primary + finalize error(s)`);
+  }
+  if (finalizeErrors.length > 0) {
+    throw new AggregateError(finalizeErrors, `${label}: finalize error(s)`);
+  }
+  if (primaryError) throw primaryError;
+}
+
+describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", () => {
+  let dealId: string | undefined;
+  let buyerId: string | undefined;
+  let sellerId: string | undefined;
+  let listingId: string | undefined;
+
+  // STEP 13.53 P2-A finding #2 (dellk00k): beforeAll is failure-safe.
+  // Each created ID is tracked immediately. If an intermediate create fails,
+  // independent cleanup of every successfully-created fixture is attempted,
+  // and BOTH the setup error and any cleanup errors are preserved (AggregateError).
   beforeAll(async () => {
-    const buyer = await db.user.create({
-      data: {
-        mobile: "09129990001",
-        email: "fm-buyer@test.com",
-        firstName: "FM",
-        lastName: "Buyer",
-        passwordHash: "hash",
-      },
-    });
-    buyerId = buyer.id;
-    const seller = await db.user.create({
-      data: {
-        mobile: "09129990002",
-        email: "fm-seller@test.com",
-        firstName: "FM",
-        lastName: "Seller",
-        passwordHash: "hash",
-      },
-    });
-    sellerId = seller.id;
-    const listing = await db.listing.create({
-      data: {
-        slug: "fm-listing-" + Date.now(),
-        title: "FM Test Listing",
-        sellerId,
-        sellerName: "FM Seller",
-        status: "PUBLISHED",
-        price: 500000000n,
-      },
-    });
-    listingId = listing.id;
-    const deal = await db.deal.create({
-      data: {
-        // NOTE: shared long-lived fixture uses the "CONC-" prefix (NOT "FM-")
-        // so the FM-10 suite-end catch-all (startsWith "FM-") does not flag it.
-        // It is cleaned in afterAll, which runs AFTER FM-10.
-        dealNumber: "CONC-" + Date.now().toString(36),
-        sourceType: "LISTING_OFFER",
-        sourceId: "fm-concurrency",
-        buyerId,
-        sellerId,
-        listingId,
-        agreedAmount: 500000000n,
-        currency: "IRR",
-        transactionType: "SALE",
-        status: "PENDING_CONFIRMATION",
-        agreedAt: new Date(),
-      },
-    });
-    dealId = deal.id;
+    let setupError: Error | null = null;
+    try {
+      const buyer = await db.user.create({
+        data: {
+          mobile: "09129990001",
+          email: "fm-buyer@test.com",
+          firstName: "FM",
+          lastName: "Buyer",
+          passwordHash: "hash",
+        },
+      });
+      buyerId = buyer.id; // tracked immediately
+      const seller = await db.user.create({
+        data: {
+          mobile: "09129990002",
+          email: "fm-seller@test.com",
+          firstName: "FM",
+          lastName: "Seller",
+          passwordHash: "hash",
+        },
+      });
+      sellerId = seller.id; // tracked immediately
+      const listing = await db.listing.create({
+        data: {
+          slug: "fm-listing-" + Date.now(),
+          title: "FM Test Listing",
+          sellerId,
+          sellerName: "FM Seller",
+          status: "PUBLISHED",
+          price: 500000000n,
+        },
+      });
+      listingId = listing.id; // tracked immediately
+      const deal = await db.deal.create({
+        data: {
+          // NOTE: shared long-lived fixture uses the "CONC-" prefix (NOT "FM-")
+          // so the FM-10 suite-end catch-all (startsWith "FM-") does not flag it.
+          // It is cleaned in afterAll, which runs AFTER FM-10.
+          dealNumber: "CONC-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER",
+          sourceId: "fm-concurrency",
+          buyerId,
+          sellerId,
+          listingId,
+          agreedAmount: 500000000n,
+          currency: "IRR",
+          transactionType: "SALE",
+          status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      });
+      dealId = deal.id; // tracked immediately
+    } catch (e) {
+      setupError = e as Error;
+    }
+
+    // If setup failed part-way, attempt independent cleanup of EVERY successfully-created
+    // fixture. Cleanup errors are preserved alongside the setup error (NOT swallowed).
+    if (setupError) {
+      let cleanupError: Error | null = null;
+      try {
+        await independentCleanup([
+          () => (dealId ? db.order.deleteMany({ where: { dealId } }) : Promise.resolve()),
+          () => (dealId ? db.deal.delete({ where: { id: dealId } }) : Promise.resolve()),
+          () => (listingId ? db.listing.delete({ where: { id: listingId } }) : Promise.resolve()),
+          () => (buyerId ? db.user.delete({ where: { id: buyerId } }) : Promise.resolve()),
+          () => (sellerId ? db.user.delete({ where: { id: sellerId } }) : Promise.resolve()),
+        ]);
+      } catch (e) {
+        cleanupError = e as Error;
+      }
+      // Both setup and cleanup errors visible (AggregateError). No swallowing.
+      if (cleanupError) {
+        throw new AggregateError([setupError, cleanupError], "beforeAll setup + cleanup");
+      }
+      throw setupError;
+    }
   });
 
   afterAll(async () => {
-    // Independent cleanup of the shared concurrency fixture.
+    // Independent cleanup of the shared concurrency fixture. Guards against undefined IDs
+    // (if beforeAll partially failed, the relevant IDs are undefined and skipped).
     await independentCleanup([
-      () => db.order.deleteMany({ where: { dealId } }),
-      () => db.deal.delete({ where: { id: dealId } }),
-      () => db.listing.delete({ where: { id: listingId } }),
-      () => db.user.delete({ where: { id: buyerId } }),
-      () => db.user.delete({ where: { id: sellerId } }),
+      () => (dealId ? db.order.deleteMany({ where: { dealId } }) : Promise.resolve()),
+      () => (dealId ? db.deal.delete({ where: { id: dealId } }) : Promise.resolve()),
+      () => (listingId ? db.listing.delete({ where: { id: listingId } }) : Promise.resolve()),
+      () => (buyerId ? db.user.delete({ where: { id: buyerId } }) : Promise.resolve()),
+      () => (sellerId ? db.user.delete({ where: { id: sellerId } }) : Promise.resolve()),
     ]);
   });
 
@@ -490,21 +556,32 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
     const agg03 = (cleanupError as AggregateError).errors.map((e) => String(e));
     expect(agg03.some((m) => m.includes("SIMULATED deletion failure FM-03"))).toBe(true);
 
-    // Guarantee deal1 cleanup even if an assertion below throws (FM-10 per-scenario).
+    // STEP 13.53 P2-A finding #1/#3 (dellk00k): recovery cleanup must NOT swallow errors.
+    // The recovery delete of deal1 (which survived the injected failure) plus the absence
+    // check are run via finalizeCollecting — every error is collected, then combined with
+    // any primary assertion error and thrown as a single AggregateError. No .catch(()=>{}).
+    let fm03Primary: Error | null = null;
     try {
       // Independent DB verification: deal1 STILL EXISTS (its delete genuinely failed), deal2 GONE.
       expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeTruthy();
       expect(await db.deal.findUnique({ where: { id: deal2.id }, select: { id: true } })).toBeNull();
-    } finally {
-      // Real cleanup of deal1 (survived the failed delete).
-      await origDelete({ where: { id: deal1.id } }).catch(() => {});
+    } catch (e) {
+      fm03Primary = e as Error;
     }
-    expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeNull();
+    // Real recovery cleanup of deal1 + absence verification — errors collected, not swallowed.
+    const fm03FinalizeErrors = await finalizeCollecting([
+      () => origDelete({ where: { id: deal1.id } }),
+      async () => { expect(await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } })).toBeNull(); },
+    ]);
+    throwCombined(fm03Primary, fm03FinalizeErrors, "FM-03 recovery");
   });
 
   // ── FM-04: cleanup-only failure — primary succeeds, cleanup fails → error reported (no silent success) ──
   it("FM-04 primary succeeds but cleanup deletion fails → cleanup error reported, not converted to false success", async () => {
     let testDealId: string | undefined;
+    // STEP 13.53 P2-A finding #1/#3: capture primary error so it is preserved alongside
+    // any recovery-cleanup error (no swallowing). throwCombined surfaces both.
+    let fm04Primary: Error | null = null;
     try {
       const testDeal = await makeDeal("FM-CLONLY", 120000000n);
       testDealId = testDeal.id;
@@ -536,17 +613,25 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       // Independent DB verification: deal STILL EXISTS (the failed cleanup did not delete it).
       expect(await db.deal.findUnique({ where: { id: testDeal.id }, select: { id: true } })).toBeTruthy();
-    } finally {
-      // Real cleanup so no orphan — FM-10 per-scenario.
-      if (testDealId) await db.deal.delete({ where: { id: testDealId } }).catch(() => {});
-      expect(await db.deal.findUnique({ where: { id: testDealId! }, select: { id: true } })).toBeNull();
+    } catch (e) {
+      fm04Primary = e as Error;
     }
+    // Recovery cleanup + absence verification — errors collected, not swallowed.
+    // Combined with any primary error so BOTH remain visible.
+    const fm04FinalizeErrors = await finalizeCollecting([
+      () => (testDealId ? db.deal.delete({ where: { id: testDealId } }) : Promise.resolve()),
+      async () => { expect(await db.deal.findUnique({ where: { id: testDealId! }, select: { id: true } })).toBeNull(); },
+    ]);
+    throwCombined(fm04Primary, fm04FinalizeErrors, "FM-04 recovery");
   });
 
   // ── FM-05: assertion + cleanup simultaneous failure → both errors preserved (AggregateError) ──
   it("FM-05 primary assertion failure + cleanup failure → AggregateError preserves BOTH causes", async () => {
     let testDealId: string | undefined;
     let primaryError: Error | null = null;
+    // STEP 13.53 P2-A finding #1/#3: capture any error from the body (including the
+    // inner assertion checks) so it is preserved alongside recovery-cleanup errors.
+    let fm05Primary: Error | null = null;
     try {
       const testDeal = await makeDeal("FM-BOTH", 130000000n);
       testDealId = testDeal.id;
@@ -583,10 +668,75 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       // Independent DB verification: deal STILL EXISTS (cleanup genuinely failed).
       expect(await db.deal.findUnique({ where: { id: testDeal.id }, select: { id: true } })).toBeTruthy();
-    } finally {
-      if (testDealId) await db.deal.delete({ where: { id: testDealId } }).catch(() => {});
-      expect(await db.deal.findUnique({ where: { id: testDealId! }, select: { id: true } })).toBeNull();
+    } catch (e) {
+      fm05Primary = e as Error;
     }
+    // Recovery cleanup + absence verification — errors collected, not swallowed.
+    // Combined with any body error so ALL causes remain visible.
+    const fm05FinalizeErrors = await finalizeCollecting([
+      () => (testDealId ? db.deal.delete({ where: { id: testDealId } }) : Promise.resolve()),
+      async () => { expect(await db.deal.findUnique({ where: { id: testDealId! }, select: { id: true } })).toBeNull(); },
+    ]);
+    throwCombined(fm05Primary, fm05FinalizeErrors, "FM-05 recovery");
+  });
+
+  // ── FM-SETUP: mid-shared-setup failure → all created fixtures cleaned, no orphans (real PostgreSQL) ──
+  // STEP 13.53 P2-A finding #2/acceptance-C (owner): a test that deliberately fails MID-setup and
+  // proves no remaining records in real PostgreSQL via an independent query.
+  it("FM-SETUP mid-setup failure → all created fixtures cleaned, no orphans (independent PostgreSQL proof)", async () => {
+    // Simulate a partial setup: create a buyer (succeeds), then fail mid-way by creating a
+    // listing with an invalid sellerId (FK violation → throws). The buyer is the
+    // already-created fixture that must be cleaned.
+    const midEmail = "fm-midsetup@test.com";
+    let partialBuyerId: string | undefined;
+    let setupError: Error | null = null;
+    try {
+      const buyer = await db.user.create({
+        data: {
+          mobile: "09129990050",
+          email: midEmail,
+          firstName: "MidSetup",
+          lastName: "Fail",
+          passwordHash: "hash",
+        },
+      });
+      partialBuyerId = buyer.id; // tracked immediately
+      // Mid-setup failure: invalid sellerId → FK violation.
+      await db.listing.create({
+        data: {
+          slug: "fm-midsetup-fail-" + Date.now(),
+          title: "MidSetup Fail",
+          sellerId: "nonexistent-seller-" + Date.now(),
+          sellerName: "Nobody",
+          status: "PUBLISHED",
+          price: 1n,
+        },
+      });
+    } catch (e) {
+      setupError = e as Error;
+    }
+
+    // Setup DID fail mid-way (after buyer creation).
+    expect(setupError).toBeInstanceOf(Error);
+    expect(partialBuyerId).toBeTruthy();
+
+    // Failure-safe cleanup: attempt the created fixture, collect errors, preserve setup error.
+    let cleanupError: Error | null = null;
+    try {
+      await independentCleanup([
+        () => (partialBuyerId ? db.user.delete({ where: { id: partialBuyerId } }) : Promise.resolve()),
+      ]);
+    } catch (e) {
+      cleanupError = e as Error;
+    }
+    // If cleanup also failed, BOTH errors visible (AggregateError). No swallowing.
+    if (cleanupError) {
+      throw new AggregateError([setupError!, cleanupError], "FM-SETUP setup + cleanup");
+    }
+
+    // Independent PostgreSQL verification: no orphan buyer remains from the partial setup.
+    const orphan = await db.user.findUnique({ where: { email: midEmail }, select: { id: true } });
+    expect(orphan).toBeNull();
   });
 
   // ── FM-10: suite-end independent verification — no test fixtures remain in PostgreSQL ──
