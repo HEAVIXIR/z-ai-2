@@ -138,22 +138,20 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
     }
 
     // If setup failed, attempt independent cleanup of every created fixture.
+    // STEP 13.58 (dellk00k review 5560565048): finalizeCollecting RETURNS an error array
+    // (does not throw). We must STORE the returned array and report BOTH the setup error
+    // and any cleanup errors via throwCombined — otherwise cleanup errors are silently lost.
     if (setupError) {
-      let cleanupError: Error | null = null;
-      try {
-        await finalizeCollecting([
-          () => (setupIds.dealId ? db.order.deleteMany({ where: { dealId: setupIds.dealId } }) : Promise.resolve()),
-          () => (setupIds.dealId ? db.deal.delete({ where: { id: setupIds.dealId } }) : Promise.resolve()),
-          () => (setupIds.listingId ? db.listing.delete({ where: { id: setupIds.listingId } }) : Promise.resolve()),
-          () => (setupIds.sessionId ? db.session.delete({ where: { id: setupIds.sessionId } }) : Promise.resolve()),
-          () => (setupIds.buyerId ? db.user.delete({ where: { id: setupIds.buyerId } }) : Promise.resolve()),
-          () => (setupIds.sellerId ? db.user.delete({ where: { id: setupIds.sellerId } }) : Promise.resolve()),
-        ]);
-      } catch (e) {
-        cleanupError = e as Error;
-      }
-      if (cleanupError) throw new AggregateError([setupError, cleanupError], "beforeAll setup + cleanup");
-      throw setupError;
+      const cleanupErrors = await finalizeCollecting([
+        () => (setupIds.dealId ? db.order.deleteMany({ where: { dealId: setupIds.dealId } }) : Promise.resolve()),
+        () => (setupIds.dealId ? db.deal.delete({ where: { id: setupIds.dealId } }) : Promise.resolve()),
+        () => (setupIds.listingId ? db.listing.delete({ where: { id: setupIds.listingId } }) : Promise.resolve()),
+        () => (setupIds.sessionId ? db.session.delete({ where: { id: setupIds.sessionId } }) : Promise.resolve()),
+        () => (setupIds.buyerId ? db.user.delete({ where: { id: setupIds.buyerId } }) : Promise.resolve()),
+        () => (setupIds.sellerId ? db.user.delete({ where: { id: setupIds.sellerId } }) : Promise.resolve()),
+      ]);
+      // Report BOTH setup + cleanup errors (no silent discard of cleanup failures).
+      throwCombined(setupError, cleanupErrors, "beforeAll setup + cleanup");
     }
 
     // Start the REAL Next.js server on a free port.
@@ -171,11 +169,37 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
   }, 120000); // 2-min timeout for beforeAll (includes server startup)
 
   afterAll(async () => {
-    // Stop the real Next.js server.
+    // Stop the real Next.js server — reliable shutdown.
+    // STEP 13.58 (dellk00k review 5560565048): serverProcess.killed only indicates the
+    // SIGNAL was delivered, NOT that the process actually exited. We must WAIT for the
+    // 'exit' event with a bounded timeout, and send SIGKILL only if the process did NOT
+    // exit within that window.
     if (serverProcess) {
-      serverProcess.kill("SIGTERM");
-      await new Promise((r) => setTimeout(r, 1000));
-      if (!serverProcess.killed) serverProcess.kill("SIGKILL");
+      const proc = serverProcess;
+      const exited = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 5000); // 5s grace period
+        proc.once("exit", () => {
+          clearTimeout(timeout);
+          resolve(true);
+        });
+        proc.kill("SIGTERM");
+      });
+      if (!exited) {
+        // Process did not exit within 5s of SIGTERM — force-kill.
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already dead — ignore
+        }
+        // Wait for the exit event after SIGKILL (bounded).
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(resolve, 2000);
+          proc.once("exit", () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+      }
       serverProcess = null;
     }
     // Independent cleanup — NO .catch(()=>{}); uses finalizeCollecting.
