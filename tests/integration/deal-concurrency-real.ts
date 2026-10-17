@@ -786,38 +786,55 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
   // ── FM-SETUP-cleanup-negative: cleanup deliberately fails → error reported, setup error preserved, ──
   // subsequent cleanup ops still attempted, survived fixture cleaned by test (STEP 13.55 P2-A).
-  it("FM-SETUP cleanup-negative: cleanup failure on buyer → cleanupError reported, setupError preserved, seller still deleted, buyer survived then cleaned by test", async () => {
+  // STEP 13.56 P2-A (dellk00k review 5560494185): final cleanup of the survived buyer is GUARANTEED
+  // in a `finally` block — even if any assertion above throws, the buyer record is still cleaned.
+  // Both the primary assertion error AND any final-cleanup error are preserved (throwCombined).
+  it("FM-SETUP cleanup-negative: cleanup failure on buyer → cleanupError reported, setupError preserved, seller still deleted, buyer survived then cleaned in finally", async () => {
     const ids: SetupIds = {};
     // injectCleanupFailure="buyer" creates all 4 fixtures, throws a setup error, then
     // overrides db.user.delete to throw on the buyer (which exists) during cleanup.
+    // NOTE: the injected error is a test-harness method override (db.user.delete replacement),
+    // NOT a native PostgreSQL error. This is intentional for testing error-handling/reporting
+    // behavior; it does not claim to reproduce a PostgreSQL-produced failure.
     const { setupError, cleanupError } = await setupSharedFixtures({ injectCleanupFailure: "buyer", ids });
-    // 1. setupError IS the injected setup failure (not a silent pass).
-    expect(setupError).toBeInstanceOf(Error);
-    expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
-    // 2. cleanupError IS reported (NOT null, NOT discarded) — the cleanup failure propagated.
-    expect(cleanupError, "cleanup failure must be reported, not discarded").toBeInstanceOf(Error);
-    const cleanupErrStr = cleanupError instanceof AggregateError
-      ? cleanupError.errors.map((e) => String(e)).join(" ")
-      : String(cleanupError);
-    expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
-    // 3. Both setup + cleanup errors are preserved (setupError has setup message,
-    //    cleanupError has cleanup message — they are separate errors, both visible).
-    expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
-    expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
-    // 4. Subsequent cleanup ops STILL attempted: seller WAS deleted (despite buyer delete failing).
-    expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
-    // deal + listing were also cleaned (they're before buyer in the cleanup order).
-    expect(await db.deal.findUnique({ where: { id: ids.dealId! }, select: { id: true } })).toBeNull();
-    expect(await db.listing.findUnique({ where: { id: ids.listingId! }, select: { id: true } })).toBeNull();
-    // 5. buyer SURVIVED (its delete genuinely failed) — report real record state.
-    expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeTruthy();
-    // 6. Test cleans up the survived buyer (guaranteed — no dirty data for next run).
-    // Use finalizeCollecting so any error here is reported, not swallowed.
-    const finalErrors = await finalizeCollecting([
-      () => db.user.delete({ where: { id: ids.buyerId! } }),
-      async () => { expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull(); },
-    ]);
-    throwCombined(null, finalErrors, "FM-SETUP-cleanup-negative final");
+    let primaryError: Error | null = null;
+    try {
+      // 1. setupError IS the injected setup failure (not a silent pass).
+      expect(setupError).toBeInstanceOf(Error);
+      expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
+      // 2. cleanupError IS reported (NOT null, NOT discarded) — the cleanup failure propagated.
+      expect(cleanupError, "cleanup failure must be reported, not discarded").toBeInstanceOf(Error);
+      const cleanupErrStr = cleanupError instanceof AggregateError
+        ? cleanupError.errors.map((e) => String(e)).join(" ")
+        : String(cleanupError);
+      expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
+      // 3. Both setup + cleanup errors are preserved (setupError has setup message,
+      //    cleanupError has cleanup message — they are separate errors, both visible).
+      expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
+      expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
+      // 4. Subsequent cleanup ops STILL attempted: seller WAS deleted (despite buyer delete failing).
+      expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
+      // deal + listing were also cleaned (they're before buyer in the cleanup order).
+      expect(await db.deal.findUnique({ where: { id: ids.dealId! }, select: { id: true } })).toBeNull();
+      expect(await db.listing.findUnique({ where: { id: ids.listingId! }, select: { id: true } })).toBeNull();
+      // 5. buyer SURVIVED (its delete genuinely failed) — report real record state.
+      expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeTruthy();
+    } catch (e) {
+      primaryError = e as Error;
+    } finally {
+      // 6. GUARANTEED final cleanup of the survived buyer — runs even if any assertion above threw.
+      // Use finalizeCollecting so any error here is reported, not swallowed. Combined with the
+      // primary assertion error via throwCombined so BOTH remain visible.
+      if (ids.buyerId) {
+        const finalErrors = await finalizeCollecting([
+          () => db.user.delete({ where: { id: ids.buyerId! } }),
+          async () => { expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull(); },
+        ]);
+        throwCombined(primaryError, finalErrors, "FM-SETUP-cleanup-negative final");
+      } else if (primaryError) {
+        throw primaryError;
+      }
+    }
   });
 
   // ── FM-10: suite-end independent verification — no test fixtures remain in PostgreSQL ──
