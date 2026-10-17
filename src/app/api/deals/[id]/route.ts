@@ -20,6 +20,14 @@ import { getClientIp } from "@/lib/request-context";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// STEP 13.36 P2-A: internal error class for compare-and-set conflict detection.
+class ConcurrentTransitionError extends Error {
+  constructor() {
+    super("Concurrent transition detected: deal status changed by another request");
+    this.name = "ConcurrentTransitionError";
+  }
+}
+
 // Valid state transitions
 const TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["PENDING_CONFIRMATION", "CANCELLED"],
@@ -153,20 +161,36 @@ export async function PATCH(
         (body as { cancelReason?: string }).cancelReason || null;
     }
 
-    // STEP 13.35 P2-A FIX: detect Prisma errors by type + code, NOT message text.
-    // P2002 on Order.dealId → idempotent success (concurrent CONFIRMED created
-    //   the order first). Re-read the order to confirm it exists before
-    //   returning success.
-    // P2002 on Order.orderNumber → NOT idempotent (collision on generated
-    //   number); must error.
-    // P2034 (serialization) → NOT success; propagate (caller returns 409 retry).
-    const updated = await db
-      .$transaction(
+    // STEP 13.36 P2-A FIX: compare-and-set atomic transition.
+    // The deal.update uses updateMany with where: { id, status: deal.status }
+    // so that if another request changed the status between our read and
+    // update, the update affects 0 rows → we detect the conflict and
+    // return 409. This prevents lost-update race conditions.
+    // P2034 (serialization) → 409 retryable (NOT 500 generic).
+    // P2002 on dealId → idempotent success (re-read order to confirm).
+    // P2002 on orderNumber → must error (NOT idempotent).
+    let updated: { id: string; status: string };
+    try {
+      updated = await db.$transaction(
         async (tx) => {
-          const dealUpdated = await tx.deal.update({
-            where: { id },
+          // Compare-and-set: only update if status hasn't changed.
+          const result = await tx.deal.updateMany({
+            where: { id, status: deal.status },
             data: updateData,
           });
+          if (result.count === 0) {
+            // Another request changed the status first → conflict.
+            throw new ConcurrentTransitionError();
+          }
+
+          // Re-read the updated deal (updateMany doesn't return the record).
+          const dealUpdated = await tx.deal.findUnique({
+            where: { id },
+            select: { id: true, status: true },
+          });
+          if (!dealUpdated) {
+            throw new ConcurrentTransitionError();
+          }
 
           // Only create an order if transitioning to CONFIRMED.
           if (newStatus === "CONFIRMED") {
@@ -215,39 +239,49 @@ export async function PATCH(
           return dealUpdated;
         },
         { isolationLevel: "Serializable" },
-      )
-      .catch(async (err: unknown) => {
-        // STEP 13.35 P2-A FIX: use PrismaClientKnownRequestError + .code,
-        // NOT message text (message format can change across Prisma versions).
-        if (err instanceof Prisma.PrismaClientKnownRequestError) {
-          if (err.code === "P2002") {
-            // Unique constraint violation. Check WHICH constraint failed.
-            // The meta.target field names the constrained field(s).
-            const target = (err.meta?.target as string[] | undefined) ?? [];
-            if (target.includes("dealId")) {
-              // Idempotent success: concurrent CONFIRMED created the order
-              // first. Re-read to confirm the order exists.
-              const orderExists = await db.order.findUnique({
-                where: { dealId: id },
-                select: { id: true },
-              });
-              if (orderExists) {
-                return { id: deal.id, status: newStatus };
-              }
-              // If order doesn't exist despite P2002 on dealId, something
-              // is wrong — propagate the error.
-              throw err;
-            }
-            // P2002 on orderNumber (or any other field) → NOT idempotent.
-            // Propagate as a real error.
+      );
+    } catch (err: unknown) {
+      // ConcurrentTransitionError → 409 (another request changed status first)
+      if (err instanceof ConcurrentTransitionError) {
+        return NextResponse.json(
+          { error: "وضعیت معامله توسط درخواست دیگری تغییر کرد؛ لطفاً دوباره تلاش کنید" },
+          { status: 409 },
+        );
+      }
+      // P2002 on dealId → idempotent success (concurrent CONFIRMED created
+      // the order first). Re-read to confirm the order exists.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        const target = (err.meta?.target as string[] | undefined) ?? [];
+        if (target.includes("dealId")) {
+          const orderExists = await db.order.findUnique({
+            where: { dealId: id },
+            select: { id: true },
+          });
+          if (orderExists) {
+            updated = { id: deal.id, status: newStatus };
+          } else {
             throw err;
           }
-          // P2034 (serialization) → propagate; caller returns 409 retry.
-          // Do NOT treat as success.
+        } else {
+          // P2002 on orderNumber or other field → NOT idempotent → error
           throw err;
         }
+      } else if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2034"
+      ) {
+        // P2034 (serialization failure) → 409 retryable (NOT 500 generic)
+        return NextResponse.json(
+          { error: "معامله هم‌زمان ثبت شد؛ لطفاً دوباره تلاش کنید" },
+          { status: 409 },
+        );
+      } else {
         throw err;
-      });
+      }
+    }
 
     await logAudit({
       actorId: userId,

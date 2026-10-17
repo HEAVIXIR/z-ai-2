@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
    ============================================================ */
 
 const mockDealFindUnique = vi.fn();
-const mockDealUpdate = vi.fn();
+const mockDealUpdateMany = vi.fn();
 const mockOrderFindUnique = vi.fn();
 const mockOrderCreate = vi.fn();
 const mockListingFindUnique = vi.fn();
@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: mockTransaction,
     deal: {
       findUnique: mockDealFindUnique,
-      update: mockDealUpdate,
+      updateMany: mockDealUpdateMany,
     },
     order: {
       findUnique: mockOrderFindUnique,
@@ -74,15 +74,17 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     vi.clearAllMocks();
     vi.mocked(getCurrentUserId).mockResolvedValue("user-1" as any);
     mockDealFindUnique.mockResolvedValue(VALID_DEAL);
-    mockDealUpdate.mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    // STEP 13.36: route uses updateMany (compare-and-set) + findUnique (re-read)
+    mockDealUpdateMany.mockResolvedValue({ count: 1 });
   });
 
-  // ── 1. deal.update + order.create in single $transaction ──
-  it("CONFIRMED transition: update + order.create wrapped in $transaction", async () => {
+  // ── 1. deal.updateMany + order.create in single $transaction ──
+  it("CONFIRMED transition: updateMany + order.create wrapped in $transaction", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
     mockTransaction.mockImplementation(async (cb: any) => {
       mockOrderFindUnique.mockResolvedValue(null); // no existing order
       return cb({
-        deal: { update: mockDealUpdate },
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
         order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
         listing: { findUnique: mockListingFindUnique.mockResolvedValue({ title: "Excavator" }) },
       });
@@ -91,6 +93,8 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
     expect(res.status).toBe(200);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+    // updateMany was called (compare-and-set)
+    expect(mockDealUpdateMany).toHaveBeenCalledTimes(1);
     // order.create was called inside the txn
     expect(mockOrderCreate).toHaveBeenCalledTimes(1);
     const orderData = mockOrderCreate.mock.calls[0][0].data;
@@ -100,10 +104,11 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 2. Idempotency: existing order → no duplicate create ──
   it("CONFIRMED with existing order: does NOT create duplicate (idempotent)", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
     mockTransaction.mockImplementation(async (cb: any) => {
       mockOrderFindUnique.mockResolvedValue({ id: "existing-order" }); // order EXISTS
       return cb({
-        deal: { update: mockDealUpdate },
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
         order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
         listing: { findUnique: mockListingFindUnique },
       });
@@ -113,17 +118,18 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(res.status).toBe(200);
     // order.create MUST NOT be called (order already exists)
     expect(mockOrderCreate).not.toHaveBeenCalled();
-    // but deal.update IS called (status transition still happens)
-    expect(mockDealUpdate).toHaveBeenCalledTimes(1);
+    // but deal.updateMany IS called (status transition still happens)
+    expect(mockDealUpdateMany).toHaveBeenCalledTimes(1);
   });
 
   // ── 3. Atomicity: order.create fails → deal update rolled back ──
   it("order.create fails inside txn → error propagates (deal update rolled back)", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
     mockTransaction.mockImplementation(async (cb: any) => {
       mockOrderFindUnique.mockResolvedValue(null);
       mockOrderCreate.mockRejectedValue(new Error("order create failed"));
       return cb({
-        deal: { update: mockDealUpdate },
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
         order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
         listing: { findUnique: mockListingFindUnique },
       });
@@ -188,8 +194,8 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(res.status).toBe(500);
   });
 
-  // ── 4d. P2034 (serialization failure) → must NOT become success ──
-  it("P2034 serialization failure → 500 error (NOT silent success)", async () => {
+  // ── 4d. P2034 (serialization failure) → 409 retryable (NOT 500) ──
+  it("P2034 serialization failure → 409 retryable (NOT 500 generic)", async () => {
     const { Prisma } = await import("@prisma/client");
     const p2034Error = new Prisma.PrismaClientKnownRequestError(
       "Transaction could not be serialized",
@@ -198,19 +204,42 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     mockTransaction.mockRejectedValue(p2034Error);
 
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
-    // P2034 → propagate → 500 (NOT idempotent success)
-    expect(res.status).toBe(500);
+    // STEP 13.36: P2034 → 409 retryable (NOT 500 generic)
+    expect(res.status).toBe(409);
     const json = await res.json();
-    expect(json.error).toBe("Internal server error");
+    expect(json.error).toContain("هم‌زمان");
+  });
+
+  // ── 4e. Compare-and-set conflict: updateMany count=0 → 409 ──
+  it("compare-and-set conflict (count=0) → 409 concurrent transition", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    // updateMany returns count=0 (another request changed status first)
+    mockDealUpdateMany.mockResolvedValue({ count: 0 });
+    mockTransaction.mockImplementation(async (cb: any) => {
+      return cb({
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
+        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
+        listing: { findUnique: mockListingFindUnique },
+      });
+    });
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    // Compare-and-set detected concurrent transition → 409
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toContain("تغییر کرد");
+    // order.create MUST NOT be called (transition failed)
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   // ── 5. Non-CONFIRMED transition: no order created ──
   it("COMPLETED transition (from IN_PROGRESS): no order created", async () => {
     // IN_PROGRESS → COMPLETED is valid per TRANSITIONS map
     mockDealFindUnique.mockResolvedValue({ ...VALID_DEAL, status: "IN_PROGRESS" });
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "COMPLETED" });
     mockTransaction.mockImplementation(async (cb: any) => {
       return cb({
-        deal: { update: mockDealUpdate },
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
         order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
         listing: { findUnique: mockListingFindUnique },
       });
@@ -224,9 +253,10 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 6. CANCELLED transition: no order created ──
   it("CANCELLED transition: no order created", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CANCELLED" });
     mockTransaction.mockImplementation(async (cb: any) => {
       return cb({
-        deal: { update: mockDealUpdate },
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
         order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
         listing: { findUnique: mockListingFindUnique },
       });

@@ -33,9 +33,14 @@ function makeErrorWithSecret(): Error {
 }
 
 // ── Mock db + auth (overridden per-test) ─────────────────
+// STEP 13.36 P2-C FIX: export BOTH getCurrentUser AND getCurrentUserId
+// (POST /api/deals uses getCurrentUserId, RFQ routes use getCurrentUser).
+// Also expose a stable top-level $transaction mock (db.$transaction,
+// NOT model-level mockDb.deal.$transaction).
 function makeModelMock() {
-  return { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), findFirst: vi.fn(), $transaction: vi.fn() };
+  return { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), $transaction: vi.fn() };
 }
+const mockDbTransaction = vi.fn();
 const mockDb: Record<string, ReturnType<typeof makeModelMock>> = {
   rFQ: makeModelMock(),
   deal: makeModelMock(),
@@ -52,16 +57,21 @@ const mockDb: Record<string, ReturnType<typeof makeModelMock>> = {
 vi.mock("@/lib/db", () => ({
   db: new Proxy({}, {
     get(_t, prop) {
-      return mockDb[prop as string] ?? { $transaction: vi.fn() };
+      if (prop === "$transaction") return mockDbTransaction;
+      return mockDb[prop as string] ?? makeModelMock();
     },
   }),
 }));
 
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/request-context", () => ({ getClientIp: () => "127.0.0.1" }));
-vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn() }));
+// STEP 13.36 P2-C FIX: export BOTH auth functions used by different routes
+vi.mock("@/lib/auth", () => ({
+  getCurrentUser: vi.fn(),
+  getCurrentUserId: vi.fn(),
+}));
 
-const { getCurrentUser } = await import("@/lib/auth");
+const { getCurrentUser, getCurrentUserId } = await import("@/lib/auth");
 
 function assertNoSecret(body: unknown, label: string) {
   const bodyStr = JSON.stringify(body);
@@ -75,6 +85,7 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getCurrentUser).mockResolvedValue("user-1" as any);
+    vi.mocked(getCurrentUserId).mockResolvedValue("user-1");
   });
 
   // ── GET /api/rfq (list) ──
@@ -212,9 +223,12 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
     expect(json.error).toBe("استعلام یافت نشد");
   });
 
-  // ── STEP 13.35 P2-C: POST /api/deals negative test (independent) ──
-  it("POST /api/deals: listingOffer.findUnique throws → 500 generic, no secret", async () => {
-    vi.mocked(getCurrentUser).mockResolvedValue("user-1" as any);
+  // ── STEP 13.36 P2-C: POST /api/deals negative test (independent) ──
+  // FIX: mock getCurrentUserId (not getCurrentUser) since POST /api/deals
+  // uses getCurrentUserId. Use top-level db.$transaction (mockDbTransaction),
+  // NOT mockDb.deal.$transaction.
+  it("POST /api/deals: $transaction throws with secret → 500 generic, no secret", async () => {
+    vi.mocked(getCurrentUserId).mockResolvedValue("user-1");
     // Mock a valid LISTING_OFFER source so the handler reaches the txn
     mockDb.listingOffer.findUnique.mockResolvedValue({
       id: "offer-1",
@@ -224,8 +238,8 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
       listingId: "listing-1",
       listing: { sellerId: "seller-1" },
     });
-    // $transaction throws with a secret — must be masked
-    mockDb.deal.$transaction.mockRejectedValue(makeErrorWithSecret());
+    // Top-level db.$transaction throws with a secret — must be masked
+    mockDbTransaction.mockRejectedValue(makeErrorWithSecret());
 
     const { POST } = await import("@/app/api/deals/route");
     const res = await POST(
@@ -239,6 +253,9 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
     const json = await res.json();
     expect(json.error).toBe("Internal server error");
     assertNoSecret(json, "POST /api/deals");
+    // Verify the top-level $transaction was actually called (proves the
+    // test exercises the right dependency, not a mock error shortcut)
+    expect(mockDbTransaction).toHaveBeenCalledTimes(1);
   });
 
   // ── STEP 13.35 P2-C: POST /api/rfq/[id]/quotes negative test (independent) ──

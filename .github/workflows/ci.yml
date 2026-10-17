@@ -7,6 +7,8 @@ on:
     branches: [main, 'feature/**']
 
 jobs:
+  # ── BLOCKING job: all required security/contract/integration/build tests ──
+  # Any failure fails the workflow and blocks merge.
   verify:
     runs-on: ubuntu-latest
     services:
@@ -64,55 +66,113 @@ jobs:
       - name: Seed RBAC (roles + permissions for integration tests)
         run: bun run db:seed-rbac
 
-      - name: Seed catalog data (brands + user-roles + test fixtures for contract/integration tests)
+      - name: Seed catalog data (brands + user-roles + test fixtures)
         run: |
           bun run db:seed-brands-a
           bun run db:seed-brands-b
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
 
-      # ── BLOCKING test suites (any failure fails the workflow) ──
+      # ── ALL blocking test suites (NO continue-on-error) ──
 
-      - name: Security tests (blocking)
+      - name: Security tests
         run: bun run test:security
 
-      - name: Integration — tenant-scope-real (blocking, real PostgreSQL)
+      - name: Integration — tenant-scope-real (real PostgreSQL)
         run: bunx tsx tests/integration/tenant-scope-real.ts
 
-      - name: Integration — readonly-when-concurrency-real (blocking, real PostgreSQL)
+      - name: Integration — readonly-when-concurrency-real (real PostgreSQL)
         run: bunx tsx tests/integration/readonly-when-concurrency-real.ts
 
-      - name: Integration — payment-concurrency-real (blocking, real PostgreSQL)
+      - name: Integration — payment-concurrency-real (real PostgreSQL)
         run: bunx tsx tests/integration/payment-concurrency-real.ts
+
+      - name: Integration test files (real PostgreSQL)
+        run: bunx vitest run tests/integration/*.test.ts
+
+      - name: All contract + unit tests
+        run: bunx vitest run tests/contract/ tests/unit/
+
+      - name: E2E smoke tests
+        run: bunx vitest run tests/e2e/
+
+      - name: Production build
+        run: bun run build
+
+  # ── INFORMATIONAL job: pre-existing failures with explicit visibility ──
+  # This job runs tests that have known pre-existing failures (not caused
+  # by this PR). It does NOT block merge. Failures are visible in the job
+  # status for tracking. Owner acceptance of these risks is documented in
+  # the PR description and review comments.
+  informational:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      ADMIN_USERNAME: "ci-admin"
+      ADMIN_PASSWORD: "ci-password-not-real"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+
+      - name: Create store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+
+      - name: Push schemas
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+
+      - name: Seed RBAC + catalog data
+        run: |
+          bun run db:seed-rbac
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
 
       # audit-transaction-real: pre-existing failure in scenario 4
       # (expected 'PRECONDITION_FAILED' but got undefined). This is a
       # data-integrity test, not a security test. The failure exists
-      # in main and is outside this PR's scope. Runs for visibility;
-      # continue-on-error until fixed in a separate PR.
-      - name: Integration — audit-transaction-real (informational — pre-existing failure)
+      # in main and is outside this PR's scope.
+      - name: audit-transaction-real (pre-existing failure — scenario 4)
         continue-on-error: true
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/audit-transaction-real.ts
 
-      - name: Integration test files (blocking, real PostgreSQL)
-        run: bunx vitest run tests/integration/*.test.ts
-
-      - name: All contract + unit tests (blocking)
-        run: bunx vitest run tests/contract/ tests/unit/
-
-      - name: E2E smoke tests (blocking)
-        run: bunx vitest run tests/e2e/
-
-      # ── Phase tests: NOT blocking — documented gap ──
-      # Phase tests (26 files, 734 tests) require comprehensive catalog seed
-      # infrastructure (countries, provinces, cities, categories, attributes,
-      # products, listings, users) that is out of scope for this security PR.
-      # 75 phase tests fail on missing seed data. Making them blocking requires
-      # a separate seed-infrastructure PR. They run here for informational
-      # coverage so regressions are visible in logs.
-      - name: Phase integration tests (informational — needs seed-infrastructure PR)
+      # Phase tests: require comprehensive catalog seed infrastructure
+      # (countries, provinces, cities, categories, attributes, products,
+      # listings, users) that is out of scope for this security PR.
+      # 75 of 734 tests fail on missing seed data. Making them blocking
+      # requires a separate seed-infrastructure PR.
+      - name: Phase integration tests (needs seed-infrastructure PR)
         continue-on-error: true
         run: bunx vitest run tests/phase*.test.ts
-
-      - name: Production build (blocking)
-        run: bun run build
