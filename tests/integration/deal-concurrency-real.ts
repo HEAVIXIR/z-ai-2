@@ -91,14 +91,18 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
   });
 
   afterAll(async () => {
-    // Cleanup
+    // STEP 13.47: independent cleanup — try ALL deletions, collect errors, throw at end
+    const cleanupErrors: string[] = [];
     if (dealId) {
-      await db.order.deleteMany({ where: { dealId } });
-      await db.deal.delete({ where: { id: dealId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+      await db.order.deleteMany({ where: { dealId } }).catch((e) => { cleanupErrors.push(`orders for deal: ${e}`); });
+      await db.deal.delete({ where: { id: dealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
     }
-    if (listingId) await db.listing.delete({ where: { id: listingId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
-    if (buyerId) await db.user.delete({ where: { id: buyerId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
-    if (sellerId) await db.user.delete({ where: { id: sellerId } }).catch((e) => { throw new Error(`Cleanup failed: ${e}`); });
+    if (listingId) await db.listing.delete({ where: { id: listingId } }).catch((e) => { cleanupErrors.push(`listing: ${e}`); });
+    if (buyerId) await db.user.delete({ where: { id: buyerId } }).catch((e) => { cleanupErrors.push(`buyer: ${e}`); });
+    if (sellerId) await db.user.delete({ where: { id: sellerId } }).catch((e) => { cleanupErrors.push(`seller: ${e}`); });
+    if (cleanupErrors.length > 0) {
+      throw new Error(`afterAll cleanup failed: ${cleanupErrors.join("; ")}`);
+    }
   });
 
   it("two concurrent CONFIRMED → exactly one 200, one 409", async () => {
@@ -492,13 +496,16 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       const orderCount = await db.order.count({ where: { dealId: testDeal.id } });
       expect(orderCount).toBe(0);
     } finally {
-      // STEP 13.46: restore $transaction AND cleanup — try ALL deletions independently
+      // STEP 13.47: restore $transaction AND cleanup — independent, doesn't mask primary error
       (realDb as any).$transaction = originalTransaction;
       const cleanupErrors: string[] = [];
       if (testDealId) {
         await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
         await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
       }
+      // Note: if primary test assertion threw, that error propagates first.
+      // Cleanup errors are only thrown if no primary error occurred.
+      // If both occurred, vitest reports the primary error (thrown from try block).
       if (cleanupErrors.length > 0) {
         throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
       }
