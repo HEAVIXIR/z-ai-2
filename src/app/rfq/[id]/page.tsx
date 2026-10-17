@@ -66,19 +66,38 @@ export default async function RFQDetailPage({ params }: Params) {
   // sees buyer contact info (phone/email) and seller contact info in
   // quotes. Other authenticated viewers (sellers browsing open RFQs)
   // see only non-PII fields (names kept for trust).
+  //
+  // STEP 13.28 P1-B FIX: the previous version built `safeRfq` but the
+  // JSX render below still referenced the RAW `rfq` object (rfq.buyerPhone,
+  // rfq.buyerEmail, rfq.quotes with q.sellerPhone) — so the redaction
+  // was dead code and PII leaked to any authenticated viewer. This fix
+  // also applies the same quote-visibility filtering as getRFQ:
+  //   - buyer: sees ALL quotes (with full seller PII to contact them)
+  //   - seller who quoted: sees ONLY their own quote (no competitor data)
+  //   - other sellers / authenticated non-buyer: see NO quotes (only count)
   const isBuyer = !!rfq.buyerId && rfq.buyerId === user!.id;
+  const viewerQuote = rfq.quotes.find((q) => q.sellerId === user!.id);
+  const isSellerWhoQuoted = !!viewerQuote;
+
+  let visibleQuotes: typeof rfq.quotes;
+  if (isBuyer) {
+    visibleQuotes = rfq.quotes;
+  } else if (isSellerWhoQuoted) {
+    visibleQuotes = rfq.quotes.filter((q) => q.sellerId === user!.id);
+  } else {
+    visibleQuotes = [];
+  }
 
   const status = STATUS_BADGES[rfq.status] ?? STATUS_BADGES.OPEN;
   const canQuote = rfq.status === "OPEN" || rfq.status === "QUOTING";
 
-  // STEP 13.01-R1 P0-2 FIX v2: explicit field selection — NO spread.
-  // The previous v1 used `...rfq` and `...q` which leaked buyerId and
-  // sellerId to non-buyer viewers. v2 explicitly lists every field
-  // and redacts all internal ids + contact info for non-buyer viewers.
+  // STEP 13.01-R1 P0-2 FIX v2 + STEP 13.28 P1-B FIX: explicit field
+  // selection — NO spread. The JSX render now reads from `safeRfq`
+  // (NOT raw `rfq`), so redaction is actually enforced.
   // Access matrix:
   //   - buyer themselves: sees all PII (buyer + seller contact info in quotes)
   //   - seller who quoted: sees only their own quote (no buyer PII, no other sellers)
-  //   - other sellers: see only non-PII fields (names kept for trust)
+  //   - other sellers: see only non-PII fields (names kept for trust, NO quotes)
   //   - admin: handled via separate admin endpoints (not this page)
   const safeRfq = {
     id: rfq.id,
@@ -102,15 +121,21 @@ export default async function RFQDetailPage({ params }: Params) {
     buyer: isBuyer ? rfq.buyer : null,
     createdAt: rfq.createdAt,
     updatedAt: rfq.updatedAt,
-    quotes: rfq.quotes.map((q) => ({
+    // quoteCount always visible (trust signal); quotes array filtered by viewer.
+    quoteCount: rfq.quotes.length,
+    quotes: visibleQuotes.map((q) => ({
       id: q.id,
       // sellerName kept (trust signal); phone/email/id redacted for non-buyer.
       sellerName: q.sellerName,
       sellerPhone: isBuyer ? q.sellerPhone : null,
       sellerEmail: isBuyer ? q.sellerEmail : null,
       sellerId: isBuyer ? q.sellerId : null,
-      unitPrice: q.unitPrice.toString(),
-      totalPrice: q.totalPrice.toString(),
+      // NOTE: unitPrice/totalPrice kept as bigint here because this is a
+      // server component (no JSON serialization) and formatFullPrice()
+      // expects bigint. The API route (getRFQ) converts these to string
+      // for JSON; this page renders directly so bigint is fine.
+      unitPrice: q.unitPrice,
+      totalPrice: q.totalPrice,
       deliveryTime: q.deliveryTime,
       notes: q.notes,
       status: q.status,
@@ -233,19 +258,24 @@ export default async function RFQDetailPage({ params }: Params) {
               )}
 
               {/* Quotes list */}
+              {/* STEP 13.28 P1-B FIX: render from safeRfq.quotes (filtered by
+                  viewer) — NOT raw rfq.quotes. Non-buyer viewers see only
+                  their own quote (or none), never competitor quotes. */}
               <Section
-                title={`پیشنهادهای فروشندگان (${toFa(rfq.quotes.length)})`}
+                title={`پیشنهادهای فروشندگان (${toFa(safeRfq.quoteCount)})`}
                 icon={<Users className="h-4 w-4" />}
               >
-                {rfq.quotes.length === 0 ? (
+                {safeRfq.quotes.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
                     <p className="text-sm text-white/40">
-                      هنوز پیشنهادی ثبت نشده است. اولین فروشنده باشید!
+                      {isBuyer || isSellerWhoQuoted
+                        ? "هنوز پیشنهادی ثبت نشده است."
+                        : "برای مشاهده پیشنهادها ابتدا پیشنهاد خود را ثبت کنید."}
                     </p>
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {rfq.quotes.map((q) => {
+                    {safeRfq.quotes.map((q) => {
                       const qs =
                         QUOTE_STATUS[q.status] ?? QUOTE_STATUS.PENDING;
                       return (
@@ -290,6 +320,9 @@ export default async function RFQDetailPage({ params }: Params) {
                                 تحویل: {q.deliveryTime}
                               </span>
                             )}
+                            {/* STEP 13.28 P1-B FIX: q.sellerPhone is now
+                                redacted for non-buyer viewers (null in
+                                safeRfq). Only the buyer sees seller phones. */}
                             {q.sellerPhone && (
                               <span className="inline-flex items-center gap-1" dir="ltr">
                                 <Phone className="h-3 w-3" />
@@ -312,6 +345,9 @@ export default async function RFQDetailPage({ params }: Params) {
             </div>
 
             {/* Right: buyer contact + quote form */}
+            {/* STEP 13.28 P1-B FIX: render buyer contact from safeRfq (redacted
+                for non-buyer viewers). Previously used raw rfq.buyerPhone /
+                rfq.buyerEmail, leaking PII to any authenticated viewer. */}
             <aside className="space-y-6 lg:sticky lg:top-6 lg:h-fit">
               {/* Buyer card */}
               <div className="rounded-2xl border border-white/10 bg-[#111] p-5">
@@ -322,25 +358,34 @@ export default async function RFQDetailPage({ params }: Params) {
                 <ul className="space-y-2 text-xs text-white/70">
                   <li className="flex items-center gap-2">
                     <User className="h-3.5 w-3.5 text-white/40" />
-                    <span>{rfq.buyerName || rfq.buyer?.firstName + " " + rfq.buyer?.lastName || "—"}</span>
+                    <span>{safeRfq.buyerName || (safeRfq.buyer ? safeRfq.buyer.firstName + " " + safeRfq.buyer.lastName : "") || "—"}</span>
                   </li>
-                  <li className="flex items-center gap-2" dir="ltr">
-                    <Phone className="h-3.5 w-3.5 text-white/40" />
-                    <span>{rfq.buyerPhone}</span>
-                  </li>
-                  {rfq.buyerEmail && (
+                  {/* STEP 13.28 P1-B FIX: only render phone/email when the
+                      viewer is the buyer (safeRfq.buyerPhone is null otherwise). */}
+                  {safeRfq.buyerPhone && (
+                    <li className="flex items-center gap-2" dir="ltr">
+                      <Phone className="h-3.5 w-3.5 text-white/40" />
+                      <span>{safeRfq.buyerPhone}</span>
+                    </li>
+                  )}
+                  {safeRfq.buyerEmail && (
                     <li className="flex items-center gap-2" dir="ltr">
                       <Mail className="h-3.5 w-3.5 text-white/40" />
-                      <span>{rfq.buyerEmail}</span>
+                      <span>{safeRfq.buyerEmail}</span>
+                    </li>
+                  )}
+                  {!isBuyer && (
+                    <li className="text-[10px] text-white/35">
+                      اطلاعات تماس خریدار فقط برای شخص خریدار نمایش داده می‌شود.
                     </li>
                   )}
                 </ul>
               </div>
 
               {/* Submit quote form */}
-              <RFQQuoteForm rfqId={rfq.id} canQuote={canQuote} />
+              <RFQQuoteForm rfqId={safeRfq.id} canQuote={canQuote} />
 
-              {rfq.status === "AWARDED" && (
+              {safeRfq.status === "AWARDED" && (
                 <div className="rounded-2xl border border-[#F58220]/30 bg-[#F58220]/[0.07] p-4 text-center">
                   <CheckCircle2 className="mx-auto mb-2 h-7 w-7 text-[#F58220]" />
                   <p className="text-xs font-bold text-[#F58220]">

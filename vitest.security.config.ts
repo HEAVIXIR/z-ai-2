@@ -15,7 +15,9 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["tests/security/**/*.test.ts"],
+    // STEP 13.28: include .tsx so JSX-based security tests (e.g. the
+    // /rfq/[id] page safeRfq wiring test) are picked up.
+    include: ["tests/security/**/*.test.{ts,tsx}"],
   },
   resolve: {
     alias: {

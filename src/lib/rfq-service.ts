@@ -593,6 +593,23 @@ export async function rejectQuote(
  *
  * Returns `{ items, total }` where items include a `quoteCount`
  * for each RFQ (handy for the admin table).
+ *
+ * STEP 13.28 P1-A FIX: The list is a PUBLIC marketplace catalog
+ * (the `/rfq` page renders it to anonymous visitors). Buyer
+ * contact info (phone/email) and the internal buyerId are NEVER
+ * needed in the list view — they are only relevant on the detail
+ * page (`getRFQ`), where viewer-aware redaction already applies.
+ *
+ * Previously `listRFQs` returned `buyerPhone`, `buyerEmail`, and
+ * `buyerId` to ANY caller (including anonymous), which was the
+ * same PII-leak class as P0-2 but on the sibling list endpoint.
+ * This fix removes those three fields from the list DTO entirely.
+ * `buyerName` is kept as a public trust signal (consistent with
+ * the detail page + `/rfq` list page rendering).
+ *
+ * If a future admin "leads" view needs seller-side PII, it must
+ * go through a separate authenticated, RBAC-checked endpoint —
+ * not this public catalog function.
  */
 export async function listRFQs(params: {
   status?: string | null;
@@ -613,10 +630,8 @@ export async function listRFQs(params: {
     location: string | null;
     deadline: Date | null;
     status: string;
+    // buyerName kept (public trust signal); phone/email/id removed.
     buyerName: string | null;
-    buyerPhone: string;
-    buyerEmail: string | null;
-    buyerId: string | null;
     quoteCount: number;
     createdAt: Date;
   }>;
@@ -669,10 +684,9 @@ export async function listRFQs(params: {
       location: r.location,
       deadline: r.deadline,
       status: r.status,
+      // STEP 13.28 P1-A FIX: buyerName kept (trust signal);
+      // buyerPhone/buyerEmail/buyerId REMOVED from list DTO.
       buyerName: r.buyerName,
-      buyerPhone: r.buyerPhone,
-      buyerEmail: r.buyerEmail,
-      buyerId: r.buyerId,
       quoteCount: r._count?.quotes ?? 0,
       createdAt: r.createdAt,
     })),
