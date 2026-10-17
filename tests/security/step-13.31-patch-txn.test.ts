@@ -136,19 +136,72 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(json.error).toBe("Internal server error");
   });
 
-  // ── 4. P2002 (concurrent CONFIRMED) handled gracefully ──
-  it("P2002 unique-constraint on Order.dealId → graceful success (not 500)", async () => {
-    // Simulate concurrent CONFIRMED: the other request created the order first.
-    // Our $transaction hits P2002 on order.create.
-    const p2002Error = new Error("Unique constraint failed on the fields: (`dealId`) (P2002)");
+  // ── 4. P2002 on Order.dealId (concurrent CONFIRMED) handled gracefully ──
+  it("P2002 on dealId → graceful success (idempotent, order already exists)", async () => {
+    // STEP 13.35 P2-A: use real PrismaClientKnownRequestError with code + meta.target
+    const { Prisma } = await import("@prisma/client");
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`dealId`)",
+      { code: "P2002", meta: { target: ["dealId"] } },
+    );
     mockTransaction.mockRejectedValue(p2002Error);
+    // The catch re-reads order to confirm existence → mock must return an order
+    mockOrderFindUnique.mockResolvedValue({ id: "existing-order" });
 
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
-    // P2002 is handled → 200 (idempotent success, order already exists)
+    // P2002 on dealId + order exists → 200 (idempotent success)
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(json.status).toBe("CONFIRMED");
+  });
+
+  // ── 4b. P2002 on orderNumber (NOT dealId) → must error, not idempotent ──
+  it("P2002 on orderNumber → 500 error (NOT idempotent)", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`orderNumber`)",
+      { code: "P2002", meta: { target: ["orderNumber"] } },
+    );
+    mockTransaction.mockRejectedValue(p2002Error);
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    // P2002 on orderNumber → NOT idempotent → error propagates → 500
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Internal server error");
+  });
+
+  // ── 4c. P2002 on dealId but order does NOT exist → must error ──
+  it("P2002 on dealId but order missing → 500 error (not silent success)", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`dealId`)",
+      { code: "P2002", meta: { target: ["dealId"] } },
+    );
+    mockTransaction.mockRejectedValue(p2002Error);
+    // Re-read returns null (order doesn't exist despite P2002 — inconsistent state)
+    mockOrderFindUnique.mockResolvedValue(null);
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    // Order doesn't exist despite P2002 on dealId → propagate error → 500
+    expect(res.status).toBe(500);
+  });
+
+  // ── 4d. P2034 (serialization failure) → must NOT become success ──
+  it("P2034 serialization failure → 500 error (NOT silent success)", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const p2034Error = new Prisma.PrismaClientKnownRequestError(
+      "Transaction could not be serialized",
+      { code: "P2034", meta: {} },
+    );
+    mockTransaction.mockRejectedValue(p2034Error);
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    // P2034 → propagate → 500 (NOT idempotent success)
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Internal server error");
   });
 
   // ── 5. Non-CONFIRMED transition: no order created ──

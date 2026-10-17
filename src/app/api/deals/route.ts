@@ -17,6 +17,7 @@
  *   POST /api/deals — create a deal from an accepted offer/quote/dealroom
  */
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -273,7 +274,7 @@ export async function POST(req: Request) {
           isolationLevel: "Serializable",
         },
       );
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof DealAlreadyExistsError) {
         return NextResponse.json(
           {
@@ -284,8 +285,13 @@ export async function POST(req: Request) {
           { status: 409 },
         );
       }
-      const msg = err instanceof Error ? err.message : "Transaction failed";
-      if (msg.includes("could not serialize") || msg.includes("P2034")) {
+      // STEP 13.35 P2-A FIX: detect P2034 by error code, NOT message text.
+      // P2034 = serialization failure (Serializable isolation conflict).
+      // Return 409 so the client can retry.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2034"
+      ) {
         return NextResponse.json(
           { error: "معامله هم‌زمان ثبت شد؛ لطفاً دوباره تلاش کنید" },
           { status: 409 },

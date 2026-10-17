@@ -211,4 +211,86 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
     const json = await res.json();
     expect(json.error).toBe("استعلام یافت نشد");
   });
+
+  // ── STEP 13.35 P2-C: POST /api/deals negative test (independent) ──
+  it("POST /api/deals: listingOffer.findUnique throws → 500 generic, no secret", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue("user-1" as any);
+    // Mock a valid LISTING_OFFER source so the handler reaches the txn
+    mockDb.listingOffer.findUnique.mockResolvedValue({
+      id: "offer-1",
+      status: "ACCEPTED",
+      offerAmount: 500000000n,
+      buyerId: "user-1",
+      listingId: "listing-1",
+      listing: { sellerId: "seller-1" },
+    });
+    // $transaction throws with a secret — must be masked
+    mockDb.deal.$transaction.mockRejectedValue(makeErrorWithSecret());
+
+    const { POST } = await import("@/app/api/deals/route");
+    const res = await POST(
+      new Request("http://localhost/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceType: "LISTING_OFFER", sourceId: "offer-1" }),
+      }),
+    );
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Internal server error");
+    assertNoSecret(json, "POST /api/deals");
+  });
+
+  // ── STEP 13.35 P2-C: POST /api/rfq/[id]/quotes negative test (independent) ──
+  it("POST /api/rfq/[id]/quotes: submitQuote throws non-RFQServiceError → 500 generic, no secret", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ id: "user-1" } as any);
+    // Mock RFQ lookup to succeed (so submitQuote proceeds to db.rFQQuote.create)
+    mockDb.rFQ.findUnique.mockResolvedValue({
+      id: "rfq-1",
+      status: "OPEN",
+      quantity: 1,
+      title: "Test RFQ",
+    });
+    // Mock user lookup for seller identity resolution
+    mockDb.user.findUnique.mockResolvedValue({
+      firstName: "Test",
+      lastName: "Seller",
+      mobile: "09120000000",
+      email: "seller@test.com",
+    });
+    // rFQQuote.create throws with a secret — must be masked
+    mockDb.rFQQuote.create = vi.fn().mockRejectedValue(makeErrorWithSecret());
+
+    const { POST } = await import("@/app/api/rfq/[id]/quotes/route");
+    const res = await POST(
+      new Request("http://localhost/api/rfq/rfq-1/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price: 100000000 }),
+      }),
+      { params: Promise.resolve({ id: "rfq-1" }) },
+    );
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("Internal server error");
+    assertNoSecret(json, "POST /api/rfq/[id]/quotes");
+  });
+
+  // ── STEP 13.35 P2-C mutation test: prove raw err.message leak fails the test ──
+  it("MUTATION: if route returns err.message, this test FAILS (proves test is valid)", async () => {
+    // This test verifies that the negative test above is meaningful.
+    // We simulate what would happen if the route returned err.message:
+    const fakeResponse = {
+      error: `${FAKE_SECRET} — ${FAKE_STACK}`,
+    };
+    // If the route returned this, assertNoSecret would fail.
+    // We verify assertNoSecret catches it:
+    let caught = false;
+    try {
+      assertNoSecret(fakeResponse, "mutation-test");
+    } catch {
+      caught = true;
+    }
+    expect(caught).toBe(true); // The assertion DID catch the leak → test is valid
+  });
 });

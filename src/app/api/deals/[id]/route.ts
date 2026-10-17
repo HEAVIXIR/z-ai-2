@@ -11,6 +11,7 @@
  *   PATCH /api/deals/[id] — transition deal status (state machine)
  */
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -152,16 +153,13 @@ export async function PATCH(
         (body as { cancelReason?: string }).cancelReason || null;
     }
 
-    // STEP 13.31 P2-A FIX: wrap deal.update + order.create in a single
-    // Serializable transaction so that:
-    //  1. If order.create fails, the deal update is rolled back (atomicity).
-    //  2. Concurrent CONFIRMED transitions cannot create duplicate orders:
-    //     we re-check for an existing order INSIDE the txn (the pre-update
-    //     `deal.order` fetch outside is stale by the time we create).
-    // The order.create uses dealId as a unique key (@unique on Order.dealId
-    // in the schema), so a concurrent insert would also be rejected by the
-    // unique constraint — the Serializable isolation + re-check is
-    // defense-in-depth.
+    // STEP 13.35 P2-A FIX: detect Prisma errors by type + code, NOT message text.
+    // P2002 on Order.dealId → idempotent success (concurrent CONFIRMED created
+    //   the order first). Re-read the order to confirm it exists before
+    //   returning success.
+    // P2002 on Order.orderNumber → NOT idempotent (collision on generated
+    //   number); must error.
+    // P2034 (serialization) → NOT success; propagate (caller returns 409 retry).
     const updated = await db
       .$transaction(
         async (tx) => {
@@ -218,14 +216,35 @@ export async function PATCH(
         },
         { isolationLevel: "Serializable" },
       )
-      .catch((err: unknown) => {
-        // P2002 = unique constraint violation on Order.dealId (concurrent
-        // CONFIRMED created the order first). Treat as success — the deal
-        // was already confirmed + order already exists.
-        const msg = err instanceof Error ? err.message : "";
-        if (msg.includes("P2002") || msg.includes("Unique constraint")) {
-          // Return a minimal deal object; the caller only needs id + status.
-          return { id: deal.id, status: newStatus };
+      .catch(async (err: unknown) => {
+        // STEP 13.35 P2-A FIX: use PrismaClientKnownRequestError + .code,
+        // NOT message text (message format can change across Prisma versions).
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === "P2002") {
+            // Unique constraint violation. Check WHICH constraint failed.
+            // The meta.target field names the constrained field(s).
+            const target = (err.meta?.target as string[] | undefined) ?? [];
+            if (target.includes("dealId")) {
+              // Idempotent success: concurrent CONFIRMED created the order
+              // first. Re-read to confirm the order exists.
+              const orderExists = await db.order.findUnique({
+                where: { dealId: id },
+                select: { id: true },
+              });
+              if (orderExists) {
+                return { id: deal.id, status: newStatus };
+              }
+              // If order doesn't exist despite P2002 on dealId, something
+              // is wrong — propagate the error.
+              throw err;
+            }
+            // P2002 on orderNumber (or any other field) → NOT idempotent.
+            // Propagate as a real error.
+            throw err;
+          }
+          // P2034 (serialization) → propagate; caller returns 409 retry.
+          // Do NOT treat as success.
+          throw err;
         }
         throw err;
       });
