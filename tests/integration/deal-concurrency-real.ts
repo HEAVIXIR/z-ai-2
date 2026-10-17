@@ -156,7 +156,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
 
   it("third CONFIRMED request (after already confirmed) → 409 (invalid transition)", async () => {
     const { PATCH } = await import("@/app/api/deals/[id]/route");
-    
+
     mockGetCurrentUserId.mockResolvedValue(buyerId);
 
     const res = await PATCH(
@@ -170,5 +170,82 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
 
     // CONFIRMED → CONFIRMED is not a valid transition → 409
     expect(res.status).toBe(409);
+  });
+
+  // ── STEP 13.37 P2-A: rollback test — order.create fails → deal rolled back ──
+  it("order.create fails inside txn → deal status NOT changed (rollback)", async () => {
+    // Create a NEW deal in PENDING_CONFIRMATION for this test
+    const rollbackDeal = await db.deal.create({
+      data: {
+        dealNumber: "ROLLBACK-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER",
+        sourceId: "rollback-test",
+        buyerId,
+        sellerId,
+        listingId,
+        agreedAmount: 300000000n,
+        currency: "IRR",
+        transactionType: "SALE",
+        status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+
+    // Mock order.create to fail inside the transaction by intercepting
+    // db.$transaction. We use a custom implementation that calls the callback
+    // but makes order.create throw.
+    const { PATCH } = await import("@/app/api/deals/[id]/route");
+    const { db: realDb } = await import("@/lib/db");
+
+    mockGetCurrentUserId.mockResolvedValue(buyerId);
+
+    // Temporarily override db.$transaction to make order.create fail
+    const originalTransaction = realDb.$transaction.bind(realDb);
+    (realDb as any).$transaction = async (cb: any, opts?: any) => {
+      return originalTransaction(async (tx: any) => {
+        // Override tx.order.create to throw
+        const originalOrderCreate = tx.order.create.bind(tx.order);
+        tx.order.create = async () => {
+          throw new Error("SIMULATED order.create failure");
+        };
+        try {
+          return await cb(tx);
+        } finally {
+          tx.order.create = originalOrderCreate;
+        }
+      }, opts);
+    };
+
+    try {
+      const res = await PATCH(
+        new Request(`http://localhost/api/deals/${rollbackDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "CONFIRMED" }),
+        }),
+        { params: Promise.resolve({ id: rollbackDeal.id }) },
+      );
+
+      // The transaction should fail → 500 (error propagates)
+      expect(res.status).toBe(500);
+
+      // Verify DB state: deal status should STILL be PENDING_CONFIRMATION (rolled back)
+      const dealAfter = await db.deal.findUnique({
+        where: { id: rollbackDeal.id },
+        select: { status: true },
+      });
+      expect(dealAfter?.status).toBe("PENDING_CONFIRMATION");
+
+      // Verify NO order was created (rolled back)
+      const orderCount = await db.order.count({
+        where: { dealId: rollbackDeal.id },
+      });
+      expect(orderCount).toBe(0);
+    } finally {
+      // Restore original $transaction
+      (realDb as any).$transaction = originalTransaction;
+      // Cleanup
+      await db.deal.delete({ where: { id: rollbackDeal.id } }).catch(() => {});
+    }
   });
 });
