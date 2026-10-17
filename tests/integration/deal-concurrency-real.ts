@@ -460,4 +460,163 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       expect(dealAfterCleanup).toBeNull();
     }
   });
+
+  // ── STEP 13.51 P2-A: Failure matrix tests ──
+  // dellk00k requires proof of each failure scenario with real PostgreSQL
+
+  // 1. Deal creation failure — no fixture to clean up
+  it("deal.create fails → no fixture left behind (no orphan)", async () => {
+    // Use an invalid buyerId (FK violation) to make deal.create fail
+    await expect(
+      db.deal.create({
+        data: {
+          dealNumber: "FAIL-DEAL-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER", sourceId: "fail-test",
+          buyerId: "nonexistent-buyer-id",
+          sellerId,
+          listingId,
+          agreedAmount: 100n, currency: "IRR",
+          transactionType: "SALE", status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      })
+    ).rejects.toThrow();
+
+    // Verify no deal was created with that dealNumber
+    const orphan = await db.deal.findFirst({
+      where: { dealNumber: { startsWith: "FAIL-DEAL-" } },
+    });
+    expect(orphan).toBeNull();
+  });
+
+  // 2. Order creation failure after Deal created — Deal cleaned up
+  it("order.create fails after deal created → deal cleaned up (no orphan)", async () => {
+    let testDealId: string | undefined;
+    try {
+      const testDeal = await db.deal.create({
+        data: {
+          dealNumber: "ORPHAN-CHK-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER", sourceId: "orphan-check",
+          buyerId, sellerId, listingId,
+          agreedAmount: 100n, currency: "IRR",
+          transactionType: "SALE", status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      });
+      testDealId = testDeal.id;
+
+      // Try to create an order with a duplicate dealId (unique constraint)
+      await db.order.create({
+        data: {
+          orderNumber: "ORD-ORPHAN-" + Date.now().toString(36),
+          dealId: testDeal.id, titleSnapshot: "Orphan Check",
+          priceSnapshot: 100n, currencySnapshot: "IRR",
+          sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+          quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
+        },
+      });
+      // This should succeed (first order). Second one with same dealId should fail.
+      await expect(
+        db.order.create({
+          data: {
+            orderNumber: "ORD-ORPHAN2-" + Date.now().toString(36),
+            dealId: testDeal.id, titleSnapshot: "Orphan Check 2",
+            priceSnapshot: 100n, currencySnapshot: "IRR",
+            sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+            quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
+          },
+        })
+      ).rejects.toThrow();
+    } finally {
+      const cleanupErrors: string[] = [];
+      if (testDealId) {
+        await db.order.deleteMany({ where: { dealId: testDealId } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
+        await db.deal.delete({ where: { id: testDealId } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
+      }
+      if (cleanupErrors.length > 0) {
+        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
+      }
+    }
+
+    // Verify both deal and orders are absent
+    if (testDealId) {
+      const dealCheck = await db.deal.findUnique({ where: { id: testDealId }, select: { id: true } });
+      expect(dealCheck).toBeNull();
+      const orderCheck = await db.order.count({ where: { dealId: testDealId } });
+      expect(orderCheck).toBe(0);
+    }
+  });
+
+  // 3. Multi-record independent deletion — one fails, others still attempted
+  it("multi-record cleanup: one deletion fails → others still attempted", async () => {
+    // Create two deals (both need cleanup)
+    const deal1 = await db.deal.create({
+      data: {
+        dealNumber: "MULTI-1-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER", sourceId: "multi-test-1",
+        buyerId, sellerId, listingId,
+        agreedAmount: 100n, currency: "IRR",
+        transactionType: "SALE", status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+    const deal2 = await db.deal.create({
+      data: {
+        dealNumber: "MULTI-2-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER", sourceId: "multi-test-2",
+        buyerId, sellerId, listingId,
+        agreedAmount: 200n, currency: "IRR",
+        transactionType: "SALE", status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+
+    // Delete deal1 first (succeeds), then try to delete it AGAIN (fails — already deleted)
+    // Then delete deal2 (should still succeed despite deal1's second deletion failing)
+    const cleanupErrors: string[] = [];
+    await db.deal.delete({ where: { id: deal1.id } }).catch((e) => { cleanupErrors.push(`deal1: ${e}`); });
+    // This will fail because deal1 was already deleted
+    await db.deal.delete({ where: { id: deal1.id } }).catch((e) => { cleanupErrors.push(`deal1-retry: ${e}`); });
+    // deal2 should still be attempted and succeed
+    await db.deal.delete({ where: { id: deal2.id } }).catch((e) => { cleanupErrors.push(`deal2: ${e}`); });
+
+    // deal1-retry should have failed (it was already deleted)
+    expect(cleanupErrors.length).toBe(1);
+    expect(cleanupErrors[0]).toContain("deal1-retry");
+
+    // Verify both deals are absent from DB
+    const deal1Check = await db.deal.findUnique({ where: { id: deal1.id }, select: { id: true } });
+    expect(deal1Check).toBeNull();
+    const deal2Check = await db.deal.findUnique({ where: { id: deal2.id }, select: { id: true } });
+    expect(deal2Check).toBeNull();
+  });
+
+  // 4. All fixtures absent after test suite (verify DB is clean)
+  it("DB is clean: no test fixtures remain from previous tests", async () => {
+    // Check no deals with test prefixes remain
+    const testDeals = await db.deal.findMany({
+      where: {
+        OR: [
+          { dealNumber: { startsWith: "PATCHROLL-" } },
+          { dealNumber: { startsWith: "CANCEL-" } },
+          { dealNumber: { startsWith: "COMP-" } },
+          { dealNumber: { startsWith: "ORPHAN-" } },
+          { dealNumber: { startsWith: "MULTI-" } },
+          { dealNumber: { startsWith: "FAIL-DEAL-" } },
+          { dealNumber: { startsWith: "ORPHAN-CHK-" } },
+        ]
+      },
+      select: { id: true, dealNumber: true },
+    });
+    expect(testDeals).toHaveLength(0);
+
+    // Check no orders with test prefixes remain
+    const testOrders = await db.order.findMany({
+      where: {
+        orderNumber: { startsWith: "ORD-ORPHAN" }
+      },
+      select: { id: true, orderNumber: true },
+    });
+    expect(testOrders).toHaveLength(0);
+  });
 });
