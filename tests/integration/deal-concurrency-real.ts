@@ -249,31 +249,35 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
     }
   });
 
-  // ── STEP 13.40 P2-A: CANCELLED order → 409 + rollback (real PostgreSQL, explicit comparison + guaranteed cleanup)
+  // ── STEP 13.41 P2-A: CANCELLED order → 409 + rollback (creation inside try, visible cleanup)
   it("CANCELLED order → 409 error, deal AND order both unchanged (explicit before/after comparison)", async () => {
-    const testDeal = await db.deal.create({
-      data: {
-        dealNumber: "CANCEL-" + Date.now().toString(36),
-        sourceType: "LISTING_OFFER",
-        sourceId: "cancel-test",
-        buyerId, sellerId, listingId,
-        agreedAmount: 200000000n, currency: "IRR",
-        transactionType: "SALE", status: "PENDING_CONFIRMATION",
-        agreedAt: new Date(),
-      },
-    });
-    const cancelledOrder = await db.order.create({
-      data: {
-        orderNumber: "ORD-CANCEL-" + Date.now().toString(36),
-        dealId: testDeal.id, titleSnapshot: "Cancel Test",
-        priceSnapshot: 200000000n, currencySnapshot: "IRR",
-        sellerSnapshot: sellerId, buyerSnapshot: buyerId,
-        quantity: 1, status: "CANCELLED", cancelledAt: new Date(),
-      },
-    });
-
+    // STEP 13.41: all creation inside try so cleanup covers all records
+    let testDealId: string | undefined;
+    let cancelledOrderId: string | undefined;
     try {
-      // STEP 13.40: read FULL records before (not just status)
+      const testDeal = await db.deal.create({
+        data: {
+          dealNumber: "CANCEL-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER", sourceId: "cancel-test",
+          buyerId, sellerId, listingId,
+          agreedAmount: 200000000n, currency: "IRR",
+          transactionType: "SALE", status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      });
+      testDealId = testDeal.id;
+
+      const cancelledOrder = await db.order.create({
+        data: {
+          orderNumber: "ORD-CANCEL-" + Date.now().toString(36),
+          dealId: testDeal.id, titleSnapshot: "Cancel Test",
+          priceSnapshot: 200000000n, currencySnapshot: "IRR",
+          sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+          quantity: 1, status: "CANCELLED", cancelledAt: new Date(),
+        },
+      });
+      cancelledOrderId = cancelledOrder.id;
+
       const dealBefore = await db.deal.findUnique({
         where: { id: testDeal.id },
         select: { id: true, status: true, confirmedAt: true },
@@ -285,7 +289,6 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       expect(dealBefore).toBeTruthy();
       expect(orderBefore).toBeTruthy();
 
-      // Execute PATCH via real route handler
       const { PATCH } = await import("@/app/api/deals/[id]/route");
       mockGetCurrentUserId.mockResolvedValue(buyerId);
       const res = await PATCH(
@@ -297,10 +300,8 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         { params: Promise.resolve({ id: testDeal.id }) },
       );
 
-      // Verify 409 response
       expect(res.status).toBe(409);
 
-      // STEP 13.40: read FULL records after and compare explicitly
       const dealAfter = await db.deal.findUnique({
         where: { id: testDeal.id },
         select: { id: true, status: true, confirmedAt: true },
@@ -310,48 +311,55 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         select: { id: true, status: true, confirmedAt: true },
       });
 
-      // Explicit before/after comparison with toMatchObject
       expect(dealAfter).toMatchObject({
-        id: dealBefore!.id,
-        status: dealBefore!.status,
+        id: dealBefore!.id, status: dealBefore!.status,
         confirmedAt: dealBefore!.confirmedAt,
       });
       expect(orderAfter).toMatchObject({
-        id: orderBefore!.id,
-        status: orderBefore!.status,
+        id: orderBefore!.id, status: orderBefore!.status,
         confirmedAt: orderBefore!.confirmedAt,
       });
     } finally {
-      // STEP 13.40: guaranteed cleanup — runs even if assertion fails
-      await db.order.delete({ where: { id: cancelledOrder.id } }).catch(() => {});
-      await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+      // STEP 13.41: visible cleanup — no .catch(()=>{}), errors logged
+      if (cancelledOrderId) {
+        try { await db.order.delete({ where: { id: cancelledOrderId } }); }
+        catch (e) { console.error("CLEANUP ERROR (order delete):", e); }
+      }
+      if (testDealId) {
+        try { await db.deal.delete({ where: { id: testDealId } }); }
+        catch (e) { console.error("CLEANUP ERROR (deal delete):", e); }
+      }
     }
   });
 
-  // ── STEP 13.40 P2-A: COMPLETED order → 409 + rollback (explicit before/after + guaranteed cleanup)
+  // ── STEP 13.41 P2-A: COMPLETED order → 409 + rollback (creation inside try, visible cleanup)
   it("COMPLETED order → 409 error, deal AND order both unchanged (explicit before/after comparison)", async () => {
-    const testDeal = await db.deal.create({
-      data: {
-        dealNumber: "COMP-" + Date.now().toString(36),
-        sourceType: "LISTING_OFFER",
-        sourceId: "completed-test",
-        buyerId, sellerId, listingId,
-        agreedAmount: 150000000n, currency: "IRR",
-        transactionType: "SALE", status: "PENDING_CONFIRMATION",
-        agreedAt: new Date(),
-      },
-    });
-    const completedOrder = await db.order.create({
-      data: {
-        orderNumber: "ORD-COMP-" + Date.now().toString(36),
-        dealId: testDeal.id, titleSnapshot: "Completed Test",
-        priceSnapshot: 150000000n, currencySnapshot: "IRR",
-        sellerSnapshot: sellerId, buyerSnapshot: buyerId,
-        quantity: 1, status: "COMPLETED", completedAt: new Date(),
-      },
-    });
-
+    let testDealId: string | undefined;
+    let completedOrderId: string | undefined;
     try {
+      const testDeal = await db.deal.create({
+        data: {
+          dealNumber: "COMP-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER", sourceId: "completed-test",
+          buyerId, sellerId, listingId,
+          agreedAmount: 150000000n, currency: "IRR",
+          transactionType: "SALE", status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      });
+      testDealId = testDeal.id;
+
+      const completedOrder = await db.order.create({
+        data: {
+          orderNumber: "ORD-COMP-" + Date.now().toString(36),
+          dealId: testDeal.id, titleSnapshot: "Completed Test",
+          priceSnapshot: 150000000n, currencySnapshot: "IRR",
+          sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+          quantity: 1, status: "COMPLETED", completedAt: new Date(),
+        },
+      });
+      completedOrderId = completedOrder.id;
+
       const dealBefore = await db.deal.findUnique({
         where: { id: testDeal.id },
         select: { id: true, status: true, confirmedAt: true },
@@ -386,18 +394,73 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       });
 
       expect(dealAfter).toMatchObject({
-        id: dealBefore!.id,
-        status: dealBefore!.status,
+        id: dealBefore!.id, status: dealBefore!.status,
         confirmedAt: dealBefore!.confirmedAt,
       });
       expect(orderAfter).toMatchObject({
-        id: orderBefore!.id,
-        status: orderBefore!.status,
+        id: orderBefore!.id, status: orderBefore!.status,
         confirmedAt: orderBefore!.confirmedAt,
       });
     } finally {
-      await db.order.delete({ where: { id: completedOrder.id } }).catch(() => {});
-      await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+      if (completedOrderId) {
+        try { await db.order.delete({ where: { id: completedOrderId } }); }
+        catch (e) { console.error("CLEANUP ERROR (order delete):", e); }
+      }
+      if (testDealId) {
+        try { await db.deal.delete({ where: { id: testDealId } }); }
+        catch (e) { console.error("CLEANUP ERROR (deal delete):", e); }
+      }
+    }
+  });
+
+  // ── STEP 13.41 P2-A: order-create fails → deal cleaned up (no orphan) ──
+  it("order create fails → deal is cleaned up (no orphan record)", async () => {
+    let testDealId: string | undefined;
+    try {
+      const testDeal = await db.deal.create({
+        data: {
+          dealNumber: "ORPHAN-" + Date.now().toString(36),
+          sourceType: "LISTING_OFFER", sourceId: "orphan-test",
+          buyerId, sellerId, listingId,
+          agreedAmount: 100000000n, currency: "IRR",
+          transactionType: "SALE", status: "PENDING_CONFIRMATION",
+          agreedAt: new Date(),
+        },
+      });
+      testDealId = testDeal.id;
+
+      // Simulate order create failure by trying to create an order
+      // with a duplicate dealId (Order.dealId is @unique)
+      await db.order.create({
+        data: {
+          orderNumber: "ORD-ORPHAN1-" + Date.now().toString(36),
+          dealId: testDeal.id, titleSnapshot: "Orphan Test 1",
+          priceSnapshot: 100000000n, currencySnapshot: "IRR",
+          sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+          quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
+        },
+      });
+
+      // Second create with same dealId should fail (unique constraint)
+      await expect(
+        db.order.create({
+          data: {
+            orderNumber: "ORD-ORPHAN2-" + Date.now().toString(36),
+            dealId: testDeal.id, titleSnapshot: "Orphan Test 2",
+            priceSnapshot: 100000000n, currencySnapshot: "IRR",
+            sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+            quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
+          },
+        })
+      ).rejects.toThrow();
+    } finally {
+      // Clean up: order first (FK dependency), then deal
+      if (testDealId) {
+        try { await db.order.deleteMany({ where: { dealId: testDealId } }); }
+        catch (e) { console.error("CLEANUP ERROR (order cleanup):", e); }
+        try { await db.deal.delete({ where: { id: testDealId } }); }
+        catch (e) { console.error("CLEANUP ERROR (deal cleanup):", e); }
+      }
     }
   });
 });

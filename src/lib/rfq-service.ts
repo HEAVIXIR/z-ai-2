@@ -473,9 +473,9 @@ export async function acceptQuote(
     throw new RFQServiceError(400, "quoteId الزامی است");
   }
 
-  // STEP 13.40 P3-A FIX (owner decision: preemptive fix, option 2):
-  // Verify that the caller is the buyer of the RFQ that this quote
-  // belongs to. Only the buyer can accept/reject quotes on their RFQ.
+  // STEP 13.41 P3-A FIX (fail-closed): verify buyer ownership before any mutation.
+  // Null userId → reject (not bypass). Null buyerId → reject (fail-closed).
+  // Admin access must go through a separate RBAC-checked route, not null userId.
   const before = await db.rFQQuote.findUnique({
     where: { id: quoteId },
     select: { id: true, status: true, rfqId: true, sellerId: true },
@@ -484,23 +484,31 @@ export async function acceptQuote(
     throw new RFQServiceError(404, "پیشنهاد یافت نشد");
   }
 
-  // Verify buyer ownership: look up the RFQ and check buyerId
-  if (before.rfqId) {
-    const rfq = await db.rFQ.findUnique({
-      where: { id: before.rfqId },
-      select: { buyerId: true },
-    });
-    if (!rfq) {
-      throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
-    }
-    // Only the buyer can accept quotes (or null userId = admin bypass,
-    // but admin routes use a different path with RBAC checks)
-    if (userId && rfq.buyerId && userId !== rfq.buyerId) {
-      throw new RFQServiceError(
-        403,
-        "شما مجاز به پذیرش پیشنهادهای این استعلام نیستید",
-      );
-    }
+  // Fail-closed: require userId
+  if (!userId || typeof userId !== "string" || userId.trim() === "") {
+    throw new RFQServiceError(403, "هویت کاربر برای این عملیات الزامی است");
+  }
+
+  // Verify buyer ownership
+  if (!before.rfqId) {
+    throw new RFQServiceError(404, "استعلام قیمت مرتبط یافت نشد");
+  }
+  const rfq = await db.rFQ.findUnique({
+    where: { id: before.rfqId },
+    select: { buyerId: true },
+  });
+  if (!rfq) {
+    throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
+  }
+  if (!rfq.buyerId) {
+    // Fail-closed: RFQ has no buyer — cannot authorize
+    throw new RFQServiceError(403, "استعلام قیمت فاقد خریدار است");
+  }
+  if (userId !== rfq.buyerId) {
+    throw new RFQServiceError(
+      403,
+      "شما مجاز به پذیرش پیشنهادهای این استعلام نیستید",
+    );
   }
 
   if (before.status === QUOTE_ACCEPTED) {
@@ -568,9 +576,11 @@ export async function rejectQuote(
     throw new RFQServiceError(400, "quoteId الزامی است");
   }
 
-  // STEP 13.40 P3-A FIX (owner decision: preemptive fix, option 2):
-  // Verify that the caller is the buyer of the RFQ that this quote
-  // belongs to. Only the buyer can accept/reject quotes on their RFQ.
+  // STEP 13.41 P3-A FIX (fail-closed): verify buyer ownership before any mutation.
+  if (!quoteId) {
+    throw new RFQServiceError(400, "quoteId الزامی است");
+  }
+
   const before = await db.rFQQuote.findUnique({
     where: { id: quoteId },
     select: { id: true, status: true, rfqId: true, sellerId: true },
@@ -579,21 +589,30 @@ export async function rejectQuote(
     throw new RFQServiceError(404, "پیشنهاد یافت نشد");
   }
 
+  // Fail-closed: require userId
+  if (!userId || typeof userId !== "string" || userId.trim() === "") {
+    throw new RFQServiceError(403, "هویت کاربر برای این عملیات الزامی است");
+  }
+
   // Verify buyer ownership
-  if (before.rfqId) {
-    const rfq = await db.rFQ.findUnique({
-      where: { id: before.rfqId },
-      select: { buyerId: true },
-    });
-    if (!rfq) {
-      throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
-    }
-    if (userId && rfq.buyerId && userId !== rfq.buyerId) {
-      throw new RFQServiceError(
-        403,
-        "شما مجاز به رد پیشنهادهای این استعلام نیستید",
-      );
-    }
+  if (!before.rfqId) {
+    throw new RFQServiceError(404, "استعلام قیمت مرتبط یافت نشد");
+  }
+  const rfq = await db.rFQ.findUnique({
+    where: { id: before.rfqId },
+    select: { buyerId: true },
+  });
+  if (!rfq) {
+    throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
+  }
+  if (!rfq.buyerId) {
+    throw new RFQServiceError(403, "استعلام قیمت فاقد خریدار است");
+  }
+  if (userId !== rfq.buyerId) {
+    throw new RFQServiceError(
+      403,
+      "شما مجاز به رد پیشنهادهای این استعلام نیستید",
+    );
   }
 
   if (before.status === QUOTE_REJECTED) {

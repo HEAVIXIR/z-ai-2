@@ -114,11 +114,53 @@ describe("STEP 13.40 — P3-A: acceptQuote/rejectQuote buyer-ownership", () => {
     }
   });
 
-  // ── 6. Null userId (admin/context bypass) → allowed ──
-  it("null userId does not block (admin/context bypass)", async () => {
-    const result = await acceptQuote("quote-1", null);
-    expect(result.status).toBe("ACCEPTED");
-    expect(mockRFQQuoteUpdate).toHaveBeenCalledTimes(1);
+  // ── 6. Null userId → REJECTED (fail-closed, STEP 13.41) ──
+  it("null userId → 403 (fail-closed, no bypass)", async () => {
+    await expect(acceptQuote("quote-1", null)).rejects.toThrow();
+    try {
+      await acceptQuote("quote-1", null);
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(403);
+    }
+    // quote.update must NOT be called (authorization failed)
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 6b. Empty string userId → REJECTED ──
+  it("empty string userId → 403 (fail-closed)", async () => {
+    await expect(acceptQuote("quote-1", "")).rejects.toThrow();
+    try {
+      await acceptQuote("quote-1", "");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(403);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 6c. Null buyerId on RFQ → REJECTED (fail-closed) ──
+  it("RFQ with null buyerId → 403 (fail-closed)", async () => {
+    mockRFQFindUnique.mockResolvedValue({ buyerId: null });
+    await expect(acceptQuote("quote-1", "user-1")).rejects.toThrow();
+    try {
+      await acceptQuote("quote-1", "user-1");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(403);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── 6d. Quote with null rfqId → REJECTED ──
+  it("quote with null rfqId → 404 (fail-closed)", async () => {
+    mockRFQQuoteFindUnique.mockResolvedValue({
+      id: "quote-1", status: "PENDING", rfqId: null, sellerId: "seller-A",
+    });
+    await expect(acceptQuote("quote-1", "buyer-001")).rejects.toThrow();
+    try {
+      await acceptQuote("quote-1", "buyer-001");
+    } catch (e) {
+      expect((e as InstanceType<typeof RFQServiceError>).status).toBe(404);
+    }
+    expect(mockRFQQuoteUpdate).not.toHaveBeenCalled();
   });
 
   // ── 7. RFQ not found → 404 ──
