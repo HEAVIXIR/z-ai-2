@@ -34,7 +34,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         email: "concurrency-buyer@test.com",
         firstName: "Conc",
         lastName: "Buyer",
-        password: "hash",
+        passwordHash: "hash",
       },
     });
     buyerId = buyer.id;
@@ -45,7 +45,7 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
         email: "concurrency-seller@test.com",
         firstName: "Conc",
         lastName: "Seller",
-        password: "hash",
+        passwordHash: "hash",
       },
     });
     sellerId = seller.id;
