@@ -136,7 +136,9 @@ jobs:
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/audit-transaction-real.ts
 
   # ── INFORMATIONAL: Phase tests (independent job, real status) ──
-  # 75 of 734 tests fail on missing comprehensive seed infrastructure.
+  # STEP 13.53 Phase C (P2-B): now seeded by `db:seed-phase-catalog`
+  # so the phase1..phase9 contract tests have the catalog/marketplace/
+  # location/moderation/deal/search data they assert against.
   # Shows REAL failure status. NOT in required_status_checks.
   phase-tests:
     runs-on: ubuntu-latest
@@ -150,7 +152,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -185,5 +187,7 @@ jobs:
           bun run db:seed-brands-b
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
+      - name: Seed phase catalog (STEP 13.53 P2-B)
+        run: bun run db:seed-phase-catalog
       - name: Phase integration tests (real status, no masking)
         run: bunx vitest run tests/phase*.test.ts
