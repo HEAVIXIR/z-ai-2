@@ -75,6 +75,8 @@ jobs:
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/deal-concurrency-real.ts
       - name: Integration — p3a-http-db-real (STEP 13.54 Phase 2 P3-A)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-http-db-real.ts
+      - name: Integration — p3a-auth-real-http-db (STEP 13.55 Commit B P3-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
       - name: Integration test files
         run: bunx vitest run tests/integration/*.test.ts
       - name: All contract + unit tests
