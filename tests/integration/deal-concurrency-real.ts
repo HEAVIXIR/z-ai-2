@@ -414,67 +414,103 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
   });
 
   // ── STEP 13.41 P2-A: order-create fails → deal cleaned up (no orphan) ──
-  it("order create fails → deal is cleaned up (verify deal ABSENT from DB after cleanup)", async () => {
-    let testDealId: string | undefined;
+  // ── STEP 13.43 P2-A: order.create fails INSIDE PATCH transaction → deal rolled back ──
+  // dellk00k finding: "ثابت نمی‌کند که شکست ایجاد Order در مسیر واقعی PATCH
+  // باعث rollback اتمیک می‌شود و رکورد یتیم باقی نمی‌ماند"
+  // This test intercepts db.$transaction to make order.create fail INSIDE
+  // the real PATCH handler's transaction, then verifies:
+  // 1. HTTP 500 (error propagates)
+  // 2. Deal status UNCHANGED (rolled back — not CONFIRMED)
+  // 3. 0 orders exist (rolled back)
+  // 4. After cleanup, deal ABSENT from DB
+  it("PATCH: order.create fails inside transaction → deal rolled back + 0 orders (real DB proof)", async () => {
+    // Create a deal in PENDING_CONFIRMATION
+    const testDeal = await db.deal.create({
+      data: {
+        dealNumber: "PATCHROLL-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER", sourceId: "patch-rollback-test",
+        buyerId, sellerId, listingId,
+        agreedAmount: 250000000n, currency: "IRR",
+        transactionType: "SALE", status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+
+    // Record BEFORE state
+    const dealBefore = await db.deal.findUnique({
+      where: { id: testDeal.id },
+      select: { id: true, status: true, confirmedAt: true },
+    });
+    expect(dealBefore?.status).toBe("PENDING_CONFIRMATION");
+
+    // Intercept db.$transaction to make tx.order.create throw
+    const { db: realDb } = await import("@/lib/db");
+    const originalTransaction = realDb.$transaction.bind(realDb);
+    let cleanupError: Error | null = null;
+
+    (realDb as any).$transaction = async (cb: any, opts?: any) => {
+      return originalTransaction(async (tx: any) => {
+        // Override tx.order.create to throw (simulating failure inside the
+        // real PATCH handler's transaction)
+        tx.order.create = async () => {
+          throw new Error("SIMULATED order.create failure inside PATCH transaction");
+        };
+        return cb(tx);
+      }, opts);
+    };
+
+    let patchResponse: Response | null = null;
     try {
-      const testDeal = await db.deal.create({
-        data: {
-          dealNumber: "ORPHAN-" + Date.now().toString(36),
-          sourceType: "LISTING_OFFER", sourceId: "orphan-test",
-          buyerId, sellerId, listingId,
-          agreedAmount: 100000000n, currency: "IRR",
-          transactionType: "SALE", status: "PENDING_CONFIRMATION",
-          agreedAt: new Date(),
-        },
-      });
-      testDealId = testDeal.id;
-
-      // First order create succeeds
-      await db.order.create({
-        data: {
-          orderNumber: "ORD-ORPHAN1-" + Date.now().toString(36),
-          dealId: testDeal.id, titleSnapshot: "Orphan Test 1",
-          priceSnapshot: 100000000n, currencySnapshot: "IRR",
-          sellerSnapshot: sellerId, buyerSnapshot: buyerId,
-          quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
-        },
-      });
-
-      // Second create with same dealId should fail (unique constraint)
-      await expect(
-        db.order.create({
-          data: {
-            orderNumber: "ORD-ORPHAN2-" + Date.now().toString(36),
-            dealId: testDeal.id, titleSnapshot: "Orphan Test 2",
-            priceSnapshot: 100000000n, currencySnapshot: "IRR",
-            sellerSnapshot: sellerId, buyerSnapshot: buyerId,
-            quantity: 1, status: "CONFIRMED", confirmedAt: new Date(),
-          },
-        })
-      ).rejects.toThrow();
+      const { PATCH } = await import("@/app/api/deals/[id]/route");
+      mockGetCurrentUserId.mockResolvedValue(buyerId);
+      patchResponse = await PATCH(
+        new Request(`http://localhost/api/deals/${testDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "CONFIRMED" }),
+        }),
+        { params: Promise.resolve({ id: testDeal.id }) },
+      );
     } finally {
-      // Clean up: order first (FK dependency), then deal
-      if (testDealId) {
-        try { await db.order.deleteMany({ where: { dealId: testDealId } }); }
-        catch (e) { console.error("CLEANUP ERROR (order cleanup):", e); }
-        try { await db.deal.delete({ where: { id: testDealId } }); }
-        catch (e) { console.error("CLEANUP ERROR (deal cleanup):", e); }
-      }
+      // Restore original $transaction
+      (realDb as any).$transaction = originalTransaction;
     }
 
-    // STEP 13.42: verify deal record is ABSENT from DB after cleanup
-    // (not just that cleanup ran — verify the actual DB state)
-    if (testDealId) {
-      const dealStillExists = await db.deal.findUnique({
-        where: { id: testDealId },
-        select: { id: true },
-      });
-      expect(dealStillExists).toBeNull();
+    // 1. Verify HTTP 500 (error propagates from failed transaction)
+    expect(patchResponse?.status).toBe(500);
 
-      const ordersStillExist = await db.order.count({
-        where: { dealId: testDealId },
-      });
-      expect(ordersStillExist).toBe(0);
+    // 2. Read deal AFTER from PostgreSQL — status must be UNCHANGED (rolled back)
+    const dealAfter = await db.deal.findUnique({
+      where: { id: testDeal.id },
+      select: { id: true, status: true, confirmedAt: true },
+    });
+    expect(dealAfter).toMatchObject({
+      id: dealBefore!.id,
+      status: dealBefore!.status,        // Still PENDING_CONFIRMATION (NOT CONFIRMED)
+      confirmedAt: dealBefore!.confirmedAt, // Still null
+    });
+
+    // 3. Verify 0 orders exist (order.create failed → rolled back)
+    const orderCount = await db.order.count({ where: { dealId: testDeal.id } });
+    expect(orderCount).toBe(0);
+
+    // 4. Cleanup — and make cleanup failure cause test failure (not just log)
+    try {
+      await db.deal.delete({ where: { id: testDeal.id } });
+    } catch (e) {
+      cleanupError = e as Error;
     }
+
+    // STEP 13.43: cleanup failure → test failure (not swallowed)
+    if (cleanupError) {
+      throw new Error(`Cleanup failed: ${cleanupError.message}`);
+    }
+
+    // 5. Verify deal ABSENT from DB after cleanup
+    const dealAfterCleanup = await db.deal.findUnique({
+      where: { id: testDeal.id },
+      select: { id: true },
+    });
+    expect(dealAfterCleanup).toBeNull();
   });
 });
