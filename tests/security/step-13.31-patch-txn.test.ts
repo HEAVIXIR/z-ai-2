@@ -142,24 +142,37 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(json.error).toBe("Internal server error");
   });
 
-  // ── 4. P2002 on Order.dealId (concurrent CONFIRMED) handled gracefully ──
-  it("P2002 on dealId → graceful success (idempotent, order already exists)", async () => {
-    // STEP 13.35 P2-A: use real PrismaClientKnownRequestError with code + meta.target
+  // ── 4. P2002 on Order.dealId + order CONFIRMED → graceful success ──
+  it("P2002 on dealId + order CONFIRMED → 200 (idempotent)", async () => {
     const { Prisma } = await import("@prisma/client");
     const p2002Error = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`dealId`)",
       { code: "P2002", meta: { target: ["dealId"] } },
     );
     mockTransaction.mockRejectedValue(p2002Error);
-    // The catch re-reads order to confirm existence → mock must return an order
-    mockOrderFindUnique.mockResolvedValue({ id: "existing-order" });
+    // STEP 13.36: order must exist AND be CONFIRMED (not just exist)
+    mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "CONFIRMED" });
 
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
-    // P2002 on dealId + order exists → 200 (idempotent success)
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(json.status).toBe("CONFIRMED");
+  });
+
+  // ── 4a. P2002 on dealId + order NOT CONFIRMED → must error ──
+  it("P2002 on dealId + order status != CONFIRMED → 500 (not idempotent)", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the fields: (`dealId`)",
+      { code: "P2002", meta: { target: ["dealId"] } },
+    );
+    mockTransaction.mockRejectedValue(p2002Error);
+    // Order exists but status is PENDING (not CONFIRMED) → must NOT be idempotent
+    mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "PENDING" });
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    expect(res.status).toBe(500);
   });
 
   // ── 4b. P2002 on orderNumber (NOT dealId) → must error, not idempotent ──

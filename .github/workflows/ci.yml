@@ -87,6 +87,9 @@ jobs:
       - name: Integration — payment-concurrency-real (real PostgreSQL)
         run: bunx tsx tests/integration/payment-concurrency-real.ts
 
+      - name: Integration — deal-concurrency-real (real PostgreSQL, STEP 13.36 P2-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/deal-concurrency-real.ts
+
       - name: Integration test files (real PostgreSQL)
         run: bunx vitest run tests/integration/*.test.ts
 
@@ -160,19 +163,22 @@ jobs:
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
 
-      # audit-transaction-real: pre-existing failure in scenario 4
-      # (expected 'PRECONDITION_FAILED' but got undefined). This is a
-      # data-integrity test, not a security test. The failure exists
-      # in main and is outside this PR's scope.
+      # STEP 13.36 P2-B FIX: NO continue-on-error. This job shows the REAL
+      # failure status (red X) so phase/audit-transaction failures are
+      # visible. This job is NOT in required_status_checks (only `verify`
+      # is required), so its failure does NOT block merge. Owner accepts
+      # these pre-existing failures as documented risk.
       - name: audit-transaction-real (pre-existing failure — scenario 4)
-        continue-on-error: true
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/audit-transaction-real.ts
 
       # Phase tests: require comprehensive catalog seed infrastructure
       # (countries, provinces, cities, categories, attributes, products,
       # listings, users) that is out of scope for this security PR.
-      # 75 of 734 tests fail on missing seed data. Making them blocking
-      # requires a separate seed-infrastructure PR.
+      # 75 of 734 tests fail on missing seed data. This job shows the
+      # real failure status. Not blocking (only `verify` is required).
       - name: Phase integration tests (needs seed-infrastructure PR)
-        continue-on-error: true
         run: bunx vitest run tests/phase*.test.ts
+
+      # STEP 13.36: real concurrency test for P2-A (runs on PostgreSQL)
+      - name: Deal concurrency test (real PostgreSQL)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/deal-concurrency-real.ts

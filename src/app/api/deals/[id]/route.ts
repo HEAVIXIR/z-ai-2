@@ -249,18 +249,20 @@ export async function PATCH(
         );
       }
       // P2002 on dealId → idempotent success (concurrent CONFIRMED created
-      // the order first). Re-read to confirm the order exists.
+      // the order first). Re-read to confirm the order exists AND its
+      // status is CONFIRMED (not just existence — dellk00k finding).
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === "P2002"
       ) {
         const target = (err.meta?.target as string[] | undefined) ?? [];
         if (target.includes("dealId")) {
-          const orderExists = await db.order.findUnique({
+          const existingOrder = await db.order.findUnique({
             where: { dealId: id },
-            select: { id: true },
+            select: { id: true, status: true },
           });
-          if (orderExists) {
+          // Idempotent success ONLY if order exists AND is CONFIRMED
+          if (existingOrder && existingOrder.status === "CONFIRMED") {
             updated = { id: deal.id, status: newStatus };
           } else {
             throw err;
