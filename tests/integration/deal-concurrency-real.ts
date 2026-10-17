@@ -248,4 +248,131 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
       await db.deal.delete({ where: { id: rollbackDeal.id } }).catch(() => {});
     }
   });
+
+  // ── STEP 13.39 P2-A: CANCELLED order → 409 + rollback (real PostgreSQL) ──
+  it("CANCELLED order → 409 error, deal AND order both unchanged (rollback)", async () => {
+    // Create a deal + order with order status = CANCELLED
+    const testDeal = await db.deal.create({
+      data: {
+        dealNumber: "CANCEL-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER",
+        sourceId: "cancel-test",
+        buyerId,
+        sellerId,
+        listingId,
+        agreedAmount: 200000000n,
+        currency: "IRR",
+        transactionType: "SALE",
+        status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+
+    // Create an order in CANCELLED state
+    const cancelledOrder = await db.order.create({
+      data: {
+        orderNumber: "ORD-CANCEL-" + Date.now().toString(36),
+        dealId: testDeal.id,
+        titleSnapshot: "Cancel Test",
+        priceSnapshot: 200000000n,
+        currencySnapshot: "IRR",
+        sellerSnapshot: sellerId,
+        buyerSnapshot: buyerId,
+        quantity: 1,
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+      },
+    });
+
+    // Record BEFORE state
+    const dealBefore = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
+    const orderBefore = await db.order.findUnique({ where: { id: cancelledOrder.id }, select: { status: true } });
+
+    // Try to CONFIRM the deal (should fail — order is CANCELLED)
+    const { PATCH } = await import("@/app/api/deals/[id]/route");
+    mockGetCurrentUserId.mockResolvedValue(buyerId);
+
+    const res = await PATCH(
+      new Request(`http://localhost/api/deals/${testDeal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CONFIRMED" }),
+      }),
+      { params: Promise.resolve({ id: testDeal.id }) },
+    );
+
+    // Should get 409 (invalid order transition)
+    expect(res.status).toBe(409);
+
+    // Record AFTER state — verify BOTH records unchanged (rollback)
+    const dealAfter = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
+    const orderAfter = await db.order.findUnique({ where: { id: cancelledOrder.id }, select: { status: true } });
+
+    expect(dealAfter?.status).toBe(dealBefore?.status); // Deal still PENDING_CONFIRMATION
+    expect(orderAfter?.status).toBe("CANCELLED"); // Order still CANCELLED
+
+    // Cleanup
+    await db.order.delete({ where: { id: cancelledOrder.id } }).catch(() => {});
+    await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+  });
+
+  // ── STEP 13.39 P2-A: COMPLETED order → 409 + rollback (real PostgreSQL) ──
+  it("COMPLETED order → 409 error, deal AND order both unchanged (rollback)", async () => {
+    const testDeal = await db.deal.create({
+      data: {
+        dealNumber: "COMP-" + Date.now().toString(36),
+        sourceType: "LISTING_OFFER",
+        sourceId: "completed-test",
+        buyerId,
+        sellerId,
+        listingId,
+        agreedAmount: 150000000n,
+        currency: "IRR",
+        transactionType: "SALE",
+        status: "PENDING_CONFIRMATION",
+        agreedAt: new Date(),
+      },
+    });
+
+    const completedOrder = await db.order.create({
+      data: {
+        orderNumber: "ORD-COMP-" + Date.now().toString(36),
+        dealId: testDeal.id,
+        titleSnapshot: "Completed Test",
+        priceSnapshot: 150000000n,
+        currencySnapshot: "IRR",
+        sellerSnapshot: sellerId,
+        buyerSnapshot: buyerId,
+        quantity: 1,
+        status: "COMPLETED",
+        completedAt: new Date(),
+      },
+    });
+
+    const dealBefore = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
+    const orderBefore = await db.order.findUnique({ where: { id: completedOrder.id }, select: { status: true } });
+
+    const { PATCH } = await import("@/app/api/deals/[id]/route");
+    mockGetCurrentUserId.mockResolvedValue(buyerId);
+
+    const res = await PATCH(
+      new Request(`http://localhost/api/deals/${testDeal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CONFIRMED" }),
+      }),
+      { params: Promise.resolve({ id: testDeal.id }) },
+    );
+
+    expect(res.status).toBe(409);
+
+    const dealAfter = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
+    const orderAfter = await db.order.findUnique({ where: { id: completedOrder.id }, select: { status: true } });
+
+    expect(dealAfter?.status).toBe(dealBefore?.status); // Deal still PENDING_CONFIRMATION
+    expect(orderAfter?.status).toBe("COMPLETED"); // Order still COMPLETED
+
+    await db.order.delete({ where: { id: completedOrder.id } }).catch(() => {});
+    await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+  });
 });
