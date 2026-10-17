@@ -70,7 +70,7 @@ jobs:
       - name: Integration tests (real PostgreSQL — PR-SC-00 tenant-scoping negative tests)
         run: bunx tsx tests/integration/tenant-scope-real.ts
 
-      - name: All contract + unit tests (STEP 13.31 P2-B: expanded from 13 to all 26 contract files)
+      - name: All contract + unit tests (STEP 13.31 P2-B — expanded to all 26 contract files)
         run: bunx vitest run tests/contract/ tests/unit/
 
       - name: Integration test files (real PostgreSQL)
