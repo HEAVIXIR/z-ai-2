@@ -235,6 +235,14 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     const precondBuyer = await db.user.create({
       data: { mobile: "09129999001", email: "precond-buyer@test.com", firstName: "P", lastName: "B", passwordHash: "h" },
     });
+    // STEP 13.49: assign ADMIN role so can(userId, "payment.refund") returns true
+    // (ADMIN role has ALL permissions per permissions.ts)
+    const adminRole = await db.role.findUnique({ where: { key: "ADMIN" } });
+    if (adminRole) {
+      await db.userRole.create({
+        data: { userId: precondBuyer.id, roleId: adminRole.id },
+      }).catch(() => {}); // idempotent — may already exist
+    }
     const precondSeller = await db.user.create({
       data: { mobile: "09129999002", email: "precond-seller@test.com", firstName: "P", lastName: "S", passwordHash: "h" },
     });
