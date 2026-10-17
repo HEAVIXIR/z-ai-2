@@ -114,18 +114,19 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
   }
   async function setupSharedFixtures(opts: {
     failAfter?: "buyer" | "seller" | "listing";
+    injectCleanupFailure?: "buyer" | "seller"; // STEP 13.55: inject a REAL cleanup failure
     ids: SetupIds;
   }): Promise<{ setupError: Error | null; cleanupError: Error | null }> {
     const { ids } = opts;
     // Unique suffix per call so multiple FM-SETUP invocations don't collide on @unique
     // email/mobile (each test calls setupSharedFixtures once; the suffix isolates them).
-    const suffix = opts.failAfter ? `-${opts.failAfter}-${Date.now()}` : "";
+    const suffix = opts.failAfter || opts.injectCleanupFailure ? `-${opts.failAfter ?? opts.injectCleanupFailure}-${Date.now()}` : "";
     let setupError: Error | null = null;
     try {
       const buyer = await db.user.create({
         data: {
-          mobile: opts.failAfter ? `09129990${opts.failAfter === "buyer" ? "61" : opts.failAfter === "seller" ? "62" : "63"}` : "09129990001",
-          email: opts.failAfter ? `fm-setupfail-buyer${suffix}@test.com` : "fm-buyer@test.com",
+          mobile: (opts.failAfter || opts.injectCleanupFailure) ? `09129990${opts.failAfter === "buyer" ? "61" : opts.failAfter === "seller" ? "62" : opts.failAfter === "listing" ? "63" : opts.injectCleanupFailure === "buyer" ? "81" : "82"}` : "09129990001",
+          email: (opts.failAfter || opts.injectCleanupFailure) ? `fm-setupfail-buyer${suffix}@test.com` : "fm-buyer@test.com",
           firstName: "FM", lastName: "Buyer", passwordHash: "hash",
         },
       });
@@ -134,8 +135,8 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       const seller = await db.user.create({
         data: {
-          mobile: opts.failAfter ? `09129990${opts.failAfter === "seller" ? "72" : opts.failAfter === "listing" ? "73" : "71"}` : "09129990002",
-          email: opts.failAfter ? `fm-setupfail-seller${suffix}@test.com` : "fm-seller@test.com",
+          mobile: (opts.failAfter || opts.injectCleanupFailure) ? `09129990${opts.failAfter === "seller" ? "72" : opts.failAfter === "listing" ? "73" : opts.injectCleanupFailure === "seller" ? "91" : "92"}` : "09129990002",
+          email: (opts.failAfter || opts.injectCleanupFailure) ? `fm-setupfail-seller${suffix}@test.com` : "fm-seller@test.com",
           firstName: "FM", lastName: "Seller", passwordHash: "hash",
         },
       });
@@ -144,7 +145,7 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
 
       const listing = await db.listing.create({
         data: {
-          slug: (opts.failAfter ? `fm-setupfail-listing${suffix}-` : "fm-listing-") + Date.now(),
+          slug: ((opts.failAfter || opts.injectCleanupFailure) ? `fm-setupfail-listing${suffix}-` : "fm-listing-") + Date.now(),
           title: "FM Test Listing", sellerId: ids.sellerId!, sellerName: "FM Seller",
           status: "PUBLISHED", price: 500000000n,
         },
@@ -152,6 +153,8 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
       ids.listingId = listing.id;
       if (opts.failAfter === "listing") throw new Error("INJECTED setup failure after listing (FM-SETUP)");
 
+      // If injectCleanupFailure is set, we need a setup error to trigger the cleanup path.
+      // Create the deal, then throw to simulate a post-deal setup failure so cleanup runs.
       const deal = await db.deal.create({
         data: {
           dealNumber: "CONC-" + Date.now().toString(36),
@@ -162,12 +165,34 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
         },
       });
       ids.dealId = deal.id;
+      if (opts.injectCleanupFailure) {
+        throw new Error(`INJECTED setup failure for cleanup-failure test (FM-SETUP-${opts.injectCleanupFailure})`);
+      }
     } catch (e) {
       setupError = e as Error;
     }
 
     let cleanupError: Error | null = null;
     if (setupError) {
+      // STEP 13.55 P2-A: if injectCleanupFailure is set, override the corresponding
+      // db.X.delete to throw a REAL error on an EXISTING record. This proves the
+      // cleanup error is reported AND subsequent cleanup ops are still attempted.
+      const origUserDelete = db.user.delete.bind(db.user);
+      if (opts.injectCleanupFailure === "buyer") {
+        (db.user as any).delete = async (args: any) => {
+          if (args.where.id === ids.buyerId) {
+            throw new Error("INJECTED cleanup failure on buyer delete (FM-SETUP cleanup-negative)");
+          }
+          return origUserDelete(args);
+        };
+      } else if (opts.injectCleanupFailure === "seller") {
+        (db.user as any).delete = async (args: any) => {
+          if (args.where.id === ids.sellerId) {
+            throw new Error("INJECTED cleanup failure on seller delete (FM-SETUP cleanup-negative)");
+          }
+          return origUserDelete(args);
+        };
+      }
       try {
         await independentCleanup([
           () => (ids.dealId ? db.order.deleteMany({ where: { dealId: ids.dealId } }) : Promise.resolve()),
@@ -178,6 +203,9 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
         ]);
       } catch (e) {
         cleanupError = e as Error;
+      } finally {
+        // Always restore the original delete (even if cleanup threw).
+        (db.user as any).delete = origUserDelete;
       }
     }
     return { setupError, cleanupError };
@@ -710,47 +738,88 @@ describe.skipIf(!RUN)("STEP 13.52 — P2-A Failure Matrix (real PostgreSQL)", ()
   // This directly tests the real shared setup/cleanup helper's failure-safety.
   it("FM-SETUP real shared-path: failure after buyer → buyer cleaned, no orphans (independent PostgreSQL proof)", async () => {
     const ids: SetupIds = {};
-    const { setupError } = await setupSharedFixtures({ failAfter: "buyer", ids });
-    // Setup DID fail (injected failure after buyer creation).
+    // STEP 13.55 P2-A (dellk00k review 5560435843): assert BOTH setupError AND cleanupError.
+    // cleanupError must be null — cleanup should succeed. If it's non-null, the test FAILS
+    // (no silent discard of the helper's cleanup-error result).
+    const { setupError, cleanupError } = await setupSharedFixtures({ failAfter: "buyer", ids });
     expect(setupError).toBeInstanceOf(Error);
     expect(String(setupError)).toContain("INJECTED setup failure after buyer");
-    // buyer was created (id tracked) before the failure.
+    // STEP 13.55: cleanupError must be EXPLICITLY asserted — not discarded.
+    expect(cleanupError, "cleanup must not fail when setup fails after buyer").toBeNull();
     expect(ids.buyerId).toBeTruthy();
-    // seller/listing/deal were NOT created (failure happened before them).
     expect(ids.sellerId).toBeUndefined();
     expect(ids.listingId).toBeUndefined();
     expect(ids.dealId).toBeUndefined();
-    // Independent PostgreSQL verification: the buyer created before the failure was CLEANED
-    // (look up by the tracked id — stronger than email-prefix match).
+    // Independent PostgreSQL verification: the buyer created before the failure was CLEANED.
     expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
   });
 
   it("FM-SETUP real shared-path: failure after seller → both users cleaned, no orphans (independent PostgreSQL proof)", async () => {
     const ids: SetupIds = {};
-    const { setupError } = await setupSharedFixtures({ failAfter: "seller", ids });
+    const { setupError, cleanupError } = await setupSharedFixtures({ failAfter: "seller", ids });
     expect(setupError).toBeInstanceOf(Error);
     expect(String(setupError)).toContain("INJECTED setup failure after seller");
+    // STEP 13.55: cleanupError must be EXPLICITLY asserted.
+    expect(cleanupError, "cleanup must not fail when setup fails after seller").toBeNull();
     expect(ids.buyerId).toBeTruthy();
     expect(ids.sellerId).toBeTruthy();
-    expect(ids.listingId).toBeUndefined(); // listing not created (failure before it)
-    // Independent PostgreSQL verification: both users cleaned (by tracked id).
+    expect(ids.listingId).toBeUndefined();
     expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
     expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
   });
 
   it("FM-SETUP real shared-path: failure after listing → all 3 fixtures cleaned, no orphans (independent PostgreSQL proof)", async () => {
     const ids: SetupIds = {};
-    const { setupError } = await setupSharedFixtures({ failAfter: "listing", ids });
+    const { setupError, cleanupError } = await setupSharedFixtures({ failAfter: "listing", ids });
     expect(setupError).toBeInstanceOf(Error);
     expect(String(setupError)).toContain("INJECTED setup failure after listing");
+    // STEP 13.55: cleanupError must be EXPLICITLY asserted.
+    expect(cleanupError, "cleanup must not fail when setup fails after listing").toBeNull();
     expect(ids.buyerId).toBeTruthy();
     expect(ids.sellerId).toBeTruthy();
     expect(ids.listingId).toBeTruthy();
-    expect(ids.dealId).toBeUndefined(); // deal not created (failure before it)
-    // Independent PostgreSQL verification: all 3 fixtures cleaned (by tracked id).
+    expect(ids.dealId).toBeUndefined();
     expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull();
     expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
     expect(await db.listing.findUnique({ where: { id: ids.listingId! }, select: { id: true } })).toBeNull();
+  });
+
+  // ── FM-SETUP-cleanup-negative: cleanup deliberately fails → error reported, setup error preserved, ──
+  // subsequent cleanup ops still attempted, survived fixture cleaned by test (STEP 13.55 P2-A).
+  it("FM-SETUP cleanup-negative: cleanup failure on buyer → cleanupError reported, setupError preserved, seller still deleted, buyer survived then cleaned by test", async () => {
+    const ids: SetupIds = {};
+    // injectCleanupFailure="buyer" creates all 4 fixtures, throws a setup error, then
+    // overrides db.user.delete to throw on the buyer (which exists) during cleanup.
+    const { setupError, cleanupError } = await setupSharedFixtures({ injectCleanupFailure: "buyer", ids });
+    // 1. setupError IS the injected setup failure (not a silent pass).
+    expect(setupError).toBeInstanceOf(Error);
+    expect(String(setupError)).toContain("INJECTED setup failure for cleanup-failure test");
+    // 2. cleanupError IS reported (NOT null, NOT discarded) — the cleanup failure propagated.
+    expect(cleanupError, "cleanup failure must be reported, not discarded").toBeInstanceOf(Error);
+    const cleanupErrStr = cleanupError instanceof AggregateError
+      ? cleanupError.errors.map((e) => String(e)).join(" ")
+      : String(cleanupError);
+    expect(cleanupErrStr).toContain("INJECTED cleanup failure on buyer delete");
+    // 3. Both setup + cleanup errors are preserved (AggregateError has both causes).
+    if (cleanupError instanceof AggregateError) {
+      const allCauses = cleanupError.errors.map((e) => String(e)).join(" ");
+      expect(allCauses).toContain("INJECTED setup failure for cleanup-failure test");
+      expect(allCauses).toContain("INJECTED cleanup failure on buyer delete");
+    }
+    // 4. Subsequent cleanup ops STILL attempted: seller WAS deleted (despite buyer delete failing).
+    expect(await db.user.findUnique({ where: { id: ids.sellerId! }, select: { id: true } })).toBeNull();
+    // deal + listing were also cleaned (they're before buyer in the cleanup order).
+    expect(await db.deal.findUnique({ where: { id: ids.dealId! }, select: { id: true } })).toBeNull();
+    expect(await db.listing.findUnique({ where: { id: ids.listingId! }, select: { id: true } })).toBeNull();
+    // 5. buyer SURVIVED (its delete genuinely failed) — report real record state.
+    expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeTruthy();
+    // 6. Test cleans up the survived buyer (guaranteed — no dirty data for next run).
+    // Use finalizeCollecting so any error here is reported, not swallowed.
+    const finalErrors = await finalizeCollecting([
+      () => db.user.delete({ where: { id: ids.buyerId! } }),
+      async () => { expect(await db.user.findUnique({ where: { id: ids.buyerId! }, select: { id: true } })).toBeNull(); },
+    ]);
+    throwCombined(null, finalErrors, "FM-SETUP-cleanup-negative final");
   });
 
   // ── FM-10: suite-end independent verification — no test fixtures remain in PostgreSQL ──
