@@ -473,6 +473,9 @@ export async function acceptQuote(
     throw new RFQServiceError(400, "quoteId الزامی است");
   }
 
+  // STEP 13.40 P3-A FIX (owner decision: preemptive fix, option 2):
+  // Verify that the caller is the buyer of the RFQ that this quote
+  // belongs to. Only the buyer can accept/reject quotes on their RFQ.
   const before = await db.rFQQuote.findUnique({
     where: { id: quoteId },
     select: { id: true, status: true, rfqId: true, sellerId: true },
@@ -480,6 +483,26 @@ export async function acceptQuote(
   if (!before) {
     throw new RFQServiceError(404, "پیشنهاد یافت نشد");
   }
+
+  // Verify buyer ownership: look up the RFQ and check buyerId
+  if (before.rfqId) {
+    const rfq = await db.rFQ.findUnique({
+      where: { id: before.rfqId },
+      select: { buyerId: true },
+    });
+    if (!rfq) {
+      throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
+    }
+    // Only the buyer can accept quotes (or null userId = admin bypass,
+    // but admin routes use a different path with RBAC checks)
+    if (userId && rfq.buyerId && userId !== rfq.buyerId) {
+      throw new RFQServiceError(
+        403,
+        "شما مجاز به پذیرش پیشنهادهای این استعلام نیستید",
+      );
+    }
+  }
+
   if (before.status === QUOTE_ACCEPTED) {
     // Idempotent — already accepted.
     return { id: before.id, status: before.status };
@@ -508,7 +531,7 @@ export async function acceptQuote(
 
   await logAudit({
     actorId: userId ?? null,
-    actorType: "ADMIN",
+    actorType: "USER",
     action: "marketplace.rfq.quote.accept",
     entityType: "RFQQuote",
     entityId: quoteId,
@@ -545,6 +568,9 @@ export async function rejectQuote(
     throw new RFQServiceError(400, "quoteId الزامی است");
   }
 
+  // STEP 13.40 P3-A FIX (owner decision: preemptive fix, option 2):
+  // Verify that the caller is the buyer of the RFQ that this quote
+  // belongs to. Only the buyer can accept/reject quotes on their RFQ.
   const before = await db.rFQQuote.findUnique({
     where: { id: quoteId },
     select: { id: true, status: true, rfqId: true, sellerId: true },
@@ -552,6 +578,24 @@ export async function rejectQuote(
   if (!before) {
     throw new RFQServiceError(404, "پیشنهاد یافت نشد");
   }
+
+  // Verify buyer ownership
+  if (before.rfqId) {
+    const rfq = await db.rFQ.findUnique({
+      where: { id: before.rfqId },
+      select: { buyerId: true },
+    });
+    if (!rfq) {
+      throw new RFQServiceError(404, "استعلام قیمت یافت نشد");
+    }
+    if (userId && rfq.buyerId && userId !== rfq.buyerId) {
+      throw new RFQServiceError(
+        403,
+        "شما مجاز به رد پیشنهادهای این استعلام نیستید",
+      );
+    }
+  }
+
   if (before.status === QUOTE_REJECTED) {
     // Idempotent — already rejected.
     return { id: before.id, status: before.status };
@@ -568,7 +612,7 @@ export async function rejectQuote(
 
   await logAudit({
     actorId: userId ?? null,
-    actorType: "ADMIN",
+    actorType: "USER",
     action: "marketplace.rfq.quote.reject",
     entityType: "RFQQuote",
     entityId: quoteId,

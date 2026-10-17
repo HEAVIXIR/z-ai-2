@@ -249,130 +249,155 @@ describe.skipIf(!RUN)("STEP 13.36 — Real PATCH concurrency (PostgreSQL)", () =
     }
   });
 
-  // ── STEP 13.39 P2-A: CANCELLED order → 409 + rollback (real PostgreSQL) ──
-  it("CANCELLED order → 409 error, deal AND order both unchanged (rollback)", async () => {
-    // Create a deal + order with order status = CANCELLED
+  // ── STEP 13.40 P2-A: CANCELLED order → 409 + rollback (real PostgreSQL, explicit comparison + guaranteed cleanup)
+  it("CANCELLED order → 409 error, deal AND order both unchanged (explicit before/after comparison)", async () => {
     const testDeal = await db.deal.create({
       data: {
         dealNumber: "CANCEL-" + Date.now().toString(36),
         sourceType: "LISTING_OFFER",
         sourceId: "cancel-test",
-        buyerId,
-        sellerId,
-        listingId,
-        agreedAmount: 200000000n,
-        currency: "IRR",
-        transactionType: "SALE",
-        status: "PENDING_CONFIRMATION",
+        buyerId, sellerId, listingId,
+        agreedAmount: 200000000n, currency: "IRR",
+        transactionType: "SALE", status: "PENDING_CONFIRMATION",
         agreedAt: new Date(),
       },
     });
-
-    // Create an order in CANCELLED state
     const cancelledOrder = await db.order.create({
       data: {
         orderNumber: "ORD-CANCEL-" + Date.now().toString(36),
-        dealId: testDeal.id,
-        titleSnapshot: "Cancel Test",
-        priceSnapshot: 200000000n,
-        currencySnapshot: "IRR",
-        sellerSnapshot: sellerId,
-        buyerSnapshot: buyerId,
-        quantity: 1,
-        status: "CANCELLED",
-        cancelledAt: new Date(),
+        dealId: testDeal.id, titleSnapshot: "Cancel Test",
+        priceSnapshot: 200000000n, currencySnapshot: "IRR",
+        sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+        quantity: 1, status: "CANCELLED", cancelledAt: new Date(),
       },
     });
 
-    // Record BEFORE state
-    const dealBefore = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
-    const orderBefore = await db.order.findUnique({ where: { id: cancelledOrder.id }, select: { status: true } });
+    try {
+      // STEP 13.40: read FULL records before (not just status)
+      const dealBefore = await db.deal.findUnique({
+        where: { id: testDeal.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      const orderBefore = await db.order.findUnique({
+        where: { id: cancelledOrder.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      expect(dealBefore).toBeTruthy();
+      expect(orderBefore).toBeTruthy();
 
-    // Try to CONFIRM the deal (should fail — order is CANCELLED)
-    const { PATCH } = await import("@/app/api/deals/[id]/route");
-    mockGetCurrentUserId.mockResolvedValue(buyerId);
+      // Execute PATCH via real route handler
+      const { PATCH } = await import("@/app/api/deals/[id]/route");
+      mockGetCurrentUserId.mockResolvedValue(buyerId);
+      const res = await PATCH(
+        new Request(`http://localhost/api/deals/${testDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "CONFIRMED" }),
+        }),
+        { params: Promise.resolve({ id: testDeal.id }) },
+      );
 
-    const res = await PATCH(
-      new Request(`http://localhost/api/deals/${testDeal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "CONFIRMED" }),
-      }),
-      { params: Promise.resolve({ id: testDeal.id }) },
-    );
+      // Verify 409 response
+      expect(res.status).toBe(409);
 
-    // Should get 409 (invalid order transition)
-    expect(res.status).toBe(409);
+      // STEP 13.40: read FULL records after and compare explicitly
+      const dealAfter = await db.deal.findUnique({
+        where: { id: testDeal.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      const orderAfter = await db.order.findUnique({
+        where: { id: cancelledOrder.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
 
-    // Record AFTER state — verify BOTH records unchanged (rollback)
-    const dealAfter = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
-    const orderAfter = await db.order.findUnique({ where: { id: cancelledOrder.id }, select: { status: true } });
-
-    expect(dealAfter?.status).toBe(dealBefore?.status); // Deal still PENDING_CONFIRMATION
-    expect(orderAfter?.status).toBe("CANCELLED"); // Order still CANCELLED
-
-    // Cleanup
-    await db.order.delete({ where: { id: cancelledOrder.id } }).catch(() => {});
-    await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+      // Explicit before/after comparison with toMatchObject
+      expect(dealAfter).toMatchObject({
+        id: dealBefore!.id,
+        status: dealBefore!.status,
+        confirmedAt: dealBefore!.confirmedAt,
+      });
+      expect(orderAfter).toMatchObject({
+        id: orderBefore!.id,
+        status: orderBefore!.status,
+        confirmedAt: orderBefore!.confirmedAt,
+      });
+    } finally {
+      // STEP 13.40: guaranteed cleanup — runs even if assertion fails
+      await db.order.delete({ where: { id: cancelledOrder.id } }).catch(() => {});
+      await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+    }
   });
 
-  // ── STEP 13.39 P2-A: COMPLETED order → 409 + rollback (real PostgreSQL) ──
-  it("COMPLETED order → 409 error, deal AND order both unchanged (rollback)", async () => {
+  // ── STEP 13.40 P2-A: COMPLETED order → 409 + rollback (explicit before/after + guaranteed cleanup)
+  it("COMPLETED order → 409 error, deal AND order both unchanged (explicit before/after comparison)", async () => {
     const testDeal = await db.deal.create({
       data: {
         dealNumber: "COMP-" + Date.now().toString(36),
         sourceType: "LISTING_OFFER",
         sourceId: "completed-test",
-        buyerId,
-        sellerId,
-        listingId,
-        agreedAmount: 150000000n,
-        currency: "IRR",
-        transactionType: "SALE",
-        status: "PENDING_CONFIRMATION",
+        buyerId, sellerId, listingId,
+        agreedAmount: 150000000n, currency: "IRR",
+        transactionType: "SALE", status: "PENDING_CONFIRMATION",
         agreedAt: new Date(),
       },
     });
-
     const completedOrder = await db.order.create({
       data: {
         orderNumber: "ORD-COMP-" + Date.now().toString(36),
-        dealId: testDeal.id,
-        titleSnapshot: "Completed Test",
-        priceSnapshot: 150000000n,
-        currencySnapshot: "IRR",
-        sellerSnapshot: sellerId,
-        buyerSnapshot: buyerId,
-        quantity: 1,
-        status: "COMPLETED",
-        completedAt: new Date(),
+        dealId: testDeal.id, titleSnapshot: "Completed Test",
+        priceSnapshot: 150000000n, currencySnapshot: "IRR",
+        sellerSnapshot: sellerId, buyerSnapshot: buyerId,
+        quantity: 1, status: "COMPLETED", completedAt: new Date(),
       },
     });
 
-    const dealBefore = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
-    const orderBefore = await db.order.findUnique({ where: { id: completedOrder.id }, select: { status: true } });
+    try {
+      const dealBefore = await db.deal.findUnique({
+        where: { id: testDeal.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      const orderBefore = await db.order.findUnique({
+        where: { id: completedOrder.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      expect(dealBefore).toBeTruthy();
+      expect(orderBefore).toBeTruthy();
 
-    const { PATCH } = await import("@/app/api/deals/[id]/route");
-    mockGetCurrentUserId.mockResolvedValue(buyerId);
+      const { PATCH } = await import("@/app/api/deals/[id]/route");
+      mockGetCurrentUserId.mockResolvedValue(buyerId);
+      const res = await PATCH(
+        new Request(`http://localhost/api/deals/${testDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "CONFIRMED" }),
+        }),
+        { params: Promise.resolve({ id: testDeal.id }) },
+      );
 
-    const res = await PATCH(
-      new Request(`http://localhost/api/deals/${testDeal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "CONFIRMED" }),
-      }),
-      { params: Promise.resolve({ id: testDeal.id }) },
-    );
+      expect(res.status).toBe(409);
 
-    expect(res.status).toBe(409);
+      const dealAfter = await db.deal.findUnique({
+        where: { id: testDeal.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
+      const orderAfter = await db.order.findUnique({
+        where: { id: completedOrder.id },
+        select: { id: true, status: true, confirmedAt: true },
+      });
 
-    const dealAfter = await db.deal.findUnique({ where: { id: testDeal.id }, select: { status: true } });
-    const orderAfter = await db.order.findUnique({ where: { id: completedOrder.id }, select: { status: true } });
-
-    expect(dealAfter?.status).toBe(dealBefore?.status); // Deal still PENDING_CONFIRMATION
-    expect(orderAfter?.status).toBe("COMPLETED"); // Order still COMPLETED
-
-    await db.order.delete({ where: { id: completedOrder.id } }).catch(() => {});
-    await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+      expect(dealAfter).toMatchObject({
+        id: dealBefore!.id,
+        status: dealBefore!.status,
+        confirmedAt: dealBefore!.confirmedAt,
+      });
+      expect(orderAfter).toMatchObject({
+        id: orderBefore!.id,
+        status: orderBefore!.status,
+        confirmedAt: orderBefore!.confirmedAt,
+      });
+    } finally {
+      await db.order.delete({ where: { id: completedOrder.id } }).catch(() => {});
+      await db.deal.delete({ where: { id: testDeal.id } }).catch(() => {});
+    }
   });
 });
