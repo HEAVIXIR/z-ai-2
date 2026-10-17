@@ -215,70 +215,78 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
      ──────────────────────────────────────────────────────────────── */
 
   it("scenario 4: precondition fails → executeAction returns PRECONDITION_FAILED, no mutation, no audit", async () => {
-    // This scenario uses the REAL executeAction (which evaluates
-    // preconditions before calling auditMutationTransactional).
-    // We mock the parts that would touch the payments table and
-    // use a synthetic payment with status='REFUNDED' (refund precondition
-    // requires status ∈ {PAID, AUTHORIZED}).
+    // STEP 13.49 ROOT CAUSE FIX: The original test used vi.doMock to mock
+    // getPrismaModel, but action-engine.ts uses STATIC imports — vi.doMock
+    // only affects future dynamic imports, so the mock never applied.
+    // executeAction called the REAL getPrismaModel → db.payment.findUnique
+    // → returned null (no payment 'p-test' in DB) → returned
+    // { success: false, message: 'Entity not found' } → result.error was
+    // undefined, NOT 'PRECONDITION_FAILED'.
     //
-    // To keep this test hermetic AND hit the real DB for the audit
-    // check, we mock `getPrismaModel` to return a model whose
-    // findUnique returns a REFUNDED payment. The executeAction should:
-    //   1. Pass the permission check (mock can → true)
-    //   2. Fetch before (mock returns REFUNDED payment)
-    //   3. Evaluate precondition → FAIL
-    //   4. Return PRECONDITION_FAILED — no mutation, no auditMutationTransactional call.
+    // FIX: Create a REAL Payment with status='REFUNDED' in PostgreSQL.
+    // executeAction will fetch it, evaluate the refund precondition
+    // (requires status ∈ {PAID, AUTHORIZED}), and return PRECONDITION_FAILED.
 
-    const canSpy = vi.fn<(userId: string | null, perm: string) => Promise<boolean>>();
-    canSpy.mockResolvedValue(true);
-
-    const getPrismaModelSpy = vi.fn();
-    const mockPayment = { id: "p-test", status: "REFUNDED", amount: 1000 };
-    getPrismaModelSpy.mockReturnValue({
-      findUnique: vi.fn().mockResolvedValue(mockPayment),
-      update: vi.fn(),
-    });
-
-    const auditMutationTransactionalSpy = vi.fn();
-
-    // Apply mocks (must use vi.mock at top-level; we'll re-import)
-    vi.doMock("@/lib/authorization", () => ({ can: canSpy }));
-    vi.doMock("@/lib/admin/data-adapter", () => ({ getPrismaModel: getPrismaModelSpy }));
-    vi.doMock("@/lib/audit-foundation", () => ({
-      auditMutation: vi.fn(),
-      auditMutationTransactional: auditMutationTransactionalSpy,
-    }));
-    vi.doMock("next/cache", () => ({ revalidateTag: vi.fn() }));
-    vi.doMock("@/lib/homepage-cache-tags", () => ({ getHomepageCacheTags: () => [] }));
-
-    const { executeAction } = await import("@/lib/admin/action-engine");
-
-    const result = await executeAction("payments", "p-test", "refund", {
-      userId: "admin-test",
-      reason: "Integration test — precondition scenario",
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("PRECONDITION_FAILED");
-
-    // CRITICAL: auditMutationTransactional was NEVER called → no audit
-    // row could have been created.
-    expect(auditMutationTransactionalSpy).not.toHaveBeenCalled();
-
-    // Verify no audit row exists for this scenario in the real DB.
-    const auditRow = await db.auditLog.findFirst({
-      where: {
-        action: "payments.refund",
-        entityId: "p-test",
-        reason: "Integration test — precondition scenario",
+    // Create a real order + payment with status=REFUNDED
+    const testOrder = await db.order.create({
+      data: {
+        orderNumber: "ORD-PRECOND-" + Date.now().toString(36),
+        dealId: "precondition-test-deal-" + Date.now(),
+        titleSnapshot: "Precondition Test",
+        priceSnapshot: 1000n,
+        currencySnapshot: "IRR",
+        quantity: 1,
+        status: "CANCELLED",
       },
     });
-    expect(auditRow).toBeNull();
 
-    vi.doUnmock("@/lib/authorization");
-    vi.doUnmock("@/lib/admin/data-adapter");
-    vi.doUnmock("@/lib/audit-foundation");
-    vi.doUnmock("next/cache");
-    vi.doUnmock("@/lib/homepage-cache-tags");
+    const testPayment = await db.payment.create({
+      data: {
+        orderId: testOrder.id,
+        amount: 1000n,
+        currency: "IRR",
+        type: "PAYMENT",
+        status: "REFUNDED", // precondition requires PAID or AUTHORIZED
+        gateway: "test",
+      },
+    });
+
+    try {
+      // Use the REAL executeAction (no mocks)
+      const { executeAction } = await import("@/lib/admin/action-engine");
+
+      const result = await executeAction("payments", testPayment.id, "refund", {
+        userId: "admin-test",
+        reason: "Integration test — precondition scenario",
+      });
+
+      // The precondition should fail (status=REFUNDED, not PAID/AUTHORIZED)
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("PRECONDITION_FAILED");
+
+      // Verify no audit row was created for this scenario
+      const auditRow = await db.auditLog.findFirst({
+        where: {
+          action: "payments.refund",
+          entityId: testPayment.id,
+        },
+      });
+      expect(auditRow).toBeNull();
+
+      // Verify the payment status was NOT changed (no mutation)
+      const paymentAfter = await db.payment.findUnique({
+        where: { id: testPayment.id },
+        select: { status: true },
+      });
+      expect(paymentAfter?.status).toBe("REFUNDED");
+    } finally {
+      // Cleanup — independent, collected errors
+      const cleanupErrors: string[] = [];
+      await db.payment.delete({ where: { id: testPayment.id } }).catch((e) => { cleanupErrors.push(`payment: ${e}`); });
+      await db.order.delete({ where: { id: testOrder.id } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
+      if (cleanupErrors.length > 0) {
+        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
+      }
+    }
   });
 });
