@@ -73,6 +73,8 @@ jobs:
         run: bunx tsx tests/integration/payment-concurrency-real.ts
       - name: Integration — deal-concurrency-real (STEP 13.36 P2-A)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/deal-concurrency-real.ts
+      - name: Integration — p3a-http-db-real (STEP 13.54 Phase 2 P3-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-http-db-real.ts
       - name: Integration test files
         run: bunx vitest run tests/integration/*.test.ts
       - name: All contract + unit tests
