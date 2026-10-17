@@ -102,24 +102,53 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
     expect(orderData.status).toBe("CONFIRMED");
   });
 
-  // ── 2. Idempotency: existing order → no duplicate create ──
-  it("CONFIRMED with existing order: does NOT create duplicate (idempotent)", async () => {
+  // ── 2. Idempotency: existing CONFIRMED order → no duplicate create ──
+  it("CONFIRMED with existing CONFIRMED order: no duplicate (idempotent)", async () => {
     const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    const mockTxOrderUpdate = vi.fn().mockResolvedValue({ id: "existing-order", status: "CONFIRMED" });
     mockTransaction.mockImplementation(async (cb: any) => {
-      mockOrderFindUnique.mockResolvedValue({ id: "existing-order" }); // order EXISTS
+      // STEP 13.37: order exists AND is CONFIRMED → skip (idempotent)
+      mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "CONFIRMED" });
       return cb({
         deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
-        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate },
+        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate, update: mockTxOrderUpdate },
         listing: { findUnique: mockListingFindUnique },
       });
     });
 
     const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
     expect(res.status).toBe(200);
-    // order.create MUST NOT be called (order already exists)
+    // order.create MUST NOT be called (order already CONFIRMED)
     expect(mockOrderCreate).not.toHaveBeenCalled();
+    // order.update MUST NOT be called (order already CONFIRMED)
+    expect(mockTxOrderUpdate).not.toHaveBeenCalled();
     // but deal.updateMany IS called (status transition still happens)
     expect(mockDealUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  // ── 2b. Existing PENDING order → update to CONFIRMED (dellk00k finding) ──
+  it("CONFIRMED with existing PENDING order: updates order to CONFIRMED (not skipped)", async () => {
+    const mockTxDealFindUnique = vi.fn().mockResolvedValue({ id: "deal-1", status: "CONFIRMED" });
+    const mockTxOrderUpdate = vi.fn().mockResolvedValue({ id: "existing-order", status: "CONFIRMED" });
+    mockTransaction.mockImplementation(async (cb: any) => {
+      // STEP 13.37 dellk00k finding: order exists but is PENDING (not CONFIRMED)
+      mockOrderFindUnique.mockResolvedValue({ id: "existing-order", status: "PENDING" });
+      return cb({
+        deal: { updateMany: mockDealUpdateMany, findUnique: mockTxDealFindUnique },
+        order: { findUnique: mockOrderFindUnique, create: mockOrderCreate, update: mockTxOrderUpdate },
+        listing: { findUnique: mockListingFindUnique },
+      });
+    });
+
+    const res = await PATCH(makeReq("deal-1", "CONFIRMED"), makeParams("deal-1"));
+    expect(res.status).toBe(200);
+    // order.create MUST NOT be called (order exists, just needs update)
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+    // order.update MUST be called (PENDING → CONFIRMED)
+    expect(mockTxOrderUpdate).toHaveBeenCalledTimes(1);
+    const updateData = mockTxOrderUpdate.mock.calls[0][0];
+    expect(updateData.where.dealId).toBe("deal-1");
+    expect(updateData.data.status).toBe("CONFIRMED");
   });
 
   // ── 3. Atomicity: order.create fails → deal update rolled back ──

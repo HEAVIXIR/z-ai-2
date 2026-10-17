@@ -194,13 +194,18 @@ export async function PATCH(
 
           // Only create an order if transitioning to CONFIRMED.
           if (newStatus === "CONFIRMED") {
-            // Re-check for an existing order inside the txn (idempotency).
+            // STEP 13.37 P2-A FIX (dellk00k finding): check existing order's
+            // STATUS, not just existence. If an order exists but is NOT
+            // CONFIRMED (e.g., PENDING), we must NOT skip — the deal is
+            // being confirmed but the order is in an inconsistent state.
+            // Only skip creation if the order already EXISTS AND is CONFIRMED.
             const existingOrder = await tx.order.findUnique({
               where: { dealId: id },
-              select: { id: true },
+              select: { id: true, status: true },
             });
 
             if (!existingOrder) {
+              // No order exists → create a new CONFIRMED order.
               const orderNumber =
                 "ORD-" + Date.now().toString(36).toUpperCase();
               const listing = deal.listingId
@@ -233,7 +238,27 @@ export async function PATCH(
                 after: { dealId: deal.id, status: "CONFIRMED" },
                 ip: getClientIp(req),
               }).catch(() => {});
+            } else if (existingOrder.status !== "CONFIRMED") {
+              // STEP 13.37 P2-A FIX (dellk00k finding): order exists but is
+              // NOT CONFIRMED (e.g., PENDING). This is an inconsistent state —
+              // the deal is being confirmed but its order is not. We must NOT
+              // silently skip. Update the order to CONFIRMED to maintain
+              // consistency (the deal transition is atomic with this update).
+              await tx.order.update({
+                where: { dealId: id },
+                data: { status: "CONFIRMED", confirmedAt: new Date() },
+              });
+
+              await logAudit({
+                actorId: userId,
+                actorType: "USER",
+                action: "order.confirmed",
+                entityType: "Order",
+                after: { dealId: deal.id, status: "CONFIRMED" },
+                ip: getClientIp(req),
+              }).catch(() => {});
             }
+            // If existingOrder.status === "CONFIRMED" → skip (idempotent, already done)
           }
 
           return dealUpdated;
