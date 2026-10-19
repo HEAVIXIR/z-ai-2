@@ -1,3 +1,20 @@
+/**
+ * HEAVIX — /community — Coming Soon placeholder
+ * ------------------------------------------------------------
+ * STEP 13.01-R1 P0-1 FIX v2:
+ * The previous 376-line client component fetched /api/questions
+ * which returned 500 (Question model wasn't seeded in catalog).
+ * This page is intentionally a minimal "coming soon" server
+ * component to remove the broken UX and SEO error.
+ *
+ * NOTE on .bak file: NO `page.tsx.bak` file has ever existed in
+ * git history. Verified via:
+ *   git log --all --diff-filter=D --name-only -- "src/app/community/page.tsx.bak"
+ * (empty result). The earlier PR body claim about removing the
+ * .bak file was incorrect — there was nothing to remove in git.
+ */
+
+import type { Metadata } from "next";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -5,25 +22,11 @@ import { MessageCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-/* ============================================================
-   /community — Community Q&A (coming soon)
-   ------------------------------------------------------------
-   STEP 13.01 P0-1 FIX: The previous /community page was a client
-   component that fetched /api/questions and /api/questions/[qid]/
-   answers — but NO such API routes exist anywhere in src/app/api/.
-   Every interaction on the page returned 404.
-
-   Fix: The page is replaced with a "coming soon" server component.
-   The original client component is preserved as page.tsx.bak for
-   reference when the Q&A API is implemented in a future PR.
-
-   To re-enable:
-     1. Implement /api/questions (GET, POST) + /api/questions/[qid]
-        (GET) + /api/questions/[qid]/answers (GET, POST)
-     2. Add Question + Answer models to prisma/schema.prisma
-     3. Restore page.tsx.bak → page.tsx
-     4. Remove this placeholder
-   ============================================================ */
+export const metadata: Metadata = {
+  title: "جامعه هویکس — به‌زودی",
+  description: "صفحه جامعه کاربران هویکس به‌زودی فعال خواهد شد.",
+  robots: { index: false, follow: true },
+};
 
 export default function CommunityComingSoon() {
   return (
