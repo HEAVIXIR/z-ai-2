@@ -34,14 +34,25 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/rfq/[id]/quotes — list quotes for an RFQ.
  * The RFQ details are also returned so the client can render
- * the quote form without a second round-trip. */
+ * the quote form without a second round-trip.
+ *
+ * STEP 13.01-R1 P0-2 FIX v2: auth required + viewer context passed
+ * to getRFQ so PII is redacted for non-buyer viewers. */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "برای مشاهده پیشنهادها وارد شوید" },
+        { status: 401 },
+      );
+    }
+
     const { id } = await params;
-    const rfq = await getRFQ(id);
+    const rfq = await getRFQ(id, user.id);
     return NextResponse.json({
       success: true,
       data: rfq.quotes,
@@ -59,13 +70,16 @@ export async function GET(
     });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq/[id]/quotes GET] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
@@ -105,13 +119,16 @@ export async function POST(
     });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq/[id]/quotes POST] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }

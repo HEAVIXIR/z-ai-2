@@ -51,8 +51,12 @@ export async function GET(req: Request) {
       offset,
     });
   } catch (err: any) {
+    // STEP 13.31 P2-C FIX: do not leak raw err.message to client
+    // (could expose DB connection strings, internal paths, library
+    // internals). Log the real error server-side; return generic message.
+    console.error("[api/rfq GET] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
@@ -74,7 +78,6 @@ export async function POST(req: Request) {
     const {
       title,
       description,
-      buyerId,
       sellerId,
       deadline,
       categoryId,
@@ -82,14 +85,20 @@ export async function POST(req: Request) {
       specs,
     } = body;
 
-    // Use the authenticated user's id as buyerId when not
-    // explicitly provided (the typical case — a buyer creates
-    // their own RFQ). sellerId is optional — when present, the
-    // RFQ is addressed to a specific seller.
+    // STEP 13.01 P0-5 FIX: buyerId is NEVER accepted from the request
+    // body. The authenticated user IS the buyer — always. Previously
+    // `buyerId: buyerId ?? user.id` allowed a logged-in attacker to
+    // supply another user's id, which caused createRFQ to look up
+    // that user's PII (name/phone/email) and persist an RFQ under
+    // their identity (impersonation + PII harvest chain).
+    //
+    // If an admin-creates-on-behalf flow is needed in the future,
+    // it must go through a separate RBAC-checked endpoint that
+    // explicitly verifies the admin role — not this public route.
     const created = await createRFQ({
       title,
       description,
-      buyerId: buyerId ?? user.id,
+      buyerId: user.id,
       sellerId,
       deadline,
       categoryId,
@@ -105,13 +114,16 @@ export async function POST(req: Request) {
     });
   } catch (err: any) {
     if (err instanceof RFQServiceError) {
+      // Typed service error — message is controlled/validated, safe to return.
       return NextResponse.json(
         { error: err.message },
         { status: err.status },
       );
     }
+    // STEP 13.31 P2-C FIX: unknown error — do not leak err.message.
+    console.error("[api/rfq POST] unexpected error:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
