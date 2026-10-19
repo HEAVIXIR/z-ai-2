@@ -35,7 +35,7 @@ export default function CommunityComingSoon() {
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-20 text-center">
         <MessageCircle className="mb-6 h-16 w-16 text-[#F58220]" />
         <h1 className="mb-3 text-2xl font-bold text-white">
-          انجمن问答 به‌زودی فعال می‌شود
+          جامعه هویکس به‌زودی فعال می‌شود
         </h1>
         <p className="mb-8 max-w-md text-sm leading-relaxed text-zinc-400">
           ما در حال توسعه بخش پرسش‌وپاسخ جامعه هستیم. این قابلیت به‌زودی در
