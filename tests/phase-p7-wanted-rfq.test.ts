@@ -180,10 +180,20 @@ describe("Phase P7 — Wanted Marketplace + RFQ + Matching engine", () => {
       expect(c).toContain("limit");
     });
 
-    it("should export getRFQ(id)", () => {
+    it("should export getRFQ(id, viewerUserId)", () => {
       const c = read(RFQ_SVC);
       expect(c).toContain("export async function getRFQ");
-      expect(c).toMatch(/getRFQ\(\s*id:\s*string\s*,?\s*\)/);
+      // STEP 13.01-R1 P0-2 FIX v2: viewerUserId is now REQUIRED (was optional).
+      // The regex confirms the security contract: getRFQ must take a non-optional
+      // viewerUserId as its second parameter (NOT `viewerUserId?:`). The [\s\S]*?
+      // tolerates the inline comment block between `id: string,` and `viewerUserId:`
+      // in the current source. This is a STRENGTHENED assertion — it fails if the
+      // signature ever regresses to a single-arg or optional-viewer form.
+      expect(c).toMatch(
+        /getRFQ\(\s*id:\s*string\s*,[\s\S]*?viewerUserId:\s*string\s*,/,
+      );
+      // Negative assertion: viewerUserId must NOT be optional (no `?:`).
+      expect(c).not.toMatch(/viewerUserId\?\s*:/);
       // The return shape includes quotes[].
       expect(c).toContain("quotes");
     });
