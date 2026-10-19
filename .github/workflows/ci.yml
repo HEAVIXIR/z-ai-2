@@ -7,6 +7,8 @@ on:
     branches: [main, 'feature/**']
 
 jobs:
+  # ── BLOCKING job: all required security/contract/integration/build tests ──
+  # Any failure fails the workflow and blocks merge.
   verify:
     runs-on: ubuntu-latest
     services:
@@ -32,46 +34,167 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - name: Install dependencies
         run: bun install
-
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store-schema.prisma
-
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
-
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
-
       - name: Typecheck
         run: bun run typecheck
-
       - name: Lint
         run: bun run lint
-
-      - name: Seed RBAC (roles + permissions for integration tests)
+      - name: Seed RBAC
         run: bun run db:seed-rbac
-
+      - name: Seed catalog data
+        run: |
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
       - name: Security tests
         run: bun run test:security
-
-      - name: Integration tests (real PostgreSQL — PR-SC-00 tenant-scoping negative tests)
+      - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
-
-      - name: Static contract tests (no DB dependency)
-        run: bunx vitest run tests/contract/auction-contract.test.ts tests/contract/buy-request-contract.test.ts tests/contract/dispute-contract.test.ts tests/contract/inspection-contract.test.ts tests/contract/machine-contract.test.ts tests/contract/part-contract.test.ts tests/contract/payment-contract.test.ts tests/contract/product-contract.test.ts tests/contract/resource-contract.test.ts tests/contract/rfq-contract.test.ts tests/contract/transport-contract.test.ts tests/contract/user-contract.test.ts tests/contract/r45-canonical-auth-contract.test.ts tests/unit/
-
+      - name: Integration — readonly-when-concurrency-real
+        run: bunx tsx tests/integration/readonly-when-concurrency-real.ts
+      - name: Integration — payment-concurrency-real
+        run: bunx tsx tests/integration/payment-concurrency-real.ts
+      - name: Integration — deal-concurrency-real (STEP 13.36 P2-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/deal-concurrency-real.ts
+      - name: Integration — p3a-http-db-real (STEP 13.54 Phase 2 P3-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-http-db-real.ts
+      - name: Integration — p3a-auth-real-http-db (STEP 13.55 Commit B P3-A)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
+      - name: Integration test files
+        run: bunx vitest run tests/integration/*.test.ts
+      - name: All contract + unit tests
+        run: bunx vitest run tests/contract/ tests/unit/
+      - name: E2E smoke tests
+        run: bunx vitest run tests/e2e/
       - name: Production build
         run: bun run build
+      - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-real-server-http.ts
+
+  # ── REQUIRED CHECK: audit-transaction-real (independent job, real status) ──
+  # STEP 13.53 Phase F: this check IS in required_status_checks for branch main
+  # (alongside verify and phase-tests). A failure blocks merge.
+  audit-transaction:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      ADMIN_USERNAME: "ci-admin"
+      ADMIN_PASSWORD: "ci-password-not-real"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+      - name: Create store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+      - name: Seed RBAC + catalog
+        run: |
+          bun run db:seed-rbac
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
+      - name: audit-transaction-real (real status, no masking)
+        run: bunx vitest run --config vitest.integration.config.ts tests/integration/audit-transaction-real.ts
+
+  # ── REQUIRED CHECK: Phase tests (independent job, real status) ──
+  # STEP 13.53 Phase C (P2-B): seeded by `db:seed-phase-catalog` so phase1..phase9
+  # contract tests have the catalog/marketplace/location/moderation/deal/search
+  # data they assert against.
+  # STEP 13.53 Phase F: this check IS in required_status_checks for branch main
+  # (alongside verify and audit-transaction). A failure blocks merge.
+  phase-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      ADMIN_USERNAME: "ci-admin"
+      ADMIN_PASSWORD: "ci-password-not-real"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+      - name: Create store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+      - name: Seed RBAC + catalog
+        run: |
+          bun run db:seed-rbac
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
+      - name: Seed phase catalog (STEP 13.53 P2-B)
+        run: bun run db:seed-phase-catalog
+      - name: Phase integration tests (real status, no masking)
+        run: bunx vitest run tests/phase*.test.ts
