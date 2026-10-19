@@ -265,13 +265,15 @@ describe("RUNTIME: getRFQ — quote privacy behavioral tests", () => {
     expect(result.buyerId).toBeNull();
   });
 
-  it("SELLER-B does NOT see seller PII in their own quote", async () => {
+  it("SELLER-B does NOT see seller CONTACT PII in their own quote (but sees own sellerId)", async () => {
     const result = await getRFQ("rfq-1", "seller-B");
 
-    // Only buyer sees seller PII
+    // STEP 14.22 FIX: seller PII (phone/email) is still buyer-only,
+    // but sellerId is now visible to the seller who owns the quote
+    // (least-privilege — they already know their own id).
     expect(result.quotes[0].sellerPhone).toBeNull();
     expect(result.quotes[0].sellerEmail).toBeNull();
-    expect(result.quotes[0].sellerId).toBeNull();
+    expect(result.quotes[0].sellerId).toBe("seller-B");
   });
 
   it("SELLER-B sees quoteCount = 3 (trust signal)", async () => {
