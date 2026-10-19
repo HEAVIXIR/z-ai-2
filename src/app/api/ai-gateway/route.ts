@@ -111,7 +111,17 @@ export async function POST(req: NextRequest) {
     // per HEAVIX-SECURITY-BASELINE-V1 §10 ("AI tool call").
     await logAudit({
       actorId: actorId ?? null,
-      actorType: user ? "USER" : "ADMIN",
+      // STEP 14.19-C D7: Unauthenticated requests (no session) were
+      // previously logged as actorType 'ADMIN', which polluted the
+      // audit log — searches for "which admin did X" became
+      // meaningless. The POST handler already returns 401 for
+      // unauthenticated callers before reaching this audit call,
+      // so this branch is dead in practice; but fail-safe to 'SYSTEM'
+      // (the canonical AuditActorType union in src/lib/admin/audit.ts
+      // is 'USER' | 'ADMIN' | 'SYSTEM' | 'AI') so that if the early
+      // 401 ever regresses we still do not mislabel anonymous calls
+      // as ADMIN.
+      actorType: user ? "USER" : "SYSTEM",
       action: "ai.execute",
       entityType: "AIGateway",
       entityId: null,
@@ -329,7 +339,11 @@ export async function POST(req: NextRequest) {
   // HEAVIX-SECURITY-BASELINE-V1 §10.
   await logAudit({
     actorId: actorId ?? null,
-    actorType: user ? "USER" : "ADMIN",
+    // STEP 14.19-C D7: Same rationale as the preflight denial branch
+    // above — never mislabel an unauthenticated caller as ADMIN.
+    // The POST handler 401s on null user before this audit call, so
+    // this is defense-in-depth against future refactors.
+    actorType: user ? "USER" : "SYSTEM",
     action: "ai.execute",
     entityType: "AIGateway",
     entityId: null,

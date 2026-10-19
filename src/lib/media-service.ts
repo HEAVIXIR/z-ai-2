@@ -164,7 +164,7 @@ function generateAssetId(): string {
 export interface UploadAssetInput {
   /** Raw uploaded buffer (the caller already awaited arrayBuffer()). */
   file: Buffer;
-  /** User id (or 'ADMIN' sentinel) performing the upload. */
+  /** User id of the uploader (resolved via RBAC Session). */
   uploadedBy: string | null;
   /** Optional entity association (e.g. Listing). */
   entityType?: string;
