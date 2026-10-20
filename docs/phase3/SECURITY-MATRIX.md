@@ -1,8 +1,8 @@
 # HEAVIX — Phase 3 Security Matrix
 
 **Source:** `src/lib/admin/production-readiness-gate.ts`
-**Extracted:** 2026-10-20 (STEP 14.70-E4)
-**Total gate items:** 74 (73 PASS + 1 PENDING; `MIG-05` is the pending item)
+**Extracted:** 2026-10-20 (STEP 14.70-E4); **reconciled:** 2026-10-20 (STEP 14.81)
+**Total gate items:** 74 (73 PASS + 1 PENDING; `MIG-05` is the pending item) — **count verified against source** (see §Reconciliation Notes).
 
 ## Security-Relevant Controls
 
@@ -197,3 +197,95 @@ Independent evidence: GitHub Actions CI run [39419476047](https://github.com/HEA
 - Latest backup referenced: heavix-20260924-110650.sql (616KB, 120 tables)
 - Backup file on disk: NOT FOUND in this sandbox
 - Restore rehearsal: NOT EXECUTED (no PostgreSQL available)
+
+---
+
+## Reconciliation Notes (STEP 14.81, directive #03)
+
+This section records the count reconciliation performed on 2026-10-20 per the owner's STEP 14.81 directive. Every claim below is backed by a reproducible command against the live source.
+
+### RN-1 — Total gate count: 74 (CONFIRMED against source)
+
+**Claim in this doc:** "Total gate items: 74 (73 PASS + 1 PENDING)"
+
+**Verification command:**
+```bash
+grep -cE "^\s*\{\s*id:\s*'" src/lib/admin/production-readiness-gate.ts   # → 74
+grep -oE "id:\s*'[A-Z0-9-]+'" src/lib/admin/production-readiness-gate.ts | sort -u | wc -l   # → 74
+grep -oE "status:\s*'PASS'" src/lib/admin/production-readiness-gate.ts | wc -l   # → 73
+grep -oE "status:\s*'PENDING'" src/lib/admin/production-readiness-gate.ts | wc -l   # → 1
+grep -oE "status:\s*'FAIL'" src/lib/admin/production-readiness-gate.ts | wc -l   # → 0
+```
+
+**Result:** 74 total gate items (73 PASS + 1 PENDING MIG-05 + 0 FAIL + 0 N/A). The doc's count is **CORRECT**. The prior conversation summary's claim of "75" was a miscalculation; the source confirms 74. No change to the total count is required.
+
+**Note on the "type declaration" question (owner's STEP 14.81 directive #03):** The file `production-readiness-gate.ts` exports two TypeScript types (`GateStatus`, `GateSeverity`) and one interface (`GateCheck`) at lines 14–25. These are **type declarations**, not operational gate items, and are correctly NOT counted in the 74-item total. The 74 count reflects only entries in the `PRODUCTION_READINESS_GATE: GateCheck[]` array (lines 30–136). There is no double-counting.
+
+### RN-2 — MIG-05 / MIG-06 / MIG-07 page-count discrepancy: STALE MIG-05 (NOT a real gap)
+
+**Symptom:** MIG-05 title says "42 pages PENDING migration" with evidence `migrationStats().pending = 42`, while MIG-06 title says "All 38 PENDING legacy pages have a frozen decision" and MIG-07 evidence says "all 38 rows have all 5 fields populated". Apparent gap: 42 − 38 = 4 pages.
+
+**Verification against source:**
+
+```bash
+# Count PENDING entries in the actual checklist source:
+grep -cE "migrationStatus:\s*'PENDING'" src/lib/admin/legacy-migration-checklist.ts   # → 38
+
+# Full breakdown of migrationStatus values in the source:
+grep -cE "migrationStatus:\s*'MIGRATED'"    src/lib/admin/legacy-migration-checklist.ts   # → 28
+grep -cE "migrationStatus:\s*'IN_PROGRESS'" src/lib/admin/legacy-migration-checklist.ts   # → 4
+grep -cE "migrationStatus:\s*'PENDING'"    src/lib/admin/legacy-migration-checklist.ts   # → 38
+grep -cE "migrationStatus:\s*'DEPRECATED'" src/lib/admin/legacy-migration-checklist.ts   # → 2
+grep -cE "migrationStatus:\s*'KEEP_AS_IS'" src/lib/admin/legacy-migration-checklist.ts   # → 32
+# total entries: 28+4+38+2+32 = 104 (grep matches; 1 entry may use a different status keyword)
+
+# The migrationStats() function (line 197-204) computes PENDING as:
+#   LEGACY_MIGRATION_CHECKLIST.filter(p => p.migrationStatus === 'PENDING').length
+# → at runtime this returns 38, NOT 42.
+```
+
+**Finding:** The source `src/lib/admin/legacy-migration-checklist.ts` contains **38 PENDING entries**, not 42. The `migrationStats().pending` function (line 202) would return **38** at runtime. Therefore:
+
+- **MIG-05's title ("42 pages PENDING") and evidence ("migrationStats().pending = 42") are STALE.** They do not match the current source. At some prior point the checklist had 42 PENDING entries; 4 of them have since been reclassified (likely to IN_PROGRESS or MIGRATED), reducing the actual count to 38. The gate title/evidence string was not updated to reflect this.
+- **MIG-06's "38 PENDING legacy pages" is CORRECT** — it matches the source.
+- **MIG-07's "all 38 rows" is CORRECT** — it matches the source.
+
+**Conclusion:** There is **NO real discrepancy** between MIG-05, MIG-06, and MIG-07. The apparent "42 vs 38" gap is entirely due to a **stale MIG-05 title/evidence string** in `src/lib/admin/production-readiness-gate.ts:84`. The underlying migration state is consistent: 38 PENDING pages, all 38 covered by frozen decisions in `docs/verification/legacy-migration-decisions.md`.
+
+**Recommended follow-up (NOT in scope for this PR — doc-only):** Update the MIG-05 gate entry in `src/lib/admin/production-readiness-gate.ts:84` to read `title: '38 pages PENDING migration (post-launch)'` and `evidence: 'migrationStats().pending = 38'`. This is a one-line code fix in a separate PR targeting `main`. Until then, this matrix documents the verified actual count (38) alongside the stale gate string (42).
+
+### RN-3 — Test count claims vs CI report
+
+The "Test Execution Status" section above cites GitHub Actions CI run [39419476047](https://github.com/HEAVIXIR/z-ai-2/actions/runs/39419476047) for PR #61 HEAD `a124ca4`. The verify-job log corroborates:
+- RBAC matrix: 63 tests PASS ✓
+- Page builder: 34 tests PASS ✓
+- CRUD pipeline: 28 tests PASS ✓
+- E2E smoke: 16 tests PASS ✓
+- RFQ integration: 7 tests PASS ✓ (real PostgreSQL 17, 0 skipped)
+
+Two contract test files are honestly marked "NOT VERIFIED in the cited log evidence":
+- Order contract (15 invariants) — `tests/contract/order-contract.test.ts`
+- Payment contract (17 invariants) — `tests/contract/payment-contract.test.ts`
+
+These should be verified in a future CI run log before any production-readiness claim depends on them. They are not blocking the current SECURITY HOLD but are tracked here for completeness.
+
+### RN-4 — S1-S14 numbering
+
+The "S1-S14 Note" section above correctly states that S1-S14 numbering was introduced in conversation (STEP 14.19) and does NOT exist in project documentation. The project uses its own gate IDs (SCHEMA-01, RBAC-01, etc.). No S1-S14 controls were invented or assumed. This is confirmed — no change needed.
+
+---
+
+## Summary of Reconciliation
+
+| Item | Claim | Source-verified actual | Status |
+|---|---|---|---|
+| Total gate count | 74 | 74 (grep-confirmed) | ✅ CORRECT — no change |
+| PASS count | 73 | 73 (grep-confirmed) | ✅ CORRECT — no change |
+| PENDING count | 1 (MIG-05) | 1 (MIG-05) (grep-confirmed) | ✅ CORRECT — no change |
+| MIG-05 page count | "42 pages PENDING" | 38 PENDING (source: `legacy-migration-checklist.ts`) | ⚠️ STALE — gate title/evidence string in `production-readiness-gate.ts:84` does not match source. Recommended one-line fix in a separate PR. |
+| MIG-06 page count | "38 PENDING pages" | 38 PENDING (source-confirmed) | ✅ CORRECT — matches source |
+| MIG-07 row count | "38 rows" | 38 PENDING (source-confirmed) | ✅ CORRECT — matches source |
+| MIG-05/06/07 consistency | Apparent 42-vs-38 gap | Both MIG-06 and MIG-07 say 38, which matches source; MIG-05's 42 is stale | ✅ NO REAL DISCREPANCY — the gap is a stale MIG-05 string, not a data inconsistency |
+| Order/Payment contract tests | "NOT VERIFIED" | Honestly flagged — not corroborated in cited CI log | ⚠️ TRACKED — verify in future CI run |
+
+**Net result of reconciliation:** The doc's total count (74) and status breakdown (73 PASS + 1 PENDING) are **CORRECT against source**. The only verified defect is a **stale MIG-05 title/evidence string** in the gate source file itself (`production-readiness-gate.ts:84`), which is out of scope for this doc-only PR and recommended for a one-line follow-up fix. No change to this doc's gate-item tables is required; the reconciliation notes above supplement (not replace) the existing tables with source-verified evidence.
