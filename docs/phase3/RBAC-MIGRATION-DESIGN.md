@@ -30,7 +30,7 @@ The following were read directly from the codebase on 2026-10-20 and form the ev
 
 | Column | Schema line | Definition | Default | Used by |
 |---|---|---|---|---|
-| `User.role` | 1586 | `role String @default("BUYER") // ADMIN | SELLER | BUYER` | `"BUYER"` | 10 READ + 1 WRITE consumers (see §3) |
+| `User.role` | 1586 | `role String @default("BUYER") // ADMIN | SELLER | BUYER` | `"BUYER"` | 18 column access points in the current inventory: 14 role-value reads, 1 write, and 3 Prisma field selections (see §§5–5.1); API inputs and different entities are tracked separately. |
 
 ### 0.3 Authorization module (`src/lib/authorization/`)
 
@@ -79,9 +79,9 @@ Each phase is independently revertible (via `git revert`) and gated on the previ
 | Phase | Touches code? | Touches schema? | Touches DB data? | Risk | Reverts by |
 |---|---|---|---|---|---|
 | A — Additive helper | Yes (new file only) | No | No | LOW | `git revert` |
-| B — Compatibility shim + dual-write | Yes (refactor 10 READ + 1 WRITE) | No | No (reads only) | MEDIUM | `git revert` |
+| B — Compatibility shim + dual-write | Yes (migrate 14 role-value reads and 1 write; remove/rework 3 Prisma field selections) | No | No (reads only) | MEDIUM | `git revert` |
 | C — Backfill UserRole from User.role | No (script only) | No | Yes (INSERT UserRole rows, idempotent) | LOW | `DELETE FROM "UserRole" WHERE id IN (backfilled)` (or restore from backup) |
-| D — Cutover to canonical path | Yes (refactor 10 READ + 1 WRITE) | No | No | MEDIUM | `git revert` (re-enables shim + dual-write) |
+| D — Cutover to canonical path | Yes (migrate 14 role-value reads and 1 write; remove/rework 3 Prisma field selections) | No | No | MEDIUM | `git revert` (re-enables shim + dual-write) |
 | E — Drop `User.role` column + `AdminSession` table | Yes (comments) | Yes (migration) | No (column already unused by code) | HIGH | Reverse migration (re-add column, re-create AdminSession) + reverse-backfill script |
 
 **Critical invariant:** Phase E must NEVER run before Phase C is verified complete in production. If Phase E runs without backfill, legacy users without UserRole rows would lose all permissions (RBAC fail-closed → no admin access).
@@ -247,7 +247,7 @@ export async function getUserRoleLabels(userId) {
 
 ### 3.1 New file: `src/lib/authorization/role-shim.ts`
 
-**Purpose:** A dual-read function that prefers UserRole but falls back to `User.role` for users not yet backfilled. Used by all 10 READ consumers during the migration window (Phase B → Phase D).
+**Purpose:** A dual-read function that prefers UserRole but falls back to `User.role` for users not yet backfilled. Used by legacy `User.role` value consumers during the migration window (Phase B → Phase D); Prisma field selections are handled explicitly in §5.1.
 
 **Public API:**
 
@@ -399,14 +399,14 @@ if (body.role !== undefined) {
 - **Atomicity:** The legacy `data.role = r` write and the UserRole writes happen in the same PATCH request. If either fails, the entire PATCH fails (Next.js route handler exception → 500). No partial state.
 - **Audit log:** A separate `user.role.assign` audit entry is written for the canonical path, in addition to the existing `admin.users.update` audit at line 212.
 
-### 3.3 Switch all 10 READ consumers to the shim
+### 3.3 Migrate role-value reads to the shim
 
 Each READ consumer (§5 per-consumer table) imports `getUserRoleWithFallback` and replaces its `user.role` read with `await getUserRoleWithFallback(user.id, user)`. Detailed per-consumer code in §5.
 
 ### 3.4 Phase B acceptance criteria
 
 - [ ] `src/lib/authorization/role-shim.ts` exists with `getUserRoleWithFallback`.
-- [ ] All 10 READ consumers switched to `getUserRoleWithFallback(userId, user)`.
+- [ ] All in-scope role-value reads switched to `getUserRoleWithFallback(userId, user)`; separately discovered audit reads included in the acceptance inventory.
 - [ ] `admin/users/[id]/route.ts:173` performs dual-write (legacy column + UserRole upsert + delete replaced).
 - [ ] Existing `tests/unit/rbac.test.ts` and `tests/contract/*` still pass.
 - [ ] New integration test: `tests/integration/role-shim-real.ts` — verifies that a user with `User.role='ADMIN'` but ZERO UserRole rows still returns `"ADMIN"` via the shim (proves the fallback works against real PostgreSQL).
@@ -598,9 +598,9 @@ This makes the backfill visible in `/admin/audit-log` for traceability.
 
 ---
 
-## 5. Per-Consumer Migration Table (11 rows: 10 READ + 1 WRITE)
+## 5. E1 Baseline Migration Table (11 rows: 10 READ + 1 WRITE)
 
-This table covers every runtime reference to `User.role` documented in the E1 worklog (10 READs + 1 WRITE = 11 consumers). Each row lists the current code, the Phase A target helper signature (informational — Phase A doesn't touch consumers), the Phase B replacement (shim), the Phase D replacement (canonical-only), risk, and required test.
+This table preserves the original E1 baseline (10 READs + 1 WRITE = 11 rows). It is not the complete current inventory: §5.1 records seven additional grep/AST findings and distinguishes actual `User.role` accesses from different-entity or dead-select cases. Each row lists the current code, proposed Phase B/D handling, risk, and required test.
 
 > **Note on line-level counting:** E1 counted each *line* as a separate consumer. Files with multiple `user.role` references on different lines (e.g., `users-section.tsx:185/192/466`) appear as multiple rows. Two adjacent lines in the same JSX block that both reference `user.role` (e.g., `admin/sellers/[id]/page.tsx:234,239`) are also separate rows.
 
@@ -632,7 +632,7 @@ During the design pass, the following *additional* runtime `User.role` reference
 | A.6 | `src/app/admin/conversations/[id]/page.tsx:290` | `<span>نقش: {p?.role ?? "—"}</span>` (renders participant role in conversation detail) | READ (display) | Pre-fetch role labels for both participants server-side; render label. |
 | A.7 | `src/lib/seller-service.ts:117` | `select: { id: true, role: true, status: true, companyId: true }` — `role` is selected but **never used** in the function body | Dead select (READ at SQL level, no semantic use) | Drop `role: true` from select. No replacement needed (nothing reads it). |
 
-**These 7 additional references bring the true total to 17 runtime references** (10 E1 + 7 discovered during design). The 11 consumers in the E1 list are the priority; the 7 additional references can be addressed in Phase B as a second sub-PR (the work is mechanical).
+**Inventory reconciliation (STEP 14.76): 18 actual `User.role` column access points** — 14 role-value reads, 1 write, and 3 Prisma field selections. The seven entries in this historical §5.1 list are findings, not seven interchangeable true consumers: `p?.role` belongs to `DealRoomParticipant`, `body.role` is API input, and the `seller-service.ts:117` selection was reported as unused. Validate every item against current source before implementation; do not use grep-token counts as the migration acceptance count.
 
 > **Recommendation:** Treat the E1 list as the *minimum* scope for Phase B. The 7 additional references should be added to the Phase B PR(s) as a follow-on commit, with their own per-row table entries mirroring §5.
 
@@ -640,7 +640,7 @@ During the design pass, the following *additional* runtime `User.role` reference
 
 ## 6. Phase D — Cutover (no schema change)
 
-### 6.1 Switch all 10 READ consumers from shim to canonical
+### 6.1 Switch in-scope role-value reads from shim to canonical
 
 Each Phase B call site:
 
@@ -686,7 +686,7 @@ This surfaces incomplete backfill during Phase D — any user still hitting the 
 
 ### 6.5 Phase D acceptance criteria
 
-- [ ] All 10 READ consumers use `getUserPrimaryRole(user.id)` (no shim, no fallback).
+- [ ] All in-scope role-value reads use `getUserPrimaryRole(user.id)` (no shim, no fallback); separately identified Prisma projections are removed or reworked as specified in §5.1.
 - [ ] `admin/users/[id]/route.ts:173` no longer sets `data.role` — only writes to UserRole.
 - [ ] Stale comments in seller-service.ts:38,85 and admin/sellers/[id]/route.ts:83,88 updated.
 - [ ] `getUserRoleWithFallback` is still exported from `role-shim.ts` (kept for emergency rollback) but no consumer imports it.
@@ -817,9 +817,9 @@ If production fails after Phase E:
 | Phase | Risk | Why | Mitigation |
 |---|---|---|---|
 | **A** — Additive helper | **LOW** | New file, no consumers touched. Zero blast radius. | Unit tests gate merge. |
-| **B** — Shim + dual-write | **MEDIUM** | Refactors 10 READ sites + 1 WRITE site. Behavior change: legacy `User.role='ADMIN'` users WITHOUT UserRole rows now return "ADMIN" via fallback (was: returned "ADMIN" directly). Net behavior identical. But the dual-write adds DB writes (deleteMany + upsert) — if either fails, the PATCH 500s and the user's role is unchanged (atomic). Risk: a previously-passing PATCH could now 500 if the Role catalog is missing a row. | Integration test against real PostgreSQL (Phase B test: `tests/integration/role-shim-real.ts`). Pre-flight check: `db.role.findUnique({ where: { key: r } })` returns null → 500 with clear error message (already in §3.2 design). |
+| **B** — Shim + dual-write | **MEDIUM** | Refactors in-scope role-value reads + 1 WRITE site. Behavior change: legacy `User.role='ADMIN'` users WITHOUT UserRole rows now return "ADMIN" via fallback (was: returned "ADMIN" directly). Net behavior identical. But the dual-write adds DB writes (deleteMany + upsert) — if either fails, the PATCH 500s and the user's role is unchanged (atomic). Risk: a previously-passing PATCH could now 500 if the Role catalog is missing a row. | Integration test against real PostgreSQL (Phase B test: `tests/integration/role-shim-real.ts`). Pre-flight check: `db.role.findUnique({ where: { key: r } })` returns null → 500 with clear error message (already in §3.2 design). |
 | **C** — Backfill | **LOW** | Idempotent INSERT-only script. Never deletes. Safe to re-run. Worst case: some users don't get backfilled (orphans) — script reports them; admin can investigate. | Validation step (`orphans == 0`) is a hard gate before Phase D. |
-| **D** — Cutover | **MEDIUM** | Switches 10 READ sites from shim (with fallback) to canonical (no fallback). If any user was NOT backfilled (still has User.role='ADMIN' but zero UserRole rows), they will now see "BUYER" instead of "ADMIN" in the UI. **Authorization is unaffected** (already RBAC-only) — but UI display would be wrong, causing user confusion. | Phase C orphan gate (`orphans == 0`) must pass before Phase D. Telemetry log (§6.4) surfaces any remaining empty-UserRole users. |
+| **D** — Cutover | **MEDIUM** | Switches in-scope role-value reads from shim (with fallback) to canonical (no fallback). If any user was NOT backfilled (still has User.role='ADMIN' but zero UserRole rows), they will now see "BUYER" instead of "ADMIN" in the UI. **Authorization is unaffected** (already RBAC-only) — but UI display would be wrong, causing user confusion. | Phase C orphan gate (`orphans == 0`) must pass before Phase D. Telemetry log (§6.4) surfaces any remaining empty-UserRole users. |
 | **E** — Schema change | **HIGH** | Drops a NOT NULL column on the central `User` table. If any code path still references `user.role`, runtime error. If rollback needed, data is lost (column re-added with default 'BUYER' for all users). | Hard pre-condition gates (§7.1). Backup taken. Maintenance window. Rollback script tested on staging. Two-reviewer migration SQL review. |
 
 ---
@@ -841,7 +841,7 @@ If production fails after Phase E:
 | Phase | PRs | Ops runs | Estimated wall-clock | Sequencing |
 |---|---|---|---|---|
 | A | 1 | 0 | 1 day | After E3 design approved. |
-| B | 1–2 | 0 | 2–3 days (10 READ refactor + dual-write + integration test). | After A merged. |
+| B | 1–2 | 0 | 2–3 days (role-read inventory refactor + dual-write + integration test). | After A merged. |
 | C | 0 | 1 (staging) + 1 (production) | 1 day | After B merged & deployed. |
 | D | 1 | 0 | 1 day | After C verified in production. |
 | E | 1 (code) + 1 (migration) | 1 (production deploy) | 1 day + maintenance window | After D merged & deployed & telemetry clean for 7 days. |
@@ -881,8 +881,8 @@ If production fails after Phase E:
 
 | # | Finding | Impact | Recommended resolution |
 |---|---|---|---|
-| 1 | E1 worklog reports "11 consumers (10 READ + 1 WRITE)" but prior worklog §19.2 reported "7 READ + 1 WRITE = 8". Reconciliation: E1 counted each *line* as a separate consumer; §19.2 counted each *file*. Both are correct under their respective counting rules. The line-level count (11) is more useful for migration tracking. | Documentation. | No action — both counts are documented. |
-| 2 | **7 additional User.role references** discovered during design (§5.1) were NOT in E1's 11-consumer list. These include audit-log payloads in `admin/users` routes and the entire `admin/conversations/[id]/page.tsx` participant-role display. | Phase E (column drop) would break these if not migrated first. | Add to Phase B scope as a second sub-PR. Update §5 table to include all 18 rows (11 + 7) before Phase B implementation begins. |
+| 1 | E1 baseline reports 11 rows (10 READ + 1 WRITE), but this is not the complete column-access inventory. The independent STEP 14.76 inventory identifies 18 `User.role` column access points: 14 role-value reads, 1 write, and 3 Prisma field selections. | Documentation / migration scope. | Reconcile the full inventory and acceptance criteria before Phase B; retain the 11-row table as the E1 baseline only. |
+| 2 | **Seven additional findings** were recorded in §5.1. They include audit payload reads, Prisma field selections, a different-entity participant display, and a field selection reported as unused. The independent STEP 14.76 inventory counts 18 actual `User.role` column access points after entity disambiguation; do not count API request-body `body.role` or `DealRoomParticipant.p?.role` as `User.role`. | Phase E (column drop) would break any genuine column access not migrated first. | Reconcile every row in §§5–5.1 against current source and explicitly mark true column reads, the write, Prisma selections, dead selections, and different-entity/API-input false positives before Phase B implementation. |
 | 3 | `src/lib/seller-service.ts:117` selects `role: true` from User but never uses the value (dead select). | Inefficient SQL (fetches column unnecessarily). Phase E column drop would change this select to fail at Prisma generate time. | Remove `role: true` from the select clause in Phase B (cleanup commit). |
 | 4 | `prisma/seed-user-roles.ts` already does a partial backfill (ADMIN + BUYER only). Phase C's `scripts/backfill-user-roles.ts` is a superset (also handles SELLER). | Two scripts doing overlapping work could confuse operators. | Document in Phase C script header: "Supersedes `prisma/seed-user-roles.ts` for production backfill. The seed script remains for fresh-install bootstrap (admin user creation); this script is for migrating existing data." |
 | 5 | The `serializeUser` (admin/users/[id]/route.ts:26) and `serialize` (admin/users/route.ts:18) functions spread `...u` — which includes `role` in the JSON response. The API response shape implicitly exposes `User.role`. | Frontend clients reading `user.role` from API response would break in Phase E. | Audit frontend code for `user.role` reads from API response (out of scope for this design doc — flagged for Phase B sub-PR). |
