@@ -81,7 +81,7 @@ export const PRODUCTION_READINESS_GATE: GateCheck[] = [
   { id: 'MIG-02', category: 'Migration', title: 'Each page has legacyPath/resource/replacementPath/risk/owner', severity: 'HIGH', status: 'PASS', evidence: 'src/lib/admin/legacy-migration-checklist.ts: LegacyPageEntry', },
   { id: 'MIG-03', category: 'Migration', title: '60% of pages addressed (MIGRATED + KEEP_AS_IS + DEPRECATED)', severity: 'HIGH', status: 'PASS', evidence: 'migrationStats().progressPct = 60', notes: '28 MIGRATED, 32 KEEP_AS_IS, 2 DEPRECATED' },
   { id: 'MIG-04', category: 'Migration', title: 'No HIGH-risk page left PENDING without owner', severity: 'HIGH', status: 'PASS', evidence: 'all HIGH-risk entries have owner field set', },
-  { id: 'MIG-05', category: 'Migration', title: '42 pages PENDING migration (post-launch)', severity: 'MEDIUM', status: 'PENDING', evidence: 'migrationStats().pending = 42', notes: 'Acceptable for launch; tracked for V2.5' },
+  { id: 'MIG-05', category: 'Migration', title: '38 pages PENDING migration (post-launch)', severity: 'MEDIUM', status: 'PENDING', evidence: 'migrationStats().pending = 38 (verified: grep -cE "migrationStatus:\s*\'PENDING\'" src/lib/admin/legacy-migration-checklist.ts = 38)', notes: 'Acceptable for launch; tracked for V2.5. STEP 14.81 reconciliation: prior value 42 was stale; source has 38 PENDING entries (28 MIGRATED + 4 IN_PROGRESS + 38 PENDING + 2 DEPRECATED + 32 KEEP_AS_IS = 104 total).' },
 
   // ── SECURITY ───────────────────────────────────────────────
   { id: 'SEC-01', category: 'Security', title: '@ts-nocheck inventory: 55 files (all marked Owner=Migration)', severity: 'HIGH', status: 'PASS', evidence: '55 files with @ts-nocheck + Owner=Migration TODO', notes: 'All P1, must clear before GA' },
