@@ -9,8 +9,9 @@ import { can, isAdmin } from "@/lib/authorization";
    All admin access now goes through:
      getCurrentUser() → user session → RBAC → Permission
 
-   The AdminSession cookie path is still available in lib/auth.ts
-   for the login page, but adminGuard() no longer checks it.
+   The legacy AdminSession cookie path was removed in PR #58 (R45-16).
+   adminGuard() now resolves identity exclusively through
+   getCurrentUser() (USER_COOKIE → Session → User) and RBAC.
    This means logging in via admin credentials (username/password)
    alone is NO LONGER sufficient for admin API access.
    Users must have a User account with ADMIN UserRole.

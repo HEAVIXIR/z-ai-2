@@ -34,10 +34,11 @@ export const dynamic = "force-dynamic";
 
    Auth pattern matches the audit-log reader
    (src/app/api/admin/audit-log/route.ts): getCurrentUser() →
-   requirePermission(user.id, 'analytics.read'). The synthetic
-   'ADMIN' user returned for admin-cookie sessions still passes
-   requirePermission() because can('ADMIN', ...) short-circuits to
-   true (see src/lib/authorization/index.ts).
+   requirePermission(user.id, 'analytics.read').
+
+   // STEP 13.01 (post-PR-58): The synthetic ADMIN identity and admin-cookie
+   // session were removed in R45-16. requirePermission() now resolves
+   // through the canonical USER_COOKIE → Session → User → RBAC path only.
    ============================================================ */
 
 function parseDate(value: string | null): Date | null {

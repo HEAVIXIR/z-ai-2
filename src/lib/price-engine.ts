@@ -749,7 +749,8 @@ export async function createOverride(args: {
   listingId: string;
   overridePrice: number;
   reason: string;
-  adminId?: string | null;
+  /** Required: human admin responsible for the override (audit-log integrity, STEP 14.19-C D6). */
+  adminId: string;
   ip?: string | null;
   userAgent?: string | null;
 }): Promise<{ id: string }> {
@@ -759,6 +760,15 @@ export async function createOverride(args: {
   }
   if (!args.reason || args.reason.trim().length < 3) {
     throw new Error("reason is required (min 3 chars)");
+  }
+  // STEP 14.19-C D6: Fail-closed on missing adminId. Previously this
+  // fell back to the sentinel string "ADMIN", which allowed a price
+  // override to be recorded in the audit log without identifying the
+  // responsible human admin. Now we throw instead — any caller that
+  // forgets to pass adminId will fail loudly rather than silently
+  // polluting the audit trail.
+  if (!args.adminId || typeof args.adminId !== "string" || args.adminId.trim().length === 0) {
+    throw new Error("adminId is required for price override (price-engine)");
   }
 
   // Compute the current estimate so we can record the "before" value.
@@ -776,7 +786,7 @@ export async function createOverride(args: {
       originalEstimate,
       overridePrice: args.overridePrice,
       reason: args.reason.trim(),
-      overriddenBy: args.adminId ?? "ADMIN",
+      overriddenBy: args.adminId,
     },
   });
 
