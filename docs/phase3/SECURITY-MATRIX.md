@@ -2,7 +2,7 @@
 
 **Source:** `src/lib/admin/production-readiness-gate.ts`
 **Extracted:** 2026-10-20 (STEP 14.70-E4)
-**Total gate items:** 74
+**Total gate items:** 74 (73 PASS + 1 PENDING; `MIG-05` is the pending item)
 
 ## Security-Relevant Controls
 
@@ -178,15 +178,17 @@ No S1-S14 controls were invented or assumed.
 
 ## Test Execution Status
 
-| Test | File | Status |
+Independent evidence: GitHub Actions CI run [39419476047](https://github.com/HEAVIXIR/z-ai-2/actions/runs/39419476047), PR #61 HEAD `a124ca430b004003080abdbaf541f6cb766e0e81`. The verify-job log confirms the listed tests below ran and passed in that run. This corroborates test execution only; it does **not** independently prove every production gate item or replace backup/restore rehearsal.
+
+| Test | File | Status / Evidence |
 |---|---|---|
-| RBAC matrix (63 tests) | tests/contract/rbac-matrix.test.ts | NOT RUN (this session) |
-| Page builder (34 tests) | tests/contract/page-builder.test.ts | NOT RUN (this session) |
-| CRUD pipeline (28 tests) | tests/contract/crud-pipeline.test.ts | NOT RUN (this session) |
-| Order contract (15 invariants) | tests/contract/order-contract.test.ts | NOT RUN (this session) |
-| Payment contract (17 invariants) | tests/contract/payment-contract.test.ts | NOT RUN (this session) |
-| E2E smoke | tests/e2e/smoke.test.ts | NOT RUN (this session) |
-| RFQ integration (7 tests) | tests/integration/rfq-quote-visibility-real.ts | PASS (PR #61) |
+| RBAC matrix (63 tests) | tests/contract/rbac-matrix.test.ts | PASS — CI log: 63 tests |
+| Page builder (34 tests) | tests/contract/page-builder.test.ts | PASS — CI log: 34 tests |
+| CRUD pipeline (28 tests) | tests/contract/crud-pipeline.test.ts | PASS — CI log: 28 tests |
+| Order contract (15 invariants) | tests/contract/order-contract.test.ts | NOT VERIFIED in the cited log evidence |
+| Payment contract (17 invariants) | tests/contract/payment-contract.test.ts | NOT VERIFIED in the cited log evidence |
+| E2E smoke | tests/e2e/smoke.test.ts | PASS — CI log: 16 tests |
+| RFQ integration (7 tests) | tests/integration/rfq-quote-visibility-real.test.ts | PASS — CI log: 7 tests; real PostgreSQL 17 service; 0 skipped for this file |
 
 ## Backup/Restore
 
