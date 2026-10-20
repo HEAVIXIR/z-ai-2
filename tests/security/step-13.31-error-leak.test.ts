@@ -84,7 +84,14 @@ function assertNoSecret(body: unknown, label: string) {
 describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getCurrentUser).mockResolvedValue("user-1" as any);
+    // STEP 14.22 FIX: getCurrentUser must return a User object with .id
+    // (not a string), because routes pass user.id to getRFQ. With the
+    // STEP 14.22 runtime guard, getRFQ throws RFQServiceError(400) if
+    // viewerUserId is undefined/null/empty — which would mask the
+    // underlying DB error we're trying to inject. Returning a proper
+    // { id: "user-1" } object lets viewerUserId = "user-1" pass the
+    // guard so we can still test the DB-error path → 500 generic.
+    vi.mocked(getCurrentUser).mockResolvedValue({ id: "user-1" } as any);
     vi.mocked(getCurrentUserId).mockResolvedValue("user-1");
   });
 

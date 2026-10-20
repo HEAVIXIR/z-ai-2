@@ -808,6 +808,27 @@ export async function getRFQ(
   if (!id) {
     throw new RFQServiceError(400, "id الزامی است");
   }
+  // STEP 14.22 D-22.03 FIX (DEFECT-2): runtime guard for viewerUserId.
+  // The v2 contract (STEP 13.01-R1) made viewerUserId type-required,
+  // but TypeScript cannot enforce this at runtime — `null as unknown
+  // as string` compiles and silently bypasses the redaction logic,
+  // returning a degraded (quotes: []) response instead of failing.
+  // Per STEP 14.22 senior manager directive: 'viewerUserId خالی یا
+  // نامعتبر طبق قرارداد صریح سرویس، رد شود؛ نه اینکه بی‌صدا مسیر
+  // دیگری انتخاب شود'. Reject null/undefined/empty/whitespace-only
+  // strings with a controlled 400 error. Anonymous viewers (no session)
+  // must never reach getRFQ — callers must 401 at the route layer.
+  if (
+    viewerUserId === null ||
+    viewerUserId === undefined ||
+    typeof viewerUserId !== "string" ||
+    viewerUserId.trim().length === 0
+  ) {
+    throw new RFQServiceError(
+      400,
+      "viewerUserId الزامی است — دسترسی ناشناس مجاز نیست",
+    );
+  }
 
   const rfq = await db.rFQ.findUnique({
     where: { id },
@@ -892,19 +913,35 @@ export async function getRFQ(
     // STEP 13.02 P0-2 FIX v3: quoteCount is always visible (trust signal).
     // The quotes array is filtered based on viewer role (see above).
     quoteCount: rfq.quotes.length,
-    quotes: visibleQuotes.map((q) => ({
-      id: q.id,
-      // sellerName is kept; phone/email/id are PII (only buyer sees them).
-      sellerId: isBuyer ? q.sellerId : null,
-      sellerName: q.sellerName,
-      sellerPhone: isBuyer ? q.sellerPhone : null,
-      sellerEmail: isBuyer ? q.sellerEmail : null,
-      unitPrice: q.unitPrice.toString(),
-      totalPrice: q.totalPrice.toString(),
-      deliveryTime: q.deliveryTime,
-      notes: q.notes,
-      status: q.status,
-      createdAt: q.createdAt,
-    })),
+    quotes: visibleQuotes.map((q) => {
+      // STEP 14.22 D-22.03 FIX (DEFECT-1): least-privilege sellerId.
+      // Previously sellerId was redacted to null for ALL non-buyer
+      // viewers, including the seller who owns the quote — so the
+      // owner could not identify which quote was theirs (the v3
+      // contract promises 'seller who quoted sees ONLY their own
+      // quote', but they couldn't tell it was theirs without an ID).
+      //
+      // Per STEP 14.22 senior manager directive: 'خریدار و صاحب
+      // پیشنهاد، فقط شناسه‌های مجاز خود را دریافت کنند'.
+      // Least privilege: the seller who owns this quote may see
+      // their own sellerId (they already know it). Buyer may see
+      // every sellerId (they need to contact sellers). Anyone else
+      // gets null. We compute `isOwnQuote` per-quote, NOT per-call,
+      // because the buyer path returns multiple quotes.
+      const isOwnQuote = !isBuyer && q.sellerId === viewerUserId;
+      return {
+        id: q.id,
+        sellerId: isBuyer || isOwnQuote ? q.sellerId : null,
+        sellerName: q.sellerName,
+        sellerPhone: isBuyer ? q.sellerPhone : null,
+        sellerEmail: isBuyer ? q.sellerEmail : null,
+        unitPrice: q.unitPrice.toString(),
+        totalPrice: q.totalPrice.toString(),
+        deliveryTime: q.deliveryTime,
+        notes: q.notes,
+        status: q.status,
+        createdAt: q.createdAt,
+      };
+    }),
   };
 }
