@@ -15,13 +15,12 @@ const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
 
 describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integration", () => {
   let testRunId: string;
-  let buyerId: string;
-  let sellerAId: string;
-  let sellerBId: string;
-  let sellerCId: string;
-  let rfqId: string;
-  let quoteAId: string;
-  let quoteBId: string;
+  const createdUserIds: string[] = [];
+  let buyerId: string | undefined;
+  let sellerAId: string | undefined;
+  let sellerBId: string | undefined;
+  let sellerCId: string | undefined;
+  let rfqId: string | undefined;
 
   beforeAll(async () => {
     const { db } = await import("@/lib/db");
@@ -42,6 +41,7 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
       },
     });
     buyerId = buyer.id;
+    createdUserIds.push(buyerId);
 
     const sellerA = await db.user.create({
       data: {
@@ -57,6 +57,7 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
       },
     });
     sellerAId = sellerA.id;
+    createdUserIds.push(sellerAId);
 
     const sellerB = await db.user.create({
       data: {
@@ -72,6 +73,7 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
       },
     });
     sellerBId = sellerB.id;
+    createdUserIds.push(sellerBId);
 
     const sellerC = await db.user.create({
       data: {
@@ -87,6 +89,7 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
       },
     });
     sellerCId = sellerC.id;
+    createdUserIds.push(sellerCId);
 
     // Create RFQ
     const rfq = await db.rFQ.create({
@@ -119,7 +122,6 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
         status: "PENDING",
       },
     });
-    quoteAId = quoteA.id;
 
     const quoteB = await db.rFQQuote.create({
       data: {
@@ -135,18 +137,43 @@ describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integratio
         status: "PENDING",
       },
     });
-    quoteBId = quoteB.id;
   });
 
   afterAll(async () => {
-    const { db } = await import("@/lib/db");
-    // Cleanup even if tests fail
-    try {
-      await db.rFQQuote.deleteMany({ where: { rfqId } });
-      await db.rFQ.delete({ where: { id: rfqId } });
-      await db.user.deleteMany({ where: { id: { in: [buyerId, sellerAId, sellerBId, sellerCId] } } });
-    } catch (e) {
-      console.error("Cleanup failed:", e);
+    // Attempt every applicable cleanup even if one operation fails. Cleanup
+    // failures must fail the suite rather than being logged and swallowed.
+    const cleanupErrors: unknown[] = [];
+    const attemptCleanup = async (label: string, action: () => Promise<unknown>) => {
+      try {
+        await action();
+      } catch (error) {
+        cleanupErrors.push(new Error(`Cleanup failed for ${label}`, { cause: error }));
+      }
+    };
+
+    if (rfqId || createdUserIds.length > 0) {
+      const { db } = await import("@/lib/db");
+
+      // Quotes depend on the RFQ, so remove them first. Only use IDs for
+      // entities whose creation completed successfully.
+      if (rfqId) {
+        await attemptCleanup("RFQ quotes", () =>
+          db.rFQQuote.deleteMany({ where: { rfqId } })
+        );
+        await attemptCleanup("RFQ", () =>
+          db.rFQ.delete({ where: { id: rfqId } })
+        );
+      }
+
+      if (createdUserIds.length > 0) {
+        await attemptCleanup("test users", () =>
+          db.user.deleteMany({ where: { id: { in: createdUserIds } } })
+        );
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "RFQ integration-test cleanup failed");
     }
   });
 
