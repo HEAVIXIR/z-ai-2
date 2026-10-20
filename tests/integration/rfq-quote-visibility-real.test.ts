@@ -16,11 +16,11 @@ const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
 describe.skipIf(!RUN_TESTS)("RFQ Quote Visibility — Real PostgreSQL Integration", () => {
   let testRunId: string;
   const createdUserIds: string[] = [];
-  let buyerId: string | undefined;
-  let sellerAId: string | undefined;
-  let sellerBId: string | undefined;
-  let sellerCId: string | undefined;
-  let rfqId: string | undefined;
+  let buyerId!: string;
+  let sellerAId!: string;
+  let sellerBId!: string;
+  let sellerCId!: string;
+  let rfqId!: string;
 
   beforeAll(async () => {
     const { db } = await import("@/lib/db");
