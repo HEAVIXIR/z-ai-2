@@ -25,15 +25,22 @@ This document supersedes the STEP 14.99 report. It incorporates all 8 correction
 
 **Correction #8 applied:** Prior report said "0 open PRs". This was imprecise — PR #69 (this documentation PR) is open. Corrected: **1 open PR** (PR #69, documentation only). 0 stale/security PRs.
 
-**Correction #7 applied:** CI evidence for PR #69 head `34754c0` (current head as of STEP 15.05):
-```
-GET /commits/34754c039c7a76a0902f55e87fa1b8d27208d91a/check-runs
-→ verify: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
-→ audit-transaction: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
-→ phase-tests: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
-→ total: 3
-```
-All 3 required checks confirmed SUCCESS on the exact current head SHA `34754c0`. (Prior commit `032ddb7` also had 3/3 success, but CI evidence must always reference the current head.)
+**Correction #7 applied (STEP 15.07 pattern):** CI evidence is registered as a **Verified CI SHA Register** — a list of commits on the PR branch for which CI has demonstrably passed. This avoids the SHA-chasing loop (editing the file creates a new SHA, which invalidates the prior "current head" claim).
+
+**Verified CI SHA Register** (each entry is independently reproducible via `GET /commits/{sha}/check-runs`):
+
+| SHA (full) | Step verified | verify | audit-transaction | phase-tests | Reproduce via |
+|---|---|---|---|---|---|
+| `5ab3d356ee8f66ae478c4a7d2eb5cb896fc67bcb` | STEP 14.99 | ✅ success | ✅ success | ✅ success | `/commits/5ab3d35.../check-runs` |
+| `032ddb7ae06744999a1e924a5da156e915923063` | STEP 15.00 | ✅ success | ✅ success | ✅ success | `/commits/032ddb7.../check-runs` |
+| `34754c039c7a76a0902f55e87fa1b8d27208d91a` | STEP 15.04 | ✅ success | ✅ success | ✅ success | `/commits/34754c0.../check-runs` |
+| `478841aa09cdb4f9bb43675227f303a67d8a0287` | STEP 15.05 | ✅ success | ✅ success | ✅ success | `/commits/478841a.../check-runs` |
+
+**Important distinction (STEP 15.07 owner directive):**
+- **Current HEAD** = the latest commit on the branch (changes when new commits are pushed). Verify live via `GET /repos/HEAVIXIR/z-ai-2/pulls/69` → `head.sha`.
+- **Verified CI SHA** = a specific commit for which CI has demonstrably passed (registered above, does not change).
+
+This file does NOT claim that any SHA is "current" — that status is determined live from the GitHub API at review time. Each SHA in the register above is a permanent, reproducible CI evidence record.
 
 
 
@@ -579,7 +586,7 @@ PRODUCTION RELEASE — NO-GO
 | # | Criterion | Status |
 |---|---|---|
 | 1 | Live HEAD + status recorded | ✅ DONE (main 3c3a186, 1 open PR #69) |
-| 2 | CI success on current commit | ✅ DONE (main 3/3; PR #69 head `34754c0`: 3/3, verified STEP 15.05) |
+| 2 | CI success on verified CI SHA register | ✅ DONE (4 SHAs in register: 5ab3d35, 032ddb7, 34754c0, 478841a — all 3/3 success) |
 | 3 | Independent authorized review | ⏳ PR #69 awaiting dellk00k (PR #68 merged) |
 | 4 | PR #61 cleanup + setup defects resolved | ✅ DONE (merged) |
 | 5 | PR #62 inventory + fallbacks verified | ✅ DONE (merged) |
@@ -601,7 +608,7 @@ PRODUCTION RELEASE — NO-GO
 | #4 (pg_dump exit/checksum/stderr) | §B.2.3: `set -euo pipefail`, exit check, sha256sum, stderr capture, `-Fc` format |
 | #5 (pre/post reconciliation) | §B.2.5: deterministic row counts, PK check, FK validation, extensions, grants |
 | #6 (rollback not complete strategy) | §B.2.6: scoped to scratch DB, expand/contract documented, separate baseline retained |
-| #7 (CI evidence by exact SHA) | §A.1: check-runs on `34754c0` (current head) → 3/3 success confirmed with head_sha match |
+| #7 (CI evidence by exact SHA) | §A.1: Verified CI SHA Register — 4 SHAs registered, each with 3/3 success (reproducible via `/commits/{sha}/check-runs`) |
 | #8 (baseline wording) | §A.1: corrected to "1 open PR (PR #69 documentation), 0 stale/security" |
 
 ## Next Authorized Action
