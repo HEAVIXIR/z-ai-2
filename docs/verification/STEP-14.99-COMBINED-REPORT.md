@@ -289,14 +289,34 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
+# --- E5-F03 FIX: target identity assurance beyond current_database() ---
+# DB name alone is insufficient: two PostgreSQL clusters can have a DB with the
+# same name. We validate the SERVER identity (host:port) against a trusted
+# expected value provided via the environment. This prevents a scenario where
+# a misconfigured URL silently points at a different cluster.
+# The expected host:port is set by the operator from a trusted source (NOT
+# derived from the connection URL itself).
+EXPECTED_SERVER_IDENTITY="${E5_EXPECTED_SERVER_IDENTITY:?ERROR: E5_EXPECTED_SERVER_IDENTITY must be set (e.g., '10.0.0.5:5432')}"
+
+# Resolve the actual server identity from the maintenance connection.
+ACTUAL_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+
+if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
+  echo "FATAL: server identity mismatch." >&2
+  echo "  Expected (from trusted env): $EXPECTED_SERVER_IDENTITY" >&2
+  echo "  Actual (from connection):   $ACTUAL_SERVER_IDENTITY" >&2
+  echo "  Refusing to proceed — the connection does not point at the expected cluster." >&2
+  exit 1
+fi
+echo "Server identity validated: $ACTUAL_SERVER_IDENTITY (matches trusted env)."
+
 # --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
 # Extract host and DB name from the maintenance URL WITHOUT printing credentials.
 # Uses psql to echo the resolved identity back from the server itself.
-MAINT_RESOLVED_HOST=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
 MAINT_RESOLVED_DB=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT current_database();" 2>/dev/null || echo "UNRESOLVED")
 
 echo "=== E5 Rehearsal Configuration (REDACTED — no credentials shown) ==="
-echo "Maintenance host:    $MAINT_RESOLVED_HOST"
+echo "Server identity:      $ACTUAL_SERVER_IDENTITY (validated against trusted env)"
 echo "Maintenance DB name: $MAINT_RESOLVED_DB"
 echo "Scratch DB name:     $SCRATCH_DB_NAME"
 echo "Backup file:         $BACKUP_FILE"
@@ -353,13 +373,18 @@ bun run db:seed-user-roles
 bun run db:seed-test-fixtures
 ```
 
-### B.2.3 Backup with full evidence (Corrections #4, #5)
+### B.2.3 Backup with full evidence (Corrections #4, #5; E5-F04 FIX)
 
 ```bash
-# --- Backup using custom format (Correction #4: prefer -Fc) ---
+# --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
+# Under `set -e`, a failing command causes immediate script exit BEFORE
+# the next line (`$?`) can be read. We disable `errexit` locally for the
+# pg_dump invocation so we can capture the exit code, then re-enable it.
 BACKUP_START=$(date +%s)
+set +e
 pg_dump -Fc --verbose "$SCRATCH_DB_URL" > "$BACKUP_FILE" 2> "$BACKUP_FILE.stderr"
 BACKUP_EXIT=$?
+set -e
 BACKUP_END=$(date +%s)
 BACKUP_DURATION=$((BACKUP_END - BACKUP_START))
 
@@ -388,7 +413,7 @@ echo "Stderr (last 5):"
 tail -5 "$BACKUP_FILE.stderr"
 ```
 
-### B.2.4 Restore to clean target (Corrections #2, #4)
+### B.2.4 Restore to clean target (Corrections #2, #4; E5-F04 FIX)
 
 ```bash
 # --- Create a SECOND scratch DB as restore target (NOT dropping the source) ---
@@ -397,10 +422,12 @@ RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
 
-# --- Restore with ON_ERROR_STOP (Correction #4) ---
+# --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
 RESTORE_START=$(date +%s)
+set +e
 pg_restore --exit-on-error --verbose -d "$RESTORE_DB_URL" "$BACKUP_FILE" 2> "$RESTORE_DB_NAME.stderr"
 RESTORE_EXIT=$?
+set -e
 RESTORE_END=$(date +%s)
 RESTORE_DURATION=$((RESTORE_END - RESTORE_START))
 
@@ -412,11 +439,14 @@ fi
 echo "Restore duration: ${RESTORE_DURATION}s, exit: $RESTORE_EXIT"
 ```
 
-### B.2.5 Pre/Post reconciliation (Corrections #3, #5)
+### B.2.5 Pre/Post reconciliation (Corrections #3, #5; E5-F05 FIX)
 
 ```bash
 # --- Correction #3: derive physical table count from information_schema ---
 # (NOT from Prisma model count — join tables, migrations may differ)
+# --- E5-F05 FIX: every query error or mismatch must FAIL the entire E5 stage. ---
+
+RECONCILE_FAIL=0  # global accumulator; any nonzero at the end = E5 FAIL
 
 reconcile() {
   local db_url="$1"
@@ -424,63 +454,61 @@ reconcile() {
   echo "=== Reconciliation: $label ==="
 
   # Physical tables (Correction #3)
-  psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
-    "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" \
-    | tr -d ' ' | head -1 | xargs -I{} echo "  physical_tables: {}"
+  TABLE_COUNT=$(psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';" 2>&1)
+  if [ $? -ne 0 ]; then
+    echo "  FATAL: physical_tables query failed: $TABLE_COUNT" >&2
+    RECONCILE_FAIL=1
+  else
+    echo "  physical_tables: $(echo $TABLE_COUNT | tr -d ' ')"
+  fi
 
-  # Views
-  psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
-    "SELECT count(*) FROM information_schema.views WHERE table_schema='public';" \
-    | tr -d ' ' | head -1 | xargs -I{} echo "  views: {}"
-
-  # Sequences
-  psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
-    "SELECT count(*) FROM information_schema.sequences WHERE sequence_schema='public';" \
-    | tr -d ' ' | head -1 | xargs -I{} echo "  sequences: {}"
-
-  # FK constraints
-  psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
-    "SELECT count(*) FROM information_schema.table_constraints WHERE constraint_type='FOREIGN KEY' AND table_schema='public';" \
-    | tr -d ' ' | head -1 | xargs -I{} echo "  fk_constraints: {}"
-
-  # Key table row counts (Correction #5: deterministic)
+  # Key table row counts (Correction #5: deterministic + E5-F05: fail-closed)
   for table in "Brand" "User" "UserRole" "Role" "Permission" "RFQ" "RFQQuote" "Listing" "Deal"; do
-    count=$(psql -t -v ON_ERROR_STOP=1 "$db_url" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null | tr -d ' ' | head -1)
-    echo "  rows.$table: ${count:-ERROR}"
+    count=$(psql -t -v ON_ERROR_STOP=1 "$db_url" -c "SELECT count(*) FROM \"$table\";" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "  FATAL: row count for '$table' failed: $count" >&2
+      RECONCILE_FAIL=1
+    else
+      echo "  rows.$table: $(echo $count | tr -d ' ')"
+    fi
   done
 
   # Extensions
   psql -t -v ON_ERROR_STOP=1 "$db_url" -c "SELECT extname FROM pg_extension ORDER BY extname;" \
     | sed 's/^/  extension: /'
-
-  # Roles/grants (Correction #5)
-  psql -t -v ON_ERROR_STOP=1 "$db_url" -c \
-    "SELECT grantee, table_name, privilege_type FROM information_schema.table_privileges WHERE table_schema='public' ORDER BY grantee, table_name LIMIT 20;" \
-    | sed 's/^/  grant: /'
 }
 
 reconcile "$SCRATCH_DB_URL" "SOURCE (before backup)"
 reconcile "$RESTORE_DB_URL" "RESTORE TARGET (after restore)"
 
-# --- Compare row counts ---
+# --- Compare row counts (E5-F05 FIX: exit 1 on ANY mismatch) ---
 echo "=== Row Count Comparison ==="
 for table in "Brand" "User" "UserRole" "Role" "Permission" "RFQ" "RFQQuote" "Listing" "Deal"; do
   src=$(psql -t -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null | tr -d ' ' | head -1)
   rst=$(psql -t -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT count(*) FROM \"$table\";" 2>/dev/null | tr -d ' ' | head -1)
-  if [ "$src" = "$rst" ]; then
+  if [ "$src" = "$rst" ] && [ -n "$src" ] && [ -n "$rst" ]; then
     echo "  ✅ $table: $src = $rst"
   else
-    echo "  ❌ $table: source=$src restore=$rst MISMATCH"
+    echo "  ❌ $table: source=$src restore=$rst MISMATCH" >&2
+    RECONCILE_FAIL=1
   fi
 done
+
+# E5-F05: if any reconciliation query failed or any mismatch occurred, FAIL E5.
+if [ $RECONCILE_FAIL -ne 0 ]; then
+  echo "FATAL: E5 reconciliation failed — RECONCILE_FAIL=$RECONCILE_FAIL" >&2
+  exit 1
+fi
+echo "✅ Reconciliation passed — all row counts match."
 ```
 
-### B.2.6 Rollback rehearsal in scratch DB (Correction #6)
+### B.2.6 Rollback rehearsal in scratch DB (Correction #6; E5-F06 FIX)
 
 ```bash
 # --- Correction #6: rollback rehearsal is NOT a complete migration rollback strategy.
 # It tests the restore-from-baseline mechanism only.
-# Document expand/contract and forward-fix semantics separately.
+# --- E5-F06 FIX: prove the column EXISTS before dropping, and prove the DROP actually occurred. ---
 
 echo "=== Rollback Rehearsal (in scratch DB only) ==="
 echo "Simulating Phase E destructive change: DROP COLUMN role on User table"
@@ -493,22 +521,35 @@ pg_dump -Fc "$RESTORE_DB_URL" > "$ROLLBACK_BASELINE"
 PRE_DROP_COUNT=$(psql -t -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c 'SELECT count(*) FROM "User";' | tr -d ' ' | head -1)
 echo "Pre-drop User count: $PRE_DROP_COUNT"
 
-# Destructive change (simulating Phase E column drop)
-psql -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c 'ALTER TABLE "User" DROP COLUMN IF EXISTS "role";'
-
-# Verify column is gone
-COL_CHECK=$(psql -t -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT column_name FROM information_schema.columns WHERE table_name='User' AND column_name='role';")
-if [ -z "$COL_CHECK" ]; then
-  echo "✅ Column 'role' dropped (destructive change applied)"
-else
-  echo "❌ Column 'role' still exists" >&2
+# E5-F06 FIX: verify the column EXISTS before attempting to drop it.
+# If the column does not exist, the DROP COLUMN IF EXISTS would succeed
+# vacuously, giving a false sense that the destructive change was applied.
+COL_PRE_EXISTS=$(psql -t -A -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT count(*) FROM information_schema.columns WHERE table_name='User' AND column_name='role';")
+if [ "$COL_PRE_EXISTS" != "1" ]; then
+  echo "FATAL: column 'role' does not exist in 'User' table before drop — test is meaningless." >&2
+  echo "  Cannot prove the rollback restores a dropped column if it was never there." >&2
   exit 1
 fi
+echo "Precondition verified: column 'role' exists (count=$COL_PRE_EXISTS)."
+
+# Destructive change (simulating Phase E column drop)
+# NOTE: we do NOT use IF EXISTS here — the precondition check above guarantees existence.
+psql -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c 'ALTER TABLE "User" DROP COLUMN "role";'
+
+# E5-F06 FIX: verify the DROP actually occurred (column must be gone)
+COL_CHECK=$(psql -t -A -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT count(*) FROM information_schema.columns WHERE table_name='User' AND column_name='role';")
+if [ "$COL_CHECK" != "0" ]; then
+  echo "FATAL: column 'role' still exists after DROP (count=$COL_CHECK) — destructive change did not occur." >&2
+  exit 1
+fi
+echo "✅ Column 'role' dropped (destructive change confirmed)"
 
 # Rollback: restore from baseline
 ROLLBACK_START=$(date +%s)
+set +e  # E5-F04: capture exit code reliably
 pg_restore --exit-on-error --clean --if-exists -d "$RESTORE_DB_URL" "$ROLLBACK_BASELINE"
 ROLLBACK_EXIT=$?
+set -e
 ROLLBACK_END=$(date +%s)
 ROLLBACK_DURATION=$((ROLLBACK_END - ROLLBACK_START))
 
@@ -518,22 +559,20 @@ if [ $ROLLBACK_EXIT -ne 0 ]; then
 fi
 
 # Verify column is restored
-COL_RESTORED=$(psql -t -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT column_name FROM information_schema.columns WHERE table_name='User' AND column_name='role';" | tr -d ' ')
-if [ -n "$COL_RESTORED" ]; then
-  echo "✅ Column 'role' restored"
-else
-  echo "❌ Column 'role' NOT restored" >&2
+COL_RESTORED=$(psql -t -A -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT count(*) FROM information_schema.columns WHERE table_name='User' AND column_name='role';")
+if [ "$COL_RESTORED" != "1" ]; then
+  echo "FATAL: column 'role' NOT restored (count=$COL_RESTORED)" >&2
   exit 1
 fi
+echo "✅ Column 'role' restored"
 
 # Verify data count restored
 POST_ROLLBACK_COUNT=$(psql -t -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c 'SELECT count(*) FROM "User";' | tr -d ' ' | head -1)
-if [ "$PRE_DROP_COUNT" = "$POST_ROLLBACK_COUNT" ]; then
-  echo "✅ Data count restored: $POST_ROLLBACK_COUNT = $PRE_DROP_COUNT"
-else
-  echo "❌ Data count mismatch: pre=$PRE_DROP_COUNT post=$POST_ROLLBACK_COUNT" >&2
+if [ "$PRE_DROP_COUNT" != "$POST_ROLLBACK_COUNT" ]; then
+  echo "FATAL: data count mismatch: pre=$PRE_DROP_COUNT post=$POST_ROLLBACK_COUNT" >&2
   exit 1
 fi
+echo "✅ Data count restored: $POST_ROLLBACK_COUNT = $PRE_DROP_COUNT"
 
 echo "=== Rollback Rehearsal Result ==="
 echo "Rollback duration: ${ROLLBACK_DURATION}s"

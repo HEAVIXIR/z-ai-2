@@ -112,9 +112,10 @@ describe("E5 Runbook — E5-F02: raw connection strings must not be echoed", () 
     );
   });
 
-  it("uses redacted display (resolved host + DB name, not raw URL)", () => {
-    // The new pattern: resolve host/DB via psql, print only those
-    expect(runbook).toContain("MAINT_RESOLVED_HOST");
+  it("uses redacted display (resolved identity, not raw URL)", () => {
+    // E5-F03 fix replaced MAINT_RESOLVED_HOST with ACTUAL_SERVER_IDENTITY
+    // (validated against trusted E5_EXPECTED_SERVER_IDENTITY env var)
+    expect(runbook).toContain("ACTUAL_SERVER_IDENTITY");
     expect(runbook).toContain("MAINT_RESOLVED_DB");
     expect(runbook).toContain("REDACTED");
   });
@@ -146,5 +147,153 @@ describe("E5 Runbook — preserves fail-fast and scratch confirmation", () => {
   it("retains the production-like URL refusal guard", () => {
     expect(runbook).toContain("prod|staging|live|main");
     expect(runbook).toContain("FATAL: scratch DB name looks production-like");
+  });
+});
+
+/* ============================================================
+   STEP 15.17 — E5-F03 through E5-F06 regression tests
+   ============================================================ */
+
+describe("E5 Runbook — E5-F03: target identity assurance (server identity, not just DB name)", () => {
+  const runbook = readRunbook();
+
+  it("requires E5_EXPECTED_SERVER_IDENTITY env var", () => {
+    expect(runbook).toContain("E5_EXPECTED_SERVER_IDENTITY");
+    expect(runbook).toContain(
+      "E5_EXPECTED_SERVER_IDENTITY must be set",
+    );
+  });
+
+  it("validates actual server identity against trusted expected value", () => {
+    expect(runbook).toContain("ACTUAL_SERVER_IDENTITY");
+    expect(runbook).toContain("EXPECTED_SERVER_IDENTITY");
+    expect(runbook).toContain("server identity mismatch");
+    expect(runbook).toContain("Refusing to proceed");
+  });
+
+  it("resolves server identity via inet_server_addr + inet_server_port", () => {
+    expect(runbook).toContain("inet_server_addr()");
+    expect(runbook).toContain("inet_server_port()");
+  });
+});
+
+describe("E5 Runbook — E5-F04: reliable exit-code capture under set -e", () => {
+  const runbook = readRunbook();
+
+  it("wraps pg_dump in set +e / set -e to capture exit code", () => {
+    // Must contain `set +e` before pg_dump and `set -e` after $? capture
+    const backupSection = runbook.slice(
+      runbook.indexOf("B.2.3"),
+      runbook.indexOf("B.2.4"),
+    );
+    expect(backupSection).toContain("set +e");
+    expect(backupSection).toContain("BACKUP_EXIT=$?");
+    expect(backupSection).toContain("set -e");
+  });
+
+  it("wraps pg_restore in set +e / set -e to capture exit code", () => {
+    const restoreSection = runbook.slice(
+      runbook.indexOf("B.2.4"),
+      runbook.indexOf("B.2.5"),
+    );
+    expect(restoreSection).toContain("set +e");
+    expect(restoreSection).toContain("RESTORE_EXIT=$?");
+    expect(restoreSection).toContain("set -e");
+  });
+
+  it("wraps rollback pg_restore in set +e / set -e", () => {
+    const rollbackSection = runbook.slice(
+      runbook.indexOf("B.2.6"),
+      runbook.indexOf("B.2.7"),
+    );
+    expect(rollbackSection).toContain("set +e");
+    expect(rollbackSection).toContain("ROLLBACK_EXIT=$?");
+    expect(rollbackSection).toContain("set -e");
+  });
+});
+
+describe("E5 Runbook — E5-F05: fail-closed reconciliation", () => {
+  const runbook = readRunbook();
+
+  it("has a RECONCILE_FAIL accumulator variable", () => {
+    expect(runbook).toContain("RECONCILE_FAIL=0");
+    expect(runbook).toContain("RECONCILE_FAIL=1");
+  });
+
+  it("exits with nonzero on reconciliation failure", () => {
+    expect(runbook).toContain("RECONCILE_FAIL");
+    expect(runbook).toContain(
+      "FATAL: E5 reconciliation failed",
+    );
+    expect(runbook).toContain("exit 1");
+  });
+
+  it("marks query failures as FATAL and sets RECONCILE_FAIL", () => {
+    expect(runbook).toContain("query failed");
+    expect(runbook).toContain("RECONCILE_FAIL=1");
+  });
+
+  it("does NOT use the old pattern of printing MISMATCH without exit", () => {
+    // The old pattern just echoed MISMATCH; the new one sets RECONCILE_FAIL=1
+    const reconcilesSection = runbook.slice(
+      runbook.indexOf("B.2.5"),
+      runbook.indexOf("B.2.6"),
+    );
+    expect(reconcilesSection).toContain("RECONCILE_FAIL=1");
+    expect(reconcilesSection).toContain("exit 1");
+  });
+});
+
+describe("E5 Runbook — E5-F06: rollback must prove column exists and change occurred", () => {
+  const runbook = readRunbook();
+
+  it("verifies column EXISTS before attempting to drop it", () => {
+    const rollbackSection = runbook.slice(
+      runbook.indexOf("B.2.6"),
+      runbook.indexOf("B.2.7"),
+    );
+    expect(rollbackSection).toContain("COL_PRE_EXISTS");
+    expect(rollbackSection).toContain(
+      "column 'role' does not exist in 'User' table before drop",
+    );
+    expect(rollbackSection).toContain("exit 1");
+  });
+
+  it("does NOT use DROP COLUMN IF EXISTS (must fail if column missing)", () => {
+    const rollbackSection = runbook.slice(
+      runbook.indexOf("B.2.6"),
+      runbook.indexOf("B.2.7"),
+    );
+    // The DROP must be without IF EXISTS — the precondition check guarantees existence
+    expect(rollbackSection).toContain(
+      'ALTER TABLE "User" DROP COLUMN "role";',
+    );
+    expect(rollbackSection).not.toContain(
+      'DROP COLUMN IF EXISTS "role"',
+    );
+  });
+
+  it("verifies the DROP actually occurred (column count == 0 after drop)", () => {
+    const rollbackSection = runbook.slice(
+      runbook.indexOf("B.2.6"),
+      runbook.indexOf("B.2.7"),
+    );
+    expect(rollbackSection).toContain("COL_CHECK");
+    expect(rollbackSection).toContain(
+      "destructive change did not occur",
+    );
+    expect(rollbackSection).toContain("exit 1");
+  });
+
+  it("verifies column is restored after rollback (count == 1)", () => {
+    const rollbackSection = runbook.slice(
+      runbook.indexOf("B.2.6"),
+      runbook.indexOf("B.2.7"),
+    );
+    expect(rollbackSection).toContain("COL_RESTORED");
+    expect(rollbackSection).toContain(
+      "column 'role' NOT restored",
+    );
+    expect(rollbackSection).toContain("exit 1");
   });
 });
