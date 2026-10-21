@@ -163,15 +163,33 @@ validate_connection_identity() {
         return 1
     fi
 
-    # 5. CR-06: primary-role requirement is enforced as an INDEPENDENT check.
+    # 5. CR-06 + CR-11: primary-role requirement is enforced as an INDEPENDENT check.
     #    pg_is_in_recovery() returns 'f' for a primary, 't' for a standby.
-    case "$require_primary" in
-        1|true|TRUE|yes|YES|on|ON)
+    #
+    #    CR-11 FIX: The prior `case` statement only checked for affirmative
+    #    values (yes/true/on) and silently fell through for unknown values
+    #    (e.g., "yees", "tru"), effectively disabling the primary guard.
+    #    Now unknown values cause immediate failure (fail-closed).
+    #
+    #    Allowlist for require_primary:
+    #      Affirmative (check primary): 1, true, yes, on (case-insensitive)
+    #      Negative (skip primary check): 0, false, no, off (case-insensitive)
+    #      Any other value → FAIL (return 1) — invalid configuration must not proceed
+    case "${require_primary,,}" in
+        1|true|yes|on)
             if [[ "$is_in_recovery" != "f" ]]; then
                 printf 'ERROR[%s]: primary required but server is in recovery (is_in_recovery=%s)\n' \
                     "$label" "$is_in_recovery" >&2
                 return 1
             fi
+            ;;
+        0|false|no|off)
+            # Explicitly skipping primary check — legitimate for read-only validation
+            ;;
+        *)
+            printf 'ERROR[%s]: invalid E5_REQUIRE_PRIMARY value "%s" — must be one of: 1/true/yes/on (require primary) or 0/false/no/off (skip)\n' \
+                "$label" "$require_primary" >&2
+            return 1
             ;;
     esac
 

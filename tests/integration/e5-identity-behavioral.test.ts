@@ -311,3 +311,114 @@ echo "ALL_FIELDS_CORRECT"
     expect(result.stdout).toContain("R=RECOVERY_FIELD");
   });
 });
+
+describe("CR-11: E5_REQUIRE_PRIMARY validation (fail-closed on invalid values)", () => {
+  afterEach(() => {
+    rmSync(TMP_DIR, { recursive: true, force: true });
+  });
+
+  it("CR-11-1: invalid value 'yees' (typo) → fail-closed (exit 1)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yees" \\
+  "" "" || echo "CAUGHT_INVALID"
+`);
+    expect(result.exitCode).toBe(0); // || echo makes it 0
+    expect(result.stdout).toContain("CAUGHT_INVALID");
+    expect(result.stdout).toContain("invalid E5_REQUIRE_PRIMARY");
+  });
+
+  it("CR-11-2: invalid value 'tru' (typo) → fail-closed (exit 1)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "tru" \\
+  "" "" || echo "CAUGHT_INVALID"
+`);
+    expect(result.stdout).toContain("CAUGHT_INVALID");
+    expect(result.stdout).toContain("invalid E5_REQUIRE_PRIMARY");
+  });
+
+  it("CR-11-3: empty string → fail-closed (exit 1)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "" \\
+  "" "" || echo "CAUGHT_INVALID"
+`);
+    expect(result.stdout).toContain("CAUGHT_INVALID");
+  });
+
+  it("CR-11-4: 'yes' (valid) → primary check enforced → succeeds on primary", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" && echo "VALIDATION_OK"
+`);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VALIDATION_OK");
+  });
+
+  it("CR-11-5: 'YES' (case-insensitive) → primary check enforced → succeeds", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "YES" \\
+  "" "" && echo "VALIDATION_OK"
+`);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VALIDATION_OK");
+  });
+
+  it("CR-11-6: 'no' (valid skip) → primary check skipped → succeeds on replica", () => {
+    const result = runTest(
+      { is_in_recovery: { out: "t", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "no" \\
+  "" "" && echo "VALIDATION_OK"
+`,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VALIDATION_OK");
+  });
+
+  it("CR-11-7: 'yes' (valid) on replica → fails (primary required, is replica)", () => {
+    const result = runTest(
+      { is_in_recovery: { out: "t", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || echo "CAUGHT_REPLICA"
+`,
+    );
+    expect(result.stdout).toContain("CAUGHT_REPLICA");
+    expect(result.stdout).toContain("primary required");
+  });
+
+  it("CR-11-8: invalid value → sentinel NOT created (no mutation runs)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yees" \\
+  "" "" || exit 1
+touch "${join(TMP_DIR, "SENTINEL_RAN")}"
+echo "MUTATING_COMMAND_RAN"
+`);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.sentinelExists).toBe(false);
+    expect(result.stdout).not.toContain("MUTATING_COMMAND_RAN");
+  });
+});
