@@ -25,15 +25,15 @@ This document supersedes the STEP 14.99 report. It incorporates all 8 correction
 
 **Correction #8 applied:** Prior report said "0 open PRs". This was imprecise — PR #69 (this documentation PR) is open. Corrected: **1 open PR** (PR #69, documentation only). 0 stale/security PRs.
 
-**Correction #7 applied:** CI evidence for PR #69 head `032ddb7`:
+**Correction #7 applied:** CI evidence for PR #69 head `34754c0` (current head as of STEP 15.05):
 ```
-GET /commits/032ddb7ae06744999a1e924a5da156e915923063/check-runs
-→ verify: completed/success
-→ audit-transaction: completed/success
-→ phase-tests: completed/success
+GET /commits/34754c039c7a76a0902f55e87fa1b8d27208d91a/check-runs
+→ verify: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
+→ audit-transaction: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
+→ phase-tests: completed/success (head_sha: 34754c039c7a76a0902f55e87fa1b8d27208d91a)
 → total: 3
 ```
-All 3 required checks confirmed SUCCESS on the exact head SHA `032ddb7`.
+All 3 required checks confirmed SUCCESS on the exact current head SHA `34754c0`. (Prior commit `032ddb7` also had 3/3 success, but CI evidence must always reference the current head.)
 
 
 
@@ -579,7 +579,7 @@ PRODUCTION RELEASE — NO-GO
 | # | Criterion | Status |
 |---|---|---|
 | 1 | Live HEAD + status recorded | ✅ DONE (main 3c3a186, 1 open PR #69) |
-| 2 | CI success on current commit | ✅ DONE (main 3/3; PR #69 head 032ddb7: 3/3) |
+| 2 | CI success on current commit | ✅ DONE (main 3/3; PR #69 head `34754c0`: 3/3, verified STEP 15.05) |
 | 3 | Independent authorized review | ⏳ PR #69 awaiting dellk00k (PR #68 merged) |
 | 4 | PR #61 cleanup + setup defects resolved | ✅ DONE (merged) |
 | 5 | PR #62 inventory + fallbacks verified | ✅ DONE (merged) |
@@ -601,7 +601,7 @@ PRODUCTION RELEASE — NO-GO
 | #4 (pg_dump exit/checksum/stderr) | §B.2.3: `set -euo pipefail`, exit check, sha256sum, stderr capture, `-Fc` format |
 | #5 (pre/post reconciliation) | §B.2.5: deterministic row counts, PK check, FK validation, extensions, grants |
 | #6 (rollback not complete strategy) | §B.2.6: scoped to scratch DB, expand/contract documented, separate baseline retained |
-| #7 (CI evidence by exact SHA) | §A.1: check-runs on `032ddb7` → 3/3 success confirmed |
+| #7 (CI evidence by exact SHA) | §A.1: check-runs on `34754c0` (current head) → 3/3 success confirmed with head_sha match |
 | #8 (baseline wording) | §A.1: corrected to "1 open PR (PR #69 documentation), 0 stale/security" |
 
 ## Next Authorized Action
