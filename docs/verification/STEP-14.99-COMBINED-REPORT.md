@@ -340,6 +340,19 @@ psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$SCRATCH_DB_
 # --- Verify scratch DB exists and is empty ---
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current_user;"
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+# --- E5-F07 FIX: validate server identity for SCRATCH connection ---
+# The maintenance identity check (E5-F03) only proves the maintenance connection
+# reaches the expected server. SCRATCH_DB_URL is built from E5_BASE_URL — a DIFFERENT
+# env var. If E5_BASE_URL is misconfigured, scratch connection could reach a different cluster.
+SCRATCH_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+if [ "$SCRATCH_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
+  echo "FATAL: scratch DB server identity mismatch." >&2
+  echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
+  echo "  Scratch server:     $SCRATCH_SERVER_IDENTITY" >&2
+  echo "  E5_BASE_URL may point to a different cluster." >&2
+  exit 1
+fi
+echo "Scratch DB server identity validated: $SCRATCH_SERVER_IDENTITY (matches maintenance)."
 # Expected: 0 (empty DB)
 
 # --- E5-F01 FIX: pin DATABASE_URL to scratch BEFORE any Prisma command ---
@@ -421,6 +434,15 @@ RESTORE_DB_NAME="heavix_e5_restore_$(date +%Y%m%d_%H%M%S)"
 RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
+# --- E5-F07 FIX: validate server identity for RESTORE connection ---
+RESTORE_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+if [ "$RESTORE_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
+  echo "FATAL: restore DB server identity mismatch." >&2
+  echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
+  echo "  Restore server:      $RESTORE_SERVER_IDENTITY" >&2
+  exit 1
+fi
+echo "Restore DB server identity validated: $RESTORE_SERVER_IDENTITY (matches maintenance)."
 
 # --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
 RESTORE_START=$(date +%s)

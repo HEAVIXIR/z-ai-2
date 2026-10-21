@@ -297,3 +297,39 @@ describe("E5 Runbook — E5-F06: rollback must prove column exists and change oc
     expect(rollbackSection).toContain("exit 1");
   });
 });
+
+// ============================================================
+// E5-F07: Server identity validation for ALL connections
+// ============================================================
+describe("E5-F07: Server identity for ALL connections", () => {
+  it("F07-1: SCRATCH_DB_URL has server identity validation", () => {
+    const content = readRunbook();
+    expect(content).toContain("SCRATCH_SERVER_IDENTITY");
+    expect(content).toContain("inet_server_addr");
+    expect(content).toContain("$ACTUAL_SERVER_IDENTITY");
+  });
+
+  it("F07-2: RESTORE_DB_URL has server identity validation", () => {
+    const content = readRunbook();
+    expect(content).toContain("RESTORE_SERVER_IDENTITY");
+    expect(content).toMatch(/RESTORE_SERVER_IDENTITY.*ACTUAL_SERVER_IDENTITY/);
+  });
+
+  it("F07-3: SCRATCH identity mismatch causes exit 1", () => {
+    const content = readRunbook();
+    const scratchSection = content.substring(
+      content.indexOf("SCRATCH_SERVER_IDENTITY"),
+      content.indexOf("Scratch DB server identity validated")
+    );
+    expect(scratchSection).toContain("exit 1");
+  });
+
+  it("F07-4: RESTORE identity mismatch causes exit 1", () => {
+    const content = readRunbook();
+    const restoreSection = content.substring(
+      content.indexOf("RESTORE_SERVER_IDENTITY"),
+      content.indexOf("Restore DB server identity validated")
+    );
+    expect(restoreSection).toContain("exit 1");
+  });
+});
