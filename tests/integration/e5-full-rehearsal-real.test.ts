@@ -56,8 +56,10 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   const createdDbs: string[] = [];
 
   function psql(dbName: string, sql: string): string {
-    return execSync(`psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d "${dbName}" -c '${sql.replace(/'/g, "'\''")}'`, {
-      encoding: "utf-8",
+    // Use stdin to avoid shell quoting issues — pipe SQL to psql via input
+    return execSync('psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d ' + dbName, {
+      input: sql,
+      encoding: 'utf-8',
       timeout: 30000,
     }).trim();
   }
