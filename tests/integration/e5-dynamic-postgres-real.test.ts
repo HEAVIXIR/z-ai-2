@@ -31,6 +31,8 @@ const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
 describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validation (CR-08)", () => {
   const HELPER_PATH = "scripts/e5/resolve-identity.sh";
   const DB_URL = process.env.DATABASE_URL!;
+  // Strip ?schema=public query param — psql doesn't support it, only Prisma does
+  const PSQL_DB_URL = DB_URL.split("?")[0];
   const MAINTENANCE_DB_URL = `postgresql://postgres:postgres@localhost:5432/postgres`;
 
   // Resolve expected values from the real PostgreSQL instance
@@ -41,24 +43,24 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
   beforeAll(() => {
     // Get expected values directly from PostgreSQL (trusted source: the DB itself)
     expectedServerIdentity = execSync(
-      `psql -t -A -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" "${DB_URL}"`,
+      `psql -t -A -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" "${PSQL_DB_URL}"`,
       { encoding: "utf-8" },
     ).trim();
 
     expectedClusterIdentifier = execSync(
-      `psql -t -A -c "SELECT system_identifier::text FROM pg_control_system();" "${DB_URL}"`,
+      `psql -t -A -c "SELECT system_identifier::text FROM pg_control_system();" "${PSQL_DB_URL}"`,
       { encoding: "utf-8" },
     ).trim();
 
     expectedDbName = execSync(
-      `psql -t -A -c "SELECT current_database();" "${DB_URL}"`,
+      `psql -t -A -c "SELECT current_database();" "${PSQL_DB_URL}"`,
       { encoding: "utf-8" },
     ).trim();
   });
 
   it("CR-08-1: resolve_connection_identity succeeds against real PostgreSQL 17", () => {
     const result = execSync(
-      `bash -c 'source ${HELPER_PATH} && resolve_connection_identity "${DB_URL}" "real-pg-test"'`,
+      `bash -c 'source ${HELPER_PATH} && resolve_connection_identity "${PSQL_DB_URL}" "real-pg-test"'`,
       { encoding: "utf-8", timeout: 10000 },
     ).trim();
 
@@ -75,7 +77,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
   it("CR-08-2: pg_control_system() is accessible (CR-03 permission verification)", () => {
     // This test proves pg_control_system() works with the default postgres role
     const result = execSync(
-      `psql -t -A -c "SELECT system_identifier::text FROM pg_control_system();" "${DB_URL}"`,
+      `psql -t -A -c "SELECT system_identifier::text FROM pg_control_system();" "${PSQL_DB_URL}"`,
       { encoding: "utf-8" },
     ).trim();
 
@@ -86,7 +88,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
   it("CR-08-3: validate_connection_identity succeeds with correct expected values", () => {
     const result = execSync(
       `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-        "${DB_URL}" "real-pg-test" \\
+        "${PSQL_DB_URL}" "real-pg-test" \\
         "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
         "${expectedDbName}" "yes" \\
         "" ""'`,
@@ -101,7 +103,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
     try {
       execSync(
         `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-          "${DB_URL}" "wrong-db-test" \\
+          "${PSQL_DB_URL}" "wrong-db-test" \\
           "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
           "wrong_database_name" "yes" \\
           "" ""'`,
@@ -118,7 +120,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
     try {
       execSync(
         `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-          "${DB_URL}" "wrong-cluster-test" \\
+          "${PSQL_DB_URL}" "wrong-cluster-test" \\
           "${expectedServerIdentity}" "9999999999999999999" \\
           "${expectedDbName}" "yes" \\
           "" ""'`,
@@ -135,7 +137,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
     try {
       execSync(
         `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-          "${DB_URL}" "cr-12-test" \\
+          "${PSQL_DB_URL}" "cr-12-test" \\
           "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
           "${expectedDbName}" "no" \\
           "" ""'`,
@@ -152,7 +154,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
     try {
       execSync(
         `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-          "${DB_URL}" "cr-11-test" \\
+          "${PSQL_DB_URL}" "cr-11-test" \\
           "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
           "${expectedDbName}" "yees" \\
           "" ""'`,
@@ -173,7 +175,7 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
 
   it("CR-08-9: pg_is_in_recovery() returns 'f' (primary, not replica)", () => {
     const result = execSync(
-      `psql -t -A -c "SELECT pg_is_in_recovery();" "${DB_URL}"`,
+      `psql -t -A -c "SELECT pg_is_in_recovery();" "${PSQL_DB_URL}"`,
       { encoding: "utf-8" },
     ).trim();
     expect(result).toBe("f");
