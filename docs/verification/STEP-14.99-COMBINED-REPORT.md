@@ -35,6 +35,7 @@ This document supersedes the STEP 14.99 report. It incorporates all 8 correction
 | `032ddb7ae06744999a1e924a5da156e915923063` | STEP 15.00 | ✅ success | ✅ success | ✅ success | `/commits/032ddb7.../check-runs` |
 | `34754c039c7a76a0902f55e87fa1b8d27208d91a` | STEP 15.04 | ✅ success | ✅ success | ✅ success | `/commits/34754c0.../check-runs` |
 | `478841aa09cdb4f9bb43675227f303a67d8a0287` | STEP 15.05 | ✅ success | ✅ success | ✅ success | `/commits/478841a.../check-runs` |
+| `8f27c5272a29a43bd339f2bdd54120044a532b36` | STEP 15.07 | ✅ success | ✅ success | ✅ success | `/commits/8f27c52.../check-runs` |
 
 **Important distinction (STEP 15.07 owner directive):**
 - **Current HEAD** = the latest commit on the branch (changes when new commits are pushed). Verify live via `GET /repos/HEAVIXIR/z-ai-2/pulls/69` → `head.sha`.
@@ -586,7 +587,7 @@ PRODUCTION RELEASE — NO-GO
 | # | Criterion | Status |
 |---|---|---|
 | 1 | Live HEAD + status recorded | ✅ DONE (main 3c3a186, 1 open PR #69) |
-| 2 | CI success on verified CI SHA register | ✅ DONE (4 SHAs in register: 5ab3d35, 032ddb7, 34754c0, 478841a — all 3/3 success) |
+| 2 | CI success on verified CI SHA register | ✅ DONE (5 SHAs in register: 5ab3d35, 032ddb7, 34754c0, 478841a, 8f27c52 — all 3/3 success) |
 | 3 | Independent authorized review | ⏳ PR #69 awaiting dellk00k (PR #68 merged) |
 | 4 | PR #61 cleanup + setup defects resolved | ✅ DONE (merged) |
 | 5 | PR #62 inventory + fallbacks verified | ✅ DONE (merged) |
