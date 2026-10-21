@@ -289,20 +289,42 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# --- E5-F03 + E5-F08 FIX: fail-closed server identity validation ---
+# --- E5-F03 + E5-F08 + E5-F09 FIX: fail-closed cluster identity validation ---
 # DB name alone is insufficient: two PostgreSQL clusters can have a DB with the
-# same name. We validate the SERVER identity (host:port) against a trusted
-# expected value provided via the environment.
+# same name. host:port alone is insufficient when proxy/pooler/failover can
+# route to different backend clusters.
 #
 # E5-F08 FIX: inet_server_addr() returns NULL for Unix-domain socket connections.
-# The concatenation `inet_server_addr() || ':' || inet_server_port()` produces
-# NULL, which psql renders as an empty string. If both maintenance and target
-# connections return empty, the string comparison would pass — bypassing the
-# identity check. We now explicitly reject NULL/empty/whitespace identities.
+# COALESCE converts NULL to 'NULL' literal so comparison always fails.
+#
+# E5-F09 FIX: host:port does not prove cluster identity when proxy/pooler/failover
+# exists. We add a STABLE CLUSTER IDENTIFIER check using PostgreSQL's
+# `system_identifier` from `pg_control_system()`. This value is unique per
+# PostgreSQL data directory (set at initdb time) and survives reboots. It is
+# the gold standard for distinguishing PostgreSQL clusters.
+#
+# The operator provides BOTH:
+#   - E5_EXPECTED_SERVER_IDENTITY: host:port (TCP-level check)
+#   - E5_EXPECTED_CLUSTER_IDENTIFIER: system_identifier from pg_control_system()
+#     (cluster-level check, independent of routing layer)
+#
+# If the infrastructure uses a proxy/pooler, the system_identifier will differ
+# between the expected cluster and an unintended one — even if the proxy presents
+# the same host:port. This closes the E5-F09 gap.
+#
+# Deployment assumption: direct TCP to a single PostgreSQL 17 instance with no
+# routing intermediary. If proxy/pooler/failover exists, the system_identifier
+# check MUST pass — it is not optional.
 
 # The expected host:port is set by the operator from a trusted source (NOT
 # derived from the connection URL itself).
 EXPECTED_SERVER_IDENTITY="${E5_EXPECTED_SERVER_IDENTITY:?ERROR: E5_EXPECTED_SERVER_IDENTITY must be set (e.g., '10.0.0.5:5432')}"
+
+# E5-F09: expected cluster identifier from pg_control_system().
+# The operator obtains this by running on the trusted PostgreSQL instance:
+#   SELECT system_identifier FROM pg_control_system();
+# This value is set at initdb time and is unique per data directory.
+EXPECTED_CLUSTER_IDENTIFIER="${E5_EXPECTED_CLUSTER_IDENTIFIER:?ERROR: E5_EXPECTED_CLUSTER_IDENTIFIER must be set (obtain via 'SELECT system_identifier FROM pg_control_system();' on the trusted instance)}"
 
 # E5-F08: verify the expected identity itself is non-empty and well-formed.
 if [ -z "$EXPECTED_SERVER_IDENTITY" ] || [ -z "$(echo "$EXPECTED_SERVER_IDENTITY" | tr -d '[:space:]')" ]; then
@@ -311,34 +333,62 @@ if [ -z "$EXPECTED_SERVER_IDENTITY" ] || [ -z "$(echo "$EXPECTED_SERVER_IDENTITY
   exit 1
 fi
 
-# Helper function: resolve server identity from a connection, fail-closed on NULL/empty.
-# E5-F08: uses COALESCE to convert NULL inet_server_addr() to the literal 'NULL'
-# so the comparison always fails against a valid expected identity.
-# Also rejects Unix-domain socket connections (where inet_server_addr() IS NULL).
-resolve_server_identity() {
+# E5-F09: verify the expected cluster identifier is non-empty.
+if [ -z "$EXPECTED_CLUSTER_IDENTIFIER" ] || [ -z "$(echo "$EXPECTED_CLUSTER_IDENTIFIER" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_CLUSTER_IDENTIFIER is empty or whitespace-only." >&2
+  echo "  A trusted non-empty cluster identifier is required for fail-closed validation." >&2
+  exit 1
+fi
+
+# Helper function: resolve BOTH server identity (host:port) AND cluster identifier
+# (system_identifier) from a connection. Fails closed on NULL/empty/UNRESOLVED.
+# E5-F08: uses COALESCE to convert NULL to 'NULL' literal.
+# E5-F09: also resolves system_identifier from pg_control_system().
+resolve_connection_identity() {
   local db_url="$1"
   local label="$2"
-  local identity
-  # Use COALESCE to convert NULL to 'NULL' literal (never matches a valid host:port)
-  identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
-  # Trim whitespace
-  identity=$(echo "$identity" | tr -d '[:space:]')
+  local server_identity cluster_identity
+
+  # E5-F08: resolve host:port with COALESCE for NULL safety
+  server_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
+  server_identity=$(echo "$server_identity" | tr -d '[:space:]')
+
   # E5-F08: fail-closed on NULL, empty, whitespace-only, or UNRESOLVED
-  if [ -z "$identity" ] || [ "$identity" = "UNRESOLVED" ] || [ "$identity" = "NULL:NULL" ]; then
+  if [ -z "$server_identity" ] || [ "$server_identity" = "UNRESOLVED" ] || [ "$server_identity" = "NULL:NULL" ]; then
     echo "FATAL: server identity for $label is NULL, empty, or unresolved." >&2
     echo "  This typically occurs with Unix-domain socket connections where" >&2
     echo "  inet_server_addr() returns NULL. The E5 runbook requires TCP" >&2
     echo "  connections with a verifiable server identity." >&2
-    echo "  Resolved identity: '$identity'" >&2
+    echo "  Resolved identity: '$server_identity'" >&2
     return 1
   fi
-  echo "$identity"
+
+  # E5-F09: resolve cluster identifier from pg_control_system()
+  # This is unique per PostgreSQL data directory — set at initdb time.
+  # If proxy/pooler routes to a different backend, this value will differ.
+  cluster_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT system_identifier::text FROM pg_control_system();" 2>/dev/null || echo "UNRESOLVED")
+  cluster_identity=$(echo "$cluster_identity" | tr -d '[:space:]')
+
+  # E5-F09: fail-closed on NULL, empty, or UNRESOLVED cluster identifier
+  if [ -z "$cluster_identity" ] || [ "$cluster_identity" = "UNRESOLVED" ]; then
+    echo "FATAL: cluster identifier for $label is NULL, empty, or unresolved." >&2
+    echo "  Could not retrieve system_identifier from pg_control_system()." >&2
+    echo "  This may indicate an unsupported PostgreSQL version or a connection" >&2
+    echo "  that does not reach a real PostgreSQL backend." >&2
+    return 1
+  fi
+
+  # Output both identities separated by '|' for caller to parse
+  echo "${server_identity}|${cluster_identity}"
   return 0
 }
 
-# Resolve the actual server identity from the maintenance connection.
-ACTUAL_SERVER_IDENTITY=$(resolve_server_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
+# Resolve the actual identities from the maintenance connection.
+MAINT_IDENTITIES=$(resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
+ACTUAL_SERVER_IDENTITY="${MAINT_IDENTITIES%%|*}"
+ACTUAL_CLUSTER_IDENTIFIER="${MAINT_IDENTITIES##*|}"
 
+# E5-F03: validate server identity (host:port)
 if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
   echo "FATAL: server identity mismatch." >&2
   echo "  Expected (from trusted env): $EXPECTED_SERVER_IDENTITY" >&2
@@ -346,7 +396,19 @@ if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
   echo "  Refusing to proceed — the connection does not point at the expected cluster." >&2
   exit 1
 fi
+
+# E5-F09: validate cluster identifier (system_identifier from pg_control_system)
+if [ "$ACTUAL_CLUSTER_IDENTIFIER" != "$EXPECTED_CLUSTER_IDENTIFIER" ]; then
+  echo "FATAL: cluster identifier mismatch." >&2
+  echo "  Expected (from trusted env): $EXPECTED_CLUSTER_IDENTIFIER" >&2
+  echo "  Actual (from connection):   $ACTUAL_CLUSTER_IDENTIFIER" >&2
+  echo "  This indicates the connection reached a DIFFERENT PostgreSQL cluster" >&2
+  echo "  than expected — possibly via proxy/pooler/failover routing." >&2
+  echo "  Refusing to proceed — cluster identity is not trusted." >&2
+  exit 1
+fi
 echo "Server identity validated: $ACTUAL_SERVER_IDENTITY (matches trusted env)."
+echo "Cluster identifier validated: $ACTUAL_CLUSTER_IDENTIFIER (matches trusted env)."
 
 # --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
 # Extract host and DB name from the maintenance URL WITHOUT printing credentials.
@@ -378,12 +440,12 @@ psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$SCRATCH_DB_
 # --- Verify scratch DB exists and is empty ---
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current_user;"
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
-# --- E5-F07 + E5-F08 FIX: validate server identity for SCRATCH connection ---
-# The maintenance identity check (E5-F03) only proves the maintenance connection
-# reaches the expected server. SCRATCH_DB_URL is built from E5_BASE_URL — a DIFFERENT
-# env var. If E5_BASE_URL is misconfigured, scratch connection could reach a different cluster.
-# E5-F08: uses resolve_server_identity helper which fails closed on NULL/empty.
-SCRATCH_SERVER_IDENTITY=$(resolve_server_identity "$SCRATCH_DB_URL" "scratch") || exit 1
+# --- E5-F07 + E5-F08 + E5-F09 FIX: validate identity for SCRATCH connection ---
+# E5-F08: uses resolve_connection_identity which fails closed on NULL/empty.
+# E5-F09: validates both host:port AND cluster identifier.
+SCRATCH_IDENTITIES=$(resolve_connection_identity "$SCRATCH_DB_URL" "scratch") || exit 1
+SCRATCH_SERVER_IDENTITY="${SCRATCH_IDENTITIES%%|*}"
+SCRATCH_CLUSTER_IDENTIFIER="${SCRATCH_IDENTITIES##*|}"
 if [ "$SCRATCH_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
   echo "FATAL: scratch DB server identity mismatch." >&2
   echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
@@ -391,7 +453,14 @@ if [ "$SCRATCH_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
   echo "  E5_BASE_URL may point to a different cluster." >&2
   exit 1
 fi
-echo "Scratch DB server identity validated: $SCRATCH_SERVER_IDENTITY (matches maintenance)."
+if [ "$SCRATCH_CLUSTER_IDENTIFIER" != "$ACTUAL_CLUSTER_IDENTIFIER" ]; then
+  echo "FATAL: scratch DB cluster identifier mismatch." >&2
+  echo "  Maintenance cluster: $ACTUAL_CLUSTER_IDENTIFIER" >&2
+  echo "  Scratch cluster:     $SCRATCH_CLUSTER_IDENTIFIER" >&2
+  echo "  The scratch connection reached a different PostgreSQL cluster." >&2
+  exit 1
+fi
+echo "Scratch DB identity validated: server=$SCRATCH_SERVER_IDENTITY, cluster=$SCRATCH_CLUSTER_IDENTIFIER (matches maintenance)."
 # Expected: 0 (empty DB)
 
 # --- E5-F01 FIX: pin DATABASE_URL to scratch BEFORE any Prisma command ---
@@ -473,16 +542,26 @@ RESTORE_DB_NAME="heavix_e5_restore_$(date +%Y%m%d_%H%M%S)"
 RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
-# --- E5-F07 + E5-F08 FIX: validate server identity for RESTORE connection ---
-# E5-F08: uses resolve_server_identity helper which fails closed on NULL/empty.
-RESTORE_SERVER_IDENTITY=$(resolve_server_identity "$RESTORE_DB_URL" "restore") || exit 1
+# --- E5-F07 + E5-F08 + E5-F09 FIX: validate identity for RESTORE connection ---
+# E5-F08: uses resolve_connection_identity which fails closed on NULL/empty.
+# E5-F09: validates both host:port AND cluster identifier.
+RESTORE_IDENTITIES=$(resolve_connection_identity "$RESTORE_DB_URL" "restore") || exit 1
+RESTORE_SERVER_IDENTITY="${RESTORE_IDENTITIES%%|*}"
+RESTORE_CLUSTER_IDENTIFIER="${RESTORE_IDENTITIES##*|}"
 if [ "$RESTORE_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
   echo "FATAL: restore DB server identity mismatch." >&2
   echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
   echo "  Restore server:      $RESTORE_SERVER_IDENTITY" >&2
   exit 1
 fi
-echo "Restore DB server identity validated: $RESTORE_SERVER_IDENTITY (matches maintenance)."
+if [ "$RESTORE_CLUSTER_IDENTIFIER" != "$ACTUAL_CLUSTER_IDENTIFIER" ]; then
+  echo "FATAL: restore DB cluster identifier mismatch." >&2
+  echo "  Maintenance cluster: $ACTUAL_CLUSTER_IDENTIFIER" >&2
+  echo "  Restore cluster:     $RESTORE_CLUSTER_IDENTIFIER" >&2
+  echo "  The restore connection reached a different PostgreSQL cluster." >&2
+  exit 1
+fi
+echo "Restore DB identity validated: server=$RESTORE_SERVER_IDENTITY, cluster=$RESTORE_CLUSTER_IDENTIFIER (matches maintenance)."
 
 # --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
 RESTORE_START=$(date +%s)

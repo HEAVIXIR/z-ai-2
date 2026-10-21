@@ -313,11 +313,11 @@ describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity",
     expect(runbook).toContain("COALESCE(inet_server_port()::text, 'NULL')");
   });
 
-  it("has a resolve_server_identity helper function", () => {
-    expect(runbook).toContain("resolve_server_identity()");
+  it("has a resolve_connection_identity helper function", () => {
+    expect(runbook).toContain("resolve_connection_identity()");
   });
 
-  it("resolve_server_identity fails closed on NULL:NULL identity", () => {
+  it("resolve_connection_identity fails closed on NULL:NULL identity", () => {
     expect(runbook).toContain("NULL:NULL");
     expect(runbook).toContain(
       "server identity for",
@@ -327,11 +327,11 @@ describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity",
     );
   });
 
-  it("resolve_server_identity fails closed on empty string", () => {
-    expect(runbook).toContain('-z "$identity"');
+  it("resolve_connection_identity fails closed on empty string", () => {
+    expect(runbook).toContain('-z "$server_identity"');
   });
 
-  it("resolve_server_identity fails closed on UNRESOLVED", () => {
+  it("resolve_connection_identity fails closed on UNRESOLVED", () => {
     expect(runbook).toContain('"UNRESOLVED"');
   });
 
@@ -348,21 +348,21 @@ describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity",
     );
   });
 
-  it("maintenance uses resolve_server_identity (not inline psql)", () => {
+  it("maintenance uses resolve_connection_identity (not inline psql)", () => {
     expect(runbook).toContain(
-      'resolve_server_identity "$MAINTENANCE_DB_URL" "maintenance"',
+      'resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance"',
     );
   });
 
-  it("scratch uses resolve_server_identity (not inline psql)", () => {
+  it("scratch uses resolve_connection_identity (not inline psql)", () => {
     expect(runbook).toContain(
-      'resolve_server_identity "$SCRATCH_DB_URL" "scratch"',
+      'resolve_connection_identity "$SCRATCH_DB_URL" "scratch"',
     );
   });
 
-  it("restore uses resolve_server_identity (not inline psql)", () => {
+  it("restore uses resolve_connection_identity (not inline psql)", () => {
     expect(runbook).toContain(
-      'resolve_server_identity "$RESTORE_DB_URL" "restore"',
+      'resolve_connection_identity "$RESTORE_DB_URL" "restore"',
     );
   });
 
@@ -408,5 +408,80 @@ describe("E5-F07: Server identity for ALL connections", () => {
       content.indexOf("Restore DB server identity validated")
     );
     expect(restoreSection).toContain("exit 1");
+  });
+});
+
+/* ============================================================
+   STEP 15.25 — E5-F09: Cluster identity (system_identifier)
+   ============================================================ */
+
+describe("E5 Runbook — E5-F09: cluster identity via system_identifier", () => {
+  const runbook = readRunbook();
+
+  it("requires E5_EXPECTED_CLUSTER_IDENTIFIER env var", () => {
+    expect(runbook).toContain("E5_EXPECTED_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain(
+      "E5_EXPECTED_CLUSTER_IDENTIFIER must be set",
+    );
+  });
+
+  it("queries pg_control_system() for system_identifier", () => {
+    expect(runbook).toContain("pg_control_system()");
+    expect(runbook).toContain("system_identifier");
+  });
+
+  it("uses resolve_connection_identity (not old resolve_server_identity)", () => {
+    expect(runbook).toContain("resolve_connection_identity");
+    // Old helper name should not be used for identity resolution
+    expect(runbook).not.toContain(
+      'resolve_server_identity "',
+    );
+  });
+
+  it("validates cluster identifier for maintenance connection", () => {
+    expect(runbook).toContain("ACTUAL_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain("EXPECTED_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain("cluster identifier mismatch");
+  });
+
+  it("validates cluster identifier for scratch connection", () => {
+    expect(runbook).toContain("SCRATCH_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain(
+      "scratch DB cluster identifier mismatch",
+    );
+  });
+
+  it("validates cluster identifier for restore connection", () => {
+    expect(runbook).toContain("RESTORE_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain(
+      "restore DB cluster identifier mismatch",
+    );
+  });
+
+  it("fail-closed on unresolved cluster identifier", () => {
+    expect(runbook).toContain(
+      "cluster identifier for",
+    );
+    expect(runbook).toContain(
+      "NULL, empty, or unresolved",
+    );
+  });
+
+  it("validates expected cluster identifier is non-empty", () => {
+    expect(runbook).toContain(
+      "E5_EXPECTED_CLUSTER_IDENTIFIER is empty or whitespace-only",
+    );
+  });
+
+  it("documents the deployment assumption", () => {
+    expect(runbook).toContain("direct TCP");
+    expect(runbook).toContain("routing intermediary");
+  });
+
+  it("mentions proxy/pooler/failover as the gap closed by F09", () => {
+    expect(runbook).toContain("proxy/pooler/failover");
+    expect(runbook).toContain(
+      "system_identifier will differ",
+    );
   });
 });
