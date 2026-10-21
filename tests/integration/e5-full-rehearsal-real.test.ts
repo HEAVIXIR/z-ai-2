@@ -55,8 +55,8 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   // Track created databases for cleanup
   const createdDbs: string[] = [];
 
-  function psql(url: string, sql: string): string {
-    return execSync(`psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d "$(echo "${url}" | sed 's|.*://.*@localhost:5432/||')" -c "${sql}"`, {
+  function psql(dbName: string, sql: string): string {
+    return execSync(`psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d "${dbName}" -c '${sql.replace(/'/g, "'\''")}'`, {
       encoding: "utf-8",
       timeout: 30000,
     }).trim();
@@ -81,19 +81,19 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     }
   }
 
-  function getRowCount(url: string, table: string): number {
-    return parseInt(psql(url, `SELECT count(*) FROM "${table}";`), 10);
+  function getRowCount(dbName: string, table: string): number {
+    return parseInt(psql(dbName, `SELECT count(*) FROM "${table}";`), 10);
   }
 
-  function getTableCount(url: string): number {
+  function getTableCount(dbName: string): number {
     return parseInt(
-      psql(url, `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';`),
+      psql(dbName, `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';`),
       10,
     );
   }
 
-  function columnExists(url: string, table: string, column: string): boolean {
-    const result = psql(url, `SELECT count(*) FROM information_schema.columns WHERE table_name='${table}' AND column_name='${column}';`);
+  function columnExists(dbName: string, table: string, column: string): boolean {
+    const result = psql(dbName, `SELECT count(*) FROM information_schema.columns WHERE table_name='${table}' AND column_name='${column}';`);
     return result === "1";
   }
 
@@ -138,47 +138,47 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     });
 
     it("backup verification: restored DB has tables (non-empty)", () => {
-      const tableCount = getTableCount(`postgresql://postgres:postgres@localhost:5432/${RESTORE_DB}`);
+      const tableCount = getTableCount(RESTORE_DB);
       expect(tableCount).toBeGreaterThan(0);
     });
   });
 
   describe("G2-2: Restore verification (template-based)", () => {
     it("restore target exists and is accessible", () => {
-      const result = psql(`postgresql://postgres:postgres@localhost:5432/${RESTORE_DB}`, "SELECT 1;");
+      const result = psql(RESTORE_DB, "SELECT 1;");
       expect(result).toBe("1");
     });
   });
 
   describe("G2-3: Reconciliation", () => {
     it("table count matches between source and restored", () => {
-      const sourceTables = getTableCount(SCRATCH_URL);
-      const restoredTables = getTableCount(RESTORE_URL);
+      const sourceTables = getTableCount(SCRATCH_DB);
+      const restoredTables = getTableCount(RESTORE_DB);
       expect(restoredTables).toBe(sourceTables);
     });
 
     it("row count for Role table matches", () => {
-      const sourceRows = getRowCount(SCRATCH_URL, "Role");
-      const restoredRows = getRowCount(RESTORE_URL, "Role");
+      const sourceRows = getRowCount(SCRATCH_DB, "Role");
+      const restoredRows = getRowCount(RESTORE_DB, "Role");
       expect(restoredRows).toBe(sourceRows);
       expect(sourceRows).toBeGreaterThan(0); // seeded
     });
 
     it("row count for Permission table matches", () => {
-      const sourceRows = getRowCount(SCRATCH_URL, "Permission");
-      const restoredRows = getRowCount(RESTORE_URL, "Permission");
+      const sourceRows = getRowCount(SCRATCH_DB, "Permission");
+      const restoredRows = getRowCount(RESTORE_DB, "Permission");
       expect(restoredRows).toBe(sourceRows);
     });
 
     it("row count for RolePermission table matches", () => {
-      const sourceRows = getRowCount(SCRATCH_URL, "RolePermission");
-      const restoredRows = getRowCount(RESTORE_URL, "RolePermission");
+      const sourceRows = getRowCount(SCRATCH_DB, "RolePermission");
+      const restoredRows = getRowCount(RESTORE_DB, "RolePermission");
       expect(restoredRows).toBe(sourceRows);
     });
 
     it("row count for UserRole table matches", () => {
-      const sourceRows = getRowCount(SCRATCH_URL, "UserRole");
-      const restoredRows = getRowCount(RESTORE_URL, "UserRole");
+      const sourceRows = getRowCount(SCRATCH_DB, "UserRole");
+      const restoredRows = getRowCount(RESTORE_DB, "UserRole");
       expect(restoredRows).toBe(sourceRows);
     });
   });
@@ -189,11 +189,11 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
   describe("G3-1: Rollback rehearsal (destructive change + restore)", () => {
     it("precondition: User.role column exists before drop", () => {
-      expect(columnExists(RESTORE_URL, "User", "role")).toBe(true);
+      expect(columnExists(RESTORE_DB, "User", "role")).toBe(true);
     });
 
     it("records pre-drop User row count", () => {
-      const count = getRowCount(RESTORE_URL, "User");
+      const count = getRowCount(RESTORE_DB, "User");
       // Store for later comparison (may be 0 if no users seeded, that's OK)
       expect(count).toBeGreaterThanOrEqual(0);
     });
@@ -209,12 +209,12 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     });
 
     it("drops User.role column (simulating Phase E destructive change)", () => {
-      psql(RESTORE_URL, `ALTER TABLE "User" DROP COLUMN "role";`);
-      expect(columnExists(RESTORE_URL, "User", "role")).toBe(false);
+      psql(RESTORE_DB, 'ALTER TABLE "User" DROP COLUMN "role";');
+      expect(columnExists(RESTORE_DB, "User", "role")).toBe(false);
     });
 
     it("verifies column is gone after drop", () => {
-      expect(columnExists(RESTORE_URL, "User", "role")).toBe(false);
+      expect(columnExists(RESTORE_DB, "User", "role")).toBe(false);
     });
 
     it("restores from baseline (rollback via CREATE DATABASE TEMPLATE)", () => {
@@ -227,11 +227,11 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     });
 
     it("verifies User.role column is restored after rollback", () => {
-      expect(columnExists(RESTORE_URL, "User", "role")).toBe(true);
+      expect(columnExists(RESTORE_DB, "User", "role")).toBe(true);
     });
 
     it("verifies User row count matches after rollback", () => {
-      const postRollbackCount = getRowCount(RESTORE_URL, "User");
+      const postRollbackCount = getRowCount(RESTORE_DB, "User");
       // Should match pre-drop count (which was >= 0)
       expect(postRollbackCount).toBeGreaterThanOrEqual(0);
     });
@@ -251,7 +251,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
         timeout: 10000,
       });
       createdDbs.push(emptyCopy);
-      const tableCount = getTableCount(`postgresql://postgres:postgres@localhost:5432/${emptyCopy}`);
+      const tableCount = getTableCount(emptyCopy);
       expect(tableCount).toBe(0);
     });
 
