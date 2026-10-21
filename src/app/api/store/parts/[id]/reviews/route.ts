@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,11 +10,20 @@ export const dynamic = "force-dynamic";
    Customer submits a review by phone (we upsert the Customer row
    by phone). Reviews are created with approved=false — moderated
    by the admin from /admin/store.
+
+   STEP 15.38 F-006 FIX: CSRF protection added. This route is
+   unauthenticated (phone-based) and creates DB records (review +
+   customer upsert). Without CSRF, a cross-site request could
+   inject fake reviews. Now fails closed on missing/mismatched Origin.
    ============================================================ */
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: partId } = await params;
   try {
+    // F-006: fail-closed CSRF (unauthenticated + DB mutation)
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
     const body = await req.json();
     const phone = String(body.phone || "").trim();
     const name = String(body.name || "").trim();
