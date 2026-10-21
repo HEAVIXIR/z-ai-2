@@ -267,12 +267,13 @@ $ cat .env | grep DATABASE_URL
 set -euo pipefail  # Correction #4: fail-fast, undefined vars error
 
 # --- Configuration ---
+# E5-F02 FIX: never print raw connection strings. Store in variables only.
 MAINTENANCE_DB_URL="${E5_MAINTENANCE_DB_URL:?ERROR: E5_MAINTENANCE_DB_URL must be set}"
 # This should connect to 'postgres' maintenance DB, NOT the target.
 # Example: postgresql://heavix:password@localhost:5432/postgres
 
 SCRATCH_DB_NAME="heavix_e5_scratch_$(date +%Y%m%d_%H%M%S)"
-SCRATCH_DB_URL="${E5_BASE_URL}/${SCRATCH_DB_NAME}"
+SCRATCH_DB_URL="${E5_BASE_URL:?ERROR: E5_BASE_URL must be set}/${SCRATCH_DB_NAME}"
 BACKUP_DIR="/home/z/my-project/db/backups"
 BACKUP_FILE="${BACKUP_DIR}/${SCRATCH_DB_NAME}.dump"
 
@@ -281,18 +282,24 @@ if echo "$SCRATCH_DB_NAME" | grep -qiE "prod|staging|live|main"; then
   echo "FATAL: scratch DB name looks production-like: $SCRATCH_DB_NAME" >&2
   exit 1
 fi
-if echo "$E5_BASE_URL" | grep -qiE "prod|staging|live"; then
-  echo "FATAL: base URL looks production-like: $E5_BASE_URL" >&2
+if echo "${E5_BASE_URL}" | grep -qiE "prod|staging|live"; then
+  echo "FATAL: base URL looks production-like" >&2
   exit 1
 fi
 
 mkdir -p "$BACKUP_DIR"
 
-echo "=== E5 Rehearsal Configuration ==="
-echo "Maintenance DB: $MAINTENANCE_DB_URL"
-echo "Scratch DB name: $SCRATCH_DB_NAME"
-echo "Scratch DB URL: $SCRATCH_DB_URL"
-echo "Backup file:    $BACKUP_FILE"
+# --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
+# Extract host and DB name from the maintenance URL WITHOUT printing credentials.
+# Uses psql to echo the resolved identity back from the server itself.
+MAINT_RESOLVED_HOST=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+MAINT_RESOLVED_DB=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT current_database();" 2>/dev/null || echo "UNRESOLVED")
+
+echo "=== E5 Rehearsal Configuration (REDACTED — no credentials shown) ==="
+echo "Maintenance host:    $MAINT_RESOLVED_HOST"
+echo "Maintenance DB name: $MAINT_RESOLVED_DB"
+echo "Scratch DB name:     $SCRATCH_DB_NAME"
+echo "Backup file:         $BACKUP_FILE"
 echo ""
 echo "Confirm this is NOT production. Press Ctrl+C to abort."
 read -r -p "Type 'I-CONFIRM-SCRATCH' to continue: " CONFIRM
@@ -302,7 +309,7 @@ if [ "$CONFIRM" != "I-CONFIRM-SCRATCH" ]; then
 fi
 ```
 
-### B.2.2 Create scratch DB + apply schema (Corrections #1, #2)
+### B.2.2 Create scratch DB + apply schema (Corrections #1, #2; E5-F01 FIX)
 
 ```bash
 # --- Create scratch DB via MAINTENANCE connection (NOT the target) ---
@@ -315,14 +322,29 @@ psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
 # Expected: 0 (empty DB)
 
-# --- Apply schema (ONLY to scratch DB, never production) ---
-# Correction #1: db push is acceptable here because scratch DB is disposable.
-bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-# NOTE: this uses DATABASE_URL env var — MUST be set to SCRATCH_DB_URL
+# --- E5-F01 FIX: pin DATABASE_URL to scratch BEFORE any Prisma command ---
+# The prior version ran `bunx prisma db push` before setting DATABASE_URL,
+# which could connect to a pre-existing DATABASE_URL pointing elsewhere.
+# Now DATABASE_URL is pinned and validated against the scratch target BEFORE
+# any Prisma invocation. The duplicate `db push` is removed.
 export DATABASE_URL="$SCRATCH_DB_URL"
+
+# --- Validate the effective target from the server's perspective ---
+# E5-F01 guard: refuse to proceed unless the server confirms we are on scratch.
+EFFECTIVE_DB=$(psql -t -A -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "SELECT current_database();")
+if [ "$EFFECTIVE_DB" != "$SCRATCH_DB_NAME" ]; then
+  echo "FATAL: effective database is '$EFFECTIVE_DB', expected '$SCRATCH_DB_NAME'" >&2
+  echo "Refusing to proceed — DATABASE_URL did not resolve to scratch target." >&2
+  exit 1
+fi
+echo "Target validated: connected to '$EFFECTIVE_DB' (matches scratch name)."
+
+# --- Apply schema (ONLY to scratch DB, validated above) ---
+# Correction #1: db push is acceptable here because scratch DB is disposable
+# AND the target has been validated as the scratch DB by the server itself.
 bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
 
-# --- Seed baseline data (ONLY to scratch DB) ---
+# --- Seed baseline data (ONLY to scratch DB; DATABASE_URL still pinned) ---
 # Correction #1: seed is NOT production data — it's test fixtures.
 bun run db:seed-rbac
 bun run db:seed-brands-a
