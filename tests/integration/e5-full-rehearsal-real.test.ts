@@ -3,6 +3,11 @@ import { execSync } from "node:child_process";
 import { existsSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+// CRITICAL: Set PGPASSWORD so all psql/pg_dump/pg_restore calls authenticate
+// without needing it in the connection URL (avoids version mismatch issues
+// with the connection string format).
+process.env.PGPASSWORD = process.env.PGPASSWORD || "postgres";
+
 /* ============================================================
    HEAVIX — STEP 15.35: FULL E5 Rehearsal Against Real PostgreSQL 17
    ------------------------------------------------------------
@@ -51,14 +56,14 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   const createdDbs: string[] = [];
 
   function psql(url: string, sql: string): string {
-    return execSync(`psql -t -A -v ON_ERROR_STOP=1 "${url}" -c "${sql}"`, {
+    return execSync(`psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d "$(echo "${url}" | sed 's|.*://.*@localhost:5432/||')" -c "${sql}"`, {
       encoding: "utf-8",
       timeout: 30000,
     }).trim();
   }
 
   function createDb(name: string): void {
-    execSync(`psql -v ON_ERROR_STOP=1 "${MAINTENANCE_URL}" -c 'CREATE DATABASE "${name}";'`, {
+    execSync(`psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${name}";'`, {
       encoding: "utf-8",
       timeout: 10000,
     });
@@ -67,7 +72,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
   function dropDb(name: string): void {
     try {
-      execSync(`psql -v ON_ERROR_STOP=1 "${MAINTENANCE_URL}" -c 'DROP DATABASE IF EXISTS "${name}";'`, {
+      execSync(`psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'DROP DATABASE IF EXISTS "${name}";'`, {
         encoding: "utf-8",
         timeout: 10000,
       });
@@ -125,7 +130,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
   describe("G2-1: Backup (pg_dump)", () => {
     it("pg_dump produces a non-empty backup file with exit code 0", () => {
-      execSync(`pg_dump -Fc --verbose "${SCRATCH_URL}" > "${BACKUP_FILE}"`, {
+      execSync(`pg_dump -h localhost -U postgres -Fc "${SCRATCH_DB}" > "${BACKUP_FILE}"`, {
         encoding: "utf-8",
         timeout: 30000,
       });
@@ -147,7 +152,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   describe("G2-2: Restore (pg_restore)", () => {
     it("pg_restore to clean target succeeds with exit code 0", () => {
       createDb(RESTORE_DB);
-      execSync(`pg_restore --exit-on-error --verbose -d "${RESTORE_URL}" "${BACKUP_FILE}" 2>/dev/null`, {
+      execSync(`pg_restore -h localhost -U postgres --exit-on-error -d "${RESTORE_DB}" "${BACKUP_FILE}" 2>/dev/null`, {
         encoding: "utf-8",
         timeout: 30000,
       });
@@ -203,7 +208,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     });
 
     it("takes baseline backup of restore target", () => {
-      execSync(`pg_dump -Fc "${RESTORE_URL}" > "${BACKUP_DIR}/rollback-baseline.dump"`, {
+      execSync(`pg_dump -h localhost -U postgres -Fc "${RESTORE_DB}" > "${BACKUP_DIR}/rollback-baseline.dump"`, {
         encoding: "utf-8",
         timeout: 30000,
       });
@@ -223,7 +228,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
       // Drop and recreate the restore DB, then restore from baseline
       dropDb(RESTORE_DB);
       createDb(RESTORE_DB);
-      execSync(`pg_restore --exit-on-error --verbose -d "${RESTORE_URL}" "${BACKUP_DIR}/rollback-baseline.dump" 2>/dev/null`, {
+      execSync(`pg_restore -h localhost -U postgres --exit-on-error -d "${RESTORE_DB}" "${BACKUP_DIR}/rollback-baseline.dump" 2>/dev/null`, {
         encoding: "utf-8",
         timeout: 30000,
       });
@@ -256,7 +261,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     it("FS-2: pg_restore to non-existent database fails", () => {
       let exitCode = 0;
       try {
-        execSync(`pg_restore --exit-on-error -d "postgresql://postgres:postgres@localhost:5432/nonexistent_db" "${BACKUP_FILE}" 2>/dev/null`, {
+        execSync(`pg_restore -h localhost -U postgres --exit-on-error -d "nonexistent_db" "${BACKUP_FILE}" 2>/dev/null`, {
           encoding: "utf-8",
           timeout: 10000,
         });
