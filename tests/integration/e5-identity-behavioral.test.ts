@@ -1,69 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execSync } from "node:child_process";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 /* ============================================================
-   HEAVIX — STEP 15.26: Behavioral Tests for E5 Identity Helper
+   HEAVIX — STEP 15.28: Behavioral Tests for E5 Identity Helper
    ------------------------------------------------------------
-   CR-01: These tests EXECUTE the resolve_connection_identity
-   helper with stubbed psql commands to verify actual exit
-   behavior — not just string presence in the runbook.
+   CR-05: These tests source the ACTUAL scripts/e5/resolve-identity.sh
+   — NOT a duplicated copy. This ensures tests verify the real
+   implementation.
+
+   CR-07: Sentinel tests prove that NO mutating command runs after
+   validation failure. A sentinel file is checked for absence.
+
+   CR-06: Tests verify that validate_connection_identity checks DB name
+   and primary role independently for each connection.
    ============================================================ */
 
+const REPO_ROOT = join(__dirname, "..", "..");
 const TMP_DIR = "/tmp/e5-behavioral-test";
-
-const HELPER_SCRIPT = `#!/bin/bash
-set -uo pipefail
-
-resolve_connection_identity() {
-  local db_url="$1"
-  local label="$2"
-  local server_identity cluster_identity db_name is_in_recovery
-
-  server_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
-  server_identity=$(echo "$server_identity" | tr -d '[:space:]')
-  if [ -z "$server_identity" ] || [ "$server_identity" = "UNRESOLVED" ] || [ "$server_identity" = "NULL:NULL" ]; then
-    echo "FATAL: server identity for $label is NULL, empty, or unresolved." >&2
-    return 1
-  fi
-
-  cluster_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT system_identifier::text FROM pg_control_system();" 2>/dev/null || echo "UNRESOLVED")
-  cluster_identity=$(echo "$cluster_identity" | tr -d '[:space:]')
-  if [ -z "$cluster_identity" ] || [ "$cluster_identity" = "UNRESOLVED" ]; then
-    echo "FATAL: cluster identifier for $label is NULL, empty, or unresolved." >&2
-    return 1
-  fi
-
-  db_name=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT current_database();" 2>/dev/null || echo "UNRESOLVED")
-  db_name=$(echo "$db_name" | tr -d '[:space:]')
-  if [ -z "$db_name" ] || [ "$db_name" = "UNRESOLVED" ]; then
-    echo "FATAL: database name for $label is NULL, empty, or unresolved." >&2
-    return 1
-  fi
-
-  is_in_recovery=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT pg_is_in_recovery();" 2>/dev/null || echo "UNRESOLVED")
-  is_in_recovery=$(echo "$is_in_recovery" | tr -d '[:space:]')
-  if [ -z "$is_in_recovery" ] || [ "$is_in_recovery" = "UNRESOLVED" ]; then
-    echo "FATAL: server role for $label is unresolved." >&2
-    return 1
-  fi
-
-  echo "\${server_identity}|\${cluster_identity}|\${db_name}|\${is_in_recovery}"
-  return 0
-}
-
-set +e
-RESULT=$(resolve_connection_identity "postgresql://test:test@localhost:5432/postgres" "test")
-EXIT_CODE=$?
-set -e
-if [ $EXIT_CODE -eq 0 ]; then
-  echo "OK:\${RESULT}"
-else
-  echo "FAIL"
-fi
-exit $EXIT_CODE
-`;
+const HELPER_PATH = join(REPO_ROOT, "scripts", "e5", "resolve-identity.sh");
 
 function makePsqlStub(responses: {
   server_identity?: { out: string; exit: number };
@@ -73,32 +29,50 @@ function makePsqlStub(responses: {
 }): void {
   const defaults = {
     server_identity: { out: "10.0.0.5:5432", exit: 0 },
-    cluster_identity: { out: "1234567890", exit: 0 },
+    cluster_identity: { out: "6983723456789012345", exit: 0 },
     db_name: { out: "postgres", exit: 0 },
     is_in_recovery: { out: "f", exit: 0 },
   };
   const r = { ...defaults, ...responses };
 
+  // The actual helper uses a SINGLE query with -F '|' separator.
+  // All 4 fields come from one psql invocation containing inet_server_addr.
+  // The stub returns all 4 fields as pipe-separated values.
+  // If any field should fail (exit != 0), the entire query fails.
+  const anyExit = [r.server_identity.exit, r.cluster_identity.exit, r.db_name.exit, r.is_in_recovery.exit].find(e => e !== 0);
+
   const stub = `#!/bin/bash
 ARGS="$*"
-if echo "$ARGS" | grep -q "inet_server_addr"; then printf '%s' '${r.server_identity.out}'; exit ${r.server_identity.exit}; fi
-if echo "$ARGS" | grep -q "pg_control_system"; then printf '%s' '${r.cluster_identity.out}'; exit ${r.cluster_identity.exit}; fi
-if echo "$ARGS" | grep -q "current_database"; then printf '%s' '${r.db_name.out}'; exit ${r.db_name.exit}; fi
-if echo "$ARGS" | grep -q "pg_is_in_recovery"; then printf '%s' '${r.is_in_recovery.out}'; exit ${r.is_in_recovery.exit}; fi
+# The helper uses a single query containing inet_server_addr
+if echo "$ARGS" | grep -q "inet_server_addr"; then
+  if [ ${anyExit ?? 0} -ne 0 ]; then
+    exit ${anyExit ?? 0}
+  fi
+  printf '%s|%s|%s|%s' '${r.server_identity.out}' '${r.cluster_identity.out}' '${r.db_name.out}' '${r.is_in_recovery.out}'
+  exit 0
+fi
 exit 1
 `;
   writeFileSync(join(TMP_DIR, "psql"), stub, { mode: 0o755 });
-  writeFileSync(join(TMP_DIR, "run.sh"), HELPER_SCRIPT, { mode: 0o755 });
 }
 
-function runHelper(responses: Parameters<typeof makePsqlStub>[0]): {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-} {
+function runTest(
+  responses: Parameters<typeof makePsqlStub>[0],
+  testScript: string,
+): { exitCode: number; stdout: string; stderr: string; sentinelExists: boolean } {
   rmSync(TMP_DIR, { recursive: true, force: true });
   mkdirSync(TMP_DIR, { recursive: true });
   makePsqlStub(responses);
+
+  // CR-05: Source the ACTUAL helper script — not a copy
+  const fullScript = `#!/bin/bash
+set -uo pipefail
+source "${HELPER_PATH}"
+${testScript}
+`;
+
+  const scriptPath = join(TMP_DIR, "run.sh");
+  writeFileSync(scriptPath, fullScript, { mode: 0o755 });
 
   const env = {
     ...process.env,
@@ -106,80 +80,234 @@ function runHelper(responses: Parameters<typeof makePsqlStub>[0]): {
   };
 
   try {
-    const stdout = execSync(`bash ${join(TMP_DIR, "run.sh")}`, {
+    const stdout = execSync(`bash ${scriptPath} 2>&1`, {
       env,
       encoding: "utf-8",
       timeout: 5000,
     });
-    return { exitCode: 0, stdout, stderr: "" };
+    return {
+      exitCode: 0,
+      stdout,
+      stderr: "",
+      sentinelExists: existsSync(join(TMP_DIR, "SENTINEL_RAN")),
+    };
   } catch (err: unknown) {
     const e = err as { status?: number; stdout?: string; stderr?: string };
+    // When using 2>&1, stdout contains both stdout and stderr
+    const combined = e.stdout ?? "";
     return {
       exitCode: e.status ?? 1,
-      stdout: e.stdout ?? "",
-      stderr: e.stderr ?? "",
+      stdout: combined,
+      stderr: combined,
+      sentinelExists: existsSync(join(TMP_DIR, "SENTINEL_RAN")),
     };
   }
 }
 
-describe("E5 Behavioral Tests — resolve_connection_identity (CR-01)", () => {
+const VALID = {}; // uses defaults
+
+describe("CR-05: Tests source the actual scripts/e5/resolve-identity.sh", () => {
   afterEach(() => {
     rmSync(TMP_DIR, { recursive: true, force: true });
   });
 
-  it("1. NULL:NULL identity (Unix-socket) → fail-closed", () => {
-    const result = runHelper({ server_identity: { out: "NULL:NULL", exit: 0 } });
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("NULL, empty, or unresolved");
+  it("sources the actual helper file (not a duplicate)", () => {
+    // If the helper file doesn't exist, this test fails
+    expect(existsSync(HELPER_PATH)).toBe(true);
   });
 
-  it("2. Empty server identity → fail-closed", () => {
-    const result = runHelper({ server_identity: { out: "", exit: 0 } });
-    expect(result.exitCode).not.toBe(0);
-  });
-
-  it("3. psql error on all queries → fail-closed", () => {
-    const result = runHelper({
-      server_identity: { out: "", exit: 1 },
-      cluster_identity: { out: "", exit: 1 },
-      db_name: { out: "", exit: 1 },
-      is_in_recovery: { out: "", exit: 1 },
-    });
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("NULL, empty, or unresolved");
-  });
-
-  it("4. Permission denied for pg_control_system → fail-closed", () => {
-    const result = runHelper({ cluster_identity: { out: "", exit: 1 } });
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("cluster identifier");
-  });
-
-  it("5. All valid → success with correct output format", () => {
-    const result = runHelper({});
+  it("resolve_connection_identity succeeds with valid psql output", () => {
+    const result = runTest(VALID, `
+RESULT=$(resolve_connection_identity "postgresql://t:t@localhost:5432/postgres" "test")
+echo "RESULT=$RESULT"
+`);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("OK:");
     expect(result.stdout).toContain("10.0.0.5:5432");
-    expect(result.stdout).toContain("1234567890");
+    expect(result.stdout).toContain("6983723456789012345");
     expect(result.stdout).toContain("postgres");
     expect(result.stdout).toContain("f");
   });
 
-  it("6. Server in recovery (replica) → helper succeeds, caller checks", () => {
-    const result = runHelper({ is_in_recovery: { out: "t", exit: 0 } });
+  it("resolve_connection_identity fails on NULL:NULL (Unix-socket)", () => {
+    const result = runTest(
+      { server_identity: { out: "NULL:NULL", exit: 0 } },
+      `resolve_connection_identity "postgresql://t:t@localhost:5432/postgres" "test" || echo "CAUGHT_FAILURE"`,
+    );
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("|t");
+    expect(result.stdout).toContain("CAUGHT_FAILURE");
   });
 
-  it("7. Database name unresolved → fail-closed", () => {
-    const result = runHelper({ db_name: { out: "", exit: 1 } });
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("database name");
+  it("resolve_connection_identity fails on psql error", () => {
+    const result = runTest(
+      {
+        server_identity: { out: "", exit: 1 },
+        cluster_identity: { out: "", exit: 1 },
+        db_name: { out: "", exit: 1 },
+        is_in_recovery: { out: "", exit: 1 },
+      },
+      `resolve_connection_identity "postgresql://t:t@localhost:5432/postgres" "test" || echo "CAUGHT_FAILURE"`,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("CAUGHT_FAILURE");
+  });
+});
+
+describe("CR-06: validate_connection_identity checks all fields independently", () => {
+  afterEach(() => {
+    rmSync(TMP_DIR, { recursive: true, force: true });
   });
 
-  it("8. Server role unresolved → fail-closed", () => {
-    const result = runHelper({ is_in_recovery: { out: "", exit: 1 } });
+  it("succeeds when all fields match expected values", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" && echo "VALIDATION_OK"
+`);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("VALIDATION_OK");
+  });
+
+  it("fails when database name mismatches", () => {
+    const result = runTest(
+      { db_name: { out: "wrong_db", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || echo "CAUGHT_DB_MISMATCH"
+`,
+    );
+    expect(result.stdout).toContain("CAUGHT_DB_MISMATCH");
+    expect(result.stdout).toContain("db_name mismatch");
+  });
+
+  it("fails when server is replica (is_in_recovery=t) and primary required", () => {
+    const result = runTest(
+      { is_in_recovery: { out: "t", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || echo "CAUGHT_REPLICA"
+`,
+    );
+    expect(result.stdout).toContain("CAUGHT_REPLICA");
+    expect(result.stdout).toContain("primary required");
+  });
+
+  it("fails when cluster identifier mismatches", () => {
+    const result = runTest(
+      { cluster_identity: { out: "9999999999999999999", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || echo "CAUGHT_CLUSTER_MISMATCH"
+`,
+    );
+    expect(result.stdout).toContain("CAUGHT_CLUSTER_MISMATCH");
+    expect(result.stdout).toContain("cluster mismatch");
+  });
+
+  it("fails when server identity mismatches", () => {
+    const result = runTest(
+      { server_identity: { out: "10.0.0.99:5432", exit: 0 } },
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || echo "CAUGHT_SERVER_MISMATCH"
+`,
+    );
+    expect(result.stdout).toContain("CAUGHT_SERVER_MISMATCH");
+    expect(result.stdout).toContain("server mismatch"); // stderr is combined (2>&1)
+  });
+
+  it("CR-07: sentinel command does NOT run after validation failure", () => {
+    // CR-07: If validation fails, the sentinel (representing a mutating
+    // command like prisma db push) must NEVER execute.
+    const result = runTest(
+      { db_name: { out: "wrong_db", exit: 0 } }, // mismatch
+      `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || exit 1
+
+# SENTINEL: This represents a mutating command (schema push, seed, ALTER, etc.)
+# If validation failed, this must NEVER run.
+touch "${join(TMP_DIR, "SENTINEL_RAN")}"
+echo "MUTATING_COMMAND_RAN"
+`,
+    );
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("server role");
+    expect(result.sentinelExists).toBe(false);
+    expect(result.stdout).not.toContain("MUTATING_COMMAND_RAN");
+  });
+
+  it("CR-07: sentinel command DOES run after validation success", () => {
+    // Positive control: when validation succeeds, the sentinel runs.
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "yes" \\
+  "" "" || exit 1
+
+# SENTINEL: This represents a mutating command.
+touch "${join(TMP_DIR, "SENTINEL_RAN")}"
+echo "MUTATING_COMMAND_RAN"
+`,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.sentinelExists).toBe(true);
+    expect(result.stdout).toContain("MUTATING_COMMAND_RAN");
+  });
+});
+
+describe("Field extraction regression: 4 distinct values", () => {
+  // This test catches the bug where ${VAR##*|} returned is_in_recovery
+  // instead of cluster_identifier. Uses 4 DISTINCT values so any
+  // mis-extraction is immediately visible.
+  afterEach(() => {
+    rmSync(TMP_DIR, { recursive: true, force: true });
+  });
+
+  it("correctly extracts all 4 fields with distinct values", () => {
+    const result = runTest(
+      {
+        server_identity: { out: "SERVER_FIELD", exit: 0 },
+        cluster_identity: { out: "CLUSTER_FIELD", exit: 0 },
+        db_name: { out: "DB_FIELD", exit: 0 },
+        is_in_recovery: { out: "RECOVERY_FIELD", exit: 0 },
+      },
+      `
+RESULT=$(resolve_connection_identity "postgresql://t:t@localhost:5432/postgres" "test")
+SERVER=$(echo "$RESULT" | cut -d'|' -f1)
+CLUSTER=$(echo "$RESULT" | cut -d'|' -f2)
+DB=$(echo "$RESULT" | cut -d'|' -f3)
+RECOVERY=$(echo "$RESULT" | cut -d'|' -f4)
+echo "S=$SERVER C=$CLUSTER D=$DB R=$RECOVERY"
+# Assert each field is distinct and correct
+[ "$SERVER" = "SERVER_FIELD" ] || { echo "SERVER WRONG: $SERVER"; exit 1; }
+[ "$CLUSTER" = "CLUSTER_FIELD" ] || { echo "CLUSTER WRONG: $CLUSTER"; exit 1; }
+[ "$DB" = "DB_FIELD" ] || { echo "DB WRONG: $DB"; exit 1; }
+[ "$RECOVERY" = "RECOVERY_FIELD" ] || { echo "RECOVERY WRONG: $RECOVERY"; exit 1; }
+echo "ALL_FIELDS_CORRECT"
+`,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("ALL_FIELDS_CORRECT");
+    expect(result.stdout).toContain("S=SERVER_FIELD");
+    expect(result.stdout).toContain("C=CLUSTER_FIELD");
+    expect(result.stdout).toContain("D=DB_FIELD");
+    expect(result.stdout).toContain("R=RECOVERY_FIELD");
   });
 });

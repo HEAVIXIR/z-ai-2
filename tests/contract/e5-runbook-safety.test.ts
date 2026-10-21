@@ -25,9 +25,20 @@ import { readFileSync } from "node:fs";
 
 const REPORT_PATH =
   "docs/verification/STEP-14.99-COMBINED-REPORT.md";
+const SHARED_SCRIPT_PATH = "scripts/e5/resolve-identity.sh";
 
 function readRunbook(): string {
   return readFileSync(REPORT_PATH, "utf-8");
+}
+
+// CR-05: The E5 runbook `source`s scripts/e5/resolve-identity.sh rather than
+// inlining the identity-resolution logic. Many of the safety-critical strings
+// (COALESCE, NULL:NULL, mismatch messages) now live in the shared script.
+// Tests must therefore read BOTH files: the runbook (for `source` +
+// `validate_connection_identity` call sites) and the shared script (for the
+// actual implementation strings).
+function readSharedScript(): string {
+  return readFileSync(SHARED_SCRIPT_PATH, "utf-8");
 }
 
 describe("E5 Runbook — E5-F01: db push must not run before DATABASE_URL is pinned", () => {
@@ -165,15 +176,23 @@ describe("E5 Runbook — E5-F03: target identity assurance (server identity, not
   });
 
   it("validates actual server identity against trusted expected value", () => {
+    // The runbook references ACTUAL/EXPECTED_SERVER_IDENTITY and `source`s the
+    // shared script where the mismatch check lives.
     expect(runbook).toContain("ACTUAL_SERVER_IDENTITY");
     expect(runbook).toContain("EXPECTED_SERVER_IDENTITY");
-    expect(runbook).toContain("server identity mismatch");
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
     expect(runbook).toContain("Refusing to proceed");
+    // The actual mismatch message lives in the shared helper.
+    expect(readSharedScript()).toContain("server mismatch");
   });
 
   it("resolves server identity via inet_server_addr + inet_server_port", () => {
-    expect(runbook).toContain("inet_server_addr()");
-    expect(runbook).toContain("inet_server_port()");
+    // The runbook sources the shared script; the inet_server_addr/port calls
+    // live inside scripts/e5/resolve-identity.sh.
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
+    const sharedScript = readSharedScript();
+    expect(sharedScript).toContain("inet_server_addr()");
+    expect(sharedScript).toContain("inet_server_port()");
   });
 });
 
@@ -304,35 +323,44 @@ describe("E5 Runbook — E5-F06: rollback must prove column exists and change oc
 
 describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity", () => {
   const runbook = readRunbook();
+  const sharedScript = readSharedScript();
 
   it("uses COALESCE to convert NULL inet_server_addr to 'NULL' literal", () => {
-    expect(runbook).toContain("COALESCE(inet_server_addr()::text, 'NULL')");
+    // The runbook sources the shared script; the COALESCE call lives there.
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
+    expect(sharedScript).toContain("COALESCE(inet_server_addr()::text, 'NULL')");
   });
 
   it("uses COALESCE to convert NULL inet_server_port to 'NULL' literal", () => {
-    expect(runbook).toContain("COALESCE(inet_server_port()::text, 'NULL')");
+    expect(sharedScript).toContain("COALESCE(inet_server_port()::text, 'NULL')");
   });
 
-  it("has a resolve_connection_identity helper function", () => {
-    expect(runbook).toContain("resolve_connection_identity()");
+  it("sources the shared resolve_connection_identity helper (not inlined)", () => {
+    // The helper is defined in scripts/e5/resolve-identity.sh and sourced.
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
+    expect(sharedScript).toContain("resolve_connection_identity()");
+    // The runbook calls validate_connection_identity for ALL three connections.
+    expect(runbook).toContain("validate_connection_identity");
+    expect(runbook).toContain('"$MAINTENANCE_DB_URL" "maintenance"');
+    expect(runbook).toContain('"$SCRATCH_DB_URL" "scratch"');
+    expect(runbook).toContain('"$RESTORE_DB_URL" "restore"');
   });
 
   it("resolve_connection_identity fails closed on NULL:NULL identity", () => {
-    expect(runbook).toContain("NULL:NULL");
-    expect(runbook).toContain(
-      "server identity for",
-    );
-    expect(runbook).toContain(
-      "is NULL, empty, or unresolved",
-    );
+    // The NULL:NULL fail-closed check lives in the shared script.
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
+    expect(sharedScript).toContain("NULL:NULL");
+    expect(sharedScript).toContain("unresolved identity field");
   });
 
   it("resolve_connection_identity fails closed on empty string", () => {
-    expect(runbook).toContain('-z "$server_identity"');
+    // The shared script checks `-z "$field"` for every resolved field.
+    expect(sharedScript).toContain('-z "$field"');
   });
 
   it("resolve_connection_identity fails closed on UNRESOLVED", () => {
-    expect(runbook).toContain('"UNRESOLVED"');
+    // The shared script's fail-closed regex rejects the literal token UNRESOLVED.
+    expect(sharedScript).toContain("UNRESOLVED");
   });
 
   it("mentions Unix-domain socket connections as rejected", () => {
@@ -348,21 +376,24 @@ describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity",
     );
   });
 
-  it("maintenance uses resolve_connection_identity (not inline psql)", () => {
+  it("maintenance uses validate_connection_identity (not inline psql)", () => {
+    expect(runbook).toContain("validate_connection_identity");
     expect(runbook).toContain(
-      'resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance"',
+      '"$MAINTENANCE_DB_URL" "maintenance"',
     );
   });
 
-  it("scratch uses resolve_connection_identity (not inline psql)", () => {
+  it("scratch uses validate_connection_identity (not inline psql)", () => {
+    expect(runbook).toContain("validate_connection_identity");
     expect(runbook).toContain(
-      'resolve_connection_identity "$SCRATCH_DB_URL" "scratch"',
+      '"$SCRATCH_DB_URL" "scratch"',
     );
   });
 
-  it("restore uses resolve_connection_identity (not inline psql)", () => {
+  it("restore uses validate_connection_identity (not inline psql)", () => {
+    expect(runbook).toContain("validate_connection_identity");
     expect(runbook).toContain(
-      'resolve_connection_identity "$RESTORE_DB_URL" "restore"',
+      '"$RESTORE_DB_URL" "restore"',
     );
   });
 
@@ -381,33 +412,49 @@ describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity",
 describe("E5-F07: Server identity for ALL connections", () => {
   it("F07-1: SCRATCH_DB_URL has server identity validation", () => {
     const content = readRunbook();
-    expect(content).toContain("SCRATCH_SERVER_IDENTITY");
-    expect(content).toContain("inet_server_addr");
+    // The runbook calls validate_connection_identity for scratch, passing
+    // ACTUAL_SERVER_IDENTITY as the reference value.
+    expect(content).toContain("validate_connection_identity");
+    expect(content).toContain('"$SCRATCH_DB_URL" "scratch"');
     expect(content).toContain("$ACTUAL_SERVER_IDENTITY");
+    // inet_server_addr lives in the shared helper.
+    expect(readSharedScript()).toContain("inet_server_addr");
   });
 
   it("F07-2: RESTORE_DB_URL has server identity validation", () => {
     const content = readRunbook();
-    expect(content).toContain("RESTORE_SERVER_IDENTITY");
-    expect(content).toMatch(/RESTORE_SERVER_IDENTITY.*ACTUAL_SERVER_IDENTITY/);
+    expect(content).toContain("validate_connection_identity");
+    expect(content).toContain('"$RESTORE_DB_URL" "restore"');
+    // The restore validation passes ACTUAL_SERVER_IDENTITY as reference.
+    expect(content).toContain("$ACTUAL_SERVER_IDENTITY");
   });
 
   it("F07-3: SCRATCH identity mismatch causes exit 1", () => {
     const content = readRunbook();
-    const scratchSection = content.substring(
-      content.indexOf("SCRATCH_SERVER_IDENTITY"),
-      content.indexOf("Scratch DB server identity validated")
-    );
-    expect(scratchSection).toContain("exit 1");
+    // The validate_connection_identity call for scratch is followed by
+    // `|| exit 1`, so any mismatch aborts the runbook. The call spans:
+    //   validate_connection_identity \
+    //     "$SCRATCH_DB_URL" "scratch" \
+    //     ... \
+    //     ... || exit 1
+    const labelIdx = content.indexOf('"$SCRATCH_DB_URL" "scratch"');
+    expect(labelIdx).toBeGreaterThan(-1);
+    // validate_connection_identity appears just before the label line.
+    const beforeLabel = content.substring(Math.max(0, labelIdx - 200), labelIdx);
+    expect(beforeLabel).toContain("validate_connection_identity");
+    // `|| exit 1` appears after the label line (closing the call).
+    const afterLabel = content.substring(labelIdx, labelIdx + 500);
+    expect(afterLabel).toContain("|| exit 1");
   });
 
   it("F07-4: RESTORE identity mismatch causes exit 1", () => {
     const content = readRunbook();
-    const restoreSection = content.substring(
-      content.indexOf("RESTORE_SERVER_IDENTITY"),
-      content.indexOf("Restore DB server identity validated")
-    );
-    expect(restoreSection).toContain("exit 1");
+    const labelIdx = content.indexOf('"$RESTORE_DB_URL" "restore"');
+    expect(labelIdx).toBeGreaterThan(-1);
+    const beforeLabel = content.substring(Math.max(0, labelIdx - 200), labelIdx);
+    expect(beforeLabel).toContain("validate_connection_identity");
+    const afterLabel = content.substring(labelIdx, labelIdx + 500);
+    expect(afterLabel).toContain("|| exit 1");
   });
 });
 
@@ -417,6 +464,7 @@ describe("E5-F07: Server identity for ALL connections", () => {
 
 describe("E5 Runbook — E5-F09: cluster identity via system_identifier", () => {
   const runbook = readRunbook();
+  const sharedScript = readSharedScript();
 
   it("requires E5_EXPECTED_CLUSTER_IDENTIFIER env var", () => {
     expect(runbook).toContain("E5_EXPECTED_CLUSTER_IDENTIFIER");
@@ -439,32 +487,45 @@ describe("E5 Runbook — E5-F09: cluster identity via system_identifier", () => 
   });
 
   it("validates cluster identifier for maintenance connection", () => {
+    // The runbook references ACTUAL/EXPECTED_CLUSTER_IDENTIFIER and calls
+    // validate_connection_identity for maintenance. The mismatch message
+    // lives in the shared helper.
     expect(runbook).toContain("ACTUAL_CLUSTER_IDENTIFIER");
     expect(runbook).toContain("EXPECTED_CLUSTER_IDENTIFIER");
-    expect(runbook).toContain("cluster identifier mismatch");
+    expect(runbook).toContain("validate_connection_identity");
+    expect(runbook).toContain('"$MAINTENANCE_DB_URL" "maintenance"');
+    expect(sharedScript).toContain("cluster mismatch");
   });
 
   it("validates cluster identifier for scratch connection", () => {
-    expect(runbook).toContain("SCRATCH_CLUSTER_IDENTIFIER");
-    expect(runbook).toContain(
-      "scratch DB cluster identifier mismatch",
-    );
+    // The runbook calls validate_connection_identity for scratch, passing
+    // EXPECTED_CLUSTER_IDENTIFIER and ACTUAL_CLUSTER_IDENTIFIER (reference).
+    expect(runbook).toContain("validate_connection_identity");
+    expect(runbook).toContain('"$SCRATCH_DB_URL" "scratch"');
+    expect(runbook).toContain("EXPECTED_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain("ACTUAL_CLUSTER_IDENTIFIER");
+    expect(sharedScript).toContain("cluster mismatch");
   });
 
   it("validates cluster identifier for restore connection", () => {
-    expect(runbook).toContain("RESTORE_CLUSTER_IDENTIFIER");
-    expect(runbook).toContain(
-      "restore DB cluster identifier mismatch",
-    );
+    expect(runbook).toContain("validate_connection_identity");
+    expect(runbook).toContain('"$RESTORE_DB_URL" "restore"');
+    expect(runbook).toContain("EXPECTED_CLUSTER_IDENTIFIER");
+    expect(runbook).toContain("ACTUAL_CLUSTER_IDENTIFIER");
+    expect(sharedScript).toContain("cluster mismatch");
   });
 
   it("fail-closed on unresolved cluster identifier", () => {
-    expect(runbook).toContain(
-      "cluster identifier for",
-    );
-    expect(runbook).toContain(
-      "NULL, empty, or unresolved",
-    );
+    // The shared helper's fail-closed loop rejects any NULL/empty/UNRESOLVED
+    // field — including the cluster identifier — with an `unresolved identity
+    // field` message. The runbook sources this helper for all connections.
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
+    expect(runbook).toContain("validate_connection_identity");
+    expect(runbook).toContain('"$MAINTENANCE_DB_URL" "maintenance"');
+    expect(runbook).toContain('"$SCRATCH_DB_URL" "scratch"');
+    expect(runbook).toContain('"$RESTORE_DB_URL" "restore"');
+    expect(sharedScript).toContain("unresolved identity field");
+    expect(sharedScript).toContain("cluster");
   });
 
   it("validates expected cluster identifier is non-empty", () => {
@@ -480,8 +541,6 @@ describe("E5 Runbook — E5-F09: cluster identity via system_identifier", () => 
 
   it("mentions proxy/pooler/failover as the gap closed by F09", () => {
     expect(runbook).toContain("proxy/pooler/failover");
-    expect(runbook).toContain(
-      "cluster identifier mismatch",
-    );
+    expect(runbook).toContain("source scripts/e5/resolve-identity.sh");
   });
 });

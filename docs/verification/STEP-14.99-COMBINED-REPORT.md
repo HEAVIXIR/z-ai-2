@@ -364,124 +364,29 @@ if [ -z "$EXPECTED_MAINTENANCE_DB_NAME" ] || [ -z "$(echo "$EXPECTED_MAINTENANCE
   exit 1
 fi
 
-# Helper function: resolve server identity (host:port), cluster identifier
-# (system_identifier), database name, and server role (primary/replica) from
-# a connection. Fails closed on NULL/empty/UNRESOLVED for ALL checks.
-# E5-F08: uses COALESCE to convert NULL to 'NULL' literal.
-# E5-F09: resolves system_identifier from pg_control_system().
-# CR-02: also resolves current_database() and pg_is_in_recovery().
-# CR-03: if pg_control_system() permission denied, psql exits non-zero →
-#   command substitution gets 'UNRESOLVED' → return 1 → caller exits.
-resolve_connection_identity() {
-  local db_url="$1"
-  local label="$2"
-  local server_identity cluster_identity db_name is_in_recovery
+# CR-05: Source the shared identity validation helper.
+# Both the runbook and behavioral tests source this SAME file, ensuring
+# tests verify the actual implementation — not a duplicated copy.
+# See: scripts/e5/resolve-identity.sh
+source scripts/e5/resolve-identity.sh
 
-  # E5-F08: resolve host:port with COALESCE for NULL safety
-  server_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
-  server_identity=$(echo "$server_identity" | tr -d '[:space:]')
+# Resolve and validate maintenance connection identity.
+# CR-06: validate_connection_identity checks server, cluster, DB name, AND
+# primary role independently — not just calling resolve and trusting output.
+validate_connection_identity \
+  "$MAINTENANCE_DB_URL" "maintenance" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$EXPECTED_MAINTENANCE_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "" "" || exit 1
 
-  # E5-F08: fail-closed on NULL, empty, whitespace-only, or UNRESOLVED
-  if [ -z "$server_identity" ] || [ "$server_identity" = "UNRESOLVED" ] || [ "$server_identity" = "NULL:NULL" ]; then
-    echo "FATAL: server identity for $label is NULL, empty, or unresolved." >&2
-    echo "  This typically occurs with Unix-domain socket connections where" >&2
-    echo "  inet_server_addr() returns NULL. The E5 runbook requires TCP" >&2
-    echo "  connections with a verifiable server identity." >&2
-    echo "  Resolved identity: '$server_identity'" >&2
-    return 1
-  fi
-
-  # E5-F09: resolve cluster identifier from pg_control_system()
-  # CR-03: if the role lacks permission for pg_control_system(), psql exits
-  # non-zero (ON_ERROR_STOP=1). The 2>/dev/null suppresses stderr, and
-  # the || echo 'UNRESOLVED' fallback triggers → return 1 → caller exits.
-  # Minimum privilege for pg_control_system() in PostgreSQL 17: CONNECT on
-  # the database. No superuser required.
-  cluster_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT system_identifier::text FROM pg_control_system();" 2>/dev/null || echo "UNRESOLVED")
-  cluster_identity=$(echo "$cluster_identity" | tr -d '[:space:]')
-
-  # E5-F09: fail-closed on NULL, empty, or UNRESOLVED cluster identifier
-  if [ -z "$cluster_identity" ] || [ "$cluster_identity" = "UNRESOLVED" ]; then
-    echo "FATAL: cluster identifier for $label is NULL, empty, or unresolved." >&2
-    echo "  Could not retrieve system_identifier from pg_control_system()." >&2
-    echo "  CR-03: This may indicate permission denial (role lacks access to" >&2
-    echo "  pg_control_system function), an unsupported PostgreSQL version, or" >&2
-    echo "  a connection that does not reach a real PostgreSQL backend." >&2
-    echo "  Minimum required privilege: CONNECT on the database (PostgreSQL 17)." >&2
-    return 1
-  fi
-
-  # CR-02: resolve database name independently (not from connection URL)
-  db_name=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT current_database();" 2>/dev/null || echo "UNRESOLVED")
-  db_name=$(echo "$db_name" | tr -d '[:space:]')
-  if [ -z "$db_name" ] || [ "$db_name" = "UNRESOLVED" ]; then
-    echo "FATAL: database name for $label is NULL, empty, or unresolved." >&2
-    return 1
-  fi
-
-  # CR-02: resolve server role (primary vs replica)
-  # pg_is_in_recovery() returns true on standby/replica, false on primary.
-  is_in_recovery=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT pg_is_in_recovery();" 2>/dev/null || echo "UNRESOLVED")
-  is_in_recovery=$(echo "$is_in_recovery" | tr -d '[:space:]')
-  if [ -z "$is_in_recovery" ] || [ "$is_in_recovery" = "UNRESOLVED" ]; then
-    echo "FATAL: server role (pg_is_in_recovery) for $label is unresolved." >&2
-    return 1
-  fi
-
-  # Output all identities separated by '|' for caller to parse
-  # Format: server_identity|cluster_identity|db_name|is_in_recovery
-  echo "${server_identity}|${cluster_identity}|${db_name}|${is_in_recovery}"
-  return 0
-}
-
-# Resolve the actual identities from the maintenance connection.
+# Extract resolved values for cross-checking scratch and restore later
 MAINT_IDENTITIES=$(resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
-# Parse: server_identity|cluster_identity|db_name|is_in_recovery
 ACTUAL_SERVER_IDENTITY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f1)
 ACTUAL_CLUSTER_IDENTIFIER=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f2)
 ACTUAL_MAINTENANCE_DB_NAME=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f3)
 ACTUAL_IS_IN_RECOVERY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f4)
 
-# E5-F03: validate server identity (host:port)
-if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
-  echo "FATAL: server identity mismatch." >&2
-  echo "  Expected (from trusted env): $EXPECTED_SERVER_IDENTITY" >&2
-  echo "  Actual (from connection):   $ACTUAL_SERVER_IDENTITY" >&2
-  echo "  Refusing to proceed — the connection does not point at the expected cluster." >&2
-  exit 1
-fi
-
-# E5-F09: validate cluster identifier (system_identifier from pg_control_system)
-if [ "$ACTUAL_CLUSTER_IDENTIFIER" != "$EXPECTED_CLUSTER_IDENTIFIER" ]; then
-  echo "FATAL: cluster identifier mismatch." >&2
-  echo "  Expected (from trusted env): $EXPECTED_CLUSTER_IDENTIFIER" >&2
-  echo "  Actual (from connection):   $ACTUAL_CLUSTER_IDENTIFIER" >&2
-  echo "  This indicates the connection reached a DIFFERENT PostgreSQL cluster" >&2
-  echo "  than expected — possibly via proxy/pooler/failover routing." >&2
-  echo "  Refusing to proceed — cluster identity is not trusted." >&2
-  exit 1
-fi
-
-# CR-02: validate maintenance database name (independent of connection URL)
-if [ "$ACTUAL_MAINTENANCE_DB_NAME" != "$EXPECTED_MAINTENANCE_DB_NAME" ]; then
-  echo "FATAL: maintenance database name mismatch." >&2
-  echo "  Expected: $EXPECTED_MAINTENANCE_DB_NAME" >&2
-  echo "  Actual:   $ACTUAL_MAINTENANCE_DB_NAME" >&2
-  exit 1
-fi
-
-# CR-02: validate server is primary (read-write) if required
-if [ "$E5_REQUIRE_PRIMARY" = "yes" ] && [ "$ACTUAL_IS_IN_RECOVERY" != "f" ]; then
-  echo "FATAL: server is in recovery mode (replica/standby), not a writable primary." >&2
-  echo "  pg_is_in_recovery() returned: $ACTUAL_IS_IN_RECOVERY" >&2
-  echo "  The E5 runbook requires a writable primary for schema/seed/ALTER operations." >&2
-  exit 1
-fi
-
-echo "Server identity validated: $ACTUAL_SERVER_IDENTITY (matches trusted env)."
-echo "Cluster identifier validated: $ACTUAL_CLUSTER_IDENTIFIER (matches trusted env)."
-echo "Maintenance DB name validated: $ACTUAL_MAINTENANCE_DB_NAME (matches trusted env)."
-echo "Server role validated: primary (pg_is_in_recovery=$ACTUAL_IS_IN_RECOVERY)."
+echo "Maintenance identity validated: server=$ACTUAL_SERVER_IDENTITY, cluster=$ACTUAL_CLUSTER_IDENTIFIER, db=$ACTUAL_MAINTENANCE_DB_NAME, primary=$ACTUAL_IS_IN_RECOVERY"
 
 # --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
 # Extract host and DB name from the maintenance URL WITHOUT printing credentials.
@@ -513,27 +418,15 @@ psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$SCRATCH_DB_
 # --- Verify scratch DB exists and is empty ---
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current_user;"
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
-# --- E5-F07 + E5-F08 + E5-F09 FIX: validate identity for SCRATCH connection ---
-# E5-F08: uses resolve_connection_identity which fails closed on NULL/empty.
-# E5-F09: validates both host:port AND cluster identifier.
-SCRATCH_IDENTITIES=$(resolve_connection_identity "$SCRATCH_DB_URL" "scratch") || exit 1
-SCRATCH_SERVER_IDENTITY="${SCRATCH_IDENTITIES%%|*}"
-SCRATCH_CLUSTER_IDENTIFIER="${SCRATCH_IDENTITIES##*|}"
-if [ "$SCRATCH_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
-  echo "FATAL: scratch DB server identity mismatch." >&2
-  echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
-  echo "  Scratch server:     $SCRATCH_SERVER_IDENTITY" >&2
-  echo "  E5_BASE_URL may point to a different cluster." >&2
-  exit 1
-fi
-if [ "$SCRATCH_CLUSTER_IDENTIFIER" != "$ACTUAL_CLUSTER_IDENTIFIER" ]; then
-  echo "FATAL: scratch DB cluster identifier mismatch." >&2
-  echo "  Maintenance cluster: $ACTUAL_CLUSTER_IDENTIFIER" >&2
-  echo "  Scratch cluster:     $SCRATCH_CLUSTER_IDENTIFIER" >&2
-  echo "  The scratch connection reached a different PostgreSQL cluster." >&2
-  exit 1
-fi
-echo "Scratch DB identity validated: server=$SCRATCH_SERVER_IDENTITY, cluster=$SCRATCH_CLUSTER_IDENTIFIER (matches maintenance)."
+# --- CR-06: validate SCRATCH connection identity independently ---
+# Uses validate_connection_identity which checks server, cluster, DB name,
+# AND primary role — all independently. Fixes the field extraction bug
+# where ${VAR##*|} returned is_in_recovery instead of cluster_identifier.
+validate_connection_identity \
+  "$SCRATCH_DB_URL" "scratch" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$SCRATCH_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "$ACTUAL_SERVER_IDENTITY" "$ACTUAL_CLUSTER_IDENTIFIER" || exit 1
 # Expected: 0 (empty DB)
 
 # --- E5-F01 FIX: pin DATABASE_URL to scratch BEFORE any Prisma command ---
@@ -615,26 +508,14 @@ RESTORE_DB_NAME="heavix_e5_restore_$(date +%Y%m%d_%H%M%S)"
 RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
-# --- E5-F07 + E5-F08 + E5-F09 FIX: validate identity for RESTORE connection ---
-# E5-F08: uses resolve_connection_identity which fails closed on NULL/empty.
-# E5-F09: validates both host:port AND cluster identifier.
-RESTORE_IDENTITIES=$(resolve_connection_identity "$RESTORE_DB_URL" "restore") || exit 1
-RESTORE_SERVER_IDENTITY="${RESTORE_IDENTITIES%%|*}"
-RESTORE_CLUSTER_IDENTIFIER="${RESTORE_IDENTITIES##*|}"
-if [ "$RESTORE_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
-  echo "FATAL: restore DB server identity mismatch." >&2
-  echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
-  echo "  Restore server:      $RESTORE_SERVER_IDENTITY" >&2
-  exit 1
-fi
-if [ "$RESTORE_CLUSTER_IDENTIFIER" != "$ACTUAL_CLUSTER_IDENTIFIER" ]; then
-  echo "FATAL: restore DB cluster identifier mismatch." >&2
-  echo "  Maintenance cluster: $ACTUAL_CLUSTER_IDENTIFIER" >&2
-  echo "  Restore cluster:     $RESTORE_CLUSTER_IDENTIFIER" >&2
-  echo "  The restore connection reached a different PostgreSQL cluster." >&2
-  exit 1
-fi
-echo "Restore DB identity validated: server=$RESTORE_SERVER_IDENTITY, cluster=$RESTORE_CLUSTER_IDENTIFIER (matches maintenance)."
+# --- CR-06: validate RESTORE connection identity independently ---
+# Uses validate_connection_identity which checks server, cluster, DB name,
+# AND primary role — all independently. Fixes the field extraction bug.
+validate_connection_identity \
+  "$RESTORE_DB_URL" "restore" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$RESTORE_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "$ACTUAL_SERVER_IDENTITY" "$ACTUAL_CLUSTER_IDENTIFIER" || exit 1
 
 # --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
 RESTORE_START=$(date +%s)
