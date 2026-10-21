@@ -377,7 +377,7 @@ validate_connection_identity \\
     expect(result.stdout).toContain("VALIDATION_OK");
   });
 
-  it("CR-11-6: 'no' (valid skip) → primary check skipped → succeeds on replica", () => {
+  it("CR-12-1: 'no' on mutating path → REJECTED (fail-closed)", () => {
     const result = runTest(
       { is_in_recovery: { out: "t", exit: 0 } },
       `
@@ -385,11 +385,71 @@ validate_connection_identity \\
   "postgresql://t:t@localhost:5432/postgres" "test" \\
   "10.0.0.5:5432" "6983723456789012345" \\
   "postgres" "no" \\
-  "" "" && echo "VALIDATION_OK"
+  "" "" || echo "CAUGHT_REJECTED"
 `,
     );
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("VALIDATION_OK");
+    expect(result.stdout).toContain("CAUGHT_REJECTED");
+    expect(result.stdout).toContain("not allowed for mutating operations");
+  });
+
+  it("CR-12-2: 'false' on mutating path → REJECTED (fail-closed)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "false" \\
+  "" "" || echo "CAUGHT_REJECTED"
+`);
+    expect(result.stdout).toContain("CAUGHT_REJECTED");
+    expect(result.stdout).toContain("not allowed for mutating operations");
+  });
+
+  it("CR-12-3: '0' on mutating path → REJECTED (fail-closed)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "0" \\
+  "" "" || echo "CAUGHT_REJECTED"
+`);
+    expect(result.stdout).toContain("CAUGHT_REJECTED");
+  });
+
+  it("CR-12-4: 'off' on mutating path → REJECTED (fail-closed)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "off" \\
+  "" "" || echo "CAUGHT_REJECTED"
+`);
+    expect(result.stdout).toContain("CAUGHT_REJECTED");
+  });
+
+  it("CR-12-5: 'NO' (case-insensitive) on mutating path → REJECTED", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "NO" \\
+  "" "" || echo "CAUGHT_REJECTED"
+`);
+    expect(result.stdout).toContain("CAUGHT_REJECTED");
+  });
+
+  it("CR-12-6: 'no' → sentinel NOT created (no mutation runs)", () => {
+    const result = runTest(VALID, `
+validate_connection_identity \\
+  "postgresql://t:t@localhost:5432/postgres" "test" \\
+  "10.0.0.5:5432" "6983723456789012345" \\
+  "postgres" "no" \\
+  "" "" || exit 1
+touch "${join(TMP_DIR, "SENTINEL_RAN")}"
+echo "MUTATING_COMMAND_RAN"
+`);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.sentinelExists).toBe(false);
+    expect(result.stdout).not.toContain("MUTATING_COMMAND_RAN");
   });
 
   it("CR-11-7: 'yes' (valid) on replica → fails (primary required, is replica)", () => {

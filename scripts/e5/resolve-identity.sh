@@ -163,18 +163,28 @@ validate_connection_identity() {
         return 1
     fi
 
-    # 5. CR-06 + CR-11: primary-role requirement is enforced as an INDEPENDENT check.
+    # 5. CR-06 + CR-11 + CR-12: primary-role requirement.
     #    pg_is_in_recovery() returns 'f' for a primary, 't' for a standby.
     #
-    #    CR-11 FIX: The prior `case` statement only checked for affirmative
-    #    values (yes/true/on) and silently fell through for unknown values
-    #    (e.g., "yees", "tru"), effectively disabling the primary guard.
-    #    Now unknown values cause immediate failure (fail-closed).
+    #    CR-11 FIX: Unknown values (e.g., "yees", "tru") cause immediate failure.
     #
-    #    Allowlist for require_primary:
+    #    CR-12 FIX (STEP 15.32): The E5 mutating rehearsal runbook performs
+    #    CREATE DATABASE, schema push, seed, restore, and ALTER operations.
+    #    These are ALL mutating operations that require a writable primary.
+    #    Therefore, for the MUTATING RUNBOOK path, E5_REQUIRE_PRIMARY must
+    #    be affirmative (1|true|yes|on). Negative values (0|false|no|off)
+    #    are REJECTED for the mutating path — they would allow mutating
+    #    operations on a replica, which is unsafe.
+    #
+    #    If a read-only mode is needed in the future, it must be a SEPARATE
+    #    runbook with a structurally isolated control-flow barrier that
+    #    prevents every mutating command. E5_REQUIRE_PRIMARY=no alone is
+    #    NOT a sufficient bypass for mutating operations.
+    #
+    #    Allowlist for require_primary (mutating path):
     #      Affirmative (check primary): 1, true, yes, on (case-insensitive)
-    #      Negative (skip primary check): 0, false, no, off (case-insensitive)
-    #      Any other value → FAIL (return 1) — invalid configuration must not proceed
+    #      Negative (0/false/no/off) → FAIL — mutating path requires primary
+    #      Any other value → FAIL — invalid configuration
     case "${require_primary,,}" in
         1|true|yes|on)
             if [[ "$is_in_recovery" != "f" ]]; then
@@ -184,10 +194,19 @@ validate_connection_identity() {
             fi
             ;;
         0|false|no|off)
-            # Explicitly skipping primary check — legitimate for read-only validation
+            # CR-12: Negative values are REJECTED on the mutating path.
+            # The E5 runbook performs CREATE DATABASE, schema push, seed,
+            # restore, and ALTER — all require a writable primary.
+            printf 'ERROR[%s]: E5_REQUIRE_PRIMARY="%s" is not allowed for mutating operations.\n' \
+                "$label" "$require_primary" >&2
+            printf '  The E5 rehearsal runbook performs CREATE DATABASE, schema push, seed,\n' >&2
+            printf '  restore, and ALTER operations — all require a writable primary.\n' >&2
+            printf '  If read-only mode is needed, use a separate runbook with structural\n' >&2
+            printf '  control-flow barriers that prevent every mutating command.\n' >&2
+            return 1
             ;;
         *)
-            printf 'ERROR[%s]: invalid E5_REQUIRE_PRIMARY value "%s" — must be one of: 1/true/yes/on (require primary) or 0/false/no/off (skip)\n' \
+            printf 'ERROR[%s]: invalid E5_REQUIRE_PRIMARY value "%s" — must be one of: 1/true/yes/on\n' \
                 "$label" "$require_primary" >&2
             return 1
             ;;
