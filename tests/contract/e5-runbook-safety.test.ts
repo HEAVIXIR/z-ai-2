@@ -481,7 +481,7 @@ describe("E5 Runbook — E5-F09: cluster identity via system_identifier", () => 
   it("mentions proxy/pooler/failover as the gap closed by F09", () => {
     expect(runbook).toContain("proxy/pooler/failover");
     expect(runbook).toContain(
-      "system_identifier will differ",
+      "cluster identifier mismatch",
     );
   });
 });

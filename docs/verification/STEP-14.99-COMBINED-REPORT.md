@@ -289,7 +289,7 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# --- E5-F03 + E5-F08 + E5-F09 FIX: fail-closed cluster identity validation ---
+# --- E5-F03 + E5-F08 + E5-F09 + CR-02 FIX: fail-closed cluster identity validation ---
 # DB name alone is insufficient: two PostgreSQL clusters can have a DB with the
 # same name. host:port alone is insufficient when proxy/pooler/failover can
 # route to different backend clusters.
@@ -299,22 +299,34 @@ mkdir -p "$BACKUP_DIR"
 #
 # E5-F09 FIX: host:port does not prove cluster identity when proxy/pooler/failover
 # exists. We add a STABLE CLUSTER IDENTIFIER check using PostgreSQL's
-# `system_identifier` from `pg_control_system()`. This value is unique per
-# PostgreSQL data directory (set at initdb time) and survives reboots. It is
-# the gold standard for distinguishing PostgreSQL clusters.
+# `system_identifier` from `pg_control_system()`.
 #
-# The operator provides BOTH:
+# CR-02 FIX: system_identifier identifies a PostgreSQL cluster lineage / data
+# directory initialization. It is normally SHARED by physical replicas of
+# that cluster. It does NOT establish that the endpoint is the intended
+# ENVIRONMENT or DATABASE, or that the endpoint is the WRITABLE PRIMARY.
+# We therefore also validate:
+#   - current_database() for each connection (independent DB name check)
+#   - pg_is_in_recovery() to ensure the server is a PRIMARY (read-write)
+#     for operations that require write access (schema push, seed, ALTER)
+#   - Expected database names from independently trusted env vars
+#
+# CR-03 FIX: pg_control_system() requires the executing role to have access to
+# the pg_control_system function. In PostgreSQL 17, this is available to all
+# roles by default (it returns control file information). If the role lacks
+# access (e.g., revoked via REVOKE), the query returns an error and the
+# helper fails closed (exit 1). Minimum privilege: CONNECT on the database.
+# No superuser required for pg_control_system() in PostgreSQL 17.
+#
+# The operator provides ALL of:
 #   - E5_EXPECTED_SERVER_IDENTITY: host:port (TCP-level check)
 #   - E5_EXPECTED_CLUSTER_IDENTIFIER: system_identifier from pg_control_system()
-#     (cluster-level check, independent of routing layer)
-#
-# If the infrastructure uses a proxy/pooler, the system_identifier will differ
-# between the expected cluster and an unintended one — even if the proxy presents
-# the same host:port. This closes the E5-F09 gap.
+#   - E5_EXPECTED_MAINTENANCE_DB_NAME: expected maintenance database name
+#   - E5_REQUIRE_PRIMARY: if 'yes', validate pg_is_in_recovery() = false
 #
 # Deployment assumption: direct TCP to a single PostgreSQL 17 instance with no
-# routing intermediary. If proxy/pooler/failover exists, the system_identifier
-# check MUST pass — it is not optional.
+# routing intermediary. If proxy/pooler/failover exists, system_identifier +
+# database name + server role checks MUST ALL pass — none are optional.
 
 # The expected host:port is set by the operator from a trusted source (NOT
 # derived from the connection URL itself).
@@ -325,6 +337,12 @@ EXPECTED_SERVER_IDENTITY="${E5_EXPECTED_SERVER_IDENTITY:?ERROR: E5_EXPECTED_SERV
 #   SELECT system_identifier FROM pg_control_system();
 # This value is set at initdb time and is unique per data directory.
 EXPECTED_CLUSTER_IDENTIFIER="${E5_EXPECTED_CLUSTER_IDENTIFIER:?ERROR: E5_EXPECTED_CLUSTER_IDENTIFIER must be set (obtain via 'SELECT system_identifier FROM pg_control_system();' on the trusted instance)}"
+
+# CR-02: expected maintenance database name (independent of connection URL)
+EXPECTED_MAINTENANCE_DB_NAME="${E5_EXPECTED_MAINTENANCE_DB_NAME:?ERROR: E5_EXPECTED_MAINTENANCE_DB_NAME must be set (e.g., 'postgres')}"
+
+# CR-02: whether the server must be a writable primary (for schema/seed/ALTER ops)
+E5_REQUIRE_PRIMARY="${E5_REQUIRE_PRIMARY:-yes}"
 
 # E5-F08: verify the expected identity itself is non-empty and well-formed.
 if [ -z "$EXPECTED_SERVER_IDENTITY" ] || [ -z "$(echo "$EXPECTED_SERVER_IDENTITY" | tr -d '[:space:]')" ]; then
@@ -340,14 +358,24 @@ if [ -z "$EXPECTED_CLUSTER_IDENTIFIER" ] || [ -z "$(echo "$EXPECTED_CLUSTER_IDEN
   exit 1
 fi
 
-# Helper function: resolve BOTH server identity (host:port) AND cluster identifier
-# (system_identifier) from a connection. Fails closed on NULL/empty/UNRESOLVED.
+# CR-02: verify expected maintenance DB name is non-empty.
+if [ -z "$EXPECTED_MAINTENANCE_DB_NAME" ] || [ -z "$(echo "$EXPECTED_MAINTENANCE_DB_NAME" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_MAINTENANCE_DB_NAME is empty or whitespace-only." >&2
+  exit 1
+fi
+
+# Helper function: resolve server identity (host:port), cluster identifier
+# (system_identifier), database name, and server role (primary/replica) from
+# a connection. Fails closed on NULL/empty/UNRESOLVED for ALL checks.
 # E5-F08: uses COALESCE to convert NULL to 'NULL' literal.
-# E5-F09: also resolves system_identifier from pg_control_system().
+# E5-F09: resolves system_identifier from pg_control_system().
+# CR-02: also resolves current_database() and pg_is_in_recovery().
+# CR-03: if pg_control_system() permission denied, psql exits non-zero →
+#   command substitution gets 'UNRESOLVED' → return 1 → caller exits.
 resolve_connection_identity() {
   local db_url="$1"
   local label="$2"
-  local server_identity cluster_identity
+  local server_identity cluster_identity db_name is_in_recovery
 
   # E5-F08: resolve host:port with COALESCE for NULL safety
   server_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
@@ -364,8 +392,11 @@ resolve_connection_identity() {
   fi
 
   # E5-F09: resolve cluster identifier from pg_control_system()
-  # This is unique per PostgreSQL data directory — set at initdb time.
-  # If proxy/pooler routes to a different backend, this value will differ.
+  # CR-03: if the role lacks permission for pg_control_system(), psql exits
+  # non-zero (ON_ERROR_STOP=1). The 2>/dev/null suppresses stderr, and
+  # the || echo 'UNRESOLVED' fallback triggers → return 1 → caller exits.
+  # Minimum privilege for pg_control_system() in PostgreSQL 17: CONNECT on
+  # the database. No superuser required.
   cluster_identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT system_identifier::text FROM pg_control_system();" 2>/dev/null || echo "UNRESOLVED")
   cluster_identity=$(echo "$cluster_identity" | tr -d '[:space:]')
 
@@ -373,20 +404,43 @@ resolve_connection_identity() {
   if [ -z "$cluster_identity" ] || [ "$cluster_identity" = "UNRESOLVED" ]; then
     echo "FATAL: cluster identifier for $label is NULL, empty, or unresolved." >&2
     echo "  Could not retrieve system_identifier from pg_control_system()." >&2
-    echo "  This may indicate an unsupported PostgreSQL version or a connection" >&2
-    echo "  that does not reach a real PostgreSQL backend." >&2
+    echo "  CR-03: This may indicate permission denial (role lacks access to" >&2
+    echo "  pg_control_system function), an unsupported PostgreSQL version, or" >&2
+    echo "  a connection that does not reach a real PostgreSQL backend." >&2
+    echo "  Minimum required privilege: CONNECT on the database (PostgreSQL 17)." >&2
     return 1
   fi
 
-  # Output both identities separated by '|' for caller to parse
-  echo "${server_identity}|${cluster_identity}"
+  # CR-02: resolve database name independently (not from connection URL)
+  db_name=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT current_database();" 2>/dev/null || echo "UNRESOLVED")
+  db_name=$(echo "$db_name" | tr -d '[:space:]')
+  if [ -z "$db_name" ] || [ "$db_name" = "UNRESOLVED" ]; then
+    echo "FATAL: database name for $label is NULL, empty, or unresolved." >&2
+    return 1
+  fi
+
+  # CR-02: resolve server role (primary vs replica)
+  # pg_is_in_recovery() returns true on standby/replica, false on primary.
+  is_in_recovery=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT pg_is_in_recovery();" 2>/dev/null || echo "UNRESOLVED")
+  is_in_recovery=$(echo "$is_in_recovery" | tr -d '[:space:]')
+  if [ -z "$is_in_recovery" ] || [ "$is_in_recovery" = "UNRESOLVED" ]; then
+    echo "FATAL: server role (pg_is_in_recovery) for $label is unresolved." >&2
+    return 1
+  fi
+
+  # Output all identities separated by '|' for caller to parse
+  # Format: server_identity|cluster_identity|db_name|is_in_recovery
+  echo "${server_identity}|${cluster_identity}|${db_name}|${is_in_recovery}"
   return 0
 }
 
 # Resolve the actual identities from the maintenance connection.
 MAINT_IDENTITIES=$(resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
-ACTUAL_SERVER_IDENTITY="${MAINT_IDENTITIES%%|*}"
-ACTUAL_CLUSTER_IDENTIFIER="${MAINT_IDENTITIES##*|}"
+# Parse: server_identity|cluster_identity|db_name|is_in_recovery
+ACTUAL_SERVER_IDENTITY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f1)
+ACTUAL_CLUSTER_IDENTIFIER=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f2)
+ACTUAL_MAINTENANCE_DB_NAME=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f3)
+ACTUAL_IS_IN_RECOVERY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f4)
 
 # E5-F03: validate server identity (host:port)
 if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
@@ -407,8 +461,27 @@ if [ "$ACTUAL_CLUSTER_IDENTIFIER" != "$EXPECTED_CLUSTER_IDENTIFIER" ]; then
   echo "  Refusing to proceed — cluster identity is not trusted." >&2
   exit 1
 fi
+
+# CR-02: validate maintenance database name (independent of connection URL)
+if [ "$ACTUAL_MAINTENANCE_DB_NAME" != "$EXPECTED_MAINTENANCE_DB_NAME" ]; then
+  echo "FATAL: maintenance database name mismatch." >&2
+  echo "  Expected: $EXPECTED_MAINTENANCE_DB_NAME" >&2
+  echo "  Actual:   $ACTUAL_MAINTENANCE_DB_NAME" >&2
+  exit 1
+fi
+
+# CR-02: validate server is primary (read-write) if required
+if [ "$E5_REQUIRE_PRIMARY" = "yes" ] && [ "$ACTUAL_IS_IN_RECOVERY" != "f" ]; then
+  echo "FATAL: server is in recovery mode (replica/standby), not a writable primary." >&2
+  echo "  pg_is_in_recovery() returned: $ACTUAL_IS_IN_RECOVERY" >&2
+  echo "  The E5 runbook requires a writable primary for schema/seed/ALTER operations." >&2
+  exit 1
+fi
+
 echo "Server identity validated: $ACTUAL_SERVER_IDENTITY (matches trusted env)."
 echo "Cluster identifier validated: $ACTUAL_CLUSTER_IDENTIFIER (matches trusted env)."
+echo "Maintenance DB name validated: $ACTUAL_MAINTENANCE_DB_NAME (matches trusted env)."
+echo "Server role validated: primary (pg_is_in_recovery=$ACTUAL_IS_IN_RECOVERY)."
 
 # --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
 # Extract host and DB name from the maintenance URL WITHOUT printing credentials.
