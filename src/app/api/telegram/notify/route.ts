@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkCsrf } from "@/lib/csrf";
 
 /* ============================================================
    POST /api/telegram/notify
    Telegram bot notification scaffold (Priority #27).
    Sends a message to a Telegram chat via bot API.
    Requires TELEGRAM_BOT_TOKEN env var.
+
+   STEP 15.38 F-006 FIX: CSRF protection added. This route is
+   unauthenticated and performs an external side-effect (sends
+   a message to a Telegram chat). Without CSRF, a cross-site
+   request could spam Telegram chats if the bot token is
+   configured. Now fails closed on missing/mismatched Origin.
    ============================================================ */
 
 export const runtime = "nodejs";
@@ -13,6 +20,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // F-006: fail-closed CSRF (unauthenticated + external side-effect)
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
     const body = await req.json();
     const { chatId, message } = body;
 

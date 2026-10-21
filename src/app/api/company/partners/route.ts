@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,6 +118,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   const body = await req.json().catch(() => ({}));
   const resolved = await resolveCompany(req, body);
   if ("error" in resolved) return resolved.error;

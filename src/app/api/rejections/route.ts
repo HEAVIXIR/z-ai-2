@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,9 +39,18 @@ export async function GET(req: Request) {
   }
 }
 
-/* POST /api/rejections — seller adds message. Body: { rejectionId, message } */
+/* POST /api/rejections — seller adds message. Body: { rejectionId, message }
+ * STEP 15.38 F-006 FIX: CSRF protection added. This route is
+ * unauthenticated and creates DB records (rejectionMessage).
+ * Without CSRF, a cross-site request could inject fake seller
+ * messages. Now fails closed on missing/mismatched Origin.
+ */
 export async function POST(req: Request) {
   try {
+    // F-006: fail-closed CSRF (unauthenticated + DB mutation)
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
     const body = await req.json().catch(() => ({}));
     const id = String(body.rejectionId ?? "");
     const message = String(body.message ?? "").trim();

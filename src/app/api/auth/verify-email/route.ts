@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { VERIFY } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,10 @@ export const dynamic = "force-dynamic";
    Rate-limited: VERIFY preset (10 / hour / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
 */
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     // ── Rate limit (P0-6) ──
     const ip = getClientIp(req);

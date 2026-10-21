@@ -289,26 +289,104 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# --- E5-F03 FIX: target identity assurance beyond current_database() ---
+# --- E5-F03 + E5-F08 + E5-F09 + CR-02 FIX: fail-closed cluster identity validation ---
 # DB name alone is insufficient: two PostgreSQL clusters can have a DB with the
-# same name. We validate the SERVER identity (host:port) against a trusted
-# expected value provided via the environment. This prevents a scenario where
-# a misconfigured URL silently points at a different cluster.
+# same name. host:port alone is insufficient when proxy/pooler/failover can
+# route to different backend clusters.
+#
+# E5-F08 FIX: inet_server_addr() returns NULL for Unix-domain socket connections.
+# COALESCE converts NULL to 'NULL' literal so comparison always fails.
+#
+# E5-F09 FIX: host:port does not prove cluster identity when proxy/pooler/failover
+# exists. We add a STABLE CLUSTER IDENTIFIER check using PostgreSQL's
+# `system_identifier` from `pg_control_system()`.
+#
+# CR-02 FIX: system_identifier identifies a PostgreSQL cluster lineage / data
+# directory initialization. It is normally SHARED by physical replicas of
+# that cluster. It does NOT establish that the endpoint is the intended
+# ENVIRONMENT or DATABASE, or that the endpoint is the WRITABLE PRIMARY.
+# We therefore also validate:
+#   - current_database() for each connection (independent DB name check)
+#   - pg_is_in_recovery() to ensure the server is a PRIMARY (read-write)
+#     for operations that require write access (schema push, seed, ALTER)
+#   - Expected database names from independently trusted env vars
+#
+# CR-03 FIX: pg_control_system() requires the executing role to have access to
+# the pg_control_system function. In PostgreSQL 17, this is available to all
+# roles by default (it returns control file information). If the role lacks
+# access (e.g., revoked via REVOKE), the query returns an error and the
+# helper fails closed (exit 1). Minimum privilege: CONNECT on the database.
+# No superuser required for pg_control_system() in PostgreSQL 17.
+#
+# The operator provides ALL of:
+#   - E5_EXPECTED_SERVER_IDENTITY: host:port (TCP-level check)
+#   - E5_EXPECTED_CLUSTER_IDENTIFIER: system_identifier from pg_control_system()
+#   - E5_EXPECTED_MAINTENANCE_DB_NAME: expected maintenance database name
+#   - E5_REQUIRE_PRIMARY: if 'yes', validate pg_is_in_recovery() = false
+#
+# Deployment assumption: direct TCP to a single PostgreSQL 17 instance with no
+# routing intermediary. If proxy/pooler/failover exists, system_identifier +
+# database name + server role checks MUST ALL pass — none are optional.
+
 # The expected host:port is set by the operator from a trusted source (NOT
 # derived from the connection URL itself).
 EXPECTED_SERVER_IDENTITY="${E5_EXPECTED_SERVER_IDENTITY:?ERROR: E5_EXPECTED_SERVER_IDENTITY must be set (e.g., '10.0.0.5:5432')}"
 
-# Resolve the actual server identity from the maintenance connection.
-ACTUAL_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+# E5-F09: expected cluster identifier from pg_control_system().
+# The operator obtains this by running on the trusted PostgreSQL instance:
+#   SELECT system_identifier FROM pg_control_system();
+# This value is set at initdb time and is unique per data directory.
+EXPECTED_CLUSTER_IDENTIFIER="${E5_EXPECTED_CLUSTER_IDENTIFIER:?ERROR: E5_EXPECTED_CLUSTER_IDENTIFIER must be set (obtain via 'SELECT system_identifier FROM pg_control_system();' on the trusted instance)}"
 
-if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
-  echo "FATAL: server identity mismatch." >&2
-  echo "  Expected (from trusted env): $EXPECTED_SERVER_IDENTITY" >&2
-  echo "  Actual (from connection):   $ACTUAL_SERVER_IDENTITY" >&2
-  echo "  Refusing to proceed — the connection does not point at the expected cluster." >&2
+# CR-02: expected maintenance database name (independent of connection URL)
+EXPECTED_MAINTENANCE_DB_NAME="${E5_EXPECTED_MAINTENANCE_DB_NAME:?ERROR: E5_EXPECTED_MAINTENANCE_DB_NAME must be set (e.g., 'postgres')}"
+
+# CR-02: whether the server must be a writable primary (for schema/seed/ALTER ops)
+E5_REQUIRE_PRIMARY="${E5_REQUIRE_PRIMARY:-yes}"
+
+# E5-F08: verify the expected identity itself is non-empty and well-formed.
+if [ -z "$EXPECTED_SERVER_IDENTITY" ] || [ -z "$(echo "$EXPECTED_SERVER_IDENTITY" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_SERVER_IDENTITY is empty or whitespace-only." >&2
+  echo "  A trusted non-empty identity is required for fail-closed validation." >&2
   exit 1
 fi
-echo "Server identity validated: $ACTUAL_SERVER_IDENTITY (matches trusted env)."
+
+# E5-F09: verify the expected cluster identifier is non-empty.
+if [ -z "$EXPECTED_CLUSTER_IDENTIFIER" ] || [ -z "$(echo "$EXPECTED_CLUSTER_IDENTIFIER" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_CLUSTER_IDENTIFIER is empty or whitespace-only." >&2
+  echo "  A trusted non-empty cluster identifier is required for fail-closed validation." >&2
+  exit 1
+fi
+
+# CR-02: verify expected maintenance DB name is non-empty.
+if [ -z "$EXPECTED_MAINTENANCE_DB_NAME" ] || [ -z "$(echo "$EXPECTED_MAINTENANCE_DB_NAME" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_MAINTENANCE_DB_NAME is empty or whitespace-only." >&2
+  exit 1
+fi
+
+# CR-05: Source the shared identity validation helper.
+# Both the runbook and behavioral tests source this SAME file, ensuring
+# tests verify the actual implementation — not a duplicated copy.
+# See: scripts/e5/resolve-identity.sh
+source scripts/e5/resolve-identity.sh
+
+# Resolve and validate maintenance connection identity.
+# CR-06: validate_connection_identity checks server, cluster, DB name, AND
+# primary role independently — not just calling resolve and trusting output.
+validate_connection_identity \
+  "$MAINTENANCE_DB_URL" "maintenance" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$EXPECTED_MAINTENANCE_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "" "" || exit 1
+
+# Extract resolved values for cross-checking scratch and restore later
+MAINT_IDENTITIES=$(resolve_connection_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
+ACTUAL_SERVER_IDENTITY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f1)
+ACTUAL_CLUSTER_IDENTIFIER=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f2)
+ACTUAL_MAINTENANCE_DB_NAME=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f3)
+ACTUAL_IS_IN_RECOVERY=$(echo "$MAINT_IDENTITIES" | cut -d'|' -f4)
+
+echo "Maintenance identity validated: server=$ACTUAL_SERVER_IDENTITY, cluster=$ACTUAL_CLUSTER_IDENTIFIER, db=$ACTUAL_MAINTENANCE_DB_NAME, primary=$ACTUAL_IS_IN_RECOVERY"
 
 # --- E5-F02 FIX: redacted display (no raw URLs / credentials) ---
 # Extract host and DB name from the maintenance URL WITHOUT printing credentials.
@@ -340,6 +418,15 @@ psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$SCRATCH_DB_
 # --- Verify scratch DB exists and is empty ---
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current_user;"
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+# --- CR-06: validate SCRATCH connection identity independently ---
+# Uses validate_connection_identity which checks server, cluster, DB name,
+# AND primary role — all independently. Fixes the field extraction bug
+# where ${VAR##*|} returned is_in_recovery instead of cluster_identifier.
+validate_connection_identity \
+  "$SCRATCH_DB_URL" "scratch" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$SCRATCH_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "$ACTUAL_SERVER_IDENTITY" "$ACTUAL_CLUSTER_IDENTIFIER" || exit 1
 # Expected: 0 (empty DB)
 
 # --- E5-F01 FIX: pin DATABASE_URL to scratch BEFORE any Prisma command ---
@@ -421,6 +508,14 @@ RESTORE_DB_NAME="heavix_e5_restore_$(date +%Y%m%d_%H%M%S)"
 RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
+# --- CR-06: validate RESTORE connection identity independently ---
+# Uses validate_connection_identity which checks server, cluster, DB name,
+# AND primary role — all independently. Fixes the field extraction bug.
+validate_connection_identity \
+  "$RESTORE_DB_URL" "restore" \
+  "$EXPECTED_SERVER_IDENTITY" "$EXPECTED_CLUSTER_IDENTIFIER" \
+  "$RESTORE_DB_NAME" "$E5_REQUIRE_PRIMARY" \
+  "$ACTUAL_SERVER_IDENTITY" "$ACTUAL_CLUSTER_IDENTIFIER" || exit 1
 
 # --- E5-F04 FIX: reliable exit-code capture under `set -e` ---
 RESTORE_START=$(date +%s)
