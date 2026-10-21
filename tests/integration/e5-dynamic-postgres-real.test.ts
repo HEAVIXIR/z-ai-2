@@ -86,16 +86,25 @@ describe.skipIf(!RUN_TESTS)("E5 Dynamic PostgreSQL 17 — Real Identity Validati
   });
 
   it("CR-08-3: validate_connection_identity succeeds with correct expected values", () => {
-    const result = execSync(
-      `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
-        "${PSQL_DB_URL}" "real-pg-test" \\
-        "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
-        "${expectedDbName}" "yes" \\
-        "" ""'`,
-      { encoding: "utf-8", timeout: 10000, stdio: ["pipe", "pipe", "pipe"] },
-    );
-
-    expect(result).toContain("OK");
+    // validate_connection_identity writes OK to STDERR (not stdout), per the helper's design
+    // The function returns 0 on success, 1 on failure
+    let exitCode = 0;
+    let stderr = "";
+    try {
+      execSync(
+        `bash -c 'source ${HELPER_PATH} && validate_connection_identity \\
+          "${PSQL_DB_URL}" "real-pg-test" \\
+          "${expectedServerIdentity}" "${expectedClusterIdentifier}" \\
+          "${expectedDbName}" "yes" \\
+          "" ""'`,
+        { encoding: "utf-8", timeout: 10000, stdio: ["pipe", "pipe", "pipe"] },
+      );
+    } catch (e) {
+      exitCode = (e as { status?: number }).status ?? 1;
+      stderr = (e as { stderr?: string }).stderr ?? "";
+    }
+    // Success = exit code 0 (the helper writes OK to stderr, returns 0)
+    expect(exitCode).toBe(0);
   });
 
   it("CR-08-4: validate_connection_identity FAILS with wrong database name", () => {
