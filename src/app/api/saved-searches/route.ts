@@ -5,6 +5,7 @@ import { parseBig } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 import { trackError } from "@/lib/error-tracking";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,10 @@ export async function GET() {
  *     throws).
  */
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
@@ -137,6 +142,10 @@ export async function POST(req: Request) {
 
 /* PATCH /api/saved-searches?id=... */
 export async function PATCH(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
@@ -171,6 +180,10 @@ export async function PATCH(req: Request) {
 
 /* DELETE /api/saved-searches?id=... */
 export async function DELETE(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const userId = await getCurrentUserId();
     if (!userId) {

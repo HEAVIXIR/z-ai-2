@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
 import { getStoreUserWithRole } from "@/lib/store-auth";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -173,6 +174,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const body = await req.json();
     const phone = String(body.phone || "").trim();

@@ -4,6 +4,7 @@ import { sendVerificationEmail } from "@/lib/email";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { RESEND } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,10 @@ export const dynamic = "force-dynamic";
    a substitute for the IP-level limit above.)
 */
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     // ── Rate limit (P0-6) — IP-level, before any DB lookup ──
     const ip = getClientIp(req);

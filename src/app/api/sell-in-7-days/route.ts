@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { toEnDigits } from "@/lib/format";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
+import { checkCsrf } from "@/lib/csrf";
 
 /* ============================================================
    /api/sell-in-7-days — public API for the "Sell in 7 Days"
@@ -74,6 +75,10 @@ function isValidMobile(raw: string): boolean {
 
 /* ----------------------------- POST ----------------------------- */
 export async function POST(req: NextRequest) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   let body: any = {};
   try {
     body = await req.json();

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,10 @@ async function authorize(partner: { companyId: string; partnerId: string }) {
 }
 
 export async function PATCH(req: Request, { params }: Args) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -109,6 +114,10 @@ export async function PATCH(req: Request, { params }: Args) {
 }
 
 export async function DELETE(req: Request, { params }: Args) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const existing = await db.companyPartner.findUnique({ where: { id } });

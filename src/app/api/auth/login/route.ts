@@ -7,11 +7,18 @@ import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 import { trackError } from "@/lib/error-tracking";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  // F-006: CSRF defense — fail-closed Origin/Referer verification.
+  // Browser POST without a verifiable same-origin Origin/Referer is
+  // rejected with 403 before any DB / rate-limit / password work.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const ip = getClientIp(req);
     const rl = rateLimit({
