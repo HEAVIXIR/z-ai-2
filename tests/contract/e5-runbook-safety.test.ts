@@ -298,6 +298,83 @@ describe("E5 Runbook — E5-F06: rollback must prove column exists and change oc
   });
 });
 
+/* ============================================================
+   STEP 15.22 — E5-F08: Fail-closed server identity (NULL/empty rejection)
+   ============================================================ */
+
+describe("E5 Runbook — E5-F08: fail-closed on NULL/empty/UNRESOLVED identity", () => {
+  const runbook = readRunbook();
+
+  it("uses COALESCE to convert NULL inet_server_addr to 'NULL' literal", () => {
+    expect(runbook).toContain("COALESCE(inet_server_addr()::text, 'NULL')");
+  });
+
+  it("uses COALESCE to convert NULL inet_server_port to 'NULL' literal", () => {
+    expect(runbook).toContain("COALESCE(inet_server_port()::text, 'NULL')");
+  });
+
+  it("has a resolve_server_identity helper function", () => {
+    expect(runbook).toContain("resolve_server_identity()");
+  });
+
+  it("resolve_server_identity fails closed on NULL:NULL identity", () => {
+    expect(runbook).toContain("NULL:NULL");
+    expect(runbook).toContain(
+      "server identity for",
+    );
+    expect(runbook).toContain(
+      "is NULL, empty, or unresolved",
+    );
+  });
+
+  it("resolve_server_identity fails closed on empty string", () => {
+    expect(runbook).toContain('-z "$identity"');
+  });
+
+  it("resolve_server_identity fails closed on UNRESOLVED", () => {
+    expect(runbook).toContain('"UNRESOLVED"');
+  });
+
+  it("mentions Unix-domain socket connections as rejected", () => {
+    expect(runbook).toContain("Unix-domain socket");
+    expect(runbook).toContain(
+      "inet_server_addr() returns NULL",
+    );
+  });
+
+  it("validates expected identity is non-empty before use", () => {
+    expect(runbook).toContain(
+      "E5_EXPECTED_SERVER_IDENTITY is empty or whitespace-only",
+    );
+  });
+
+  it("maintenance uses resolve_server_identity (not inline psql)", () => {
+    expect(runbook).toContain(
+      'resolve_server_identity "$MAINTENANCE_DB_URL" "maintenance"',
+    );
+  });
+
+  it("scratch uses resolve_server_identity (not inline psql)", () => {
+    expect(runbook).toContain(
+      'resolve_server_identity "$SCRATCH_DB_URL" "scratch"',
+    );
+  });
+
+  it("restore uses resolve_server_identity (not inline psql)", () => {
+    expect(runbook).toContain(
+      'resolve_server_identity "$RESTORE_DB_URL" "restore"',
+    );
+  });
+
+  it("does NOT use raw inet_server_addr() without COALESCE", () => {
+    // The old unsafe pattern: SELECT inet_server_addr() || ':' || inet_server_port()
+    // The new safe pattern uses COALESCE to convert NULL to 'NULL' literal
+    expect(runbook).not.toContain(
+      "SELECT inet_server_addr() || ':' || inet_server_port();",
+    );
+  });
+});
+
 // ============================================================
 // E5-F07: Server identity validation for ALL connections
 // ============================================================

@@ -289,17 +289,55 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-# --- E5-F03 FIX: target identity assurance beyond current_database() ---
+# --- E5-F03 + E5-F08 FIX: fail-closed server identity validation ---
 # DB name alone is insufficient: two PostgreSQL clusters can have a DB with the
 # same name. We validate the SERVER identity (host:port) against a trusted
-# expected value provided via the environment. This prevents a scenario where
-# a misconfigured URL silently points at a different cluster.
+# expected value provided via the environment.
+#
+# E5-F08 FIX: inet_server_addr() returns NULL for Unix-domain socket connections.
+# The concatenation `inet_server_addr() || ':' || inet_server_port()` produces
+# NULL, which psql renders as an empty string. If both maintenance and target
+# connections return empty, the string comparison would pass — bypassing the
+# identity check. We now explicitly reject NULL/empty/whitespace identities.
+
 # The expected host:port is set by the operator from a trusted source (NOT
 # derived from the connection URL itself).
 EXPECTED_SERVER_IDENTITY="${E5_EXPECTED_SERVER_IDENTITY:?ERROR: E5_EXPECTED_SERVER_IDENTITY must be set (e.g., '10.0.0.5:5432')}"
 
+# E5-F08: verify the expected identity itself is non-empty and well-formed.
+if [ -z "$EXPECTED_SERVER_IDENTITY" ] || [ -z "$(echo "$EXPECTED_SERVER_IDENTITY" | tr -d '[:space:]')" ]; then
+  echo "FATAL: E5_EXPECTED_SERVER_IDENTITY is empty or whitespace-only." >&2
+  echo "  A trusted non-empty identity is required for fail-closed validation." >&2
+  exit 1
+fi
+
+# Helper function: resolve server identity from a connection, fail-closed on NULL/empty.
+# E5-F08: uses COALESCE to convert NULL inet_server_addr() to the literal 'NULL'
+# so the comparison always fails against a valid expected identity.
+# Also rejects Unix-domain socket connections (where inet_server_addr() IS NULL).
+resolve_server_identity() {
+  local db_url="$1"
+  local label="$2"
+  local identity
+  # Use COALESCE to convert NULL to 'NULL' literal (never matches a valid host:port)
+  identity=$(psql -t -A -v ON_ERROR_STOP=1 "$db_url" -c "SELECT COALESCE(inet_server_addr()::text, 'NULL') || ':' || COALESCE(inet_server_port()::text, 'NULL');" 2>/dev/null || echo "UNRESOLVED")
+  # Trim whitespace
+  identity=$(echo "$identity" | tr -d '[:space:]')
+  # E5-F08: fail-closed on NULL, empty, whitespace-only, or UNRESOLVED
+  if [ -z "$identity" ] || [ "$identity" = "UNRESOLVED" ] || [ "$identity" = "NULL:NULL" ]; then
+    echo "FATAL: server identity for $label is NULL, empty, or unresolved." >&2
+    echo "  This typically occurs with Unix-domain socket connections where" >&2
+    echo "  inet_server_addr() returns NULL. The E5 runbook requires TCP" >&2
+    echo "  connections with a verifiable server identity." >&2
+    echo "  Resolved identity: '$identity'" >&2
+    return 1
+  fi
+  echo "$identity"
+  return 0
+}
+
 # Resolve the actual server identity from the maintenance connection.
-ACTUAL_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+ACTUAL_SERVER_IDENTITY=$(resolve_server_identity "$MAINTENANCE_DB_URL" "maintenance") || exit 1
 
 if [ "$ACTUAL_SERVER_IDENTITY" != "$EXPECTED_SERVER_IDENTITY" ]; then
   echo "FATAL: server identity mismatch." >&2
@@ -340,11 +378,12 @@ psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$SCRATCH_DB_
 # --- Verify scratch DB exists and is empty ---
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT current_database(), current_user;"
 psql -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
-# --- E5-F07 FIX: validate server identity for SCRATCH connection ---
+# --- E5-F07 + E5-F08 FIX: validate server identity for SCRATCH connection ---
 # The maintenance identity check (E5-F03) only proves the maintenance connection
 # reaches the expected server. SCRATCH_DB_URL is built from E5_BASE_URL — a DIFFERENT
 # env var. If E5_BASE_URL is misconfigured, scratch connection could reach a different cluster.
-SCRATCH_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$SCRATCH_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+# E5-F08: uses resolve_server_identity helper which fails closed on NULL/empty.
+SCRATCH_SERVER_IDENTITY=$(resolve_server_identity "$SCRATCH_DB_URL" "scratch") || exit 1
 if [ "$SCRATCH_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
   echo "FATAL: scratch DB server identity mismatch." >&2
   echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
@@ -434,8 +473,9 @@ RESTORE_DB_NAME="heavix_e5_restore_$(date +%Y%m%d_%H%M%S)"
 RESTORE_DB_URL="${E5_BASE_URL}/${RESTORE_DB_NAME}"
 
 psql -v ON_ERROR_STOP=1 "$MAINTENANCE_DB_URL" -c "CREATE DATABASE \"$RESTORE_DB_NAME\";"
-# --- E5-F07 FIX: validate server identity for RESTORE connection ---
-RESTORE_SERVER_IDENTITY=$(psql -t -A -v ON_ERROR_STOP=1 "$RESTORE_DB_URL" -c "SELECT inet_server_addr() || ':' || inet_server_port();" 2>/dev/null || echo "UNRESOLVED")
+# --- E5-F07 + E5-F08 FIX: validate server identity for RESTORE connection ---
+# E5-F08: uses resolve_server_identity helper which fails closed on NULL/empty.
+RESTORE_SERVER_IDENTITY=$(resolve_server_identity "$RESTORE_DB_URL" "restore") || exit 1
 if [ "$RESTORE_SERVER_IDENTITY" != "$ACTUAL_SERVER_IDENTITY" ]; then
   echo "FATAL: restore DB server identity mismatch." >&2
   echo "  Maintenance server: $ACTUAL_SERVER_IDENTITY" >&2
