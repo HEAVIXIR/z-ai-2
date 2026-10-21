@@ -25,15 +25,34 @@ This document supersedes the STEP 14.99 report. It incorporates all 8 correction
 
 **Correction #8 applied:** Prior report said "0 open PRs". This was imprecise — PR #69 (this documentation PR) is open. Corrected: **1 open PR** (PR #69, documentation only). 0 stale/security PRs.
 
-**Correction #7 applied:** CI evidence for PR #69 head `5ab3d35`:
+**Correction #7 applied:** CI evidence for PR #69 head `032ddb7`:
 ```
-GET /commits/5ab3d356ee8f66ae478c4a7d2eb5cb896fc67bcb/check-runs
+GET /commits/032ddb7ae06744999a1e924a5da156e915923063/check-runs
 → verify: completed/success
 → audit-transaction: completed/success
 → phase-tests: completed/success
 → total: 3
 ```
-All 3 required checks confirmed SUCCESS on the exact head SHA `5ab3d35`.
+All 3 required checks confirmed SUCCESS on the exact head SHA `032ddb7`.
+
+
+
+## A.1.1 Security Scope — UNVERIFIED Attack Surfaces
+
+The PASS findings in this report are limited to the specific controls and files listed in the reviewed-path tables. They are **not** a comprehensive application security audit and must not be represented as proof that no vulnerabilities remain.
+
+| Attack surface | Status | Scope gap |
+|---|---|---|
+| File upload security | UNVERIFIED | Upload endpoints, MIME/magic-byte validation, path traversal, malware scanning and quotas not reviewed |
+| Rate limiting / brute force | UNVERIFIED | Login, registration, AI, messaging and upload throttling not reviewed |
+| CSRF protection | UNVERIFIED | CSRF controls for state-changing requests not reviewed |
+| XSS (stored/reflected) | UNVERIFIED | Output encoding and sanitization outside the reviewed paths not reviewed |
+| SQL injection beyond PageBuilder | UNVERIFIED | Other query paths not reviewed |
+| Authentication session management | UNVERIFIED | Rotation, expiry, revocation and fixation controls not reviewed |
+| Secrets / environment exposure | UNVERIFIED | Repository and client-bundle secret exposure not comprehensively scanned |
+| Dependency vulnerabilities | UNVERIFIED | Dependency audit not performed as part of this review |
+
+Use only this scoped statement: **“Reviewed security paths PASS; the attack surfaces listed above remain UNVERIFIED.”**
 
 ## A.2 Security Review — Independent Re-verification (READ-ONLY, code read directly)
 
@@ -560,7 +579,7 @@ PRODUCTION RELEASE — NO-GO
 | # | Criterion | Status |
 |---|---|---|
 | 1 | Live HEAD + status recorded | ✅ DONE (main 3c3a186, 1 open PR #69) |
-| 2 | CI success on current commit | ✅ DONE (main 3/3; PR #69 head 5ab3d35: 3/3) |
+| 2 | CI success on current commit | ✅ DONE (main 3/3; PR #69 head 032ddb7: 3/3) |
 | 3 | Independent authorized review | ⏳ PR #69 awaiting dellk00k (PR #68 merged) |
 | 4 | PR #61 cleanup + setup defects resolved | ✅ DONE (merged) |
 | 5 | PR #62 inventory + fallbacks verified | ✅ DONE (merged) |
@@ -568,7 +587,7 @@ PRODUCTION RELEASE — NO-GO
 | 7 | Order/Payment contract tests verified | ✅ DONE (CI confirms) |
 | 8 | Backup/Restore rehearsed | ❌ BLOCKED (no PostgreSQL, runbook ready) |
 | 9 | Migration rollback tested | ❌ NOT STARTED (blocked on E5) |
-| 10 | Security + release checklist clear | ✅ DONE (all CRITICAL/HIGH fixed, negative tests present) |
+| 10 | Security + release checklist clear | ✅ DONE (11 reviewed security paths scoped PASS; 8 attack surfaces UNVERIFIED) |
 
 **8/10 met. 2/10 outstanding** (criteria 8 + 9 blocked on E5 PostgreSQL environment).
 
@@ -582,7 +601,7 @@ PRODUCTION RELEASE — NO-GO
 | #4 (pg_dump exit/checksum/stderr) | §B.2.3: `set -euo pipefail`, exit check, sha256sum, stderr capture, `-Fc` format |
 | #5 (pre/post reconciliation) | §B.2.5: deterministic row counts, PK check, FK validation, extensions, grants |
 | #6 (rollback not complete strategy) | §B.2.6: scoped to scratch DB, expand/contract documented, separate baseline retained |
-| #7 (CI evidence by exact SHA) | §A.1: check-runs on `5ab3d35` → 3/3 success confirmed |
+| #7 (CI evidence by exact SHA) | §A.1: check-runs on `032ddb7` → 3/3 success confirmed |
 | #8 (baseline wording) | §A.1: corrected to "1 open PR (PR #69 documentation), 0 stale/security" |
 
 ## Next Authorized Action
@@ -592,4 +611,4 @@ PRODUCTION RELEASE — NO-GO
 3. **After E5 PASS**: Phase B implementation (dual-read/dual-write)
 4. **Phase B-E**: sequential, each gated on prior phase + E5
 
-**No code changes authorized until E5 environment is available.** Security review confirms no code defects — the only blocker is infrastructure (PostgreSQL).
+**No code changes authorized until E5 environment is available.** Security review is scoped only to the listed paths; it does not establish that the application has zero vulnerabilities. File upload, rate limiting, CSRF, XSS, SQL injection beyond PageBuilder, session management, secrets exposure, and dependency vulnerabilities remain UNVERIFIED. E5 is separately BLOCKED because no PostgreSQL rehearsal has been executed.
