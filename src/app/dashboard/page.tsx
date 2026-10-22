@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { toFa, faDate, formatCompactPrice } from "@/lib/format";
 import { generateRecommendations, REASON_LABEL_FA, type RecommendationReason } from "@/lib/recommendations";
+import { getUserRoleWithFallback } from "@/lib/authorization/role-shim";
 import EmailVerificationWarning from "./EmailVerificationWarning";
 import DashboardRecommendations from "./DashboardRecommendations";
 import DashboardNav from "@/components/dashboard/DashboardNav";
@@ -57,7 +58,11 @@ export default async function UserDashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const role = (user.role || "BUYER").toUpperCase();
+  // STEP 15.40 Phase B (§3.3 display-read migration): use the role-shim
+  // to resolve the effective display role. Server component — async OK.
+  // The `user` object is passed so the shim can read `user.role` for the
+  // legacy fallback without an extra DB round-trip.
+  const role = await getUserRoleWithFallback(user.id, user);
   const roleLabel = ROLE_LABEL[role] ?? role;
   const statusLabel = STATUS_LABEL[user.status] ?? user.status;
   const daysLeft = daysRemaining(user.verificationDeadline);

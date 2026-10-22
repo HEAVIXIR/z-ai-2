@@ -89,6 +89,14 @@ export function UserDetailDrawer({
                 <span className="truncate font-mono">{user.email}</span>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {/* STEP 15.40 Phase B (§3.3): this is a CLIENT component —
+                    cannot await getUserRoleWithFallback(). During Phase B,
+                    the dual-write at /api/admin/users/[id] keeps User.role
+                    in sync with the canonical UserRole, so reading
+                    user.role here yields the same value as the shim would.
+                    After Phase D cutover (User.role column dropped), this
+                    MUST be migrated to receive `role` from a parent server
+                    component via props. */}
                 <RoleBadge role={user.role} />
                 <StatusBadge status={user.status} />
               </div>

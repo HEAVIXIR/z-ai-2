@@ -182,6 +182,11 @@ function EditUserDialog({ user, trigger, externalOpen, externalOnOpenChange }: {
     setInternalOpen(v);
   };
   const [name, setName] = React.useState(user.name ?? '');
+  // STEP 15.40 Phase B (§3.3): this is a CLIENT component — cannot await
+  // getUserRoleWithFallback(). During Phase B, the dual-write at
+  // /api/admin/users/[id] keeps User.role in sync with the canonical
+  // UserRole, so seeding local state from user.role is correct. After
+  // Phase D cutover, the parent must pass the shim-resolved role in.
   const [role, setRole] = React.useState(user.role);
   const [status, setStatus] = React.useState(user.status);
   const updateUser = useUpdateUser();
@@ -463,7 +468,14 @@ export function UsersSection() {
                         </div>
                       </TableCell>
                       <TableCell className="py-2 font-mono text-xs">{user.email}</TableCell>
-                      <TableCell className="py-2"><RoleBadge role={user.role} /></TableCell>
+                      <TableCell className="py-2">
+                        {/* STEP 15.40 Phase B (§3.3): CLIENT component —
+                            reads user.role directly. Dual-write keeps it
+                            in sync with canonical UserRole during Phase B.
+                            After Phase D cutover, parent must pass the
+                            shim-resolved role via props. */}
+                        <RoleBadge role={user.role} />
+                      </TableCell>
                       <TableCell className="py-2"><StatusBadge status={user.status} /></TableCell>
                       <TableCell className="py-2 text-xs text-muted-foreground">
                         {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'never'}

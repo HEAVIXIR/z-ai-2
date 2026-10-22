@@ -1,13 +1,17 @@
 /**
  * HEAVIX — Phase A: Additive RBAC Role Helper
  *
- * Document: docs/phase3/RBAC-MIGRATION-DESIGN.md §2.1
+ * Document: docs/phase3/RBAC-MIGRATION-DESIGN.md §2.1 + STEP 15.40 addendum §REVISION-2
  * Step: STEP 14.95 Phase A (owner-authorized, additive only)
+ *       STEP 15.40 Phase B (added getUserPrimaryRoleWithStatus — REVISION-2)
  *
  * Purpose: A single, fail-closed read helper for the UserRole join
  * table. All Phase B/D consumers will import from here once the
  * migration proceeds. In Phase A, this file is ADDITIVE — no
- * existing call sites are modified.
+ * existing call sites are modified. Phase B adds the
+ * status-discriminating variant `getUserPrimaryRoleWithStatus()`
+ * for the role-shim to distinguish "no UserRole rows" (legitimate
+ * fallback to legacy) from "DB query threw" (do NOT consult legacy).
  *
  * Fail-closed contract:
  *   - null/undefined userId → "BUYER" (safest default)
@@ -26,6 +30,13 @@
  *
  * This ordering matches prisma/seed-rbac.ts which seeds exactly
  * these 5 role keys with nameFa/nameEn labels.
+ *
+ * REVISION-4 clarification: ROLE_PRECEDENCE determines DISPLAY
+ * priority when a user has multiple roles. It is NOT a permission
+ * hierarchy — authorization uses the full permission set via
+ * getUserPermissions(), not the "primary" role. A user with both
+ * MODERATOR and BUYER roles sees "BUYER" as their primary (display)
+ * but has all MODERATOR permissions.
  */
 
 import { db } from "@/lib/db";
@@ -69,6 +80,54 @@ export async function getUserPrimaryRole(
   } catch (err) {
     console.error("[user-roles] getUserPrimaryRole failed:", err);
     return "BUYER"; // fail-closed on DB error
+  }
+}
+
+/**
+ * STEP 15.40 Phase B (REVISION-2): Status-discriminating variant.
+ *
+ * Same fail-closed semantics as `getUserPrimaryRole`, but returns a
+ * status enum that lets the role-shim distinguish:
+ *   - "FOUND"    → user has ≥1 UserRole row(s); `role` is the primary key
+ *   - "EMPTY"    → user has ZERO UserRole rows (legitimate — fall back
+ *                  to legacy `User.role` column during migration window)
+ *   - "DB_ERROR" → the `userRole.findMany` query threw (do NOT consult
+ *                  legacy — DB is down, would also fail)
+ *
+ * The returned `role` is always "BUYER" when status is "EMPTY" or
+ * "DB_ERROR" (fail-closed default). It is the resolved primary key
+ * when status is "FOUND".
+ *
+ * @param userId  The user to look up. Null/undefined → { BUYER, EMPTY }.
+ * @returns       { role, status }. Never throws.
+ */
+export type RoleLookupStatus = "FOUND" | "EMPTY" | "DB_ERROR";
+
+export async function getUserPrimaryRoleWithStatus(
+  userId: string | null | undefined,
+): Promise<{ role: string; status: RoleLookupStatus }> {
+  if (!userId) return { role: "BUYER", status: "EMPTY" };
+  try {
+    const rows = await db.userRole.findMany({
+      where: { userId },
+      select: { role: { select: { key: true } } },
+    });
+    if (rows.length === 0) return { role: "BUYER", status: "EMPTY" };
+    const keys = rows.map((r) => r.role.key);
+    // Pick highest-precedence role present
+    let primary: string | undefined;
+    for (const k of ROLE_PRECEDENCE) {
+      if (keys.includes(k)) {
+        primary = k;
+        break;
+      }
+    }
+    // Unknown role key — return the first one (never escalate)
+    if (!primary) primary = keys[0] ?? "BUYER";
+    return { role: primary, status: "FOUND" };
+  } catch (err) {
+    console.error("[user-roles] getUserPrimaryRoleWithStatus failed:", err);
+    return { role: "BUYER", status: "DB_ERROR" };
   }
 }
 
