@@ -227,11 +227,12 @@ describe("STEP 15.51 — CI Workflow Verification (no DB needed)", () => {
     expect(content).toContain("DRYRUN_DATABASE_URL");
   });
 
-  it("SQL script uses env var for password (not hard-coded)", () => {
+  it("SQL script uses psql variable for password (not hard-coded)", () => {
     const content = readFileSync("scripts/rbac-create-readonly-role.sql", "utf-8");
-    expect(content).toContain("current_setting('DRYRUN_RO_PASSWORD'");
+    expect(content).toContain(":'dryrun_password'");
     // CR-15.51-04: no hard-coded password in SQL
     expect(content).not.toContain("dryrun_ro_password");
+    expect(content).not.toContain("current_setting");
   });
 
   it("SQL script explicitly REVOKEs write privileges", () => {

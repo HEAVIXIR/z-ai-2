@@ -15,11 +15,8 @@ BEGIN
 END $$;
 
 -- CR-15.51-04: Password from psql variable :dryrun_password
--- If the variable is not provided, generate a random one
-CREATE ROLE heavix_dryrun_ro LOGIN PASSWORD COALESCE(
-  :'dryrun_password',
-  'ci_random_' || md5(random()::text)
-);
+-- psql variable substitution: :'var_name' produces a quoted string literal
+CREATE ROLE heavix_dryrun_ro LOGIN PASSWORD :'dryrun_password';
 
 -- Grant CONNECT on the database
 GRANT CONNECT ON DATABASE heavix_test TO heavix_dryrun_ro;
