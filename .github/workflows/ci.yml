@@ -74,6 +74,14 @@ jobs:
             -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
+      - name: Phase C dry-run gate (STEP 15.52 — read-only role, BEFORE integration tests)
+        env:
+          # CR-15.51-01: Use the read-only role, NOT the superuser
+          DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
+        run: |
+          # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
+          # This ensures the read-only invariant is not affected by concurrent test mutations.
+          DATABASE_URL="$DRYRUN_DATABASE_URL" bunx tsx scripts/rbac-gate-ci.ts
       - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
       - name: Integration — readonly-when-concurrency-real
@@ -90,13 +98,6 @@ jobs:
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
         run: bunx vitest run tests/integration/*.test.ts
-      - name: Phase C dry-run (STEP 15.51 — read-only role, fail-closed gate)
-        env:
-          # CR-15.51-01: Use the read-only role, NOT the superuser
-          DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
-        run: |
-          # CR-15.51-01: Run gate-ci.ts with the read-only role
-          DATABASE_URL="$DRYRUN_DATABASE_URL" bunx tsx scripts/rbac-gate-ci.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests

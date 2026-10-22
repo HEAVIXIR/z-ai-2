@@ -29,8 +29,11 @@ describe.skipIf(!RUN_TESTS)(
 
     // Helper: run psql as the read-only role
     function psqlRO(sql: string): string {
-      // CR-15.51-04: Use the CI-generated password from DRYUN_RO_PW env var
-      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
+      // CR-15.52-02: NO static fallback — fail explicitly if DRYUN_RO_PW is absent
+      const pw = process.env.DRYUN_RO_PW;
+      if (!pw) {
+        throw new Error("DRYUN_RO_PW environment variable is not set — cannot authenticate as read-only role");
+      }
       // Use PGPASSWORD env var instead of URL (avoids shell escaping issues)
       return execSync(`psql -h localhost -U heavix_dryrun_ro -d heavix_test -t -A -c "${sql.replace(/"/g, '\\"')}"`, {
         encoding: "utf-8",
@@ -161,7 +164,11 @@ describe.skipIf(!RUN_TESTS)(
   "STEP 15.51 — Isolated Read-Only Dry-Run (CR-15.51-02)",
   () => {
     it("Dry-run exits 0 with valid gate under read-only role", () => {
-      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
+      // CR-15.52-02: NO static fallback — fail explicitly if DRYUN_RO_PW is absent
+      const pw = process.env.DRYUN_RO_PW;
+      if (!pw) {
+        throw new Error("DRYUN_RO_PW environment variable is not set — cannot authenticate as read-only role");
+      }
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
       let output = "";
       let exitCode = 0;
