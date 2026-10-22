@@ -29,12 +29,13 @@ describe.skipIf(!RUN_TESTS)(
 
     // Helper: run psql as the read-only role
     function psqlRO(sql: string): string {
-      // The password is set by the CI workflow as env var DRYUN_RO_PW
+      // CR-15.51-04: Use the CI-generated password from DRYUN_RO_PW env var
       const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
-      const url = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test`;
-      return execSync(`psql "${url}" -t -A -c "${sql.replace(/"/g, '\\"')}"`, {
+      // Use PGPASSWORD env var instead of URL (avoids shell escaping issues)
+      return execSync(`psql -h localhost -U heavix_dryrun_ro -d heavix_test -t -A -c "${sql.replace(/"/g, '\\"')}"`, {
         encoding: "utf-8",
         timeout: 10000,
+        env: { ...process.env, PGPASSWORD: pw },
       }).trim();
     }
 
@@ -47,9 +48,13 @@ describe.skipIf(!RUN_TESTS)(
     }
 
     beforeAll(() => {
-      // Ensure role exists (create with known password for testing)
+      // CR-15.51-04: Use the same password as the CI workflow.
+      // In CI, DRYUN_RO_PW is set via GITHUB_ENV by the "Create read-only PostgreSQL role" step.
+      // In local dev, it falls back to a known value (no PG locally → tests skip).
+      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
+      // Recreate the role to ensure the password matches what we'll use
       execSync(
-        `DRYRUN_RO_PASSWORD=${process.env.DRYUN_RO_PW || "dryrun_ro_password"} PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql`,
+        `DRYRUN_RO_PASSWORD="${pw}" PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql`,
         { encoding: "utf-8", timeout: 30000 },
       );
     });
@@ -166,7 +171,6 @@ describe.skipIf(!RUN_TESTS)(
     it("Dry-run exits 0 with valid gate under read-only role", () => {
       const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
-
       let output = "";
       let exitCode = 0;
       try {
