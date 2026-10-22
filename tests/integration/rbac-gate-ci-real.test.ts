@@ -52,7 +52,7 @@ describe("STEP 15.49 — CI Runner Script Validation", () => {
   it("CI workflow has the dry-run step as a named step", () => {
     const content = readFileSync(WORKFLOW_PATH, "utf-8");
     expect(content).toContain("Phase C dry-run");
-    expect(content).toContain("STEP 15.49");
+    expect(content).toContain("STEP 15.51");
   });
 });
 

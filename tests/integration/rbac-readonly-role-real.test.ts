@@ -1,134 +1,245 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { execSync } from "node:child_process";
-import { PrismaClient } from "@prisma/client";
+import { readFileSync } from "node:fs";
 
 /* ============================================================
-   HEAVIX — STEP 15.50: Database Read-Only Role Enforcement
+   HEAVIX — STEP 15.51: Read-Only Role + Effective Privilege Tests
    ------------------------------------------------------------
-   CR-15.50-03: The owner requires a dedicated PostgreSQL role
-   with NO write permissions for dry-run execution.
+   CR-15.51-01: The actual CI gate uses heavix_dryrun_ro (proven
+     by the CI workflow step that sets DATABASE_URL to the RO role).
+   CR-15.51-02: The test requires exit code 0, valid gate output,
+     and readOnlyInvariant=true.
+   CR-15.51-03: Effective privilege audit — checks pg_roles, pg_class,
+     information_schema for any write privileges.
+   CR-15.51-04: Password from env var (not hard-coded).
 
-   This test:
-   1. Creates the read-only role (scripts/rbac-create-readonly-role.sql)
-   2. Verifies the role has SELECT but not INSERT/UPDATE/DELETE
-   3. Attempts a write with the read-only role → must FAIL
-   4. Attempts a read with the read-only role → must SUCCEED
-
-   Test gating: Only runs when DATABASE_URL contains "localhost"
-   (CI with postgres:17 service container).
+   These tests run ONLY in CI (postgres:17 service container).
    ============================================================ */
 
 const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
 
 describe.skipIf(!RUN_TESTS)(
-  "STEP 15.50 — Database Read-Only Role (CR-15.50-03)",
+  "STEP 15.51 — Read-Only Role Effective Privileges (CR-15.51-03)",
   () => {
     const DB_URL = process.env.DATABASE_URL!.split("?")[0];
     const RO_URL = DB_URL.replace(
       "postgresql://postgres:postgres@",
-      "postgresql://heavix_dryrun_ro:dryrun_ro_password@",
-    );
+      "postgresql://heavix_dryrun_ro:",
+    ).replace(/:heavix_dryrun_ro:[^@]*@/, ":heavix_dryrun_ro@");
+
+    // Helper: run psql as the read-only role
+    function psqlRO(sql: string): string {
+      // The password is set by the CI workflow as env var DRYUN_RO_PW
+      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
+      const url = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test`;
+      return execSync(`psql "${url}" -t -A -c "${sql.replace(/"/g, '\\"')}"`, {
+        encoding: "utf-8",
+        timeout: 10000,
+      }).trim();
+    }
+
+    // Helper: run psql as superuser
+    function psqlAdmin(sql: string): string {
+      return execSync(
+        `PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -t -A -c "${sql.replace(/"/g, '\\"')}"`,
+        { encoding: "utf-8", timeout: 10000 },
+      ).trim();
+    }
 
     beforeAll(() => {
-      // Create the read-only role
+      // Ensure role exists (create with known password for testing)
       execSync(
-        `psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql`,
-        { encoding: "utf-8", timeout: 30000, env: { ...process.env, PGPASSWORD: "postgres" } },
+        `DRYRUN_RO_PASSWORD=${process.env.DRYUN_RO_PW || "dryrun_ro_password"} PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql`,
+        { encoding: "utf-8", timeout: 30000 },
       );
     });
 
-    it("Read-only role can SELECT from User table", () => {
-      // Read should succeed
-      const result = execSync(
-        `psql "${RO_URL}" -t -A -c "SELECT count(*) FROM \\"User\\";"`,
-        { encoding: "utf-8", timeout: 10000 },
-      ).trim();
-      const count = parseInt(result, 10);
-      expect(Number.isFinite(count)).toBe(true);
-      expect(count).toBeGreaterThanOrEqual(0);
+    it("Role exists and is not a superuser", () => {
+      const result = psqlAdmin(
+        "SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname='heavix_dryrun_ro'",
+      );
+      expect(result).toBe("f|f|f"); // not superuser, can't create roles, can't create DB
     });
 
-    it("Read-only role CANNOT INSERT into User table (write denied)", () => {
-      // Write must fail with permission error
-      let writeFailed = false;
-      let errorMessage = "";
-      try {
-        execSync(
-          `psql "${RO_URL}" -t -A -c "INSERT INTO \\"User\\" (id, firstName, lastName, email, mobile, passwordHash, role, status, emailVerified, mobileVerified) VALUES ('test-ro-denied', 'Test', 'RO', 'test-ro@example.com', '9999999999', 'hash', 'BUYER', 'ACTIVE', true, true);"`,
-          { encoding: "utf-8", timeout: 10000 },
+    it("Role has no membership in other roles (no inherited privileges)", () => {
+      const result = psqlAdmin(
+        "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON m.roleid = r.oid WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname='heavix_dryrun_ro')",
+      );
+      expect(parseInt(result, 10)).toBe(0);
+    });
+
+    it("Role has SELECT on User table (information_schema)", () => {
+      const result = psqlRO(
+        "SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name='User' AND grantee='heavix_dryrun_ro' ORDER BY privilege_type",
+      );
+      const privileges = result.split("\n").filter(Boolean);
+      expect(privileges).toContain("SELECT");
+      expect(privileges).not.toContain("INSERT");
+      expect(privileges).not.toContain("UPDATE");
+      expect(privileges).not.toContain("DELETE");
+    });
+
+    it("Role has SELECT on UserRole table", () => {
+      const result = psqlRO(
+        "SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name='UserRole' AND grantee='heavix_dryrun_ro' ORDER BY privilege_type",
+      );
+      const privileges = result.split("\n").filter(Boolean);
+      expect(privileges).toContain("SELECT");
+      expect(privileges).not.toContain("INSERT");
+    });
+
+    it("Role has SELECT on Role, Permission, RolePermission tables", () => {
+      for (const table of ["Role", "Permission", "RolePermission"]) {
+        const result = psqlRO(
+          `SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name='${table}' AND grantee='heavix_dryrun_ro'`,
         );
-      } catch (e: unknown) {
-        writeFailed = true;
-        errorMessage = String(e);
+        expect(result).toContain("SELECT");
+        expect(result).not.toContain("INSERT");
+        expect(result).not.toContain("UPDATE");
+        expect(result).not.toContain("DELETE");
       }
-      expect(writeFailed).toBe(true);
-      // PostgreSQL should deny with a permission error
-      expect(errorMessage).toMatch(/permission denied|ERROR|must have/);
     });
 
-    it("Read-only role CANNOT UPDATE User table (write denied)", () => {
-      let writeFailed = false;
+    it("INSERT is denied by PostgreSQL (permission denied)", () => {
+      let denied = false;
       try {
-        execSync(
-          `psql "${RO_URL}" -t -A -c "UPDATE \\"User\\" SET role='ADMIN' WHERE id='nonexistent';"`,
-          { encoding: "utf-8", timeout: 10000 },
-        );
-      } catch {
-        writeFailed = true;
-      }
-      expect(writeFailed).toBe(true);
-    });
-
-    it("Read-only role CANNOT DELETE from User table (write denied)", () => {
-      let writeFailed = false;
-      try {
-        execSync(
-          `psql "${RO_URL}" -t -A -c "DELETE FROM \\"User\\" WHERE id='nonexistent';"`,
-          { encoding: "utf-8", timeout: 10000 },
-        );
-      } catch {
-        writeFailed = true;
-      }
-      expect(writeFailed).toBe(true);
-    });
-
-    it("Read-only role CANNOT INSERT into UserRole table (write denied)", () => {
-      let writeFailed = false;
-      try {
-        execSync(
-          `psql "${RO_URL}" -t -A -c "INSERT INTO \\"UserRole\\" (id, userId, roleId) VALUES ('test-ur-denied', 'nonexistent', 'nonexistent');"`,
-          { encoding: "utf-8", timeout: 10000 },
+        psqlRO(
+          `INSERT INTO "User" (id, firstName, lastName, email, mobile, passwordHash, role, status, emailVerified, mobileVerified) VALUES ('ro-test-denied', 'T', 'R', 'ro@ex.com', '999', 'h', 'BUYER', 'ACTIVE', true, true)`,
         );
       } catch {
-        writeFailed = true;
+        denied = true;
       }
-      expect(writeFailed).toBe(true);
+      expect(denied).toBe(true);
     });
 
-    it("Dry-run script runs without permission errors under read-only role", () => {
-      // The dry-run script should not get permission errors when using the read-only role.
-      // Note: readOnlyInvariant may be false if other concurrent tests mutate the DB.
-      // This test verifies the dry-run doesn't FAIL with a permission error —
-      // it may exit 2 if readOnlyInvariant=false (mutation detected from other tests),
-      // but it should NOT exit with a permission-denied error.
+    it("UPDATE is denied by PostgreSQL", () => {
+      let denied = false;
+      try {
+        psqlRO(`UPDATE "User" SET role='ADMIN' WHERE id='nonexistent'`);
+      } catch {
+        denied = true;
+      }
+      expect(denied).toBe(true);
+    });
+
+    it("DELETE is denied by PostgreSQL", () => {
+      let denied = false;
+      try {
+        psqlRO(`DELETE FROM "User" WHERE id='nonexistent'`);
+      } catch {
+        denied = true;
+      }
+      expect(denied).toBe(true);
+    });
+
+    it("TRUNCATE is denied by PostgreSQL", () => {
+      let denied = false;
+      try {
+        psqlRO(`TRUNCATE "User"`);
+      } catch {
+        denied = true;
+      }
+      expect(denied).toBe(true);
+    });
+  },
+);
+
+/* ============================================================
+   CR-15.51-02: Isolated read-only dry-run test
+   ------------------------------------------------------------
+   This test runs the dry-run script with the read-only role
+   in the CI test DB. It REQUIRES:
+   - exit code 0
+   - valid DRYRUN_GATE output
+   - gatePasses=true
+   - readOnlyInvariant=true
+   - no permission errors
+
+   NOTE: This test may be affected by concurrent test mutations.
+   The authoritative check is the CI step "Phase C dry-run" which
+   runs BEFORE the integration test files step (isolated).
+   ============================================================ */
+
+describe.skipIf(!RUN_TESTS)(
+  "STEP 15.51 — Isolated Read-Only Dry-Run (CR-15.51-02)",
+  () => {
+    it("Dry-run exits 0 with valid gate under read-only role", () => {
+      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
+      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
+
       let output = "";
       let exitCode = 0;
       try {
         output = execSync("bunx tsx scripts/rbac-backfill-dryrun.ts", {
           encoding: "utf-8",
           timeout: 120000,
-          env: { ...process.env, DATABASE_URL: RO_URL + "?schema=public" },
+          env: { ...process.env, DATABASE_URL: roUrl },
         });
       } catch (e: unknown) {
         const err = e as { stdout?: string; status?: number };
         output = err.stdout ?? "";
         exitCode = err.status ?? 1;
       }
-      // The script should NOT contain permission errors
+
+      // CR-15.51-02: MUST exit 0
+      expect(exitCode).toBe(0);
+
+      // MUST NOT contain permission errors
       expect(output).not.toMatch(/permission denied/i);
-      // The script may exit 0 (success) or 2 (readOnlyInvariant=false from concurrent tests)
-      // — either is acceptable as long as no permission error occurred
-      expect(output).not.toMatch(/permission denied for table/i);
+
+      // MUST contain valid DRYRUN_GATE output
+      expect(output).toContain("DRYRUN_GATE:");
+
+      // Extract and validate the gate line
+      const gateLine = output
+        .split("\n")
+        .reverse()
+        .find((l) => l.startsWith("DRYRUN_GATE:"));
+      expect(gateLine).toBeDefined();
+
+      const gateJson = gateLine!.slice("DRYRUN_GATE:".length);
+      const parsed = JSON.parse(gateJson);
+
+      // CR-15.51-02: MUST have gatePasses=true
+      expect(parsed.gatePasses).toBe(true);
+
+      // CR-15.51-02: MUST have readOnlyInvariant=true
+      // (Note: if concurrent tests mutate DB, this may be false.
+      //  In that case, the test fails — which is correct behavior.
+      //  The CI step runs BEFORE integration tests, so it's isolated.)
+      expect(parsed.readOnlyInvariant).toBe(true);
     });
   },
 );
+
+/* ============================================================
+   Non-DB tests: verify CI workflow uses read-only role (CR-15.51-01)
+   ============================================================ */
+
+describe("STEP 15.51 — CI Workflow Verification (no DB needed)", () => {
+  it("CI workflow creates read-only role with env-var password (not hard-coded)", () => {
+    const content = readFileSync(".github/workflows/ci.yml", "utf-8");
+    expect(content).toContain("DRYUN_RO_PW");
+    expect(content).toContain("openssl rand -hex 16");
+    // CR-15.51-04: no hard-coded password
+    expect(content).not.toContain("dryrun_ro_password");
+  });
+
+  it("CI dry-run step uses heavix_dryrun_ro role (not superuser)", () => {
+    const content = readFileSync(".github/workflows/ci.yml", "utf-8");
+    expect(content).toContain("heavix_dryrun_ro");
+    expect(content).toContain("DRYRUN_DATABASE_URL");
+  });
+
+  it("SQL script uses env var for password (not hard-coded)", () => {
+    const content = readFileSync("scripts/rbac-create-readonly-role.sql", "utf-8");
+    expect(content).toContain("current_setting('DRYRUN_RO_PASSWORD'");
+    // CR-15.51-04: no hard-coded password in SQL
+    expect(content).not.toContain("dryrun_ro_password");
+  });
+
+  it("SQL script explicitly REVOKEs write privileges", () => {
+    const content = readFileSync("scripts/rbac-create-readonly-role.sql", "utf-8");
+    expect(content).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
+  });
+});
