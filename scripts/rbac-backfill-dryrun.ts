@@ -226,6 +226,20 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  // ── STEP 15.47: Read-only proof — snapshot DB state BEFORE ──────────
+  // Capture counts of all relevant tables to prove the dry-run doesn't mutate.
+  const beforeSnapshot = {
+    userCount: await db.user.count(),
+    userRoleCount: await db.userRole.count(),
+    roleCount: await db.role.count(),
+    permissionCount: await db.permission.count(),
+    rolePermissionCount: await db.rolePermission.count(),
+    timestamp: new Date().toISOString(),
+  };
+  console.log('── Read-only proof: BEFORE snapshot ─────────────────────────');
+  console.log(`  users: ${beforeSnapshot.userCount}, userRoles: ${beforeSnapshot.userRoleCount}, roles: ${beforeSnapshot.roleCount}, permissions: ${beforeSnapshot.permissionCount}, rolePermissions: ${beforeSnapshot.rolePermissionCount}`);
+  console.log();
+
   // ── 3. Distribution of User.role values (legacy column) ──────────────
   const legacyRoleGroups = await db.user.groupBy({
     by: ['role'],
@@ -411,7 +425,17 @@ async function main(): Promise<void> {
   const needsInvestigationCount =
     classification.MISMATCH + classification.MULTI_ROLE;
   const invalidCount = classification.INVALID;
-  const gatePasses = invalidCount === 0 && classification.MISMATCH === 0;
+  // STEP 15.47 owner directive: gatePasses must be FAIL-CLOSED.
+  // Policy: backfill is NOT safe if ANY of these are nonzero:
+  //   - INVALID (legacy role not in catalog — manual review required)
+  //   - MISMATCH (UserRole exists but canonical missing — ambiguous, do NOT auto-correct)
+  //   - MULTI_ROLE (user has canonical + extra roles — investigate before backfill)
+  // Until the owner explicitly approves an accepted-risk override for MULTI_ROLE,
+  // conservatively block backfill when ANY class requiring investigation is nonzero.
+  const gatePasses =
+    invalidCount === 0 &&
+    classification.MISMATCH === 0 &&
+    classification.MULTI_ROLE === 0;
 
   console.log('── Verdict ──────────────────────────────────────────────────');
   console.log(
@@ -466,8 +490,35 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(report, null, 2));
   console.log();
 
+  // ── STEP 15.47: Read-only proof — snapshot DB state AFTER ───────────
+  const afterSnapshot = {
+    userCount: await db.user.count(),
+    userRoleCount: await db.userRole.count(),
+    roleCount: await db.role.count(),
+    permissionCount: await db.permission.count(),
+    rolePermissionCount: await db.rolePermission.count(),
+    timestamp: new Date().toISOString(),
+  };
+  const readOnlyInvariant =
+    beforeSnapshot.userCount === afterSnapshot.userCount &&
+    beforeSnapshot.userRoleCount === afterSnapshot.userRoleCount &&
+    beforeSnapshot.roleCount === afterSnapshot.roleCount &&
+    beforeSnapshot.permissionCount === afterSnapshot.permissionCount &&
+    beforeSnapshot.rolePermissionCount === afterSnapshot.rolePermissionCount;
+
+  console.log('── Read-only proof: AFTER snapshot ──────────────────────────');
+  console.log(`  users: ${afterSnapshot.userCount}, userRoles: ${afterSnapshot.userRoleCount}, roles: ${afterSnapshot.roleCount}, permissions: ${afterSnapshot.permissionCount}, rolePermissions: ${afterSnapshot.rolePermissionCount}`);
+  console.log(`  READ-ONLY INVARIANT: ${readOnlyInvariant ? 'PASS' : 'FAIL — DATA WAS MUTATED!'}`);
+  if (!readOnlyInvariant) {
+    console.error('✗ FATAL: dry-run script mutated the database! Before/After snapshots differ.');
+    console.log(`DRYRUN_GATE:{"gatePasses":false,"readOnlyInvariant":false,"error":"DATA_MUTATION_DETECTED"}`);
+    await db.$disconnect();
+    process.exit(2);
+  }
+
   // Single-line machine-parseable gate output (for CI step)
-  console.log(`DRYRUN_GATE:${JSON.stringify({ gatePasses, safeToBackfillCount: classification.MISSING, mismatchCount: classification.MISMATCH, invalidCount: classification.INVALID, total: classification.OK + classification.MISSING + classification.MISMATCH + classification.MULTI_ROLE + classification.INVALID })}`);
+  // STEP 15.47: includes multiRoleCount and readOnlyInvariant for fail-closed CI.
+  console.log(`DRYRUN_GATE:${JSON.stringify({ gatePasses, readOnlyInvariant, safeToBackfillCount: classification.MISSING, mismatchCount: classification.MISMATCH, multiRoleCount: classification.MULTI_ROLE, invalidCount: classification.INVALID, total: classification.OK + classification.MISSING + classification.MISMATCH + classification.MULTI_ROLE + classification.INVALID })}`);
 
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
