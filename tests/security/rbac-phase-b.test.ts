@@ -4,13 +4,19 @@
  * Document: docs/phase3/RBAC-MIGRATION-DESIGN.md §11.2 (addendum §REVISION-5)
  *
  * 7 tests covering:
- *   1. Idempotency: dual-write twice with same role → 1 UserRole row
- *   2. Concurrency: two simultaneous PATCHes → final state is one of the two
- *   3. Rollback-on-partial-failure: tx.userRole.upsert throws → 500, rolled back
+ *   1. Idempotency (mock): dual-write twice with same role → 1 UserRole row
+ *   2. Error propagation (mock): two concurrent PATCHes serialize via mutex
+ *   3. Error propagation (mock): tx.userRole.upsert throws → 500, logAudit NOT called
  *   4. Shim fallback: 0 UserRole + User.role=SELLER → SELLER; after backfill → SELLER
  *   5. DB-error: findMany throws → {BUYER, DB_ERROR}; shim returns BUYER (not legacy)
  *   6. Canonical-wins: ADMIN UserRole + User.role=BUYER → ADMIN
  *   7. No-authz-import guard (REVISION-7): role-shim NOT imported by authz modules
+ *
+ * NOTE (STEP 15.41): Tests 2 and 3 are MOCK-BASED error-propagation tests.
+ * They do NOT prove real database transaction rollback or real concurrency
+ * behavior. Real PostgreSQL evidence for C-1 (rollback) and C-2 (concurrency)
+ * is provided by tests/integration/rbac-phase-b-real.test.ts, which runs
+ * against postgres:17 in CI.
  *
  * Pattern source: tests/security/step-13.31-patch-txn.test.ts (mock-based, vi.mock)
  */
@@ -274,11 +280,16 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     expect(json.data.role).toBe("SELLER");
   });
 
-  it("2. Concurrency: two simultaneous PATCHes → final state is one of the two, @@unique holds", async () => {
+  it("2. Error propagation (mock): two PATCHes serialize via mutex → consistent mock state", async () => {
+    // NOTE (STEP 15.41): This is a MOCK-BASED test of error propagation,
+    // NOT a real concurrency test. It uses a mutex to serialize the two
+    // transactions, which mirrors SERIALIZABLE isolation but does NOT
+    // test real PostgreSQL READ COMMITTED behavior.
+    // Real concurrency evidence is in tests/integration/rbac-phase-b-real.test.ts (C-2a).
+    //
+    // This test verifies: when two PATCHes run (serialized), the mock
+    // state ends up consistent (1 UserRole, User.role matches).
     // Simulate a shared in-memory DB state for User + UserRole tables.
-    // The mock $transaction uses a mutex to serialize the two transactions
-    // (mirroring SERIALIZABLE isolation), so the second transaction's
-    // findMany sees the first's writes and deletes them via deleteMany.
     const dbState: {
       user: { id: string; role: string };
       userRoles: { id: string; userId: string; roleId: string; roleKey: string }[];
@@ -388,21 +399,19 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     expect(uniquePairs.size).toBe(dbState.userRoles.length);
   });
 
-  it("3. Rollback-on-partial-failure: tx.userRole.upsert throws → 500, User.role unchanged, no UserRole deleted", async () => {
-    // Scenario: user has an existing replaceable UserRole (BUYER).
-    // The transaction will: user.update (succeeds) → findMany (returns
-    // existing BUYER UserRole) → deleteMany (deletes it) → upsert (THROWS).
-    // Since upsert throws, the ENTIRE transaction rolls back — meaning
-    // the user.update AND deleteMany are undone. The user is left with
-    // their ORIGINAL role and ORIGINAL UserRole(s).
+  it("3. Error propagation (mock): tx.userRole.upsert throws → 500, logAudit NOT called", async () => {
+    // NOTE (STEP 15.41): This is a MOCK-BASED error-propagation test.
+    // It verifies the route handler returns 500 and does NOT call
+    // logAudit when the transaction throws. It does NOT prove real
+    // database rollback (the mock doesn't implement rollback semantics).
+    // Real rollback evidence is in tests/integration/rbac-phase-b-real.test.ts (C-1a).
+    //
+    // This test verifies: externally-observable behavior (500 response
+    // + no audit log) when the transaction callback throws.
     spies.userRoleFindMany.mockResolvedValue([{ id: "ur-existing-1" }]);
     // Make upsert throw inside the transaction.
     spies.userRoleUpsert.mockRejectedValue(new Error("upsert failed (DB constraint)"));
 
-    // Track the "committed" state — in a real DB, if the transaction
-    // throws, NOTHING is committed. We simulate this by checking that
-    // the route returned 500 and logAudit was NOT called (meaning we
-    // never reached the post-transaction code path).
     const res = await PATCH(makeReq("user-123", { role: "SELLER" }), makeParams("user-123"));
 
     // ── Response is 500 ──
@@ -411,7 +420,6 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     expect(json.error).toContain("upsert failed");
 
     // ── Transaction callback threw → $transaction rethrew ──
-    // (We verify the operations that ran BEFORE the throw.)
     expect(spies.userUpdate).toHaveBeenCalledTimes(1); // ran before throw
     expect(spies.userRoleFindMany).toHaveBeenCalledTimes(1); // ran before throw
     expect(spies.userRoleDeleteMany).toHaveBeenCalledTimes(1); // ran before throw
@@ -421,12 +429,5 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     // (logAudit runs OUTSIDE the transaction, AFTER it commits.
     // Since the transaction threw, we never reached logAudit.)
     expect(spies.logAudit).not.toHaveBeenCalled();
-
-    // ── "User.role unchanged" is guaranteed by Prisma's $transaction
-    // contract: if the callback throws, ALL writes are rolled back.
-    // In our mock, we can't truly test rollback (the mock doesn't
-    // support it), but we CAN verify the API returned 500 and did
-    // not proceed to the post-commit code path (logAudit). This is
-    // the externally-observable behavior of a rolled-back transaction.
   });
 });
