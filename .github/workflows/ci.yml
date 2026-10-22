@@ -63,6 +63,8 @@ jobs:
           bun run db:seed-brands-b
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
+      - name: Create read-only PostgreSQL role (STEP 15.50)
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
       - name: Integration — tenant-scope-real

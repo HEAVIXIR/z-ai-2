@@ -620,8 +620,8 @@ async function emitEmptyReport(
   console.log(JSON.stringify(report, null, 2));
   console.log();
   // STEP 15.49: Empty-DB path must output full valid DRYRUN_GATE with readOnlyInvariant.
-  // An empty DB has no data to mutate, so readOnlyInvariant=true (nothing changed).
-  console.log(`DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}`);
+  // STEP 15.50: includes okCount for exact total equality validation.
+  console.log(`DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"okCount":0,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}`);
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
   console.log('═'.repeat(72));

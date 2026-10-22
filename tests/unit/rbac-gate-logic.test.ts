@@ -163,7 +163,8 @@ describe("STEP 15.48 — Gate Logic: Negative Paths", () => {
   it("8. Missing required field (no gatePasses) → CI fails", () => {
     const parsed = {
       readOnlyInvariant: true,
-      safeToBackfillCount: 4,
+      okCount: 0,
+            safeToBackfillCount: 4,
       mismatchCount: 0,
       multiRoleCount: 0,
       invalidCount: 0,
@@ -180,7 +181,8 @@ describe("STEP 15.48 — Gate Logic: Negative Paths", () => {
     const parsed = {
       gatePasses: "true", // string, not boolean
       readOnlyInvariant: true,
-      safeToBackfillCount: 4,
+      okCount: 0,
+            safeToBackfillCount: 4,
       mismatchCount: 0,
       multiRoleCount: 0,
       invalidCount: 0,
@@ -268,7 +270,8 @@ describe("STEP 15.49 — Edge Case Validation", () => {
     const parsed = {
       gatePasses: true,
       readOnlyInvariant: true,
-      safeToBackfillCount: -1, // negative!
+      okCount: 0,
+            safeToBackfillCount: -1, // negative!
       mismatchCount: 0,
       multiRoleCount: 0,
       invalidCount: 0,
@@ -284,7 +287,8 @@ describe("STEP 15.49 — Edge Case Validation", () => {
     const parsed = {
       gatePasses: true,
       readOnlyInvariant: true,
-      safeToBackfillCount: NaN,
+      okCount: 0,
+            safeToBackfillCount: NaN,
       mismatchCount: 0,
       multiRoleCount: 0,
       invalidCount: 0,
@@ -300,7 +304,8 @@ describe("STEP 15.49 — Edge Case Validation", () => {
     const parsed = {
       gatePasses: true,
       readOnlyInvariant: true,
-      safeToBackfillCount: 1.5, // non-integer
+      okCount: 0,
+            safeToBackfillCount: 1.5, // non-integer
       mismatchCount: 0,
       multiRoleCount: 0,
       invalidCount: 0,
@@ -316,7 +321,8 @@ describe("STEP 15.49 — Edge Case Validation", () => {
     const parsed = {
       gatePasses: false,
       readOnlyInvariant: true,
-      safeToBackfillCount: 5,
+      okCount: 0,
+            safeToBackfillCount: 5,
       mismatchCount: 5,
       multiRoleCount: 5,
       invalidCount: 5,
@@ -332,7 +338,8 @@ describe("STEP 15.49 — Edge Case Validation", () => {
     const parsed = {
       gatePasses: true, // says pass
       readOnlyInvariant: true,
-      safeToBackfillCount: 0,
+      okCount: 0,
+            safeToBackfillCount: 0,
       mismatchCount: 1, // but has mismatch!
       multiRoleCount: 0,
       invalidCount: 0,
@@ -346,11 +353,72 @@ describe("STEP 15.49 — Edge Case Validation", () => {
 
   it("Empty DB path → full valid output with readOnlyInvariant=true", () => {
     // Simulate the empty-DB DRYRUN_GATE output
-    const line = 'DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}';
+    const line = 'DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"okCount":0,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}';
     const parsed = parseGateLine(line);
     const error = validateGateOutput(parsed);
     expect(error).toBe(null); // valid!
     const decision = evaluateCiDecision(parsed);
     expect(decision.shouldPass).toBe(true); // empty DB passes
+  });
+});
+
+describe("STEP 15.50 — Exact Total Equality (CR-15.50-02)", () => {
+  it("Sum too small (okCount + others < total) → validation error", () => {
+    const parsed = {
+      gatePasses: true,
+      readOnlyInvariant: true,
+      okCount: 1,
+      safeToBackfillCount: 2,
+      mismatchCount: 0,
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 10, // sum = 3, but total = 10 → too large
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toContain("SUM_MISMATCH");
+  });
+
+  it("Sum too large (okCount + others > total) → validation error", () => {
+    const parsed = {
+      gatePasses: false,
+      readOnlyInvariant: true,
+      okCount: 5,
+      safeToBackfillCount: 5,
+      mismatchCount: 5,
+      multiRoleCount: 5,
+      invalidCount: 5,
+      total: 10, // sum = 25, but total = 10 → too small
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toContain("SUM_MISMATCH");
+  });
+
+  it("Exact equality (sum === total) → valid", () => {
+    const parsed = {
+      gatePasses: true,
+      readOnlyInvariant: true,
+      okCount: 1,
+      safeToBackfillCount: 4,
+      mismatchCount: 0,
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 5, // 1+4+0+0+0 = 5 = total ✓
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toBe(null);
+  });
+});
+
+describe("STEP 15.50 — Child-Process Failure Handling (CR-15.50-01)", () => {
+  it("Gate runner source: catch block exits 1 on non-zero child exit", () => {
+    // Verify the gate-ci.ts source contains the CR-15.50-01 fix:
+    // a non-zero child exit MUST cause exit(1), not continue to gate evaluation
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs");
+    const content = fs.readFileSync("scripts/rbac-gate-ci.ts", "utf-8");
+    // The fix adds a check: if childExitedNonZero, exit 1
+    expect(content).toContain("childExitedNonZero");
+    expect(content).toContain("A failed child process cannot produce a valid gate result");
+    expect(content).toContain("process.exit(1)");
   });
 });

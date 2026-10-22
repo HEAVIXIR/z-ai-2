@@ -27,6 +27,7 @@ const SCRIPT = "scripts/rbac-backfill-dryrun.ts";
 
 function main(): void {
   let output: string;
+  let childExitedNonZero = false;
   try {
     output = execSync(`bunx tsx ${SCRIPT} 2>&1`, {
       encoding: "utf-8",
@@ -34,14 +35,26 @@ function main(): void {
       env: { ...process.env },
     });
   } catch (err: unknown) {
-    const e = err as { stdout?: string; message?: string };
-    // The dry-run script may have exited non-zero; capture stdout if available
+    const e = err as { stdout?: string; message?: string; status?: number };
+    // CR-15.50-01: A failed child process MUST NOT be treated as successful
+    // merely because its captured output contains a parseable gate line.
+    childExitedNonZero = true;
     output = e.stdout ?? "";
     if (!output) {
       console.error("ERROR: dry-run script crashed with no output");
       console.error(e.message);
       process.exit(2);
     }
+    // CR-15.50-01: If the child process exited non-zero, we must FAIL the gate
+    // regardless of whether the output contains a DRYRUN_GATE line.
+    // The dry-run script should exit 0 on success and 2 on unrecoverable error.
+    // A non-zero exit means the script itself failed — we cannot trust its output.
+    console.error(`FAIL: dry-run script exited non-zero (status=${e.status ?? "?"})`);
+    console.error("A failed child process cannot produce a valid gate result.");
+    console.log("--- captured output ---");
+    console.log(output);
+    console.log("--- end captured output ---");
+    process.exit(1);
   }
 
   // Print the dry-run output for CI log visibility

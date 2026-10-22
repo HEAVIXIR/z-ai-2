@@ -36,11 +36,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.2
+ * Prisma Client JS version: 6.19.3
  * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.2",
+  client: "6.19.3",
   engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
@@ -587,7 +587,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/tmp/heavix-12.58/src/lib/generated/store-client",
+      "value": "/home/z/heavix-15-48/z-ai-2/src/lib/generated/store-client",
       "fromEnvVar": null
     },
     "config": {
@@ -601,14 +601,14 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/tmp/heavix-12.58/prisma/store-schema.prisma",
+    "sourceFilePath": "/home/z/heavix-15-48/z-ai-2/prisma/store-schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
     "rootEnvPath": null
   },
   "relativePath": "../../../../prisma",
-  "clientVersion": "6.19.2",
+  "clientVersion": "6.19.3",
   "engineVersion": "c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
   "datasourceNames": [
     "db"

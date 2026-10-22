@@ -33,6 +33,7 @@ export interface SnapshotCounts {
 export interface GateResult {
   gatePasses: boolean;
   readOnlyInvariant: boolean;
+  okCount: number;
   safeToBackfillCount: number;
   mismatchCount: number;
   multiRoleCount: number;
@@ -43,6 +44,7 @@ export interface GateResult {
 export interface ParsedGate {
   gatePasses?: boolean;
   readOnlyInvariant?: boolean;
+  okCount?: number;
   safeToBackfillCount?: number;
   mismatchCount?: number;
   multiRoleCount?: number;
@@ -83,6 +85,7 @@ export function evaluateGate(
   return {
     gatePasses,
     readOnlyInvariant,
+    okCount: classification.OK,
     safeToBackfillCount: classification.MISSING,
     mismatchCount: classification.MISMATCH,
     multiRoleCount: classification.MULTI_ROLE,
@@ -125,8 +128,9 @@ export function validateGateOutput(parsed: ParsedGate): string | null {
   // Type checks for booleans
   if (typeof parsed.gatePasses !== "boolean") return "MISSING_OR_INVALID_gatePasses";
   if (typeof parsed.readOnlyInvariant !== "boolean") return "MISSING_OR_INVALID_readOnlyInvariant";
-  // STEP 15.49: numeric field validation (negative, NaN, non-integer)
+  // STEP 15.50: numeric field validation (negative, NaN, non-integer) — now includes okCount
   const numericFields: Array<[unknown, string]> = [
+    [parsed.okCount, "okCount"],
     [parsed.safeToBackfillCount, "safeToBackfillCount"],
     [parsed.mismatchCount, "mismatchCount"],
     [parsed.multiRoleCount, "multiRoleCount"],
@@ -137,18 +141,16 @@ export function validateGateOutput(parsed: ParsedGate): string | null {
     const err = validateCountField(value, name);
     if (err) return err;
   }
-  // STEP 15.49: classification sum consistency check
-  // total must equal safeToBackfillCount + mismatchCount + multiRoleCount + invalidCount + (OK, which is total - the others)
-  // Actually: total = OK + MISSING + MISMATCH + MULTI_ROLE + INVALID
-  // We don't have OK in the output, but we can check:
-  // safeToBackfillCount + mismatchCount + multiRoleCount + invalidCount <= total
-  const sumOfClasses =
+  // STEP 15.50: EXACT classification total equality
+  // total MUST equal okCount + safeToBackfillCount + mismatchCount + multiRoleCount + invalidCount
+  const sumOfAll =
+    (parsed.okCount ?? 0) +
     (parsed.safeToBackfillCount ?? 0) +
     (parsed.mismatchCount ?? 0) +
     (parsed.multiRoleCount ?? 0) +
     (parsed.invalidCount ?? 0);
-  if (sumOfClasses > (parsed.total ?? 0)) {
-    return `SUM_MISMATCH (sum of classes ${sumOfClasses} > total ${parsed.total})`;
+  if (sumOfAll !== (parsed.total ?? 0)) {
+    return `SUM_MISMATCH (ok+missing+mismatch+multi+invalid=${sumOfAll} != total=${parsed.total})`;
   }
   // STEP 15.49: if gatePasses=true but any blocking count > 0, that's inconsistent
   if (parsed.gatePasses && ((parsed.mismatchCount ?? 0) > 0 || (parsed.multiRoleCount ?? 0) > 0 || (parsed.invalidCount ?? 0) > 0)) {
