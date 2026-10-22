@@ -67,10 +67,11 @@ jobs:
         run: |
           # CR-15.51-04: Generate random password, never hard-coded
           DRYUN_RO_PW=$(openssl rand -hex 16)
-          # Set as GITHUB_ENV so subsequent steps can use it
           echo "DRYUN_RO_PW=$DRYUN_RO_PW" >> $GITHUB_ENV
-          # Create role with password from env var
-          DRYRUN_RO_PASSWORD="$DRYUN_RO_PW" PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql
+          # CR-15.51-04: Pass password as psql variable (not SQL current_setting)
+          PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test \
+            -v dryrun_password="$DRYUN_RO_PW" \
+            -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
       - name: Integration — tenant-scope-real
