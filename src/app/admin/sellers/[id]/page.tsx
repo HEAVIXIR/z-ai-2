@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { getUserRoleWithFallback } from "@/lib/authorization/role-shim";
 import { logAudit } from "@/lib/audit";
 import { toFa, faDate, timeAgo } from "@/lib/format";
 import {
@@ -124,6 +125,12 @@ export default async function AdminSellerDetailPage({ params }: Args) {
 
   if (!user) notFound();
 
+  // STEP 15.40 Phase B (§3.3 display-read migration): resolve the
+  // effective display role via the role-shim. Server component — async OK.
+  // `user` is passed so the shim can read `user.role` for the legacy
+  // fallback without an extra DB round-trip.
+  const displayRole = await getUserRoleWithFallback(user.id, user);
+
   // Best-effort audit (view only — never throws).
   await logAudit({
     actorId: actor.id,
@@ -231,12 +238,12 @@ export default async function AdminSellerDetailPage({ params }: Args) {
                 <span className="text-xs text-zinc-500">نقش</span>
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                    ROLE_LABEL[user.role]
+                    ROLE_LABEL[displayRole]
                       ? "bg-amber-100 text-amber-700"
                       : "bg-zinc-100 text-zinc-600"
                   }`}
                 >
-                  {ROLE_LABEL[user.role] ?? user.role}
+                  {ROLE_LABEL[displayRole] ?? displayRole}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">

@@ -154,7 +154,10 @@ export async function PATCH(req: Request, { params }: Args) {
     }
 
     // NOTE: "role" is deliberately EXCLUDED from allowedFields.
-    // Role changes require the `user.role.manage` permission.
+    // Role changes require the `user.role.manage` permission and a
+    // transactional dual-write (User.role + UserRole) per STEP 15.40
+    // Phase B BLOCKER-1.
+    let roleChange: { key: string; roleId: string } | null = null;
     if (body.role !== undefined) {
       if (!(await hasPermission(sessionUser.id, "user.role.manage"))) {
         return NextResponse.json(
@@ -170,6 +173,15 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
+      // Resolve Role row BEFORE the transaction (fail fast if catalog missing)
+      const newRole = await db.role.findUnique({ where: { key: r }, select: { id: true } });
+      if (!newRole) {
+        return NextResponse.json(
+          { error: `Role '${r}' not found in RBAC catalog` },
+          { status: 500 },
+        );
+      }
+      roleChange = { key: r, roleId: newRole.id };
       data.role = r;
     }
 
@@ -201,14 +213,63 @@ export async function PATCH(req: Request, { params }: Args) {
       data.lastLoginAt = body.lastLoginAt === null ? null : new Date(body.lastLoginAt);
     }
 
-    const updated = await db.user.update({
-      where: { id },
-      data,
-      include: {
-        _count: { select: { listings: true, offers: true, requests: true } },
-      },
-    });
+    // ── STEP 15.40 Phase B (BLOCKER-1): Transactional dual-write ──
+    // When role is being changed, wrap the legacy column update +
+    // UserRole deleteMany + UserRole upsert in a single $transaction.
+    // If ANY of these throw, ALL roll back — no partial state.
+    // Audit log remains OUTSIDE the transaction (best-effort, never
+    // blocks the mutation per REVISION-6).
+    let updated: any;
+    if (roleChange) {
+      const replaceableKeys = ["ADMIN", "SELLER", "BUYER"];
+      updated = await db.$transaction(async (tx) => {
+        // 1. Update legacy User.role column (+ any other fields in `data`)
+        const u = await tx.user.update({
+          where: { id },
+          data,
+          include: {
+            _count: { select: { listings: true, offers: true, requests: true } },
+          },
+        });
 
+        // 2. Delete existing replaceable UserRoles (ADMIN/SELLER/BUYER)
+        const existingUserRoles = await tx.userRole.findMany({
+          where: { userId: id, role: { key: { in: replaceableKeys } } },
+          select: { id: true },
+        });
+        if (existingUserRoles.length > 0) {
+          await tx.userRole.deleteMany({
+            where: { id: { in: existingUserRoles.map((e) => e.id) } },
+          });
+        }
+
+        // 3. Upsert the new UserRole (idempotent via @@unique([userId, roleId]))
+        await tx.userRole.upsert({
+          where: { userId_roleId: { userId: id, roleId: roleChange.roleId } },
+          create: { userId: id, roleId: roleChange.roleId },
+          update: {},
+        });
+
+        return u;
+      });
+      // ── End transaction ──
+      // If we reach here, ALL three ops succeeded atomically.
+    } else {
+      // No role change — single non-transactional update (same as Phase A)
+      updated = await db.user.update({
+        where: { id },
+        data,
+        include: {
+          _count: { select: { listings: true, offers: true, requests: true } },
+        },
+      });
+    }
+
+    // Audit log OUTSIDE transaction (best-effort, never blocks mutation).
+    // Per REVISION-6: during Phase B, `role` in the audit payload is still
+    // the legacy column value (dual-write keeps it in sync), so the audit
+    // log content is unchanged. Phase D cutover will switch this to the
+    // canonical UserRole key.
     await logAudit({
       actorId: sessionUser.id,
       actorType: "ADMIN",
@@ -218,6 +279,8 @@ export async function PATCH(req: Request, { params }: Args) {
       before: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email, role: existing.role, status: existing.status, companyName: existing.companyName },
       after: { firstName: updated.firstName, lastName: updated.lastName, email: updated.email, role: updated.role, status: updated.status, companyName: updated.companyName },
       reason: "via admin API",
+    }).catch(() => {
+      /* audit failure does not roll back the mutation */
     });
 
     return NextResponse.json({ success: true, data: serializeUser(updated) });

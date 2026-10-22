@@ -105,21 +105,52 @@ export async function POST(req: Request) {
     // The plaintext password is discarded after hashing — never persisted.
     const passwordHash = await hashPassword(password);
 
+    // ── STEP 15.40 Phase B (REVISION-1, W2): Transactional dual-write ──
+    // Newly-registered users MUST get a canonical UserRole(BUYER) row
+    // alongside the legacy User.role column from day 1. Wrap both writes
+    // in a single $transaction so neither partial state can persist on
+    // failure. Role row is resolved BEFORE the transaction (fail-fast on
+    // missing catalog — would indicate seed-rbac.ts was not run).
+    const buyerRole = await db.role.findUnique({
+      where: { key: "BUYER" },
+      select: { id: true },
+    });
+    if (!buyerRole) {
+      return NextResponse.json(
+        { error: "RBAC catalog missing BUYER role — run `bunx tsx prisma/seed-rbac.ts`" },
+        { status: 500 },
+      );
+    }
+
     // Create user (PENDING, bcrypt-hashed password, role forced to BUYER).
-    const user = await db.user.create({
-      data: {
-        firstName,
-        lastName,
-        mobile,
-        email,
-        passwordHash,
-        status: "PENDING",
-        role: "BUYER", // P0-2: public registration can only create BUYERs.
-        mobileVerified: false,
-        emailVerified: false,
-        companyName,
-        verificationDeadline,
-      },
+    const user = await db.$transaction(async (tx) => {
+      // 1. Create the User row (legacy `role` column = "BUYER")
+      const u = await tx.user.create({
+        data: {
+          firstName,
+          lastName,
+          mobile,
+          email,
+          passwordHash,
+          status: "PENDING",
+          role: "BUYER", // P0-2: public registration can only create BUYERs.
+          mobileVerified: false,
+          emailVerified: false,
+          companyName,
+          verificationDeadline,
+        },
+      });
+
+      // 2. Create the canonical UserRole(BUYER) row (idempotent via @@unique).
+      //    upsert guards against the (extremely unlikely) case where a
+      //    UserRole row for this (userId, roleId) pair already exists.
+      await tx.userRole.upsert({
+        where: { userId_roleId: { userId: u.id, roleId: buyerRole.id } },
+        create: { userId: u.id, roleId: buyerRole.id },
+        update: {},
+      });
+
+      return u;
     });
 
     // MOBILE verification code — 5-digit, 10-min expiry

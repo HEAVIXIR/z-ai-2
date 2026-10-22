@@ -176,23 +176,53 @@ export async function POST(req: Request) {
       ? String(body.role).toUpperCase()
       : "BUYER";
 
-    const user = await db.user.create({
-      data: {
-        firstName,
-        lastName,
-        email,
-        mobile,
-        passwordHash,
-        userType: String(body.userType ?? "INDIVIDUAL").toUpperCase(),
-        role,
-        status: String(body.status ?? "ACTIVE").toUpperCase(),
-        companyName: body.companyName ? String(body.companyName) : null,
-        emailVerified: Boolean(body.emailVerified),
-        mobileVerified: Boolean(body.mobileVerified),
-      },
-      include: {
-        _count: { select: { listings: true, offers: true, requests: true } },
-      },
+    // ── STEP 15.40 Phase B (REVISION-1, W3): Transactional dual-write ──
+    // Admin-created users MUST get a canonical UserRole row from day 1
+    // alongside the legacy User.role column. Wrap both writes in a single
+    // $transaction so neither partial state can persist on failure.
+    // Role row is resolved BEFORE the transaction (fail-fast on missing catalog).
+    const roleRow = await db.role.findUnique({
+      where: { key: role },
+      select: { id: true },
+    });
+    if (!roleRow) {
+      return NextResponse.json(
+        { error: `Role '${role}' not found in RBAC catalog` },
+        { status: 500 },
+      );
+    }
+
+    const user = await db.$transaction(async (tx) => {
+      // 1. Create the User row (legacy `role` column populated)
+      const u = await tx.user.create({
+        data: {
+          firstName,
+          lastName,
+          email,
+          mobile,
+          passwordHash,
+          userType: String(body.userType ?? "INDIVIDUAL").toUpperCase(),
+          role,
+          status: String(body.status ?? "ACTIVE").toUpperCase(),
+          companyName: body.companyName ? String(body.companyName) : null,
+          emailVerified: Boolean(body.emailVerified),
+          mobileVerified: Boolean(body.mobileVerified),
+        },
+        include: {
+          _count: { select: { listings: true, offers: true, requests: true } },
+        },
+      });
+
+      // 2. Create the canonical UserRole row (idempotent via @@unique).
+      //    upsert guards against the (extremely unlikely) case where a
+      //    UserRole row for this (userId, roleId) pair already exists.
+      await tx.userRole.upsert({
+        where: { userId_roleId: { userId: u.id, roleId: roleRow.id } },
+        create: { userId: u.id, roleId: roleRow.id },
+        update: {},
+      });
+
+      return u;
     });
 
     await logAudit({
@@ -203,6 +233,8 @@ export async function POST(req: Request) {
       entityId: user.id,
       after: { firstName: user.firstName, lastName: user.lastName, email: user.email, mobile: user.mobile, role: user.role, status: user.status, companyName: user.companyName },
       reason: "via admin API",
+    }).catch(() => {
+      /* audit failure does not roll back the mutation */
     });
 
     return NextResponse.json({ success: true, data: serialize(user) });
