@@ -77,4 +77,10 @@ function main(): void {
   process.exit(0);
 }
 
-main();
+// Only run main() when executed directly (not when imported by tests)
+if (require.main === module) {
+  main();
+}
+
+// Export for testing
+export { main, parseGateLine, validateGateOutput, evaluateCiDecision };
