@@ -79,6 +79,30 @@ jobs:
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
       - name: Integration test files
         run: bunx vitest run tests/integration/*.test.ts
+      - name: Phase C dry-run (STEP 15.46 — read-only RBAC backfill analysis)
+        run: |
+          # Run the dry-run script and capture JSON output.
+          # The script is READ-ONLY (zero write methods).
+          # Gate evaluation: verdict.gatePasses must be true.
+          # Exit code 0 = informational output produced; gatePasses is evaluated separately.
+          bunx tsx scripts/rbac-backfill-dryrun.ts 2>/dev/null | tee /tmp/dryrun-output.txt
+          # Extract the JSON block (last line starting with '{')
+          JSON_LINE=$(grep '^{' /tmp/dryrun-output.txt | tail -1)
+          if [ -z "$JSON_LINE" ]; then
+            echo "ERROR: No JSON output from dry-run script"
+            exit 1
+          fi
+          # Evaluate gate (python3 for reliable JSON parsing)
+          GATE_PASSES=$(echo "$JSON_LINE" | python3 -c "import sys,json; print(json.load(sys.stdin)['verdict']['gatePasses'])")
+          echo "dry-run verdict.gatePasses = $GATE_PASSES"
+          if [ "$GATE_PASSES" != "True" ]; then
+            echo "WARNING: dry-run gate did not pass — investigate MISMATCH/INVALID users before Phase C backfill"
+            # Do NOT fail CI — the dry-run is informational. gatePasses=false means
+            # there are data discrepancies that need manual investigation before
+            # Phase C production backfill. CI still passes; the gate is evaluated
+            # separately by the operator reviewing the CI log.
+            echo "Phase C backfill is NOT authorized until gatePasses=true."
+          fi
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests

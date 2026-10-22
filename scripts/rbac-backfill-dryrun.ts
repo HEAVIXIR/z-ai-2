@@ -106,8 +106,6 @@ type ClassificationKind = 'OK' | 'MISSING' | 'MISMATCH' | 'MULTI_ROLE' | 'INVALI
 
 interface SampleBase {
   userId: string;
-  email: string;
-  mobile: string;
   legacyRole: string;
 }
 interface SampleMissing extends SampleBase {
@@ -296,8 +294,6 @@ async function main(): Promise<void> {
       orderBy: { id: 'asc' },
       select: {
         id: true,
-        email: true,
-        mobile: true,
         role: true,
         userRoles: { select: { roleId: true } },
       },
@@ -314,8 +310,6 @@ async function main(): Promise<void> {
         if (samples.INVALID.length < SAMPLE_CAP) {
           samples.INVALID.push({
             userId: u.id,
-            email: u.email,
-            mobile: u.mobile,
             legacyRole: u.role,
           });
         }
@@ -332,8 +326,6 @@ async function main(): Promise<void> {
         if (samples.MISSING.length < SAMPLE_CAP) {
           samples.MISSING.push({
             userId: u.id,
-            email: u.email,
-            mobile: u.mobile,
             legacyRole: u.role,
             canonicalKey: mapped,
           });
@@ -349,8 +341,6 @@ async function main(): Promise<void> {
         if (samples.MISMATCH.length < SAMPLE_CAP) {
           samples.MISMATCH.push({
             userId: u.id,
-            email: u.email,
-            mobile: u.mobile,
             legacyRole: u.role,
             canonicalKey: mapped,
             userRoleKeys,
@@ -364,8 +354,6 @@ async function main(): Promise<void> {
         if (samples.MULTI_ROLE.length < SAMPLE_CAP) {
           samples.MULTI_ROLE.push({
             userId: u.id,
-            email: u.email,
-            mobile: u.mobile,
             legacyRole: u.role,
             canonicalKey: mapped,
             userRoleKeys,
@@ -406,16 +394,16 @@ async function main(): Promise<void> {
   console.log();
 
   emitSamples('MISSING', samples.MISSING, (s) =>
-    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}  (email=${s.email})`,
+    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}`,
   );
   emitSamples('MISMATCH', samples.MISMATCH, (s) =>
-    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}, UserRole=[${s.userRoleKeys.join(',')}]  (email=${s.email})`,
+    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}, UserRole=[${s.userRoleKeys.join(',')}]`,
   );
   emitSamples('MULTI_ROLE', samples.MULTI_ROLE, (s) =>
-    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}, UserRole=[${s.userRoleKeys.join(',')}]  (email=${s.email})`,
+    `  • ${s.userId}  User.role="${s.legacyRole}" → ${s.canonicalKey}, UserRole=[${s.userRoleKeys.join(',')}]`,
   );
   emitSamples('INVALID', samples.INVALID, (s) =>
-    `  • ${s.userId}  User.role="${s.legacyRole}"  (email=${s.email})`,
+    `  • ${s.userId}  User.role="${s.legacyRole}"`,
   );
 
   // ── 7. Verdict ───────────────────────────────────────────────────────
