@@ -189,6 +189,9 @@ describe.skipIf(!RUN_TESTS)(
     });
   },
 );
+
+/* ============================================================
+   CR-15.51-02: Isolated read-only dry-run test
    ------------------------------------------------------------
    This test runs the dry-run script with the read-only role
    in the CI test DB. It REQUIRES:
