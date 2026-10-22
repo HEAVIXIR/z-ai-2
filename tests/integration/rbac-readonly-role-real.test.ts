@@ -195,12 +195,12 @@ describe.skipIf(!RUN_TESTS)(
       const tables = ["User", "UserRole", "Role", "Permission", "RolePermission"];
       for (const table of tables) {
         const selectResult = psqlAdmin(
-          `SELECT has_table_privilege('heavix_dryrun_ro', '${table}', 'SELECT')`,
+          `SELECT has_table_privilege('heavix_dryrun_ro', 'public."${table}"', 'SELECT')`,
         );
         expect(selectResult).toBe("t"); // SELECT allowed
         for (const writePriv of ["INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"]) {
           const writeResult = psqlAdmin(
-            `SELECT has_table_privilege('heavix_dryrun_ro', '${table}', '${writePriv}')`,
+            `SELECT has_table_privilege('heavix_dryrun_ro', 'public."${table}"', '${writePriv}')`,
           );
           expect(writeResult).toBe("f"); // write denied
         }
