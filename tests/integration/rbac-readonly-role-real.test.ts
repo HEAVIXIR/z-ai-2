@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -47,17 +47,9 @@ describe.skipIf(!RUN_TESTS)(
       ).trim();
     }
 
-    beforeAll(() => {
-      // CR-15.51-04: Use the same password as the CI workflow.
-      // In CI, DRYUN_RO_PW is set via GITHUB_ENV by the "Create read-only PostgreSQL role" step.
-      // In local dev, it falls back to a known value (no PG locally → tests skip).
-      const pw = process.env.DRYUN_RO_PW || "dryrun_ro_password";
-      // Recreate the role to ensure the password matches what we'll use
-      execSync(
-        `DRYRUN_RO_PASSWORD="${pw}" PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test -f scripts/rbac-create-readonly-role.sql`,
-        { encoding: "utf-8", timeout: 30000 },
-      );
-    });
+    // No beforeAll — the role is created by the CI workflow step
+    // "Create read-only PostgreSQL role (STEP 15.51)" which runs BEFORE tests.
+    // The password is in DRYUN_RO_PW (set via GITHUB_ENV by CI workflow).
 
     it("Role exists and is not a superuser", () => {
       const result = psqlAdmin(
