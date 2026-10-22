@@ -141,11 +141,54 @@ describe.skipIf(!RUN_TESTS)(
       }
       expect(denied).toBe(true);
     });
+
+    it("CR-15.53-04: Complete 5-table privilege matrix (SELECT only, no writes)", () => {
+      // CR-15.53-04: Audit ALL 5 RBAC tables for effective privileges
+      const tables = ["User", "UserRole", "Role", "Permission", "RolePermission"];
+      for (const table of tables) {
+        const result = psqlRO(
+          `SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name='${table}' AND grantee='heavix_dryrun_ro' ORDER BY privilege_type`,
+        );
+        const privileges = result.split("\n").filter(Boolean);
+        // MUST have SELECT
+        expect(privileges).toContain("SELECT");
+        // MUST NOT have any write privileges
+        expect(privileges).not.toContain("INSERT");
+        expect(privileges).not.toContain("UPDATE");
+        expect(privileges).not.toContain("DELETE");
+        expect(privileges).not.toContain("TRUNCATE");
+        expect(privileges).not.toContain("REFERENCES");
+        expect(privileges).not.toContain("TRIGGER");
+      }
+    });
+
+    it("CR-15.53-04: Role does not own any tables (no ownership-based privileges)", () => {
+      // Table ownership grants implicit privileges; verify heavix_dryrun_ro owns nothing
+      const result = psqlAdmin(
+        "SELECT count(*) FROM pg_tables WHERE tableowner='heavix_dryrun_ro'",
+      );
+      expect(parseInt(result, 10)).toBe(0);
+    });
+
+    it("CR-15.53-04: Role has no inherited privileges via role membership", () => {
+      // Check pg_auth_members for any role memberships that could grant inherited privileges
+      const result = psqlAdmin(
+        "SELECT count(*) FROM pg_auth_members WHERE member = (SELECT oid FROM pg_roles WHERE rolname='heavix_dryrun_ro')",
+      );
+      expect(parseInt(result, 10)).toBe(0);
+    });
+
+    it("CR-15.53-04: Role has USAGE on schema but no CREATE", () => {
+      // USAGE allows access; CREATE would allow creating new objects
+      const result = psqlAdmin(
+        "SELECT has_schema_privilege('heavix_dryrun_ro', 'public', 'USAGE'), has_schema_privilege('heavix_dryrun_ro', 'public', 'CREATE')",
+      );
+      const [hasUsage, hasCreate] = result.split("|");
+      expect(hasUsage).toBe("t"); // USAGE is expected (needed to access tables)
+      expect(hasCreate).toBe("f"); // CREATE must be denied
+    });
   },
 );
-
-/* ============================================================
-   CR-15.51-02: Isolated read-only dry-run test
    ------------------------------------------------------------
    This test runs the dry-run script with the read-only role
    in the CI test DB. It REQUIRES:
@@ -247,49 +290,3 @@ describe("STEP 15.51 — CI Workflow Verification (no DB needed)", () => {
     expect(content).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
   });
 });
-
-    it("CR-15.53-04: Complete 5-table privilege matrix (SELECT only, no writes)", () => {
-      // CR-15.53-04: Audit ALL 5 RBAC tables for effective privileges
-      const tables = ["User", "UserRole", "Role", "Permission", "RolePermission"];
-      for (const table of tables) {
-        const result = psqlRO(
-          `SELECT privilege_type FROM information_schema.role_table_grants WHERE table_name='${table}' AND grantee='heavix_dryrun_ro' ORDER BY privilege_type`,
-        );
-        const privileges = result.split("\n").filter(Boolean);
-        // MUST have SELECT
-        expect(privileges).toContain("SELECT");
-        // MUST NOT have any write privileges
-        expect(privileges).not.toContain("INSERT");
-        expect(privileges).not.toContain("UPDATE");
-        expect(privileges).not.toContain("DELETE");
-        expect(privileges).not.toContain("TRUNCATE");
-        expect(privileges).not.toContain("REFERENCES");
-        expect(privileges).not.toContain("TRIGGER");
-      }
-    });
-
-    it("CR-15.53-04: Role does not own any tables (no ownership-based privileges)", () => {
-      // Table ownership grants implicit privileges; verify heavix_dryrun_ro owns nothing
-      const result = psqlAdmin(
-        "SELECT count(*) FROM pg_tables WHERE tableowner='heavix_dryrun_ro'",
-      );
-      expect(parseInt(result, 10)).toBe(0);
-    });
-
-    it("CR-15.53-04: Role has no inherited privileges via role membership", () => {
-      // Check pg_auth_members for any role memberships that could grant inherited privileges
-      const result = psqlAdmin(
-        "SELECT count(*) FROM pg_auth_members WHERE member = (SELECT oid FROM pg_roles WHERE rolname='heavix_dryrun_ro')",
-      );
-      expect(parseInt(result, 10)).toBe(0);
-    });
-
-    it("CR-15.53-04: Role has USAGE on schema but no CREATE", () => {
-      // USAGE allows access; CREATE would allow creating new objects
-      const result = psqlAdmin(
-        "SELECT has_schema_privilege('heavix_dryrun_ro', 'public', 'USAGE'), has_schema_privilege('heavix_dryrun_ro', 'public', 'CREATE')",
-      );
-      const [hasUsage, hasCreate] = result.split("|");
-      expect(hasUsage).toBe("t"); // USAGE is expected (needed to access tables)
-      expect(hasCreate).toBe("f"); // CREATE must be denied
-    });
