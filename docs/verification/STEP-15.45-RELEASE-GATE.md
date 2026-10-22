@@ -3,7 +3,7 @@
 **Repository:** `HEAVIXIR/z-ai-2`
 **PR:** #75 — `fix(rbac): STEP 15.45 — concurrency defense-in-depth + Phase C dry-run script + audit reports`
 **PR URL:** https://github.com/HEAVIXIR/z-ai-2/pull/75
-**PR head SHA:** `a38fa1d7a4bd5dbc8231f344f167cf0574d7a623`
+**PR head SHA:** `316e3f8afa13b606c07ee50fcb375169abaf4bb2` (updated in STEP 15.46 — PII fix + CI dry-run step)
 **Base:** `main` at `6c113fd66cdbbae9dd50ab2bcf2301400e3794b0`
 **Date:** 2026-10-22
 
