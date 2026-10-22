@@ -78,6 +78,7 @@ describe("STEP 15.49 — CI Runner Script Validation (no DB needed)", () => {
 
   it("scripts/rbac-gate-ci.ts imports from @/lib/rbac/gate-logic", () => {
     // Verify the runner uses the shared module (single source of truth)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs");
     const content = fs.readFileSync(
       join(process.cwd(), "scripts", "rbac-gate-ci.ts"),
@@ -90,6 +91,7 @@ describe("STEP 15.49 — CI Runner Script Validation (no DB needed)", () => {
   });
 
   it("CI workflow uses scripts/rbac-gate-ci.ts (not bash/python parser)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs");
     const content = fs.readFileSync(
       join(process.cwd(), ".github", "workflows", "ci.yml"),
