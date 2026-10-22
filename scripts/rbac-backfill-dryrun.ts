@@ -226,18 +226,33 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ── STEP 15.47: Read-only proof — snapshot DB state BEFORE ──────────
-  // Capture counts of all relevant tables to prove the dry-run doesn't mutate.
-  const beforeSnapshot = {
+  // ── STEP 15.48: Read-only proof — snapshot DB state BEFORE ──────────
+  // Capture counts AND content fingerprint of all relevant tables.
+  // The fingerprint catches mutations that preserve row counts (e.g., UPDATE
+  // that changes a role key without adding/removing rows).
+  const beforeCounts = {
     userCount: await db.user.count(),
     userRoleCount: await db.userRole.count(),
     roleCount: await db.role.count(),
     permissionCount: await db.permission.count(),
     rolePermissionCount: await db.rolePermission.count(),
-    timestamp: new Date().toISOString(),
   };
+  // Content fingerprint: hash of (userId, role) pairs for all users + (userId, roleId) for all UserRoles
+  const beforeUsers = await db.user.findMany({
+    select: { id: true, role: true },
+    orderBy: { id: 'asc' },
+  });
+  const beforeUserRoles = await db.userRole.findMany({
+    select: { userId: true, roleId: true },
+    orderBy: [{ userId: 'asc' }, { roleId: 'asc' }],
+  });
+  const beforeFingerprint = JSON.stringify({
+    users: beforeUsers.map(u => `${u.id}:${u.role}`),
+    userRoles: beforeUserRoles.map(ur => `${ur.userId}:${ur.roleId}`),
+  });
   console.log('── Read-only proof: BEFORE snapshot ─────────────────────────');
-  console.log(`  users: ${beforeSnapshot.userCount}, userRoles: ${beforeSnapshot.userRoleCount}, roles: ${beforeSnapshot.roleCount}, permissions: ${beforeSnapshot.permissionCount}, rolePermissions: ${beforeSnapshot.rolePermissionCount}`);
+  console.log(`  users: ${beforeCounts.userCount}, userRoles: ${beforeCounts.userRoleCount}, roles: ${beforeCounts.roleCount}, permissions: ${beforeCounts.permissionCount}, rolePermissions: ${beforeCounts.rolePermissionCount}`);
+  console.log(`  fingerprint: ${beforeFingerprint.slice(0, 80)}...`);
   console.log();
 
   // ── 3. Distribution of User.role values (legacy column) ──────────────
@@ -490,35 +505,51 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(report, null, 2));
   console.log();
 
-  // ── STEP 15.47: Read-only proof — snapshot DB state AFTER ───────────
-  const afterSnapshot = {
+  // ── STEP 15.48: Read-only proof — snapshot DB state AFTER ───────────
+  // Uses the gate-logic module for consistent evaluation.
+  const afterCounts = {
     userCount: await db.user.count(),
     userRoleCount: await db.userRole.count(),
     roleCount: await db.role.count(),
     permissionCount: await db.permission.count(),
     rolePermissionCount: await db.rolePermission.count(),
-    timestamp: new Date().toISOString(),
   };
-  const readOnlyInvariant =
-    beforeSnapshot.userCount === afterSnapshot.userCount &&
-    beforeSnapshot.userRoleCount === afterSnapshot.userRoleCount &&
-    beforeSnapshot.roleCount === afterSnapshot.roleCount &&
-    beforeSnapshot.permissionCount === afterSnapshot.permissionCount &&
-    beforeSnapshot.rolePermissionCount === afterSnapshot.rolePermissionCount;
+  const afterUsers = await db.user.findMany({
+    select: { id: true, role: true },
+    orderBy: { id: 'asc' },
+  });
+  const afterUserRoles = await db.userRole.findMany({
+    select: { userId: true, roleId: true },
+    orderBy: [{ userId: 'asc' }, { roleId: 'asc' }],
+  });
+  const afterFingerprint = JSON.stringify({
+    users: afterUsers.map(u => `${u.id}:${u.role}`),
+    userRoles: afterUserRoles.map(ur => `${ur.userId}:${ur.roleId}`),
+  });
+
+  // Use the gate-logic module (STEP 15.48: testable, extracted logic)
+  const { evaluateGate, formatGateOutput } = await import('@/lib/rbac/gate-logic');
+  const gateResult = evaluateGate(
+    classification,
+    beforeCounts,
+    afterCounts,
+    beforeFingerprint,
+    afterFingerprint,
+  );
 
   console.log('── Read-only proof: AFTER snapshot ──────────────────────────');
-  console.log(`  users: ${afterSnapshot.userCount}, userRoles: ${afterSnapshot.userRoleCount}, roles: ${afterSnapshot.roleCount}, permissions: ${afterSnapshot.permissionCount}, rolePermissions: ${afterSnapshot.rolePermissionCount}`);
-  console.log(`  READ-ONLY INVARIANT: ${readOnlyInvariant ? 'PASS' : 'FAIL — DATA WAS MUTATED!'}`);
-  if (!readOnlyInvariant) {
-    console.error('✗ FATAL: dry-run script mutated the database! Before/After snapshots differ.');
-    console.log(`DRYRUN_GATE:{"gatePasses":false,"readOnlyInvariant":false,"error":"DATA_MUTATION_DETECTED"}`);
+  console.log(`  users: ${afterCounts.userCount}, userRoles: ${afterCounts.userRoleCount}, roles: ${afterCounts.roleCount}, permissions: ${afterCounts.permissionCount}, rolePermissions: ${afterCounts.rolePermissionCount}`);
+  console.log(`  fingerprint: ${afterFingerprint.slice(0, 80)}...`);
+  console.log(`  READ-ONLY INVARIANT: ${gateResult.readOnlyInvariant ? 'PASS' : 'FAIL — DATA WAS MUTATED!'}`);
+  if (!gateResult.readOnlyInvariant) {
+    console.error('✗ FATAL: dry-run script mutated the database! Before/After snapshots or fingerprints differ.');
+    console.log(formatGateOutput({ ...gateResult, gatePasses: false, readOnlyInvariant: false }));
     await db.$disconnect();
     process.exit(2);
   }
 
   // Single-line machine-parseable gate output (for CI step)
-  // STEP 15.47: includes multiRoleCount and readOnlyInvariant for fail-closed CI.
-  console.log(`DRYRUN_GATE:${JSON.stringify({ gatePasses, readOnlyInvariant, safeToBackfillCount: classification.MISSING, mismatchCount: classification.MISMATCH, multiRoleCount: classification.MULTI_ROLE, invalidCount: classification.INVALID, total: classification.OK + classification.MISSING + classification.MISMATCH + classification.MULTI_ROLE + classification.INVALID })}`);
+  console.log(formatGateOutput(gateResult));
 
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
