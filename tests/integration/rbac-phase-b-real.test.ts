@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { execSync } from "node:child_process";
-import { PrismaClient } from "@prisma/client";
+import { db } from "@/lib/db";
 
 /* ============================================================
    HEAVIX — STEP 15.41: REAL PostgreSQL Integration Tests for
@@ -39,12 +39,8 @@ describe.skipIf(!RUN_TESTS)(
   "STEP 15.41 — Phase B REAL PostgreSQL Integration (C-1 rollback + C-2 concurrency)",
   () => {
     const PSQL_DB_URL = process.env.DATABASE_URL!.split("?")[0];
-    let db: PrismaClient;
 
     beforeAll(async () => {
-      db = new PrismaClient({
-        datasources: { db: { url: process.env.DATABASE_URL } },
-      });
       // Ensure schema is pushed (CI does this in workflow, but be safe)
       execSync("bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma", {
         encoding: "utf-8",
@@ -54,7 +50,8 @@ describe.skipIf(!RUN_TESTS)(
     });
 
     afterAll(async () => {
-      if (db) await db.$disconnect();
+      // Don't disconnect the singleton db — other tests may reuse it.
+      // The process will clean up on exit.
     });
 
     beforeEach(async () => {
@@ -265,17 +262,14 @@ describe.skipIf(!RUN_TESTS)(
           data: { userId: user.id, roleId: buyerRole!.id },
         });
 
-        // ── Two independent Prisma clients (two DB connections) ──
-        const db1 = new PrismaClient({
-          datasources: { db: { url: process.env.DATABASE_URL } },
-        });
-        const db2 = new PrismaClient({
-          datasources: { db: { url: process.env.DATABASE_URL } },
-        });
+        // ── Use the singleton db for concurrent transactions ──
+        // Prisma's connection pool handles concurrent transactions fine.
+        // We don't need separate PrismaClient instances — the pool will
+        // allocate separate connections for each $transaction.
 
         // ── Issue two truly-concurrent transactions ──
         // Tx1: change role to SELLER
-        const tx1 = db1.$transaction(async (tx) => {
+        const tx1 = db.$transaction(async (tx) => {
           await tx.user.update({
             where: { id: user.id },
             data: { role: "SELLER" },
@@ -299,7 +293,7 @@ describe.skipIf(!RUN_TESTS)(
         });
 
         // Tx2: change role to ADMIN (concurrent with Tx1)
-        const tx2 = db2.$transaction(async (tx) => {
+        const tx2 = db.$transaction(async (tx) => {
           await tx.user.update({
             where: { id: user.id },
             data: { role: "ADMIN" },
@@ -372,8 +366,6 @@ describe.skipIf(!RUN_TESTS)(
         // ── Cleanup ──
         await db.userRole.deleteMany({ where: { userId: user.id } });
         await db.user.delete({ where: { id: user.id } });
-        await db1.$disconnect();
-        await db2.$disconnect();
       });
 
       it("C-2b: duplicate/retried operations are idempotent (no duplicate UserRole)", async () => {
