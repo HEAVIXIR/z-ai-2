@@ -466,6 +466,9 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(report, null, 2));
   console.log();
 
+  // Single-line machine-parseable gate output (for CI step)
+  console.log(`DRYRUN_GATE:${JSON.stringify({ gatePasses, safeToBackfillCount: classification.MISSING, mismatchCount: classification.MISMATCH, invalidCount: classification.INVALID, total: classification.OK + classification.MISSING + classification.MISMATCH + classification.MULTI_ROLE + classification.INVALID })}`);
+
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
   console.log('═'.repeat(72));
@@ -530,6 +533,8 @@ async function emitEmptyReport(
   console.log('── JSON report (for CI) ─────────────────────────────────────');
   console.log(JSON.stringify(report, null, 2));
   console.log();
+  // Single-line machine-parseable gate output (for CI step) — empty-DB path
+  console.log(`DRYRUN_GATE:{"gatePasses":true,"safeToBackfillCount":0,"mismatchCount":0,"invalidCount":0,"total":0}`);
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
   console.log('═'.repeat(72));
