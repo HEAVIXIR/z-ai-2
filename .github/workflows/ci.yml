@@ -86,6 +86,8 @@ jobs:
       - name: Integration — p3a-auth-real-http-db (STEP 13.55 Commit B P3-A)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
       - name: Integration test files
+        env:
+          DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
         run: bunx vitest run tests/integration/*.test.ts
       - name: Phase C dry-run (STEP 15.51 — read-only role, fail-closed gate)
         env:
