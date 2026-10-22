@@ -226,10 +226,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ── STEP 15.48: Read-only proof — snapshot DB state BEFORE ──────────
-  // Capture counts AND content fingerprint of all relevant tables.
-  // The fingerprint catches mutations that preserve row counts (e.g., UPDATE
-  // that changes a role key without adding/removing rows).
+  // ── STEP 15.49: Read-only proof — ALL 5 TABLES fingerprint BEFORE ─────
+  // Capture counts AND content fingerprint of ALL relevant tables.
+  // STEP 15.49: fingerprint now covers User, UserRole, Role, Permission, RolePermission.
   const beforeCounts = {
     userCount: await db.user.count(),
     userRoleCount: await db.userRole.count(),
@@ -237,20 +236,22 @@ async function main(): Promise<void> {
     permissionCount: await db.permission.count(),
     rolePermissionCount: await db.rolePermission.count(),
   };
-  // Content fingerprint: hash of (userId, role) pairs for all users + (userId, roleId) for all UserRoles
-  const beforeUsers = await db.user.findMany({
-    select: { id: true, role: true },
-    orderBy: { id: 'asc' },
-  });
-  const beforeUserRoles = await db.userRole.findMany({
-    select: { userId: true, roleId: true },
-    orderBy: [{ userId: 'asc' }, { roleId: 'asc' }],
-  });
+  // Content fingerprint: sorted arrays of key fields from ALL 5 tables
+  const [beforeUsers, beforeUserRoles, beforeRoles, beforePermissions, beforeRolePermissions] = await Promise.all([
+    db.user.findMany({ select: { id: true, role: true }, orderBy: { id: 'asc' } }),
+    db.userRole.findMany({ select: { userId: true, roleId: true }, orderBy: [{ userId: 'asc' }, { roleId: 'asc' }] }),
+    db.role.findMany({ select: { id: true, key: true }, orderBy: { id: 'asc' } }),
+    db.permission.findMany({ select: { id: true, key: true }, orderBy: { id: 'asc' } }),
+    db.rolePermission.findMany({ select: { roleId: true, permissionId: true }, orderBy: [{ roleId: 'asc' }, { permissionId: 'asc' }] }),
+  ]);
   const beforeFingerprint = JSON.stringify({
     users: beforeUsers.map(u => `${u.id}:${u.role}`),
     userRoles: beforeUserRoles.map(ur => `${ur.userId}:${ur.roleId}`),
+    roles: beforeRoles.map(r => `${r.id}:${r.key}`),
+    permissions: beforePermissions.map(p => `${p.id}:${p.key}`),
+    rolePermissions: beforeRolePermissions.map(rp => `${rp.roleId}:${rp.permissionId}`),
   });
-  console.log('── Read-only proof: BEFORE snapshot ─────────────────────────');
+  console.log('── Read-only proof: BEFORE snapshot (all 5 tables) ──────────');
   console.log(`  users: ${beforeCounts.userCount}, userRoles: ${beforeCounts.userRoleCount}, roles: ${beforeCounts.roleCount}, permissions: ${beforeCounts.permissionCount}, rolePermissions: ${beforeCounts.rolePermissionCount}`);
   console.log(`  fingerprint: ${beforeFingerprint.slice(0, 80)}...`);
   console.log();
@@ -507,6 +508,7 @@ async function main(): Promise<void> {
 
   // ── STEP 15.48: Read-only proof — snapshot DB state AFTER ───────────
   // Uses the gate-logic module for consistent evaluation.
+  // STEP 15.49: AFTER fingerprint covers ALL 5 tables (same as BEFORE).
   const afterCounts = {
     userCount: await db.user.count(),
     userRoleCount: await db.userRole.count(),
@@ -514,20 +516,22 @@ async function main(): Promise<void> {
     permissionCount: await db.permission.count(),
     rolePermissionCount: await db.rolePermission.count(),
   };
-  const afterUsers = await db.user.findMany({
-    select: { id: true, role: true },
-    orderBy: { id: 'asc' },
-  });
-  const afterUserRoles = await db.userRole.findMany({
-    select: { userId: true, roleId: true },
-    orderBy: [{ userId: 'asc' }, { roleId: 'asc' }],
-  });
+  const [afterUsers, afterUserRoles, afterRoles, afterPermissions, afterRolePermissions] = await Promise.all([
+    db.user.findMany({ select: { id: true, role: true }, orderBy: { id: 'asc' } }),
+    db.userRole.findMany({ select: { userId: true, roleId: true }, orderBy: [{ userId: 'asc' }, { roleId: 'asc' }] }),
+    db.role.findMany({ select: { id: true, key: true }, orderBy: { id: 'asc' } }),
+    db.permission.findMany({ select: { id: true, key: true }, orderBy: { id: 'asc' } }),
+    db.rolePermission.findMany({ select: { roleId: true, permissionId: true }, orderBy: [{ roleId: 'asc' }, { permissionId: 'asc' }] }),
+  ]);
   const afterFingerprint = JSON.stringify({
     users: afterUsers.map(u => `${u.id}:${u.role}`),
     userRoles: afterUserRoles.map(ur => `${ur.userId}:${ur.roleId}`),
+    roles: afterRoles.map(r => `${r.id}:${r.key}`),
+    permissions: afterPermissions.map(p => `${p.id}:${p.key}`),
+    rolePermissions: afterRolePermissions.map(rp => `${rp.roleId}:${rp.permissionId}`),
   });
 
-  // Use the gate-logic module (STEP 15.48: testable, extracted logic)
+  // Use the gate-logic module (STEP 15.49: single source of truth)
   const { evaluateGate, formatGateOutput } = await import('@/lib/rbac/gate-logic');
   const gateResult = evaluateGate(
     classification,
@@ -537,7 +541,7 @@ async function main(): Promise<void> {
     afterFingerprint,
   );
 
-  console.log('── Read-only proof: AFTER snapshot ──────────────────────────');
+  console.log('── Read-only proof: AFTER snapshot (all 5 tables) ───────────');
   console.log(`  users: ${afterCounts.userCount}, userRoles: ${afterCounts.userRoleCount}, roles: ${afterCounts.roleCount}, permissions: ${afterCounts.permissionCount}, rolePermissions: ${afterCounts.rolePermissionCount}`);
   console.log(`  fingerprint: ${afterFingerprint.slice(0, 80)}...`);
   console.log(`  READ-ONLY INVARIANT: ${gateResult.readOnlyInvariant ? 'PASS' : 'FAIL — DATA WAS MUTATED!'}`);
@@ -615,8 +619,9 @@ async function emitEmptyReport(
   console.log('── JSON report (for CI) ─────────────────────────────────────');
   console.log(JSON.stringify(report, null, 2));
   console.log();
-  // Single-line machine-parseable gate output (for CI step) — empty-DB path
-  console.log(`DRYRUN_GATE:{"gatePasses":true,"safeToBackfillCount":0,"mismatchCount":0,"invalidCount":0,"total":0}`);
+  // STEP 15.49: Empty-DB path must output full valid DRYRUN_GATE with readOnlyInvariant.
+  // An empty DB has no data to mutate, so readOnlyInvariant=true (nothing changed).
+  console.log(`DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}`);
   console.log('═'.repeat(72));
   console.log('DRY-RUN COMPLETE — NO DATABASE WRITES PERFORMED.');
   console.log('═'.repeat(72));

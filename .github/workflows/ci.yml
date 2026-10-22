@@ -79,38 +79,8 @@ jobs:
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
       - name: Integration test files
         run: bunx vitest run tests/integration/*.test.ts
-      - name: Phase C dry-run (STEP 15.47 — fail-closed RBAC backfill gate)
-        run: |
-          # Run the dry-run script (READ-ONLY — zero write methods + before/after snapshot).
-          # The script outputs a single-line DRYRUN_GATE:{...} JSON for CI parsing.
-          # STEP 15.47: CI MUST FAIL if gatePasses=false, readOnlyInvariant=false,
-          # or DRYRUN_GATE output is missing/malformed.
-          bunx tsx scripts/rbac-backfill-dryrun.ts 2>&1 | tee /tmp/dryrun-output.txt
-          # Extract the machine-parseable gate line
-          GATE_LINE=$(grep '^DRYRUN_GATE:' /tmp/dryrun-output.txt | tail -1)
-          if [ -z "$GATE_LINE" ]; then
-            echo "ERROR: No DRYRUN_GATE output from dry-run script"
-            exit 1
-          fi
-          # Parse the gate JSON (python3 for reliable parsing)
-          GATE_JSON="${GATE_LINE#DRYRUN_GATE:}"
-          echo "dry-run gate: $GATE_JSON"
-          GATE_PASSES=$(echo "$GATE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['gatePasses'])")
-          READ_ONLY=$(echo "$GATE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('readOnlyInvariant','MISSING'))")
-          echo "dry-run verdict.gatePasses = $GATE_PASSES"
-          echo "dry-run verdict.readOnlyInvariant = $READ_ONLY"
-          # STEP 15.47: FAIL-CLOSED — exit 1 if gatePasses is not True
-          if [ "$GATE_PASSES" != "True" ]; then
-            echo "FAIL: dry-run gate did not pass — Phase C backfill is NOT safe."
-            echo "Investigate MISMATCH/INVALID/MULTI_ROLE users before proceeding."
-            exit 1
-          fi
-          # STEP 15.47: FAIL-CLOSED — exit 1 if readOnlyInvariant is not True
-          if [ "$READ_ONLY" != "True" ]; then
-            echo "FAIL: dry-run read-only invariant violated — database was mutated!"
-            exit 1
-          fi
-          echo "PASS: dry-run gate passed and read-only invariant holds."
+      - name: Phase C dry-run (STEP 15.49 — unified gate logic, fail-closed)
+        run: bunx tsx scripts/rbac-gate-ci.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests

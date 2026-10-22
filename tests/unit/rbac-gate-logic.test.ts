@@ -262,3 +262,95 @@ describe("STEP 15.48 — Gate Logic: Edge Cases", () => {
     expect(result.total).toBe(15);
   });
 });
+
+describe("STEP 15.49 — Edge Case Validation", () => {
+  it("Negative count → validation error", () => {
+    const parsed = {
+      gatePasses: true,
+      readOnlyInvariant: true,
+      safeToBackfillCount: -1, // negative!
+      mismatchCount: 0,
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 0,
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toBe("NEGATIVE_safeToBackfillCount");
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(false);
+  });
+
+  it("NaN count → validation error", () => {
+    const parsed = {
+      gatePasses: true,
+      readOnlyInvariant: true,
+      safeToBackfillCount: NaN,
+      mismatchCount: 0,
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 0,
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toBe("NON_FINITE_safeToBackfillCount");
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(false);
+  });
+
+  it("Non-integer count → validation error", () => {
+    const parsed = {
+      gatePasses: true,
+      readOnlyInvariant: true,
+      safeToBackfillCount: 1.5, // non-integer
+      mismatchCount: 0,
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 2,
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toBe("NON_INTEGER_safeToBackfillCount");
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(false);
+  });
+
+  it("Sum mismatch (classes > total) → validation error", () => {
+    const parsed = {
+      gatePasses: false,
+      readOnlyInvariant: true,
+      safeToBackfillCount: 5,
+      mismatchCount: 5,
+      multiRoleCount: 5,
+      invalidCount: 5,
+      total: 10, // sum of classes = 20 > total = 10
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toContain("SUM_MISMATCH");
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(false);
+  });
+
+  it("Inconsistent gate (gatePasses=true but MISMATCH>0) → validation error", () => {
+    const parsed = {
+      gatePasses: true, // says pass
+      readOnlyInvariant: true,
+      safeToBackfillCount: 0,
+      mismatchCount: 1, // but has mismatch!
+      multiRoleCount: 0,
+      invalidCount: 0,
+      total: 1,
+    };
+    const error = validateGateOutput(parsed);
+    expect(error).toContain("INCONSISTENT_GATE");
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(false);
+  });
+
+  it("Empty DB path → full valid output with readOnlyInvariant=true", () => {
+    // Simulate the empty-DB DRYRUN_GATE output
+    const line = 'DRYRUN_GATE:{"gatePasses":true,"readOnlyInvariant":true,"safeToBackfillCount":0,"mismatchCount":0,"multiRoleCount":0,"invalidCount":0,"total":0}';
+    const parsed = parseGateLine(line);
+    const error = validateGateOutput(parsed);
+    expect(error).toBe(null); // valid!
+    const decision = evaluateCiDecision(parsed);
+    expect(decision.shouldPass).toBe(true); // empty DB passes
+  });
+});

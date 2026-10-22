@@ -1,9 +1,17 @@
 /**
- * HEAVIX — STEP 15.48: Gate Logic Module (testable, no DB dependency)
+ * HEAVIX — STEP 15.49: Gate Logic Module (testable, no DB dependency)
  *
- * Extracted from scripts/rbac-backfill-dryrun.ts to make the gate evaluation
- * logic independently testable. This module contains PURE functions that
- * can be tested without a database connection.
+ * SINGLE SOURCE OF TRUTH for gate evaluation, parsing, validation, and
+ * CI decision. Used by:
+ *   - scripts/rbac-backfill-dryrun.ts (produces DRYRUN_GATE output)
+ *   - scripts/rbac-gate-ci.ts (CI step runner — parses + decides)
+ *   - tests/unit/rbac-gate-logic.test.ts (unit tests)
+ *   - tests/integration/rbac-gate-ci-real.test.ts (real CI path tests)
+ *
+ * STEP 15.49 enhancements:
+ *   - validateGateOutput: checks for negative, NaN, non-integer, sum mismatch
+ *   - evaluateCiDecision: handles edge cases (script crash, no output)
+ *   - Empty DB path: now produces full valid output with readOnlyInvariant=true
  */
 
 export interface ClassificationCounts {
@@ -104,15 +112,48 @@ export function parseGateLine(line: string): ParsedGate {
   }
 }
 
+function validateCountField(value: unknown, name: string): string | null {
+  if (typeof value !== "number") return `MISSING_OR_INVALID_${name}`;
+  if (!Number.isFinite(value)) return `NON_FINITE_${name}`;
+  if (!Number.isInteger(value)) return `NON_INTEGER_${name}`;
+  if (value < 0) return `NEGATIVE_${name}`;
+  return null;
+}
+
 export function validateGateOutput(parsed: ParsedGate): string | null {
   if (parsed.error) return parsed.error;
+  // Type checks for booleans
   if (typeof parsed.gatePasses !== "boolean") return "MISSING_OR_INVALID_gatePasses";
   if (typeof parsed.readOnlyInvariant !== "boolean") return "MISSING_OR_INVALID_readOnlyInvariant";
-  if (typeof parsed.safeToBackfillCount !== "number") return "MISSING_OR_INVALID_safeToBackfillCount";
-  if (typeof parsed.mismatchCount !== "number") return "MISSING_OR_INVALID_mismatchCount";
-  if (typeof parsed.multiRoleCount !== "number") return "MISSING_OR_INVALID_multiRoleCount";
-  if (typeof parsed.invalidCount !== "number") return "MISSING_OR_INVALID_invalidCount";
-  if (typeof parsed.total !== "number") return "MISSING_OR_INVALID_total";
+  // STEP 15.49: numeric field validation (negative, NaN, non-integer)
+  const numericFields: Array<[unknown, string]> = [
+    [parsed.safeToBackfillCount, "safeToBackfillCount"],
+    [parsed.mismatchCount, "mismatchCount"],
+    [parsed.multiRoleCount, "multiRoleCount"],
+    [parsed.invalidCount, "invalidCount"],
+    [parsed.total, "total"],
+  ];
+  for (const [value, name] of numericFields) {
+    const err = validateCountField(value, name);
+    if (err) return err;
+  }
+  // STEP 15.49: classification sum consistency check
+  // total must equal safeToBackfillCount + mismatchCount + multiRoleCount + invalidCount + (OK, which is total - the others)
+  // Actually: total = OK + MISSING + MISMATCH + MULTI_ROLE + INVALID
+  // We don't have OK in the output, but we can check:
+  // safeToBackfillCount + mismatchCount + multiRoleCount + invalidCount <= total
+  const sumOfClasses =
+    (parsed.safeToBackfillCount ?? 0) +
+    (parsed.mismatchCount ?? 0) +
+    (parsed.multiRoleCount ?? 0) +
+    (parsed.invalidCount ?? 0);
+  if (sumOfClasses > (parsed.total ?? 0)) {
+    return `SUM_MISMATCH (sum of classes ${sumOfClasses} > total ${parsed.total})`;
+  }
+  // STEP 15.49: if gatePasses=true but any blocking count > 0, that's inconsistent
+  if (parsed.gatePasses && ((parsed.mismatchCount ?? 0) > 0 || (parsed.multiRoleCount ?? 0) > 0 || (parsed.invalidCount ?? 0) > 0)) {
+    return `INCONSISTENT_GATE (gatePasses=true but blocking counts > 0)`;
+  }
   return null;
 }
 
