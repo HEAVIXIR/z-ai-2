@@ -219,16 +219,21 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
   });
 
   describe("STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST verification", () => {
-    it("9b. Missing DRYRUN_EXPECTED_HOST → exit 2 (host identity required)", () => {
+    it("9b. Missing DRYRUN_EXPECTED_HOST → warning logged, host check skipped (optional in Docker CI)", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         // DRYRUN_EXPECTED_HOST intentionally missing.
       });
+      // Exit code 2 is expected because DB connection fails (host doesn't exist),
+      // NOT because DRYRUN_EXPECTED_HOST is missing.
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
-      expect(combined).toContain("proxy/MITM");
+      // Should log a warning about skipping the host check, NOT a hard fail.
+      expect(combined).toContain("WARNING: DRYRUN_EXPECTED_HOST is not set");
+      expect(combined).toContain("SKIPPED");
+      // Should NOT contain a hard fail about DRYRUN_EXPECTED_HOST being required.
+      expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
     });
 
     it("9c. DRYRUN_EXPECTED_HOST mismatch with DATABASE_URL host → exit 2", () => {

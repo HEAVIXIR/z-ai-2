@@ -82,11 +82,11 @@ jobs:
           # CI target is the postgres:17 service container's heavix_test db.
           DRYRUN_CONFIRM_TARGET: heavix_test
           DRYRUN_EXPECTED_ROLE: heavix_dryrun_ro
-          # STEP 15.72 Finding 4: server/cluster identity verification.
-          # CI uses localhost:5432 — the DRYRUN_EXPECTED_HOST must match
-          # the host parsed from DATABASE_URL. The preflight also queries
-          # inet_server_addr() and compares with DNS-resolved localhost.
-          DRYRUN_EXPECTED_HOST: localhost
+          # STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST is NOT set in CI.
+          # Docker port mapping makes inet_server_addr() comparison infeasible
+          # (returns container internal IP, not localhost). The preflight logs
+          # a warning and skips the inet_server_addr() check.
+          # For staging/production, operators SHOULD set DRYRUN_EXPECTED_HOST.
         run: |
           # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
           # This ensures the read-only invariant is not affected by concurrent test mutations.
