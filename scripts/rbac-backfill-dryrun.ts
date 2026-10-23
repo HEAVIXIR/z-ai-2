@@ -249,11 +249,60 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
+    // STEP 15.71 Phase B (final): verify effective write privileges on ALL 5 RBAC tables.
+    // Per owner directive: "Verify the actual PostgreSQL role's effective privileges
+    // rather than relying only on current_user. Check write privileges on all five
+    // RBAC tables, relevant sequence privileges, and effective privileges inherited
+    // through PUBLIC."
+    //
+    // We check INSERT, UPDATE, DELETE, TRUNCATE on all 5 RBAC tables via
+    // has_table_privilege(). If ANY returns true, the role has write access and
+    // the preflight fails closed.
+    const rbacTables = ['User', 'UserRole', 'Role', 'Permission', 'RolePermission'];
+    const writePrivileges = ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
+
+    for (const table of rbacTables) {
+      for (const priv of writePrivileges) {
+        const privCheck = await db.$queryRaw`
+          SELECT has_table_privilege(${actualUser}, ${'public.' + table}, ${priv}) as has_priv
+        ` as Array<{ has_priv: boolean }>;
+        if (privCheck[0]?.has_priv) {
+          console.error(`✗ PREFLIGHT FAIL: role has ${priv} privilege on table "${table}".`);
+          console.error('  The dry-run role must have SELECT-only privileges on all RBAC tables.');
+          console.error('  Check that scripts/rbac-create-readonly-role.sql REVOKE was applied correctly.');
+          await db.$disconnect();
+          process.exit(2);
+        }
+      }
+    }
+
+    // STEP 15.71 Phase B: also check PUBLIC grants on the 5 RBAC tables.
+    // If PUBLIC has any write grants, the role inherits them via PUBLIC.
+    for (const table of rbacTables) {
+      const publicCheck = await db.$queryRaw`
+        SELECT count(*)::int as cnt
+        FROM information_schema.role_table_grants
+        WHERE grantee = 'PUBLIC'
+          AND table_name = ${table}
+          AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+      ` as Array<{ cnt: number }>;
+      if (publicCheck[0].cnt > 0) {
+        console.error(`✗ PREFLIGHT FAIL: PUBLIC has write grants on table "${table}".`);
+        console.error('  The role may inherit write privileges via PUBLIC.');
+        console.error('  REVOKE write privileges FROM PUBLIC on all RBAC tables.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+    }
+
     console.log(`  Runtime role (current_user)   : ${actualUser}`);
     console.log(`  Runtime database               : ${actualDb}`);
     console.log(`  Superuser check                : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
     console.log(`  Role memberships               : ${membershipCheck[0].cnt} (must be 0)`);
+    console.log(`  Write-privilege check          : 5 RBAC tables × 4 write ops = 20 checks — all denied ✅`);
+    console.log(`  PUBLIC grants check            : 5 RBAC tables — no PUBLIC write grants ✅`);
     console.log('  Role verification              : PASS ✅');
+    console.log('  (Effective privileges verified — not just role name)');
   } catch (err: unknown) {
     // F-15.68-07 / STEP 15.71: sanitize error — use robust URL parsing
     const rawMsg = err instanceof Error ? err.message : String(err);

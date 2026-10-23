@@ -195,59 +195,126 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
 });
 
 /* ============================================================
-   Sanitization helper unit tests — pure logic, no subprocess
+   Sanitization helper unit tests — import REAL implementation
+   STEP 15.71 Phase C: tests must exercise the ACTUAL production
+   functions from src/lib/rbac/dryrun-helpers.ts, not duplicated logic.
    ============================================================ */
 
-describe("STEP 15.68 — Sanitization helpers (pure logic)", () => {
-  // Re-implement the sanitization regex here to test the LOGIC independently.
-  // This duplicates the production regex — if the production regex changes,
-  // this test must be updated. The goal is to verify the masking behavior.
+import {
+  sanitizeConnectionString as realSanitize,
+  extractDbName as realExtractDbName,
+  mapLegacyRole as realMapLegacyRole,
+} from "@/lib/rbac/dryrun-helpers";
 
-  function sanitizeConnectionString(url: string): string {
-    return url.replace(/(postgresql:\/\/[^:@]+:)([^@]+)(@)/, "$1***$3");
-  }
-
-  function extractDbName(url: string): string | null {
-    const match = url.match(/postgresql:\/\/[^@]+@[^/]+\/([^?]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  }
-
-  it("12. sanitizeConnectionString masks password", () => {
+describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-helpers.ts)", () => {
+  it("12. sanitizeConnectionString masks BOTH username AND password", () => {
     const input = "postgresql://user:secret@host:5432/db?schema=public";
-    const output = sanitizeConnectionString(input);
-    expect(output).toBe("postgresql://user:***@host:5432/db?schema=public");
+    const output = realSanitize(input);
     expect(output).not.toContain("secret");
+    expect(output).not.toContain("user:");
+    // Should still show host/port/db for operator verification
+    expect(output).toContain("host:5432");
+    expect(output).toContain("db");
   });
 
-  it("13. sanitizeConnectionString — @ in password is a known limitation (operators must URL-encode)", () => {
-    // URL-encode passwords per RFC 3986. The sanitizer regex masks everything
-    // between user: and the FIRST @. If the password itself contains @, the
-    // operator MUST URL-encode it (%40) or the connection string is malformed.
-    // This test documents the limitation: a raw @ in password breaks masking.
+  it("13. sanitizeConnectionString handles password with @ (URL-encoded)", () => {
+    // Per RFC 3986, passwords with @ should be URL-encoded as %40.
+    // The new URL-based parser handles this correctly.
     const input = "postgresql://user:p%40ss%21w0rd@host:5432/db";
-    const output = sanitizeConnectionString(input);
-    expect(output).toBe("postgresql://user:***@host:5432/db");
+    const output = realSanitize(input);
     expect(output).not.toContain("p%40ss%21w0rd");
+    expect(output).not.toContain("p@ss");
+    expect(output).not.toContain("ss!w0rd");
+    expect(output).not.toContain("w0rd");
+  });
+
+  it("13a. sanitizeConnectionString handles password with multiple @ (unencoded — malformed URL)", () => {
+    // If the password contains a raw @ (unencoded), the URL is malformed.
+    // The new URL parser will still try to parse it. We verify NO password
+    // fragment leaks regardless of how malformed the URL is.
+    const input = "postgresql://user:p@ss@host:5432/db";
+    const output = realSanitize(input);
+    // The password "p" (before first @) should not appear as a recognizable fragment.
+    // The "ss" after @ should not appear either.
+    // Most importantly, the full password "p@ss" must never appear.
+    expect(output).not.toContain("p@ss");
+  });
+
+  it("13b. sanitizeConnectionString handles password with : (colon)", () => {
+    const input = "postgresql://user:p:ss:w0rd@host:5432/db";
+    const output = realSanitize(input);
+    expect(output).not.toContain("p:ss:w0rd");
+    expect(output).not.toContain("ss:w0rd");
+  });
+
+  it("13c. sanitizeConnectionString handles password with / (slash)", () => {
+    const input = "postgresql://user:p/ss@host:5432/db";
+    const output = realSanitize(input);
+    expect(output).not.toContain("p/ss");
+  });
+
+  it("13d. sanitizeConnectionString handles password with ? (query separator)", () => {
+    const input = "postgresql://user:p?ss@host:5432/db";
+    const output = realSanitize(input);
+    expect(output).not.toContain("p?ss");
+  });
+
+  it("13e. sanitizeConnectionString handles password with # (fragment)", () => {
+    const input = "postgresql://user:p#ss@host:5432/db";
+    const output = realSanitize(input);
+    expect(output).not.toContain("p#ss");
+  });
+
+  it("13f. sanitizeConnectionString handles password with % (encoded chars)", () => {
+    const input = "postgresql://user:p%40ss%21@host:5432/db";
+    const output = realSanitize(input);
+    expect(output).not.toContain("p%40ss%21");
+    expect(output).not.toContain("@ss");
   });
 
   it("14. extractDbName extracts db name from valid URL", () => {
     const input = "postgresql://user:pass@host:5432/heavix_staging?schema=public";
-    expect(extractDbName(input)).toBe("heavix_staging");
+    expect(realExtractDbName(input)).toBe("heavix_staging");
   });
 
   it("15. extractDbName returns null for unparseable URL", () => {
-    expect(extractDbName("not-a-url")).toBeNull();
-    expect(extractDbName("postgresql://user:pass@host")).toBeNull();
+    expect(realExtractDbName("not-a-url")).toBeNull();
+    expect(realExtractDbName("postgresql://user:pass@host")).toBeNull();
   });
 
   it("16. extractDbName handles URL-encoded db names", () => {
     const input = "postgresql://user:pass@host:5432/my%2Bdb?schema=public";
-    expect(extractDbName(input)).toBe("my+db");
+    expect(realExtractDbName(input)).toBe("my+db");
   });
 
-  it("17. sanitizeConnectionString does not mask when no password present", () => {
-    const input = "postgresql://host:5432/db";
-    const output = sanitizeConnectionString(input);
-    expect(output).toBe(input);
+  it("17. sanitizeConnectionString returns safe message for malformed URL", () => {
+    const input = "not-a-valid-url";
+    const output = realSanitize(input);
+    // Should NOT crash, should NOT leak input, should return safe message
+    expect(output).toContain("unable to parse");
+  });
+
+  it("18. mapLegacyRole (real implementation) — ADMIN maps to ADMIN", () => {
+    expect(realMapLegacyRole("ADMIN")).toBe("ADMIN");
+  });
+
+  it("19. mapLegacyRole (real implementation) — SUPERADMIN maps to ADMIN (alias)", () => {
+    expect(realMapLegacyRole("SUPERADMIN")).toBe("ADMIN");
+  });
+
+  it("20. mapLegacyRole (real implementation) — null/empty/whitespace maps to BUYER", () => {
+    expect(realMapLegacyRole(null)).toBe("BUYER");
+    expect(realMapLegacyRole("")).toBe("BUYER");
+    expect(realMapLegacyRole("   ")).toBe("BUYER");
+  });
+
+  it("21. mapLegacyRole (real implementation) — case-insensitive", () => {
+    expect(realMapLegacyRole("admin")).toBe("ADMIN");
+    expect(realMapLegacyRole("Seller")).toBe("SELLER");
+  });
+
+  it("22. mapLegacyRole (real implementation) — unknown returns null (INVALID)", () => {
+    expect(realMapLegacyRole("UNKNOWN_ROLE")).toBeNull();
+    expect(realMapLegacyRole("GOD")).toBeNull();
   });
 });
