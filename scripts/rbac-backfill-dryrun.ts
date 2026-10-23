@@ -60,50 +60,17 @@
  * ──────────────────────────────────────────────────────────────────────── */
 
 import { db } from '@/lib/db';
+import {
+  mapLegacyRole,
+  sanitizeConnectionString,
+  extractDbName,
+  CANONICAL_ROLE_KEYS,
+  type CanonicalRoleKey,
+} from '../src/lib/rbac/dryrun-helpers';
 
-// ─── Role catalog (canonical, from prisma/schema.prisma:1742-1751) ────────
-const CANONICAL_ROLE_KEYS = ['ADMIN', 'SELLER', 'BUYER', 'MODERATOR', 'SUPPORT'] as const;
-type CanonicalRoleKey = (typeof CANONICAL_ROLE_KEYS)[number];
-
-// ─── Legacy alias map (per RBAC-MIGRATION-DESIGN.md §4.1) ─────────────────
-// SUPERADMIN is a legacy alias that collapses into ADMIN. Any other value
-// is INVALID (unrecognized) — the dry-run will NOT auto-correct it.
-const LEGACY_ALIAS_MAP: Record<string, CanonicalRoleKey> = {
-  ADMIN: 'ADMIN',
-  SUPERADMIN: 'ADMIN',
-  SELLER: 'SELLER',
-  BUYER: 'BUYER',
-};
-
-/**
- * Map a legacy `User.role` value to a canonical Role.key.
- *
- * Returns:
- *   - The canonical key when the legacy value is recognized.
- *   - `null` when the legacy value is INVALID (unrecognized) — caller must
- *     flag for manual review and MUST NOT auto-correct.
- *
- * Edge cases:
- *   - empty string ("")  → "BUYER"  (per design doc default fallback)
- *   - whitespace-only    → "BUYER"  (defensive)
- *   - null/undefined     → "BUYER"  (shouldn't happen — column is NOT NULL;
- *                                   defensive in case of DB-level bypass)
- *   - lowercase          → uppercased before lookup
- *
- * Exported (STEP 15.68) so pure unit tests in
- * `tests/unit/rbac-dryrun-preflight.test.ts` can exercise the mapping
- * without spawning the dry-run or connecting to any database.
- */
-export function mapLegacyRole(legacy: string | null | undefined): CanonicalRoleKey | null {
-  const upper = (legacy ?? '').trim().toUpperCase();
-  if (upper === '') return 'BUYER';
-  if (upper in LEGACY_ALIAS_MAP) return LEGACY_ALIAS_MAP[upper];
-  // Direct canonical match (e.g., "MODERATOR", "SUPPORT" stored as User.role)
-  if ((CANONICAL_ROLE_KEYS as readonly string[]).includes(upper)) {
-    return upper as CanonicalRoleKey;
-  }
-  return null; // INVALID
-}
+// ─── Role catalog and mapping imported from src/lib/rbac/dryrun-helpers.ts ──
+// STEP 15.71 Phase C: mapLegacyRole, sanitizeConnectionString, extractDbName
+// are now imported from a shared module so tests exercise the REAL implementation.
 
 // ─── Classification types ─────────────────────────────────────────────────
 type ClassificationKind = 'OK' | 'MISSING' | 'MISMATCH' | 'MULTI_ROLE' | 'INVALID';
@@ -161,33 +128,7 @@ const BATCH_SIZE = 1000; // dry-run uses larger batch than the production
                          // backfill (200) — read-only, no transactional cost.
 const SAMPLE_CAP = 20; // per-classification sample size in human output
 
-// ─── STEP 15.68: Preflight helpers ────────────────────────────────────────
-
-/**
- * Sanitize a PostgreSQL connection string for safe display.
- * Strips the password but keeps scheme/host/port/db for operator verification.
- * F-15.68-07: never print credentials in errors or logs.
- *
- * Example: "postgresql://user:secret@host:5432/db?schema=public"
- *       → "postgresql://user:***@host:5432/db?schema=public"
- */
-function sanitizeConnectionString(url: string): string {
-  try {
-    // Mask password in the userinfo segment without using URL parsing side effects.
-    return url.replace(/(postgresql:\/\/[^:@]+:)([^@]+)(@)/, '$1***$3');
-  } catch {
-    return '<unable to sanitize>';
-  }
-}
-
-/**
- * Extract the database name from a connection string for target confirmation.
- * Returns the `dbname` path segment, or null if unparseable.
- */
-function extractDbName(url: string): string | null {
-  const match = url.match(/postgresql:\/\/[^@]+@[^/]+\/([^?]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
+// ─── STEP 15.68/15.71: Preflight helpers (imported from dryrun-helpers.ts) ──
 
 /**
  * STEP 15.68 preflight: verify connection target + runtime role BEFORE any query.
@@ -260,23 +201,63 @@ async function preflightConnectionCheck(): Promise<void> {
     const actualUser = result[0]?.current_user;
     const actualDb = result[0]?.current_database;
 
-    if (actualUser !== expectedRole) {
-      console.error('✗ PREFLIGHT FAIL: runtime role does not match expected read-only role.');
-      console.error(`    current_user (runtime)  = ${actualUser}`);
-      console.error(`    DRYRUN_EXPECTED_ROLE    = ${expectedRole}`);
-      console.error('  The dry-run must connect as the read-only role, NOT a superuser.');
-      console.error('  Check that DATABASE_URL uses the heavix_dryrun_ro credentials.');
+    // STEP 15.71 Phase B: verify live database matches confirmed target
+    if (actualDb !== confirmTarget) {
+      console.error('✗ PREFLIGHT FAIL: runtime database does not match confirmed target.');
+      console.error(`    current_database() = ${actualDb}`);
+      console.error(`    DRYRUN_CONFIRM_TARGET = ${confirmTarget}`);
+      console.error('  The dry-run connected to a different database than expected.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // STEP 15.71 Phase B: verify effective privileges (not just role name)
+    // Check that the role is NOT a superuser and has no write privileges
+    const superuserCheck = await db.$queryRaw`
+      SELECT rolsuper, rolcreaterole, rolcreatedb
+      FROM pg_roles WHERE rolname = ${actualUser}
+    ` as Array<{ rolsuper: boolean; rolcreaterole: boolean; rolcreatedb: boolean }>;
+
+    if (superuserCheck.length === 0) {
+      console.error('✗ PREFLIGHT FAIL: could not find role in pg_roles.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    const roleInfo = superuserCheck[0];
+    if (roleInfo.rolsuper) {
+      console.error('✗ PREFLIGHT FAIL: role is a superuser — write access is not restricted.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+    if (roleInfo.rolcreaterole || roleInfo.rolcreatedb) {
+      console.error('✗ PREFLIGHT FAIL: role can create roles or databases — elevated privileges detected.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // Check role memberships (inherited privileges)
+    const membershipCheck = await db.$queryRaw`
+      SELECT count(*)::int as cnt
+      FROM pg_auth_members
+      WHERE member = (SELECT oid FROM pg_roles WHERE rolname = ${actualUser})
+    ` as Array<{ cnt: number }>;
+
+    if (membershipCheck[0].cnt > 0) {
+      console.error('✗ PREFLIGHT FAIL: role has memberships in other roles — inherited privileges possible.');
       await db.$disconnect();
       process.exit(2);
     }
 
     console.log(`  Runtime role (current_user)   : ${actualUser}`);
     console.log(`  Runtime database               : ${actualDb}`);
+    console.log(`  Superuser check                : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
+    console.log(`  Role memberships               : ${membershipCheck[0].cnt} (must be 0)`);
     console.log('  Role verification              : PASS ✅');
   } catch (err: unknown) {
-    // F-15.68-07: sanitize error — strip any connection-string-like content
+    // F-15.68-07 / STEP 15.71: sanitize error — use robust URL parsing
     const rawMsg = err instanceof Error ? err.message : String(err);
-    const sanitized = rawMsg.replace(/(postgresql:\/\/[^:@]+:)([^@]+)(@)/g, '$1***$3');
+    const sanitized = sanitizeConnectionString(rawMsg);
     console.error('✗ PREFLIGHT FAIL: could not query current_user/current_database().');
     console.error('  This usually means the connection failed or the role lacks SELECT on pg_catalog.');
     console.error(`  Error (sanitized): ${sanitized}`);
