@@ -89,8 +89,12 @@ const LEGACY_ALIAS_MAP: Record<string, CanonicalRoleKey> = {
  *   - null/undefined     → "BUYER"  (shouldn't happen — column is NOT NULL;
  *                                   defensive in case of DB-level bypass)
  *   - lowercase          → uppercased before lookup
+ *
+ * Exported (STEP 15.68) so pure unit tests in
+ * `tests/unit/rbac-dryrun-preflight.test.ts` can exercise the mapping
+ * without spawning the dry-run or connecting to any database.
  */
-function mapLegacyRole(legacy: string | null | undefined): CanonicalRoleKey | null {
+export function mapLegacyRole(legacy: string | null | undefined): CanonicalRoleKey | null {
   const upper = (legacy ?? '').trim().toUpperCase();
   if (upper === '') return 'BUYER';
   if (upper in LEGACY_ALIAS_MAP) return LEGACY_ALIAS_MAP[upper];
@@ -628,17 +632,24 @@ async function emitEmptyReport(
 }
 
 // ─── Entrypoint ───────────────────────────────────────────────────────────
-main().catch(async (err: unknown) => {
-  console.error('═'.repeat(72));
-  console.error('✗ Phase C dry-run failed with an unrecoverable error.');
-  console.error('  This is expected in sandboxes WITHOUT PostgreSQL.');
-  console.error('  In CI/production, this indicates a real DB connection issue.');
-  console.error('═'.repeat(72));
-  console.error(err);
-  try {
-    await db.$disconnect();
-  } catch {
-    /* ignore — best-effort */
-  }
-  process.exit(2);
-});
+// STEP 15.68: Guard with `require.main === module` so the script can be
+// imported by `tests/unit/rbac-dryrun-preflight.test.ts` for pure unit
+// testing of `mapLegacyRole()` without triggering the DB-backed main()
+// routine. The CLI behavior (`bunx tsx scripts/rbac-backfill-dryrun.ts`)
+// is unchanged — when run directly, main() executes as before.
+if (require.main === module) {
+  main().catch(async (err: unknown) => {
+    console.error('═'.repeat(72));
+    console.error('✗ Phase C dry-run failed with an unrecoverable error.');
+    console.error('  This is expected in sandboxes WITHOUT PostgreSQL.');
+    console.error('  In CI/production, this indicates a real DB connection issue.');
+    console.error('═'.repeat(72));
+    console.error(err);
+    try {
+      await db.$disconnect();
+    } catch {
+      /* ignore — best-effort */
+    }
+    process.exit(2);
+  });
+}
