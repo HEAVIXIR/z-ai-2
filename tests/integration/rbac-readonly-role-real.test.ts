@@ -259,7 +259,13 @@ describe.skipIf(!RUN_TESTS)(
           {
             encoding: "utf-8",
             timeout: 120000,
-            env: { ...process.env, DATABASE_URL: roUrl },
+            env: {
+              ...process.env,
+              DATABASE_URL: roUrl,
+              // STEP 15.68: preflight env vars (F-15.68-01, F-15.68-02)
+              DRYRUN_CONFIRM_TARGET: "heavix_test",
+              DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
+            },
           },
         );
       } catch (e: unknown) {
