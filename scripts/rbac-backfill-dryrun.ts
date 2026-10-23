@@ -147,7 +147,7 @@ interface DryRunReport {
     safeToBackfillCount: number; // MISSING — backfill would add the mapped role
     needsInvestigationCount: number; // MISMATCH + MULTI_ROLE — ambiguous
     invalidCount: number; // INVALID — manual review required
-    gatePasses: boolean; // true iff INVALID==0 AND MISMATCH==0
+    gatePasses: boolean; // true iff INVALID==0 AND MISMATCH==0 AND MULTI_ROLE==0 (STEP 15.47 fail-closed)
     ownerDirective: 'نقش‌های مبهم را خودکار اصلاح نکن.';
   };
 }
@@ -467,7 +467,7 @@ async function main(): Promise<void> {
   );
   console.log(
     `  Gate: ${gatePasses ? 'PASS' : 'FAIL'}` +
-      ` (requires INVALID==0 AND MISMATCH==0)`,
+      ` (requires INVALID==0 AND MISMATCH==0 AND MULTI_ROLE==0)`,
   );
   console.log(
     `  Owner directive: «نقش‌های مبهم را خودکار اصلاح نکن.»` +
