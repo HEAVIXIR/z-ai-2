@@ -258,14 +258,26 @@ async function preflightConnectionCheck(): Promise<void> {
     // We check INSERT, UPDATE, DELETE, TRUNCATE on all 5 RBAC tables via
     // has_table_privilege(). If ANY returns true, the role has write access and
     // the preflight fails closed.
+    //
+    // NOTE: PostgreSQL table names are case-sensitive when quoted. Prisma creates
+    // tables with quoted PascalCase names (e.g., "User", "UserRole"). We must
+    // pass the table name as a quoted string literal to has_table_privilege(),
+    // not as an unquoted identifier (which would be lowercased to "user").
     const rbacTables = ['User', 'UserRole', 'Role', 'Permission', 'RolePermission'];
     const writePrivileges = ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
 
     for (const table of rbacTables) {
+      // Build the quoted table name: public."User"
+      const quotedTable = `public."${table}"`;
       for (const priv of writePrivileges) {
-        const privCheck = await db.$queryRaw`
-          SELECT has_table_privilege(${actualUser}, ${'public.' + table}, ${priv}) as has_priv
-        ` as Array<{ has_priv: boolean }>;
+        // Use Prisma.sql for safe identifier interpolation (no SQL injection —
+        // values are hardcoded constants, not user input)
+        const privCheck = await db.$queryRawUnsafe(
+          `SELECT has_table_privilege($1, $2, $3) as has_priv`,
+          actualUser,
+          quotedTable,
+          priv,
+        ) as Array<{ has_priv: boolean }>;
         if (privCheck[0]?.has_priv) {
           console.error(`✗ PREFLIGHT FAIL: role has ${priv} privilege on table "${table}".`);
           console.error('  The dry-run role must have SELECT-only privileges on all RBAC tables.');
