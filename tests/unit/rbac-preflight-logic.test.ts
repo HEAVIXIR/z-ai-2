@@ -269,55 +269,63 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
     });
 
-    it("9e. CI exception flag + GITHUB_ACTIONS + CI signals → passes (genuine CI scenario)", () => {
-      const res = runScript({
-        DATABASE_URL: "postgresql://user:pass@localhost:5432/heavix_test?schema=public",
-        DRYRUN_CONFIRM_TARGET: "heavix_test",
-        DRYRUN_EXPECTED_HOST: "localhost",
-        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
-        GITHUB_ACTIONS: "true",
-        CI: "true",
-      });
-      // Host check passes, genuine CI detected → IP check will be skipped
-      // But DB connect still fails (no real DB in test env) → exit 2
-      expect(res.exitCode).toBe(2);
-      const combined = res.stdout + res.stderr;
-      expect(combined).toContain("Host identity           : PASS ✅");
-      expect(combined).toContain("CI detection            : CI");
-    });
-
-    it("9f. CI exception flag alone (no GITHUB_ACTIONS/CI) → BYPASS ATTEMPT → halt", () => {
+    it("9e. STEP 15.75: DRYRUN_CI_HOST_CHECK_EXCEPTION set to ANY value → halt (deprecated bypass)", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         DRYRUN_EXPECTED_HOST: "host",
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
-        // GITHUB_ACTIONS and CI intentionally NOT set
+        // STEP 15.75: even with GITHUB_ACTIONS=true + CI=true (genuine CI
+        // signals), the deprecated flag still halts — fail closed.
+        GITHUB_ACTIONS: "true",
+        CI: "true",
       });
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      // Must halt — bypass attempt detected
-      expect(combined).toContain("PREFLIGHT FAIL: CI host-check exception bypass attempt detected");
-      expect(combined).toContain("bypass");
+      // Must halt — the flag is deprecated and no longer honored.
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_CI_HOST_CHECK_EXCEPTION is set (deprecated)");
+      expect(combined).toContain("deprecated");
       // Must NOT continue to DB queries
       expect(combined).not.toContain("Trusted read-only role");
     });
 
-    it("9g. CI exception flag + GITHUB_ACTIONS but no CI → still BYPASS ATTEMPT → halt", () => {
+    it("9f. STEP 15.75: DRYRUN_CI_HOST_CHECK_EXCEPTION set to 'false' → still halt (ANY value halts)", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         DRYRUN_EXPECTED_HOST: "host",
-        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
-        GITHUB_ACTIONS: "true",
-        // CI intentionally NOT set
+        // Setting the flag to "false" is still SETTING it — any value halts.
+        DRYRUN_CI_HOST_CHECK_EXCEPTION: "false",
       });
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      expect(combined).toContain("PREFLIGHT FAIL: CI host-check exception bypass attempt detected");
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_CI_HOST_CHECK_EXCEPTION is set (deprecated)");
+      expect(combined).toContain("deprecated");
+      // Must NOT continue to DB queries
+      expect(combined).not.toContain("Trusted read-only role");
     });
 
-    it("9h. No credential leak in host check failure output", () => {
+    it("9g. STEP 15.75: All identity checks still mandatory in CI (hostname, target, role, privileges)", () => {
+      // Even with GITHUB_ACTIONS=true + CI=true (genuine CI env), all identity
+      // checks remain mandatory. No bypass exists anymore.
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        // DRYRUN_EXPECTED_HOST intentionally NOT set — must halt even in CI.
+        GITHUB_ACTIONS: "true",
+        CI: "true",
+        // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally NOT set.
+      });
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      // Hostname match is enforced unconditionally — CI signals don't bypass it.
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
+      expect(combined).toContain("MANDATORY");
+      // Must NOT continue to DB queries
+      expect(combined).not.toContain("Trusted read-only role");
+    });
+
+    it("9h. STEP 15.75: No credential leak in failure output", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
@@ -329,35 +337,34 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(res.stderr).not.toContain("super_secret_password");
     });
 
-    it("9i. Bypass attempt with credential in DATABASE_URL → no credential leak in bypass failure output", () => {
+    it("9i. STEP 15.75: Bypass attempt with credential → no leak", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         DRYRUN_EXPECTED_HOST: "host",
+        // Deprecated bypass flag set — must halt AND not leak credentials.
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
-        // No GITHUB_ACTIONS/CI → bypass attempt
       });
       expect(res.exitCode).toBe(2);
-      // Password must NEVER appear even in bypass attempt failure
+      // Password must NEVER appear even in deprecated-flag failure path
       expect(res.stdout).not.toContain("super_secret_password");
       expect(res.stderr).not.toContain("super_secret_password");
     });
 
-    it("9j. GITHUB_ACTIONS + CI but no exception flag → full IP check runs (no skip)", () => {
+    it("9j. STEP 15.75: Normal flow (no deprecated flag) → proceeds past host check", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         DRYRUN_EXPECTED_HOST: "host",
-        GITHUB_ACTIONS: "true",
-        CI: "true",
-        // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally NOT set
+        // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally NOT set — proceeds normally.
+        // GITHUB_ACTIONS / CI intentionally NOT set — they have no effect anymore.
       });
-      // Host check passes, no exception flag → full IP check would run
-      // DB connect fails (host doesn't exist) → exit 2
+      // Host check passes, then DB connect fails (host doesn't exist) → exit 2
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
       expect(combined).toContain("Host identity           : PASS ✅");
-      expect(combined).toContain("CI detection            : non-CI (full IP check)");
+      // Must NOT contain a deprecated-flag halt message
+      expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_CI_HOST_CHECK_EXCEPTION");
     });
   });
 

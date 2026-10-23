@@ -365,13 +365,6 @@ describe("STEP 15.72 Finding 4 — Server/cluster identity verification (DRYRUN_
     expect(DRYRUN_SOURCE).toContain("extractHost(databaseUrl)");
   });
 
-  it("rbac-backfill-dryrun.ts queries inet_server_addr() and compares with DNS-resolved host", () => {
-    expect(DRYRUN_SOURCE).toContain("inet_server_addr()");
-    expect(DRYRUN_SOURCE).toContain("dnsLookup");
-    // The normalize-and-compare logic must include IPv4-mapped IPv6 normalization.
-    expect(DRYRUN_SOURCE).toContain("::ffff:");
-  });
-
   it("rbac-backfill-dryrun.ts does NOT log the connection password when establishing identity", () => {
     // The preflight must NOT print the raw DATABASE_URL — only the sanitized form.
     expect(DRYRUN_SOURCE).toMatch(/sanitizeConnectionString\(databaseUrl\)/);
@@ -382,6 +375,102 @@ describe("STEP 15.72 Finding 4 — Server/cluster identity verification (DRYRUN_
 
   it("extractHost returns 'localhost' for localhost URLs (REAL implementation)", () => {
     expect(extractHost("postgresql://user:pass@localhost:5432/heavix_test")).toBe("localhost");
+  });
+});
+
+describe("STEP 15.75 — Content-based identity verification (replaces env-var-based CI trust)", () => {
+  it("dryrun-helpers.ts no longer exports detectCiEnvironment (removed)", () => {
+    // STEP 15.75: detectCiEnvironment() was removed entirely.
+    // The export statement must be gone. (Comments mentioning it as a removed
+    // feature are OK — they document what was deleted.)
+    expect(HELPERS_SOURCE).not.toMatch(/export\s+function\s+detectCiEnvironment/);
+    expect(HELPERS_SOURCE).not.toMatch(/export\s+interface\s+CiDetectionResult/);
+    expect(HELPERS_SOURCE).not.toMatch(/function\s+detectCiEnvironment\s*\(/);
+    expect(HELPERS_SOURCE).not.toMatch(/interface\s+CiDetectionResult\s*\{/);
+  });
+
+  it("rbac-backfill-dryrun.ts no longer imports detectCiEnvironment (removed)", () => {
+    // The import statement must be gone. (Comments mentioning detectCiEnvironment
+    // as a removed feature are OK — they document what was deleted.)
+    expect(DRYRUN_SOURCE).not.toMatch(/import\s*\{[^}]*detectCiEnvironment[^}]*\}/);
+    // The runtime use of detectCiEnvironment must be gone.
+    expect(DRYRUN_SOURCE).not.toMatch(/detectCiEnvironment\(/);
+    expect(DRYRUN_SOURCE).not.toMatch(/const\s+ciDetection\s*=\s*detectCiEnvironment/);
+  });
+
+  it("rbac-backfill-dryrun.ts no longer uses inet_server_addr() (removed IP check)", () => {
+    // The inet_server_addr() IP comparison was removed — it was a flawed
+    // signal that an operator could bypass by setting GITHUB_ACTIONS,
+    // CI, AND DRYRUN_CI_HOST_CHECK_EXCEPTION on any machine.
+    // Comments mentioning inet_server_addr as a removed feature are OK —
+    // they document what was deleted. The actual SQL/runtime use must be gone.
+    expect(DRYRUN_SOURCE).not.toMatch(/\$queryRaw[^\n]*inet_server_addr/);
+    expect(DRYRUN_SOURCE).not.toMatch(/inet_server_addr\(\)\s+as\s+server_addr/);
+    expect(DRYRUN_SOURCE).not.toMatch(/server_addr\s*\?\s*['"]<null>['"]/);
+    // No live reference to the server_addr variable.
+    expect(DRYRUN_SOURCE).not.toMatch(/\$\{serverAddr\??\}/);
+  });
+
+  it("rbac-backfill-dryrun.ts no longer imports dnsLookup (removed IP check)", () => {
+    // The import statement must be gone. (Comments mentioning dnsLookup as a
+    // removed feature are OK — they document what was deleted.)
+    expect(DRYRUN_SOURCE).not.toMatch(/import\s*\{[^}]*dnsLookup[^}]*\}/);
+    expect(DRYRUN_SOURCE).not.toContain("from 'node:dns/promises'");
+    // The runtime use of dnsLookup (e.g., `await dnsLookup(...)`) must be gone.
+    expect(DRYRUN_SOURCE).not.toMatch(/await\s+dnsLookup\(/);
+  });
+
+  it("rbac-backfill-dryrun.ts no longer uses IPv4-mapped IPv6 normalization (removed IP check)", () => {
+    // The ::ffff: normalization logic was part of the IP comparison block
+    // that has been removed entirely.
+    expect(DRYRUN_SOURCE).not.toContain("::ffff:");
+  });
+
+  it("rbac-backfill-dryrun.ts halts when DRYRUN_CI_HOST_CHECK_EXCEPTION is set (deprecated fail-closed)", () => {
+    // The deprecated bypass flag now halts on ANY value (including "false").
+    expect(DRYRUN_SOURCE).toContain("DRYRUN_CI_HOST_CHECK_EXCEPTION is set (deprecated)");
+    expect(DRYRUN_SOURCE).toContain("deprecated");
+    expect(DRYRUN_SOURCE).toMatch(/DRYRUN_CI_HOST_CHECK_EXCEPTION\s*!==\s*undefined/);
+  });
+
+  it("rbac-backfill-dryrun.ts performs content-based identity verification (5 RBAC tables exist)", () => {
+    // The information_schema.tables query checks for ALL 5 RBAC tables.
+    expect(DRYRUN_SOURCE).toContain("information_schema.tables");
+    expect(DRYRUN_SOURCE).toContain("table_schema = 'public'");
+    expect(DRYRUN_SOURCE).toContain("table_name IN ('User', 'UserRole', 'Role', 'Permission', 'RolePermission')");
+    expect(DRYRUN_SOURCE).toContain("required RBAC tables missing");
+  });
+
+  it("rbac-backfill-dryrun.ts performs content-based identity verification (5 canonical roles in catalog)", () => {
+    // The Role catalog query checks for ALL 5 canonical roles via a LIVE DB query.
+    // "Role" MUST be quoted (case-sensitive PostgreSQL identifier).
+    expect(DRYRUN_SOURCE).toContain('SELECT key FROM "Role"');
+    expect(DRYRUN_SOURCE).toContain("key IN ('ADMIN', 'SELLER', 'BUYER', 'MODERATOR', 'SUPPORT')");
+    expect(DRYRUN_SOURCE).toContain("canonical Role catalog is incomplete");
+  });
+
+  it("rbac-backfill-dryrun.ts verifies identity via LIVE DB content (not env vars)", () => {
+    // Identity verification must use $queryRaw (live DB queries), not env-var checks.
+    expect(DRYRUN_SOURCE).toContain("Content-based identity verification");
+    expect(DRYRUN_SOURCE).toContain("live DB content");
+  });
+
+  it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
+    // The preflight must NOT read GITHUB_ACTIONS or CI as standalone signals —
+    // these were caller-controlled env vars that could not cryptographically
+    // prove CI identity. (Note: DRYRUN_CI_HOST_CHECK_EXCEPTION is intentionally
+    // referenced — it's the deprecated fail-closed flag, not a CI signal.)
+    // Verify by inspecting the preflight function body (before main()).
+    const preflightSection = DRYRUN_SOURCE.substring(
+      DRYRUN_SOURCE.indexOf("async function preflightConnectionCheck"),
+      DRYRUN_SOURCE.indexOf("async function main"),
+    );
+    // Word-boundary regex so `process.env.CI` does not match the longer
+    // `process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION` identifier.
+    expect(preflightSection).not.toMatch(/process\.env\.GITHUB_ACTIONS\b/);
+    expect(preflightSection).not.toMatch(/process\.env\.CI\b/);
+    expect(preflightSection).not.toMatch(/GITHUB_ACTIONS\s*===\s*['"]true['"]/);
+    expect(preflightSection).not.toMatch(/process\.env\.CI\s*===\s*['"]true['"]/);
   });
 });
 

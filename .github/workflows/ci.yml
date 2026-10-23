@@ -83,12 +83,15 @@ jobs:
           DRYRUN_CONFIRM_TARGET: heavix_test
           DRYRUN_EXPECTED_ROLE: heavix_dryrun_ro
           # STEP 15.73: MANDATORY host identity verification.
-          # DRYRUN_EXPECTED_HOST is always required (hostname match enforced).
-          # DRYRUN_CI_HOST_CHECK_EXCEPTION=true allows skipping ONLY the
-          # inet_server_addr() IP comparison (Docker port mapping makes it
-          # infeasible). Hostname match is still enforced without exception.
+          # STEP 15.75: DRYRUN_EXPECTED_HOST is always required (hostname match
+          # enforced). The inet_server_addr() IP check has been removed entirely;
+          # identity is now verified via LIVE DB content (table existence + Role
+          # catalog) inside preflightConnectionCheck. GITHUB_ACTIONS and CI are
+          # set automatically by GitHub Actions and are no longer referenced by
+          # the preflight (env-var-based CI trust was insecure — all three signals
+          # were caller-controlled). DRYRUN_CI_HOST_CHECK_EXCEPTION has been
+          # deprecated: any value halts the preflight with exit 2.
           DRYRUN_EXPECTED_HOST: localhost
-          DRYRUN_CI_HOST_CHECK_EXCEPTION: "true"
         run: |
           # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
           # This ensures the read-only invariant is not affected by concurrent test mutations.

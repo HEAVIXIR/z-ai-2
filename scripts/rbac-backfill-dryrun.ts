@@ -68,11 +68,9 @@ import {
   resolveTrustedRole,
   categorizeDbError,
   redactConnectionDetails,
-  detectCiEnvironment,
   CANONICAL_ROLE_KEYS,
   type CanonicalRoleKey,
 } from '../src/lib/rbac/dryrun-helpers';
-import { lookup as dnsLookup } from 'node:dns/promises';
 
 // ─── Role catalog and mapping imported from src/lib/rbac/dryrun-helpers.ts ──
 // STEP 15.71 Phase C: mapLegacyRole, sanitizeConnectionString, extractDbName
@@ -84,6 +82,15 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 // defensively in the top-level error handler to mask any URL that might
 // appear in the error's string form (defense-in-depth alongside
 // categorizeDbError, which never returns raw text).
+//
+// STEP 15.75: the `detectCiEnvironment` helper was REMOVED from dryrun-helpers.ts.
+// Env-var-based CI trust was insecure: an operator could set ALL THREE
+// signals (GITHUB_ACTIONS, CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) on any
+// machine to bypass server-identity verification. Identity is now verified
+// via LIVE DB content (table existence + Role catalog) after the
+// role/privilege checks. `inet_server_addr` and `dnsLookup` are gone.
+// `DRYRUN_CI_HOST_CHECK_EXCEPTION` is now a deprecated bypass: ANY value
+// halts with exit 2 (fail closed).
 
 // ─── Classification types ─────────────────────────────────────────────────
 type ClassificationKind = 'OK' | 'MISSING' | 'MISMATCH' | 'MULTI_ROLE' | 'INVALID';
@@ -165,12 +172,23 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *   - resolveTrustedRole() validates DRYRUN_EXPECTED_ROLE against a fixed
  *     allowlist (Finding 2). A non-allowlisted role fails closed.
  *   - DRYRUN_EXPECTED_HOST is required and matched against the host parsed
- *     from DATABASE_URL + against the live `inet_server_addr()` result
- *     (Finding 4) to detect proxy / MITM scenarios.
+ *     from DATABASE_URL (Finding 4) to detect proxy / MITM scenarios.
  *   - Effective privilege audit extends to sequences (USAGE/UPDATE), schema
  *     CREATE, database CREATE, and table ownership (Finding 3).
  *   - All catch blocks use categorizeDbError() (Finding 5) — never print raw
  *     error text, but operators can distinguish failure types.
+ *
+ * STEP 15.75 hardening (owner fix — remove env-var-based CI trust):
+ *   - Removed the `detectCiEnvironment` helper. ALL THREE prior CI signals
+ *     (GITHUB_ACTIONS, CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) were caller-controlled
+ *     env vars; an operator could set ALL THREE on any machine. No combination
+ *     of env vars can cryptographically prove "this is GitHub Actions CI."
+ *   - `DRYRUN_CI_HOST_CHECK_EXCEPTION` is now a DEPRECATED bypass: ANY value
+ *     halts with exit 2 (fail closed). The flag is no longer honored.
+ *   - Removed the `inet_server_addr` IP comparison + DNS lookup. Identity is
+ *     now verified via LIVE DB content (table existence + Role catalog) AFTER
+ *     the role/privilege checks. A wrong database (even on the right hostname)
+ *     will fail these checks.
  *
  * Exits with code 2 on any preflight failure.
  */
@@ -219,12 +237,12 @@ async function preflightConnectionCheck(): Promise<void> {
 
   // STEP 15.73 Finding 4 (MANDATORY): DRYRUN_EXPECTED_HOST is ALWAYS required.
   // The hostname must match the host parsed from DATABASE_URL.
-  // The ONLY exception is the inet_server_addr() IP comparison, which can be
-  // skipped ONLY when DRYRUN_CI_HOST_CHECK_EXCEPTION=true is explicitly set.
-  // This exception is narrowly scoped: hostname match is still enforced.
-  // Outside CI, the operator MUST set DRYRUN_EXPECTED_HOST and the IP check
-  // runs without exception. If the host cannot be verified, the preflight
-  // halts — it does NOT continue with a warning.
+  // STEP 15.75: There is NO exception. The inet_server_addr() IP check was
+  // removed entirely (it was a flawed signal — an operator could set ALL
+  // CI env vars to bypass it). Identity is now verified via LIVE DB content
+  // (table existence + Role catalog) AFTER the role/privilege checks below.
+  // If the host cannot be verified, the preflight halts — it does NOT
+  // continue with a warning.
   if (!expectedHost) {
     console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set.');
     console.error('  Server/cluster identity verification is MANDATORY.');
@@ -248,20 +266,26 @@ async function preflightConnectionCheck(): Promise<void> {
   }
   console.log('  Host identity           : PASS ✅ (hostname match verified)');
 
-  // STEP 15.74: EARLY bypass-attempt check (before DB connection).
-  // If DRYRUN_CI_HOST_CHECK_EXCEPTION=true is set but the environment is NOT
-  // a genuine CI (no GITHUB_ACTIONS/CI signals), this is a bypass attempt.
-  // Fail closed immediately — before connecting to the DB, before any
-  // credential could be exposed.
-  const ciDetection = detectCiEnvironment(process.env);
-  if (ciDetection.bypassAttempt) {
-    console.error('✗ PREFLIGHT FAIL: CI host-check exception bypass attempt detected.');
-    console.error(`    Reason: ${ciDetection.reason}`);
-    console.error('  The exception flag requires a genuine CI environment (GITHUB_ACTIONS=true AND CI=true).');
-    console.error('  A single caller-controlled env var cannot bypass server identity verification.');
+  // STEP 15.75: DEPRECATED bypass flag — fail closed on ANY value.
+  // The prior design honored DRYRUN_CI_HOST_CHECK_EXCEPTION=true to skip the
+  // inet_server_addr() IP check inside CI. Since the IP check is now removed
+  // entirely AND env-var-based CI trust was insecure (all three signals are
+  // caller-controlled), the flag is no longer honored: ANY value halts with
+  // exit 2. This is fail-closed: if an operator sets the flag (even to "false"),
+  // the preflight refuses to proceed. The flag remains in the env-var namespace
+  // purely so that legacy CI configs that still set it will loudly fail
+  // rather than silently behave like the old (insecure) path.
+  if (process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION !== undefined) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_CI_HOST_CHECK_EXCEPTION is set (deprecated).');
+    console.error('    Value                  :', JSON.stringify(process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION));
+    console.error('  This flag is no longer honored. STEP 15.75 removed env-var-based');
+    console.error('  CI trust entirely — no combination of GITHUB_ACTIONS, CI, or');
+    console.error('  DRYRUN_CI_HOST_CHECK_EXCEPTION can bypass server-identity verification.');
+    console.error('  Identity is now verified via LIVE DB content (table existence +');
+    console.error('  Role catalog) AFTER the role/privilege checks.');
+    console.error('  Remove DRYRUN_CI_HOST_CHECK_EXCEPTION from your environment.');
     process.exit(2);
   }
-  console.log(`  CI detection            : ${ciDetection.isCi ? 'CI (IP check will be skipped)' : 'non-CI (full IP check)'}`);
 
   // STEP 15.72 Finding 2: resolve the trusted role via allowlist (not raw env var).
   // If DRYRUN_EXPECTED_ROLE is unset, default to 'heavix_dryrun_ro' (in allowlist).
@@ -281,16 +305,17 @@ async function preflightConnectionCheck(): Promise<void> {
 
   // F-15.68-02: verify runtime role is the expected read-only role
   // Use a raw query via Prisma's $queryRaw to check the current user.
+  // STEP 15.75: inet_server_addr() removed — we no longer query the server
+  // IP address. Identity is verified via content (table existence + Role
+  // catalog) below, not via IP comparison.
   try {
-    const rows = await db.$queryRaw`SELECT current_user, current_database(), inet_server_addr() as server_addr`;
+    const rows = await db.$queryRaw`SELECT current_user, current_database()`;
     const result = rows as Array<{
       current_user: string;
       current_database: string;
-      server_addr: string | null;
     }>;
     const actualUser = result[0]?.current_user;
     const actualDb = result[0]?.current_database;
-    const serverAddr = result[0]?.server_addr;
 
     // STEP 15.71 Phase B: verify live database matches confirmed target
     if (actualDb !== confirmTarget) {
@@ -315,63 +340,17 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
-    // STEP 15.74: verify server/cluster identity via inet_server_addr().
-    // The IP comparison can ONLY be skipped when ALL THREE signals are present:
-    // GITHUB_ACTIONS=true + CI=true + DRYRUN_CI_HOST_CHECK_EXCEPTION=true.
-    // This was already verified above via detectCiEnvironment() — the
-    // early check prevents bypass attempts before DB connection.
-    // Here we use the same ciDetection result (defense-in-depth).
-    if (ciDetection.isCi) {
-      console.log('  Server address check    : SKIPPED (genuine CI environment — all 3 signals verified)');
-      console.log('    Reason: Docker CI port mapping makes inet_server_addr() comparison infeasible');
-      console.log('    Hostname match was still enforced above (mandatory, no exception)');
-      console.log(`  Server address (inet)   : ${serverAddr ?? '<null>'}`);
-    } else {
-      if (!serverAddr) {
-        console.error('✗ PREFLIGHT FAIL: inet_server_addr() returned null.');
-        console.error('  Cannot verify server identity — connection may be via Unix socket.');
-        console.error('  Require a TCP connection so server identity can be verified.');
-        await db.$disconnect();
-        process.exit(2);
-      }
-
-      let resolvedAddrs: string[] = [];
-      try {
-        const lookupResult = await dnsLookup(expectedHost, { all: true });
-        resolvedAddrs = lookupResult.map((r) => r.address);
-      } catch (err: unknown) {
-        const cat = categorizeDbError(err);
-        console.error('✗ PREFLIGHT FAIL: could not DNS-resolve DRYRUN_EXPECTED_HOST.');
-        console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
-        console.error(`    Category             = ${cat.category}`);
-        console.error(`    Diagnostic           = ${cat.message}`);
-        await db.$disconnect();
-        process.exit(2);
-      }
-
-      if (resolvedAddrs.length === 0) {
-        console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST resolved to zero addresses.');
-        console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
-        console.error('  Cannot verify server identity without a resolvable expected host.');
-        await db.$disconnect();
-        process.exit(2);
-      }
-
-      // Normalize IPv4-mapped IPv6 (::ffff:127.0.0.1) to bare IPv4 for comparison.
-      const normalizeAddr = (a: string): string => a.replace(/^::ffff:/, '');
-      const normalizedServer = normalizeAddr(serverAddr);
-      const normalizedResolved = resolvedAddrs.map(normalizeAddr);
-      if (!normalizedResolved.includes(normalizedServer)) {
-        console.error('✗ PREFLIGHT FAIL: server address does not match DNS-resolved expected host.');
-        console.error(`    inet_server_addr()  = ${normalizedServer}`);
-        console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
-        console.error(`    Resolved addresses   = ${normalizedResolved.join(', ')}`);
-        console.error('  This mismatch may indicate a proxy or MITM scenario.');
-        await db.$disconnect();
-        process.exit(2);
-      }
-      console.log(`  Server address check    : PASS ✅ (${normalizedServer} matches ${expectedHost})`);
-    }
+    // STEP 15.74 → STEP 15.75: The inet_server_addr() IP check has been
+    // REMOVED entirely. The owner identified that ALL THREE CI signals
+    // (GITHUB_ACTIONS, CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) are caller-
+    // controlled env vars — an operator could set ALL THREE on any machine
+    // to bypass the IP check. No combination of env vars can cryptographically
+    // prove "this is GitHub Actions CI."
+    //
+    // Identity is now verified via LIVE DB content (table existence + Role
+    // catalog) AFTER the privilege checks below. A wrong database (even on
+    // the right hostname) will fail those content checks — env vars cannot
+    // fake table existence or the Role catalog.
 
     // STEP 15.71 Phase B: verify effective privileges (not just role name)
     // Check that the role is NOT a superuser and has no write privileges
@@ -552,9 +531,79 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
+    // STEP 15.75: Content-based identity verification (REPLACES inet_server_addr IP check).
+    //
+    // The owner identified that ALL THREE prior CI signals (GITHUB_ACTIONS,
+    // CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) are caller-controlled env vars —
+    // an operator could set ALL THREE on any machine to bypass the IP check.
+    // No combination of env vars can cryptographically prove "this is
+    // GitHub Actions CI."
+    //
+    // Identity is now verified via LIVE DB content queries:
+    //   1. Verify ALL 5 RBAC tables exist (User, UserRole, Role, Permission,
+    //      RolePermission) via information_schema.tables. A wrong database
+    //      (even on the right hostname) will be missing these tables.
+    //   2. Verify Role catalog contains ALL 5 canonical roles (ADMIN, SELLER,
+    //      BUYER, MODERATOR, SUPPORT) via SELECT key FROM "Role". A database
+    //      missing the canonical RBAC seed is not the production target.
+    //
+    // These are LIVE DB queries — an operator cannot fake table existence
+    // or Role catalog contents via env vars. This is the cryptographic
+    // replacement for the (insecure) env-var-based CI detection.
+    //
+    // The table names are hardcoded string literals (NOT user input) —
+    // no SQL injection risk. PostgreSQL table names are case-sensitive
+    // when quoted, so the IN clause uses quoted PascalCase identifiers.
+    const RBAC_TABLE_NAMES = ['User', 'UserRole', 'Role', 'Permission', 'RolePermission'] as const;
+
+    const tablesRows = await db.$queryRaw`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('User', 'UserRole', 'Role', 'Permission', 'RolePermission')
+    ` as Array<{ table_name: string }>;
+
+    const foundTables = new Set(tablesRows.map((r) => r.table_name));
+    const missingTables = RBAC_TABLE_NAMES.filter((t) => !foundTables.has(t));
+    if (missingTables.length > 0) {
+      console.error('✗ PREFLIGHT FAIL: required RBAC tables missing from public schema.');
+      console.error(`    Missing tables        : ${missingTables.join(', ')}`);
+      console.error('  STEP 15.75 content-based identity verification requires ALL 5 RBAC');
+      console.error('  tables (User, UserRole, Role, Permission, RolePermission) to exist.');
+      console.error('  A wrong database (even on the right hostname) will be missing these.');
+      console.error('  Run `bunx prisma db push` against the intended target before retrying.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // Verify the Role catalog contains ALL 5 canonical roles.
+    // "Role" is a PostgreSQL reserved-ish word AND case-sensitive when quoted —
+    // we MUST quote it as "Role" so PostgreSQL does not lowercase it to "role".
+    const rolesRows = await db.$queryRaw`
+      SELECT key FROM "Role" WHERE key IN ('ADMIN', 'SELLER', 'BUYER', 'MODERATOR', 'SUPPORT')
+    ` as Array<{ key: string }>;
+
+    const foundRoleKeys = new Set(rolesRows.map((r) => r.key));
+    const missingRoleKeysInCatalog = CANONICAL_ROLE_KEYS.filter(
+      (k) => !foundRoleKeys.has(k),
+    );
+    if (missingRoleKeysInCatalog.length > 0) {
+      console.error('✗ PREFLIGHT FAIL: canonical Role catalog is incomplete.');
+      console.error(`    Missing roles         : ${missingRoleKeysInCatalog.join(', ')}`);
+      console.error('  STEP 15.75 content-based identity verification requires ALL 5');
+      console.error('  canonical roles (ADMIN, SELLER, BUYER, MODERATOR, SUPPORT) in the');
+      console.error('  Role table. A database missing the RBAC seed is not the target.');
+      console.error('  Run `bun run db:seed-rbac` against the intended target before retrying.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    console.log(`  RBAC table existence check   : ALL 5 tables present ✅ (${RBAC_TABLE_NAMES.join(', ')})`);
+    console.log(`  Role catalog identity check : ALL 5 canonical roles present ✅ (${CANONICAL_ROLE_KEYS.join(', ')})`);
+    console.log(`  Content-based identity       : PASS ✅ (live DB content verified)`);
+
     console.log(`  Runtime role (current_user)   : ${actualUser}`);
     console.log(`  Runtime database               : ${actualDb}`);
-    console.log(`  Server address (inet_server_addr): ${serverAddr ?? '<null>'}`);
     console.log(`  Trusted-role assertion          : actualUser === trustedRole ✅`);
     console.log(`  Host identity check              : ${expectedHost ? 'verified ✅' : 'skipped (DRYRUN_EXPECTED_HOST not set)'}`);
     console.log(`  Superuser check                  : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
@@ -566,7 +615,7 @@ async function preflightConnectionCheck(): Promise<void> {
     console.log(`  Database CREATE check            : denied on current database ✅`);
     console.log(`  Table ownership check            : ${ownershipCheck[0].cnt} relations owned (must be 0) ✅`);
     console.log('  Role verification                : PASS ✅');
-    console.log('  (Effective privileges verified — not just role name; server identity verified — not just db name)');
+    console.log('  (Effective privileges verified — not just role name; identity verified via LIVE DB content — not env vars)');
   } catch (err: unknown) {
     // STEP 15.72 Finding 5: use categorizeDbError() — never print raw error text,
     // but operators can distinguish failure types (auth vs connection vs permission).

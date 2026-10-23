@@ -265,12 +265,17 @@ describe.skipIf(!RUN_TESTS)(
               // STEP 15.68: preflight env vars (F-15.68-01, F-15.68-02)
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
-              // STEP 15.73: MANDATORY host identity + CI exception flag
+              // STEP 15.73: MANDATORY host identity verification.
+              // STEP 15.75: DRYRUN_CI_HOST_CHECK_EXCEPTION, GITHUB_ACTIONS, CI
+              // have been REMOVED from the integration env block. The
+              // inet_server_addr() IP check has been removed entirely;
+              // identity is now verified via LIVE DB content (table existence +
+              // Role catalog) inside preflightConnectionCheck. GITHUB_ACTIONS
+              // and CI are no longer referenced by the preflight — they were
+              // caller-controlled env vars that could not cryptographically
+              // prove "this is GitHub Actions CI." DRYRUN_CI_HOST_CHECK_EXCEPTION
+              // is now a deprecated bypass: ANY value halts with exit 2.
               DRYRUN_EXPECTED_HOST: "localhost",
-              DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
-              // STEP 15.74: genuine CI signals (required by detectCiEnvironment)
-              GITHUB_ACTIONS: "true",
-              CI: "true",
             },
           },
         );
