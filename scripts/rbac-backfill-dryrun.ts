@@ -216,35 +216,36 @@ async function preflightConnectionCheck(): Promise<void> {
     process.exit(2);
   }
 
-  // STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST is optional for server identity.
-  // When set, the preflight verifies inet_server_addr() against DNS-resolved
-  // addresses of the expected host (detects proxy/MITM scenarios).
-  // When NOT set, the preflight logs a warning and skips the inet_server_addr()
-  // comparison — this is acceptable in Docker CI environments where port
-  // mapping makes the comparison infeasible (inet_server_addr() returns the
-  // container's internal IP, not the host's loopback address).
-  // For staging/production, the operator SHOULD set DRYRUN_EXPECTED_HOST.
+  // STEP 15.73 Finding 4 (MANDATORY): DRYRUN_EXPECTED_HOST is ALWAYS required.
+  // The hostname must match the host parsed from DATABASE_URL.
+  // The ONLY exception is the inet_server_addr() IP comparison, which can be
+  // skipped ONLY when DRYRUN_CI_HOST_CHECK_EXCEPTION=true is explicitly set.
+  // This exception is narrowly scoped: hostname match is still enforced.
+  // Outside CI, the operator MUST set DRYRUN_EXPECTED_HOST and the IP check
+  // runs without exception. If the host cannot be verified, the preflight
+  // halts — it does NOT continue with a warning.
   if (!expectedHost) {
-    console.log('  ⚠ WARNING: DRYRUN_EXPECTED_HOST is not set.');
-    console.log('    Server/cluster identity verification via inet_server_addr() will be SKIPPED.');
-    console.log('    This is acceptable in Docker CI (port mapping) but NOT recommended for staging/production.');
-    console.log('    For staging/production, set DRYRUN_EXPECTED_HOST to the hostname in DATABASE_URL.');
-  } else {
-    if (!parsedHost) {
-      console.error('✗ PREFLIGHT FAIL: could not parse host from DATABASE_URL.');
-      console.error('  Cannot verify server identity without a parseable host.');
-      process.exit(2);
-    }
-
-    if (parsedHost !== expectedHost) {
-      console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host.');
-      console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
-      console.error(`    DATABASE_URL host    = ${parsedHost}`);
-      console.error('  This mismatch prevents connection to an unexpected server.');
-      process.exit(2);
-    }
-    console.log('  Host identity           : PASS ✅ (DRYRUN_EXPECTED_HOST verified)');
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set.');
+    console.error('  Server/cluster identity verification is MANDATORY.');
+    console.error('  Set DRYRUN_EXPECTED_HOST to the hostname in DATABASE_URL, e.g.:');
+    console.error(`    DRYRUN_EXPECTED_HOST="${parsedHost ?? '<host>'}"`);
+    process.exit(2);
   }
+
+  if (!parsedHost) {
+    console.error('✗ PREFLIGHT FAIL: could not parse host from DATABASE_URL.');
+    console.error('  Cannot verify server identity without a parseable host.');
+    process.exit(2);
+  }
+
+  if (parsedHost !== expectedHost) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host.');
+    console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
+    console.error(`    DATABASE_URL host    = ${parsedHost}`);
+    console.error('  This mismatch prevents connection to an unexpected server.');
+    process.exit(2);
+  }
+  console.log('  Host identity           : PASS ✅ (hostname match verified)');
 
   // STEP 15.72 Finding 2: resolve the trusted role via allowlist (not raw env var).
   // If DRYRUN_EXPECTED_ROLE is unset, default to 'heavix_dryrun_ro' (in allowlist).
@@ -298,11 +299,19 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
-    // STEP 15.72 Finding 4: verify server/cluster identity via inet_server_addr().
-    // Only runs when DRYRUN_EXPECTED_HOST is set. In Docker CI (where
-    // DRYRUN_EXPECTED_HOST is typically unset due to port mapping), this check
-    // is skipped with a warning logged above.
-    if (expectedHost) {
+    // STEP 15.73 Finding 4: verify server/cluster identity via inet_server_addr().
+    // The IP comparison can ONLY be skipped when DRYRUN_CI_HOST_CHECK_EXCEPTION=true
+    // is explicitly set (for Docker CI where port mapping makes comparison infeasible).
+    // The hostname match was already enforced above (mandatory, no exception).
+    // Outside CI, the IP check runs without exception.
+    const ciHostException = process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION === 'true';
+
+    if (ciHostException) {
+      console.log('  Server address check    : SKIPPED (DRYRUN_CI_HOST_CHECK_EXCEPTION=true)');
+      console.log('    Reason: Docker CI port mapping makes inet_server_addr() comparison infeasible');
+      console.log('    Hostname match was still enforced above (mandatory, no exception)');
+      console.log(`  Server address (inet)   : ${serverAddr ?? '<null>'}`);
+    } else {
       if (!serverAddr) {
         console.error('✗ PREFLIGHT FAIL: inet_server_addr() returned null.');
         console.error('  Cannot verify server identity — connection may be via Unix socket.');
@@ -347,8 +356,6 @@ async function preflightConnectionCheck(): Promise<void> {
         process.exit(2);
       }
       console.log(`  Server address check    : PASS ✅ (${normalizedServer} matches ${expectedHost})`);
-    } else {
-      console.log(`  Server address (inet)   : ${serverAddr ?? '<null>'} (host check skipped — DRYRUN_EXPECTED_HOST not set)`);
     }
 
     // STEP 15.71 Phase B: verify effective privileges (not just role name)

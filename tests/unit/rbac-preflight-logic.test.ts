@@ -52,6 +52,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     delete process.env.DRYRUN_CONFIRM_TARGET;
     delete process.env.DRYRUN_EXPECTED_ROLE;
     delete process.env.DRYRUN_EXPECTED_HOST;
+    delete process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION;
   });
 
   afterEach(() => {
@@ -218,22 +219,24 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     });
   });
 
-  describe("STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST verification", () => {
-    it("9b. Missing DRYRUN_EXPECTED_HOST → warning logged, host check skipped (optional in Docker CI)", () => {
+  describe("STEP 15.73 Finding 4: MANDATORY host identity verification", () => {
+    it("9b. Missing DRYRUN_EXPECTED_HOST → exit 2 (MANDATORY halt, no warning skip)", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         // DRYRUN_EXPECTED_HOST intentionally missing.
+        // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally not set.
       });
-      // Exit code 2 is expected because DB connection fails (host doesn't exist),
-      // NOT because DRYRUN_EXPECTED_HOST is missing.
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      // Should log a warning about skipping the host check, NOT a hard fail.
-      expect(combined).toContain("WARNING: DRYRUN_EXPECTED_HOST is not set");
-      expect(combined).toContain("SKIPPED");
-      // Should NOT contain a hard fail about DRYRUN_EXPECTED_HOST being required.
-      expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
+      // MUST halt with a hard fail — NOT a warning/skip
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
+      expect(combined).toContain("MANDATORY");
+      // MUST NOT contain a warning or skip
+      expect(combined).not.toContain("WARNING: DRYRUN_EXPECTED_HOST is not set");
+      expect(combined).not.toContain("SKIPPED");
+      // MUST NOT continue to DB queries (no "Trusted read-only role" output)
+      expect(combined).not.toContain("Trusted read-only role");
     });
 
     it("9c. DRYRUN_EXPECTED_HOST mismatch with DATABASE_URL host → exit 2", () => {
@@ -247,6 +250,77 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host");
       expect(combined).toContain("DRYRUN_EXPECTED_HOST = wrong-host");
       expect(combined).toContain("DATABASE_URL host    = host");
+    });
+
+    it("9d. DRYRUN_EXPECTED_HOST matches DATABASE_URL host → passes host check (fails later on DB connect)", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+        // DRYRUN_CI_HOST_CHECK_EXCEPTION NOT set — IP check would run
+      });
+      // Host check passes, then tries DB connect which fails (host doesn't exist)
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      expect(combined).toContain("Host identity           : PASS ✅");
+      // Should NOT contain a hard fail about DRYRUN_EXPECTED_HOST
+      expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
+    });
+
+    it("9e. DRYRUN_CI_HOST_CHECK_EXCEPTION=true with matching host → passes (CI scenario)", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@localhost:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "localhost",
+        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+      });
+      // Host check passes, CI exception allows skipping IP check
+      // Then tries DB connect which fails (no real DB at localhost in test env)
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      expect(combined).toContain("Host identity           : PASS ✅");
+      // With CI exception, the IP check is skipped (but only AFTER hostname match passes)
+      // Since DB connect fails before reaching the IP check, we can't verify the skip here
+      // — but the host check itself must pass
+    });
+
+    it("9f. DRYRUN_CI_HOST_CHECK_EXCEPTION=true but DRYRUN_EXPECTED_HOST missing → still halts (exception doesn't bypass mandatory hostname)", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        // DRYRUN_EXPECTED_HOST intentionally missing
+        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+      });
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      // Even with CI exception, DRYRUN_EXPECTED_HOST is MANDATORY
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
+      expect(combined).toContain("MANDATORY");
+    });
+
+    it("9g. DRYRUN_CI_HOST_CHECK_EXCEPTION=true but hostname mismatch → still halts (exception only skips IP check)", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "wrong-host",
+        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+      });
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      // Even with CI exception, hostname mismatch is a hard fail
+      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host");
+    });
+
+    it("9h. No credential leak in host check failure output", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "wrong-host",
+      });
+      expect(res.exitCode).toBe(2);
+      // Password must NEVER appear in stdout or stderr
+      expect(res.stdout).not.toContain("super_secret_password");
+      expect(res.stderr).not.toContain("super_secret_password");
     });
   });
 

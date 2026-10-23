@@ -265,9 +265,9 @@ describe.skipIf(!RUN_TESTS)(
               // STEP 15.68: preflight env vars (F-15.68-01, F-15.68-02)
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
-              // STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST is NOT set in CI.
-              // Docker port mapping makes inet_server_addr() comparison infeasible.
-              // The preflight skips the check with a warning.
+              // STEP 15.73: MANDATORY host identity + CI exception flag
+              DRYRUN_EXPECTED_HOST: "localhost",
+              DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
             },
           },
         );

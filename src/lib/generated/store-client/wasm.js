@@ -586,7 +586,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/home/z/heavix-15-71/z-ai-2/src/lib/generated/store-client",
+      "value": "/home/z/heavix-15-48/z-ai-2/src/lib/generated/store-client",
       "fromEnvVar": null
     },
     "config": {
@@ -600,7 +600,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/home/z/heavix-15-71/z-ai-2/prisma/store-schema.prisma",
+    "sourceFilePath": "/home/z/heavix-15-48/z-ai-2/prisma/store-schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

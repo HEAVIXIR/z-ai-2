@@ -357,7 +357,7 @@ describe("STEP 15.72 Finding 4 — Server/cluster identity verification (DRYRUN_
 
   it("rbac-backfill-dryrun.ts requires DRYRUN_EXPECTED_HOST (fails closed when missing)", () => {
     expect(DRYRUN_SOURCE).toContain("DRYRUN_EXPECTED_HOST is not set");
-    expect(DRYRUN_SOURCE).toContain("proxy/MITM");
+    expect(DRYRUN_SOURCE).toContain("MANDATORY");
   });
 
   it("rbac-backfill-dryrun.ts compares parsedHost with expectedHost (env var vs URL host)", () => {
