@@ -268,6 +268,9 @@ describe.skipIf(!RUN_TESTS)(
               // STEP 15.73: MANDATORY host identity + CI exception flag
               DRYRUN_EXPECTED_HOST: "localhost",
               DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+              // STEP 15.74: genuine CI signals (required by detectCiEnvironment)
+              GITHUB_ACTIONS: "true",
+              CI: "true",
             },
           },
         );

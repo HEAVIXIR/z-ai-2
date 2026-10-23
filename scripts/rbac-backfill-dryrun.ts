@@ -68,6 +68,7 @@ import {
   resolveTrustedRole,
   categorizeDbError,
   redactConnectionDetails,
+  detectCiEnvironment,
   CANONICAL_ROLE_KEYS,
   type CanonicalRoleKey,
 } from '../src/lib/rbac/dryrun-helpers';
@@ -247,6 +248,21 @@ async function preflightConnectionCheck(): Promise<void> {
   }
   console.log('  Host identity           : PASS ✅ (hostname match verified)');
 
+  // STEP 15.74: EARLY bypass-attempt check (before DB connection).
+  // If DRYRUN_CI_HOST_CHECK_EXCEPTION=true is set but the environment is NOT
+  // a genuine CI (no GITHUB_ACTIONS/CI signals), this is a bypass attempt.
+  // Fail closed immediately — before connecting to the DB, before any
+  // credential could be exposed.
+  const ciDetection = detectCiEnvironment(process.env);
+  if (ciDetection.bypassAttempt) {
+    console.error('✗ PREFLIGHT FAIL: CI host-check exception bypass attempt detected.');
+    console.error(`    Reason: ${ciDetection.reason}`);
+    console.error('  The exception flag requires a genuine CI environment (GITHUB_ACTIONS=true AND CI=true).');
+    console.error('  A single caller-controlled env var cannot bypass server identity verification.');
+    process.exit(2);
+  }
+  console.log(`  CI detection            : ${ciDetection.isCi ? 'CI (IP check will be skipped)' : 'non-CI (full IP check)'}`);
+
   // STEP 15.72 Finding 2: resolve the trusted role via allowlist (not raw env var).
   // If DRYRUN_EXPECTED_ROLE is unset, default to 'heavix_dryrun_ro' (in allowlist).
   // If DRYRUN_EXPECTED_ROLE is set but NOT in allowlist, fail closed.
@@ -299,15 +315,14 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
-    // STEP 15.73 Finding 4: verify server/cluster identity via inet_server_addr().
-    // The IP comparison can ONLY be skipped when DRYRUN_CI_HOST_CHECK_EXCEPTION=true
-    // is explicitly set (for Docker CI where port mapping makes comparison infeasible).
-    // The hostname match was already enforced above (mandatory, no exception).
-    // Outside CI, the IP check runs without exception.
-    const ciHostException = process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION === 'true';
-
-    if (ciHostException) {
-      console.log('  Server address check    : SKIPPED (DRYRUN_CI_HOST_CHECK_EXCEPTION=true)');
+    // STEP 15.74: verify server/cluster identity via inet_server_addr().
+    // The IP comparison can ONLY be skipped when ALL THREE signals are present:
+    // GITHUB_ACTIONS=true + CI=true + DRYRUN_CI_HOST_CHECK_EXCEPTION=true.
+    // This was already verified above via detectCiEnvironment() — the
+    // early check prevents bypass attempts before DB connection.
+    // Here we use the same ciDetection result (defense-in-depth).
+    if (ciDetection.isCi) {
+      console.log('  Server address check    : SKIPPED (genuine CI environment — all 3 signals verified)');
       console.log('    Reason: Docker CI port mapping makes inet_server_addr() comparison infeasible');
       console.log('    Hostname match was still enforced above (mandatory, no exception)');
       console.log(`  Server address (inet)   : ${serverAddr ?? '<null>'}`);

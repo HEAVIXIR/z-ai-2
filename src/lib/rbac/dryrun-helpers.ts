@@ -166,6 +166,70 @@ export function extractHost(url: string): string | null {
 }
 
 /**
+ * STEP 15.74: Detect a genuine CI environment using MULTIPLE independent signals.
+ *
+ * The owner identified a bypass: `DRYRUN_CI_HOST_CHECK_EXCEPTION=true` alone
+ * (a caller-controlled env var) was sufficient to skip the inet_server_addr()
+ * IP check. Any operator could set this flag to bypass server identity
+ * verification.
+ *
+ * The fix requires THREE independent signals that cannot all be spoofed by
+ * a single caller action:
+ *   1. `GITHUB_ACTIONS === 'true'` — set by GitHub Actions runner (NOT set
+ *      on operator machines, staging, or production servers)
+ *   2. `CI === 'true'` — set by GitHub Actions + most CI systems
+ *   3. `DRYRUN_CI_HOST_CHECK_EXCEPTION === 'true'` — the explicit opt-in flag
+ *
+ * All three must be present. If the flag is set but the environment is NOT
+ * a real CI (no GITHUB_ACTIONS/CI), the function returns `isCi: false` and
+ * `bypassAttempt: true` — the caller must fail closed.
+ *
+ * Pure function — no side effects. Never throws.
+ */
+export interface CiDetectionResult {
+  /** True only when ALL three CI signals are present. */
+  isCi: boolean;
+  /** True when the exception flag is set but the environment is NOT genuine CI. */
+  bypassAttempt: boolean;
+  /** Human-readable reason for the detection result (safe to log — no secrets). */
+  reason: string;
+}
+
+export function detectCiEnvironment(env: Record<string, string | undefined>): CiDetectionResult {
+  const exceptionFlag = env.DRYRUN_CI_HOST_CHECK_EXCEPTION === 'true';
+  const isGitHubActions = env.GITHUB_ACTIONS === 'true';
+  const isCiSystem = env.CI === 'true';
+  const isGenuineCi = isGitHubActions && isCiSystem;
+
+  if (exceptionFlag && !isGenuineCi) {
+    // Bypass attempt: the caller set the exception flag but the environment
+    // does not have the independent GitHub Actions signals.
+    return {
+      isCi: false,
+      bypassAttempt: true,
+      reason: 'CI host-check exception requested but NOT a genuine CI environment (GITHUB_ACTIONS/CI signals missing). A single caller-controlled env var cannot bypass server identity verification.',
+    };
+  }
+
+  if (exceptionFlag && isGenuineCi) {
+    return {
+      isCi: true,
+      bypassAttempt: false,
+      reason: 'Genuine CI environment detected (GITHUB_ACTIONS=true, CI=true). IP comparison will be skipped; hostname match is still enforced.',
+    };
+  }
+
+  // No exception flag — normal (non-CI or CI-without-exception) behavior.
+  return {
+    isCi: false,
+    bypassAttempt: false,
+    reason: isGenuineCi
+      ? 'CI environment detected but no exception flag set. Full IP check will run.'
+      : 'Non-CI environment. Full IP check will run.',
+  };
+}
+
+/**
  * STEP 15.72 Finding 5: Categorize a database error for safe display.
  *
  * Replaces the previous pattern of `console.error(err)` /

@@ -53,6 +53,8 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     delete process.env.DRYRUN_EXPECTED_ROLE;
     delete process.env.DRYRUN_EXPECTED_HOST;
     delete process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION;
+    delete process.env.GITHUB_ACTIONS;
+    delete process.env.CI;
   });
 
   afterEach(() => {
@@ -267,48 +269,52 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
     });
 
-    it("9e. DRYRUN_CI_HOST_CHECK_EXCEPTION=true with matching host → passes (CI scenario)", () => {
+    it("9e. CI exception flag + GITHUB_ACTIONS + CI signals → passes (genuine CI scenario)", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@localhost:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
         DRYRUN_EXPECTED_HOST: "localhost",
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+        GITHUB_ACTIONS: "true",
+        CI: "true",
       });
-      // Host check passes, CI exception allows skipping IP check
-      // Then tries DB connect which fails (no real DB at localhost in test env)
+      // Host check passes, genuine CI detected → IP check will be skipped
+      // But DB connect still fails (no real DB in test env) → exit 2
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
       expect(combined).toContain("Host identity           : PASS ✅");
-      // With CI exception, the IP check is skipped (but only AFTER hostname match passes)
-      // Since DB connect fails before reaching the IP check, we can't verify the skip here
-      // — but the host check itself must pass
+      expect(combined).toContain("CI detection            : CI");
     });
 
-    it("9f. DRYRUN_CI_HOST_CHECK_EXCEPTION=true but DRYRUN_EXPECTED_HOST missing → still halts (exception doesn't bypass mandatory hostname)", () => {
+    it("9f. CI exception flag alone (no GITHUB_ACTIONS/CI) → BYPASS ATTEMPT → halt", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
-        // DRYRUN_EXPECTED_HOST intentionally missing
+        DRYRUN_EXPECTED_HOST: "host",
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+        // GITHUB_ACTIONS and CI intentionally NOT set
       });
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      // Even with CI exception, DRYRUN_EXPECTED_HOST is MANDATORY
-      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
-      expect(combined).toContain("MANDATORY");
+      // Must halt — bypass attempt detected
+      expect(combined).toContain("PREFLIGHT FAIL: CI host-check exception bypass attempt detected");
+      expect(combined).toContain("bypass");
+      // Must NOT continue to DB queries
+      expect(combined).not.toContain("Trusted read-only role");
     });
 
-    it("9g. DRYRUN_CI_HOST_CHECK_EXCEPTION=true but hostname mismatch → still halts (exception only skips IP check)", () => {
+    it("9g. CI exception flag + GITHUB_ACTIONS but no CI → still BYPASS ATTEMPT → halt", () => {
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
-        DRYRUN_EXPECTED_HOST: "wrong-host",
+        DRYRUN_EXPECTED_HOST: "host",
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+        GITHUB_ACTIONS: "true",
+        // CI intentionally NOT set
       });
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      // Even with CI exception, hostname mismatch is a hard fail
-      expect(combined).toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host");
+      expect(combined).toContain("PREFLIGHT FAIL: CI host-check exception bypass attempt detected");
     });
 
     it("9h. No credential leak in host check failure output", () => {
@@ -321,6 +327,37 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // Password must NEVER appear in stdout or stderr
       expect(res.stdout).not.toContain("super_secret_password");
       expect(res.stderr).not.toContain("super_secret_password");
+    });
+
+    it("9i. Bypass attempt with credential in DATABASE_URL → no credential leak in bypass failure output", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+        DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
+        // No GITHUB_ACTIONS/CI → bypass attempt
+      });
+      expect(res.exitCode).toBe(2);
+      // Password must NEVER appear even in bypass attempt failure
+      expect(res.stdout).not.toContain("super_secret_password");
+      expect(res.stderr).not.toContain("super_secret_password");
+    });
+
+    it("9j. GITHUB_ACTIONS + CI but no exception flag → full IP check runs (no skip)", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+        GITHUB_ACTIONS: "true",
+        CI: "true",
+        // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally NOT set
+      });
+      // Host check passes, no exception flag → full IP check would run
+      // DB connect fails (host doesn't exist) → exit 2
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      expect(combined).toContain("Host identity           : PASS ✅");
+      expect(combined).toContain("CI detection            : non-CI (full IP check)");
     });
   });
 
