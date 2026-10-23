@@ -78,6 +78,10 @@ jobs:
         env:
           # CR-15.51-01: Use the read-only role, NOT the superuser
           DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
+          # STEP 15.68: Preflight env vars (F-15.68-01, F-15.68-02)
+          # CI target is the postgres:17 service container's heavix_test db.
+          DRYRUN_CONFIRM_TARGET: heavix_test
+          DRYRUN_EXPECTED_ROLE: heavix_dryrun_ro
         run: |
           # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
           # This ensures the read-only invariant is not affected by concurrent test mutations.
