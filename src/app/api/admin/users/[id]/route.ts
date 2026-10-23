@@ -223,6 +223,28 @@ export async function PATCH(req: Request, { params }: Args) {
     if (roleChange) {
       const replaceableKeys = ["ADMIN", "SELLER", "BUYER"];
       updated = await db.$transaction(async (tx) => {
+        // ── STEP 15.44-B (defense-in-depth): explicit row lock at TX start ──
+        // Acquire a row-level lock on the User row BEFORE any reads or writes.
+        // This serializes concurrent dual-write transactions for the same user
+        // at the DB level, INDEPENDENT of the order of subsequent operations.
+        //
+        // Why: under READ COMMITTED (PostgreSQL default), `userRole.findMany`
+        // sees only COMMITTED rows. If a future refactor moves findMany BEFORE
+        // user.update, two concurrent PATCHes for the same user could both
+        // read stale `existingUserRoles` lists, both delete nothing relevant,
+        // and both upsert DIFFERENT replaceable roles — leaving BOTH ADMIN and
+        // SELLER UserRole rows simultaneously (the race the design addendum at
+        // docs/phase3/RBAC-MIGRATION-ADDENDUM-STEP-15.43.md:127-129 acknowledges).
+        // The current code is safe because user.update is FIRST (acquires the
+        // lock implicitly), but `SELECT ... FOR UPDATE` here makes the lock
+        // acquisition EXPLICIT and ordering-independent — verified by
+        // tests/integration/rbac-concurrency-real.test.ts C-2e.
+        //
+        // Cost: one round-trip (~0.2ms localhost, ~1ms network). Bounded by
+        // the dual-write transaction's existing cost (~3-5ms for user.update +
+        // findMany + deleteMany + upsert). Negligible.
+        await tx.$queryRaw`SELECT id FROM "User" WHERE "id" = ${id} FOR UPDATE`;
+
         // 1. Update legacy User.role column (+ any other fields in `data`)
         const u = await tx.user.update({
           where: { id },

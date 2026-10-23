@@ -151,6 +151,10 @@ beforeEach(() => {
         deleteMany: spies.userRoleDeleteMany,
         upsert: spies.userRoleUpsert,
       },
+      // STEP 15.44-B: route.ts uses tx.$queryRaw for SELECT ... FOR UPDATE
+      // (defense-in-depth row lock at TX start). Mock returns an empty row
+      // list — the route never reads the result, it only acquires the lock.
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "user-123" }]),
     };
     return cb(mockTx);
   });
@@ -366,6 +370,10 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
               return newUr;
             },
           },
+          // STEP 15.44-B: route.ts uses tx.$queryRaw for SELECT ... FOR UPDATE
+          // (defense-in-depth row lock at TX start). Mock returns a row — the
+          // route only uses this to acquire the lock, never reads the result.
+          $queryRaw: async () => [{ id: "user-123" }],
         };
         return await cb(tx);
       } finally {

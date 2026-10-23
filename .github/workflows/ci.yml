@@ -63,8 +63,25 @@ jobs:
           bun run db:seed-brands-b
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
+      - name: Create read-only PostgreSQL role (STEP 15.51)
+        run: |
+          # CR-15.51-04: Generate random password, never hard-coded
+          DRYUN_RO_PW=$(openssl rand -hex 16)
+          echo "DRYUN_RO_PW=$DRYUN_RO_PW" >> $GITHUB_ENV
+          # CR-15.51-04: Pass password as psql variable (not SQL current_setting)
+          PGPASSWORD=postgres psql -h localhost -U postgres -d heavix_test \
+            -v dryrun_password="$DRYUN_RO_PW" \
+            -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
+      - name: Phase C dry-run gate (STEP 15.52 — read-only role, BEFORE integration tests)
+        env:
+          # CR-15.51-01: Use the read-only role, NOT the superuser
+          DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
+        run: |
+          # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
+          # This ensures the read-only invariant is not affected by concurrent test mutations.
+          DATABASE_URL="$DRYRUN_DATABASE_URL" bunx tsx scripts/rbac-gate-ci.ts
       - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
       - name: Integration — readonly-when-concurrency-real
@@ -78,6 +95,8 @@ jobs:
       - name: Integration — p3a-auth-real-http-db (STEP 13.55 Commit B P3-A)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
       - name: Integration test files
+        env:
+          DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
         run: bunx vitest run tests/integration/*.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
