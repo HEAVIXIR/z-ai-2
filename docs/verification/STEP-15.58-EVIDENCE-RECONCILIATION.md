@@ -4,7 +4,7 @@
 **Last updated:** 2026-10-23 (STEP 15.59)
 **PR:** [#75](https://github.com/HEAVIXIR/z-ai-2/pull/75)
 **Branch:** `fix/rbac-concurrency`
-**Current HEAD:** `a6f9091eb2c10135f10b95846c8c3bc7b4e5ee21`
+**Current HEAD:** `64f54c1cee3d6176158bc4290253be48533a482d`
 
 ---
 
@@ -40,14 +40,14 @@
 
 ## Current evidence (STEP 15.59 update)
 
-**Current HEAD:** `a6f9091eb2c10135f10b95846c8c3bc7b4e5ee21`
+**Current HEAD:** `64f54c1cee3d6176158bc4290253be48533a482d`
 **Current commits:** 39
 **Current changed files:** 40
 
 ### CI on current HEAD
 
 - Run: [39934553859](https://github.com/HEAVIXIR/z-ai-2/actions/runs/39934553859)
-- head_sha: `a6f9091eb2c10135f10b95846c8c3bc7b4e5ee21` (verified — matches PR head exactly)
+- head_sha: `64f54c1cee3d6176158bc4290253be48533a482d` (verified — matches PR head exactly)
 - Conclusion: `success`
 - Jobs: `verify` (success), `audit-transaction` (success), `phase-tests` (success)
 - Note: Initial run had a flaky `rfq-partial-setup-failure-regression.test.ts` failure (pre-existing, unrelated to RBAC). Re-run of failed jobs succeeded.
@@ -86,7 +86,7 @@ The checked gate logic treats nonzero `INVALID`, `MISMATCH`, or `MULTI_ROLE` cou
 
 ## Remaining release gates
 
-1. ✅ CI passes on exact current HEAD `a6f9091eb2c10135f10b95846c8c3bc7b4e5ee21`
+1. ✅ CI passes on exact current HEAD `64f54c1cee3d6176158bc4290253be48533a482d`
 2. ❌ Obtain an authorized independent review (APPROVE) from someone other than the PR author — NOT YET OBTAINED
 3. ❌ Confirm branch protection and repository merge requirements are satisfied without bypass
 4. ❌ Merge decision by owner
