@@ -117,11 +117,14 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
         DATABASE_URL: "postgresql://heavix_dryrun_ro:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
       });
-      // The sanitized URL should appear in output with password masked
-      expect(res.stdout).toContain("postgresql://heavix_dryrun_ro:***@host:5432");
-      // The raw password must NEVER appear in stdout or stderr
+      // STEP 15.71: sanitizeConnectionString now strips BOTH username AND password
+      // The output should NOT contain the password or username
       expect(res.stdout).not.toContain("super_secret_password");
+      expect(res.stdout).not.toContain("heavix_dryrun_ro:"); // username:password format should not appear
       expect(res.stderr).not.toContain("super_secret_password");
+      // The host should still appear for verification
+      expect(res.stdout).toContain("host");
+      expect(res.stdout).toContain("heavix_test");
     });
 
     it("6. Unparseable DATABASE_URL → db name shows <unparseable>, still requires DRYRUN_CONFIRM_TARGET", () => {
