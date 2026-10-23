@@ -161,6 +161,133 @@ const BATCH_SIZE = 1000; // dry-run uses larger batch than the production
                          // backfill (200) — read-only, no transactional cost.
 const SAMPLE_CAP = 20; // per-classification sample size in human output
 
+// ─── STEP 15.68: Preflight helpers ────────────────────────────────────────
+
+/**
+ * Sanitize a PostgreSQL connection string for safe display.
+ * Strips the password but keeps scheme/host/port/db for operator verification.
+ * F-15.68-07: never print credentials in errors or logs.
+ *
+ * Example: "postgresql://user:secret@host:5432/db?schema=public"
+ *       → "postgresql://user:***@host:5432/db?schema=public"
+ */
+function sanitizeConnectionString(url: string): string {
+  try {
+    // Mask password in the userinfo segment without using URL parsing side effects.
+    return url.replace(/(postgresql:\/\/[^:@]+:)([^@]+)(@)/, '$1***$3');
+  } catch {
+    return '<unable to sanitize>';
+  }
+}
+
+/**
+ * Extract the database name from a connection string for target confirmation.
+ * Returns the `dbname` path segment, or null if unparseable.
+ */
+function extractDbName(url: string): string | null {
+  const match = url.match(/postgresql:\/\/[^@]+@[^/]+\/([^?]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * STEP 15.68 preflight: verify connection target + runtime role BEFORE any query.
+ *
+ * F-15.68-01 (HIGH): Require two-key confirmation.
+ *   Operator must set BOTH `DATABASE_URL` and `DRYRUN_CONFIRM_TARGET` to the same
+ *   db name. This prevents the dry-run from silently connecting to a wrong db
+ *   (e.g., dev database) just because `DATABASE_URL` happened to be set in the
+ *   shell environment.
+ *
+ * F-15.68-02 (MEDIUM): Verify the runtime role is actually `heavix_dryrun_ro`.
+ *   The env var NAME is not proof of role — an operator could set `DATABASE_URL`
+ *   to a superuser connection string. We query `SELECT current_user` and assert
+ *   it matches the expected read-only role name. If `DRYRUN_EXPECTED_ROLE` is
+ *   unset, we default to `heavix_dryrun_ro`.
+ *
+ * F-15.68-07 (LOW): Sanitize all connection-string output. Passwords are NEVER
+ *   printed, even if Prisma includes the raw URL in an error.
+ *
+ * Exits with code 2 on any preflight failure.
+ */
+async function preflightConnectionCheck(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  const confirmTarget = process.env.DRYRUN_CONFIRM_TARGET;
+  const expectedRole = process.env.DRYRUN_EXPECTED_ROLE ?? 'heavix_dryrun_ro';
+
+  console.log('── STEP 15.68 Preflight ─────────────────────────────────────');
+
+  // F-15.68-01a: DATABASE_URL must be set
+  if (!databaseUrl) {
+    console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not set.');
+    console.error('  The dry-run refuses to proceed without an explicit connection target.');
+    console.error('  No silent fallback to a default database is permitted.');
+    process.exit(2);
+  }
+
+  // F-15.68-07: sanitize for display
+  const sanitizedUrl = sanitizeConnectionString(databaseUrl);
+  const dbName = extractDbName(databaseUrl);
+
+  console.log(`  DATABASE_URL (sanitized): ${sanitizedUrl}`);
+  console.log(`  Parsed db name          : ${dbName ?? '<unparseable>'}`);
+  console.log(`  Expected read-only role : ${expectedRole}`);
+
+  // F-15.68-01b: two-key confirmation — DRYRUN_CONFIRM_TARGET must match db name
+  if (!confirmTarget) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_CONFIRM_TARGET is not set.');
+    console.error('  Two-key confirmation is required to prevent wrong-db connection.');
+    console.error('  Set DRYRUN_CONFIRM_TARGET to the db name in DATABASE_URL, e.g.:');
+    console.error(`    DRYRUN_CONFIRM_TARGET="${dbName ?? '<db-name>'}"`);
+    process.exit(2);
+  }
+
+  if (dbName !== confirmTarget) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_CONFIRM_TARGET does not match DATABASE_URL db name.');
+    console.error(`    DRYRUN_CONFIRM_TARGET = ${confirmTarget}`);
+    console.error(`    DATABASE_URL db name  = ${dbName ?? '<unparseable>'}`);
+    console.error('  This mismatch prevents the dry-run from connecting to an unintended target.');
+    process.exit(2);
+  }
+
+  console.log('  Target confirmation     : PASS ✅');
+  console.log();
+
+  // F-15.68-02: verify runtime role is the expected read-only role
+  // Use a raw query via Prisma's $queryRaw to check the current user.
+  try {
+    const rows = await db.$queryRaw`SELECT current_user, current_database()`;
+    const result = rows as Array<{ current_user: string; current_database: string }>;
+    const actualUser = result[0]?.current_user;
+    const actualDb = result[0]?.current_database;
+
+    if (actualUser !== expectedRole) {
+      console.error('✗ PREFLIGHT FAIL: runtime role does not match expected read-only role.');
+      console.error(`    current_user (runtime)  = ${actualUser}`);
+      console.error(`    DRYRUN_EXPECTED_ROLE    = ${expectedRole}`);
+      console.error('  The dry-run must connect as the read-only role, NOT a superuser.');
+      console.error('  Check that DATABASE_URL uses the heavix_dryrun_ro credentials.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    console.log(`  Runtime role (current_user)   : ${actualUser}`);
+    console.log(`  Runtime database               : ${actualDb}`);
+    console.log('  Role verification              : PASS ✅');
+  } catch (err: unknown) {
+    // F-15.68-07: sanitize error — strip any connection-string-like content
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const sanitized = rawMsg.replace(/(postgresql:\/\/[^:@]+:)([^@]+)(@)/g, '$1***$3');
+    console.error('✗ PREFLIGHT FAIL: could not query current_user/current_database().');
+    console.error('  This usually means the connection failed or the role lacks SELECT on pg_catalog.');
+    console.error(`  Error (sanitized): ${sanitized}`);
+    await db.$disconnect();
+    process.exit(2);
+  }
+
+  console.log('── Preflight complete — proceeding with dry-run ──────────────');
+  console.log();
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
   const startedAt = new Date();
@@ -171,6 +298,12 @@ async function main(): Promise<void> {
   console.log(`Started   : ${startedAt.toISOString()}`);
   console.log(`Batch size: ${BATCH_SIZE} users per fetch (read-only)`);
   console.log();
+
+  // ── STEP 15.68: PREFLIGHT — connection target + role verification ────
+  // F-15.68-01: No silent fallback to wrong DB. Require explicit two-key confirmation.
+  // F-15.68-02: Verify runtime role is actually heavix_dryrun_ro (not superuser).
+  // F-15.68-07: Sanitize error output — never print connection string password.
+  await preflightConnectionCheck();
 
   // ── 1. Preload canonical Roles from DB ──────────────────────────────
   // Fail fast if the RBAC catalog is missing — backfill would crash anyway.
