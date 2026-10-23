@@ -265,6 +265,10 @@ describe.skipIf(!RUN_TESTS)(
               // STEP 15.68: preflight env vars (F-15.68-01, F-15.68-02)
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
+              // STEP 15.72 Finding 4: server identity verification.
+              // CI uses localhost:5432 — DRYRUN_EXPECTED_HOST must match
+              // the host parsed from DATABASE_URL.
+              DRYRUN_EXPECTED_HOST: "localhost",
             },
           },
         );

@@ -64,13 +64,25 @@ import {
   mapLegacyRole,
   sanitizeConnectionString,
   extractDbName,
+  extractHost,
+  resolveTrustedRole,
+  categorizeDbError,
+  redactConnectionDetails,
   CANONICAL_ROLE_KEYS,
   type CanonicalRoleKey,
 } from '../src/lib/rbac/dryrun-helpers';
+import { lookup as dnsLookup } from 'node:dns/promises';
 
 // ─── Role catalog and mapping imported from src/lib/rbac/dryrun-helpers.ts ──
 // STEP 15.71 Phase C: mapLegacyRole, sanitizeConnectionString, extractDbName
 // are now imported from a shared module so tests exercise the REAL implementation.
+// STEP 15.72: extractHost, resolveTrustedRole, categorizeDbError,
+// redactConnectionDetails added for server identity verification,
+// trusted-role allowlist enforcement, and safe error categorization.
+// `redactConnectionDetails` is exported by dryrun-helpers.ts and applied
+// defensively in the top-level error handler to mask any URL that might
+// appear in the error's string form (defense-in-depth alongside
+// categorizeDbError, which never returns raw text).
 
 // ─── Classification types ─────────────────────────────────────────────────
 type ClassificationKind = 'OK' | 'MISSING' | 'MISMATCH' | 'MULTI_ROLE' | 'INVALID';
@@ -148,14 +160,26 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  * F-15.68-07 (LOW): Sanitize all connection-string output. Passwords are NEVER
  *   printed, even if Prisma includes the raw URL in an error.
  *
+ * STEP 15.72 hardening:
+ *   - resolveTrustedRole() validates DRYRUN_EXPECTED_ROLE against a fixed
+ *     allowlist (Finding 2). A non-allowlisted role fails closed.
+ *   - DRYRUN_EXPECTED_HOST is required and matched against the host parsed
+ *     from DATABASE_URL + against the live `inet_server_addr()` result
+ *     (Finding 4) to detect proxy / MITM scenarios.
+ *   - Effective privilege audit extends to sequences (USAGE/UPDATE), schema
+ *     CREATE, database CREATE, and table ownership (Finding 3).
+ *   - All catch blocks use categorizeDbError() (Finding 5) — never print raw
+ *     error text, but operators can distinguish failure types.
+ *
  * Exits with code 2 on any preflight failure.
  */
 async function preflightConnectionCheck(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   const confirmTarget = process.env.DRYRUN_CONFIRM_TARGET;
-  const expectedRole = process.env.DRYRUN_EXPECTED_ROLE ?? 'heavix_dryrun_ro';
+  const expectedRoleRaw = process.env.DRYRUN_EXPECTED_ROLE;
+  const expectedHost = process.env.DRYRUN_EXPECTED_HOST;
 
-  console.log('── STEP 15.68 Preflight ─────────────────────────────────────');
+  console.log('── STEP 15.68 Preflight (STEP 15.72 hardening) ─────────────');
 
   // F-15.68-01a: DATABASE_URL must be set
   if (!databaseUrl) {
@@ -165,15 +189,17 @@ async function preflightConnectionCheck(): Promise<void> {
     process.exit(2);
   }
 
-  // F-15.68-07: sanitize for display
+  // F-15.68-07: sanitize for display (NEVER prints credentials)
   const sanitizedUrl = sanitizeConnectionString(databaseUrl);
   const dbName = extractDbName(databaseUrl);
+  const parsedHost = extractHost(databaseUrl);
 
   console.log(`  DATABASE_URL (sanitized): ${sanitizedUrl}`);
   console.log(`  Parsed db name          : ${dbName ?? '<unparseable>'}`);
-  console.log(`  Expected read-only role : ${expectedRole}`);
+  console.log(`  Parsed host             : ${parsedHost ?? '<unparseable>'}`);
 
-  // F-15.68-01b: two-key confirmation — DRYRUN_CONFIRM_TARGET must match db name
+  // F-15.68-01b: two-key confirmation — DRYRUN_CONFIRM_TARGET must match db name.
+  // This is the first target-identity check (verifies which database to connect to).
   if (!confirmTarget) {
     console.error('✗ PREFLIGHT FAIL: DRYRUN_CONFIRM_TARGET is not set.');
     console.error('  Two-key confirmation is required to prevent wrong-db connection.');
@@ -190,16 +216,62 @@ async function preflightConnectionCheck(): Promise<void> {
     process.exit(2);
   }
 
+  // STEP 15.72 Finding 4: DRYRUN_EXPECTED_HOST is required for server identity.
+  // This is the second target-identity check (verifies which server to connect to).
+  // The operator-declared expected host must match the host parsed from
+  // DATABASE_URL — this prevents the connection from silently landing on a
+  // different host (e.g., a dev/staging proxy) than the operator intended.
+  if (!expectedHost) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set.');
+    console.error('  Server/cluster identity verification is required to detect proxy/MITM scenarios.');
+    console.error('  Set DRYRUN_EXPECTED_HOST to the hostname in DATABASE_URL, e.g.:');
+    console.error(`    DRYRUN_EXPECTED_HOST="${parsedHost ?? '<host>'}"`);
+    process.exit(2);
+  }
+
+  if (!parsedHost) {
+    console.error('✗ PREFLIGHT FAIL: could not parse host from DATABASE_URL.');
+    console.error('  Cannot verify server identity without a parseable host.');
+    process.exit(2);
+  }
+
+  if (parsedHost !== expectedHost) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST does not match DATABASE_URL host.');
+    console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
+    console.error(`    DATABASE_URL host    = ${parsedHost}`);
+    console.error('  This mismatch prevents connection to an unexpected server.');
+    process.exit(2);
+  }
+
+  // STEP 15.72 Finding 2: resolve the trusted role via allowlist (not raw env var).
+  // If DRYRUN_EXPECTED_ROLE is unset, default to 'heavix_dryrun_ro' (in allowlist).
+  // If DRYRUN_EXPECTED_ROLE is set but NOT in allowlist, fail closed.
+  const trustedRole = resolveTrustedRole(expectedRoleRaw);
+  if (trustedRole === null) {
+    console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_ROLE is not in the trusted allowlist.');
+    console.error(`    DRYRUN_EXPECTED_ROLE = ${expectedRoleRaw ?? '<empty>'}`);
+    console.error('  Only role names present in TRUSTED_READONLY_ROLE_ALLOWLIST are accepted.');
+    console.error('  This prevents privilege elevation via a caller-configured role name.');
+    process.exit(2);
+  }
+  console.log(`  Trusted read-only role : ${trustedRole} (allowlist-verified)`);
+
   console.log('  Target confirmation     : PASS ✅');
+  console.log('  Host identity           : PASS ✅');
   console.log();
 
   // F-15.68-02: verify runtime role is the expected read-only role
   // Use a raw query via Prisma's $queryRaw to check the current user.
   try {
-    const rows = await db.$queryRaw`SELECT current_user, current_database()`;
-    const result = rows as Array<{ current_user: string; current_database: string }>;
+    const rows = await db.$queryRaw`SELECT current_user, current_database(), inet_server_addr() as server_addr`;
+    const result = rows as Array<{
+      current_user: string;
+      current_database: string;
+      server_addr: string | null;
+    }>;
     const actualUser = result[0]?.current_user;
     const actualDb = result[0]?.current_database;
+    const serverAddr = result[0]?.server_addr;
 
     // STEP 15.71 Phase B: verify live database matches confirmed target
     if (actualDb !== confirmTarget) {
@@ -207,6 +279,69 @@ async function preflightConnectionCheck(): Promise<void> {
       console.error(`    current_database() = ${actualDb}`);
       console.error(`    DRYRUN_CONFIRM_TARGET = ${confirmTarget}`);
       console.error('  The dry-run connected to a different database than expected.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // STEP 15.72 Finding 2: assert actualUser === trustedRole (allowlist-verified).
+    // Per owner directive: "The preflight must assert actualUser === trustedRole
+    // (not just check privileges)" — the runtime identity must match the trusted
+    // identity, not merely satisfy a privilege profile.
+    if (actualUser !== trustedRole) {
+      console.error('✗ PREFLIGHT FAIL: runtime role does not match the trusted read-only role.');
+      console.error(`    current_user      = ${actualUser}`);
+      console.error(`    trustedRole       = ${trustedRole}`);
+      console.error('  The dry-run must run as the allowlist-verified read-only role.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // STEP 15.72 Finding 4: verify server/cluster identity via inet_server_addr().
+    // A same-named DB on the wrong host can pass current_database() alone — so we
+    // also query inet_server_addr() (the server's view of the IP the client
+    // connected to) and compare it with DNS-resolved addresses of expectedHost.
+    // This detects proxy / MITM scenarios where the connection lands on the
+    // wrong server.
+    if (!serverAddr) {
+      console.error('✗ PREFLIGHT FAIL: inet_server_addr() returned null.');
+      console.error('  Cannot verify server identity — connection may be via Unix socket.');
+      console.error('  Require a TCP connection so server identity can be verified.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    let resolvedAddrs: string[] = [];
+    try {
+      const lookupResult = await dnsLookup(expectedHost, { all: true });
+      resolvedAddrs = lookupResult.map((r) => r.address);
+    } catch (err: unknown) {
+      const cat = categorizeDbError(err);
+      console.error('✗ PREFLIGHT FAIL: could not DNS-resolve DRYRUN_EXPECTED_HOST.');
+      console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
+      console.error(`    Category             = ${cat.category}`);
+      console.error(`    Diagnostic           = ${cat.message}`);
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    if (resolvedAddrs.length === 0) {
+      console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST resolved to zero addresses.');
+      console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
+      console.error('  Cannot verify server identity without a resolvable expected host.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // Normalize IPv4-mapped IPv6 (::ffff:127.0.0.1) to bare IPv4 for comparison.
+    const normalizeAddr = (a: string): string => a.replace(/^::ffff:/, '');
+    const normalizedServer = normalizeAddr(serverAddr);
+    const normalizedResolved = resolvedAddrs.map(normalizeAddr);
+    if (!normalizedResolved.includes(normalizedServer)) {
+      console.error('✗ PREFLIGHT FAIL: server address does not match DNS-resolved expected host.');
+      console.error(`    inet_server_addr()  = ${normalizedServer}`);
+      console.error(`    DRYRUN_EXPECTED_HOST = ${expectedHost}`);
+      console.error(`    Resolved addresses   = ${normalizedResolved.join(', ')}`);
+      console.error('  This mismatch may indicate a proxy or MITM scenario.');
       await db.$disconnect();
       process.exit(2);
     }
@@ -307,21 +442,111 @@ async function preflightConnectionCheck(): Promise<void> {
       }
     }
 
+    // STEP 15.72 Finding 3: Sequence privilege audit (USAGE and UPDATE).
+    // The read-only role must NOT be able to call nextval() (USAGE) or setval()
+    // (UPDATE) on any sequence in the public schema. SELECT-only on sequences
+    // is the safe configuration (allows currval, denies nextval/setval).
+    // If the audit cannot run (permission denied on pg_class), fail closed.
+    const sequencePrivCheck = await db.$queryRawUnsafe(
+      `SELECT
+         c.relname AS sequence_name,
+         has_sequence_privilege($1, c.oid, 'USAGE') AS can_usage,
+         has_sequence_privilege($1, c.oid, 'UPDATE') AS can_update
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relkind = 'S'
+         AND n.nspname = 'public'`,
+      actualUser,
+    ) as Array<{ sequence_name: string; can_usage: boolean; can_update: boolean }>;
+
+    for (const seq of sequencePrivCheck) {
+      if (seq.can_usage) {
+        console.error(`✗ PREFLIGHT FAIL: role has USAGE privilege on sequence "${seq.sequence_name}".`);
+        console.error('  USAGE allows nextval() — the read-only role must not advance sequences.');
+        console.error('  REVOKE USAGE ON ALL SEQUENCES IN SCHEMA public FROM the read-only role.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+      if (seq.can_update) {
+        console.error(`✗ PREFLIGHT FAIL: role has UPDATE privilege on sequence "${seq.sequence_name}".`);
+        console.error('  UPDATE allows setval() — the read-only role must not mutate sequences.');
+        console.error('  REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM the read-only role.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+    }
+
+    // STEP 15.72 Finding 3: Schema CREATE privilege check.
+    // A read-only role must NOT be able to CREATE tables in any schema — CREATE
+    // implies the ability to define new relations (which could be used to
+    // exfiltrate data via triggers or views).
+    const schemaCreateCheck = await db.$queryRawUnsafe(
+      `SELECT has_schema_privilege($1, 'public', 'CREATE') AS can_create`,
+      actualUser,
+    ) as Array<{ can_create: boolean }>;
+    if (schemaCreateCheck[0]?.can_create) {
+      console.error('✗ PREFLIGHT FAIL: role has CREATE privilege on schema "public".');
+      console.error('  CREATE allows defining new tables/views — the read-only role must not.');
+      console.error('  REVOKE CREATE ON SCHEMA public FROM the read-only role.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // STEP 15.72 Finding 3: Database CREATE privilege check.
+    // A read-only role must NOT be able to CREATE databases.
+    const dbCreateCheck = await db.$queryRawUnsafe(
+      `SELECT has_database_privilege($1, current_database(), 'CREATE') AS can_create_db`,
+      actualUser,
+    ) as Array<{ can_create_db: boolean }>;
+    if (dbCreateCheck[0]?.can_create_db) {
+      console.error('✗ PREFLIGHT FAIL: role has CREATE privilege on the current database.');
+      console.error('  CREATE DATABASE is an elevated privilege — the read-only role must not have it.');
+      console.error('  REVOKE CREATE ON DATABASE from the read-only role (or recreate the role without CREATEDB).');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
+    // STEP 15.72 Finding 3: Table ownership check.
+    // Ownership of a table implies ALL privileges on it (including write).
+    // The read-only role must not OWN any tables in any schema.
+    const ownershipCheck = await db.$queryRawUnsafe(
+      `SELECT count(*)::int AS cnt
+       FROM pg_class c
+       JOIN pg_roles r ON r.oid = c.relowner
+       WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+         AND r.rolname = $1`,
+      actualUser,
+    ) as Array<{ cnt: number }>;
+    if (ownershipCheck[0].cnt > 0) {
+      console.error(`✗ PREFLIGHT FAIL: role owns ${ownershipCheck[0].cnt} relation(s) in pg_class.`);
+      console.error('  Ownership implies ALL privileges (including write) — the read-only role must not own any relation.');
+      console.error('  Reassign ownership: ALTER TABLE ... OWNER TO <admin_role>; for each owned relation.');
+      await db.$disconnect();
+      process.exit(2);
+    }
+
     console.log(`  Runtime role (current_user)   : ${actualUser}`);
     console.log(`  Runtime database               : ${actualDb}`);
-    console.log(`  Superuser check                : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
-    console.log(`  Role memberships               : ${membershipCheck[0].cnt} (must be 0)`);
-    console.log(`  Write-privilege check          : 5 RBAC tables × 4 write ops = 20 checks — all denied ✅`);
-    console.log(`  PUBLIC grants check            : 5 RBAC tables — no PUBLIC write grants ✅`);
-    console.log('  Role verification              : PASS ✅');
-    console.log('  (Effective privileges verified — not just role name)');
+    console.log(`  Server address (inet_server_addr): ${serverAddr}`);
+    console.log(`  Trusted-role assertion          : actualUser === trustedRole ✅`);
+    console.log(`  Host identity check              : ${expectedHost} → [${resolvedAddrs.join(', ')}] ✅`);
+    console.log(`  Superuser check                  : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
+    console.log(`  Role memberships                 : ${membershipCheck[0].cnt} (must be 0)`);
+    console.log(`  Write-privilege check            : 5 RBAC tables × 4 write ops = 20 checks — all denied ✅`);
+    console.log(`  PUBLIC grants check              : 5 RBAC tables — no PUBLIC write grants ✅`);
+    console.log(`  Sequence privilege check         : ${sequencePrivCheck.length} sequences — USAGE + UPDATE denied on all ✅`);
+    console.log(`  Schema CREATE check              : denied on "public" ✅`);
+    console.log(`  Database CREATE check            : denied on current database ✅`);
+    console.log(`  Table ownership check            : ${ownershipCheck[0].cnt} relations owned (must be 0) ✅`);
+    console.log('  Role verification                : PASS ✅');
+    console.log('  (Effective privileges verified — not just role name; server identity verified — not just db name)');
   } catch (err: unknown) {
-    // F-15.68-07 / STEP 15.71: sanitize error — use robust URL parsing
-    const rawMsg = err instanceof Error ? err.message : String(err);
-    const sanitized = sanitizeConnectionString(rawMsg);
-    console.error('✗ PREFLIGHT FAIL: could not query current_user/current_database().');
+    // STEP 15.72 Finding 5: use categorizeDbError() — never print raw error text,
+    // but operators can distinguish failure types (auth vs connection vs permission).
+    const cat = categorizeDbError(err);
+    console.error(`✗ PREFLIGHT FAIL [${cat.category}]: could not complete preflight queries.`);
     console.error('  This usually means the connection failed or the role lacks SELECT on pg_catalog.');
-    console.error(`  Error (sanitized): ${sanitized}`);
+    console.error(`  Diagnostic: ${cat.message}`);
     await db.$disconnect();
     process.exit(2);
   }
@@ -814,12 +1039,32 @@ async function emitEmptyReport(
 // is unchanged — when run directly, main() executes as before.
 if (require.main === module) {
   main().catch(async (err: unknown) => {
+    // STEP 15.72 Finding 5: replace `console.error(err)` (which leaks raw
+    // error text — possibly containing connection strings / hosts / role
+    // names) with categorized output via categorizeDbError(). The category
+    // + fixed safe message lets operators distinguish failure types without
+    // credential exposure.
+    const cat = categorizeDbError(err);
     console.error('═'.repeat(72));
     console.error('✗ Phase C dry-run failed with an unrecoverable error.');
     console.error('  This is expected in sandboxes WITHOUT PostgreSQL.');
     console.error('  In CI/production, this indicates a real DB connection issue.');
     console.error('═'.repeat(72));
-    console.error(err);
+    console.error(`  Category   : ${cat.category}`);
+    console.error(`  Diagnostic : ${cat.message}`);
+    // Defense-in-depth: if the error's string form contains a postgresql:// URL
+    // (e.g., Prisma logged it into the message/stack), apply redactConnectionDetails
+    // so any future diagnostic path that surfaces the stack is safe. We do not
+    // print the raw stack here — categorizeDbError already produced a safe
+    // diagnostic above. This is purely defensive preparation.
+    const rawStack = err instanceof Error && err.stack ? err.stack : '';
+    const redactedStack = redactConnectionDetails(rawStack);
+    if (redactedStack && redactedStack !== rawStack) {
+      // A redaction occurred — log that a URL fragment was masked (without
+      // printing the masked content). Operators know the raw stack contained
+      // a connection string that was defensively stripped.
+      console.error('  Note       : raw error stack contained a connection string; it was redacted before any diagnostic output.');
+    }
     try {
       await db.$disconnect();
     } catch {

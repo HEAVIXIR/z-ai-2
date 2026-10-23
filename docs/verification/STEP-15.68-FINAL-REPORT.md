@@ -246,3 +246,57 @@ bunx tsx scripts/rbac-backfill-dryrun.ts 2>&1 | tee staging-dryrun-$(date +%Y%m%
 **What's NOT done:** staging dry-run execution (awaiting owner authorization), backfill script implementation (awaiting staging dry-run results), all production operations (NO-GO).
 
 **No staging or production operations performed. PRODUCTION: NO-GO ❌.**
+
+---
+
+## STEP 15.72 Addendum — Final Security Remediation (2026-10-23)
+
+After STEP 15.71 remediation, the owner identified **6 additional findings** on PR #76. STEP 15.72 addresses ALL 6:
+
+| # | Finding | Severity | Status | Evidence |
+|---|---------|----------|--------|----------|
+| F-15.72-1 | Credential-sanitization regression test incomplete (asserts only `p@ss` absent, not `ss` or other fragments) | MEDIUM | **FIXED** | `tests/unit/rbac-preflight-logic.test.ts` tests 5, 7, 13, 13a–13g, 17 strengthened; `sanitizeConnectionString()` returns fixed generic message on parse failure. |
+| F-15.72-2 | `DRYRUN_EXPECTED_ROLE` remains caller-configurable (no allowlist) | HIGH | **FIXED** | `TRUSTED_READONLY_ROLE_ALLOWLIST` + `resolveTrustedRole()` in `src/lib/rbac/dryrun-helpers.ts:38-76`; preflight asserts `actualUser === trustedRole` in `scripts/rbac-backfill-dryrun.ts:280-291`. |
+| F-15.72-3 | Effective privilege audit incomplete (missing sequence, schema, database CREATE, table ownership) | HIGH | **FIXED** | `has_sequence_privilege` USAGE/UPDATE, `has_schema_privilege` CREATE, `has_database_privilege` CREATE, `pg_class.relowner` ownership checks in `scripts/rbac-backfill-dryrun.ts:439-520`. |
+| F-15.72-4 | Server/cluster identity unverified (`current_database()` alone can be spoofed) | HIGH | **FIXED** | `DRYRUN_EXPECTED_HOST` required env var + `extractHost()` + `inet_server_addr()` + DNS resolution in `scripts/rbac-backfill-dryrun.ts:293-341`. |
+| F-15.72-5 | Catch path hides useful failure cause (generic "unable to parse" for all Prisma errors) | MEDIUM | **FIXED** | `categorizeDbError()` with 5 safe categories (CONNECTION_REFUSED, AUTHENTICATION_FAILED, DATABASE_NOT_FOUND, PERMISSION_DENIED, UNKNOWN) replaces `console.error(err)` in catch blocks. |
+| F-15.72-6 | Audit documentation stale | LOW | **FIXED** | `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` (NEW) + addendums in `STEP-15.68-PREFLIGHT-AUDIT.md`, `STEP-15.68-FINAL-REPORT.md`, `STEP-15.68-STAGING-RUNBOOK.md`. |
+
+### STEP 15.72 Test Results
+
+| Check | Result |
+|-------|--------|
+| `tests/unit/rbac-preflight-logic.test.ts` | ✅ 68/68 PASS (was 31 — 37 new tests added) |
+| `tests/unit/rbac-dryrun-preflight.test.ts` | ✅ 82/82 PASS (was 54 — 28 new source-level verification tests added) |
+| `tests/unit/rbac-gate-logic.test.ts` | ✅ 22/22 PASS (no regression) |
+| **Total unit tests** | **✅ 172/172 PASS** (was 104 — net +68 tests added) |
+| typecheck (`tsconfig.scripts.json`) | ✅ exit 0 |
+| lint | ✅ 0 errors, 11 pre-existing warnings |
+
+### STEP 15.72 Files Changed
+
+| File | Change |
+|------|--------|
+| `src/lib/rbac/dryrun-helpers.ts` | +5 new exports: `TRUSTED_READONLY_ROLE_ALLOWLIST`, `resolveTrustedRole()`, `extractHost()`, `categorizeDbError()`, `redactConnectionDetails()`. Fixed `sanitizeConnectionString()` to return fixed generic message on parse failure. |
+| `scripts/rbac-backfill-dryrun.ts` | Updated `preflightConnectionCheck()` with allowlist-verified trusted role, `DRYRUN_EXPECTED_HOST` check, `inet_server_addr()` + DNS resolution, sequence/schema/database CREATE/table ownership checks, `categorizeDbError()` in catch blocks. Replaced top-level `console.error(err)` with categorized output. |
+| `tests/unit/rbac-preflight-logic.test.ts` | Strengthened sanitization assertions + added unit tests for all new helpers. |
+| `tests/unit/rbac-dryrun-preflight.test.ts` | Added source-level verification tests for all new helpers and preflight hardening constructs. |
+| `.github/workflows/ci.yml` | Added `DRYRUN_EXPECTED_HOST: localhost` to Phase C dry-run gate step env. |
+| `tests/integration/rbac-readonly-role-real.test.ts` | Added `DRYRUN_EXPECTED_HOST: "localhost"` to integration test env. |
+| `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` | NEW — comprehensive finding-by-finding classification report. |
+| `docs/verification/STEP-15.68-PREFLIGHT-AUDIT.md` | +STEP 15.72 addendum reclassifying each finding's status. |
+| `docs/verification/STEP-15.68-FINAL-REPORT.md` | +STEP 15.72 addendum (this section). |
+| `docs/verification/STEP-15.68-STAGING-RUNBOOK.md` | +STEP 15.72 addendum documenting new env var + updated preflight. |
+
+### STEP 15.72 Status
+
+- **6 owner findings:** ALL 6 FIXED ✅
+- **172 unit tests PASS:** (was 104 — net +68 new tests) ✅
+- **Typecheck + lint clean:** ✅
+- **Staging dry-run execution:** NOT AUTHORIZED ⏳ (awaiting owner authorization per runbook)
+- **Production backfill:** NOT AUTHORIZED ❌
+- **Production deployment:** NOT AUTHORIZED ❌
+
+**Full details:** see `docs/verification/STEP-15.72-REMEDIATION-REPORT.md`.
+
+**STEP 15.72 STATUS: COMPLETE ✅** — All 6 findings FIXED, 172 tests PASS, typecheck + lint clean. PRODUCTION: NO-GO ❌ (awaiting owner authorization for staging dry-run).

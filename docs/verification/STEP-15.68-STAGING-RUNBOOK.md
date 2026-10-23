@@ -290,3 +290,70 @@ diff <(grep -v 'generatedAt\|Started' run1.log) <(grep -v 'generatedAt\|Started'
 - Owner must explicitly say "execute staging dry-run" before any command in Section 4 is run.
 - Until then, this document is a PREPARATION artifact only.
 - **PRODUCTION: NO-GO ❌** — staging dry-run is preparation only; no backfill, cutover, or deployment is authorized.
+
+---
+
+## STEP 15.72 Addendum — Updated Preflight Requirements (2026-10-23)
+
+STEP 15.72 hardened the preflight with **6 additional security controls**. Operators MUST set the new env vars documented below before executing the staging dry-run. The previous Section 2.2 env-var list is supplemented as follows.
+
+### New required env var: `DRYRUN_EXPECTED_HOST`
+
+```bash
+# STEP 15.72 Finding 4: server/cluster identity verification.
+# Required. Must match the hostname in DATABASE_URL.
+# The preflight will also query inet_server_addr() and compare with
+# DNS-resolved expectedHost to detect proxy / MITM scenarios.
+export DRYRUN_EXPECTED_HOST="<staging_host>"
+```
+
+This env var is validated against the host parsed from `DATABASE_URL` (operator-declared host vs URL-parsed host). The preflight then queries `inet_server_addr()` (the server's view of the IP the client connected to) and compares it with DNS-resolved addresses of `DRYRUN_EXPECTED_HOST`. If the server address does not match the DNS-resolved expected host, the preflight fails closed — detecting proxy / MITM scenarios where the connection lands on the wrong server.
+
+### Trusted-role allowlist (Finding 2)
+
+`DRYRUN_EXPECTED_ROLE` is no longer trusted as a raw env var. The value must be in the fixed `TRUSTED_READONLY_ROLE_ALLOWLIST` constant (defined in `src/lib/rbac/dryrun-helpers.ts`). Currently the only allowlisted value is `heavix_dryrun_ro`.
+
+If `DRYRUN_EXPECTED_ROLE` is unset, the default `heavix_dryrun_ro` is used (which IS in the allowlist). If a non-allowlisted value is set, the preflight fails closed.
+
+### Updated preflight output markers (Section 4.3)
+
+Operators should verify the following additional markers in the log:
+
+- `  Trusted read-only role : heavix_dryrun_ro (allowlist-verified)`
+- `  Host identity           : PASS ✅`
+- `  Server address (inet_server_addr): <ip>`
+- `  Trusted-role assertion          : actualUser === trustedRole ✅`
+- `  Host identity check              : <host> → [<resolved addresses>] ✅`
+- `  Sequence privilege check         : <N> sequences — USAGE + UPDATE denied on all ✅`
+- `  Schema CREATE check              : denied on "public" ✅`
+- `  Database CREATE check            : denied on current database ✅`
+- `  Table ownership check            : 0 relations owned (must be 0) ✅`
+
+### Updated execution command (Section 4.1)
+
+```bash
+DATABASE_URL="$DATABASE_URL" \
+DRYRUN_CONFIRM_TARGET="$DRYRUN_CONFIRM_TARGET" \
+DRYRUN_EXPECTED_ROLE="$DRYRUN_EXPECTED_ROLE" \
+DRYRUN_EXPECTED_HOST="$DRYRUN_EXPECTED_HOST" \
+bunx tsx scripts/rbac-backfill-dryrun.ts 2>&1 | tee staging-dryrun-$(date +%Y%m%d-%H%M%S).log
+```
+
+### Categorized error diagnostics (Finding 5)
+
+If the preflight fails, the error output is now categorized (no raw error text is printed). Operators will see one of:
+
+- `✗ PREFLIGHT FAIL [CONNECTION_REFUSED]: ...` — host unreachable, port closed, network error
+- `✗ PREFLIGHT FAIL [AUTHENTICATION_FAILED]: ...` — invalid role name or password
+- `✗ PREFLIGHT FAIL [DATABASE_NOT_FOUND]: ...` — database name does not exist
+- `✗ PREFLIGHT FAIL [PERMISSION_DENIED]: ...` — role lacks required privileges
+- `✗ PREFLIGHT FAIL [UNKNOWN]: ...` — uncategorized (no raw error text shown)
+
+Each category has a fixed safe message — operators can distinguish failure types without credential exposure.
+
+### STEP 15.72 Status
+
+- **6 new STEP 15.72 findings:** ALL 6 FIXED ✅
+- **Test count:** 172/172 unit tests PASS (was 104 — net +68 new tests added in STEP 15.72).
+- **Typecheck + lint:** clean (0 errors).
+- **Full details:** see `docs/verification/STEP-15.72-REMEDIATION-REPORT.md`.

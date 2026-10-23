@@ -5,6 +5,11 @@ import {
   mapLegacyRole,
   sanitizeConnectionString,
   extractDbName,
+  extractHost,
+  resolveTrustedRole,
+  categorizeDbError,
+  redactConnectionDetails,
+  TRUSTED_READONLY_ROLE_ALLOWLIST,
   CANONICAL_ROLE_KEYS,
 } from "@/lib/rbac/dryrun-helpers";
 
@@ -19,6 +24,7 @@ import {
 const DRYRUN_SOURCE = readFileSync("scripts/rbac-backfill-dryrun.ts", "utf-8");
 const GATE_LOGIC_SOURCE = readFileSync("src/lib/rbac/gate-logic.ts", "utf-8");
 const GATE_CI_SOURCE = readFileSync("scripts/rbac-gate-ci.ts", "utf-8");
+const HELPERS_SOURCE = readFileSync("src/lib/rbac/dryrun-helpers.ts", "utf-8");
 
 describe("STEP 15.71 — 2A: Connection Safety", () => {
   it("Dry-run imports db from @/lib/db (singleton, not separate PrismaClient)", () => {
@@ -259,5 +265,199 @@ describe("STEP 15.71 — Gate Failure Path Coverage", () => {
   });
   it("Inconsistent gate → validation error", () => {
     expect(GATE_LOGIC_SOURCE).toContain("INCONSISTENT_GATE");
+  });
+});
+
+/* ============================================================
+   STEP 15.72 — Source-level verification tests.
+   These tests verify that the security-hardening constructs
+   required by STEP 15.72 are present in the production source
+   files. They are NOT functional tests — they are static source
+   assertions that detect regressions if a future refactor
+   removes the hardening.
+   ============================================================ */
+
+describe("STEP 15.72 Finding 2 — TRUSTED_READONLY_ROLE_ALLOWLIST enforcement", () => {
+  it("dryrun-helpers.ts defines TRUSTED_READONLY_ROLE_ALLOWLIST as a fixed const", () => {
+    expect(HELPERS_SOURCE).toContain("TRUSTED_READONLY_ROLE_ALLOWLIST");
+    // Must be a `const ... = [...] as const` so the tuple shape is fixed.
+    expect(HELPERS_SOURCE).toMatch(/export\s+const\s+TRUSTED_READONLY_ROLE_ALLOWLIST\s*=\s*\[[^\]]*\]\s*as\s+const/);
+  });
+
+  it("dryrun-helpers.ts exports resolveTrustedRole() with fail-closed behavior", () => {
+    expect(HELPERS_SOURCE).toContain("export function resolveTrustedRole");
+    // The function must use the allowlist (not just compare to a raw env var).
+    expect(HELPERS_SOURCE).toMatch(/TRUSTED_READONLY_ROLE_ALLOWLIST\.includes/);
+    // Must return null on mismatch (fail closed).
+    expect(HELPERS_SOURCE).toMatch(/return null/);
+  });
+
+  it("rbac-backfill-dryrun.ts imports and uses resolveTrustedRole", () => {
+    expect(DRYRUN_SOURCE).toContain("resolveTrustedRole");
+    expect(DRYRUN_SOURCE).toMatch(/const trustedRole = resolveTrustedRole\(/);
+  });
+
+  it("rbac-backfill-dryrun.ts asserts actualUser === trustedRole (not just privileges)", () => {
+    expect(DRYRUN_SOURCE).toContain("actualUser !== trustedRole");
+    expect(DRYRUN_SOURCE).toContain("actualUser === trustedRole");
+  });
+
+  it("rbac-backfill-dryrun.ts does NOT read DRYRUN_EXPECTED_ROLE directly as the trusted role", () => {
+    // The old pattern `process.env.DRYRUN_EXPECTED_ROLE ?? 'heavix_dryrun_ro'`
+    // is no longer permitted — the value must go through resolveTrustedRole().
+    expect(DRYRUN_SOURCE).not.toMatch(/expectedRole\s*=\s*process\.env\.DRYRUN_EXPECTED_ROLE\s*\?\?\s*['"]/);
+  });
+
+  it("resolveTrustedRole fails closed for 'custom_ro_role' (REAL implementation)", () => {
+    expect(resolveTrustedRole("custom_ro_role")).toBeNull();
+  });
+
+  it("resolveTrustedRole accepts 'heavix_dryrun_ro' (REAL implementation)", () => {
+    expect(resolveTrustedRole("heavix_dryrun_ro")).toBe("heavix_dryrun_ro");
+  });
+});
+
+describe("STEP 15.72 Finding 3 — Effective privilege audit (sequences, schema, db, ownership)", () => {
+  it("rbac-backfill-dryrun.ts checks sequence USAGE and UPDATE privileges", () => {
+    expect(DRYRUN_SOURCE).toContain("has_sequence_privilege");
+    expect(DRYRUN_SOURCE).toContain("USAGE");
+    expect(DRYRUN_SOURCE).toContain("UPDATE");
+    expect(DRYRUN_SOURCE).toMatch(/has_sequence_privilege\([^)]*,\s*['"]USAGE['"]\)/);
+    expect(DRYRUN_SOURCE).toMatch(/has_sequence_privilege\([^)]*,\s*['"]UPDATE['"]\)/);
+  });
+
+  it("rbac-backfill-dryrun.ts checks schema CREATE privilege via has_schema_privilege", () => {
+    expect(DRYRUN_SOURCE).toContain("has_schema_privilege");
+    expect(DRYRUN_SOURCE).toMatch(/has_schema_privilege\([^)]*,\s*['"]public['"]\s*,\s*['"]CREATE['"]\)/);
+  });
+
+  it("rbac-backfill-dryrun.ts checks database CREATE privilege via has_database_privilege", () => {
+    expect(DRYRUN_SOURCE).toContain("has_database_privilege");
+    expect(DRYRUN_SOURCE).toMatch(/has_database_privilege\([^)]*,\s*current_database\(\)\s*,\s*['"]CREATE['"]\)/);
+  });
+
+  it("rbac-backfill-dryrun.ts checks table ownership via pg_class.relowner", () => {
+    expect(DRYRUN_SOURCE).toContain("pg_class");
+    expect(DRYRUN_SOURCE).toContain("relowner");
+    expect(DRYRUN_SOURCE).toContain("pg_roles");
+  });
+
+  it("dryrun-helpers.ts exports all STEP 15.72 helpers (resolveTrustedRole, extractHost, categorizeDbError, redactConnectionDetails)", () => {
+    expect(HELPERS_SOURCE).toContain("export function resolveTrustedRole");
+    expect(HELPERS_SOURCE).toContain("export function extractHost");
+    expect(HELPERS_SOURCE).toContain("export function categorizeDbError");
+    expect(HELPERS_SOURCE).toContain("export function redactConnectionDetails");
+  });
+});
+
+describe("STEP 15.72 Finding 4 — Server/cluster identity verification (DRYRUN_EXPECTED_HOST)", () => {
+  it("dryrun-helpers.ts exports extractHost()", () => {
+    expect(HELPERS_SOURCE).toContain("export function extractHost");
+  });
+
+  it("rbac-backfill-dryrun.ts requires DRYRUN_EXPECTED_HOST (fails closed when missing)", () => {
+    expect(DRYRUN_SOURCE).toContain("DRYRUN_EXPECTED_HOST is not set");
+    expect(DRYRUN_SOURCE).toContain("proxy/MITM");
+  });
+
+  it("rbac-backfill-dryrun.ts compares parsedHost with expectedHost (env var vs URL host)", () => {
+    expect(DRYRUN_SOURCE).toContain("parsedHost !== expectedHost");
+    expect(DRYRUN_SOURCE).toContain("extractHost(databaseUrl)");
+  });
+
+  it("rbac-backfill-dryrun.ts queries inet_server_addr() and compares with DNS-resolved host", () => {
+    expect(DRYRUN_SOURCE).toContain("inet_server_addr()");
+    expect(DRYRUN_SOURCE).toContain("dnsLookup");
+    // The normalize-and-compare logic must include IPv4-mapped IPv6 normalization.
+    expect(DRYRUN_SOURCE).toContain("::ffff:");
+  });
+
+  it("rbac-backfill-dryrun.ts does NOT log the connection password when establishing identity", () => {
+    // The preflight must NOT print the raw DATABASE_URL — only the sanitized form.
+    expect(DRYRUN_SOURCE).toMatch(/sanitizeConnectionString\(databaseUrl\)/);
+    // The raw URL must not be printed directly.
+    expect(DRYRUN_SOURCE).not.toMatch(/console\.(log|error)\(databaseUrl\)/);
+    expect(DRYRUN_SOURCE).not.toMatch(/console\.(log|error)\(`.*\$\{databaseUrl\}/);
+  });
+
+  it("extractHost returns 'localhost' for localhost URLs (REAL implementation)", () => {
+    expect(extractHost("postgresql://user:pass@localhost:5432/heavix_test")).toBe("localhost");
+  });
+});
+
+describe("STEP 15.72 Finding 5 — categorizeDbError replaces console.error(err)", () => {
+  it("dryrun-helpers.ts exports categorizeDbError with the 5 required categories", () => {
+    expect(HELPERS_SOURCE).toContain("export function categorizeDbError");
+    expect(HELPERS_SOURCE).toContain("CONNECTION_REFUSED");
+    expect(HELPERS_SOURCE).toContain("AUTHENTICATION_FAILED");
+    expect(HELPERS_SOURCE).toContain("DATABASE_NOT_FOUND");
+    expect(HELPERS_SOURCE).toContain("PERMISSION_DENIED");
+    expect(HELPERS_SOURCE).toContain("UNKNOWN");
+  });
+
+  it("dryrun-helpers.ts exports redactConnectionDetails for defense-in-depth", () => {
+    expect(HELPERS_SOURCE).toContain("export function redactConnectionDetails");
+  });
+
+  it("rbac-backfill-dryrun.ts imports categorizeDbError and uses it in catch blocks", () => {
+    expect(DRYRUN_SOURCE).toContain("categorizeDbError");
+    // The catch block in preflightConnectionCheck must use categorizeDbError(err).
+    expect(DRYRUN_SOURCE).toMatch(/const cat = categorizeDbError\(err\)/);
+  });
+
+  it("rbac-backfill-dryrun.ts does NOT print raw error objects (no `console.error(err)`)", () => {
+    // The old pattern `console.error(err)` leaks the raw error text — it is
+    // replaced by categorized output via categorizeDbError().
+    expect(DRYRUN_SOURCE).not.toMatch(/^\s*console\.error\(err\)\s*;?\s*$/m);
+    expect(DRYRUN_SOURCE).not.toMatch(/^\s*console\.error\(rawMsg\)\s*;?\s*$/m);
+  });
+
+  it("rbac-backfill-dryrun.ts top-level error handler uses categorizeDbError (not raw err)", () => {
+    // The top-level main().catch() handler must use categorizeDbError for safe output.
+    expect(DRYRUN_SOURCE).toMatch(/main\(\)\.catch\([\s\S]*?categorizeDbError\([\s\S]*?\)/);
+  });
+
+  it("categorizeDbError returns fixed safe messages per category (REAL implementation)", () => {
+    // The safe message must never contain the raw error text — only a fixed
+    // human-readable diagnostic. Verify each category returns a non-empty
+    // message that does not include the raw input.
+    const err = new Error("connect ECONNREFUSED 127.0.0.1:5432 — secret password is hunter2");
+    const result = categorizeDbError(err);
+    expect(result.category).toBe("CONNECTION_REFUSED");
+    expect(result.message).not.toContain("ECONNREFUSED");
+    expect(result.message).not.toContain("127.0.0.1");
+    expect(result.message).not.toContain("hunter2");
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("redactConnectionDetails masks URLs in a string (REAL implementation)", () => {
+    const input = "Error: postgresql://user:hunter2@host:5432/db";
+    const output = redactConnectionDetails(input);
+    expect(output).not.toContain("hunter2");
+    expect(output).toContain("redacted:connection-string");
+  });
+
+  it("TRUSTED_READONLY_ROLE_ALLOWLIST is exported as a readonly tuple (REAL implementation)", () => {
+    expect(Array.isArray(TRUSTED_READONLY_ROLE_ALLOWLIST)).toBe(true);
+    expect(TRUSTED_READONLY_ROLE_ALLOWLIST).toContain("heavix_dryrun_ro");
+  });
+});
+
+describe("STEP 15.72 Finding 1 — sanitizeConnectionString fixed generic message on parse failure", () => {
+  it("dryrun-helpers.ts returns a fixed generic message for malformed URLs (no input fragments)", () => {
+    // The catch block in sanitizeConnectionString must NOT print any input fragment.
+    // It must return a fixed generic message.
+    const output = sanitizeConnectionString("not-a-valid-url-with-credentials");
+    expect(output).toContain("unable to parse");
+    expect(output).not.toContain("not-a-valid-url");
+    expect(output).not.toContain("credentials");
+  });
+
+  it("dryrun-helpers.ts sanitizeConnectionString does NOT print ANY URL fragment on parse failure", () => {
+    // Even a single character of the input must not leak.
+    const output = sanitizeConnectionString("xyzzy");
+    expect(output).not.toContain("xyzzy");
+    expect(output).not.toContain("xyz");
+    expect(output).not.toContain("yzzy");
   });
 });

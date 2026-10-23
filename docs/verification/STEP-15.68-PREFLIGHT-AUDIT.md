@@ -252,3 +252,43 @@ Add an explicit preflight to `scripts/rbac-backfill-dryrun.ts` (before any DB qu
 - **Production deployment:** NOT AUTHORIZED ❌
 
 **STEP 15.68 STATUS: PARTIAL** — audit complete, runbook + backfill design prepared, tests + code hardening to be added in follow-up commit. No staging/production operations performed.
+
+---
+
+## STEP 15.72 Addendum — Finding Reclassification (2026-10-23)
+
+After STEP 15.71 remediation and STEP 15.72 final hardening, the findings in this audit have been reclassified as follows:
+
+| # | Finding | Original Status (STEP 15.68) | Reclassified Status (STEP 15.72) | Evidence |
+|---|---------|------------------------------|----------------------------------|----------|
+| F-15.68-01 | No preflight target confirmation | OPEN | **FIXED** (STEP 15.68) | `scripts/rbac-backfill-dryrun.ts:201-217` — `DRYRUN_CONFIRM_TARGET` two-key confirmation enforced |
+| F-15.68-02 | Runtime role not verified | OPEN | **FIXED** (STEP 15.68 + STEP 15.72) | STEP 15.68 added `current_user` check; STEP 15.72 added `resolveTrustedRole()` allowlist + `actualUser === trustedRole` assertion (`scripts/rbac-backfill-dryrun.ts:280-291`) |
+| F-15.68-03 | PUBLIC grants not explicitly audited | OPEN | **FIXED** (STEP 15.71) | `scripts/rbac-backfill-dryrun.ts:420-437` — PUBLIC write grants check |
+| F-15.68-04 | 5-table scope limit | OPEN (documented) | **OPEN** (documented limitation) | NOT TESTED — would require whole-DB row-count snapshot. Documented in runbook Section 9.1. |
+| F-15.68-05 | Fingerprint reads all rows into memory — OOM risk | OPEN (documented) | **OPEN** (documented limitation) | NOT TESTED — streaming hash is future work. |
+| F-15.68-06 | No transaction isolation | OPEN (documented) | **OPEN** (documented limitation) | NOT TESTED — maintenance window mitigation documented in runbook Section 9.2. |
+| F-15.68-07 | Error output may leak DATABASE_URL with password | OPEN | **FIXED** (STEP 15.68 + STEP 15.71 + STEP 15.72) | STEP 15.68 added `sanitizeConnectionString()`; STEP 15.71 strengthened URL parsing; STEP 15.72 added `categorizeDbError()` for safe categorized diagnostics + fixed generic message on parse failure (`src/lib/rbac/dryrun-helpers.ts:113-118`) |
+| F-15.68-08 | Samples may include sensitive `User.role` values | OPEN (documented) | **OPEN** (documented limitation) | NOT TESTED — PII scan documented in runbook Section 5.2. |
+| F-15.68-09 | No whole-DB snapshot | OPEN (documented) | **OPEN** (documented limitation) | NOT TESTED — runbook Section 9.1 documents manual procedure. |
+
+### New STEP 15.72 findings (from owner's PR #76 review):
+
+| # | Finding | Severity | Status | Evidence |
+|---|---------|----------|--------|----------|
+| F-15.72-1 | Credential-sanitization regression test incomplete (asserts only `p@ss` absent, not `ss` or other fragments) | MEDIUM | **FIXED** | `tests/unit/rbac-preflight-logic.test.ts` tests 5, 7, 13, 13a–13g, 17 strengthened; `sanitizeConnectionString()` returns fixed generic message on parse failure. See `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` §3.1. |
+| F-15.72-2 | `DRYRUN_EXPECTED_ROLE` remains caller-configurable (no allowlist) | HIGH | **FIXED** | `TRUSTED_READONLY_ROLE_ALLOWLIST` constant + `resolveTrustedRole()` in `src/lib/rbac/dryrun-helpers.ts:38-76`; preflight asserts `actualUser === trustedRole` in `scripts/rbac-backfill-dryrun.ts:280-291`. See `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` §3.2. |
+| F-15.72-3 | Effective privilege audit incomplete (missing sequence, schema, database CREATE, table ownership) | HIGH | **FIXED** | `has_sequence_privilege` USAGE/UPDATE check, `has_schema_privilege` CREATE check, `has_database_privilege` CREATE check, `pg_class.relowner` ownership check in `scripts/rbac-backfill-dryrun.ts:439-520`. See `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` §3.3. |
+| F-15.72-4 | Server/cluster identity unverified (`current_database()` alone can be spoofed) | HIGH | **FIXED** | `DRYRUN_EXPECTED_HOST` required env var + `extractHost()` in `src/lib/rbac/dryrun-helpers.ts:135-152`; preflight queries `inet_server_addr()` and compares with DNS-resolved expected host in `scripts/rbac-backfill-dryrun.ts:293-341`. See `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` §3.4. |
+| F-15.72-5 | Catch path hides useful failure cause (generic "unable to parse" for all Prisma errors) | MEDIUM | **FIXED** | `categorizeDbError()` with 5 safe categories (CONNECTION_REFUSED, AUTHENTICATION_FAILED, DATABASE_NOT_FOUND, PERMISSION_DENIED, UNKNOWN) in `src/lib/rbac/dryrun-helpers.ts:181-291`; replaces `console.error(err)` in `scripts/rbac-backfill-dryrun.ts:537-546, 1038-1065`. See `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` §3.5. |
+| F-15.72-6 | Audit documentation stale | LOW | **FIXED** | This addendum + `docs/verification/STEP-15.72-REMEDIATION-REPORT.md` + addendums in `STEP-15.68-FINAL-REPORT.md` and `STEP-15.68-STAGING-RUNBOOK.md`. |
+
+### STEP 15.72 Status Summary
+
+- **9 original STEP 15.68 findings:** 4 FIXED (F-01, F-02, F-03, F-07), 5 OPEN (documented limitations: F-04, F-05, F-06, F-08, F-09 — all out of STEP 15.72 scope).
+- **6 new STEP 15.72 findings:** ALL 6 FIXED ✅
+- **Test count:** 172/172 unit tests PASS (was 104 — net +68 new tests in STEP 15.72).
+- **Typecheck + lint:** clean (0 errors).
+- **Staging dry-run execution:** NOT AUTHORIZED ⏳
+- **Production:** NO-GO ❌
+
+**Full details:** see `docs/verification/STEP-15.72-REMEDIATION-REPORT.md`.
