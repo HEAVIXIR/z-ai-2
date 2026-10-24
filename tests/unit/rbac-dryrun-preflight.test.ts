@@ -557,22 +557,21 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(sqlCommands).not.toMatch(/current_setting/);
   });
 
-  it("scripts/rbac-rotate-anchor.sql rotates value via DO block with GET DIAGNOSTICS (STEP 15.79)", () => {
+  it("scripts/rbac-rotate-anchor.sql rotates value via CTE with row-count check (STEP 15.79)", () => {
     const rotateSql = readFileSync("scripts/rbac-rotate-anchor.sql", "utf-8");
     expect(rotateSql).toContain('UPDATE "_dryrun_anchor"');
     expect(rotateSql).toContain("rotated_at");
-    // STEP 15.79: uses a DO block with GET DIAGNOSTICS (not invalid \if :ROWCOUNT)
-    expect(rotateSql).toContain("DO $$");
-    expect(rotateSql).toContain("GET DIAGNOSTICS");
-    expect(rotateSql).toContain("ROW_COUNT");
-    expect(rotateSql).toContain("RAISE EXCEPTION");
+    // STEP 15.79: uses a CTE (WITH ... AS) with a CASE division-by-zero
+    // check (not a DO block — psql variable :anchor_value doesn't work inside $$)
+    expect(rotateSql).toContain("WITH updated AS");
+    expect(rotateSql).toContain("RETURNING 1");
+    expect(rotateSql).toContain("1 / 0");
+    expect(rotateSql).toContain("ON_ERROR_STOP");
     // MUST NOT use the invalid \if :ROWCOUNT guard in SQL commands
-    // (Comments mentioning it as the removed approach are OK.)
     const rotateCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
     expect(rotateCmds).not.toMatch(/\\if\s+:ROWCOUNT/i);
     // MUST NOT use DROP TABLE in SQL commands (destructive)
-    const sqlCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
-    expect(sqlCmds).not.toMatch(/DROP\s+TABLE/i);
+    expect(rotateCmds).not.toMatch(/DROP\s+TABLE/i);
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
