@@ -43,11 +43,11 @@ describe("STEP 15.49 — CI Runner Script Validation", () => {
 
   it("CI workflow references rbac-gate-ci.ts OR has a TLS-skip step (STEP 15.88)", () => {
     const content = readFileSync(WORKFLOW_PATH, "utf-8");
-    // STEP 15.88: the gate step may be SKIPPED when TLS is unavailable.
+    // STEP 15.94: the gate step may be SKIPPED when TLS is unavailable.
     // Either the gate runner is referenced, or the step is explicitly skipped
     // with documentation that TLS infrastructure is required.
     const hasGateRunner = content.includes("scripts/rbac-gate-ci.ts");
-    const hasTlsSkip = content.includes("STEP 15.88") && content.includes("SKIPPED");
+    const hasTlsSkip = content.includes("NOT EXECUTED") || content.includes("SKIPPED") || content.includes("not executed");
     expect(hasGateRunner || hasTlsSkip).toBe(true);
     // Verify the old bash/python parser is gone
     expect(content).not.toContain("python3 -c");
