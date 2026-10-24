@@ -275,8 +275,9 @@ describe.skipIf(!RUN_TESTS)(
           },
         );
       } catch (e: unknown) {
-        const err = e as { stdout?: string; status: number | null };
+        const err = e as { stdout?: string; stderr?: string; status: number | null };
         output = err.stdout ?? "";
+      const stderr = err.stderr ?? "";
         exitCode = err.status;
       }
 
@@ -284,9 +285,10 @@ describe.skipIf(!RUN_TESTS)(
       // CI postgres:17 doesn't have sslmode=verify-full. This is the
       // CORRECT fail-closed behavior.
       expect(exitCode).toBe(2);
-      expect(output).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+      const combined = output + stderr;
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
       // MUST NOT reach DRYRUN_GATE (preflight halted before RBAC queries)
-      expect(output).not.toContain("DRYRUN_GATE:");
+      expect(combined).not.toContain("DRYRUN_GATE:");
     });
   },
 );
