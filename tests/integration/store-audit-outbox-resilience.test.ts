@@ -200,7 +200,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
       deliveredKeys.add(key);
     };
 
-    const first = await drainAuditOutbox({ auditWriter });
+    const first = await drainAuditOutbox({ auditWriter, onlyIds: [outboxId] });
     expect(first.failed).toBe(1);
     expect(first.remaining).toBeGreaterThanOrEqual(1);
     const pending = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
@@ -208,7 +208,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     expect(pending!.attempts).toBe(1);
     expect(pending!.lastError).toContain('database unavailable');
 
-    const second = await drainAuditOutbox({ auditWriter });
+    const second = await drainAuditOutbox({ auditWriter, onlyIds: [outboxId] });
     expect(second.delivered).toBe(1);
     const delivered = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
     expect(delivered!.status).toBe('DELIVERED');
@@ -231,13 +231,13 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
       if (!sinkByKey.has(key)) sinkByKey.set(key, params);
     };
 
-    expect((await drainAuditOutbox({ auditWriter })).delivered).toBe(1);
+    expect((await drainAuditOutbox({ auditWriter, onlyIds: [outboxId] })).delivered).toBe(1);
     // Simulate a crash after sink success but before the outbox delivery marker.
     await storeDb.auditOutbox.update({
       where: { id: outboxId },
       data: { status: 'PENDING', attempts: 0, lockedAt: null },
     });
-    expect((await drainAuditOutbox({ auditWriter })).delivered).toBe(1);
+    expect((await drainAuditOutbox({ auditWriter, onlyIds: [outboxId] })).delivered).toBe(1);
 
     expect(sinkCalls).toBe(2);
     expect(sinkByKey.size).toBe(1);
@@ -257,8 +257,8 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     };
 
     await Promise.all([
-      drainAuditOutbox({ auditWriter }),
-      drainAuditOutbox({ auditWriter }),
+      drainAuditOutbox({ auditWriter, onlyIds: [outboxId] }),
+      drainAuditOutbox({ auditWriter, onlyIds: [outboxId] }),
     ]);
 
     expect(sinkCalls).toBe(1);
@@ -279,6 +279,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
 
     const result = await drainAuditOutbox({
       staleLockMs: 1_000,
+      onlyIds: [outboxId],
       auditWriter: async () => { sinkCalls++; },
     });
 
@@ -329,6 +330,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     }));
     const failed = await drainAuditOutbox({
       maxAttempts: 1,
+      onlyIds: [outboxId],
       auditWriter: async () => { throw new Error('simulated persistent sink failure'); },
     });
     expect(failed.failed).toBe(1);
@@ -343,6 +345,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     expect(row!.lastError).toBeNull();
 
     const replay = await drainAuditOutbox({
+      onlyIds: [outboxId],
       auditWriter: async () => {},
     });
     expect(replay.delivered).toBe(1);
