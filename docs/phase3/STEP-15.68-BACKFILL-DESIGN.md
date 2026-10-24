@@ -70,7 +70,7 @@ await db.$transaction(async (tx) => {
 
 - **Error handling**: If a single user fails, log the error and continue to the next user
 - **No partial state**: Each user's backfill is atomic (single transaction)
-- **Audit log**: Each creation should be logged (action: `user.role.backfill`)
+- **Audit log**: Log only rows actually created by this backfill. In the same per-user transaction, create an AuditLog row with `action='user.role.backfill'`, `entityType='UserRole'`, and `entityId=<new UserRole.id>`. Include `userId`, `roleId`, `roleKey`, and a stable source marker in `afterJson`. Never log a pre-existing row as created.
 
 ## 5. Conflict Management
 
@@ -133,15 +133,38 @@ STOP the backfill if:
 
 ## 9. Recovery and Rollback
 
-### Rollback Option A: Targeted DELETE
+### Rollback Option A: Delete only audited UserRole rows created by the backfill
+
+**Required audit contract:** For every newly created `UserRole`, the same transaction must write an `AuditLog` row with `action='user.role.backfill'`, `entityType='UserRole'`, and `entityId` equal to the new `UserRole.id`. The audit record must be written only when this backfill actually creates the row—not when it finds an existing row.
+
+First inspect the exact rollback scope:
+
 ```sql
-DELETE FROM "UserRole"
-WHERE id IN (
-  SELECT ur.id FROM "UserRole" ur
-  JOIN "AuditLog" al ON al.entityId = ur.userId AND al.action = 'user.role.backfill'
-);
+SELECT COUNT(*) AS rows_to_delete
+FROM "UserRole" AS ur
+JOIN "AuditLog" AS al
+  ON al."entityId" = ur."id"
+WHERE al."action" = 'user.role.backfill'
+  AND al."entityType" = 'UserRole';
 ```
-This deletes only the rows created by the backfill, preserving admin-granted roles.
+
+Only after reviewing that count and taking the required pre-backfill backup, the targeted deletion is:
+
+```sql
+BEGIN;
+
+DELETE FROM "UserRole" AS ur
+USING "AuditLog" AS al
+WHERE al."entityId" = ur."id"
+  AND al."action" = 'user.role.backfill'
+  AND al."entityType" = 'UserRole';
+
+-- Verify the affected-row count against the reviewed preview before COMMIT.
+-- If the count is unexpected, ROLLBACK instead.
+COMMIT;
+```
+
+The join targets the **UserRole row ID**, not the user's ID, so unrelated ADMIN/MODERATOR/SUPPORT assignments for the same user are not deleted. The quoted camel-case column names are required by PostgreSQL. This rollback is **not valid** for legacy audit records whose `entityType='User'` and `entityId` is the user ID; do not use the old user-level join as a fallback.
 
 ### Rollback Option B: Database Backup Restore
 Restore from a pre-backfill database backup.
