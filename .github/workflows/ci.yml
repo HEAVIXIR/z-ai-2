@@ -309,6 +309,7 @@ jobs:
       - name: Create isolated TLS preflight database
         run: |
           set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
           psql "host=localhost port=5433 user=postgres dbname=postgres sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_preflight_test;"
       - name: Push schema and seed RBAC in isolated TLS database
@@ -327,6 +328,7 @@ jobs:
       - name: Grant least-privilege access for TLS preflight
         run: |
           set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
           psql "host=localhost port=5433 user=postgres dbname=heavix_preflight_test sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 <<'SQL'
           GRANT CONNECT ON DATABASE heavix_preflight_test TO heavix_dryrun_ro;
