@@ -237,3 +237,66 @@ jobs:
         run: bun run db:seed-phase-catalog
       - name: Phase integration tests (real status, no masking)
         run: bunx vitest run tests/phase*.test.ts
+
+  # ── TLS PROOF JOB: Finding D — real TLS behavioral tests ──
+  # STEP 15.90: This job provisions TWO TLS-enabled PostgreSQL 17 clusters
+  # (valid cert on port 5433, expired cert on port 5434) and runs the
+  # real Prisma v6 behavioral TLS suite. It FAILS CLOSED if the TLS
+  # infrastructure cannot be provisioned — it never silently skips.
+  tls-proof:
+    runs-on: ubuntu-latest
+    env:
+      HEAVIX_TLS_PROOF_RUN: '1'
+      HEAVIX_TLS_PG_ROOT: ${{ github.workspace }}/.tls-pg
+      HEAVIX_TLS_CERT_DIR: ${{ github.workspace }}/.tls-pg/certs
+      HEAVIX_TLS_VALID_PORT: '5433'
+      HEAVIX_TLS_EXPIRED_PORT: '5434'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+      - name: Provision TLS-enabled PostgreSQL 17
+        run: |
+          bash scripts/provision-tls-pg.sh
+      - name: Verify TLS infrastructure is available
+        run: |
+          if [ ! -f "$HEAVIX_TLS_PG_ROOT/pg-env.sh" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — pg-env.sh missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/ca-valid.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — ca-valid.crt missing."
+            exit 1
+          fi
+          # Verify both ports are listening
+          bash -c "source $HEAVIX_TLS_PG_ROOT/pg-env.sh && pg_isready -h localhost -p 5433 && pg_isready -h localhost -p 5434"
+      - name: Run real Prisma v6 TLS behavioral tests
+        run: |
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts
+      - name: Verify no tests were skipped
+        run: |
+          # The test suite uses it.skipIf(!INFRA_AVAILABLE). If the infra
+          # was not available, ALL tests would skip and vitest would exit 0
+          # with 0 tests run. We must FAIL in that case.
+          # Re-run with reporter to capture skip count
+          OUTPUT=$(bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json 2>/dev/null || true)
+          SKIP_COUNT=$(echo "$OUTPUT" | jq '[.testResults[].assertionResults[] | select(.status == "skipped")] | length' 2>/dev/null || echo "unknown")
+          RUN_COUNT=$(echo "$OUTPUT" | jq '[.testResults[].assertionResults[] | select(.status != "skipped")] | length' 2>/dev/null || echo "unknown")
+          echo "Tests run: $RUN_COUNT, skipped: $SKIP_COUNT"
+          if [ "$SKIP_COUNT" != "0" ]; then
+            echo "✗ FAIL: $SKIP_COUNT tests were skipped — TLS infrastructure was not fully available."
+            echo "  The TLS proof job must NEVER have skipped tests."
+            exit 1
+          fi
+          if [ "$RUN_COUNT" -lt 13 ]; then
+            echo "✗ FAIL: Only $RUN_COUNT tests ran — expected at least 13."
+            exit 1
+          fi
+          echo "✓ All TLS behavioral tests ran with 0 skips."
