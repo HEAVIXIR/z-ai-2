@@ -97,15 +97,15 @@ import {
 // canonical roles — content checks prove SCHEMA readiness, not which
 // server we are connected to. To close this gap, an INDEPENDENT TRUST
 // ANCHOR mechanism was added: if `DRYRUN_SERVER_IDENTITY_ANCHOR` is set,
-// the preflight queries `SELECT current_setting('app.server_identity', true)`
-// (a PostgreSQL GUC set by the DBA via
-// `ALTER DATABASE <db> SET app.server_identity = '<value>'`) and compares
+// the preflight queries `SELECT value FROM "_dryrun_anchor" WHERE key = 'server_identity'`
+// (a TABLE (_dryrun_anchor) created by the DBA via
+// `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`) and compares
 // it with the anchor value. The anchor is an out-of-band value supplied by
-// the operator; the GUC is set out-of-band by the DBA. An operator cannot
-// fake the GUC via env vars. If the anchor is NOT set, the preflight logs
+// the operator; the table value is set out-of-band by the DBA. An operator cannot
+// fake the table value via env vars. If the anchor is NOT set, the preflight logs
 // "Server identity: UNVERIFIED ⚠" and continues (the run is NOT blocked —
 // the operator is informed that identity has not been independently
-// confirmed). If the anchor IS set and the GUC mismatches, the preflight
+// confirmed). If the anchor IS set and the table value mismatches, the preflight
 // halts with exit 2 (wrong server).
 
 // ─── Classification types ─────────────────────────────────────────────────
@@ -218,8 +218,8 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     "Configuration consistency — NOT a server-identity proof".
  *   - An INDEPENDENT TRUST ANCHOR mechanism is added: if
  *     `DRYRUN_SERVER_IDENTITY_ANCHOR` is set, the preflight queries the
- *     PostgreSQL GUC `app.server_identity` (set out-of-band by the DBA via
- *     `ALTER DATABASE <db> SET app.server_identity = '<value>'`) and compares
+ *     TABLE _dryrun_anchor (key='server_identity') (set out-of-band by the DBA via
+ *     `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`) and compares
  *     it with the anchor. If match → "Server identity: VERIFIED ✅ (independent
  *     trust anchor confirmed)". If mismatch → halt with exit 2 (wrong server).
  *     If the anchor env var is NOT set → "Server identity: UNVERIFIED ⚠ (no
@@ -227,7 +227,7 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     the run continues (it is NOT blocked — the operator is informed that
  *     identity has not been independently confirmed).
  *   - The anchor value must NOT come from DATABASE_URL — it is an independent
- *     out-of-band value supplied by the operator. The GUC must be set on the
+ *     out-of-band value supplied by the operator. The table must exist on the
  *     server side by the DBA — an operator cannot fake it via env vars.
  *
  * Exits with code 2 on any preflight failure.
@@ -240,9 +240,9 @@ async function preflightConnectionCheck(): Promise<void> {
   // STEP 15.76: Independent trust anchor for server-identity verification.
   // This is an OUT-OF-BAND value supplied by the operator — it must NOT be
   // derived from DATABASE_URL. The DBA sets the matching value on the
-  // server side via `ALTER DATABASE <db> SET app.server_identity = '<value>'`.
+  // server side via `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`.
   // If unset, the preflight proceeds but logs "Server identity: UNVERIFIED ⚠".
-  // If set, the GUC is queried after DB connect and compared with this anchor.
+  // If set, the table value is queried after DB connect and compared with this anchor.
   // If mismatch → halt with exit 2 (wrong server).
   const serverIdentityAnchor = process.env.DRYRUN_SERVER_IDENTITY_ANCHOR;
 
@@ -331,7 +331,7 @@ async function preflightConnectionCheck(): Promise<void> {
   // connect, so the operator sees the status even if the DB connection
   // subsequently fails). The actual GUC query happens AFTER DB connect +
   // role/privilege/schema checks — it is deferred to the try block below
-  // because current_setting() requires an established connection.
+  // because the table query requires an established connection.
   //
   // - If DRYRUN_SERVER_IDENTITY_ANCHOR is NOT set → log UNVERIFIED ⚠ and
   //   CONTINUE (the run is NOT blocked). The operator is informed that
@@ -435,9 +435,9 @@ async function preflightConnectionCheck(): Promise<void> {
     // A wrong database (even on the right hostname) will fail those content
     // checks — env vars cannot fake table existence or the Role catalog.
     // NOTE: schema/seed readiness is NOT server identity. Server identity
-    // is independently verified by the trust-anchor check (GUC
-    // app.server_identity vs DRYRUN_SERVER_IDENTITY_ANCHOR) when the
-    // anchor env var is set.
+    // is independently verified by the trust-anchor check (TABLE
+    // _dryrun_anchor vs DRYRUN_SERVER_IDENTITY_ANCHOR) when the
+    // anchor env var is set. STEP 15.77: TABLE-based, not GUC (session-forgeable).
 
     // STEP 15.71 Phase B: verify effective privileges (not just role name)
     // Check that the role is NOT a superuser and has no write privileges
@@ -696,59 +696,103 @@ async function preflightConnectionCheck(): Promise<void> {
     console.log(`  Role catalog readiness check : ALL 5 canonical roles present ✅ (${CANONICAL_ROLE_KEYS.join(', ')})`);
     console.log(`  Schema/seed readiness        : PASS ✅ (live DB content verified)`);
 
-    // STEP 15.76: Independent trust-anchor verification (server identity).
-    // This is the ONLY mechanism that independently verifies which server we
-    // are connected to. Schema/seed readiness (above) proves the schema is in
-    // place but does NOT prove server identity — a staging DB, cloned DB, or
-    // wrong cluster could have the same 5 tables and 5 roles.
+    // STEP 15.77 (Finding H-03 — TABLE-based trust anchor, NOT GUC):
+    // STEP 15.76 used a PostgreSQL custom GUC (`app.server_identity`) as the
+    // server-side trust anchor. The owner identified (H-03) that custom GUCs
+    // are SESSION-LEVEL FORGEABLE: the connecting client can override the
+    // DBA-set database-level default via `SET app.server_identity = '<value>'`
+    // before the preflight reads it. ANY role can SET custom GUCs — there is
+    // no privilege check. This means `current_setting('app.server_identity')`
+    // is NOT an independent trust anchor.
     //
-    // Mechanism:
-    //   - The DBA sets a PostgreSQL GUC out-of-band via:
-    //       ALTER DATABASE <db> SET app.server_identity = '<value>';
-    //   - The operator supplies the SAME value via DRYRUN_SERVER_IDENTITY_ANCHOR
-    //     (an out-of-band env var — NOT derived from DATABASE_URL).
-    //   - The preflight queries `SELECT current_setting('app.server_identity', true)`.
-    //     - If the GUC is unset (NULL) → the DBA has not configured the anchor.
-    //       The preflight halts with exit 2 (fail closed — the operator
-    //       intended to verify identity, but the DBA has not finished setup).
-    //     - If the GUC matches the anchor → "Server identity: VERIFIED ✅".
-    //     - If the GUC mismatches the anchor → halt with exit 2 (wrong server).
+    // STEP 15.77 FIX: the anchor value is stored in a TABLE, not a GUC.
+    // Tables are NOT affected by `SET` — `SET` only changes GUCs. And the
+    // preflight already verified (above) that the role has NO write privileges
+    // (INSERT/UPDATE/DELETE/TRUNCATE) on ANY table in the public schema.
+    // So the connecting client CANNOT forge the table value.
+    //
+    // Security properties:
+    //   1. `SET` cannot change table contents (only GUCs) — session forgery closed
+    //   2. The role has no INSERT/UPDATE/DELETE on the anchor table (verified by
+    //      the preflight's write-privilege checks on ALL public-schema tables)
+    //   3. The anchor env var (DRYRUN_SERVER_IDENTITY_ANCHOR) is out-of-band —
+    //      NOT derived from DATABASE_URL
+    //   4. An attacker who controls DATABASE_URL but not the anchor cannot
+    //      reproduce the value on a wrong server
+    //
+    // DBA setup (see scripts/rbac-create-anchor-table.sql):
+    //   CREATE TABLE _dryrun_anchor (key text PRIMARY KEY, value text NOT NULL);
+    //   INSERT INTO _dryrun_anchor (key, value) VALUES ('server_identity', '<secret>');
+    //   REVOKE ALL ON _dryrun_anchor FROM heavix_dryrun_ro;
+    //   GRANT SELECT ON _dryrun_anchor TO heavix_dryrun_ro;
     //
     // If DRYRUN_SERVER_IDENTITY_ANCHOR was NOT set at the top of preflight,
     // this block is skipped (the UNVERIFIED ⚠ message was already logged
     // before DB connect). The run continues — the operator was informed.
     if (serverIdentityAnchor !== undefined && serverIdentityAnchor !== '') {
-      const anchorRows = await db.$queryRawUnsafe(
-        `SELECT current_setting('app.server_identity', true) AS server_identity`,
-      ) as Array<{ server_identity: string | null }>;
-      const serverSideIdentity = anchorRows[0]?.server_identity ?? null;
+      // Check 1: verify the _dryrun_anchor table exists.
+      const anchorTableExists = await db.$queryRaw`
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = '_dryrun_anchor'
+        ) AS exists
+      ` as Array<{ exists: boolean }>;
+      if (!anchorTableExists[0]?.exists) {
+        console.error('✗ PREFLIGHT FAIL: DRYRUN_SERVER_IDENTITY_ANCHOR is set but the _dryrun_anchor table does not exist.');
+        console.error('  The DBA must create the anchor table and insert the server identity value.');
+        console.error('  See scripts/rbac-create-anchor-table.sql for setup instructions.');
+        console.error('  STEP 15.77: TABLE-based anchor (not GUC) — session-level forgery is closed.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+
+      // Check 2: verify the role has SELECT-only on _dryrun_anchor (no write).
+      // This is CRITICAL: if the role can write to the anchor table, it could
+      // forge the value. The preflight already checked the 5 RBAC tables —
+      // we now check the anchor table too.
+      for (const writePriv of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        const writeCheck = await db.$queryRaw`
+          SELECT has_table_privilege(${actualUser}, 'public."_dryrun_anchor"', ${writePriv}) AS has_priv
+        ` as Array<{ has_priv: boolean }>;
+        if (writeCheck[0]?.has_priv) {
+          console.error(`✗ PREFLIGHT FAIL: role has ${writePriv} privilege on _dryrun_anchor table.`);
+          console.error('  The trust-anchor table must be SELECT-only for the read-only role.');
+          console.error('  If the role can write to the anchor table, the value is forgeable.');
+          console.error('  REVOKE write privileges: REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON _dryrun_anchor FROM heavix_dryrun_ro;');
+          await db.$disconnect();
+          process.exit(2);
+        }
+      }
+
+      // Check 3: query the anchor value from the table.
+      const anchorRows = await db.$queryRaw`
+        SELECT value FROM "_dryrun_anchor" WHERE key = 'server_identity'
+      ` as Array<{ value: string | null }>;
+      const serverSideIdentity = anchorRows[0]?.value ?? null;
 
       if (serverSideIdentity === null) {
-        // The DBA has not set the GUC. The operator intended to verify
-        // identity (the anchor is set), but the server side is unconfigured.
-        // Fail closed — this is a configuration error, not a pass.
-        console.error('✗ PREFLIGHT FAIL: DRYRUN_SERVER_IDENTITY_ANCHOR is set but the server-side GUC app.server_identity is not set.');
-        console.error('  The DBA must configure the GUC out-of-band via:');
-        console.error('    ALTER DATABASE <db> SET app.server_identity = \'<value>\';');
-        console.error('  Without the server-side GUC, the trust-anchor check cannot proceed.');
-        console.error('  STEP 15.76: schema/seed readiness passed, but server identity is NOT independently confirmed.');
+        // The table exists but the 'server_identity' row is missing.
+        console.error('✗ PREFLIGHT FAIL: _dryrun_anchor table exists but has no server_identity row.');
+        console.error('  The DBA must insert the server identity value:');
+        console.error("    INSERT INTO _dryrun_anchor (key, value) VALUES ('server_identity', '<secret>');");
+        console.error('  STEP 15.77: TABLE-based anchor — the value cannot be forged via session SET.');
         await db.$disconnect();
         process.exit(2);
       }
 
       if (serverSideIdentity !== serverIdentityAnchor) {
-        // The GUC is set but does NOT match the operator-supplied anchor.
+        // The table value does NOT match the operator-supplied anchor.
         // This is a WRONG SERVER scenario — halt immediately.
-        console.error('✗ PREFLIGHT FAIL: server-side trust anchor does not match the operator-supplied anchor.');
+        console.error('✗ PREFLIGHT FAIL: server-side trust anchor (table) does not match the operator-supplied anchor.');
         console.error('  This indicates the dry-run is connected to the WRONG server.');
-        console.error('  The DBA-set GUC app.server_identity MUST match DRYRUN_SERVER_IDENTITY_ANCHOR.');
-        console.error('  STEP 15.76: schema/seed readiness passed, but server identity is NOT confirmed — halt.');
+        console.error('  The _dryrun_anchor.value MUST match DRYRUN_SERVER_IDENTITY_ANCHOR.');
+        console.error('  STEP 15.77: TABLE-based anchor — session-level SET forgery is closed.');
         await db.$disconnect();
         process.exit(2);
       }
 
-      // Match — independent trust anchor confirmed.
-      console.log('  Server identity           : VERIFIED ✅ (independent trust anchor confirmed)');
+      // Match — independent trust anchor confirmed via TABLE (not GUC).
+      console.log('  Server identity           : VERIFIED ✅ (table-based trust anchor — not session-forgeable)');
     }
 
     console.log(`  Runtime role (current_user)   : ${actualUser}`);

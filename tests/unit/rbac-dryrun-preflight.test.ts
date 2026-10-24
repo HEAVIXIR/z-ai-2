@@ -496,24 +496,58 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(preflightSection).toContain("Configuration consistency — NOT a server-identity proof");
   });
 
-  it("rbac-backfill-dryrun.ts implements the STEP 15.76 independent trust-anchor mechanism (DRYRUN_SERVER_IDENTITY_ANCHOR)", () => {
-    // STEP 15.76: schema/seed readiness is NOT server identity. An independent
-    // trust anchor was added to verify server identity when configured.
-    // The operator supplies DRYRUN_SERVER_IDENTITY_ANCHOR out-of-band; the DBA
-    // sets the matching value on the server via
-    // `ALTER DATABASE <db> SET app.server_identity = '<value>'`.
+  it("rbac-backfill-dryrun.ts implements the STEP 15.77 TABLE-based trust-anchor (DRYRUN_SERVER_IDENTITY_ANCHOR)", () => {
+    // STEP 15.77 (H-03 fix): the GUC-based anchor was REMOVED because custom
+    // GUCs are session-level forgeable (client can SET app.server_identity).
+    // The anchor is now stored in a TABLE (_dryrun_anchor), which is NOT
+    // affected by SET. The preflight verifies the role has SELECT-only on it.
     expect(DRYRUN_SOURCE).toContain("DRYRUN_SERVER_IDENTITY_ANCHOR");
-    expect(DRYRUN_SOURCE).toContain("app.server_identity");
-    expect(DRYRUN_SOURCE).toContain("current_setting('app.server_identity', true)");
+    expect(DRYRUN_SOURCE).toContain("_dryrun_anchor");
+    expect(DRYRUN_SOURCE).toContain('SELECT value FROM "_dryrun_anchor"');
+    // Must NOT use the old GUC approach (current_setting/app.server_identity
+    // in runtime queries — only in the historical comment block explaining
+    // why it was removed)
+    const preflightQueries = DRYRUN_SOURCE.split('\n').filter((l) => l.includes('$queryRaw'));
+    const queryText = preflightQueries.join('\n');
+    expect(queryText).not.toContain('current_setting');
+    expect(queryText).not.toContain('app.server_identity');
     // The three required log messages must be present:
     // - UNVERIFIED ⚠ (anchor not set — run continues, operator informed)
     expect(DRYRUN_SOURCE).toContain("Server identity         : UNVERIFIED ⚠");
     expect(DRYRUN_SOURCE).toContain("no independent trust anchor");
-    // - VERIFIED ✅ (anchor set + GUC matches)
+    // - VERIFIED ✅ (anchor set + table value matches)
     expect(DRYRUN_SOURCE).toContain("Server identity           : VERIFIED ✅");
-    expect(DRYRUN_SOURCE).toContain("independent trust anchor confirmed");
+    expect(DRYRUN_SOURCE).toContain("table-based trust anchor");
     // - Mismatch → halt with exit 2 (wrong server)
-    expect(DRYRUN_SOURCE).toContain("server-side trust anchor does not match");
+    expect(DRYRUN_SOURCE).toContain("server-side trust anchor (table) does not match");
+    // - Table missing → halt
+    expect(DRYRUN_SOURCE).toContain("_dryrun_anchor table does not exist");
+    // - Write-privilege check on anchor table (forgeable if role can write)
+    expect(DRYRUN_SOURCE).toContain("has_table_privilege");
+    expect(DRYRUN_SOURCE).toContain("trust-anchor table must be SELECT-only");
+  });
+
+  it("rbac-backfill-dryrun.ts does NOT query current_setting in runtime (GUC removed)", () => {
+    // STEP 15.77: the GUC-based anchor was forgeable via session SET.
+    // The runtime query must use the TABLE, not current_setting().
+    // (Comments mentioning current_setting as the removed approach are OK.)
+    const queryRawLines = DRYRUN_SOURCE.split('\n').filter((l) => l.includes('$queryRaw'));
+    const queryRawText = queryRawLines.join('\n');
+    expect(queryRawText).not.toContain('current_setting');
+  });
+
+  it("scripts/rbac-create-anchor-table.sql exists and creates _dryrun_anchor", () => {
+    const anchorSql = readFileSync("scripts/rbac-create-anchor-table.sql", "utf-8");
+    expect(anchorSql).toContain('CREATE TABLE "_dryrun_anchor"');
+    expect(anchorSql).toContain("'server_identity'");
+    expect(anchorSql).toContain("GRANT SELECT ON");
+    expect(anchorSql).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
+    expect(anchorSql).toContain("heavix_dryrun_ro");
+    // The SQL commands (non-comment lines) must NOT use the old GUC approach.
+    // Comments mentioning app.server_identity are OK (they document the removal).
+    const sqlCommands = anchorSql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect(sqlCommands).not.toContain("ALTER DATABASE");
+    expect(sqlCommands).not.toMatch(/current_setting/);
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
