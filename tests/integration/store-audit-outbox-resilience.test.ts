@@ -15,12 +15,10 @@
  *   2. The outbox row retains PENDING status until drained.
  *   3. Stats reporting is accurate.
  *
- * NOTE: The full drain-to-main-DB path (drainAuditOutbox writing to
- * db.auditLog) is NOT tested here because loading the main HEAVIX
- * @prisma/client in the integration test environment conflicts with the
- * store-schema Prisma client. The drain path is exercised by the
- * audit-transaction-real.ts integration test and by the CI verify job's
- * contract tests (which verify audit hook presence + field correctness).
+ * The delivery worker is tested with an injectable sink so failure/recovery,
+ * stable idempotency keys, competing workers, and stale lease recovery can be
+ * exercised against the real PostgreSQL outbox without loading the main Prisma
+ * client in this store-schema test process.
  *
  * RUN
  *   bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts
@@ -28,7 +26,7 @@
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { enqueueAuditOutbox, getAuditOutboxStats } from '@/lib/store-audit-outbox';
+import { drainAuditOutbox, enqueueAuditOutbox, getAuditOutboxStats } from '@/lib/store-audit-outbox';
 
 // ─── Infrastructure detection (top-level) ──────────────────────────────────
 const STORE_DB_AVAILABLE = (() => {
@@ -187,4 +185,108 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     });
     expect(rows).toHaveLength(0);
   });
+
+  it('OUTBOX-6. sink failure retains PENDING and a later retry delivers the same event', async () => {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      action: 'test.outbox.sink-retry',
+      entityType: 'TestEntity',
+      entityId: 'retry-1',
+    }));
+    let sinkCalls = 0;
+    const deliveredKeys = new Set<string>();
+    const auditWriter = async (_params: { action: string; entityType: string }, key: string) => {
+      sinkCalls++;
+      if (sinkCalls === 1) throw new Error('simulated main AuditLog database unavailable');
+      deliveredKeys.add(key);
+    };
+
+    const first = await drainAuditOutbox({ auditWriter });
+    expect(first.failed).toBe(1);
+    expect(first.remaining).toBeGreaterThanOrEqual(1);
+    const pending = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(pending!.status).toBe('PENDING');
+    expect(pending!.attempts).toBe(1);
+    expect(pending!.lastError).toContain('database unavailable');
+
+    const second = await drainAuditOutbox({ auditWriter });
+    expect(second.delivered).toBe(1);
+    const delivered = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(delivered!.status).toBe('DELIVERED');
+    expect(delivered!.attempts).toBe(2);
+    expect(delivered!.lastError).toBeNull();
+    expect(deliveredKeys.has(outboxId)).toBe(true);
+    expect(sinkCalls).toBe(2);
+  });
+
+  it('OUTBOX-7. replay uses the same idempotency key so a sink can deduplicate duplicate delivery', async () => {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      action: 'test.outbox.deduplicate',
+      entityType: 'TestEntity',
+      entityId: 'dedupe-1',
+    }));
+    const sinkByKey = new Map<string, { action: string; entityType: string }>();
+    let sinkCalls = 0;
+    const auditWriter = async (params: { action: string; entityType: string }, key: string) => {
+      sinkCalls++;
+      if (!sinkByKey.has(key)) sinkByKey.set(key, params);
+    };
+
+    expect((await drainAuditOutbox({ auditWriter })).delivered).toBe(1);
+    // Simulate a crash after sink success but before the outbox delivery marker.
+    await storeDb.auditOutbox.update({
+      where: { id: outboxId },
+      data: { status: 'PENDING', attempts: 0, lockedAt: null },
+    });
+    expect((await drainAuditOutbox({ auditWriter })).delivered).toBe(1);
+
+    expect(sinkCalls).toBe(2);
+    expect(sinkByKey.size).toBe(1);
+    expect(sinkByKey.has(outboxId)).toBe(true);
+  });
+
+  it('OUTBOX-8. competing workers atomically claim a row so only one writes it', async () => {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      action: 'test.outbox.concurrent-claim',
+      entityType: 'TestEntity',
+      entityId: 'claim-1',
+    }));
+    let sinkCalls = 0;
+    const auditWriter = async () => {
+      sinkCalls++;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    };
+
+    await Promise.all([
+      drainAuditOutbox({ auditWriter }),
+      drainAuditOutbox({ auditWriter }),
+    ]);
+
+    expect(sinkCalls).toBe(1);
+    expect((await storeDb.auditOutbox.findUnique({ where: { id: outboxId } }))!.status).toBe('DELIVERED');
+  });
+
+  it('OUTBOX-9. stale PROCESSING lease is reclaimed after a worker crash', async () => {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      action: 'test.outbox.stale-lease',
+      entityType: 'TestEntity',
+      entityId: 'lease-1',
+    }));
+    await storeDb.auditOutbox.update({
+      where: { id: outboxId },
+      data: { status: 'PROCESSING', lockedAt: new Date(Date.now() - 60_000) },
+    });
+    let sinkCalls = 0;
+
+    const result = await drainAuditOutbox({
+      staleLockMs: 1_000,
+      auditWriter: async () => { sinkCalls++; },
+    });
+
+    expect(result.delivered).toBe(1);
+    expect(sinkCalls).toBe(1);
+    const row = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(row!.status).toBe('DELIVERED');
+    expect(row!.lockedAt).toBeNull();
+  });
+
 });
