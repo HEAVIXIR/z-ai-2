@@ -189,6 +189,10 @@ describe.skipIf(!RUN_TESTS)(
     // ── Scenario 6: Anchor mismatch → detected by preflight logic ──────────
     // ── Scenario 6: REAL preflight behavioral test — anchor mismatch → halt ─
     it("6. REAL preflight: anchor mismatch → exit code 2 + halt message (NOT string comparison)", () => {
+      // Ensure the table exists + has a known value before this test
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "CORRECT_ANCHOR_VALUE" });
+
       // This test runs the ACTUAL dry-run script with a WRONG anchor value.
       // It verifies the preflight HALTS with exit code 2 and prints the
       // mismatch error — NOT a string comparison simulation.
