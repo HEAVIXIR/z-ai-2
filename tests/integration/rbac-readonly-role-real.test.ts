@@ -251,26 +251,39 @@ describe.skipIf(!RUN_TESTS)(
       }
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
 
-      let output = "";
+      let stdout = "";
+      let stderr = "";
+      let exitCode: number | null = null;
       try {
-        output = execFileSync(
+        stdout = execFileSync(
           "bunx",
           ["tsx", "scripts/rbac-backfill-dryrun.ts"],
           {
             encoding: "utf-8",
             timeout: 120000,
-            env: { ...process.env, DATABASE_URL: roUrl },
+            env: {
+              ...process.env,
+              DATABASE_URL: roUrl,
+              DRYRUN_CONFIRM_TARGET: "heavix_test",
+              DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
+              DRYRUN_EXPECTED_HOST: "localhost",
+            },
           },
         );
       } catch (e: unknown) {
-        const err = e as { stdout?: string };
-        output = err.stdout ?? "";
+        const err = e as { stdout?: string; stderr?: string; status: number | null };
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
+        exitCode = err.status;
       }
 
-      // MUST NOT contain permission errors (the read-only role must allow SELECTs)
-      expect(output).not.toMatch(/permission denied/i);
-      // MUST contain DRYRUN_GATE output (the script ran to completion)
-      expect(output).toContain("DRYRUN_GATE:");
+      // This test proves only the fail-closed Prisma TLS configuration gate.
+      // It does NOT prove PostgreSQL TLS handshake, CA trust, or hostname
+      // validation; those require a TLS-enabled PostgreSQL integration test.
+      expect(exitCode).toBe(2);
+      const combined = stdout + "\\n" + stderr;
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+      expect(combined).not.toContain("DRYRUN_GATE:");
     });
   },
 );
