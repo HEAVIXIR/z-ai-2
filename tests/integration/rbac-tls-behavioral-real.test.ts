@@ -10,9 +10,8 @@
  *   (A) The REAL PRISMA connection path (PrismaClient → Rust query engine → TLS)
  *   (B) The libpq/psql reference path (the standard PostgreSQL TLS implementation)
  *
- *   This dual-path approach is REQUIRED because the two paths behave DIFFERENTLY
- *   for sslmode=verify-full — a finding that has direct governance implications
- *   for Finding D (server identity verification).
+ *   This dual-path approach checks the supported Prisma v6 strict TLS URL
+ *   against the libpq reference path. Finding D remains open until it runs.
  *
  * ─── FINDING (discovered during STEP 15.88) ───────────────────────────────
  *
@@ -29,10 +28,8 @@
  *   can close. Do not change connection drivers or close Finding D until the
  *   strict-config positive and negative tests run against the actual engine.
  *
- *   This test suite documents the finding honestly. The Prisma-path tests
- *   assert Prisma's ACTUAL behavior (including the limitation). The libpq-path
- *   tests assert the REFERENCE correct behavior. Both must pass for the
- *   evidence to be complete.
+ *   The Prisma-path tests assert the supported strict configuration's actual
+ *   behavior; the libpq tests validate the TLS server setup independently.
  *
  * ─── INFRASTRUCTURE REQUIREMENT ────────────────────────────────────────────
  *   TWO real PostgreSQL 17 servers with TLS:
@@ -47,7 +44,8 @@
  *
  * RUN
  *   HEAVIX_TLS_PROOF_RUN=1 \
- *   HEAVIX_TLS_CERT_DIR=/path/to/certs \
+ *   HEAVIX_TLS_PG_ROOT=/absolute/path/to/.tls-pg \
+ *   HEAVIX_TLS_CERT_DIR=/absolute/path/to/.tls-pg/certs \
  *   bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts
  *
  * ──────────────────────────────────────────────────────────────────────── */
@@ -112,14 +110,14 @@ if (PROOF_RUN && !INFRA_AVAILABLE) {
 // ─── Helper: spawn the TLS probe subprocess (Prisma path) ───────────────────
 function prismaProbe(
   databaseUrl: string,
-  pgsslrootcert: string,
+  caCertPath: string,
 ): { success: boolean; raw: string } {
   const r = spawnSync('bunx', ['tsx', 'tests/integration/tls-probe.ts'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       PROBE_DATABASE_URL: databaseUrl,
-      PGSSLROOTCERT: pgsslrootcert,
+      PGSSLROOTCERT: caCertPath,
     },
     encoding: 'utf8',
     timeout: 45_000,
@@ -367,23 +365,19 @@ describe('STEP 15.88 — Section C: Finding D verdict', () => {
       const verdict = {
         findingD: 'OPEN',
         reason:
-          'Prisma 6.19.3 establishes TLS but does NOT enforce CA validation ' +
-          'or hostname verification for sslmode=verify-full (proven by PRISMA-2, ' +
-          'PRISMA-3, PRISMA-6). The preflight string check is necessary but not ' +
-          'sufficient. The TLS infrastructure is correct (proven by LIBPQ-*), ' +
-          'but the production connection path (Prisma) does not verify server ' +
-          'identity. Remediation requires changing the connection path (Prisma ' +
-          'upgrade that enforces verify-full, OR a TLS-terminating proxy, OR a ' +
-          'libpq-based driver).',
+          'STEP 15.88 tested libpq-style verify-full/sslrootcert parameters that are not ' +
+          'Prisma ORM v6 documented strict settings. The supported configuration ' +
+          'sslmode=require&sslaccept=strict&sslcert=<CA> is now under behavioral test, ' +
+          'but Finding D remains open until those tests execute against the actual ' +
+          'Prisma engine and all invalid-certificate cases are rejected.',
         infrastructureProven: true,
-        prismaEnforcesVerifyFull: false,
-        libpqEnforcesVerifyFull: true,
+        prismaStrictConfigBehavior: 'NOT_YET_VERIFIED',
+        libpqStrictVerification: true,
       };
-       
       console.log('FINDING_D_VERDICT=' + JSON.stringify(verdict));
       expect(verdict.findingD).toBe('OPEN');
-      expect(verdict.prismaEnforcesVerifyFull).toBe(false);
-      expect(verdict.libpqEnforcesVerifyFull).toBe(true);
+      expect(verdict.prismaStrictConfigBehavior).toBe('NOT_YET_VERIFIED');
+      expect(verdict.libpqStrictVerification).toBe(true);
     },
   );
 });
