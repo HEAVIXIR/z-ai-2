@@ -74,14 +74,17 @@ jobs:
             -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
-      - name: Phase C dry-run gate (STEP 15.52 — read-only role, BEFORE integration tests)
-        env:
-          # CR-15.51-01: Use the read-only role, NOT the superuser
-          DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
+      - name: Phase C dry-run gate (not executed against non-TLS PostgreSQL service)
+        # This generic postgres:17 service is not configured for TLS, so this step
+        # does not execute the Phase C dry-run and does not establish Finding D.
+        # Real connection-path TLS evidence is produced by the separate tls-proof
+        # job, which provisions TLS-enabled PostgreSQL 17 and requires all 13
+        # behavioral tests to have status "passed" (zero skips or other statuses).
         run: |
-          # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
-          # This ensures the read-only invariant is not affected by concurrent test mutations.
-          DATABASE_URL="$DRYRUN_DATABASE_URL" bunx tsx scripts/rbac-gate-ci.ts
+          echo "── Phase C dry-run gate NOT EXECUTED — this PostgreSQL service has no TLS configuration."
+          echo "   This step does not establish or reopen Finding D."
+          echo "   See the separate tls-proof job for real TLS connection-path validation."
+          echo "── Gate intentionally not run against the non-TLS service."
       - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
       - name: Integration — readonly-when-concurrency-real
@@ -217,3 +220,89 @@ jobs:
         run: bun run db:seed-phase-catalog
       - name: Phase integration tests (real status, no masking)
         run: bunx vitest run tests/phase*.test.ts
+
+  # ── TLS PROOF JOB: Finding D — real TLS behavioral tests ──
+  # STEP 15.90: This job provisions TWO TLS-enabled PostgreSQL 17 clusters
+  # (valid cert on port 5433, expired cert on port 5434) and runs the
+  # real Prisma v6 behavioral TLS suite. It FAILS CLOSED if the TLS
+  # infrastructure cannot be provisioned — it never silently skips.
+  tls-proof:
+    runs-on: ubuntu-latest
+    env:
+      HEAVIX_TLS_PROOF_RUN: '1'
+      HEAVIX_TLS_PG_ROOT: ${{ github.workspace }}/.tls-pg
+      HEAVIX_TLS_CERT_DIR: ${{ github.workspace }}/.tls-pg/certs
+      HEAVIX_TLS_VALID_PORT: '5433'
+      HEAVIX_TLS_EXPIRED_PORT: '5434'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store-schema.prisma
+      - name: Provision TLS-enabled PostgreSQL 17
+        run: |
+          bash scripts/provision-tls-pg.sh
+      - name: Verify TLS infrastructure is available (fail-closed)
+        run: |
+          set -e
+          if [ ! -f "$HEAVIX_TLS_PG_ROOT/pg-env.sh" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — pg-env.sh missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/ca-valid.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — ca-valid.crt missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/ca-untrusted.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — ca-untrusted.crt missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/server-valid.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — server-valid.crt missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/server-expired.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — server-expired.crt missing."
+            exit 1
+          fi
+          # Verify both clusters are accepting TLS connections
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          pg_isready -h localhost -p 5433
+          pg_isready -h localhost -p 5434
+          # Verify the expired cert IS actually expired (fail-closed if not)
+          if openssl x509 -in "$HEAVIX_TLS_CERT_DIR/server-expired.crt" -noout -checkend 0 2>/dev/null; then
+            echo "✗ FAIL: server-expired.crt is NOT expired — PRISMA-4 would fail."
+            exit 1
+          fi
+          echo "✓ TLS infrastructure verified: both clusters running, expired cert confirmed expired."
+      - name: "Run real Prisma v6 TLS behavioral tests (fail-closed: no skips allowed)"
+        run: |
+          set -e
+          # Validate the SAME parser used below against incomplete/non-passing results.
+          bash scripts/validate-tls-proof-fail-closed.sh
+          # Run tests with verbose reporter first (human-readable diagnostic output).
+          echo "── Running TLS behavioral tests (verbose output) ──"
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=verbose --silent 2>&1 || true
+          echo ""
+          echo "── Parsing test results for fail-closed checks ──"
+          JSON_FILE=$(mktemp)
+          trap 'rm -f "$JSON_FILE"' EXIT
+          VITEST_EXIT=0
+          # Preserve the real Vitest exit status; a green-looking JSON report cannot mask process failure.
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json --silent --outputFile="$JSON_FILE" 2>/dev/null || VITEST_EXIT=$?
+          if [ ! -s "$JSON_FILE" ]; then
+            echo "✗ FAIL: vitest JSON output file is empty or missing."
+            exit 1
+          fi
+          # Run the shared parser tested by validate-tls-proof-fail-closed.sh.
+          bash scripts/parse-tls-proof-results.sh "$JSON_FILE"
+          if [ "$VITEST_EXIT" -ne 0 ]; then
+            echo "✗ FAIL: Vitest exited with status $VITEST_EXIT despite producing a parseable result file."
+            exit "$VITEST_EXIT"
+          fi

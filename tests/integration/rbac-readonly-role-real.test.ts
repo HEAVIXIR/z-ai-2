@@ -251,26 +251,39 @@ describe.skipIf(!RUN_TESTS)(
       }
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
 
-      let output = "";
+      let stdout = "";
+      let stderr = "";
+      let exitCode: number | null = null;
       try {
-        output = execFileSync(
+        stdout = execFileSync(
           "bunx",
           ["tsx", "scripts/rbac-backfill-dryrun.ts"],
           {
             encoding: "utf-8",
             timeout: 120000,
-            env: { ...process.env, DATABASE_URL: roUrl },
+            env: {
+              ...process.env,
+              DATABASE_URL: roUrl,
+              DRYRUN_CONFIRM_TARGET: "heavix_test",
+              DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
+              DRYRUN_EXPECTED_HOST: "localhost",
+            },
           },
         );
       } catch (e: unknown) {
-        const err = e as { stdout?: string };
-        output = err.stdout ?? "";
+        const err = e as { stdout?: string; stderr?: string; status: number | null };
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
+        exitCode = err.status;
       }
 
-      // MUST NOT contain permission errors (the read-only role must allow SELECTs)
-      expect(output).not.toMatch(/permission denied/i);
-      // MUST contain DRYRUN_GATE output (the script ran to completion)
-      expect(output).toContain("DRYRUN_GATE:");
+      // This test proves only the fail-closed Prisma TLS configuration gate.
+      // It does NOT prove PostgreSQL TLS handshake, CA trust, or hostname
+      // validation; those require a TLS-enabled PostgreSQL integration test.
+      expect(exitCode).toBe(2);
+      const combined = stdout + "\\n" + stderr;
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+      expect(combined).not.toContain("DRYRUN_GATE:");
     });
   },
 );
@@ -287,10 +300,15 @@ describe("STEP 15.55 — CI Workflow + Script Verification (no DB needed)", () =
     expect(content).not.toContain("dryrun_ro_password");
   });
 
-  it("CI dry-run step uses heavix_dryrun_ro role (not superuser)", () => {
+  it("CI workflow creates heavix_dryrun_ro role (not superuser)", () => {
     const content = readFileSync(".github/workflows/ci.yml", "utf-8");
-    expect(content).toContain("heavix_dryrun_ro");
-    expect(content).toContain("DRYRUN_DATABASE_URL");
+    // STEP 15.94: the Phase C dry-run gate step was changed to a no-op
+    // (CI postgres:17 has no TLS). The heavix_dryrun_ro role is still
+    // created via the readonly-role SQL script. The tls-proof job
+    // provisions its own TLS-enabled clusters with the same role.
+    expect(content).toContain("rbac-create-readonly-role.sql");
+    // The role is used in integration tests via DRYUN_RO_PW env var
+    expect(content).toContain("DRYUN_RO_PW");
   });
 
   it("CI dry-run step runs BEFORE integration tests (CR-15.52-01)", () => {
