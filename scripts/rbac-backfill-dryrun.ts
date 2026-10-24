@@ -334,13 +334,22 @@ async function preflightConnectionCheck(): Promise<void> {
   // role/privilege/schema checks — it is deferred to the try block below
   // because the table query requires an established connection.
   //
+  // STEP 15.79 POLICY (explicit):
   // - If DRYRUN_SERVER_IDENTITY_ANCHOR is NOT set → log UNVERIFIED ⚠ and
-  //   CONTINUE (the run is NOT blocked). The operator is informed that
-  //   identity has not been independently confirmed.
+  //   CONTINUE the dry-run. This is acceptable for DIAGNOSTIC dry-runs
+  //   (the operator is informed that server identity is NOT confirmed).
+  //   The dry-run output is informational and does NOT perform writes.
+  // - For any operation that DEPENDS on server identity (e.g., production
+  //   backfill), the anchor MUST be set + configured. The dry-run script
+  //   itself does not enforce this — it is a policy decision for the owner
+  //   staging/production authorization gate. The UNVERIFIED status in the
+  //   audit report is the signal for that gate.
   // - If DRYRUN_SERVER_IDENTITY_ANCHOR IS set → log PENDING ⏳ and defer
   //   the comparison to the post-DB-connect trust-anchor check below.
   if (serverIdentityAnchor === undefined || serverIdentityAnchor === '') {
     console.log('  Server identity         : UNVERIFIED ⚠ (no independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)');
+    console.log('    (Acceptable for diagnostic dry-run. For operations depending on server');
+    console.log('     identity, the anchor must be configured. See STEP 15.79 policy.)');
   } else {
     console.log('  Server identity         : PENDING ⏳ (independent trust anchor configured — will verify after DB connect)');
   }
@@ -816,7 +825,8 @@ async function preflightConnectionCheck(): Promise<void> {
     console.log(`  Database CREATE check            : denied on current database ✅`);
     console.log(`  Table ownership check            : ${ownershipCheck[0].cnt} relations owned (must be 0) ✅`);
     console.log('  Role verification                : PASS ✅');
-    console.log('  (Effective privileges verified — not just role name; schema/seed readiness verified via LIVE DB content — not env vars; server identity verified via independent trust anchor when configured)');
+    console.log('  (Effective privileges verified; schema/seed readiness verified via LIVE DB content;');
+    console.log('   server identity: UNVERIFIED ⚠ — anchor is wrong-DB defense only, NOT server identity proof. Requires TLS/CA, out of scope.)');
   } catch (err: unknown) {
     // STEP 15.72 Finding 5: use categorizeDbError() — never print raw error text,
     // but operators can distinguish failure types (auth vs connection vs permission).

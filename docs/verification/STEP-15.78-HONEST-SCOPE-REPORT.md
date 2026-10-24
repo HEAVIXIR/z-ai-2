@@ -1,8 +1,14 @@
 # HEAVIX — STEP 15.78 — Honest Scope + Non-Destructive Installation Report (H-04)
 
+> **⚠ NOTE (STEP 15.79):** This report was originally written for SHA `92f50eb`
+> (STEP 15.77). The STEP 15.78 remediation was committed as `2124015`. This
+> report has been updated to reflect the actual remediation SHA. The original
+> `92f50eb` reference above was the STEP 15.77 baseline, not the STEP 15.78
+> remediation. See the commit history for the full chain.
+
 **Repository:** `HEAVIXIR/z-ai-2`
 **PR:** #76
-**Reviewed HEAD (STEP 15.78, owner REQUEST_CHANGES review ID 5637603933):** `92f50eb7c6a68a17b403c4f003965a36ae819ced`
+**Reviewed HEAD (STEP 15.78 owner review ID 5637603933):** `2124015abf3366b5ef65710e644ba04bb5f1559e`
 **Date:** 2026-10-24
 
 ---

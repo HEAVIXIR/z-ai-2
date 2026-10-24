@@ -1,4 +1,23 @@
-# HEAVIX — STEP 15.72 — Final Security Remediation Report (PR #76)
+# HEAVIX — STEP 15.72 — Security Remediation Report (HISTORICAL / SUPERSEDED)
+
+> **⚠ HISTORICAL DOCUMENT — SUPERSEDED.** This report was the original
+> STEP 15.72 classification. It claimed all 6 findings as FIXED, including
+> Finding 4 (server identity). Subsequent owner reviews (STEP 15.73 → 15.79)
+> identified that Finding 4's remediation was repeatedly insufficient:
+> - STEP 15.72 `0018f2d6`: made DRYRUN_EXPECTED_HOST optional (regression)
+> - STEP 15.73 `aa34c4be`: CI exception flag was a single bypassable env var
+> - STEP 15.74 `bfdaa149`: multi-signal CI detection still env-var-based (defeasible)
+> - STEP 15.75 `618b5033`: content checks prove SCHEMA, not SERVER identity
+> - STEP 15.76 `2f931d6`: GUC-based anchor was session-forgeable (H-03)
+> - STEP 15.77 `92f50eb`: TABLE-based anchor is cloneable (H-04)
+> - STEP 15.78 `2124015`: non-destructive install + honest UNVERIFIED labeling
+> - STEP 15.79: ongoing — Finding D remains UNVERIFIED pending TLS/CA
+>
+> **Finding D (server identity) is ⏳ UNVERIFIED — NOT FIXED.**
+> The classification in §2 below (showing Finding 4 as FIXED) is RETAINED
+> FOR HISTORICAL REFERENCE ONLY and does NOT reflect the current state.
+> See `docs/verification/STEP-15.78-HONEST-SCOPE-REPORT.md` for the
+> authoritative current-state classification.
 
 **Repository:** `HEAVIXIR/z-ai-2`
 **Working branch:** `chore/step-15-68-phase-c-preflight`
