@@ -10,17 +10,19 @@ import { execFileSync } from "node:child_process";
      - scripts/rbac-create-anchor-table.sql (install)
      - scripts/rbac-rotate-anchor.sql (rotation)
 
-   Test scenario index (10 scenarios, categorized by evidence type):
-     1. Initial anchor installation                     [SQL script test]
-     2. Re-installation preserves value (non-destructive)[SQL script test]
-     3. Read-only role CANNOT write to anchor table      [privilege test]
-     4. Successful anchor rotation                       [SQL script test]
-     5. Rotation when row missing → failure detected     [SQL script test]
-     6. REAL preflight: anchor mismatch → exit code 2    [end-to-end preflight test]
-     7. Cloned DB has identical anchor (H-04 limit)      [clone simulation — NOT end-to-end]
-     8. Empty anchor_value → rejected (value unchanged)  [SQL script test]
-     9. Missing anchor_value variable → rejected         [SQL script test]
-    10. Whitespace-only anchor_value → rejected (value unchanged) [SQL script test]
+   Test scenario index (12 scenarios, categorized by evidence type):
+     1.  Initial anchor installation                      [SQL script test]
+     2.  Re-installation preserves value (non-destructive) [SQL script test]
+     3.  Read-only role CANNOT write to anchor table       [privilege test]
+     4.  Successful anchor rotation                       [SQL script test]
+     5.  Rotation when row missing → failure detected      [SQL script test]
+     6.  REAL preflight: anchor mismatch → exit code 2     [end-to-end preflight test]
+     7.  Cloned DB has identical anchor (H-04 limit)       [clone simulation — NOT end-to-end]
+     8.  Empty anchor_value in rotation → rejected          [SQL script test]
+     9.  Missing anchor_value variable in rotation          [SQL script test]
+     10. Whitespace-only anchor_value in rotation → rejected[SQL script test]
+     11. Empty anchor_value in install → rejected before DDL [SQL script test]
+     12. Whitespace-only anchor_value in install → rejected [SQL script test]
 
    Evidence categories (per owner's /analyst directive):
      - SQL script test: runs the SQL script, verifies DB state
@@ -326,6 +328,52 @@ describe.skipIf(!RUN_TESTS)(
       // The value MUST NOT have changed (rotation was rejected before UPDATE)
       const afterValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
       expect(afterValue).toBe(beforeValue); // ← unchanged
+    });
+
+    // ── Scenario 11: Install with empty anchor_value → rejected BEFORE any DDL ──
+    it("11. Install with empty anchor_value → rejected BEFORE CREATE TABLE (no mutation)", () => {
+      // Drop the table to verify it's NOT re-created by a rejected install
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+
+      // Attempt install with EMPTY anchor_value — must FAIL
+      let installFailed = false;
+      try {
+        psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "" });
+      } catch (e: unknown) {
+        installFailed = true;
+        expect(String(e)).toMatch(/division by zero|ERROR/i);
+      }
+      expect(installFailed).toBe(true);
+
+      // The table MUST NOT have been created (validation ran BEFORE CREATE TABLE)
+      const tableExists = psqlAdmin(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='_dryrun_anchor')",
+      );
+      expect(tableExists).toBe("f"); // ← table NOT created
+
+      // Re-install with a valid value for subsequent tests
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "restore_value_after_test" });
+    });
+
+    // ── Scenario 12: Install with whitespace-only anchor_value → rejected ──
+    it("12. Install with whitespace-only anchor_value → rejected BEFORE CREATE TABLE", () => {
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+
+      let installFailed = false;
+      try {
+        psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "   " });
+      } catch (e: unknown) {
+        installFailed = true;
+        expect(String(e)).toMatch(/division by zero|ERROR/i);
+      }
+      expect(installFailed).toBe(true);
+
+      const tableExists = psqlAdmin(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='_dryrun_anchor')",
+      );
+      expect(tableExists).toBe("f"); // ← table NOT created
+
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "restore_value_after_test" });
     });
   },
 );

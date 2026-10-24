@@ -24,7 +24,7 @@ The owner correctly identified that STEP 15.75's "content-based identity verific
 This report documents the 5 owner directives implemented in STEP 15.76:
 
 1. Rename content checks to "schema/seed readiness" (NOT "identity")
-2. Add an independent trust-anchor mechanism (`DRYRUN_SERVER_IDENTITY_ANCHOR`)
+2. Add an ~~independent trust-anchor~~ **[SUPERSEDED: database-local anchor / wrong-DB defense]** mechanism (`DRYRUN_SERVER_IDENTITY_ANCHOR`)
 3. Fix output labels and documentation
 4. Add behavioral tests
 5. Validate (typecheck, lint, tests)

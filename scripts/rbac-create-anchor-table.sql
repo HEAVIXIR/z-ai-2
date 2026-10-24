@@ -42,6 +42,14 @@
 --   # The value is NOT printed by the script. Store it in your secrets
 --   # manager and set DRYRUN_SERVER_IDENTITY_ANCHOR at dry-run time.
 
+-- ── 0. Reject empty/missing/whitespace-only anchor_value BEFORE ANY DDL/DML (STEP 15.82) ─
+-- The psql variable :'anchor_value' is interpolated into this SELECT.
+-- If it's empty OR whitespace-only, the CASE forces a division-by-zero
+-- error (1/0), which causes psql to exit non-zero BEFORE the CREATE TABLE.
+-- This ensures NO database mutation occurs if the input is invalid.
+\set ON_ERROR_STOP on
+SELECT CASE WHEN NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0 ELSE 0 END AS empty_check;
+
 -- ── 1. Create the table IF NOT EXISTS (non-destructive) ──────────────────
 CREATE TABLE IF NOT EXISTS "_dryrun_anchor" (
   key text PRIMARY KEY,
@@ -49,13 +57,6 @@ CREATE TABLE IF NOT EXISTS "_dryrun_anchor" (
   created_at timestamptz NOT NULL DEFAULT now(),
   rotated_at timestamptz
 );
-
--- ── 1a. Reject empty/missing/whitespace-only anchor_value BEFORE any insert (STEP 15.81) ─
--- The psql variable :'anchor_value' is interpolated into this SELECT.
--- If it's empty OR whitespace-only, the CASE forces a division-by-zero
--- error (1/0), which causes psql to exit non-zero BEFORE the INSERT runs.
-\set ON_ERROR_STOP on
-SELECT CASE WHEN NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0 ELSE 0 END AS empty_check;
 
 -- ── 2. Insert the server-identity value (idempotent — does NOT overwrite) ─
 -- ON CONFLICT DO NOTHING: if the 'server_identity' row already exists, this
