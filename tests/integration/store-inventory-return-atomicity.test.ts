@@ -111,7 +111,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     const tag = suffix();
     const customer = await storeDb.customer.create({
       data: {
-        phone: '+1999' + tag.replace(/[^0-9]/g, '').slice(-8).padStart(8, '0'),
+        phone: '+1999' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
         name: 'Atomicity',
         family: 'Test',
         walletBalanceIrr: 0,
