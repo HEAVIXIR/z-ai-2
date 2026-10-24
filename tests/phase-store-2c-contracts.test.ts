@@ -753,10 +753,25 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
         const auditMatches = content.match(/await logAudit\(/g) || [];
         if (mutMatches.length > 0 && auditMatches.length === 0) {
-          gaps.push(\`[object Object]: mutations=\${mutMatches.length} audits=\${auditMatches.length}\`);
+          gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches.length);
         }
       }
       expect(gaps).toEqual([]);
+    });
+
+    it('total audits (67) cover the 54 counted database write calls', () => {
+      const files = readAllStoreFiles();
+      let totalMut = 0;
+      let totalAudit = 0;
+      for (const { content } of files) {
+        const mutMatches = content.match(/(?:storeDb|tx)\\.\\w+\\.(create|update|updateMany|delete|deleteMany|upsert)\\(/g) || [];
+        const auditMatches = content.match(/await logAudit\\(/g) || [];
+        totalMut += mutMatches.length;
+        totalAudit += auditMatches.length;
+      }
+      expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
+      expect(totalMut).toBe(54);
+      expect(totalAudit).toBe(67);
     });
   });
 
