@@ -53,6 +53,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     delete process.env.DRYRUN_EXPECTED_ROLE;
     delete process.env.DRYRUN_EXPECTED_HOST;
     delete process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION;
+    delete process.env.DRYRUN_SERVER_IDENTITY_ANCHOR;
     delete process.env.GITHUB_ACTIONS;
     delete process.env.CI;
   });
@@ -264,7 +265,10 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // Host check passes, then tries DB connect which fails (host doesn't exist)
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      expect(combined).toContain("Host identity           : PASS ✅");
+      // STEP 15.76: "Host identity" label renamed to "Hostname consistency"
+      // (configuration consistency — NOT a server-identity proof).
+      expect(combined).toContain("Hostname consistency     : PASS ✅");
+      expect(combined).toContain("Configuration consistency — NOT a server-identity proof");
       // Should NOT contain a hard fail about DRYRUN_EXPECTED_HOST
       expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set");
     });
@@ -362,9 +366,68 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // Host check passes, then DB connect fails (host doesn't exist) → exit 2
       expect(res.exitCode).toBe(2);
       const combined = res.stdout + res.stderr;
-      expect(combined).toContain("Host identity           : PASS ✅");
+      // STEP 15.76: "Host identity" label renamed to "Hostname consistency".
+      expect(combined).toContain("Hostname consistency     : PASS ✅");
       // Must NOT contain a deprecated-flag halt message
       expect(combined).not.toContain("PREFLIGHT FAIL: DRYRUN_CI_HOST_CHECK_EXCEPTION");
+    });
+
+    it("9k. STEP 15.76: Normal flow (no DRYRUN_SERVER_IDENTITY_ANCHOR) → proceeds but logs UNVERIFIED", () => {
+      // Per Directive 2: if DRYRUN_SERVER_IDENTITY_ANCHOR is NOT set, the
+      // preflight must log "Server identity: UNVERIFIED ⚠" and CONTINUE
+      // (it is NOT blocked — the operator is informed).
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+        // DRYRUN_SERVER_IDENTITY_ANCHOR intentionally NOT set.
+      });
+      // The host check passes; the UNVERIFIED message is logged EARLY (before
+      // DB connect); then DB connect fails (no real DB in test env) → exit 2.
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      // Hostname consistency check must pass (renamed from "Host identity").
+      expect(combined).toContain("Hostname consistency     : PASS ✅");
+      // The UNVERIFIED ⚠ message must appear (operator was informed that
+      // identity has NOT been independently confirmed via a trust anchor).
+      expect(combined).toContain("Server identity         : UNVERIFIED ⚠");
+      expect(combined).toContain("no independent trust anchor");
+      expect(combined).toContain("DRYRUN_SERVER_IDENTITY_ANCHOR not set");
+      // Must NOT contain a VERIFIED message (the anchor was not set).
+      expect(combined).not.toContain("Server identity         : VERIFIED ✅");
+      // Must NOT contain a hard PREFLIGHT FAIL specifically about the trust anchor.
+      expect(combined).not.toContain("server-side trust anchor does not match");
+      expect(combined).not.toContain("DRYRUN_SERVER_IDENTITY_ANCHOR is set but the server-side GUC");
+    });
+
+    it("9l. STEP 15.76: DRYRUN_SERVER_IDENTITY_ANCHOR set → passes host check (fails later on DB connect since no real DB in test env)", () => {
+      // Per Directive 2: when the anchor IS set, the preflight defers the
+      // GUC comparison to AFTER DB connect. In the test env, there is no
+      // real DB — the script fails at DB connect (exit 2) before it ever
+      // queries the GUC. The host check still passes.
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+        DRYRUN_SERVER_IDENTITY_ANCHOR: "prod-cluster-east-1",
+      });
+      // Host check passes, then DB connect fails (no real DB) → exit 2.
+      // The GUC query never runs because DB connect failed first.
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      // Hostname consistency check must pass (renamed from "Host identity").
+      expect(combined).toContain("Hostname consistency     : PASS ✅");
+      // The PENDING ⏳ message must appear (anchor was set; verification
+      // deferred to post-DB-connect, which never succeeded in this test env).
+      expect(combined).toContain("Server identity         : PENDING ⏳");
+      expect(combined).toContain("independent trust anchor configured");
+      expect(combined).toContain("will verify after DB connect");
+      // Must NOT contain a VERIFIED message — DB connect failed before the
+      // GUC comparison could run.
+      expect(combined).not.toContain("Server identity         : VERIFIED ✅");
+      // Must NOT contain a hard PREFLIGHT FAIL about a GUC mismatch — the
+      // GUC was never queried (DB connect failed first).
+      expect(combined).not.toContain("server-side trust anchor does not match");
     });
   });
 

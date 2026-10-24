@@ -86,11 +86,27 @@ import {
 // STEP 15.75: the `detectCiEnvironment` helper was REMOVED from dryrun-helpers.ts.
 // Env-var-based CI trust was insecure: an operator could set ALL THREE
 // signals (GITHUB_ACTIONS, CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) on any
-// machine to bypass server-identity verification. Identity is now verified
-// via LIVE DB content (table existence + Role catalog) after the
+// machine to bypass server-identity verification. SCHEMA/SEED READINESS is
+// now verified via LIVE DB content (table existence + Role catalog) after the
 // role/privilege checks. `inet_server_addr` and `dnsLookup` are gone.
 // `DRYRUN_CI_HOST_CHECK_EXCEPTION` is now a deprecated bypass: ANY value
 // halts with exit 2 (fail closed).
+//
+// STEP 15.76: SCHEMA/SEED READINESS is NOT server identity. A staging DB,
+// cloned DB, or wrong cluster can have the same 5 RBAC tables and 5
+// canonical roles — content checks prove SCHEMA readiness, not which
+// server we are connected to. To close this gap, an INDEPENDENT TRUST
+// ANCHOR mechanism was added: if `DRYRUN_SERVER_IDENTITY_ANCHOR` is set,
+// the preflight queries `SELECT current_setting('app.server_identity', true)`
+// (a PostgreSQL GUC set by the DBA via
+// `ALTER DATABASE <db> SET app.server_identity = '<value>'`) and compares
+// it with the anchor value. The anchor is an out-of-band value supplied by
+// the operator; the GUC is set out-of-band by the DBA. An operator cannot
+// fake the GUC via env vars. If the anchor is NOT set, the preflight logs
+// "Server identity: UNVERIFIED ⚠" and continues (the run is NOT blocked —
+// the operator is informed that identity has not been independently
+// confirmed). If the anchor IS set and the GUC mismatches, the preflight
+// halts with exit 2 (wrong server).
 
 // ─── Classification types ─────────────────────────────────────────────────
 type ClassificationKind = 'OK' | 'MISSING' | 'MISMATCH' | 'MULTI_ROLE' | 'INVALID';
@@ -185,10 +201,34 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     of env vars can cryptographically prove "this is GitHub Actions CI."
  *   - `DRYRUN_CI_HOST_CHECK_EXCEPTION` is now a DEPRECATED bypass: ANY value
  *     halts with exit 2 (fail closed). The flag is no longer honored.
- *   - Removed the `inet_server_addr` IP comparison + DNS lookup. Identity is
- *     now verified via LIVE DB content (table existence + Role catalog) AFTER
- *     the role/privilege checks. A wrong database (even on the right hostname)
- *     will fail these checks.
+ *   - Removed the `inet_server_addr` IP comparison + DNS lookup. SCHEMA/SEED
+ *     READINESS is now verified via LIVE DB content (table existence + Role
+ *     catalog) AFTER the role/privilege checks. A wrong database (even on the
+ *     right hostname) will fail these checks.
+ *
+ * STEP 15.76 hardening (owner fix — content checks are NOT identity):
+ *   - The owner correctly identified that the STEP 15.75 "content-based
+ *     identity verification" claim was an overstatement: checking that 5 RBAC
+ *     tables exist + 5 canonical roles are seeded proves SCHEMA/SEED READINESS,
+ *     NOT which server we are connected to. A staging DB, cloned DB, or wrong
+ *     cluster could have the same tables and roles.
+ *   - ALL "Content-based identity" labels are renamed to "Schema/seed
+ *     readiness". ALL "Host identity: verified ✅" overstatements are
+ *     replaced with "Hostname consistency" labels that explicitly say
+ *     "Configuration consistency — NOT a server-identity proof".
+ *   - An INDEPENDENT TRUST ANCHOR mechanism is added: if
+ *     `DRYRUN_SERVER_IDENTITY_ANCHOR` is set, the preflight queries the
+ *     PostgreSQL GUC `app.server_identity` (set out-of-band by the DBA via
+ *     `ALTER DATABASE <db> SET app.server_identity = '<value>'`) and compares
+ *     it with the anchor. If match → "Server identity: VERIFIED ✅ (independent
+ *     trust anchor confirmed)". If mismatch → halt with exit 2 (wrong server).
+ *     If the anchor env var is NOT set → "Server identity: UNVERIFIED ⚠ (no
+ *     independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)" and
+ *     the run continues (it is NOT blocked — the operator is informed that
+ *     identity has not been independently confirmed).
+ *   - The anchor value must NOT come from DATABASE_URL — it is an independent
+ *     out-of-band value supplied by the operator. The GUC must be set on the
+ *     server side by the DBA — an operator cannot fake it via env vars.
  *
  * Exits with code 2 on any preflight failure.
  */
@@ -197,6 +237,14 @@ async function preflightConnectionCheck(): Promise<void> {
   const confirmTarget = process.env.DRYRUN_CONFIRM_TARGET;
   const expectedRoleRaw = process.env.DRYRUN_EXPECTED_ROLE;
   const expectedHost = process.env.DRYRUN_EXPECTED_HOST;
+  // STEP 15.76: Independent trust anchor for server-identity verification.
+  // This is an OUT-OF-BAND value supplied by the operator — it must NOT be
+  // derived from DATABASE_URL. The DBA sets the matching value on the
+  // server side via `ALTER DATABASE <db> SET app.server_identity = '<value>'`.
+  // If unset, the preflight proceeds but logs "Server identity: UNVERIFIED ⚠".
+  // If set, the GUC is queried after DB connect and compared with this anchor.
+  // If mismatch → halt with exit 2 (wrong server).
+  const serverIdentityAnchor = process.env.DRYRUN_SERVER_IDENTITY_ANCHOR;
 
   console.log('── STEP 15.68 Preflight (STEP 15.72 hardening) ─────────────');
 
@@ -239,13 +287,19 @@ async function preflightConnectionCheck(): Promise<void> {
   // The hostname must match the host parsed from DATABASE_URL.
   // STEP 15.75: There is NO exception. The inet_server_addr() IP check was
   // removed entirely (it was a flawed signal — an operator could set ALL
-  // CI env vars to bypass it). Identity is now verified via LIVE DB content
-  // (table existence + Role catalog) AFTER the role/privilege checks below.
-  // If the host cannot be verified, the preflight halts — it does NOT
+  // CI env vars to bypass it). SCHEMA/SEED READINESS is now verified via
+  // LIVE DB content (table existence + Role catalog) AFTER the role/privilege
+  // checks below. STEP 15.76: hostname match is a CONFIGURATION CONSISTENCY
+  // check — it confirms the operator's declared hostname matches the host
+  // in DATABASE_URL. It is NOT a server-identity proof: a proxy, MITM, or
+  // the wrong cluster on the same hostname would still pass this check.
+  // Server identity is only independently verified when
+  // DRYRUN_SERVER_IDENTITY_ANCHOR is set (see trust-anchor check below).
+  // If the host cannot be parsed, the preflight halts — it does NOT
   // continue with a warning.
   if (!expectedHost) {
     console.error('✗ PREFLIGHT FAIL: DRYRUN_EXPECTED_HOST is not set.');
-    console.error('  Server/cluster identity verification is MANDATORY.');
+    console.error('  Hostname consistency verification is MANDATORY.');
     console.error('  Set DRYRUN_EXPECTED_HOST to the hostname in DATABASE_URL, e.g.:');
     console.error(`    DRYRUN_EXPECTED_HOST="${parsedHost ?? '<host>'}"`);
     process.exit(2);
@@ -253,7 +307,7 @@ async function preflightConnectionCheck(): Promise<void> {
 
   if (!parsedHost) {
     console.error('✗ PREFLIGHT FAIL: could not parse host from DATABASE_URL.');
-    console.error('  Cannot verify server identity without a parseable host.');
+    console.error('  Cannot verify hostname consistency without a parseable host.');
     process.exit(2);
   }
 
@@ -264,7 +318,31 @@ async function preflightConnectionCheck(): Promise<void> {
     console.error('  This mismatch prevents connection to an unexpected server.');
     process.exit(2);
   }
-  console.log('  Host identity           : PASS ✅ (hostname match verified)');
+  // STEP 15.76: hostname match is CONFIGURATION CONSISTENCY, NOT a
+  // server-identity proof. A proxy, MITM, or wrong cluster on the same
+  // hostname would still pass this check. The owner correctly identified
+  // that the prior label "Host identity: verified ✅ (hostname match
+  // verified)" was an overstatement. Server identity is only independently
+  // verified when DRYRUN_SERVER_IDENTITY_ANCHOR is set (see trust-anchor
+  // check below).
+  console.log('  Hostname consistency     : PASS ✅ (Configuration consistency — NOT a server-identity proof)');
+
+  // STEP 15.76: Independent trust-anchor status (logged EARLY, before DB
+  // connect, so the operator sees the status even if the DB connection
+  // subsequently fails). The actual GUC query happens AFTER DB connect +
+  // role/privilege/schema checks — it is deferred to the try block below
+  // because current_setting() requires an established connection.
+  //
+  // - If DRYRUN_SERVER_IDENTITY_ANCHOR is NOT set → log UNVERIFIED ⚠ and
+  //   CONTINUE (the run is NOT blocked). The operator is informed that
+  //   identity has not been independently confirmed.
+  // - If DRYRUN_SERVER_IDENTITY_ANCHOR IS set → log PENDING ⏳ and defer
+  //   the comparison to the post-DB-connect trust-anchor check below.
+  if (serverIdentityAnchor === undefined || serverIdentityAnchor === '') {
+    console.log('  Server identity         : UNVERIFIED ⚠ (no independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)');
+  } else {
+    console.log('  Server identity         : PENDING ⏳ (independent trust anchor configured — will verify after DB connect)');
+  }
 
   // STEP 15.75: DEPRECATED bypass flag — fail closed on ANY value.
   // The prior design honored DRYRUN_CI_HOST_CHECK_EXCEPTION=true to skip the
@@ -281,8 +359,11 @@ async function preflightConnectionCheck(): Promise<void> {
     console.error('  This flag is no longer honored. STEP 15.75 removed env-var-based');
     console.error('  CI trust entirely — no combination of GITHUB_ACTIONS, CI, or');
     console.error('  DRYRUN_CI_HOST_CHECK_EXCEPTION can bypass server-identity verification.');
-    console.error('  Identity is now verified via LIVE DB content (table existence +');
+    console.error('  Schema/seed readiness is now verified via LIVE DB content (table existence +');
     console.error('  Role catalog) AFTER the role/privilege checks.');
+    console.error('  STEP 15.76: server identity (separate from schema readiness) requires the');
+    console.error('  independent trust anchor (DRYRUN_SERVER_IDENTITY_ANCHOR) — set it to');
+    console.error('  verify which server we are actually connected to.');
     console.error('  Remove DRYRUN_CI_HOST_CHECK_EXCEPTION from your environment.');
     process.exit(2);
   }
@@ -306,8 +387,10 @@ async function preflightConnectionCheck(): Promise<void> {
   // F-15.68-02: verify runtime role is the expected read-only role
   // Use a raw query via Prisma's $queryRaw to check the current user.
   // STEP 15.75: inet_server_addr() removed — we no longer query the server
-  // IP address. Identity is verified via content (table existence + Role
-  // catalog) below, not via IP comparison.
+  // IP address. SCHEMA/SEED READINESS is verified via content (table existence
+  // + Role catalog) below, not via IP comparison. STEP 15.76: schema/seed
+  // readiness is NOT server identity — see the trust-anchor check below
+  // for the independent server-identity verification (when configured).
   try {
     const rows = await db.$queryRaw`SELECT current_user, current_database()`;
     const result = rows as Array<{
@@ -347,10 +430,14 @@ async function preflightConnectionCheck(): Promise<void> {
     // to bypass the IP check. No combination of env vars can cryptographically
     // prove "this is GitHub Actions CI."
     //
-    // Identity is now verified via LIVE DB content (table existence + Role
-    // catalog) AFTER the privilege checks below. A wrong database (even on
-    // the right hostname) will fail those content checks — env vars cannot
-    // fake table existence or the Role catalog.
+    // STEP 15.76: SCHEMA/SEED READINESS is verified via LIVE DB content
+    // (table existence + Role catalog) AFTER the privilege checks below.
+    // A wrong database (even on the right hostname) will fail those content
+    // checks — env vars cannot fake table existence or the Role catalog.
+    // NOTE: schema/seed readiness is NOT server identity. Server identity
+    // is independently verified by the trust-anchor check (GUC
+    // app.server_identity vs DRYRUN_SERVER_IDENTITY_ANCHOR) when the
+    // anchor env var is set.
 
     // STEP 15.71 Phase B: verify effective privileges (not just role name)
     // Check that the role is NOT a superuser and has no write privileges
@@ -531,7 +618,7 @@ async function preflightConnectionCheck(): Promise<void> {
       process.exit(2);
     }
 
-    // STEP 15.75: Content-based identity verification (REPLACES inet_server_addr IP check).
+    // STEP 15.75: Schema/seed readiness verification (REPLACES inet_server_addr IP check).
     //
     // The owner identified that ALL THREE prior CI signals (GITHUB_ACTIONS,
     // CI, DRYRUN_CI_HOST_CHECK_EXCEPTION) are caller-controlled env vars —
@@ -539,7 +626,14 @@ async function preflightConnectionCheck(): Promise<void> {
     // No combination of env vars can cryptographically prove "this is
     // GitHub Actions CI."
     //
-    // Identity is now verified via LIVE DB content queries:
+    // STEP 15.76: This block verifies SCHEMA/SEED READINESS, NOT server
+    // identity. A staging DB, cloned DB, or wrong cluster on the same
+    // hostname could have the same 5 RBAC tables and 5 canonical roles —
+    // these checks prove the schema is in place, not which server we are
+    // connected to. Server identity is independently verified by the
+    // trust-anchor check below (when DRYRUN_SERVER_IDENTITY_ANCHOR is set).
+    //
+    // Schema/seed readiness is now verified via LIVE DB content queries:
     //   1. Verify ALL 5 RBAC tables exist (User, UserRole, Role, Permission,
     //      RolePermission) via information_schema.tables. A wrong database
     //      (even on the right hostname) will be missing these tables.
@@ -568,7 +662,7 @@ async function preflightConnectionCheck(): Promise<void> {
     if (missingTables.length > 0) {
       console.error('✗ PREFLIGHT FAIL: required RBAC tables missing from public schema.');
       console.error(`    Missing tables        : ${missingTables.join(', ')}`);
-      console.error('  STEP 15.75 content-based identity verification requires ALL 5 RBAC');
+      console.error('  STEP 15.75 schema/seed readiness verification requires ALL 5 RBAC');
       console.error('  tables (User, UserRole, Role, Permission, RolePermission) to exist.');
       console.error('  A wrong database (even on the right hostname) will be missing these.');
       console.error('  Run `bunx prisma db push` against the intended target before retrying.');
@@ -590,7 +684,7 @@ async function preflightConnectionCheck(): Promise<void> {
     if (missingRoleKeysInCatalog.length > 0) {
       console.error('✗ PREFLIGHT FAIL: canonical Role catalog is incomplete.');
       console.error(`    Missing roles         : ${missingRoleKeysInCatalog.join(', ')}`);
-      console.error('  STEP 15.75 content-based identity verification requires ALL 5');
+      console.error('  STEP 15.75 schema/seed readiness verification requires ALL 5');
       console.error('  canonical roles (ADMIN, SELLER, BUYER, MODERATOR, SUPPORT) in the');
       console.error('  Role table. A database missing the RBAC seed is not the target.');
       console.error('  Run `bun run db:seed-rbac` against the intended target before retrying.');
@@ -599,13 +693,68 @@ async function preflightConnectionCheck(): Promise<void> {
     }
 
     console.log(`  RBAC table existence check   : ALL 5 tables present ✅ (${RBAC_TABLE_NAMES.join(', ')})`);
-    console.log(`  Role catalog identity check : ALL 5 canonical roles present ✅ (${CANONICAL_ROLE_KEYS.join(', ')})`);
-    console.log(`  Content-based identity       : PASS ✅ (live DB content verified)`);
+    console.log(`  Role catalog readiness check : ALL 5 canonical roles present ✅ (${CANONICAL_ROLE_KEYS.join(', ')})`);
+    console.log(`  Schema/seed readiness        : PASS ✅ (live DB content verified)`);
+
+    // STEP 15.76: Independent trust-anchor verification (server identity).
+    // This is the ONLY mechanism that independently verifies which server we
+    // are connected to. Schema/seed readiness (above) proves the schema is in
+    // place but does NOT prove server identity — a staging DB, cloned DB, or
+    // wrong cluster could have the same 5 tables and 5 roles.
+    //
+    // Mechanism:
+    //   - The DBA sets a PostgreSQL GUC out-of-band via:
+    //       ALTER DATABASE <db> SET app.server_identity = '<value>';
+    //   - The operator supplies the SAME value via DRYRUN_SERVER_IDENTITY_ANCHOR
+    //     (an out-of-band env var — NOT derived from DATABASE_URL).
+    //   - The preflight queries `SELECT current_setting('app.server_identity', true)`.
+    //     - If the GUC is unset (NULL) → the DBA has not configured the anchor.
+    //       The preflight halts with exit 2 (fail closed — the operator
+    //       intended to verify identity, but the DBA has not finished setup).
+    //     - If the GUC matches the anchor → "Server identity: VERIFIED ✅".
+    //     - If the GUC mismatches the anchor → halt with exit 2 (wrong server).
+    //
+    // If DRYRUN_SERVER_IDENTITY_ANCHOR was NOT set at the top of preflight,
+    // this block is skipped (the UNVERIFIED ⚠ message was already logged
+    // before DB connect). The run continues — the operator was informed.
+    if (serverIdentityAnchor !== undefined && serverIdentityAnchor !== '') {
+      const anchorRows = await db.$queryRawUnsafe(
+        `SELECT current_setting('app.server_identity', true) AS server_identity`,
+      ) as Array<{ server_identity: string | null }>;
+      const serverSideIdentity = anchorRows[0]?.server_identity ?? null;
+
+      if (serverSideIdentity === null) {
+        // The DBA has not set the GUC. The operator intended to verify
+        // identity (the anchor is set), but the server side is unconfigured.
+        // Fail closed — this is a configuration error, not a pass.
+        console.error('✗ PREFLIGHT FAIL: DRYRUN_SERVER_IDENTITY_ANCHOR is set but the server-side GUC app.server_identity is not set.');
+        console.error('  The DBA must configure the GUC out-of-band via:');
+        console.error('    ALTER DATABASE <db> SET app.server_identity = \'<value>\';');
+        console.error('  Without the server-side GUC, the trust-anchor check cannot proceed.');
+        console.error('  STEP 15.76: schema/seed readiness passed, but server identity is NOT independently confirmed.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+
+      if (serverSideIdentity !== serverIdentityAnchor) {
+        // The GUC is set but does NOT match the operator-supplied anchor.
+        // This is a WRONG SERVER scenario — halt immediately.
+        console.error('✗ PREFLIGHT FAIL: server-side trust anchor does not match the operator-supplied anchor.');
+        console.error('  This indicates the dry-run is connected to the WRONG server.');
+        console.error('  The DBA-set GUC app.server_identity MUST match DRYRUN_SERVER_IDENTITY_ANCHOR.');
+        console.error('  STEP 15.76: schema/seed readiness passed, but server identity is NOT confirmed — halt.');
+        await db.$disconnect();
+        process.exit(2);
+      }
+
+      // Match — independent trust anchor confirmed.
+      console.log('  Server identity           : VERIFIED ✅ (independent trust anchor confirmed)');
+    }
 
     console.log(`  Runtime role (current_user)   : ${actualUser}`);
     console.log(`  Runtime database               : ${actualDb}`);
     console.log(`  Trusted-role assertion          : actualUser === trustedRole ✅`);
-    console.log(`  Host identity check              : ${expectedHost ? 'verified ✅' : 'skipped (DRYRUN_EXPECTED_HOST not set)'}`);
+    console.log(`  Hostname consistency check       : ${expectedHost ? 'configuration consistency ✅' : 'skipped (DRYRUN_EXPECTED_HOST not set)'}`);
     console.log(`  Superuser check                  : ${roleInfo.rolsuper ? 'FAIL' : 'PASS'} (rolsuper=${roleInfo.rolsuper})`);
     console.log(`  Role memberships                 : ${membershipCheck[0].cnt} (must be 0)`);
     console.log(`  Write-privilege check            : 5 RBAC tables × 4 write ops = 20 checks — all denied ✅`);
@@ -615,7 +764,7 @@ async function preflightConnectionCheck(): Promise<void> {
     console.log(`  Database CREATE check            : denied on current database ✅`);
     console.log(`  Table ownership check            : ${ownershipCheck[0].cnt} relations owned (must be 0) ✅`);
     console.log('  Role verification                : PASS ✅');
-    console.log('  (Effective privileges verified — not just role name; identity verified via LIVE DB content — not env vars)');
+    console.log('  (Effective privileges verified — not just role name; schema/seed readiness verified via LIVE DB content — not env vars; server identity verified via independent trust anchor when configured)');
   } catch (err: unknown) {
     // STEP 15.72 Finding 5: use categorizeDbError() — never print raw error text,
     // but operators can distinguish failure types (auth vs connection vs permission).

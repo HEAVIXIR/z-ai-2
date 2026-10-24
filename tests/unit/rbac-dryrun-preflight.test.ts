@@ -378,7 +378,7 @@ describe("STEP 15.72 Finding 4 — Server/cluster identity verification (DRYRUN_
   });
 });
 
-describe("STEP 15.75 — Content-based identity verification (replaces env-var-based CI trust)", () => {
+describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-based CI trust)", () => {
   it("dryrun-helpers.ts no longer exports detectCiEnvironment (removed)", () => {
     // STEP 15.75: detectCiEnvironment() was removed entirely.
     // The export statement must be gone. (Comments mentioning it as a removed
@@ -433,26 +433,87 @@ describe("STEP 15.75 — Content-based identity verification (replaces env-var-b
     expect(DRYRUN_SOURCE).toMatch(/DRYRUN_CI_HOST_CHECK_EXCEPTION\s*!==\s*undefined/);
   });
 
-  it("rbac-backfill-dryrun.ts performs content-based identity verification (5 RBAC tables exist)", () => {
-    // The information_schema.tables query checks for ALL 5 RBAC tables.
+  it("rbac-backfill-dryrun.ts performs schema/seed readiness verification (5 RBAC tables exist)", () => {
+    // STEP 15.76: renamed from "content-based identity verification" to
+    // "schema/seed readiness verification" — content checks prove the
+    // schema is in place, NOT server identity. The information_schema.tables
+    // query still checks for ALL 5 RBAC tables.
     expect(DRYRUN_SOURCE).toContain("information_schema.tables");
     expect(DRYRUN_SOURCE).toContain("table_schema = 'public'");
     expect(DRYRUN_SOURCE).toContain("table_name IN ('User', 'UserRole', 'Role', 'Permission', 'RolePermission')");
     expect(DRYRUN_SOURCE).toContain("required RBAC tables missing");
   });
 
-  it("rbac-backfill-dryrun.ts performs content-based identity verification (5 canonical roles in catalog)", () => {
+  it("rbac-backfill-dryrun.ts performs schema/seed readiness verification (5 canonical roles in catalog)", () => {
     // The Role catalog query checks for ALL 5 canonical roles via a LIVE DB query.
     // "Role" MUST be quoted (case-sensitive PostgreSQL identifier).
+    // STEP 15.76: this proves SEED readiness, NOT server identity.
     expect(DRYRUN_SOURCE).toContain('SELECT key FROM "Role"');
     expect(DRYRUN_SOURCE).toContain("key IN ('ADMIN', 'SELLER', 'BUYER', 'MODERATOR', 'SUPPORT')");
     expect(DRYRUN_SOURCE).toContain("canonical Role catalog is incomplete");
   });
 
-  it("rbac-backfill-dryrun.ts verifies identity via LIVE DB content (not env vars)", () => {
-    // Identity verification must use $queryRaw (live DB queries), not env-var checks.
-    expect(DRYRUN_SOURCE).toContain("Content-based identity verification");
+  it("rbac-backfill-dryrun.ts verifies schema/seed readiness via LIVE DB content (not env vars)", () => {
+    // STEP 15.76: "Content-based identity" labels renamed to "Schema/seed
+    // readiness". Schema/seed readiness verification must use $queryRaw
+    // (live DB queries), not env-var checks. NOTE: schema/seed readiness
+    // is NOT server identity — see the trust-anchor check below for the
+    // independent server-identity verification.
+    expect(DRYRUN_SOURCE).toContain("Schema/seed readiness verification");
     expect(DRYRUN_SOURCE).toContain("live DB content");
+  });
+
+  it("rbac-backfill-dryrun.ts no longer uses 'Content-based identity' labels (renamed in STEP 15.76)", () => {
+    // The old labels overstated the proof: content checks prove SCHEMA
+    // readiness, not server identity. The labels must be renamed.
+    // Comments explaining what was renamed are OK — they document the change.
+    // But the LIVE log labels must NOT contain "Content-based identity".
+    // Verify by inspecting the preflight function body (before main()).
+    const preflightSection = DRYRUN_SOURCE.substring(
+      DRYRUN_SOURCE.indexOf("async function preflightConnectionCheck"),
+      DRYRUN_SOURCE.indexOf("async function main"),
+    );
+    // console.log lines that previously said "Content-based identity" must
+    // now say "Schema/seed readiness". The old console.log label is gone.
+    expect(preflightSection).not.toMatch(/console\.log\(`\s*Content-based identity/);
+    // The new label must be present.
+    expect(preflightSection).toContain("Schema/seed readiness");
+  });
+
+  it("rbac-backfill-dryrun.ts no longer uses 'Host identity: PASS' overstatement (renamed in STEP 15.76)", () => {
+    // STEP 15.76: the "Host identity: PASS ✅ (hostname match verified)" label
+    // was an overstatement — hostname match is CONFIGURATION CONSISTENCY, not
+    // server-identity proof. The label must be renamed to "Hostname consistency".
+    const preflightSection = DRYRUN_SOURCE.substring(
+      DRYRUN_SOURCE.indexOf("async function preflightConnectionCheck"),
+      DRYRUN_SOURCE.indexOf("async function main"),
+    );
+    // The old "Host identity" PASS label must be gone from console.log lines.
+    expect(preflightSection).not.toMatch(/console\.log\('?\s*Host identity\s+:\s*PASS/);
+    // The new "Hostname consistency" label must be present and explicitly
+    // state that it is NOT a server-identity proof.
+    expect(preflightSection).toContain("Hostname consistency");
+    expect(preflightSection).toContain("Configuration consistency — NOT a server-identity proof");
+  });
+
+  it("rbac-backfill-dryrun.ts implements the STEP 15.76 independent trust-anchor mechanism (DRYRUN_SERVER_IDENTITY_ANCHOR)", () => {
+    // STEP 15.76: schema/seed readiness is NOT server identity. An independent
+    // trust anchor was added to verify server identity when configured.
+    // The operator supplies DRYRUN_SERVER_IDENTITY_ANCHOR out-of-band; the DBA
+    // sets the matching value on the server via
+    // `ALTER DATABASE <db> SET app.server_identity = '<value>'`.
+    expect(DRYRUN_SOURCE).toContain("DRYRUN_SERVER_IDENTITY_ANCHOR");
+    expect(DRYRUN_SOURCE).toContain("app.server_identity");
+    expect(DRYRUN_SOURCE).toContain("current_setting('app.server_identity', true)");
+    // The three required log messages must be present:
+    // - UNVERIFIED ⚠ (anchor not set — run continues, operator informed)
+    expect(DRYRUN_SOURCE).toContain("Server identity         : UNVERIFIED ⚠");
+    expect(DRYRUN_SOURCE).toContain("no independent trust anchor");
+    // - VERIFIED ✅ (anchor set + GUC matches)
+    expect(DRYRUN_SOURCE).toContain("Server identity           : VERIFIED ✅");
+    expect(DRYRUN_SOURCE).toContain("independent trust anchor confirmed");
+    // - Mismatch → halt with exit 2 (wrong server)
+    expect(DRYRUN_SOURCE).toContain("server-side trust anchor does not match");
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
