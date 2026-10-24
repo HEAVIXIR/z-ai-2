@@ -389,14 +389,14 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // Hostname consistency check must pass (renamed from "Host identity").
       expect(combined).toContain("Hostname consistency     : PASS ✅");
       // The UNVERIFIED ⚠ message must appear (operator was informed that
-      // identity has NOT been independently confirmed via a trust anchor).
+      // identity has NOT been independently confirmed via a database-local anchor).
       expect(combined).toContain("Server identity         : UNVERIFIED ⚠");
       expect(combined).toContain("no database-local anchor");
       expect(combined).toContain("DRYRUN_SERVER_IDENTITY_ANCHOR not set");
       // Must NOT contain a VERIFIED message (the anchor was not set).
       expect(combined).not.toContain("Server identity         : VERIFIED ✅");
-      // Must NOT contain a hard PREFLIGHT FAIL specifically about the trust anchor.
-      expect(combined).not.toContain("server-side trust anchor does not match");
+      // Must NOT contain a hard PREFLIGHT FAIL specifically about the database-local anchor.
+      expect(combined).not.toContain("server-side database-local anchor does not match");
       expect(combined).not.toContain("DRYRUN_SERVER_IDENTITY_ANCHOR is set but the server-side GUC");
     });
 
@@ -427,7 +427,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(combined).not.toContain("Server identity         : VERIFIED ✅");
       // Must NOT contain a hard PREFLIGHT FAIL about a GUC mismatch — the
       // GUC was never queried (DB connect failed first).
-      expect(combined).not.toContain("server-side trust anchor does not match");
+      expect(combined).not.toContain("server-side database-local anchor does not match");
     });
   });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 
 /* ============================================================
-   HEAVIX — STEP 15.81: REAL PostgreSQL behavioral tests for
+   HEAVIX — STEP 15.82: REAL PostgreSQL behavioral tests for
    the anchor-table SQL scripts (install, reinstall, rotation).
    ------------------------------------------------------------
    These tests run ONLY in CI (postgres:17 service container).
@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
      - scripts/rbac-create-anchor-table.sql (install)
      - scripts/rbac-rotate-anchor.sql (rotation)
 
-   Test scenario index (9 scenarios, categorized by evidence type):
+   Test scenario index (10 scenarios, categorized by evidence type):
      1. Initial anchor installation                     [SQL script test]
      2. Re-installation preserves value (non-destructive)[SQL script test]
      3. Read-only role CANNOT write to anchor table      [privilege test]
@@ -20,6 +20,7 @@ import { execFileSync } from "node:child_process";
      7. Cloned DB has identical anchor (H-04 limit)      [clone simulation — NOT end-to-end]
      8. Empty anchor_value → rejected (value unchanged)  [SQL script test]
      9. Missing anchor_value variable → rejected         [SQL script test]
+    10. Whitespace-only anchor_value → rejected (value unchanged) [SQL script test]
 
    Evidence categories (per owner's /analyst directive):
      - SQL script test: runs the SQL script, verifies DB state
@@ -220,7 +221,7 @@ describe.skipIf(!RUN_TESTS)(
       expect(exitCode).toBe(2);
       const combined = stdout + stderr;
       // The mismatch error message MUST appear
-      expect(combined).toContain("server-side trust anchor (table) does not match");
+      expect(combined).toContain("server-side database-local anchor (table) does not match");
       // The preflight MUST NOT proceed to RBAC queries / gate output
       expect(combined).not.toContain("DRYRUN_GATE");
     });

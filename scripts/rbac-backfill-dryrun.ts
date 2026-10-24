@@ -798,7 +798,7 @@ async function preflightConnectionCheck(): Promise<void> {
       if (serverSideIdentity !== serverIdentityAnchor) {
         // The table value does NOT match the operator-supplied anchor.
         // This is a WRONG SERVER scenario — halt immediately.
-        console.error('✗ PREFLIGHT FAIL: server-side trust anchor (table) does not match the operator-supplied anchor.');
+        console.error('✗ PREFLIGHT FAIL: server-side database-local anchor (table) does not match the operator-supplied anchor.');
         console.error('  This indicates the dry-run is connected to the WRONG server.');
         console.error('  The _dryrun_anchor.value MUST match DRYRUN_SERVER_IDENTITY_ANCHOR.');
         console.error('  STEP 15.77: TABLE-based anchor — session-level SET forgery is closed.');

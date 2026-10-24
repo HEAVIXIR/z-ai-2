@@ -521,7 +521,7 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     // - Server identity remains UNVERIFIED even when anchor matches (H-04: clone would pass)
     expect(DRYRUN_SOURCE).toContain("anchor cannot detect cloned DB");
     // - Mismatch → halt with exit 2 (wrong server)
-    expect(DRYRUN_SOURCE).toContain("server-side trust anchor (table) does not match");
+    expect(DRYRUN_SOURCE).toContain("server-side database-local anchor (table) does not match");
     // - Table missing → halt
     expect(DRYRUN_SOURCE).toContain("_dryrun_anchor table does not exist");
     // - Write-privilege check on anchor table (forgeable if role can write)
