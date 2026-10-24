@@ -194,7 +194,8 @@ describe.skipIf(!RUN_TESTS)(
       psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "CORRECT_ANCHOR_VALUE" });
 
       // This test runs the ACTUAL dry-run script with a WRONG anchor value.
-      // STEP 15.88: the preflight requires sslmode=verify-full. CI postgres:17
+      // STEP 15.89: the preflight requires Prisma TLS settings
+      // (sslmode=require&sslaccept=strict&sslcert=<path>). CI postgres:17
       // doesn't have TLS → the preflight halts at the TLS check BEFORE reaching
       // the anchor check. This is the CORRECT fail-closed behavior.
       const pw = process.env.DRYUN_RO_PW;
@@ -230,12 +231,12 @@ describe.skipIf(!RUN_TESTS)(
         stderr = err.stderr ?? "";
       }
 
-      // STEP 15.88: the preflight halts at the TLS check because CI postgres:17
-      // doesn't have sslmode=verify-full. This is BEFORE the anchor check.
-      // The test verifies the CORRECT fail-closed behavior: no TLS → halt.
+      // STEP 15.89: the preflight halts at the TLS check because CI postgres:17
+      // lacks the required Prisma TLS settings (sslmode=require&sslaccept=strict&sslcert=<path>).
+      // This is BEFORE the anchor check. The test verifies the CORRECT fail-closed behavior.
       expect(exitCode).toBe(2);
       const combined = stdout + stderr;
-      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
       // MUST NOT proceed to RBAC queries / gate output
       expect(combined).not.toContain("DRYRUN_GATE");
     });
