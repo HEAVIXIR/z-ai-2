@@ -1,8 +1,14 @@
 # HEAVIX — STEP 15.79 — Code Corrections + Real PostgreSQL Tests
 
+> **⚠ NOTE (STEP 15.80):** This report was written for the STEP 15.79 remediation.
+> The final SHA after CI-stabilizing fixes is `bb1d9fad265bbcc3d0c634595c9eb4ae443d92b6`
+> (the initial push `1fa452a` had CI failures that were fixed in `37b1bf3` then `bb1d9fa`).
+> See `docs/verification/STEP-15.80-FINAL-CORRECTIONS-REPORT.md` for the
+> authoritative current-state classification.
+
 **Repository:** `HEAVIXIR/z-ai-2`
 **PR:** #76
-**Reviewed HEAD (STEP 15.79, owner REQUEST_CHANGES review ID 5637683630):** `2124015abf3366b5ef65710e644ba04bb5f1559e`
+**Reviewed HEAD (STEP 15.79 owner review ID 5637811302):** `bb1d9fad265bbcc3d0c634595c9eb4ae443d92b6`
 **Date:** 2026-10-24
 
 ---

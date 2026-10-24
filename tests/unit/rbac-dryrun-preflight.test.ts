@@ -514,7 +514,7 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     // The three required log messages must be present:
     // - UNVERIFIED ⚠ (anchor not set — run continues, operator informed)
     expect(DRYRUN_SOURCE).toContain("Server identity         : UNVERIFIED ⚠");
-    expect(DRYRUN_SOURCE).toContain("no independent trust anchor");
+    expect(DRYRUN_SOURCE).toContain("no database-local anchor");
     // - Anchor match → "Anchor check: PASS" (wrong-DB defense, NOT server identity)
     expect(DRYRUN_SOURCE).toContain("Anchor check             : PASS ✅");
     expect(DRYRUN_SOURCE).toContain("wrong-DB defense, NOT server identity");
@@ -557,23 +557,34 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(sqlCommands).not.toMatch(/current_setting/);
   });
 
-  it("scripts/rbac-rotate-anchor.sql rotates value via plain UPDATE + DO block verification (STEP 15.79)", () => {
+  it("scripts/rbac-rotate-anchor.sql rejects empty/missing anchor_value BEFORE any change (STEP 15.80)", () => {
     const rotateSql = readFileSync("scripts/rbac-rotate-anchor.sql", "utf-8");
     expect(rotateSql).toContain('UPDATE "_dryrun_anchor"');
     expect(rotateSql).toContain("rotated_at");
     expect(rotateSql).toContain(":'anchor_value'");
     // STEP 15.79: plain UPDATE (psql var outside $$) + DO block for verification
-    // (DO block queries table directly, no psql vars)
     expect(rotateSql).toContain("ON_ERROR_STOP");
     expect(rotateSql).toContain("DO $$");
     expect(rotateSql).toContain("row_exists");
     expect(rotateSql).toContain("RAISE EXCEPTION");
     expect(rotateSql).toContain("server_identity row");
+    // STEP 15.80: rejects empty/missing anchor_value BEFORE any change
+    expect(rotateSql).toContain("anchor_value is empty");
+    expect(rotateSql).toContain("anchor_value variable is not set");
+    expect(rotateSql).toContain("\\quit 1");
     // MUST NOT use the invalid \if :ROWCOUNT guard in SQL commands
     const rotateCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
     expect(rotateCmds).not.toMatch(/\\if\s+:ROWCOUNT/i);
     // MUST NOT use DROP TABLE in SQL commands (destructive)
     expect(rotateCmds).not.toMatch(/DROP\s+TABLE/i);
+  });
+
+  it("scripts/rbac-create-anchor-table.sql rejects empty/missing anchor_value (STEP 15.80)", () => {
+    const installSql = readFileSync("scripts/rbac-create-anchor-table.sql", "utf-8");
+    // STEP 15.80: rejects empty/missing anchor_value BEFORE any insert
+    expect(installSql).toContain("anchor_value is empty");
+    expect(installSql).toContain("anchor_value variable is not set");
+    expect(installSql).toContain("\\quit 1");
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {

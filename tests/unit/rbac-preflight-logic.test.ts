@@ -391,7 +391,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // The UNVERIFIED ⚠ message must appear (operator was informed that
       // identity has NOT been independently confirmed via a trust anchor).
       expect(combined).toContain("Server identity         : UNVERIFIED ⚠");
-      expect(combined).toContain("no independent trust anchor");
+      expect(combined).toContain("no database-local anchor");
       expect(combined).toContain("DRYRUN_SERVER_IDENTITY_ANCHOR not set");
       // Must NOT contain a VERIFIED message (the anchor was not set).
       expect(combined).not.toContain("Server identity         : VERIFIED ✅");
@@ -420,7 +420,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       // The PENDING ⏳ message must appear (anchor was set; verification
       // deferred to post-DB-connect, which never succeeded in this test env).
       expect(combined).toContain("Server identity         : PENDING ⏳");
-      expect(combined).toContain("independent trust anchor configured");
+      expect(combined).toContain("database-local anchor configured");
       expect(combined).toContain("will verify after DB connect");
       // Must NOT contain a VERIFIED message — DB connect failed before the
       // GUC comparison could run.

@@ -224,11 +224,11 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     Server identity remains UNVERIFIED — a cloned DB would pass too.
  *     If mismatch → halt with exit 2 (wrong DB — anchor value differs).
  *     If the anchor env var is NOT set → "Server identity: UNVERIFIED ⚠ (no
- *     independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)" and
+ *     database-local anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)" and
  *     the run continues (it is NOT blocked — the operator is informed that
  *     identity has not been independently confirmed).
- *   - The anchor value must NOT come from DATABASE_URL — it is an independent
- *     out-of-band value supplied by the operator. The table must exist on the
+ *   - The anchor value must NOT come from DATABASE_URL — it is an out-of-band
+ *     value supplied by the operator. The table must exist on the
  *     server side by the DBA — an operator cannot fake it via env vars.
  *
  * Exits with code 2 on any preflight failure.
@@ -238,7 +238,7 @@ async function preflightConnectionCheck(): Promise<void> {
   const confirmTarget = process.env.DRYRUN_CONFIRM_TARGET;
   const expectedRoleRaw = process.env.DRYRUN_EXPECTED_ROLE;
   const expectedHost = process.env.DRYRUN_EXPECTED_HOST;
-  // STEP 15.76: Independent trust anchor for server-identity verification.
+  // STEP 15.76: Database-local anchor for wrong-DB defense (NOT server identity).
   // This is an OUT-OF-BAND value supplied by the operator — it must NOT be
   // derived from DATABASE_URL. The DBA sets the matching value on the
   // server side via `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`.
@@ -347,11 +347,11 @@ async function preflightConnectionCheck(): Promise<void> {
   // - If DRYRUN_SERVER_IDENTITY_ANCHOR IS set → log PENDING ⏳ and defer
   //   the comparison to the post-DB-connect trust-anchor check below.
   if (serverIdentityAnchor === undefined || serverIdentityAnchor === '') {
-    console.log('  Server identity         : UNVERIFIED ⚠ (no independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)');
+    console.log('  Server identity         : UNVERIFIED ⚠ (no database-local anchor (DRYRUN_SERVER_IDENTITY_ANCHOR not set) — wrong-DB defense only)');
     console.log('    (Acceptable for diagnostic dry-run. For operations depending on server');
     console.log('     identity, the anchor must be configured. See STEP 15.79 policy.)');
   } else {
-    console.log('  Server identity         : PENDING ⏳ (independent trust anchor configured — will verify after DB connect)');
+    console.log('  Server identity         : PENDING ⏳ (database-local anchor configured — will verify after DB connect (wrong-DB defense))');
   }
 
   // STEP 15.75: DEPRECATED bypass flag — fail closed on ANY value.
@@ -372,7 +372,7 @@ async function preflightConnectionCheck(): Promise<void> {
     console.error('  Schema/seed readiness is now verified via LIVE DB content (table existence +');
     console.error('  Role catalog) AFTER the role/privilege checks.');
     console.error('  STEP 15.76: server identity (separate from schema readiness) requires the');
-    console.error('  independent trust anchor (DRYRUN_SERVER_IDENTITY_ANCHOR) — set it to');
+    console.error('  database-local anchor (DRYRUN_SERVER_IDENTITY_ANCHOR) — set it to');
     console.error('  verify which server we are actually connected to.');
     console.error('  Remove DRYRUN_CI_HOST_CHECK_EXCEPTION from your environment.');
     process.exit(2);

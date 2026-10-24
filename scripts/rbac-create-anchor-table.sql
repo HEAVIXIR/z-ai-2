@@ -50,6 +50,20 @@ CREATE TABLE IF NOT EXISTS "_dryrun_anchor" (
   rotated_at timestamptz
 );
 
+-- ── 1a. Reject empty/missing anchor_value BEFORE any insert (STEP 15.80) ─
+\set ON_ERROR_STOP on
+\if :{?anchor_value}
+  \if '{anchor_value}' = ''
+    \echo 'ERROR: anchor_value is empty. Provide a non-empty value.'
+    \echo '       Usage: psql -v anchor_value="<secret>" -f scripts/rbac-create-anchor-table.sql'
+    \quit 1
+  \endif
+\else
+  \echo 'ERROR: anchor_value variable is not set.'
+  \echo '       Usage: psql -v anchor_value="<secret>" -f scripts/rbac-create-anchor-table.sql'
+  \quit 1
+\endif
+
 -- ── 2. Insert the server-identity value (idempotent — does NOT overwrite) ─
 -- ON CONFLICT DO NOTHING: if the 'server_identity' row already exists, this
 -- is a no-op. The existing value is PRESERVED. To change the value, use

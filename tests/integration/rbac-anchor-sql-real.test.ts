@@ -172,13 +172,50 @@ describe.skipIf(!RUN_TESTS)(
     });
 
     // ── Scenario 6: Anchor mismatch → detected by preflight logic ──────────
-    it("6. Anchor mismatch: table value != expected → preflight would halt (simulated)", () => {
-      // This test verifies the LOGIC: if the table value differs from the
-      // expected anchor, the preflight would detect it. We simulate this by
-      // reading the value and comparing it to a WRONG expected value.
-      const tableValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
-      const wrongExpected = "WRONG_SERVER_IDENTITY";
-      expect(tableValue).not.toBe(wrongExpected); // mismatch detected
+    // ── Scenario 6: REAL preflight behavioral test — anchor mismatch → halt ─
+    it("6. REAL preflight: anchor mismatch → exit code 2 + halt message (NOT string comparison)", () => {
+      // This test runs the ACTUAL dry-run script with a WRONG anchor value.
+      // It verifies the preflight HALTS with exit code 2 and prints the
+      // mismatch error — NOT a string comparison simulation.
+      const pw = process.env.DRYUN_RO_PW;
+      if (!pw) throw new Error("DRYUN_RO_PW not set");
+      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
+      const wrongAnchor = "DEFINITELY_WRONG_ANCHOR_VALUE";
+
+      let exitCode: number | null = null;
+      let stdout = "";
+      let stderr = "";
+      try {
+        stdout = execFileSync(
+          "bunx",
+          ["tsx", "scripts/rbac-backfill-dryrun.ts"],
+          {
+            encoding: "utf-8",
+            timeout: 120000,
+            env: {
+              ...process.env,
+              DATABASE_URL: roUrl,
+              DRYRUN_CONFIRM_TARGET: "heavix_test",
+              DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
+              DRYRUN_EXPECTED_HOST: "localhost",
+              DRYRUN_SERVER_IDENTITY_ANCHOR: wrongAnchor, // ← WRONG value
+            },
+          },
+        );
+      } catch (e: unknown) {
+        const err = e as { status: number | null; stdout?: string; stderr?: string };
+        exitCode = err.status;
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
+      }
+
+      // The preflight MUST halt with exit code 2 (mismatch detected)
+      expect(exitCode).toBe(2);
+      const combined = stdout + stderr;
+      // The mismatch error message MUST appear
+      expect(combined).toContain("server-side trust anchor (table) does not match");
+      // The preflight MUST NOT proceed to RBAC queries / gate output
+      expect(combined).not.toContain("DRYRUN_GATE");
     });
 
     // ── Scenario 7: Cloned DB limitation (fundamental — documented) ──────
@@ -212,6 +249,52 @@ describe.skipIf(!RUN_TESTS)(
         // Cleanup the clone
         psqlAdmin("DROP DATABASE heavix_clone_test");
       }
+    });
+
+    // ── Scenario 8: Empty/missing anchor_value in rotation → rejected BEFORE any change ──
+    it("8. Rotation with empty anchor_value → rejected BEFORE any change (value NOT modified)", () => {
+      // Record the current value before attempting rotation with empty value
+      const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+
+      // Attempt rotation with EMPTY anchor_value — must FAIL (non-zero exit)
+      let rotationFailed = false;
+      try {
+        psqlScript("scripts/rbac-rotate-anchor.sql", { anchor_value: "" });
+      } catch (e: unknown) {
+        rotationFailed = true;
+        expect(String(e)).toMatch(/anchor_value is empty|ERROR/i);
+      }
+      expect(rotationFailed).toBe(true);
+
+      // The value MUST NOT have changed (rotation was rejected before UPDATE)
+      const afterValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+      expect(afterValue).toBe(beforeValue); // ← unchanged
+    });
+
+    // ── Scenario 9: Missing anchor_value variable in rotation → rejected ──
+    it("9. Rotation with MISSING anchor_value variable → rejected (no change)", () => {
+      const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+
+      // Attempt rotation WITHOUT the anchor_value variable — must FAIL
+      let rotationFailed = false;
+      try {
+        execFileSync("psql", [
+          "-h", "localhost", "-U", "postgres", "-d", "heavix_test",
+          "-f", "scripts/rbac-rotate-anchor.sql",
+          // NOTE: no -v anchor_value=... → variable is unset
+        ], {
+          encoding: "utf-8", timeout: 10000,
+          env: { ...process.env, PGPASSWORD: "postgres" },
+        });
+      } catch (e: unknown) {
+        rotationFailed = true;
+        expect(String(e)).toMatch(/anchor_value variable is not set|ERROR/i);
+      }
+      expect(rotationFailed).toBe(true);
+
+      // The value MUST NOT have changed
+      const afterValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+      expect(afterValue).toBe(beforeValue); // ← unchanged
     });
   },
 );
