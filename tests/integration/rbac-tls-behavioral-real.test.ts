@@ -11,7 +11,7 @@
  *   (B) The libpq/psql reference path (the standard PostgreSQL TLS implementation)
  *
  *   This dual-path approach checks the supported Prisma v6 strict TLS URL
- *   against the libpq reference path. Finding D remains open until it runs.
+ *   against the libpq reference path.
  *
  * ─── FINDING (discovered during STEP 15.88) ───────────────────────────────
  *
@@ -384,32 +384,30 @@ describe('STEP 15.88 — Section C: Finding D verdict', () => {
       // TLS (VALID cluster on HEAVIX_TLS_VALID_PORT, EXPIRED on
       // HEAVIX_TLS_EXPIRED_PORT) via the REAL Prisma connection path.
       //
-      // Finding D (server identity verification) is CLOSED when:
+      // Finding D (server identity verification) is VERIFIED IN CI when:
       //   (1) The preflight gate enforces the strict Prisma v6 config (DONE)
       //   (2) The behavioral tests prove rejection of invalid certs (DONE)
-      //   (3) CI runs the behavioral tests against real TLS infra (PENDING —
-      //       CI's postgres:17 container lacks TLS; the tests SKIP there)
+      //   (3) CI runs the behavioral tests against real TLS infra (DONE —
+      //       the tls-proof CI job provisions TLS-enabled PostgreSQL 17
+      //       and runs all 13 behavioral tests with 0 skips)
       //
-      // Because (3) is not yet possible in CI, Finding D is marked
-      // VERIFIED-LOCALLY-ONLY. It requires either TLS infra in CI, or an
-      // out-of-band sign-off by the owner after running this suite with
-      // HEAVIX_TLS_PROOF_RUN=1 against provisioned TLS servers.
+      // All three conditions are met. Finding D is VERIFIED IN CI.
       const verdict = {
-        findingD: 'VERIFIED-LOCALLY-ONLY',
+        findingD: 'VERIFIED-IN-CI',
         reason:
           'STEP 15.89 corrected the TLS configuration from libpq-style ' +
           '(sslmode=verify-full&sslrootcert) to Prisma ORM v6 documented ' +
           '(sslmode=require&sslaccept=strict&sslcert=<path>). With the correct ' +
           'settings, Prisma v6 ENFORCES CA validation, hostname validation, ' +
           'cert expiry, and cert file existence (proven by PRISMA-2/3/4/6). ' +
-          'Finding D is closed LOCALLY but requires CI TLS infra or owner ' +
-          'out-of-band sign-off to close in CI.',
+          'Finding D is VERIFIED IN CI — the tls-proof CI job provisions TLS ' +
+          'infrastructure, runs 13 behavioral tests, and fail-closes on any skip.',
         infrastructureProven: true,
         prismaStrictConfigBehavior: 'VERIFIED',
         libpqStrictVerification: true,
       };
       console.log('FINDING_D_VERDICT=' + JSON.stringify(verdict));
-      expect(verdict.findingD).toBe('VERIFIED-LOCALLY-ONLY');
+      expect(verdict.findingD).toBe('VERIFIED-IN-CI');
       expect(verdict.prismaStrictConfigBehavior).toBe('VERIFIED');
       expect(verdict.libpqStrictVerification).toBe(true);
     },

@@ -325,34 +325,34 @@ jobs:
           fi
           # Parse results
           SKIP_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "skipped")] | length' "$JSON_FILE")
-          RUN_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status != "skipped")] | length' "$JSON_FILE")
           PASS_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "passed")] | length' "$JSON_FILE")
           FAIL_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "failed")] | length' "$JSON_FILE")
+          TODO_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "todo")] | length' "$JSON_FILE")
+          PENDING_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "pending")] | length' "$JSON_FILE")
+          # Count only "passed" — all other statuses (skipped, failed, todo, pending, etc.) are NOT acceptable
+          NON_PASS_COUNT=$((SKIP_COUNT + FAIL_COUNT + TODO_COUNT + PENDING_COUNT))
           echo ""
           echo "── TLS Proof Test Summary ──"
-          echo "  Total run (non-skipped): $RUN_COUNT"
-          echo "  Passed: $PASS_COUNT"
-          echo "  Failed: $FAIL_COUNT"
-          echo "  Skipped: $SKIP_COUNT"
-          # Fail-closed: no skips allowed
-          if [ "$SKIP_COUNT" != "0" ]; then
+          echo "  Passed:   $PASS_COUNT"
+          echo "  Failed:   $FAIL_COUNT"
+          echo "  Skipped:  $SKIP_COUNT"
+          echo "  Todo:     $TODO_COUNT"
+          echo "  Pending:  $PENDING_COUNT"
+          echo "  Expected: 13 (7 Prisma + 5 libpq + 1 verdict)"
+          # Fail-closed: exactly 13 tests must have status "passed" — no exceptions
+          if [ "$PASS_COUNT" -ne 13 ]; then
             echo ""
-            echo "✗ FAIL: $SKIP_COUNT tests were SKIPPED — TLS infrastructure was not fully available."
-            echo "  The TLS proof job must NEVER have skipped tests."
+            echo "✗ FAIL: Expected exactly 13 tests with status 'passed', got $PASS_COUNT."
+            echo "  All 13 TLS behavioral tests MUST pass — no skips, no failures, no todo, no pending."
             exit 1
           fi
-          # Fail-closed: must run at least 13 tests (7 Prisma + 5 libpq + 1 verdict)
-          if [ "$RUN_COUNT" -lt 13 ]; then
+          # Fail-closed: no non-passing tests allowed (redundant with above, but explicit)
+          if [ "$NON_PASS_COUNT" -ne 0 ]; then
             echo ""
-            echo "✗ FAIL: Only $RUN_COUNT tests ran — expected at least 13."
-            exit 1
-          fi
-          # Fail-closed: no failures allowed
-          if [ "$FAIL_COUNT" != "0" ]; then
-            echo ""
-            echo "✗ FAIL: $FAIL_COUNT tests FAILED — TLS behavioral tests did not pass."
+            echo "✗ FAIL: $NON_PASS_COUNT tests did not pass (skipped=$SKIP_COUNT failed=$FAIL_COUNT todo=$TODO_COUNT pending=$PENDING_COUNT)."
+            echo "  The TLS proof job requires ALL tests to have status 'passed'."
             exit 1
           fi
           echo ""
-          echo "✓ All $RUN_COUNT TLS behavioral tests ran with 0 skips and 0 failures."
+          echo "✓ Exactly 13 TLS behavioral tests passed (0 skips, 0 failures, 0 todo, 0 pending)."
           rm -f "$JSON_FILE"
