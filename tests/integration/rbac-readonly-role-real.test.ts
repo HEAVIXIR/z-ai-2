@@ -251,10 +251,11 @@ describe.skipIf(!RUN_TESTS)(
       }
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
 
-      let output = "";
+      let stdout = "";
+      let stderr = "";
       let exitCode: number | null = null;
       try {
-        output = execFileSync(
+        stdout = execFileSync(
           "bunx",
           ["tsx", "scripts/rbac-backfill-dryrun.ts"],
           {
@@ -266,28 +267,22 @@ describe.skipIf(!RUN_TESTS)(
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
               DRYRUN_EXPECTED_HOST: "localhost",
-              // STEP 15.88: NO DRYRUN_ALLOW_NO_TLS bypass. The preflight
-              // requires sslmode=verify-full. CI postgres:17 doesn't have
-              // TLS → the preflight halts at the TLS check (fail-closed).
-              // This is the CORRECT behavior — the production path does
-              // not run without TLS.
             },
           },
         );
       } catch (e: unknown) {
         const err = e as { stdout?: string; stderr?: string; status: number | null };
-        output = err.stdout ?? "";
-      const stderr = err.stderr ?? "";
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
         exitCode = err.status;
       }
 
-      // STEP 15.88: the dry-run script halts at the TLS check because
-      // CI postgres:17 doesn't have sslmode=verify-full. This is the
-      // CORRECT fail-closed behavior.
+      // This test proves only the fail-closed TLS preflight behavior.
+      // It does NOT prove PostgreSQL TLS handshake, CA trust, or hostname
+      // validation; those require a TLS-enabled PostgreSQL integration test.
       expect(exitCode).toBe(2);
-      const combined = output + stderr;
+      const combined = stdout + "\\n" + stderr;
       expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
-      // MUST NOT reach DRYRUN_GATE (preflight halted before RBAC queries)
       expect(combined).not.toContain("DRYRUN_GATE:");
     });
   },
