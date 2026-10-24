@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
      - scripts/rbac-create-anchor-table.sql (install)
      - scripts/rbac-rotate-anchor.sql (rotation)
 
-   Test scenario index (12 scenarios, categorized by evidence type):
+   Test scenario index (13 scenarios, categorized by evidence type):
      1.  Initial anchor installation                      [SQL script test]
      2.  Re-installation preserves value (non-destructive) [SQL script test]
      3.  Read-only role CANNOT write to anchor table       [privilege test]
@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
      10. Whitespace-only anchor_value in rotation → rejected[SQL script test]
      11. Empty anchor_value in install → rejected before DDL [SQL script test]
      12. Whitespace-only anchor_value in install → rejected [SQL script test]
+     13. Missing anchor_value variable in install → rejected [SQL script test]
 
    Evidence categories (per owner's /analyst directive):
      - SQL script test: runs the SQL script, verifies DB state
@@ -63,7 +64,7 @@ function psqlRO(sql: string): string {
 }
 
 describe.skipIf(!RUN_TESTS)(
-  "STEP 15.79 — Anchor SQL scripts (REAL PostgreSQL behavioral tests)",
+  "STEP 15.83 — Anchor SQL scripts (REAL PostgreSQL behavioral tests — 13 scenarios)",
   () => {
     const ANCHOR_VALUE_1 = "test_anchor_value_ALPHA_111";
     const ANCHOR_VALUE_2 = "test_anchor_value_BETA_222";
@@ -373,6 +374,44 @@ describe.skipIf(!RUN_TESTS)(
       );
       expect(tableExists).toBe("f"); // ← table NOT created
 
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "restore_value_after_test" });
+    });
+
+    // ── Scenario 13: Missing anchor_value variable in install → rejected ──
+    it("13. Install with MISSING anchor_value variable → rejected (no table created, no row)", () => {
+      // Drop the table to verify it's NOT created by a rejected install
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+
+      // Attempt install WITHOUT the anchor_value variable — must FAIL.
+      // We do NOT pass -v anchor_value=... — psql behavior for undefined
+      // variables is to substitute an empty string (which triggers the
+      // NULLIF(TRIM()) guard). This test verifies that behavior.
+      let installFailed = false;
+      let actualError = "";
+      try {
+        execFileSync("psql", [
+          "-h", "localhost", "-U", "postgres", "-d", "heavix_test",
+          "-f", "scripts/rbac-create-anchor-table.sql",
+          // NOTE: no -v anchor_value=... → variable is unset
+        ], {
+          encoding: "utf-8", timeout: 10000,
+          env: { ...process.env, PGPASSWORD: "postgres" },
+        });
+      } catch (e: unknown) {
+        installFailed = true;
+        actualError = String(e);
+      }
+      expect(installFailed).toBe(true);
+      expect(actualError).toMatch(/division by zero|ERROR/i);
+
+      // The table MUST NOT have been created (validation ran BEFORE CREATE TABLE)
+      const tableExists = psqlAdmin(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='_dryrun_anchor')",
+      );
+      expect(tableExists).toBe("f"); // ← table NOT created
+
+      // No row exists (table doesn't exist)
+      // Restore with a valid value for subsequent tests
       psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "restore_value_after_test" });
     });
   },

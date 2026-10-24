@@ -17,6 +17,25 @@
 
 ---
 
+## 0. GLOBAL CORRECTION NOTICE (STEP 15.78 — 15.83)
+
+> **⚠ The body of this report (§1 onward) uses the term "independent trust
+> anchor" and claims the GUC-based anchor "VERIFIED ✅" server identity.
+> These claims are ALL SUPERSEDED.** The GUC approach was found to be
+> session-forgeable (H-03, STEP 15.77). The TABLE-based replacement was
+> found to be cloneable (H-04, STEP 15.78). The term "independent trust
+> anchor" has been replaced throughout the codebase with "database-local
+> anchor / wrong-DB defense" (STEP 15.80+). Finding D (server identity) is
+> **⏳ UNVERIFIED** — NOT FIXED. The anchor is a wrong-DB defense only; true
+> server identity requires TLS/CA (out of scope).
+>
+> The body below is retained for historical reference. Every occurrence of
+> "independent trust anchor", "VERIFIED ✅ (independent trust anchor
+> confirmed)", "identity verified via independent trust anchor", and similar
+> is a **stale historical claim** that does NOT reflect the current state.
+
+---
+
 ## 1. Purpose
 
 The owner correctly identified that STEP 15.75's "content-based identity verification" claim was an **overstatement**. Checking that 5 RBAC tables exist + 5 canonical roles are seeded proves **SCHEMA/SEED READINESS**, NOT which server the dry-run is connected to. A staging DB, a cloned DB, or the wrong cluster on the same hostname could have the same 5 tables and 5 roles — content checks would pass against any of them.
