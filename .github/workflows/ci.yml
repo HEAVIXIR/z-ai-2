@@ -265,8 +265,9 @@ jobs:
       - name: Provision TLS-enabled PostgreSQL 17
         run: |
           bash scripts/provision-tls-pg.sh
-      - name: Verify TLS infrastructure is available
+      - name: Verify TLS infrastructure is available (fail-closed)
         run: |
+          set -e
           if [ ! -f "$HEAVIX_TLS_PG_ROOT/pg-env.sh" ]; then
             echo "✗ FAIL: TLS infrastructure not provisioned — pg-env.sh missing."
             exit 1
@@ -275,28 +276,67 @@ jobs:
             echo "✗ FAIL: TLS infrastructure not provisioned — ca-valid.crt missing."
             exit 1
           fi
-          # Verify both ports are listening
-          bash -c "source $HEAVIX_TLS_PG_ROOT/pg-env.sh && pg_isready -h localhost -p 5433 && pg_isready -h localhost -p 5434"
-      - name: Run real Prisma v6 TLS behavioral tests
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/ca-untrusted.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — ca-untrusted.crt missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/server-valid.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — server-valid.crt missing."
+            exit 1
+          fi
+          if [ ! -f "$HEAVIX_TLS_CERT_DIR/server-expired.crt" ]; then
+            echo "✗ FAIL: TLS infrastructure not provisioned — server-expired.crt missing."
+            exit 1
+          fi
+          # Verify both clusters are accepting TLS connections
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          pg_isready -h localhost -p 5433
+          pg_isready -h localhost -p 5434
+          # Verify the expired cert IS actually expired (fail-closed if not)
+          if openssl x509 -in "$HEAVIX_TLS_CERT_DIR/server-expired.crt" -noout -checkend 0 2>/dev/null; then
+            echo "✗ FAIL: server-expired.crt is NOT expired — PRISMA-4 would fail."
+            exit 1
+          fi
+          echo "✓ TLS infrastructure verified: both clusters running, expired cert confirmed expired."
+      - name: "Run real Prisma v6 TLS behavioral tests (fail-closed: no skips allowed)"
         run: |
-          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts
-      - name: Verify no tests were skipped
-        run: |
-          # The test suite uses it.skipIf(!INFRA_AVAILABLE). If the infra
-          # was not available, ALL tests would skip and vitest would exit 0
-          # with 0 tests run. We must FAIL in that case.
-          # Re-run with reporter to capture skip count
-          OUTPUT=$(bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json 2>/dev/null || true)
-          SKIP_COUNT=$(echo "$OUTPUT" | jq '[.testResults[].assertionResults[] | select(.status == "skipped")] | length' 2>/dev/null || echo "unknown")
-          RUN_COUNT=$(echo "$OUTPUT" | jq '[.testResults[].assertionResults[] | select(.status != "skipped")] | length' 2>/dev/null || echo "unknown")
-          echo "Tests run: $RUN_COUNT, skipped: $SKIP_COUNT"
+          set -e
+          # Run the test suite with JSON reporter and capture output
+          OUTPUT_FILE=$(mktemp)
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json > "$OUTPUT_FILE" 2>&1 || true
+          cat "$OUTPUT_FILE"
+          # Parse results with jq (pre-installed on GHA ubuntu-latest)
+          SKIP_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "skipped")] | length' "$OUTPUT_FILE" 2>/dev/null || echo "PARSE_ERROR")
+          RUN_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status != "skipped")] | length' "$OUTPUT_FILE" 2>/dev/null || echo "PARSE_ERROR")
+          PASS_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "passed")] | length' "$OUTPUT_FILE" 2>/dev/null || echo "PARSE_ERROR")
+          FAIL_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "failed")] | length' "$OUTPUT_FILE" 2>/dev/null || echo "PARSE_ERROR")
+          echo ""
+          echo "── TLS Proof Test Summary ──"
+          echo "  Total run (non-skipped): $RUN_COUNT"
+          echo "  Passed: $PASS_COUNT"
+          echo "  Failed: $FAIL_COUNT"
+          echo "  Skipped: $SKIP_COUNT"
+          # Fail-closed: no skips allowed
           if [ "$SKIP_COUNT" != "0" ]; then
-            echo "✗ FAIL: $SKIP_COUNT tests were skipped — TLS infrastructure was not fully available."
-            echo "  The TLS proof job must NEVER have skipped tests."
+            echo ""
+            echo "✗ FAIL: $SKIP_COUNT tests were SKIPPED — TLS infrastructure was not fully available."
+            echo "  The TLS proof job must NEVER have skipped tests. This means the"
+            echo "  infrastructure was missing (ports not listening, certs not present, or psql not found)."
             exit 1
           fi
+          # Fail-closed: must run at least 13 tests (7 Prisma + 5 libpq + 1 verdict)
           if [ "$RUN_COUNT" -lt 13 ]; then
+            echo ""
             echo "✗ FAIL: Only $RUN_COUNT tests ran — expected at least 13."
+            echo "  Some test cases were not registered or were silently dropped."
             exit 1
           fi
-          echo "✓ All TLS behavioral tests ran with 0 skips."
+          # Fail-closed: no failures allowed
+          if [ "$FAIL_COUNT" != "0" ]; then
+            echo ""
+            echo "✗ FAIL: $FAIL_COUNT tests FAILED — TLS behavioral tests did not pass."
+            exit 1
+          fi
+          echo ""
+          echo "✓ All $RUN_COUNT TLS behavioral tests ran with 0 skips and 0 failures."
+          rm -f "$OUTPUT_FILE"

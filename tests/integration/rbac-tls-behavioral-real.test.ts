@@ -86,26 +86,31 @@ function portListening(port: number, host = '127.0.0.1'): Promise<boolean> {
 }
 
 // Top-level infrastructure detection so it.skipIf sees the real value.
+// psql is needed for Section B (libpq reference path). It can be at:
+//   (a) the custom local-extract path: $PG_ROOT/pg-root/usr/lib/postgresql/17/bin/psql
+//   (b) the CI apt-installed system path: /usr/lib/postgresql/17/bin/psql
+//   (c) anywhere on PATH (via pg-env.sh sourcing in psqlProbe)
+// We accept any of these.
 const PROOF_RUN = process.env.HEAVIX_TLS_PROOF_RUN === '1';
 const _validUp = PROOF_RUN ? await portListening(VALID_PORT) : false;
 const _expiredUp = PROOF_RUN ? await portListening(EXPIRED_PORT) : false;
-// On CI (apt-installed PostgreSQL), psql is at /usr/lib/postgresql/17/bin/psql.
-// On local systems with a pg-root, it's at $PG_ROOT/pg-root/usr/lib/postgresql/17/bin/psql.
 const _psqlExists =
   existsSync(resolve(PG_ROOT, 'pg-root/usr/lib/postgresql/17/bin/psql')) ||
   existsSync('/usr/lib/postgresql/17/bin/psql');
+const _pgEnvExists = existsSync(PG_ENV);
 const _certsPresent =
   PROOF_RUN &&
   existsSync(CA_VALID) &&
   existsSync(CA_UNTRUSTED) &&
   readFileSync(CA_VALID, 'utf8').includes('BEGIN CERTIFICATE');
+// INFRA_AVAILABLE requires: proof run enabled, both ports listening, certs present,
+// AND psql reachable (for Section B). If pg-env.sh exists, psqlProbe will source it.
 const INFRA_AVAILABLE =
   PROOF_RUN && _validUp && _expiredUp && _certsPresent && _psqlExists;
 
 if (PROOF_RUN && !INFRA_AVAILABLE) {
-   
   console.warn(
-    `[rbac-tls-behavioral-real] SKIP: proofRun=${PROOF_RUN} validUp=${_validUp} expiredUp=${_expiredUp} certsPresent=${_certsPresent} psqlExists=${_psqlExists}`,
+    `[rbac-tls-behavioral-real] SKIP: proofRun=${PROOF_RUN} validUp=${_validUp} expiredUp=${_expiredUp} certsPresent=${_certsPresent} psqlExists=${_psqlExists} (custom=${_psqlCustomPath} system=${_psqlSystemPath} path=${_psqlOnPath}) pgEnv=${_pgEnvExists}`,
   );
 }
 
@@ -131,8 +136,11 @@ function prismaProbe(
 
 // ─── Helper: run psql (libpq reference path) ────────────────────────────────
 function psqlProbe(connParams: string): { success: boolean; raw: string } {
-  // Source pg-env.sh so psql + LD_LIBRARY_PATH are available, then run psql.
-  const cmd = `source ${PG_ENV} && PGPASSWORD=readonly_pass psql "${connParams}" -c "SELECT 1 AS proof;" 2>&1`;
+  // Source pg-env.sh if it exists (sets up PATH for custom-local psql + LD_LIBRARY_PATH).
+  // In CI, psql is at the system path /usr/lib/postgresql/17/bin/psql which is on PATH
+  // after the provision script runs. If pg-env.sh doesn't exist, just use system psql.
+  const sourceCmd = existsSync(PG_ENV) ? `source ${PG_ENV} && ` : '';
+  const cmd = `${sourceCmd}PGPASSWORD=readonly_pass psql "${connParams}" -c "SELECT 1 AS proof;" 2>&1`;
   const r = spawnSync('bash', ['-c', cmd], {
     encoding: 'utf8',
     timeout: 30_000,
@@ -228,7 +236,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
         `?schema=public&sslmode=require&sslaccept=strict&sslcert=%2Fnonexistent%2Fca.crt`;
-      const r = prismaProbe(url, '/nonexistent/ca.crt');
+      const r = prismaProbe(url);
       expect(
         r.success,
         `Prisma must reject a nonexistent sslcert path. Output:\n${r.raw}`,
