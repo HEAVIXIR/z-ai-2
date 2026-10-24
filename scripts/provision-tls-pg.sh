@@ -58,14 +58,15 @@ openssl req -new -x509 -days 3650 -nodes \
   -out "$CERT_DIR/ca-untrusted.crt" \
   -subj "/CN=HEAVIX-Untrusted-CA"
 
-# Valid server cert (CN=localhost, SAN=DNS:localhost, IP:127.0.0.1)
+# Valid server cert (CN=localhost, SAN=DNS:localhost ONLY — no IP in SAN,
+# so connecting via 127.0.0.1 triggers a hostname mismatch for PRISMA-3/LIBPQ-3)
 openssl req -new -nodes \
   -newkey rsa:2048 \
   -keyout "$CERT_DIR/server-valid.key" \
   -out "$CERT_DIR/server-valid.csr" \
   -subj "/CN=localhost"
 cat > "$CERT_DIR/server-valid.ext" <<EXT
-subjectAltName = DNS:localhost, IP:127.0.0.1
+subjectAltName = DNS:localhost
 extendedKeyUsage = serverAuth
 EXT
 openssl x509 -req -days 3650 \
