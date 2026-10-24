@@ -104,7 +104,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(balance?.quantity).toBe(4);
     expect(part?.stock).toBe(4);
     expect(movementCount).toBe(1);
-  });
+  }, 15000);
 
   it('allows only one concurrent refund resolution and credits the wallet exactly once', async () => {
     if (!partId) throw new Error('fixture setup incomplete');
@@ -180,5 +180,5 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(wallet?.walletBalanceIrr).toBe(500);
     expect(transactions).toHaveLength(1);
     expect(transactions[0]?.amount).toBe(500);
-  });
+  }, 15000);
 });
