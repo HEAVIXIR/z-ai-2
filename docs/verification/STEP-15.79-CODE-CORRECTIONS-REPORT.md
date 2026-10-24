@@ -1,14 +1,23 @@
-# HEAVIX — STEP 15.79 — Code Corrections + Real PostgreSQL Tests
+# HEAVIX — STEP 15.79 — Code Corrections + Real PostgreSQL Tests (HISTORICAL / SUPERSEDED)
 
-> **⚠ NOTE (STEP 15.80):** This report was written for the STEP 15.79 remediation.
-> The final SHA after CI-stabilizing fixes is `bb1d9fad265bbcc3d0c634595c9eb4ae443d92b6`
-> (the initial push `1fa452a` had CI failures that were fixed in `37b1bf3` then `bb1d9fa`).
-> See `docs/verification/STEP-15.80-FINAL-CORRECTIONS-REPORT.md` for the
+> **⚠ HISTORICAL DOCUMENT — SUPERSEDED.** This report covers the STEP 15.79
+> remediation. It has been superseded by STEP 15.80+ corrections.
+>
+> **SHA Provenance (historical chain):**
+> - `1fa452a` — STEP 15.79 initial push (CI FAILED: psql var doesn't work inside DO $$)
+> - `37b1bf3` — STEP 15.79 fix attempt 1 (CI FAILED: CTE division-by-zero fragile)
+> - `bb1d9fa` — STEP 15.79 fix attempt 2 (CI GREEN — this was the STEP 15.80 reviewed HEAD)
+> - `d9f3a29` — STEP 15.80 push (CI FAILED: \if psql guard unreliable)
+> - `d83f451` — STEP 15.80 fix (CI GREEN — **current final SHA**)
+>
+> **Current final SHA:** `d83f451abd59e3789d5e1e705c52f1d877af5ee2`
+> Finding D (server identity) is ⏳ UNVERIFIED — NOT FIXED.
+> See `docs/verification/STEP-15.81-FINAL-CLAIM-AUDIT-REPORT.md` for the
 > authoritative current-state classification.
 
 **Repository:** `HEAVIXIR/z-ai-2`
 **PR:** #76
-**Reviewed HEAD (STEP 15.79 owner review ID 5637811302):** `bb1d9fad265bbcc3d0c634595c9eb4ae443d92b6`
+**Reviewed HEAD (STEP 15.79 owner review ID 5637811302):** `bb1d9fad265bbcc3d0c634595c9eb4ae443d92b6` (historical — see SHA chain above)
 **Date:** 2026-10-24
 
 ---

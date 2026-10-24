@@ -50,12 +50,12 @@ CREATE TABLE IF NOT EXISTS "_dryrun_anchor" (
   rotated_at timestamptz
 );
 
--- ── 1a. Reject empty/missing anchor_value BEFORE any insert (STEP 15.80) ─
+-- ── 1a. Reject empty/missing/whitespace-only anchor_value BEFORE any insert (STEP 15.81) ─
 -- The psql variable :'anchor_value' is interpolated into this SELECT.
--- If it's empty, the CASE forces a division-by-zero error (1/0), which
--- causes psql to exit non-zero BEFORE the INSERT runs.
+-- If it's empty OR whitespace-only, the CASE forces a division-by-zero
+-- error (1/0), which causes psql to exit non-zero BEFORE the INSERT runs.
 \set ON_ERROR_STOP on
-SELECT CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END AS empty_check;
+SELECT CASE WHEN NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0 ELSE 0 END AS empty_check;
 
 -- ── 2. Insert the server-identity value (idempotent — does NOT overwrite) ─
 -- ON CONFLICT DO NOTHING: if the 'server_identity' row already exists, this

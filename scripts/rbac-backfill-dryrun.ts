@@ -216,12 +216,13 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     readiness". ALL "Host identity: verified ✅" overstatements are
  *     replaced with "Hostname consistency" labels that explicitly say
  *     "Configuration consistency — NOT a server-identity proof".
- *   - An INDEPENDENT TRUST ANCHOR mechanism is added: if
- *     `DRYRUN_SERVER_IDENTITY_ANCHOR` is set, the preflight queries the
- *     TABLE _dryrun_anchor (key='server_identity') (set out-of-band by the DBA via
- *     `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`) and compares
- *     it with the anchor. If match → "Anchor check: PASS" (wrong-DB defense).
- *     Server identity remains UNVERIFIED — a cloned DB would pass too.
+ *   - A DATABASE-LOCAL ANCHOR mechanism is added (wrong-DB defense, NOT
+ *     server identity): if `DRYRUN_SERVER_IDENTITY_ANCHOR` is set, the
+ *     preflight queries the TABLE _dryrun_anchor (key='server_identity')
+ *     (set out-of-band by the DBA via `CREATE TABLE _dryrun_anchor + INSERT
+ *     (see scripts/rbac-create-anchor-table.sql)`) and compares it with the
+ *     anchor. If match → "Anchor check: PASS" (wrong-DB defense). Server
+ *     identity remains UNVERIFIED — a cloned DB would pass too.
  *     If mismatch → halt with exit 2 (wrong DB — anchor value differs).
  *     If the anchor env var is NOT set → "Server identity: UNVERIFIED ⚠ (no
  *     database-local anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)" and

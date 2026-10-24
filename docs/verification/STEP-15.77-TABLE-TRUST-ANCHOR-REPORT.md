@@ -1,4 +1,13 @@
-# HEAVIX — STEP 15.77 — Table-Based Trust Anchor Report (H-03 Fix)
+# HEAVIX — STEP 15.77 — Table-Based Trust Anchor Report (HISTORICAL / SUPERSEDED)
+
+> **⚠ HISTORICAL DOCUMENT — SUPERSEDED.** This report described the STEP 15.77
+> TABLE-based anchor. The owner subsequently identified (H-04, STEP 15.78)
+> that the anchor table is cloneable — a cloned DB, restored backup, or
+> logical replication target has identical table contents. This control
+> CANNOT distinguish the original server from a clone. Finding D (server
+> identity) is ⏳ UNVERIFIED — NOT FIXED. See
+> `docs/verification/STEP-15.80-FINAL-CORRECTIONS-REPORT.md` for the
+> authoritative current-state classification.
 
 **Repository:** `HEAVIXIR/z-ai-2`
 **PR:** #76 (https://github.com/HEAVIXIR/z-ai-2/pull/76)

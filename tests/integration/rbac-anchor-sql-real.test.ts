@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 
 /* ============================================================
-   HEAVIX — STEP 15.79: REAL PostgreSQL behavioral tests for
+   HEAVIX — STEP 15.81: REAL PostgreSQL behavioral tests for
    the anchor-table SQL scripts (install, reinstall, rotation).
    ------------------------------------------------------------
    These tests run ONLY in CI (postgres:17 service container).
@@ -10,14 +10,21 @@ import { execFileSync } from "node:child_process";
      - scripts/rbac-create-anchor-table.sql (install)
      - scripts/rbac-rotate-anchor.sql (rotation)
 
-   Required scenarios (per owner's /analyst directive):
-     1. Initial anchor installation
-     2. Re-installation preserves existing value (non-destructive)
-     3. Read-only role has SELECT-only (no write) on anchor table
-     4. Successful anchor rotation
-     5. Rotation when the row is missing → failure detected
-     6. Anchor mismatch → detected
-     7. Anchor value survives on a cloned DB (fundamental limitation — documented)
+   Test scenario index (9 scenarios, categorized by evidence type):
+     1. Initial anchor installation                     [SQL script test]
+     2. Re-installation preserves value (non-destructive)[SQL script test]
+     3. Read-only role CANNOT write to anchor table      [privilege test]
+     4. Successful anchor rotation                       [SQL script test]
+     5. Rotation when row missing → failure detected     [SQL script test]
+     6. REAL preflight: anchor mismatch → exit code 2    [end-to-end preflight test]
+     7. Cloned DB has identical anchor (H-04 limit)      [clone simulation — NOT end-to-end]
+     8. Empty anchor_value → rejected (value unchanged)  [SQL script test]
+     9. Missing anchor_value variable → rejected         [SQL script test]
+
+   Evidence categories (per owner's /analyst directive):
+     - SQL script test: runs the SQL script, verifies DB state
+     - end-to-end preflight test: runs the ACTUAL dry-run script, verifies exit code
+     - clone simulation: documents the H-04 limitation (NOT an end-to-end test)
    ============================================================ */
 
 const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
@@ -296,6 +303,26 @@ describe.skipIf(!RUN_TESTS)(
       expect(rotationFailed).toBe(true);
 
       // The value MUST NOT have changed
+      const afterValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+      expect(afterValue).toBe(beforeValue); // ← unchanged
+    });
+
+    // ── Scenario 10: Whitespace-only anchor_value → rejected BEFORE any change ──
+    it("10. Rotation with whitespace-only anchor_value → rejected (value NOT modified)", () => {
+      const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
+
+      // Attempt rotation with WHITESPACE-ONLY anchor_value — must FAIL
+      // STEP 15.81: NULLIF(TRIM(...), '') rejects whitespace-only values
+      let rotationFailed = false;
+      try {
+        psqlScript("scripts/rbac-rotate-anchor.sql", { anchor_value: "   " });
+      } catch (e: unknown) {
+        rotationFailed = true;
+        expect(String(e)).toMatch(/division by zero|ERROR/i);
+      }
+      expect(rotationFailed).toBe(true);
+
+      // The value MUST NOT have changed (rotation was rejected before UPDATE)
       const afterValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
       expect(afterValue).toBe(beforeValue); // ← unchanged
     });

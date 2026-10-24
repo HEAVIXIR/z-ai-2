@@ -1,4 +1,13 @@
-# HEAVIX — STEP 15.76 — Identity Verification Remediation Report (PR #76)
+# HEAVIX — STEP 15.76 — Identity Verification Remediation Report (HISTORICAL / SUPERSEDED)
+
+> **⚠ HISTORICAL DOCUMENT — SUPERSEDED.** This report described the STEP 15.76
+> GUC-based anchor, which was found to be session-forgeable (H-03, STEP 15.77).
+> It also used the misleading term "INDEPENDENT TRUST ANCHOR" which has been
+> replaced with "database-local anchor / wrong-DB defense" (STEP 15.78+).
+> Finding D (server identity) is ⏳ UNVERIFIED — NOT FIXED. The anchor is a
+> wrong-DB defense only; true server identity requires TLS/CA (out of scope).
+> See `docs/verification/STEP-15.80-FINAL-CORRECTIONS-REPORT.md` for the
+> authoritative current-state classification.
 
 **Repository:** `HEAVIXIR/z-ai-2`
 **Working branch:** `chore/step-15-68-phase-c-preflight`

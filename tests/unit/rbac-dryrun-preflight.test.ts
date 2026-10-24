@@ -568,8 +568,8 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(rotateSql).toContain("row_exists");
     expect(rotateSql).toContain("RAISE EXCEPTION");
     expect(rotateSql).toContain("server_identity row");
-    // STEP 15.80: rejects empty anchor_value via CASE 1/0 BEFORE any UPDATE
-    expect(rotateSql).toContain("CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END");
+    // STEP 15.81: rejects empty/whitespace-only anchor_value via NULLIF(TRIM()) 1/0 BEFORE any UPDATE
+    expect(rotateSql).toContain("NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0");
     expect(rotateSql).toContain("empty_check");
     // MUST NOT use the invalid \if :ROWCOUNT guard in SQL commands
     const rotateCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
@@ -578,10 +578,10 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(rotateCmds).not.toMatch(/DROP\s+TABLE/i);
   });
 
-  it("scripts/rbac-create-anchor-table.sql rejects empty anchor_value (STEP 15.80)", () => {
+  it("scripts/rbac-create-anchor-table.sql rejects empty/whitespace-only anchor_value (STEP 15.81)", () => {
     const installSql = readFileSync("scripts/rbac-create-anchor-table.sql", "utf-8");
-    // STEP 15.80: rejects empty anchor_value via CASE 1/0 BEFORE any insert
-    expect(installSql).toContain("CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END");
+    // STEP 15.81: rejects empty/whitespace-only via NULLIF(TRIM()) 1/0 BEFORE any insert
+    expect(installSql).toContain("NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0");
     expect(installSql).toContain("empty_check");
   });
 

@@ -25,8 +25,9 @@
 -- The psql variable :'anchor_value' is interpolated into this SELECT.
 -- If it's empty, the CASE forces a division-by-zero error (1/0), which
 -- causes psql to exit non-zero BEFORE the UPDATE runs.
--- If it's non-empty, the SELECT returns 0 (no error) and execution continues.
-SELECT CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END AS empty_check;
+-- If it's non-empty AND not whitespace-only, the SELECT returns 0 (no error)
+-- and execution continues. If it's empty OR whitespace-only, division by zero.
+SELECT CASE WHEN NULLIF(TRIM(:'anchor_value'), '') IS NULL THEN 1/0 ELSE 0 END AS empty_check;
 
 -- ── 1. Rotate the value (plain UPDATE — psql var works outside $$) ────
 UPDATE "_dryrun_anchor"
