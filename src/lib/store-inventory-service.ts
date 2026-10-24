@@ -457,104 +457,134 @@ export async function adjustStock(
     );
   }
 
-  // 1. Look up the part + warehouse in parallel.
-  const [part, warehouse] = await Promise.all([
-    storeDb.part.findUnique({ where: { id: partId } }),
-    storeDb.warehouse.findUnique({ where: { id: warehouseId } }),
-  ]);
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
-  if (!warehouse) {
-    throw new InventoryServiceError(404, 'انبار یافت نشد');
-  }
+  // Keep the balance, public stock snapshot, and ledger write in one DB
+  // transaction. Atomic increments + conditional decrements prevent lost
+  // updates and prevent concurrent requests from overselling the same stock.
+  const result = await storeDb.$transaction(async (tx) => {
+    const [part, warehouse] = await Promise.all([
+      tx.part.findUnique({ where: { id: partId } }),
+      tx.warehouse.findUnique({ where: { id: warehouseId } }),
+    ]);
+    if (!part) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    if (!warehouse) {
+      throw new InventoryServiceError(404, 'انبار یافت نشد');
+    }
 
-  // 2. Upsert the InventoryBalance row for this (part, warehouse).
-  const existingBalance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
-  });
-  const currentQty = existingBalance?.quantity ?? 0;
-  const newQty = currentQty + qty;
-  if (newQty < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی در انبار. فعلی: ${currentQty}، درخواست: ${qty}`,
-    );
-  }
+    const existingBalance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    const currentQty = existingBalance?.quantity ?? 0;
 
-  const balanceRow = await storeDb.inventoryBalance.upsert({
-    where: { partId_warehouseId: { partId, warehouseId } },
-    create: {
-      partId,
-      warehouseId,
-      quantity: newQty,
-      reserved: 0,
-      lowStockThreshold: part.lowStockThreshold ?? 5,
-    },
-    update: {
-      quantity: newQty,
-    },
-  });
+    let balanceRow;
+    if (qty < 0) {
+      // Conditional UPDATE is atomic in PostgreSQL. If another request has
+      // already consumed the available quantity, this request affects zero
+      // rows and the entire transaction is rejected.
+      const changed = await tx.inventoryBalance.updateMany({
+        where: {
+          partId,
+          warehouseId,
+          quantity: { gte: -qty },
+        },
+        data: { quantity: { increment: qty } },
+      });
+      if (changed.count !== 1) {
+        throw new InventoryServiceError(
+          400,
+          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
+        );
+      }
+      balanceRow = await tx.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      });
+    } else {
+      balanceRow = await tx.inventoryBalance.upsert({
+        where: { partId_warehouseId: { partId, warehouseId } },
+        create: {
+          partId,
+          warehouseId,
+          quantity: qty,
+          reserved: 0,
+          lowStockThreshold: part.lowStockThreshold ?? 5,
+        },
+        update: {
+          quantity: { increment: qty },
+        },
+      });
+    }
+    if (!balanceRow) {
+      throw new InventoryServiceError(500, 'به‌روزرسانی موجودی انبار ناموفق بود');
+    }
 
-  // 3. New Part.stock snapshot = old Part.stock + qty (the adjustment
-  //    is the delta; we mirror it onto the public snapshot).
-  const newPartStock = part.stock + qty;
-  if (newPartStock < 0) {
-    // Should be unreachable (guarded above) but keep the invariant explicit.
-    throw new InventoryServiceError(400, 'موجودی قطعه منفی می‌شود');
-  }
-
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter: newPartStock,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-      warehouseId,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+    // Keep the storefront snapshot in sync with the same delta, while
+    // protecting against a negative public stock count under concurrency.
+    const partChanged = await tx.part.updateMany({
+      where: {
+        id: partId,
+        ...(qty < 0 ? { stock: { gte: -qty } } : {}),
       },
-      warehouse: {
-        select: { id: true, name: true, code: true },
+      data: { stock: { increment: qty } },
+    });
+    if (partChanged.count !== 1) {
+      throw new InventoryServiceError(400, 'موجودی قطعه منفی می‌شود');
+    }
+    const afterPart = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+    if (!afterPart) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        partId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+        createdBy: userId ?? null,
+        warehouseId,
       },
-    },
+      include: {
+        part: {
+          select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+        },
+        warehouse: {
+          select: { id: true, name: true, code: true },
+        },
+      },
+    });
+
+    return {
+      partBeforeStock: part.stock,
+      part: afterPart,
+      balance: balanceRow,
+      movement,
+      lowStock: balanceRow.quantity <= balanceRow.lowStockThreshold,
+      beforeBalance: currentQty,
+      beforeReserved: existingBalance?.reserved ?? 0,
+    };
   });
 
-  // 4. Update Part.stock snapshot.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: newPartStock },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // 5. Low-stock check — best-effort notification flag returned with the
-  //    result (no notification row created in T1-DEEP scope; the admin UI
-  //    can render an alert badge from this flag).
-  const lowStock = balanceRow.quantity <= balanceRow.lowStockThreshold;
-
-  // 6. Audit trail — 3 entries:
-  //    a. The StockMovement ledger entry (primary audit hook).
-  //    b. The Part.stock side-effect (mirrors createMovement pattern).
-  //    c. The InventoryBalance update (so the warehouse-scoped mutation
-  //       is auditable independently of the Part snapshot).
+  // Audit is deliberately outside the Store DB transaction because the audit
+  // sink is a separate subsystem/database. A failed audit write must never
+  // roll back or partially apply the stock mutation.
   await logAudit({
     actorId: userId ?? null,
     actorType: 'ADMIN',
     action: 'store.inventory.movement.create',
     entityType: 'StockMovement',
-    entityId: movement.id,
+    entityId: result.movement.id,
     after: {
       partId,
       warehouseId,
       type,
       quantity: qty,
-      balanceAfter: newPartStock,
+      balanceAfter: result.part.stock,
       reason: reason || null,
       reference: reference || null,
     },
@@ -566,8 +596,8 @@ export async function adjustStock(
     action: 'store.part.update',
     entityType: 'Part',
     entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
+    before: { stock: result.partBeforeStock },
+    after: { stock: result.part.stock },
   });
 
   await logAudit({
@@ -575,16 +605,16 @@ export async function adjustStock(
     actorType: 'ADMIN',
     action: 'store.inventory.balance.update',
     entityType: 'InventoryBalance',
-    entityId: balanceRow.id,
-    before: { quantity: currentQty, reserved: existingBalance?.reserved ?? 0 },
-    after: { quantity: balanceRow.quantity, reserved: balanceRow.reserved },
+    entityId: result.balance.id,
+    before: { quantity: result.beforeBalance, reserved: result.beforeReserved },
+    after: { quantity: result.balance.quantity, reserved: result.balance.reserved },
   });
 
   return {
-    movement: serialize(movement),
-    balance: balanceRow,
-    part: afterPart,
-    lowStock,
+    movement: serialize(result.movement),
+    balance: result.balance,
+    part: result.part,
+    lowStock: result.lowStock,
   };
 }
 
