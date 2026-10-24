@@ -30,10 +30,8 @@ interface RunResult {
 }
 
 function runScript(env: Record<string, string | undefined>): RunResult {
-  // STEP 15.86: default DRYRUN_ALLOW_NO_TLS to 'true' for all preflight tests
-  // unless the test explicitly sets it (e.g., TLS-specific tests). The unit
-  // tests run without a real DB + without TLS — the TLS check is tested
-  // separately via dedicated TLS-scenario tests below.
+  // The production script is fail-closed and has no no-TLS bypass.
+  // These tests exercise preflight checks; they do not simulate a TLS handshake.
   const mergedEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) mergedEnv[k] = v;
