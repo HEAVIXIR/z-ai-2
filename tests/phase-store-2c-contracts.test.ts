@@ -764,7 +764,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       let totalMut = 0;
       let totalAudit = 0;
       for (const { content } of files) {
-        const mutMatches = content.match(/(?:storeDb|tx)\\.\\w+\\.(create|update|updateMany|delete|deleteMany|upsert)\\(/g) || [];
+        const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
         const auditMatches = content.match(/await logAudit\\(/g) || [];
         totalMut += mutMatches.length;
         totalAudit += auditMatches.length;
