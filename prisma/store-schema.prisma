@@ -811,12 +811,14 @@ model ServiceRequest {
 model AuditOutbox {
   id           String   @id @default(cuid())
   payloadJson  String   // serialized LogAuditParams
-  status       String   @default("PENDING") // PENDING | DELIVERED | FAILED
+  status       String   @default("PENDING") // PENDING | PROCESSING | DELIVERED | FAILED
   attempts     Int      @default(0)
   lastError    String?
+  lockedAt     DateTime? // lease timestamp; stale PROCESSING rows can be reclaimed
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([status])
   @@index([createdAt])
+  @@index([status, lockedAt])
 }
