@@ -142,8 +142,7 @@ function psqlProbe(connParams: string): { success: boolean; raw: string } {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION A — REAL PRISMA CONNECTION PATH (actual behavior, including the
-// sslmode=verify-full CA/hostname limitation discovered in STEP 15.88)
+// SECTION A — REAL PRISMA CONNECTION PATH (strict certificate validation)
 // ═══════════════════════════════════════════════════════════════════════════
 describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => {
   it.skipIf(!INFRA_AVAILABLE)(
@@ -270,9 +269,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION B — libpq/psql REFERENCE PATH (proves the TLS infrastructure is
-// correct and that sslmode=verify-full CAN enforce full verification when
-// the client implements it properly)
+// SECTION B — libpq/psql REFERENCE PATH (independently validates the TLS infrastructure)
 // ═══════════════════════════════════════════════════════════════════════════
 describe('STEP 15.88 — Section B: libpq/psql reference TLS behavior', () => {
   it.skipIf(!INFRA_AVAILABLE)(
