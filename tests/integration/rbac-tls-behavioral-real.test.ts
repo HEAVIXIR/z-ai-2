@@ -89,9 +89,11 @@ function portListening(port: number, host = '127.0.0.1'): Promise<boolean> {
 const PROOF_RUN = process.env.HEAVIX_TLS_PROOF_RUN === '1';
 const _validUp = PROOF_RUN ? await portListening(VALID_PORT) : false;
 const _expiredUp = PROOF_RUN ? await portListening(EXPIRED_PORT) : false;
-const _psqlExists = existsSync(
-  resolve(PG_ROOT, 'pg-root/usr/lib/postgresql/17/bin/psql'),
-);
+// On CI (apt-installed PostgreSQL), psql is at /usr/lib/postgresql/17/bin/psql.
+// On local systems with a pg-root, it's at $PG_ROOT/pg-root/usr/lib/postgresql/17/bin/psql.
+const _psqlExists =
+  existsSync(resolve(PG_ROOT, 'pg-root/usr/lib/postgresql/17/bin/psql')) ||
+  existsSync('/usr/lib/postgresql/17/bin/psql');
 const _certsPresent =
   PROOF_RUN &&
   existsSync(CA_VALID) &&
