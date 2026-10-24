@@ -257,12 +257,13 @@ describe.skipIf(!RUN_TESTS)(
       const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
       // Attempt rotation with EMPTY anchor_value — must FAIL (non-zero exit)
+      // STEP 15.80: the CASE 1/0 guard forces a division-by-zero error
       let rotationFailed = false;
       try {
         psqlScript("scripts/rbac-rotate-anchor.sql", { anchor_value: "" });
       } catch (e: unknown) {
         rotationFailed = true;
-        expect(String(e)).toMatch(/anchor_value is empty|ERROR/i);
+        expect(String(e)).toMatch(/division by zero|ERROR/i);
       }
       expect(rotationFailed).toBe(true);
 
@@ -276,19 +277,21 @@ describe.skipIf(!RUN_TESTS)(
       const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
       // Attempt rotation WITHOUT the anchor_value variable — must FAIL
+      // When the variable is unset, psql substitutes an empty string, which
+      // triggers the same CASE 1/0 guard.
       let rotationFailed = false;
       try {
         execFileSync("psql", [
           "-h", "localhost", "-U", "postgres", "-d", "heavix_test",
           "-f", "scripts/rbac-rotate-anchor.sql",
-          // NOTE: no -v anchor_value=... → variable is unset
+          // NOTE: no -v anchor_value=... → variable is unset → psql substitutes empty
         ], {
           encoding: "utf-8", timeout: 10000,
           env: { ...process.env, PGPASSWORD: "postgres" },
         });
       } catch (e: unknown) {
         rotationFailed = true;
-        expect(String(e)).toMatch(/anchor_value variable is not set|ERROR/i);
+        expect(String(e)).toMatch(/division by zero|ERROR|syntax/i);
       }
       expect(rotationFailed).toBe(true);
 

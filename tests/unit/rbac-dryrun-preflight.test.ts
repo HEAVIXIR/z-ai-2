@@ -557,7 +557,7 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(sqlCommands).not.toMatch(/current_setting/);
   });
 
-  it("scripts/rbac-rotate-anchor.sql rejects empty/missing anchor_value BEFORE any change (STEP 15.80)", () => {
+  it("scripts/rbac-rotate-anchor.sql rejects empty anchor_value BEFORE any change (STEP 15.80)", () => {
     const rotateSql = readFileSync("scripts/rbac-rotate-anchor.sql", "utf-8");
     expect(rotateSql).toContain('UPDATE "_dryrun_anchor"');
     expect(rotateSql).toContain("rotated_at");
@@ -568,10 +568,9 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(rotateSql).toContain("row_exists");
     expect(rotateSql).toContain("RAISE EXCEPTION");
     expect(rotateSql).toContain("server_identity row");
-    // STEP 15.80: rejects empty/missing anchor_value BEFORE any change
-    expect(rotateSql).toContain("anchor_value is empty");
-    expect(rotateSql).toContain("anchor_value variable is not set");
-    expect(rotateSql).toContain("\\quit 1");
+    // STEP 15.80: rejects empty anchor_value via CASE 1/0 BEFORE any UPDATE
+    expect(rotateSql).toContain("CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END");
+    expect(rotateSql).toContain("empty_check");
     // MUST NOT use the invalid \if :ROWCOUNT guard in SQL commands
     const rotateCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
     expect(rotateCmds).not.toMatch(/\\if\s+:ROWCOUNT/i);
@@ -579,12 +578,11 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(rotateCmds).not.toMatch(/DROP\s+TABLE/i);
   });
 
-  it("scripts/rbac-create-anchor-table.sql rejects empty/missing anchor_value (STEP 15.80)", () => {
+  it("scripts/rbac-create-anchor-table.sql rejects empty anchor_value (STEP 15.80)", () => {
     const installSql = readFileSync("scripts/rbac-create-anchor-table.sql", "utf-8");
-    // STEP 15.80: rejects empty/missing anchor_value BEFORE any insert
-    expect(installSql).toContain("anchor_value is empty");
-    expect(installSql).toContain("anchor_value variable is not set");
-    expect(installSql).toContain("\\quit 1");
+    // STEP 15.80: rejects empty anchor_value via CASE 1/0 BEFORE any insert
+    expect(installSql).toContain("CASE WHEN :'anchor_value' = '' THEN 1/0 ELSE 0 END");
+    expect(installSql).toContain("empty_check");
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
