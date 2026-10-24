@@ -76,11 +76,9 @@ jobs:
         run: bun run test:security
       - name: Phase C dry-run gate (STEP 15.88 — requires TLS, SKIPPED in CI without TLS)
         env:
-          # STEP 15.88: sslmode=verify-full is REQUIRED by the preflight.
-          # CI postgres:17 does NOT have TLS configured. The preflight will
-          # halt with "DATABASE_URL does not use sslmode=verify-full" if we
-          # use the non-TLS URL. If we use sslmode=verify-full, Prisma will
-          # fail to connect because the server doesn't offer TLS.
+          # STEP 15.88: Prisma v6 requires sslmode=require, sslaccept=strict, and an explicit sslcert CA path.
+          # CI postgres:17 does NOT have TLS configured. The preflight will halt because the CI URL lacks strict TLS settings. The
+          # CI PostgreSQL service does not offer TLS or a configured trusted CA.
           #
           # INFRASTRUCTURE DEPENDENCY: a TLS-enabled PostgreSQL server is
           # required to run the dry-run gate in CI. This is NOT available
@@ -88,7 +86,7 @@ jobs:
           #
           # Finding D remains OPEN/UNVERIFIED until:
           # 1. A TLS-enabled PostgreSQL server is configured in CI
-          # 2. The preflight's sslmode=verify-full check passes against the real server
+          # 2. The preflight's strict Prisma TLS settings are present and the real connection rejects invalid certificates
           # 3. Actual TLS handshake validation (CA + hostname) is proven
           #
           # For now, the gate step is SKIPPED. The dry-run script is still
@@ -99,10 +97,10 @@ jobs:
           DRYRUN_EXPECTED_HOST: localhost
         run: |
           echo "── STEP 15.88: Dry-run gate SKIPPED — CI postgres:17 does not have TLS."
-          echo "   sslmode=verify-full is REQUIRED by the preflight."
+          echo "   Prisma v6 requires sslmode=require, sslaccept=strict, and an explicit sslcert CA path."
           echo "   The CI postgres:17 container does not offer TLS connections."
           echo "   Finding D remains OPEN/UNVERIFIED until TLS infrastructure is deployed."
-          echo "   Unit tests (382) still verify the preflight's sslmode CHECK logic."
+          echo "   Unit tests verify the strict TLS configuration gate; no handshake is claimed."
           echo "── Gate step skipped."
       - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
