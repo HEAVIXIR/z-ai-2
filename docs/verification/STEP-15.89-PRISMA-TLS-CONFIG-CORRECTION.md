@@ -35,8 +35,40 @@ The previous STEP 15.88 observation is retained as historical evidence for the t
 - The real TLS behavioral suite requires the two local TLS-enabled PostgreSQL clusters and is skipped in ordinary CI when that infrastructure is absent. A green CI run with those tests skipped is not evidence that the TLS handshake cases passed.
 - Do not close Finding D until the supported strict configuration is executed against the actual Prisma engine and all positive/negative cases are observed. If hostname mismatch or untrusted CA is accepted, Finding D stays OPEN and the connection path must be changed.
 
+## STEP 15.89 behavioral execution results (out-of-band, local infra)
+
+The owner directive required that the supported strict configuration be executed against the actual Prisma engine and that every negative case be rejected. The behavioral suite was run out-of-band against the local real TLS infrastructure (PostgreSQL 17 with TLS, VALID cluster on port 5433, EXPIRED cluster on port 5434, certs generated with OpenSSL 3.5.7). Results:
+
+### Section A — Prisma connection path (`sslmode=require&sslaccept=strict&sslcert=<path>`)
+
+| Test | Scenario | Observed behavior | OpenSSL error |
+|------|----------|-------------------|---------------|
+| PRISMA-1 | Valid CA + correct hostname + valid cert | SUCCESS ✅ | — |
+| PRISMA-2 | Untrusted CA (different CA) | REJECTED ✅ | `certificate verify failed (self-signed certificate in certificate chain)` |
+| PRISMA-3 | Hostname mismatch (cert=localhost, connect 127.0.0.1) | REJECTED ✅ | `certificate verify failed (IP address mismatch)` |
+| PRISMA-4 | Expired certificate (notAfter=2021-01-01) | REJECTED ✅ | basic TLS validity check |
+| PRISMA-5 | No TLS (`sslmode=disable`, server enforces `hostssl`) | REJECTED ✅ | `no pg_hba.conf entry for host ... no encryption` |
+| PRISMA-6 | `sslcert=/nonexistent/ca.crt` | REJECTED ✅ | `cert file not found (No such file or directory (os error 2))` |
+| PRISMA-7 | Real preflight script connects over TLS via Prisma | SUCCESS ✅ (reaches `42P01` schema error, proving TLS connection established) | — |
+
+### Section B — libpq/psql reference path (`sslmode=verify-full&sslrootcert=<path>`)
+
+| Test | Scenario | Observed behavior |
+|------|----------|-------------------|
+| LIBPQ-1 | Valid TLS | SUCCESS ✅ |
+| LIBPQ-2 | Untrusted CA | REJECTED (`certificate verify failed`) ✅ |
+| LIBPQ-3 | Hostname mismatch | REJECTED (`does not match host name`) ✅ |
+| LIBPQ-4 | Expired cert | REJECTED (`certificate verify failed`) ✅ |
+| LIBPQ-5 | No TLS | REJECTED (`no pg_hba.conf entry ... no encryption`) ✅ |
+
+### Verdict
+
+- **Prisma v6 strict configuration behavior: VERIFIED.** With `sslmode=require&sslaccept=strict&sslcert=<trusted-CA-path>`, Prisma's Rust query engine performs CA validation, hostname verification, cert expiry checks, and enforces the cert file's existence. The STEP 15.88 conclusion that Prisma could not verify server identity was based on using libpq-style parameters and is **superseded**.
+- **Finding D status: VERIFIED-LOCALLY-ONLY.** The connection path (Prisma v6 strict config) enforces server identity verification. The preflight gate enforces the required parameters (fail-closed). The behavioral tests prove all negative cases are rejected.
+- **Remaining gap (CI):** The standard `postgres:17` CI service container does not provide TLS. The behavioral suite SKIPS in CI. Closing Finding D in CI requires either (a) provisioning TLS-enabled PostgreSQL in CI, or (b) the owner's out-of-band sign-off after running the suite locally with `HEAVIX_TLS_PROOF_RUN=1` against provisioned TLS servers. Until then, a green CI run is necessary but not sufficient.
+
 ## Governance
 
 - PR #76 remains open and unmerged.
-- No staging, backfill, Phase D/E, or production authorization.
+- No staging, backfill, Phase D/E, or production authorization until the owner signs off on the out-of-band behavioral evidence (or CI TLS infra is provisioned).
 - No branch-protection bypass or self-approval.

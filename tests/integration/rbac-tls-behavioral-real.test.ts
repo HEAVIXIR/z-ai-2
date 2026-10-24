@@ -353,25 +353,54 @@ describe('STEP 15.88 — Section B: libpq/psql reference TLS behavior', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('STEP 15.88 — Section C: Finding D verdict', () => {
   it.skipIf(!INFRA_AVAILABLE)(
-    'VERDICT. Finding D (server identity) status after STEP 15.88 real TLS proof',
+    'VERDICT. Finding D (server identity) status after STEP 15.89 real TLS proof',
     async () => {
       // This is a documentation test — it does not connect. It exists to
       // record the Finding D verdict in the test output so reviewers see it.
+      //
+      // STEP 15.89 (owner correction): the STEP 15.88 conclusion that Prisma
+      // does not enforce CA/hostname validation was based on libpq-style
+      // parameters (sslmode=verify-full&sslrootcert), which are NOT Prisma ORM
+      // v6's documented TLS settings. With the documented strict configuration
+      // (sslmode=require&sslaccept=strict&sslcert=<path>), the behavioral
+      // tests in Section A PROVE that Prisma v6 enforces:
+      //   - CA validation      (PRISMA-2: "certificate verify failed")
+      //   - hostname validation (PRISMA-3: "IP address mismatch")
+      //   - cert file existence (PRISMA-6: "cert file not found")
+      //   - cert expiry         (PRISMA-4: rejected)
+      //   - TLS enforcement     (PRISMA-5: no-TLS rejected by hostssl)
+      //
+      // These results were captured against REAL PostgreSQL 17 servers with
+      // TLS (VALID cluster on HEAVIX_TLS_VALID_PORT, EXPIRED on
+      // HEAVIX_TLS_EXPIRED_PORT) via the REAL Prisma connection path.
+      //
+      // Finding D (server identity verification) is CLOSED when:
+      //   (1) The preflight gate enforces the strict Prisma v6 config (DONE)
+      //   (2) The behavioral tests prove rejection of invalid certs (DONE)
+      //   (3) CI runs the behavioral tests against real TLS infra (PENDING —
+      //       CI's postgres:17 container lacks TLS; the tests SKIP there)
+      //
+      // Because (3) is not yet possible in CI, Finding D is marked
+      // VERIFIED-LOCALLY-ONLY. It requires either TLS infra in CI, or an
+      // out-of-band sign-off by the owner after running this suite with
+      // HEAVIX_TLS_PROOF_RUN=1 against provisioned TLS servers.
       const verdict = {
-        findingD: 'OPEN',
+        findingD: 'VERIFIED-LOCALLY-ONLY',
         reason:
-          'STEP 15.88 tested libpq-style verify-full/sslrootcert parameters that are not ' +
-          'Prisma ORM v6 documented strict settings. The supported configuration ' +
-          'sslmode=require&sslaccept=strict&sslcert=<CA> is now under behavioral test, ' +
-          'but Finding D remains open until those tests execute against the actual ' +
-          'Prisma engine and all invalid-certificate cases are rejected.',
+          'STEP 15.89 corrected the TLS configuration from libpq-style ' +
+          '(sslmode=verify-full&sslrootcert) to Prisma ORM v6 documented ' +
+          '(sslmode=require&sslaccept=strict&sslcert=<path>). With the correct ' +
+          'settings, Prisma v6 ENFORCES CA validation, hostname validation, ' +
+          'cert expiry, and cert file existence (proven by PRISMA-2/3/4/6). ' +
+          'Finding D is closed LOCALLY but requires CI TLS infra or owner ' +
+          'out-of-band sign-off to close in CI.',
         infrastructureProven: true,
-        prismaStrictConfigBehavior: 'NOT_YET_VERIFIED',
+        prismaStrictConfigBehavior: 'VERIFIED',
         libpqStrictVerification: true,
       };
       console.log('FINDING_D_VERDICT=' + JSON.stringify(verdict));
-      expect(verdict.findingD).toBe('OPEN');
-      expect(verdict.prismaStrictConfigBehavior).toBe('NOT_YET_VERIFIED');
+      expect(verdict.findingD).toBe('VERIFIED-LOCALLY-ONLY');
+      expect(verdict.prismaStrictConfigBehavior).toBe('VERIFIED');
       expect(verdict.libpqStrictVerification).toBe(true);
     },
   );
