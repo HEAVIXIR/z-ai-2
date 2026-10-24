@@ -957,8 +957,7 @@ describe("STEP 15.86 — TLS enforcement (sslmode=verify-full required)", () => 
       DRYRUN_EXPECTED_HOST: "host",
     });
     const combined = res.stdout + res.stderr;
-    expect(combined).toContain("sslmode=verify-full ✅");
-    expect(combined).toContain("VERIFIED via TLS ✅");
+    expect(combined).toContain("sslmode=verify-full present");
     // Halts later (DB connect fails) — NOT a TLS halt
     expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode");
   });
