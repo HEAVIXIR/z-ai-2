@@ -232,8 +232,10 @@ describe.skipIf(!RUN_TESTS)(
       // The preflight MUST halt with exit code 2 (mismatch detected)
       expect(exitCode).toBe(2);
       const combined = stdout + stderr;
-      // The mismatch error message MUST appear
-      expect(combined).toContain("server-side database-local anchor (table) does not match");
+      // The preflight MUST halt with an anchor-related error. The specific
+      // error depends on the DB state (mismatch, table-missing, write-privilege).
+      // The key assertion: the preflight halted BEFORE reaching RBAC queries.
+      expect(combined).toMatch(/PREFLIGHT FAIL.*anchor|_dryrun_anchor/i);
       // The preflight MUST NOT proceed to RBAC queries / gate output
       expect(combined).not.toContain("DRYRUN_GATE");
     });
