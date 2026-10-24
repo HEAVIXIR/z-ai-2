@@ -31,6 +31,7 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_STATUSES = [
@@ -767,6 +768,58 @@ export async function resolveReturn(
       throw new ReturnsServiceError(404, 'مرجوعی پس از حل‌وفصل یافت نشد');
     }
 
+    // STEP 15.95+ — Transactional Audit Outbox. Audit events for the
+    // financial state change (Customer wallet), Return status transition,
+    // and WalletTransaction creation are written to the AuditOutbox INSIDE
+    // the same storeDb transaction. The replay worker (drainAuditOutbox)
+    // delivers them to the main AuditLog table with retry + dedup. This
+    // guarantees the audit invariant: a committed refund always has a
+    // corresponding audit event, even if the main DB is unavailable at
+    // commit time.
+    if (customerId && walletTxn) {
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.return.resolve',
+        entityType: 'Customer',
+        entityId: customerId,
+        before: { walletBalanceIrr: beforeWalletBalance },
+        after: { walletBalanceIrr: afterWalletBalance },
+      });
+    }
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.return.resolve',
+      entityType: 'Return',
+      entityId: returnId,
+      before: {
+        status: existing.status,
+        resolution: existing.resolution,
+      },
+      after: {
+        status: ret.status,
+        resolution: ret.resolution,
+        refundAmountIrr: resolution === 'REFUND' ? refundAmountIrr : null,
+        walletTxnId: walletTxn?.id ?? null,
+      },
+    });
+    if (walletTxn) {
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.return.resolve',
+        entityType: 'WalletTransaction',
+        entityId: walletTxn.id,
+        after: {
+          returnId,
+          customerId: customerId ?? null,
+          amount: refundAmountIrr,
+          type: 'CREDIT',
+        },
+      });
+    }
+
     return {
       existing,
       ret,
@@ -778,54 +831,9 @@ export async function resolveReturn(
     };
   });
 
-  // Cross-subsystem audit records are emitted after the Store DB transaction
-  // commits. The financial state and Return status cannot be split by a
-  // mid-flight database failure.
-  if (result.customerId && result.walletTxn) {
-    await logAudit({
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.return.resolve',
-      entityType: 'Customer',
-      entityId: result.customerId,
-      before: { walletBalanceIrr: result.beforeWalletBalance },
-      after: { walletBalanceIrr: result.afterWalletBalance },
-    });
-  }
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.resolve',
-    entityType: 'Return',
-    entityId: returnId,
-    before: {
-      status: result.existing.status,
-      resolution: result.existing.resolution,
-    },
-    after: {
-      status: result.ret.status,
-      resolution: result.ret.resolution,
-      refundAmountIrr: resolution === 'REFUND' ? result.refundAmountIrr : null,
-      walletTxnId: result.walletTxn?.id ?? null,
-    },
-  });
-
-  if (result.walletTxn) {
-    await logAudit({
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.return.resolve',
-      entityType: 'WalletTransaction',
-      entityId: result.walletTxn.id,
-      after: {
-        returnId,
-        customerId: result.customerId ?? null,
-        amount: result.refundAmountIrr,
-        type: 'CREDIT',
-      },
-    });
-  }
+  // STEP 15.95+: audit events are now delivered via the Transactional Outbox
+  // (enqueued inside the storeDb transaction above). No post-commit logAudit
+  // calls remain — the audit invariant is now atomic for the refund flow.
 
   return serialize({
     ...result.ret,

@@ -34,6 +34,7 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_TYPES = [
@@ -558,6 +559,48 @@ export async function adjustStock(
       },
     });
 
+    // STEP 15.95+ — Transactional Audit Outbox. The audit events are written
+    // to the AuditOutbox table INSIDE the same storeDb transaction as the
+    // mutation (atomic). A replay worker drains the outbox to the main
+    // AuditLog table (db.auditLog) with retry + dedup. This guarantees the
+    // audit invariant: every committed mutation has a corresponding audit
+    // event that WILL eventually be delivered, even if the main DB is
+    // temporarily unavailable at commit time.
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.movement.create',
+      entityType: 'StockMovement',
+      entityId: movement.id,
+      after: {
+        partId,
+        warehouseId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+      },
+    });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.part.update',
+      entityType: 'Part',
+      entityId: partId,
+      before: { stock: part.stock },
+      after: { stock: afterPart.stock },
+    });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.balance.update',
+      entityType: 'InventoryBalance',
+      entityId: balanceRow.id,
+      before: { quantity: currentQty, reserved: existingBalance?.reserved ?? 0 },
+      after: { quantity: balanceRow.quantity, reserved: balanceRow.reserved },
+    });
+
     return {
       partBeforeStock: part.stock,
       part: afterPart,
@@ -569,45 +612,10 @@ export async function adjustStock(
     };
   });
 
-  // Audit is deliberately outside the Store DB transaction because the audit
-  // sink is a separate subsystem/database. A failed audit write must never
-  // roll back or partially apply the stock mutation.
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: result.movement.id,
-    after: {
-      partId,
-      warehouseId,
-      type,
-      quantity: qty,
-      balanceAfter: result.part.stock,
-      reason: reason || null,
-      reference: reference || null,
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: partId,
-    before: { stock: result.partBeforeStock },
-    after: { stock: result.part.stock },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.balance.update',
-    entityType: 'InventoryBalance',
-    entityId: result.balance.id,
-    before: { quantity: result.beforeBalance, reserved: result.beforeReserved },
-    after: { quantity: result.balance.quantity, reserved: result.balance.reserved },
-  });
+  // STEP 15.95+: audit events are now delivered via the Transactional Outbox
+  // (enqueued inside the storeDb transaction above). The replay worker
+  // (drainAuditOutbox) drains the outbox to the main AuditLog table. No
+  // post-commit logAudit calls remain — the audit invariant is now atomic.
 
   return {
     movement: serialize(result.movement),

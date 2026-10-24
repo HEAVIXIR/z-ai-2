@@ -778,3 +778,45 @@ model ServiceRequest {
   @@index([type])
   @@index([status])
 }
+
+// ---------------------------------------------------------------------------
+// STEP 15.95+ — TRANSACTIONAL AUDIT OUTBOX
+// ---------------------------------------------------------------------------
+// Problem: store mutations (inventory adjustments, return refunds) commit in
+// storeDb transactions, but audit logs are written to the MAIN HEAVIX
+// PostgreSQL (db.auditLog) — a separate database. The current logAudit()
+// helper writes AFTER the transaction commits. If the audit write fails, the
+// committed mutation has no audit trail — the event is lost forever.
+//
+// Solution: a Transactional Outbox. Each store mutation writes an AuditOutbox
+// row INSIDE the same storeDb transaction (atomic with the mutation). A
+// replay worker then drains the outbox to db.auditLog (the main DB) with
+// retry + deduplication. If the replay worker or main DB is temporarily
+// unavailable, the outbox retains the event until it can be delivered.
+//
+// This guarantees the audit invariant: every committed store mutation has a
+// corresponding audit event that WILL eventually be delivered (at-least-once).
+// The replay worker uses the idempotencyKey for deduplication on the main DB
+// side (a UNIQUE constraint on AuditLog.idempotencyKey — see main schema).
+//
+// Fields:
+//   - id: outbox row id (also used as the AuditLog.idempotencyKey for dedup)
+//   - payloadJson: the full LogAuditParams serialized as JSON
+//   - status: PENDING (written, not yet drained) | DELIVERED (drained to main DB)
+//             | FAILED (retries exhausted — needs manual intervention)
+//   - attempts: how many times the replay worker has tried to deliver this
+//   - lastError: the most recent delivery error (null if never failed)
+//   - createdAt/updatedAt: timestamps for monitoring + retry backoff
+// ---------------------------------------------------------------------------
+model AuditOutbox {
+  id           String   @id @default(cuid())
+  payloadJson  String   // serialized LogAuditParams
+  status       String   @default("PENDING") // PENDING | DELIVERED | FAILED
+  attempts     Int      @default(0)
+  lastError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
