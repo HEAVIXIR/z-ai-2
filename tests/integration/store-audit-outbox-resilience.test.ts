@@ -49,7 +49,7 @@ beforeAll(async () => {
 afterEach(async () => {
   if (!STORE_DB_AVAILABLE) return;
   try {
-    await storeDb.auditOutbox.deleteMany({});
+    await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: 'test.outbox.' } } });
   } catch {
     // best-effort cleanup
   }
