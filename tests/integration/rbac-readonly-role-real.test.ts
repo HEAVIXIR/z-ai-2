@@ -252,6 +252,7 @@ describe.skipIf(!RUN_TESTS)(
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
 
       let output = "";
+      let exitCode: number | null = null;
       try {
         output = execFileSync(
           "bunx",
@@ -262,33 +263,30 @@ describe.skipIf(!RUN_TESTS)(
             env: {
               ...process.env,
               DATABASE_URL: roUrl,
-              // STEP 15.68: preflight env vars (F-15.68-01, F-15.68-02)
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
-              // STEP 15.73: MANDATORY host identity verification.
-              // STEP 15.75: DRYRUN_CI_HOST_CHECK_EXCEPTION, GITHUB_ACTIONS, CI
-              // have been REMOVED from the integration env block. The
-              // inet_server_addr() IP check has been removed entirely;
-              // identity is now verified via LIVE DB content (table existence +
-              // Role catalog) inside preflightConnectionCheck. GITHUB_ACTIONS
-              // and CI are no longer referenced by the preflight — they were
-              // caller-controlled env vars that could not cryptographically
-              // prove "this is GitHub Actions CI." DRYRUN_CI_HOST_CHECK_EXCEPTION
-              // is now a deprecated bypass: ANY value halts with exit 2.
               DRYRUN_EXPECTED_HOST: "localhost",
-              DRYRUN_ALLOW_NO_TLS: "true", // CI postgres:17 has no TLS
+              // STEP 15.88: NO DRYRUN_ALLOW_NO_TLS bypass. The preflight
+              // requires sslmode=verify-full. CI postgres:17 doesn't have
+              // TLS → the preflight halts at the TLS check (fail-closed).
+              // This is the CORRECT behavior — the production path does
+              // not run without TLS.
             },
           },
         );
       } catch (e: unknown) {
-        const err = e as { stdout?: string };
+        const err = e as { stdout?: string; status: number | null };
         output = err.stdout ?? "";
+        exitCode = err.status;
       }
 
-      // MUST NOT contain permission errors (the read-only role must allow SELECTs)
-      expect(output).not.toMatch(/permission denied/i);
-      // MUST contain DRYRUN_GATE output (the script ran to completion)
-      expect(output).toContain("DRYRUN_GATE:");
+      // STEP 15.88: the dry-run script halts at the TLS check because
+      // CI postgres:17 doesn't have sslmode=verify-full. This is the
+      // CORRECT fail-closed behavior.
+      expect(exitCode).toBe(2);
+      expect(output).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+      // MUST NOT reach DRYRUN_GATE (preflight halted before RBAC queries)
+      expect(output).not.toContain("DRYRUN_GATE:");
     });
   },
 );

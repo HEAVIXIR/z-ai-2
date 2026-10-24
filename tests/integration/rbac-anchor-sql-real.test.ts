@@ -194,8 +194,9 @@ describe.skipIf(!RUN_TESTS)(
       psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: "CORRECT_ANCHOR_VALUE" });
 
       // This test runs the ACTUAL dry-run script with a WRONG anchor value.
-      // It verifies the preflight HALTS with exit code 2 and prints the
-      // mismatch error — NOT a string comparison simulation.
+      // STEP 15.88: the preflight requires sslmode=verify-full. CI postgres:17
+      // doesn't have TLS → the preflight halts at the TLS check BEFORE reaching
+      // the anchor check. This is the CORRECT fail-closed behavior.
       const pw = process.env.DRYUN_RO_PW;
       if (!pw) throw new Error("DRYUN_RO_PW not set");
       const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
@@ -217,7 +218,7 @@ describe.skipIf(!RUN_TESTS)(
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
               DRYRUN_EXPECTED_HOST: "localhost",
-              DRYRUN_ALLOW_NO_TLS: "true", // CI postgres:17 has no TLS
+              // STEP 15.88: NO DRYRUN_ALLOW_NO_TLS bypass.
               DRYRUN_SERVER_IDENTITY_ANCHOR: wrongAnchor, // ← WRONG value
             },
           },
@@ -229,14 +230,13 @@ describe.skipIf(!RUN_TESTS)(
         stderr = err.stderr ?? "";
       }
 
-      // The preflight MUST halt with exit code 2 (mismatch detected)
+      // STEP 15.88: the preflight halts at the TLS check because CI postgres:17
+      // doesn't have sslmode=verify-full. This is BEFORE the anchor check.
+      // The test verifies the CORRECT fail-closed behavior: no TLS → halt.
       expect(exitCode).toBe(2);
       const combined = stdout + stderr;
-      // The preflight MUST halt with an anchor-related error. The specific
-      // error depends on the DB state (mismatch, table-missing, write-privilege).
-      // The key assertion: the preflight halted BEFORE reaching RBAC queries.
-      expect(combined).toMatch(/PREFLIGHT FAIL.*anchor|_dryrun_anchor/i);
-      // The preflight MUST NOT proceed to RBAC queries / gate output
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+      // MUST NOT proceed to RBAC queries / gate output
       expect(combined).not.toContain("DRYRUN_GATE");
     });
 

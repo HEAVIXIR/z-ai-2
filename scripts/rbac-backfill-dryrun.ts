@@ -329,7 +329,7 @@ async function preflightConnectionCheck(): Promise<void> {
   // check below).
   console.log('  Hostname consistency     : PASS ✅ (Configuration consistency — NOT a server-identity proof)');
 
-  // STEP 15.86 (Finding D — TLS-based server identity verification):
+  // STEP 15.88 (Finding D — TLS enforcement, NO caller-controlled bypass):
   // The preflight verifies that DATABASE_URL contains sslmode=verify-full.
   // This is the ONLY mechanism that provides cryptographic server identity:
   // the PostgreSQL driver validates the server's TLS certificate against a
@@ -344,40 +344,31 @@ async function preflightConnectionCheck(): Promise<void> {
   //   prefer       — TLS if available, plaintext if not — rejected
   //   disable      — no TLS — rejected
   //
-  // If sslmode is not verify-full → halt (fail-closed, no silent fallback).
+  // STEP 15.88: the DRYRUN_ALLOW_NO_TLS env-var bypass was REMOVED. It was
+  // caller-controlled — an operator could set it in any environment, including
+  // staging/production. The production path MUST fail-closed when TLS is not
+  // configured. There is NO exception.
   //
-  // EXCEPTION: DRYRUN_ALLOW_NO_TLS=true allows diagnostic dry-runs without
-  // TLS (e.g., CI with a local postgres:17 container that doesn't have TLS).
-  // This is ONLY for diagnostic dry-runs — NEVER for staging/production.
-  // When this exception is used, server identity is logged as UNVERIFIED.
-  const allowNoTls = process.env.DRYRUN_ALLOW_NO_TLS === 'true';
+  // For CI testing without TLS: the test harness must use a COMPILE-TIME
+  // constant (see src/lib/rbac/test-config.ts) that is NOT settable via
+  // environment variables. This constant is only available in the test
+  // build, not in the production script.
   try {
     const parsedUrl = new URL(databaseUrl);
     const sslmode = parsedUrl.searchParams.get('sslmode');
     if (sslmode !== 'verify-full') {
-      if (allowNoTls) {
-        console.log('  TLS mode                 : NOT SET ⚠ (DRYRUN_ALLOW_NO_TLS=true — diagnostic only)');
-        console.log('    Server identity: UNVERIFIED ⚠ (no TLS — cannot prove server identity)');
-        console.log('    This is acceptable for diagnostic dry-run ONLY.');
-        console.log('    For staging/production, use sslmode=verify-full in DATABASE_URL.');
-      } else {
-        console.error('✗ PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full.');
-        console.error(`    Current sslmode: ${sslmode ?? '<not set — defaults to prefer/disable>'}`);
-        console.error('  sslmode=verify-full is REQUIRED for server identity verification.');
-        console.error('  This enforces TLS with CA validation AND strict hostname verification.');
-        console.error('  Without it, the connection is vulnerable to MITM and cannot prove server identity.');
-        console.error('  Update DATABASE_URL to include ?sslmode=verify-full');
-        console.error('  (For CI without TLS, set DRYRUN_ALLOW_NO_TLS=true — diagnostic dry-run only,');
-        console.error('   NEVER for staging/production. See STEP 15.86 policy.)');
-        process.exit(2);
-      }
-    } else {
-      console.log('  TLS mode                 : sslmode=verify-full ✅ (CA + hostname verified by driver)');
-      console.log('    Server identity: VERIFIED via TLS ✅ (cryptographic proof — not env-var-based)');
+      console.error('✗ PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full.');
+      console.error(`    Current sslmode: ${sslmode ?? '<not set — defaults to prefer/disable>'}`);
+      console.error('  sslmode=verify-full is REQUIRED for server identity verification.');
+      console.error('  This enforces TLS with CA validation AND strict hostname verification.');
+      console.error('  Without it, the connection is vulnerable to MITM and cannot prove server identity.');
+      console.error('  Update DATABASE_URL to include ?sslmode=verify-full');
+      console.error('  (STEP 15.88: NO env-var bypass. The production path fails closed without TLS.)');
+      process.exit(2);
     }
+    console.log('  TLS mode                 : sslmode=verify-full ✅ (CA + hostname verified by driver)');
+    console.log('    Server identity: VERIFIED via TLS ✅ (cryptographic proof — not env-var-based)');
   } catch {
-    // URL already parsed above (extractDbName/extractHost) — if we reach here,
-    // it's a race condition. Fail closed.
     console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not a parseable URL for TLS verification.');
     process.exit(2);
   }
