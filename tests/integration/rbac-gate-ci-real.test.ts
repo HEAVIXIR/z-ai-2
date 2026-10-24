@@ -11,10 +11,10 @@ import { join } from "node:path";
    3. The CI workflow uses the runner (not bash/python parser)
    4. The gate-logic module handles all edge cases
 
-   The ACTUAL CI execution of the gate runner happens in the
-   "Phase C dry-run" CI step (not as a test). This avoids
-   concurrency issues (other tests mutating the DB while the
-   dry-run takes its AFTER snapshot).
+   The actual gate runner is executed in the tls-proof job against
+   a separate TLS-enabled PostgreSQL 17 database, after schema + RBAC
+   seeding and read-only role grants. The generic postgres:17 verify job
+   explicitly does NOT run this gate because that service has no TLS.
    ============================================================ */
 
 describe("STEP 15.49 — CI Runner Script Validation", () => {
@@ -41,14 +41,14 @@ describe("STEP 15.49 — CI Runner Script Validation", () => {
     expect(content).toContain("process.exit(0)");
   });
 
-  it("CI workflow references rbac-gate-ci.ts OR has a TLS-skip step (STEP 15.88)", () => {
+  it("CI workflow executes the Phase C gate against TLS-enabled PostgreSQL 17", () => {
     const content = readFileSync(WORKFLOW_PATH, "utf-8");
-    // STEP 15.94: the gate step may be SKIPPED when TLS is unavailable.
-    // Either the gate runner is referenced, or the step is explicitly skipped
-    // with documentation that TLS infrastructure is required.
-    const hasGateRunner = content.includes("scripts/rbac-gate-ci.ts");
-    const hasTlsSkip = content.includes("NOT EXECUTED") || content.includes("SKIPPED") || content.includes("not executed");
-    expect(hasGateRunner || hasTlsSkip).toBe(true);
+    // The non-TLS service may explicitly skip this gate, but a separate real
+    // TLS job MUST run the actual gate runner against an isolated test DB.
+    expect(content).toContain("Run Phase C read-only preflight gate against TLS PostgreSQL 17");
+    expect(content).toContain("bunx tsx scripts/rbac-gate-ci.ts");
+    expect(content).toContain("heavix_preflight_test");
+    expect(content).toContain("DRYRUN_EXPECTED_HOST: \"localhost\"");
     // Verify the old bash/python parser is gone
     expect(content).not.toContain("python3 -c");
     expect(content).not.toContain("GATE_PASSES");
@@ -66,22 +66,15 @@ describe("STEP 15.49 — CI Runner Script Validation", () => {
 /* ============================================================
    Real CI path tests
    ------------------------------------------------------------
-   The ACTUAL CI gate runner execution happens in the "Phase C
-   dry-run" CI step (scripts/rbac-gate-ci.ts), which runs in
-   isolation (before All contract + unit tests). Running the
-   gate runner as a test would be flaky because OTHER integration
-   tests mutate the DB concurrently, causing readOnlyInvariant
-   to detect mutations from other tests.
-
-   The CI step is the AUTHORITATIVE evidence — it runs the gate
-   runner in the verify job BEFORE the integration test files
-   step. If the gate runner fails there, CI fails.
+   The authoritative real execution runs in the tls-proof job after
+   provisioning TLS-enabled PostgreSQL 17, creating an isolated database,
+   pushing the schema, seeding RBAC, and granting SELECT-only privileges.
+   It is deliberately separate from the generic postgres:17 verify job,
+   which has no TLS and explicitly does not run the Phase C gate.
 
    The unit tests (tests/unit/rbac-gate-logic.test.ts) provide
-   the logic-level coverage (18 tests including all negative paths).
-   The static tests above verify the runner script exists, imports
-   the shared module, and calls process.exit.
-
-   Together: unit tests (logic) + static tests (wiring) + CI step
-   (real execution in isolation) = complete coverage.
+   logic-level coverage including negative paths. The static tests above
+   verify that CI wires the real gate runner into the TLS job.
+   Together: unit tests + wiring checks + actual TLS DB gate execution
+   provide layered evidence; staging execution remains separately gated.
    ============================================================ */
