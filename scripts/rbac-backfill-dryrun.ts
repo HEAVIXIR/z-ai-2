@@ -337,36 +337,36 @@ async function preflightConnectionCheck(): Promise<void> {
   // the exact Prisma/runtime configuration. No in-database mechanism (table,
   // GUC, content) can independently prove physical server identity.
   //
-  // sslmode values (PostgreSQL standard):
-  //   verify-full  — TLS + CA validation + strict hostname check ✅ REQUIRED
-  //   verify-ca    — TLS + CA validation (no hostname check) — insufficient
-  //   require      — TLS but no CA validation (MITM vulnerable) — rejected
-  //   prefer       — TLS if available, plaintext if not — rejected
-  //   disable      — no TLS — rejected
+  // Prisma ORM v6's documented PostgreSQL TLS parameters are not libpq's
+  // sslmode=verify-full semantics. In this version, use sslmode=require to
+  // require encryption, sslaccept=strict to reject invalid certificates, and
+  // sslcert=<trusted root CA file> to pin the expected CA. Do not claim that
+  // merely parsing these parameters proves a live TLS handshake.
   //
-  // STEP 15.88: the DRYRUN_ALLOW_NO_TLS env-var bypass was REMOVED. It was
-  // caller-controlled — an operator could set it in any environment, including
-  // staging/production. The production path MUST fail-closed when TLS is not
-  // configured. There is NO exception.
-  //
-  // CI currently lacks TLS-enabled PostgreSQL, so the DB-backed dry-run
-  // gate is skipped. Unit/integration tests may assert that this configuration
-  // check fails closed, but must not simulate or claim a successful TLS
-  // handshake. Finding D remains OPEN/UNVERIFIED until real TLS tests exist.
+  // STEP 15.88: the DRYRUN_ALLOW_NO_TLS env-var bypass was REMOVED. The
+  // production path must fail closed unless all required TLS settings exist.
+  // CI's plain postgres:17 service does not provide TLS, so its DB-backed gate
+  // remains explicitly skipped; Finding D remains OPEN until the actual Prisma
+  // connection path passes trusted-CA, untrusted-CA, hostname-mismatch,
+  // expired-certificate, and no-TLS behavioral tests.
   try {
     const parsedUrl = new URL(databaseUrl);
     const sslmode = parsedUrl.searchParams.get('sslmode');
-    if (sslmode !== 'verify-full') {
-      console.error('✗ PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full.');
-      console.error(`    Current sslmode: ${sslmode ?? '<not set — defaults to prefer/disable>'}`);
-      console.error('  sslmode=verify-full is REQUIRED for server identity verification.');
-      console.error('  This enforces TLS with CA validation AND strict hostname verification.');
-      console.error('  Without it, the connection is vulnerable to MITM and cannot prove server identity.');
-      console.error('  Update DATABASE_URL to include ?sslmode=verify-full');
-      console.error('  (STEP 15.88: NO env-var bypass. The production path fails closed without TLS.)');
+    const sslaccept = parsedUrl.searchParams.get('sslaccept');
+    const sslcert = parsedUrl.searchParams.get('sslcert');
+    const missing: string[] = [];
+    if (sslmode !== 'require') missing.push('sslmode=require');
+    if (sslaccept !== 'strict') missing.push('sslaccept=strict');
+    if (!sslcert || !sslcert.trim()) missing.push('sslcert=<trusted-root-CA-path>');
+    if (missing.length > 0) {
+      console.error('✗ PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings.');
+      console.error(`    Missing/invalid: ${missing.join(', ')}`);
+      console.error('  Required for Prisma ORM v6: sslmode=require&sslaccept=strict&sslcert=<trusted-root-CA-path>');
+      console.error('  This is a configuration gate only; actual CA/hostname validation must be proven by TLS behavioral tests.');
+      console.error('  (STEP 15.88: NO env-var bypass. The production path fails closed without these settings.)');
       process.exit(2);
     }
-    console.log('  TLS configuration        : sslmode=verify-full present (handshake/CA/hostname validation not yet proven by this check)');
+    console.log('  TLS configuration        : require + strict certificate validation + explicit CA path present (handshake not proven by this check)');
   } catch {
     console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not a parseable URL for TLS verification.');
     process.exit(2);
