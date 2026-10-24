@@ -264,7 +264,10 @@ describe.skipIf(!RUN_TESTS)(
 
     // ── Scenario 8: Empty/missing anchor_value in rotation → rejected BEFORE any change ──
     it("8. Rotation with empty anchor_value → rejected BEFORE any change (value NOT modified)", () => {
-      // Record the current value before attempting rotation with empty value
+      // Ensure the table exists + has a known value before this test
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: ANCHOR_VALUE_1 });
+
       const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
       // Attempt rotation with EMPTY anchor_value — must FAIL (non-zero exit)
@@ -285,6 +288,10 @@ describe.skipIf(!RUN_TESTS)(
 
     // ── Scenario 9: Missing anchor_value variable in rotation → rejected ──
     it("9. Rotation with MISSING anchor_value variable → rejected (no change)", () => {
+      // Ensure the table exists + has a known value before this test
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: ANCHOR_VALUE_1 });
+
       const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
       // Attempt rotation WITHOUT the anchor_value variable — must FAIL
