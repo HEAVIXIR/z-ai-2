@@ -313,6 +313,11 @@ describe.skipIf(!RUN_TESTS)(
 
     // ── Scenario 10: Whitespace-only anchor_value → rejected BEFORE any change ──
     it("10. Rotation with whitespace-only anchor_value → rejected (value NOT modified)", () => {
+      // Ensure the table exists + has a known value before this test
+      // (prior tests may have left the DB in an inconsistent state)
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: ANCHOR_VALUE_1 });
+
       const beforeValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
       // Attempt rotation with WHITESPACE-ONLY anchor_value — must FAIL
