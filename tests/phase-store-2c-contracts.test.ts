@@ -559,31 +559,26 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 65 logAudit calls across all store routes + services', () => {
+    it('should have 67 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
+      // STEP 15.95+ — Transactional Outbox: 6 service-scope logAudit calls
+      // (3 in inventory service + 3 in returns service) were replaced with
+      // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
+      // invariant is unchanged: every mutation has a corresponding audit
+      // event. The count is 67 = 61 logAudit + 6 enqueueAuditOutbox.
+      //
+      // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
-      // T1+T2-DEEP: services grew (+14: 8 in inventory service +
-      // 6 in returns service) → 33 routes + 20 services = 53.
-      // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10: 8 in the
-      // new procurement service + 2 in the shipments service for tracking)
-      // → 33 routes + 30 services = 63.
-      // PHASE-P8-TRANSACTION: +2 in routes (rentals/[id] PATCH store.rental.update
-      //   + DELETE store.rental.delete audits inline; the 6 rental-service.ts
-      //   audits live in src/lib/rental-service.ts which is NOT in this test's
-      //   service scope — it's covered separately by phase-p8-transaction.test.ts)
-      //   → 35 routes + 30 services = 65.
+      // T1+T2-DEEP: services grew (+14: 8 in inventory + 6 in returns) → 53.
+      // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10) → 63.
+      // PHASE-P8-TRANSACTION: +2 in routes → 65.
+      // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.
       const files = readAllStoreFiles();
       let count = 0;
       for (const { content } of files) {
-        const matches = content.match(/await logAudit\(/g);
-        count += matches ? matches.length : 0;
+        const logMatches = content.match(/await logAudit\(/g);
+        const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
+        count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      // PHASE-P9-SERVICES-LOGISTICS: +2 new route-scope audits (services/
-      //   providers/[id] PATCH update + DELETE delete — the inline audits
-      //   for the provider catalog row; the 15 service-scope audits live
-      //   in src/lib/services-service.ts + src/lib/logistics-service.ts
-      //   which are NOT in this test's service scope — covered separately
-      //   by tests/phase-p9-services-logistics.test.ts) → 35 routes + 32
-      //   services = 67.
       expect(count).toBe(67);
     });
 
@@ -607,9 +602,14 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const { path: f, content } of files) {
         const hasMutation = /(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/.test(content);
         if (hasMutation) {
-          const hasDouble = content.includes('import { logAudit } from "@/lib/audit";');
-          const hasSingle = content.includes("import { logAudit } from '@/lib/audit';");
-          expect(hasDouble || hasSingle).toBe(true);
+          // STEP 15.95+: mutation files may use logAudit (direct) OR
+          // enqueueAuditOutbox (Transactional Outbox pattern, atomic with
+          // the storeDb transaction). Either is acceptable.
+          const hasLogAuditDouble = content.includes('import { logAudit } from "@/lib/audit";');
+          const hasLogAuditSingle = content.includes("import { logAudit } from '@/lib/audit';");
+          const hasOutboxDouble = content.includes('import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";');
+          const hasOutboxSingle = content.includes("import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';");
+          expect(hasLogAuditDouble || hasLogAuditSingle || hasOutboxDouble || hasOutboxSingle).toBe(true);
         }
       }
     });
@@ -629,10 +629,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       }
     });
 
-    it('every logAudit call uses actorType ADMIN', () => {
+    it('every audit call (logAudit + enqueueAuditOutbox) uses actorType ADMIN', () => {
       const files = readAllStoreFiles();
       for (const { content } of files) {
-        const auditCount = (content.match(/await logAudit\(/g) || []).length;
+        const logCount = (content.match(/await logAudit\(/g) || []).length;
+        const outboxCount = (content.match(/await enqueueAuditOutbox\(/g) || []).length;
+        const auditCount = logCount + outboxCount;
         const adminCount = (content.match(/actorType:\s*['"]ADMIN['"]/g) || []).length;
         expect(adminCount).toBe(auditCount);
       }
@@ -765,9 +767,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       let totalAudit = 0;
       for (const { content } of files) {
         const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-        const auditMatches = content.match(/await logAudit\(/g) || [];
+        const logMatches = content.match(/await logAudit\(/g) || [];
+        const outboxMatches = content.match(/await enqueueAuditOutbox\(/g) || [];
         totalMut += mutMatches.length;
-        totalAudit += auditMatches.length;
+        totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
       expect(totalMut).toBe(54);
