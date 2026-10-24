@@ -301,6 +301,11 @@ jobs:
       - name: "Run real Prisma v6 TLS behavioral tests (fail-closed: no skips allowed)"
         run: |
           set -e
+          # ─── Validate the fail-closed parser itself (STEP 15.94 directive 3) ─────
+          # Run the focused validation that proves the parser rejects incomplete
+          # and non-passing result sets (skipped, failed, todo, pending, running,
+          # unknown statuses, too-few, too-many, invalid JSON).
+          bash scripts/validate-tls-proof-fail-closed.sh
           # Run tests with verbose reporter first (for human-readable CI log)
           echo "── Running TLS behavioral tests (verbose output) ──"
           bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=verbose --silent 2>&1 || true
@@ -323,36 +328,41 @@ jobs:
             echo ""
             exit 1
           fi
-          # Parse results
-          SKIP_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "skipped")] | length' "$JSON_FILE")
+          # Parse results — count by status
+          TOTAL_COUNT=$(jq '[.testResults[].assertionResults[]?] | length' "$JSON_FILE")
           PASS_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "passed")] | length' "$JSON_FILE")
+          SKIP_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "skipped")] | length' "$JSON_FILE")
           FAIL_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "failed")] | length' "$JSON_FILE")
           TODO_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "todo")] | length' "$JSON_FILE")
           PENDING_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "pending")] | length' "$JSON_FILE")
-          # Count only "passed" — all other statuses (skipped, failed, todo, pending, etc.) are NOT acceptable
-          NON_PASS_COUNT=$((SKIP_COUNT + FAIL_COUNT + TODO_COUNT + PENDING_COUNT))
+          # Count any status that is NOT "passed" (covers skipped, failed, todo, pending, running, and any unknown future status)
+          NON_PASS_COUNT=$((TOTAL_COUNT - PASS_COUNT))
+          # List the non-pass statuses actually present (for diagnostic clarity)
+          NON_PASS_STATUSES=$(jq -r '[.testResults[].assertionResults[]? | select(.status != "passed") | .status] | unique | join(", ")' "$JSON_FILE")
           echo ""
           echo "── TLS Proof Test Summary ──"
+          echo "  Total:    $TOTAL_COUNT"
           echo "  Passed:   $PASS_COUNT"
           echo "  Failed:   $FAIL_COUNT"
           echo "  Skipped:  $SKIP_COUNT"
           echo "  Todo:     $TODO_COUNT"
           echo "  Pending:  $PENDING_COUNT"
-          echo "  Expected: 13 (7 Prisma + 5 libpq + 1 verdict)"
+          echo "  Expected: 13 (7 Prisma + 5 libpq + 1 verdict) ALL with status 'passed'"
           # Fail-closed: exactly 13 tests must have status "passed" — no exceptions
           if [ "$PASS_COUNT" -ne 13 ]; then
             echo ""
             echo "✗ FAIL: Expected exactly 13 tests with status 'passed', got $PASS_COUNT."
-            echo "  All 13 TLS behavioral tests MUST pass — no skips, no failures, no todo, no pending."
+            echo "  All 13 TLS behavioral tests MUST pass — no skips, no failures, no todo, no pending, no running."
             exit 1
           fi
-          # Fail-closed: no non-passing tests allowed (redundant with above, but explicit)
+          # Fail-closed: no non-passing tests allowed — TOTAL must equal PASS
           if [ "$NON_PASS_COUNT" -ne 0 ]; then
             echo ""
-            echo "✗ FAIL: $NON_PASS_COUNT tests did not pass (skipped=$SKIP_COUNT failed=$FAIL_COUNT todo=$TODO_COUNT pending=$PENDING_COUNT)."
-            echo "  The TLS proof job requires ALL tests to have status 'passed'."
+            echo "✗ FAIL: $NON_PASS_COUNT tests did not have status 'passed'."
+            echo "  Non-pass statuses present: ${NON_PASS_STATUSES:-<none>}"
+            echo "  The TLS proof job requires ALL tests to have status 'passed' (exactly 13)."
             exit 1
           fi
           echo ""
-          echo "✓ Exactly 13 TLS behavioral tests passed (0 skips, 0 failures, 0 todo, 0 pending)."
+          echo "✓ Exactly 13 TLS behavioral tests passed (0 skips, 0 failures, 0 todo, 0 pending, 0 running)."
           rm -f "$JSON_FILE"

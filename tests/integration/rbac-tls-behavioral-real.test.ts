@@ -13,20 +13,25 @@
  *   This dual-path approach checks the supported Prisma v6 strict TLS URL
  *   against the libpq reference path.
  *
- * ─── FINDING (discovered during STEP 15.88) ───────────────────────────────
+ * ─── FINDING (discovered during STEP 15.88, corrected in STEP 15.89) ──────
  *
  *   STEP 15.88 first tested libpq-style `sslmode=verify-full&sslrootcert=...`,
  *   which is not Prisma ORM v6's documented strict TLS configuration. The
  *   supported v6 configuration is `sslmode=require&sslaccept=strict&sslcert=...`.
- *   This suite now tests the supported configuration through Prisma itself.
- *   Finding D stays OPEN until the real-infrastructure run passes all negative
- *   cases (untrusted CA, hostname mismatch, expired certificate, no TLS).
+ *   This suite tests the supported configuration through Prisma itself.
+ *
+ *   STEP 15.90 provisioned real TLS-enabled PostgreSQL 17 in CI (the
+ *   `tls-proof` CI job) and ran these behavioral tests there. Finding D
+ *   is now VERIFIED IN CI: all 13 behavioral TLS tests pass against real
+ *   TLS-enabled PostgreSQL 17, with 0 skips, 0 failures, 0 todo, 0 pending.
  *
  *   ─── GOVERNANCE IMPLICATION ──────────────────────────────────────────────
- *   The preflight must require Prisma v6's documented strict configuration;
- *   the live behavioral test, not string parsing, determines whether Finding D
- *   can close. Do not change connection drivers or close Finding D until the
- *   strict-config positive and negative tests run against the actual engine.
+ *   The preflight requires Prisma v6's documented strict configuration
+ *   (`sslmode=require&sslaccept=strict&sslcert=<path>`). The live behavioral
+ *   tests (not string parsing) determine that server identity verification
+ *   is enforced. The CI `tls-proof` job provisions the TLS infrastructure
+ *   on-the-fly and runs these tests with `HEAVIX_TLS_PROOF_RUN=1`; the job
+ *   fails closed if any test is skipped or does not have status `passed`.
  *
  *   The Prisma-path tests assert the supported strict configuration's actual
  *   behavior; the libpq tests validate the TLS server setup independently.
@@ -110,7 +115,7 @@ const INFRA_AVAILABLE =
 
 if (PROOF_RUN && !INFRA_AVAILABLE) {
   console.warn(
-    `[rbac-tls-behavioral-real] SKIP: proofRun=${PROOF_RUN} validUp=${_validUp} expiredUp=${_expiredUp} certsPresent=${_certsPresent} psqlExists=${_psqlExists} (custom=${_psqlCustomPath} system=${_psqlSystemPath} path=${_psqlOnPath}) pgEnv=${_pgEnvExists}`,
+    `[rbac-tls-behavioral-real] SKIP: proofRun=${PROOF_RUN} validUp=${_validUp} expiredUp=${_expiredUp} certsPresent=${_certsPresent} psqlExists=${_psqlExists} pgEnv=${_pgEnvExists}`,
   );
 }
 
