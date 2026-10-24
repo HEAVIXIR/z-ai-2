@@ -107,6 +107,9 @@ jobs:
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
+          # STEP 15.86: CI postgres:17 has no TLS. Allow diagnostic dry-run
+          # without TLS for integration tests that run the dry-run script.
+          DRYRUN_ALLOW_NO_TLS: 'true'
         run: bunx vitest run tests/integration/*.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
