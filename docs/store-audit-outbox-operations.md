@@ -29,7 +29,7 @@ POST /api/internal/store-audit-outbox
 ## Monitoring and recovery
 
 - Alert on any FAILED rows and on oldestPendingAt exceeding the agreed operational SLO.
-- Review lastError and the relevant Store mutation before retrying a FAILED row.
+- Review lastError and the relevant Store mutation before retrying a FAILED row. An authenticated manual replay request may send JSON `{ "retryFailedIds": ["<outbox-id>"] }`; only named FAILED rows are requeued, and the endpoint returns the number requeued.
 - Do not delete pending/failed rows to clear an alert; that destroys the only durable record of an undelivered audit event.
 - If a worker crashes, its PROCESSING lease is automatically eligible for reclaim after five minutes.
 - The worker is at-least-once; the unique main-database idempotency key is what makes redelivery safe.
