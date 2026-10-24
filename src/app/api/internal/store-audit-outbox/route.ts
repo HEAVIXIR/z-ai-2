@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { drainAuditOutbox, getAuditOutboxStats } from '@/lib/store-audit-outbox';
+import { drainAuditOutbox, getAuditOutboxStats, requeueFailedAuditOutbox } from '@/lib/store-audit-outbox';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,9 +23,32 @@ export async function POST(request: Request) {
   }
 
   try {
-    const drain = await drainAuditOutbox({ batchSize: 50, maxAttempts: 5 });
+    let retryFailedIds: string[] | undefined;
+    if ((request.headers.get('content-type') ?? '').includes('application/json')) {
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
+      }
+      const candidate = (body as { retryFailedIds?: unknown } | null)?.retryFailedIds;
+      if (candidate !== undefined) {
+        if (!Array.isArray(candidate) || candidate.length < 1 || candidate.length > 100 ||
+            !candidate.every((id) => typeof id === 'string' && id.length > 0 && id.length <= 128)) {
+          return NextResponse.json({ error: 'retryFailedIds must be an array of 1-100 non-empty IDs' }, { status: 400 });
+        }
+        retryFailedIds = candidate;
+      }
+    }
+
+    const requeued = retryFailedIds ? await requeueFailedAuditOutbox(retryFailedIds) : 0;
+    const drain = await drainAuditOutbox({
+      batchSize: 50,
+      maxAttempts: 5,
+      ...(retryFailedIds ? { onlyIds: retryFailedIds } : {}),
+    });
     const stats = await getAuditOutboxStats();
-    return NextResponse.json({ ok: true, drain, stats });
+    return NextResponse.json({ ok: true, requeued, drain, stats });
   } catch (error) {
     console.error('[store-audit-outbox] drain failed', error);
     return NextResponse.json({ error: 'audit outbox drain failed' }, { status: 500 });
