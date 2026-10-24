@@ -328,7 +328,7 @@ jobs:
           set -euo pipefail
           export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
-          psql "host=localhost port=5433 user=postgres dbname=heavix_preflight_test sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 <<'SQL'
+          psql "host=localhost port=5433 user=$(id -un) dbname=heavix_preflight_test sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 <<'SQL'
           GRANT CONNECT ON DATABASE heavix_preflight_test TO heavix_dryrun_ro;
           GRANT USAGE ON SCHEMA public TO heavix_dryrun_ro;
           GRANT SELECT ON ALL TABLES IN SCHEMA public TO heavix_dryrun_ro;
