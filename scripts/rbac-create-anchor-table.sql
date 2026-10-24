@@ -1,53 +1,78 @@
--- HEAVIX — STEP 15.77: Create the server-identity trust-anchor table.
+-- HEAVIX — STEP 15.78: Non-destructive, idempotent anchor-table installation.
 --
--- This table stores the server-identity value that the dry-run preflight
--- compares against DRYRUN_SERVER_IDENTITY_ANCHOR. The value is set by the
--- DBA out-of-band (NOT from DATABASE_URL or any caller-controlled env var).
+-- STEP 15.77 used `DROP TABLE IF EXISTS` which is DESTRUCTIVE: re-running the
+-- script would delete the existing anchor value. The owner identified (H-04)
+-- that this is unacceptable for a security control — re-installation must not
+-- destroy the existing trusted value.
 --
--- WHY A TABLE (NOT A GUC):
---   STEP 15.76 used a PostgreSQL custom GUC (app.server_identity). The owner
---   identified (H-03) that custom GUCs are SESSION-LEVEL FORGEABLE: the
---   connecting client can override the DBA-set value via
---   `SET app.server_identity = '<value>'` before the preflight reads it.
---   ANY role can SET custom GUCs — there is no privilege check.
+-- STEP 15.78 FIX:
+--   - CREATE TABLE IF NOT EXISTS (non-destructive — does NOT drop existing data)
+--   - INSERT ... ON CONFLICT (key) DO NOTHING (idempotent — does NOT overwrite)
+--   - To ROTATE the value, use the separate rotation script
+--     (scripts/rbac-rotate-anchor.sql) which requires explicit confirmation.
 --
---   A TABLE is NOT affected by SET. The preflight verifies the read-only role
---   has NO write privileges (INSERT/UPDATE/DELETE/TRUNCATE) on this table.
---   So the connecting client CANNOT forge the table value.
+-- ── HONEST SCOPE OF THIS CONTROL ──────────────────────────────────────────
 --
--- Usage:
+-- This anchor table is a DEFENSE AGAINST ACCIDENTAL WRONG-DB CONNECTION
+-- (e.g., connecting to a dev/staging DB that lacks the anchor, or has a
+-- different anchor value). It is NOT a cryptographic proof of server identity.
+--
+-- A CLONED DATABASE, a restored backup, or a logical replication target
+-- will have the IDENTICAL table contents — including the anchor value.
+-- This control CANNOT distinguish the original server from a clone.
+--
+-- TRUE server identity requires TLS with CA validation (verifying the
+-- server's TLS certificate against a trusted CA), which is a deployment-
+-- architecture decision OUTSIDE this script's scope. See
+-- docs/phase3/STEP-15.68-STAGING-RUNBOOK.md §6 for TLS guidance.
+--
+-- Until TLS-based verification is deployed, Finding D (server identity)
+-- remains UNVERIFIED in the audit report — NOT FIXED.
+--
+-- ── USAGE ─────────────────────────────────────────────────────────────────
+--
+--   # Generate a unique secret for each server/cluster:
+--   ANCHOR_VALUE=$(openssl rand -hex 32)
+--
+--   # Install (idempotent + non-destructive):
 --   psql -h <host> -U postgres -d <db> \
---     -v anchor_value="<your-secret-server-identity>" \
+--     -v anchor_value="$ANCHOR_VALUE" \
 --     -f scripts/rbac-create-anchor-table.sql
 --
--- The anchor_value should be a unique secret for each server/cluster.
--- Generate one with: openssl rand -hex 32
+--   # The value is NOT printed by the script. Store it in your secrets
+--   # manager and set DRYRUN_SERVER_IDENTITY_ANCHOR at dry-run time.
 
--- Create the table (idempotent — drop if exists)
-DROP TABLE IF EXISTS "_dryrun_anchor";
-CREATE TABLE "_dryrun_anchor" (
+-- ── 1. Create the table IF NOT EXISTS (non-destructive) ──────────────────
+CREATE TABLE IF NOT EXISTS "_dryrun_anchor" (
   key text PRIMARY KEY,
   value text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  rotated_at timestamptz
 );
 
--- Insert the server-identity value (from psql variable :anchor_value)
-INSERT INTO "_dryrun_anchor" (key, value) VALUES ('server_identity', :'anchor_value');
+-- ── 2. Insert the server-identity value (idempotent — does NOT overwrite) ─
+-- ON CONFLICT DO NOTHING: if the 'server_identity' row already exists, this
+-- is a no-op. The existing value is PRESERVED. To change the value, use
+-- the rotation script (scripts/rbac-rotate-anchor.sql) which is explicit.
+INSERT INTO "_dryrun_anchor" (key, value)
+VALUES ('server_identity', :'anchor_value')
+ON CONFLICT (key) DO NOTHING;
 
--- Grant SELECT to the read-only role (so the preflight can read the value)
+-- ── 3. Grant SELECT to the read-only role (so the preflight can read it) ─
 GRANT SELECT ON "_dryrun_anchor" TO heavix_dryrun_ro;
 
--- Explicitly REVOKE all write privileges (defense-in-depth)
+-- ── 4. REVOKE all write privileges (defense-in-depth) ────────────────────
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "_dryrun_anchor" FROM heavix_dryrun_ro;
-
--- Also REVOKE from PUBLIC (no inherited write access)
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "_dryrun_anchor" FROM PUBLIC;
 
--- Verify the grants
+-- ── 5. Verify the grants (informational — not a security check) ──────────
 SELECT grantee, privilege_type
 FROM information_schema.role_table_grants
 WHERE table_name = '_dryrun_anchor'
 ORDER BY grantee, privilege_type;
 -- Expected output:
 --   heavix_dryrun_ro | SELECT
--- (NO write privileges for heavix_dryrun_ro or PUBLIC)
+--   (NO write privileges for heavix_dryrun_ro or PUBLIC)
+
+-- ── 6. Verify the anchor row exists (informational) ──────────────────────
+SELECT key, created_at, rotated_at FROM "_dryrun_anchor" WHERE key = 'server_identity';

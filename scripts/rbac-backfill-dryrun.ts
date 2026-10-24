@@ -220,8 +220,9 @@ const SAMPLE_CAP = 20; // per-classification sample size in human output
  *     `DRYRUN_SERVER_IDENTITY_ANCHOR` is set, the preflight queries the
  *     TABLE _dryrun_anchor (key='server_identity') (set out-of-band by the DBA via
  *     `CREATE TABLE _dryrun_anchor + INSERT (see scripts/rbac-create-anchor-table.sql)`) and compares
- *     it with the anchor. If match → "Server identity: VERIFIED ✅ (independent
- *     trust anchor confirmed)". If mismatch → halt with exit 2 (wrong server).
+ *     it with the anchor. If match → "Anchor check: PASS" (wrong-DB defense).
+ *     Server identity remains UNVERIFIED — a cloned DB would pass too.
+ *     If mismatch → halt with exit 2 (wrong DB — anchor value differs).
  *     If the anchor env var is NOT set → "Server identity: UNVERIFIED ⚠ (no
  *     independent trust anchor — DRYRUN_SERVER_IDENTITY_ANCHOR not set)" and
  *     the run continues (it is NOT blocked — the operator is informed that
@@ -696,35 +697,39 @@ async function preflightConnectionCheck(): Promise<void> {
     console.log(`  Role catalog readiness check : ALL 5 canonical roles present ✅ (${CANONICAL_ROLE_KEYS.join(', ')})`);
     console.log(`  Schema/seed readiness        : PASS ✅ (live DB content verified)`);
 
-    // STEP 15.77 (Finding H-03 — TABLE-based trust anchor, NOT GUC):
-    // STEP 15.76 used a PostgreSQL custom GUC (`app.server_identity`) as the
-    // server-side trust anchor. The owner identified (H-03) that custom GUCs
-    // are SESSION-LEVEL FORGEABLE: the connecting client can override the
-    // DBA-set database-level default via `SET app.server_identity = '<value>'`
-    // before the preflight reads it. ANY role can SET custom GUCs — there is
-    // no privilege check. This means `current_setting('app.server_identity')`
-    // is NOT an independent trust anchor.
+    // STEP 15.78 (Finding H-04 — HONEST SCOPE of the anchor control):
     //
-    // STEP 15.77 FIX: the anchor value is stored in a TABLE, not a GUC.
-    // Tables are NOT affected by `SET` — `SET` only changes GUCs. And the
-    // preflight already verified (above) that the role has NO write privileges
-    // (INSERT/UPDATE/DELETE/TRUNCATE) on ANY table in the public schema.
-    // So the connecting client CANNOT forge the table value.
+    // The anchor table (_dryrun_anchor) is a DEFENSE AGAINST ACCIDENTAL
+    // WRONG-DB CONNECTION — e.g., connecting to a dev/staging DB that lacks
+    // the anchor, or has a different anchor value. It is NOT a cryptographic
+    // proof of server identity.
     //
-    // Security properties:
-    //   1. `SET` cannot change table contents (only GUCs) — session forgery closed
-    //   2. The role has no INSERT/UPDATE/DELETE on the anchor table (verified by
-    //      the preflight's write-privilege checks on ALL public-schema tables)
-    //   3. The anchor env var (DRYRUN_SERVER_IDENTITY_ANCHOR) is out-of-band —
-    //      NOT derived from DATABASE_URL
-    //   4. An attacker who controls DATABASE_URL but not the anchor cannot
-    //      reproduce the value on a wrong server
+    // A CLONED DATABASE, a restored backup, or a logical replication target
+    // will have the IDENTICAL table contents — including the anchor value.
+    // This control CANNOT distinguish the original server from a clone.
     //
-    // DBA setup (see scripts/rbac-create-anchor-table.sql):
-    //   CREATE TABLE _dryrun_anchor (key text PRIMARY KEY, value text NOT NULL);
-    //   INSERT INTO _dryrun_anchor (key, value) VALUES ('server_identity', '<secret>');
-    //   REVOKE ALL ON _dryrun_anchor FROM heavix_dryrun_ro;
-    //   GRANT SELECT ON _dryrun_anchor TO heavix_dryrun_ro;
+    // TRUE server identity requires TLS with CA validation (verifying the
+    // server's TLS certificate against a trusted CA), which is a deployment-
+    // architecture decision OUTSIDE this script's scope.
+    //
+    // Until TLS-based verification is deployed, Finding D (server identity)
+    // remains UNVERIFIED in the audit report — NOT FIXED.
+    //
+    // ── What the anchor DOES protect against (STEP 15.77 + 15.78): ──
+    //   1. Session-level forgery (client SET cannot change table contents)
+    //   2. Accidental wrong-DB connection (a DB without the anchor fails)
+    //   3. Role-based forgery (the role has no write on the anchor table)
+    //
+    // ── What the anchor DOES NOT protect against (H-04): ──
+    //   1. A cloned database with identical table contents
+    //   2. A restored backup of the production DB
+    //   3. A logical replication target
+    //   These scenarios require TLS/CA validation (out-of-band).
+    //
+    // STEP 15.78: the SQL installation script is now NON-DESTRUCTIVE
+    // (CREATE IF NOT EXISTS + INSERT ON CONFLICT DO NOTHING). Rotation uses
+    // a separate script (scripts/rbac-rotate-anchor.sql). Re-installation
+    // does NOT destroy the existing anchor value.
     //
     // If DRYRUN_SERVER_IDENTITY_ANCHOR was NOT set at the top of preflight,
     // this block is skipped (the UNVERIFIED ⚠ message was already logged
@@ -791,8 +796,11 @@ async function preflightConnectionCheck(): Promise<void> {
         process.exit(2);
       }
 
-      // Match — independent trust anchor confirmed via TABLE (not GUC).
-      console.log('  Server identity           : VERIFIED ✅ (table-based trust anchor — not session-forgeable)');
+      // Match — anchor value verified (but see H-04 limitation above).
+      // This proves the DB has the expected anchor value. It does NOT prove
+      // the DB is on the expected server (a clone would pass too).
+      console.log('  Anchor check             : PASS ✅ (table value matches — wrong-DB defense, NOT server identity)');
+      console.log('  Server identity          : UNVERIFIED ⚠ (anchor cannot detect cloned DB — requires TLS/CA, out of scope)');
     }
 
     console.log(`  Runtime role (current_user)   : ${actualUser}`);

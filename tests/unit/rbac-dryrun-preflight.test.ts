@@ -515,9 +515,11 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     // - UNVERIFIED ⚠ (anchor not set — run continues, operator informed)
     expect(DRYRUN_SOURCE).toContain("Server identity         : UNVERIFIED ⚠");
     expect(DRYRUN_SOURCE).toContain("no independent trust anchor");
-    // - VERIFIED ✅ (anchor set + table value matches)
-    expect(DRYRUN_SOURCE).toContain("Server identity           : VERIFIED ✅");
-    expect(DRYRUN_SOURCE).toContain("table-based trust anchor");
+    // - Anchor match → "Anchor check: PASS" (wrong-DB defense, NOT server identity)
+    expect(DRYRUN_SOURCE).toContain("Anchor check             : PASS ✅");
+    expect(DRYRUN_SOURCE).toContain("wrong-DB defense, NOT server identity");
+    // - Server identity remains UNVERIFIED even when anchor matches (H-04: clone would pass)
+    expect(DRYRUN_SOURCE).toContain("anchor cannot detect cloned DB");
     // - Mismatch → halt with exit 2 (wrong server)
     expect(DRYRUN_SOURCE).toContain("server-side trust anchor (table) does not match");
     // - Table missing → halt
@@ -536,18 +538,32 @@ describe("STEP 15.75 — Schema/seed readiness verification (replaces env-var-ba
     expect(queryRawText).not.toContain('current_setting');
   });
 
-  it("scripts/rbac-create-anchor-table.sql exists and creates _dryrun_anchor", () => {
+  it("scripts/rbac-create-anchor-table.sql exists and creates _dryrun_anchor (non-destructive)", () => {
     const anchorSql = readFileSync("scripts/rbac-create-anchor-table.sql", "utf-8");
-    expect(anchorSql).toContain('CREATE TABLE "_dryrun_anchor"');
+    expect(anchorSql).toContain('CREATE TABLE IF NOT EXISTS "_dryrun_anchor"');
     expect(anchorSql).toContain("'server_identity'");
     expect(anchorSql).toContain("GRANT SELECT ON");
     expect(anchorSql).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
     expect(anchorSql).toContain("heavix_dryrun_ro");
+    // STEP 15.78 (H-04): MUST NOT use DROP TABLE in SQL commands (destructive)
+    // Comments mentioning DROP TABLE are OK (they document the removal).
+    const sqlCmds = anchorSql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect(sqlCmds).not.toMatch(/DROP\s+TABLE/i);
+    // STEP 15.78: MUST use ON CONFLICT DO NOTHING (idempotent, non-overwriting)
+    expect(anchorSql).toMatch(/ON\s+CONFLICT.*DO\s+NOTHING/is);
     // The SQL commands (non-comment lines) must NOT use the old GUC approach.
-    // Comments mentioning app.server_identity are OK (they document the removal).
     const sqlCommands = anchorSql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
     expect(sqlCommands).not.toContain("ALTER DATABASE");
     expect(sqlCommands).not.toMatch(/current_setting/);
+  });
+
+  it("scripts/rbac-rotate-anchor.sql exists and rotates value (non-destructive UPDATE)", () => {
+    const rotateSql = readFileSync("scripts/rbac-rotate-anchor.sql", "utf-8");
+    expect(rotateSql).toContain('UPDATE "_dryrun_anchor"');
+    expect(rotateSql).toContain("rotated_at");
+    // MUST NOT use DROP TABLE in SQL commands (destructive)
+    const sqlCmds = rotateSql.split('\n').filter((l) => !l.trim().startsWith('--') && !l.trim().startsWith('\\')).join('\n');
+    expect(sqlCmds).not.toMatch(/DROP\s+TABLE/i);
   });
 
   it("rbac-backfill-dryrun.ts no longer references GITHUB_ACTIONS or CI env vars in preflight", () => {
