@@ -330,12 +330,12 @@ async function preflightConnectionCheck(): Promise<void> {
   console.log('  Hostname consistency     : PASS ✅ (Configuration consistency — NOT a server-identity proof)');
 
   // STEP 15.88 (Finding D — TLS enforcement, NO caller-controlled bypass):
-  // The preflight verifies that DATABASE_URL contains sslmode=verify-full.
-  // This is the ONLY mechanism that provides cryptographic server identity:
-  // the PostgreSQL driver validates the server's TLS certificate against a
-  // trusted CA AND verifies the hostname in the certificate matches the
-  // connection target. No in-database mechanism (table, GUC, content) can
-  // prove server identity — a cloned DB has identical contents.
+  // This preflight verifies the required TLS configuration parameter only.
+  // It does NOT prove that a TLS handshake occurred, that the configured CA is
+  // trusted, or that the certificate hostname was validated. Those claims
+  // require a real connection-path test against TLS-enabled PostgreSQL using
+  // the exact Prisma/runtime configuration. No in-database mechanism (table,
+  // GUC, content) can independently prove physical server identity.
   //
   // sslmode values (PostgreSQL standard):
   //   verify-full  — TLS + CA validation + strict hostname check ✅ REQUIRED
@@ -349,10 +349,10 @@ async function preflightConnectionCheck(): Promise<void> {
   // staging/production. The production path MUST fail-closed when TLS is not
   // configured. There is NO exception.
   //
-  // For CI testing without TLS: the test harness must use a COMPILE-TIME
-  // constant (see src/lib/rbac/test-config.ts) that is NOT settable via
-  // environment variables. This constant is only available in the test
-  // build, not in the production script.
+  // CI currently lacks TLS-enabled PostgreSQL, so the DB-backed dry-run
+  // gate is skipped. Unit/integration tests may assert that this configuration
+  // check fails closed, but must not simulate or claim a successful TLS
+  // handshake. Finding D remains OPEN/UNVERIFIED until real TLS tests exist.
   try {
     const parsedUrl = new URL(databaseUrl);
     const sslmode = parsedUrl.searchParams.get('sslmode');
@@ -366,8 +366,7 @@ async function preflightConnectionCheck(): Promise<void> {
       console.error('  (STEP 15.88: NO env-var bypass. The production path fails closed without TLS.)');
       process.exit(2);
     }
-    console.log('  TLS mode                 : sslmode=verify-full ✅ (CA + hostname verified by driver)');
-    console.log('    Server identity: VERIFIED via TLS ✅ (cryptographic proof — not env-var-based)');
+    console.log('  TLS configuration        : sslmode=verify-full present (handshake/CA/hostname validation not yet proven by this check)');
   } catch {
     console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not a parseable URL for TLS verification.');
     process.exit(2);
