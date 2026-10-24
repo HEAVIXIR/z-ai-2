@@ -10,10 +10,14 @@
  *   at commit time.
  *
  * SCENARIOS
- *   1. The audit event is enqueued INSIDE the storeDb transaction (atomic
- *      with the mutation). If the transaction commits, the outbox row exists.
- *   2. The outbox row retains PENDING status until drained.
- *   3. Stats reporting is accurate.
+ *   1-5. Transactional enqueue, pending state, stats, batch atomicity, rollback.
+ *   6. Sink failure keeps the event retryable; recovery delivers it.
+ *   7. Replay uses a stable idempotency key and does not duplicate sink events.
+ *   8. Competing workers cannot claim the same fresh row.
+ *   9. Stale PROCESSING leases are reclaimed after worker crashes.
+ *   10. Real main PostgreSQL delivery remains unique after a simulated crash.
+ *   11. Exhausted events can be explicitly requeued after investigation.
+ *   Cleanup only removes rows created by these tests, not other Store events.
  *
  * The delivery worker is tested with an injectable sink so failure/recovery,
  * stable idempotency keys, competing workers, and stale lease recovery can be
