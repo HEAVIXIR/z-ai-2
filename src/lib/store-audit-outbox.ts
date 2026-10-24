@@ -170,6 +170,25 @@ export async function drainAuditOutbox(options?: {
   return { delivered, failed, remaining };
 }
 
+/**
+ * Explicit operator action to retry exhausted rows after investigating their
+ * lastError. Only FAILED rows named by the caller are reset; no event is deleted.
+ */
+export async function requeueFailedAuditOutbox(ids: string[]): Promise<number> {
+  const uniqueIds = [...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0))];
+  if (uniqueIds.length === 0) return 0;
+  const result = await storeDb.auditOutbox.updateMany({
+    where: { id: { in: uniqueIds }, status: 'FAILED' },
+    data: {
+      status: 'PENDING',
+      attempts: 0,
+      lastError: null,
+      lockedAt: null,
+    },
+  });
+  return result.count;
+}
+
 export async function getAuditOutboxStats(): Promise<{
   pending: number;
   processing: number;
