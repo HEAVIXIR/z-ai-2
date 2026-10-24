@@ -20,9 +20,9 @@
  *     setting three caller-controlled env vars (GITHUB_ACTIONS, CI,
  *     DRYRUN_CI_HOST_CHECK_EXCEPTION) on ANY machine. No combination of
  *     env vars can cryptographically prove "this is GitHub Actions CI."
- *   - Identity is now verified via LIVE DB content (table existence +
- *     Role catalog) inside scripts/rbac-backfill-dryrun.ts. See the
- *     content-based identity verification block in preflightConnectionCheck.
+ *   - LIVE DB content checks prove schema/seed readiness only, NOT server
+ *     identity. The dry-run labels them accordingly; server identity cannot
+ *     be established by matching table contents or environment variables.
  *   - DRYRUN_CI_HOST_CHECK_EXCEPTION is now a deprecated bypass mechanism:
  *     any value halts the preflight with exit 2 (fail closed).
  */
@@ -152,13 +152,12 @@ export function extractDbName(url: string): string | null {
 /**
  * STEP 15.72 Finding 4: Extract the host from a connection string.
  *
- * Used for server/cluster identity verification — the preflight compares
- * the parsed host with DRYRUN_EXPECTED_HOST (operator-declared) and with
- * the live `inet_server_addr()` result (DNS-resolved) to detect proxy /
- * MITM scenarios where the connection lands on the wrong server.
+ * Used for hostname configuration-consistency checks — the preflight compares
+ * the parsed host with DRYRUN_EXPECTED_HOST (operator-declared). This does NOT
+ * prove physical server identity or detect a proxy/MITM on the same hostname.
  *
  * Returns the hostname (no port, no credentials, no scheme), or null if
- * unparseable. IPv4 and IPv6 hostnames are both returned verbatim.
+ * unparseable. URL.hostname lowercases DNS names and strips IPv6 brackets.
  *
  * Example: "postgresql://user:pass@db.example.com:5432/heavix?schema=public"
  *       → "db.example.com"
