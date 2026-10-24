@@ -311,19 +311,17 @@ jobs:
           set -euo pipefail
           export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
-          psql "host=localhost port=5433 user=postgres dbname=postgres sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_preflight_test;"
+          psql "host=localhost port=5433 user=$(id -un) dbname=postgres sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_preflight_test;"
       - name: Push schema and seed RBAC in isolated TLS database
-        env:
-          DATABASE_URL: "postgresql://postgres@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${{ github.workspace }}/.tls-pg/certs/ca-valid.crt"
         run: |
           set -euo pipefail
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bunx prisma db push --schema=prisma/schema.prisma
           bun run db:seed-rbac
       - name: Create isolated MISSING-role classification fixture
-        env:
-          DATABASE_URL: "postgresql://postgres@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${{ github.workspace }}/.tls-pg/certs/ca-valid.crt"
         run: |
           set -euo pipefail
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bun -e 'import { PrismaClient } from "@prisma/client"; const db = new PrismaClient(); await db.user.create({ data: { firstName: "CI", lastName: "Preflight", email: "phase-c-preflight@example.invalid", mobile: "+19999999999", passwordHash: "not-a-real-password", role: "BUYER", status: "ACTIVE" } }); await db.$disconnect();'
       - name: Grant least-privilege access for TLS preflight
         run: |
