@@ -951,19 +951,18 @@ describe("STEP 15.72 — redactConnectionDetails() (defense-in-depth)", () => {
 });
 
 /* ============================================================
-   STEP 15.86 — TLS enforcement behavioral tests
+   STEP 15.89 — Prisma ORM v6 strict TLS configuration tests
    ------------------------------------------------------------
-   These tests verify the sslmode=verify-full enforcement in the
-   preflight. They run the ACTUAL script as a subprocess.
+   These tests exercise the ACTUAL preflight script. They verify that
+   the production path requires Prisma's documented TLS parameters:
+   sslmode=require, sslaccept=strict, and an explicit sslcert CA path.
+   They do NOT claim to prove a live TLS handshake.
    ============================================================ */
 
-describe("STEP 15.86 — TLS enforcement (sslmode=verify-full required)", () => {
+describe("STEP 15.89 — TLS configuration gate (Prisma v6)", () => {
   const originalEnv = { ...process.env };
 
-  // NOTE: TLS tests call spawnSync DIRECTLY (not runScript) because runScript
-  // defaults DRYRUN_ALLOW_NO_TLS to 'true'. TLS tests that expect a HALT must
-  // NOT have DRYRUN_ALLOW_NO_TLS set.
-  function runScriptNoTlsDefault(env: Record<string, string | undefined>): RunResult {
+  function runScriptWithoutTestDefaults(env: Record<string, string | undefined>): RunResult {
     const result = spawnSync(RUNNER, RUNNER_ARGS, {
       encoding: "utf-8",
       timeout: 30000,
@@ -990,78 +989,68 @@ describe("STEP 15.86 — TLS enforcement (sslmode=verify-full required)", () => 
     }
   });
 
-  it("TLS-1. DATABASE_URL with sslmode=verify-full → TLS check passes (halts later on DB connect)", () => {
-    const res = runScriptNoTlsDefault({
-      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require&sslaccept=strict&sslcert=%2Fetc%2Fssl%2Fcerts%2Fca-certificates.crt",
+  it("TLS-1. Supported strict settings pass configuration gate (halts later on DB connect)", () => {
+    const res = runScriptWithoutTestDefaults({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require&sslaccept=strict&sslcert=%2Ftmp%2Fca.crt",
       DRYRUN_CONFIRM_TARGET: "heavix_test",
       DRYRUN_EXPECTED_HOST: "host",
     });
     const combined = res.stdout + res.stderr;
-    expect(combined).toContain("sslmode=verify-full present");
-    // Halts later (DB connect fails) — NOT a TLS halt
-    expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode");
+    expect(combined).toContain("TLS configuration        : require + strict certificate validation + explicit CA path present");
+    expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+    expect(res.exitCode).toBe(2);
   });
 
-  it("TLS-2. DATABASE_URL without sslmode → halt (fail-closed, NO bypass)", () => {
-    const res = runScriptNoTlsDefault({
+  it("TLS-2. Missing sslmode → fail closed", () => {
+    const res = runScriptWithoutTestDefaults({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslaccept=strict&sslcert=%2Ftmp%2Fca.crt",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+    });
+    expect(res.exitCode).toBe(2);
+    expect(res.stdout + res.stderr).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+  });
+
+  it("TLS-3. sslmode=require without strict certificate validation → fail closed", () => {
+    const res = runScriptWithoutTestDefaults({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require&sslcert=%2Ftmp%2Fca.crt",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+    });
+    expect(res.exitCode).toBe(2);
+    expect(res.stdout + res.stderr).toContain("sslaccept=strict");
+  });
+
+  it("TLS-4. sslmode=disable → fail closed", () => {
+    const res = runScriptWithoutTestDefaults({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=disable&sslaccept=strict&sslcert=%2Ftmp%2Fca.crt",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+    });
+    expect(res.exitCode).toBe(2);
+    expect(res.stdout + res.stderr).toContain("sslmode=require");
+  });
+
+  it("TLS-5. No caller-controlled no-TLS bypass exists", () => {
+    const res = runScriptWithoutTestDefaults({
       DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
       DRYRUN_CONFIRM_TARGET: "heavix_test",
       DRYRUN_EXPECTED_HOST: "host",
+      DRYRUN_ALLOW_NO_TLS: "true",
     });
     expect(res.exitCode).toBe(2);
     const combined = res.stdout + res.stderr;
-    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
-    expect(combined).toContain("sslmode=verify-full is REQUIRED");
-    // Must NOT reach DB queries
+    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
     expect(combined).not.toContain("Trusted read-only role");
   });
 
-  it("TLS-3. DATABASE_URL with sslmode=require → halt (insufficient — no CA validation)", () => {
-    const res = runScriptNoTlsDefault({
-      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require",
-      DRYRUN_CONFIRM_TARGET: "heavix_test",
-      DRYRUN_EXPECTED_HOST: "host",
-    });
-    expect(res.exitCode).toBe(2);
-    const combined = res.stdout + res.stderr;
-    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
-  });
-
-  it("TLS-4. DATABASE_URL with sslmode=disable → halt (no TLS)", () => {
-    const res = runScriptNoTlsDefault({
-      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=disable",
-      DRYRUN_CONFIRM_TARGET: "heavix_test",
-      DRYRUN_EXPECTED_HOST: "host",
-    });
-    expect(res.exitCode).toBe(2);
-    const combined = res.stdout + res.stderr;
-    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
-  });
-
-  it("TLS-5. STEP 15.88: NO bypass — production path fails closed without TLS", () => {
-    // The DRYRUN_ALLOW_NO_TLS bypass was REMOVED in STEP 15.88.
-    // The production path MUST fail-closed when sslmode=verify-full is not present.
-    // There is NO exception, NO diagnostic mode.
-    const res = runScriptNoTlsDefault({
-      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
-      DRYRUN_CONFIRM_TARGET: "heavix_test",
-      DRYRUN_EXPECTED_HOST: "host",
-    });
-    expect(res.exitCode).toBe(2);
-    const combined = res.stdout + res.stderr;
-    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
-    expect(combined).toContain("NO env-var bypass");
-    expect(combined).not.toContain("Trusted read-only role");
-  });
-
-  it("TLS-6. No credential leak in TLS error output", () => {
-    const res = runScriptNoTlsDefault({
+  it("TLS-6. No credential leak in TLS configuration failure", () => {
+    const res = runScriptWithoutTestDefaults({
       DATABASE_URL: "postgresql://SECRET_USER:SECRET_PASS@host:5432/heavix_test?schema=public",
       DRYRUN_CONFIRM_TARGET: "heavix_test",
       DRYRUN_EXPECTED_HOST: "host",
     });
-    const combined = res.stdout + res.stderr;
     expect(res.exitCode).toBe(2);
-    expect(combined).not.toContain("SECRET");
+    expect(res.stdout + res.stderr).not.toContain("SECRET");
   });
 });
