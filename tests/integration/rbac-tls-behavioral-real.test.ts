@@ -110,14 +110,12 @@ if (PROOF_RUN && !INFRA_AVAILABLE) {
 // ─── Helper: spawn the TLS probe subprocess (Prisma path) ───────────────────
 function prismaProbe(
   databaseUrl: string,
-  caCertPath: string,
 ): { success: boolean; raw: string } {
   const r = spawnSync('bunx', ['tsx', 'tests/integration/tls-probe.ts'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       PROBE_DATABASE_URL: databaseUrl,
-      PGSSLROOTCERT: caCertPath,
     },
     encoding: 'utf8',
     timeout: 45_000,
@@ -154,7 +152,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
         `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
-      const r = prismaProbe(url, CA_VALID);
+      const r = prismaProbe(url);
       expect(r.success, `Valid TLS must succeed via Prisma.\n${r.raw}`).toBe(true);
     },
   );
@@ -167,7 +165,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
         `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_UNTRUSTED)}`;
-      const r = prismaProbe(url, CA_UNTRUSTED);
+      const r = prismaProbe(url);
       // Fail if the actual Prisma path accepts an untrusted CA.
       expect(
         r.success,
@@ -184,7 +182,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@127.0.0.1:${VALID_PORT}/postgres` +
         `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
-      const r = prismaProbe(url, CA_VALID);
+      const r = prismaProbe(url);
       expect(
         r.success,
         `Prisma must reject a hostname mismatch with strict TLS. Output:\n${r.raw}`,
@@ -200,7 +198,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${EXPIRED_PORT}/postgres` +
         `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
-      const r = prismaProbe(url, CA_VALID);
+      const r = prismaProbe(url);
       expect(
         r.success,
         `Expired cert must be REJECTED via Prisma (basic TLS validity check).\n${r.raw}`,
@@ -214,7 +212,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
         `?schema=public&sslmode=disable`;
-      const r = prismaProbe(url, CA_VALID);
+      const r = prismaProbe(url);
       expect(
         r.success,
         `No-TLS connection must be REJECTED by the server (hostssl).\n${r.raw}`,
