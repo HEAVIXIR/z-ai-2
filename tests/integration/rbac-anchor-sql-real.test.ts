@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 
 /* ============================================================
-   HEAVIX — STEP 15.82: REAL PostgreSQL behavioral tests for
+   HEAVIX — STEP 15.83: REAL PostgreSQL behavioral tests for
    the anchor-table SQL scripts (install, reinstall, rotation).
    ------------------------------------------------------------
    These tests run ONLY in CI (postgres:17 service container).
