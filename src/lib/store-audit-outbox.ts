@@ -1,58 +1,32 @@
 /**
  * HEAVIX — STEP 15.95+ — Transactional Audit Outbox
  *
- * Problem solved:
- *   Store mutations (inventory adjustments, return refunds) commit in storeDb
- *   transactions, but audit logs are written to the MAIN HEAVIX PostgreSQL
- *   (db.auditLog) — a separate database. The legacy logAudit() helper writes
- *   AFTER the transaction commits. If the audit write fails, the committed
- *   mutation has no audit trail — the event is lost forever.
+ * Store mutations and their outbox records commit in one STORE_DATABASE_URL
+ * transaction. A worker delivers records to the independent main AuditLog DB.
  *
- * Solution: Transactional Outbox pattern.
- *   1. enqueueAuditOutbox(tx, params) writes an AuditOutbox row INSIDE the
- *      same storeDb transaction as the mutation (atomic). The outbox row is
- *      committed or rolled back together with the mutation.
- *   2. drainAuditOutbox() is a replay worker that reads PENDING outbox rows
- *      and writes them to db.auditLog (the main DB) with retry + dedup.
- *   3. The outbox row's id serves as the AuditLog.idempotencyKey so that
- *      at-least-once delivery is safe (re-delivery is a no-op).
- *
- * Governance:
- *   - The audit invariant is: every committed store mutation has a
- *     corresponding audit event that WILL eventually be delivered.
- *   - If the main DB is temporarily unavailable, the outbox retains the
- *     event until delivery succeeds (with bounded retries + FAILED status
- *     for manual intervention).
- *   - This module does NOT replace logAudit() for non-transactional audit
- *     calls (legacy routes still use logAudit directly).
+ * Delivery is at-least-once. The main AuditLog.idempotencyKey UNIQUE constraint
+ * makes the sink operation idempotent, including a crash after the sink write
+ * but before the outbox row is marked DELIVERED.
  */
 
 import { PrismaClient } from '@/lib/generated/store-client';
-import { db } from '@/lib/db';
+import { storeDb } from '@/lib/store-db';
 import type { LogAuditParams } from '@/lib/admin/audit';
 
-/**
- * Enqueue an audit event in the same storeDb transaction as the mutation.
- * MUST be called inside `storeDb.$transaction(async (tx) => { ... })`.
- *
- * @param tx — the transaction client (storeDb or a nested tx)
- * @param params — the LogAuditParams to be delivered to the main AuditLog
- * @returns the outbox row id (use as idempotencyKey on the main DB side)
- *
- * @example
- *   await storeDb.$transaction(async (tx) => {
- *     await tx.inventoryBalance.updateMany({ ... });
- *     await enqueueAuditOutbox(tx, { action: 'store.inventory.movement.create', ... });
- *   });
- */
+type StoreTransactionClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+type AuditWriter = (params: LogAuditParams, idempotencyKey: string) => Promise<void>;
+
+const DEFAULT_BATCH_SIZE = 50;
+const DEFAULT_MAX_ATTEMPTS = 5;
+const DEFAULT_STALE_LOCK_MS = 5 * 60 * 1000;
+
 export async function enqueueAuditOutbox(
-  tx: PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0],
+  tx: PrismaClient | StoreTransactionClient,
   params: LogAuditParams,
 ): Promise<string> {
-  const payloadJson = JSON.stringify(params);
   const outboxRow = await tx.auditOutbox.create({
     data: {
-      payloadJson,
+      payloadJson: JSON.stringify(params),
       status: 'PENDING',
     },
     select: { id: true },
@@ -61,33 +35,60 @@ export async function enqueueAuditOutbox(
 }
 
 /**
- * Drain PENDING audit outbox rows to the main AuditLog table.
- * Called by a replay worker (cron, queue, or manual trigger).
+ * Deliver one event to the main database. createMany(skipDuplicates) relies on
+ * the database-enforced UNIQUE idempotencyKey constraint, not application-only
+ * error handling. Import the main Prisma client lazily so store-only tests and
+ * enqueue callers do not load the unrelated generated client.
+ */
+async function writeAuditToMainDb(params: LogAuditParams, idempotencyKey: string): Promise<void> {
+  const { db } = await import('@/lib/db');
+  await db.auditLog.createMany({
+    data: [{
+      idempotencyKey,
+      actorId: params.actorId ?? null,
+      actorType: params.actorType ?? 'USER',
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId ?? null,
+      beforeJson: safeStringify(params.before),
+      afterJson: safeStringify(params.after),
+      ip: params.ip ?? null,
+      userAgent: params.userAgent ?? null,
+      requestId: params.requestId ?? null,
+      reason: params.reason ?? null,
+    }],
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Claim rows with a compare-and-set update, process them outside a long-running
+ * DB transaction, and release the lease on success/failure. PROCESSING leases
+ * older than staleLockMs are reclaimable after worker crashes.
  *
- * Features:
- *   - At-least-once delivery: rows are marked DELIVERED only after the main
- *     DB write succeeds. A crash between write and mark leaves a duplicate
- *     on retry — dedup via AuditLog.idempotencyKey handles this.
- *   - Bounded retries: after MAX_ATTEMPTS, a row is marked FAILED for manual
- *     intervention (not silently dropped).
- *   - Batch processing: drains up to `batchSize` rows per call to avoid
- *     holding long transactions.
- *
- * @param options — { batchSize?: number, maxAttempts?: number }
- * @returns summary of drained rows: { delivered, failed, remaining }
+ * auditWriter is injectable for integration tests which simulate a failing
+ * cross-database sink without importing the main generated Prisma client.
  */
 export async function drainAuditOutbox(options?: {
   batchSize?: number;
   maxAttempts?: number;
+  staleLockMs?: number;
+  auditWriter?: AuditWriter;
 }): Promise<{ delivered: number; failed: number; remaining: number }> {
-  const batchSize = options?.batchSize ?? 50;
-  const maxAttempts = options?.maxAttempts ?? 5;
+  const batchSize = Math.max(1, Math.min(options?.batchSize ?? DEFAULT_BATCH_SIZE, 500));
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const staleLockMs = Math.max(1000, options?.staleLockMs ?? DEFAULT_STALE_LOCK_MS);
+  const auditWriter = options?.auditWriter ?? writeAuditToMainDb;
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - staleLockMs);
 
-  // Fetch a batch of PENDING rows (oldest first)
-  const pendingRows = await storeDb.auditOutbox.findMany({
+  const candidates = await storeDb.auditOutbox.findMany({
     where: {
-      status: 'PENDING',
       attempts: { lt: maxAttempts },
+      OR: [
+        { status: 'PENDING' },
+        { status: 'PROCESSING', lockedAt: { lt: staleBefore } },
+      ],
     },
     orderBy: { createdAt: 'asc' },
     take: batchSize,
@@ -96,18 +97,36 @@ export async function drainAuditOutbox(options?: {
   let delivered = 0;
   let failed = 0;
 
-  for (const row of pendingRows) {
+  for (const row of candidates) {
+    // Atomic claim: only one worker can change a fresh PENDING row to PROCESSING.
+    const claimed = await storeDb.auditOutbox.updateMany({
+      where: {
+        id: row.id,
+        attempts: { lt: maxAttempts },
+        OR: [
+          { status: 'PENDING' },
+          { status: 'PROCESSING', lockedAt: { lt: staleBefore } },
+        ],
+      },
+      data: { status: 'PROCESSING', lockedAt: new Date() },
+    });
+    if (claimed.count !== 1) continue;
+
     let params: LogAuditParams;
     try {
       params = JSON.parse(row.payloadJson) as LogAuditParams;
-    } catch (parseErr) {
-      // payload is malformed — mark FAILED (cannot recover automatically)
+      if (!params || typeof params.action !== 'string' || typeof params.entityType !== 'string') {
+        throw new Error('payload missing required action/entityType');
+      }
+    } catch (err) {
+      const message = 'payload parse/validation error: ' + errorMessage(err);
       await storeDb.auditOutbox.update({
         where: { id: row.id },
         data: {
           status: 'FAILED',
           attempts: { increment: 1 },
-          lastError: `payload parse error: ${(parseErr as Error).message}`,
+          lastError: message,
+          lockedAt: null,
         },
       });
       failed++;
@@ -115,50 +134,27 @@ export async function drainAuditOutbox(options?: {
     }
 
     try {
-      // Write to the main AuditLog with idempotencyKey = outbox row id
-      // The idempotencyKey deduplicates on the main DB side (UNIQUE constraint)
-      // so that a redelivery after a partial success is a no-op.
-      await db.auditLog.create({
-        data: {
-          actorId: params.actorId ?? null,
-          actorType: params.actorType ?? 'USER',
-          action: params.action,
-          entityType: params.entityType,
-          entityId: params.entityId ?? null,
-          beforeJson: safeStringify(params.before),
-          afterJson: safeStringify(params.after),
-          ip: params.ip ?? null,
-          userAgent: params.userAgent ?? null,
-          requestId: params.requestId ?? null,
-          reason: params.reason ?? null,
-          // idempotencyKey: row.id,  // See note below
-        },
-      }).catch(async (dbErr) => {
-        // If the write fails (DB down, unique violation on redelivery, etc.),
-        // record the error and increment attempts. Row stays PENDING until
-        // maxAttempts is reached, then it's marked FAILED.
-        throw dbErr;
-      });
-
-      // Mark DELIVERED
+      // row.id is passed as the main DB's UNIQUE idempotency key.
+      await auditWriter(params, row.id);
       await storeDb.auditOutbox.update({
         where: { id: row.id },
         data: {
           status: 'DELIVERED',
           attempts: { increment: 1 },
           lastError: null,
+          lockedAt: null,
         },
       });
       delivered++;
     } catch (err) {
-      const errorMsg = (err as Error)?.message ?? String(err);
       const newAttempts = row.attempts + 1;
       await storeDb.auditOutbox.update({
         where: { id: row.id },
         data: {
           attempts: newAttempts,
-          lastError: errorMsg,
+          lastError: errorMessage(err),
           status: newAttempts >= maxAttempts ? 'FAILED' : 'PENDING',
+          lockedAt: null,
         },
       });
       failed++;
@@ -166,27 +162,25 @@ export async function drainAuditOutbox(options?: {
   }
 
   const remaining = await storeDb.auditOutbox.count({
-    where: { status: 'PENDING' },
+    where: { status: { in: ['PENDING', 'PROCESSING'] } },
   });
-
   return { delivered, failed, remaining };
 }
 
-/**
- * Get outbox stats for monitoring. Reveals stuck/failed rows.
- */
 export async function getAuditOutboxStats(): Promise<{
   pending: number;
+  processing: number;
   delivered: number;
   failed: number;
   oldestPendingAt: Date | null;
 }> {
-  const [pending, delivered, failed, oldestPending] = await Promise.all([
+  const [pending, processing, delivered, failed, oldestPending] = await Promise.all([
     storeDb.auditOutbox.count({ where: { status: 'PENDING' } }),
+    storeDb.auditOutbox.count({ where: { status: 'PROCESSING' } }),
     storeDb.auditOutbox.count({ where: { status: 'DELIVERED' } }),
     storeDb.auditOutbox.count({ where: { status: 'FAILED' } }),
     storeDb.auditOutbox.findFirst({
-      where: { status: 'PENDING' },
+      where: { status: { in: ['PENDING', 'PROCESSING'] } },
       orderBy: { createdAt: 'asc' },
       select: { createdAt: true },
     }),
@@ -194,13 +188,12 @@ export async function getAuditOutboxStats(): Promise<{
 
   return {
     pending,
+    processing,
     delivered,
     failed,
     oldestPendingAt: oldestPending?.createdAt ?? null,
   };
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────
 
 function safeStringify(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -212,7 +205,6 @@ function safeStringify(value: unknown): string | null {
   }
 }
 
-// Lazy import of storeDb to avoid circular dependency at module load time.
-// storeDb is only needed for drainAuditOutbox (not for enqueueAuditOutbox,
-// which receives a tx client as an argument).
-import { storeDb } from '@/lib/store-db';
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
