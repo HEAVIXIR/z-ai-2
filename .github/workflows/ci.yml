@@ -306,22 +306,21 @@ jobs:
           bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=verbose --silent 2>&1 || true
           echo ""
           echo "── Parsing test results for fail-closed checks ──"
-          # Run again with JSON reporter, --silent suppresses console.log/warn from tests
-          # so stdout contains ONLY valid JSON. stderr goes to a separate file.
+          # Use --outputFile to write JSON to a file (avoids stdout pollution
+          # from vitest's own messages like "JSON report written to ...")
           JSON_FILE=$(mktemp)
-          STDERR_FILE=$(mktemp)
-          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json --silent > "$JSON_FILE" 2> "$STDERR_FILE" || true
-          # Show stderr (vitest's own messages, not test console output)
-          echo "── vitest stderr ──"
-          cat "$STDERR_FILE" 2>/dev/null || true
-          # Validate JSON is parseable
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json --silent --outputFile="$JSON_FILE" 2>/dev/null || true
+          # Validate JSON file exists and is parseable
+          if [ ! -s "$JSON_FILE" ]; then
+            echo "✗ FAIL: vitest JSON output file is empty or missing."
+            echo "  The --outputFile flag should have written JSON to $JSON_FILE."
+            exit 1
+          fi
           if ! jq empty "$JSON_FILE" 2>/dev/null; then
             echo "✗ FAIL: vitest JSON output is not valid JSON."
             echo "  First 500 chars of output:"
             head -c 500 "$JSON_FILE" || true
             echo ""
-            echo "  This usually means console.log/warn from tests corrupted the JSON."
-            echo "  Ensure --silent is passed to vitest."
             exit 1
           fi
           # Parse results
@@ -356,4 +355,4 @@ jobs:
           fi
           echo ""
           echo "✓ All $RUN_COUNT TLS behavioral tests ran with 0 skips and 0 failures."
-          rm -f "$JSON_FILE" "$STDERR_FILE"
+          rm -f "$JSON_FILE"
