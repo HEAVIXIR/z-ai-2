@@ -72,6 +72,8 @@ async function writeAuditToMainDb(params: LogAuditParams, idempotencyKey: string
 export async function drainAuditOutbox(options?: {
   batchSize?: number;
   maxAttempts?: number;
+  /** Restrict a drain to known row IDs; useful for controlled replay and tests. */
+  onlyIds?: string[];
   staleLockMs?: number;
   auditWriter?: AuditWriter;
 }): Promise<{ delivered: number; failed: number; remaining: number }> {
@@ -84,6 +86,7 @@ export async function drainAuditOutbox(options?: {
 
   const candidates = await storeDb.auditOutbox.findMany({
     where: {
+      id: options?.onlyIds ? { in: options.onlyIds } : undefined,
       attempts: { lt: maxAttempts },
       OR: [
         { status: 'PENDING' },
