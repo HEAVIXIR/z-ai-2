@@ -165,6 +165,10 @@ describe.skipIf(!RUN_TESTS)(
 
     // ── Scenario 5: Rotation when the row is missing → failure detected ──
     it("5. Rotation when the row is missing → failure detected (DO block RAISE EXCEPTION)", () => {
+      // Ensure the table exists + has a known value before this test
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: ANCHOR_VALUE_2 });
+
       // Temporarily delete the row (as admin)
       psqlAdmin("DELETE FROM \"_dryrun_anchor\" WHERE key='server_identity'");
 
@@ -231,6 +235,10 @@ describe.skipIf(!RUN_TESTS)(
 
     // ── Scenario 7: Cloned DB limitation (fundamental — documented) ──────
     it("7. Anchor value is cloneable — a cloned DB would pass (H-04 fundamental limitation)", () => {
+      // Ensure the table exists + has a known value before this test
+      psqlAdmin('DROP TABLE IF EXISTS "_dryrun_anchor"');
+      psqlScript("scripts/rbac-create-anchor-table.sql", { anchor_value: ANCHOR_VALUE_2 });
+
       // This test DOCUMENTS the fundamental limitation: if the DB is cloned,
       // the anchor value comes with it. This is why Finding D is UNVERIFIED.
       const originalValue = psqlAdmin("SELECT value FROM \"_dryrun_anchor\" WHERE key='server_identity'");
