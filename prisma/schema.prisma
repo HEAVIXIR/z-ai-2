@@ -1713,8 +1713,11 @@ model SocialReel {
 // ════════════════════════════════════════════════════════════
 
 model AuditLog {
-  id          String   @id @default(cuid())
-  actorId     String?
+  id             String   @id @default(cuid())
+  // Stable delivery key for cross-database transactional outbox events.
+  // Nullable to preserve legacy logAudit callers; unique to make replay idempotent.
+  idempotencyKey String?  @unique
+  actorId        String?
   actorType   String   @default("USER") // USER | ADMIN | SYSTEM | AI
   action      String   // e.g. "listing.publish", "user.suspend", "brand.update"
   entityType  String   // e.g. "Listing", "User", "Brand"
