@@ -477,7 +477,6 @@ export async function adjustStock(
     });
     const currentQty = existingBalance?.quantity ?? 0;
 
-    let balanceRow;
     if (qty < 0) {
       // Conditional UPDATE is atomic in PostgreSQL. If another request has
       // already consumed the available quantity, this request affects zero
@@ -496,11 +495,8 @@ export async function adjustStock(
           'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
         );
       }
-      balanceRow = await tx.inventoryBalance.findUnique({
-        where: { partId_warehouseId: { partId, warehouseId } },
-      });
     } else {
-      balanceRow = await tx.inventoryBalance.upsert({
+      await tx.inventoryBalance.upsert({
         where: { partId_warehouseId: { partId, warehouseId } },
         create: {
           partId,
@@ -514,6 +510,9 @@ export async function adjustStock(
         },
       });
     }
+    const balanceRow = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
     if (!balanceRow) {
       throw new InventoryServiceError(500, 'به‌روزرسانی موجودی انبار ناموفق بود');
     }
