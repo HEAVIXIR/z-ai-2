@@ -289,4 +289,35 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     expect(row!.lockedAt).toBeNull();
   });
 
+
+  it.skipIf(!process.env.DATABASE_URL)('OUTBOX-10. real main PostgreSQL delivery is unique across a replay after sink success', async () => {
+    const { db } = await import('@/lib/db');
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      actorType: 'SYSTEM',
+      action: 'test.outbox.real-main-dedup',
+      entityType: 'TestEntity',
+      entityId: 'real-main-' + Date.now(),
+    }));
+
+    try {
+      const first = await drainAuditOutbox({ onlyIds: [outboxId] });
+      expect(first.delivered).toBe(1);
+      let rows = await db.auditLog.findMany({ where: { idempotencyKey: outboxId } });
+      expect(rows).toHaveLength(1);
+
+      // Simulate a crash after main DB commit but before the outbox marker.
+      await storeDb.auditOutbox.update({
+        where: { id: outboxId },
+        data: { status: 'PENDING', attempts: 0, lockedAt: null },
+      });
+      const second = await drainAuditOutbox({ onlyIds: [outboxId] });
+      expect(second.delivered).toBe(1);
+      rows = await db.auditLog.findMany({ where: { idempotencyKey: outboxId } });
+      expect(rows).toHaveLength(1);
+    } finally {
+      await db.auditLog.deleteMany({ where: { idempotencyKey: outboxId } });
+      await storeDb.auditOutbox.deleteMany({ where: { id: outboxId } });
+    }
+  });
+
 });
