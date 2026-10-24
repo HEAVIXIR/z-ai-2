@@ -426,8 +426,8 @@ export async function getWarehouse(id: string): Promise<any> {
  *   6. Update Part.stock to keep the public snapshot in sync with the
  *      sum of all warehouse balances (snapshot field, mirror of the
  *      warehouse-segmented source of truth).
- *   7. Audit: movement.create + part.update side-effect +
- *      inventorybalance.update.
+ *   7. Commit all Store DB mutations together. Cross-subsystem audit
+ *      records are emitted after commit because the audit sink is separate.
  *
  * @throws InventoryServiceError on validation (400) or lookup (404).
  */
