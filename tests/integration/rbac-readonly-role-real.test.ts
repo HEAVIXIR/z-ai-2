@@ -277,12 +277,12 @@ describe.skipIf(!RUN_TESTS)(
         exitCode = err.status;
       }
 
-      // This test proves only the fail-closed TLS preflight behavior.
+      // This test proves only the fail-closed Prisma TLS configuration gate.
       // It does NOT prove PostgreSQL TLS handshake, CA trust, or hostname
       // validation; those require a TLS-enabled PostgreSQL integration test.
       expect(exitCode).toBe(2);
       const combined = stdout + "\\n" + stderr;
-      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
       expect(combined).not.toContain("DRYRUN_GATE:");
     });
   },
