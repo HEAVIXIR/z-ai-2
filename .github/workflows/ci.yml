@@ -82,16 +82,12 @@ jobs:
           # CI target is the postgres:17 service container's heavix_test db.
           DRYRUN_CONFIRM_TARGET: heavix_test
           DRYRUN_EXPECTED_ROLE: heavix_dryrun_ro
-          # STEP 15.73: MANDATORY host identity verification.
-          # STEP 15.75: DRYRUN_EXPECTED_HOST is always required (hostname match
-          # enforced). The inet_server_addr() IP check has been removed entirely;
-          # identity is now verified via LIVE DB content (table existence + Role
-          # catalog) inside preflightConnectionCheck. GITHUB_ACTIONS and CI are
-          # set automatically by GitHub Actions and are no longer referenced by
-          # the preflight (env-var-based CI trust was insecure — all three signals
-          # were caller-controlled). DRYRUN_CI_HOST_CHECK_EXCEPTION has been
-          # deprecated: any value halts the preflight with exit 2.
           DRYRUN_EXPECTED_HOST: localhost
+          # STEP 15.86: CI postgres:17 container does not have TLS.
+          # DRYRUN_ALLOW_NO_TLS=true permits diagnostic dry-run without TLS.
+          # Server identity is UNVERIFIED in CI (no TLS — by design).
+          # For staging/production, sslmode=verify-full is REQUIRED.
+          DRYRUN_ALLOW_NO_TLS: 'true'
         run: |
           # CR-15.52-01: Gate runs BEFORE integration tests that mutate the DB.
           # This ensures the read-only invariant is not affected by concurrent test mutations.

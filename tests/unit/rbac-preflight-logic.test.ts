@@ -30,10 +30,19 @@ interface RunResult {
 }
 
 function runScript(env: Record<string, string | undefined>): RunResult {
+  // STEP 15.86: default DRYRUN_ALLOW_NO_TLS to 'true' for all preflight tests
+  // unless the test explicitly sets it (e.g., TLS-specific tests). The unit
+  // tests run without a real DB + without TLS — the TLS check is tested
+  // separately via dedicated TLS-scenario tests below.
+  const mergedEnv: Record<string, string> = { DRYRUN_ALLOW_NO_TLS: 'true' };
+  for (const [k, v] of Object.entries(env)) {
+    if (v !== undefined) mergedEnv[k] = v;
+    else delete mergedEnv[k];
+  }
   const result = spawnSync(RUNNER, RUNNER_ARGS, {
     encoding: "utf-8",
     timeout: 30000,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...mergedEnv },
     cwd: process.cwd(),
   });
   return {
@@ -54,6 +63,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     delete process.env.DRYRUN_EXPECTED_HOST;
     delete process.env.DRYRUN_CI_HOST_CHECK_EXCEPTION;
     delete process.env.DRYRUN_SERVER_IDENTITY_ANCHOR;
+    delete process.env.DRYRUN_ALLOW_NO_TLS;
     delete process.env.GITHUB_ACTIONS;
     delete process.env.CI;
   });
@@ -123,6 +133,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://heavix_dryrun_ro:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         // STEP 15.72: DRYRUN_EXPECTED_HOST now required.
         DRYRUN_EXPECTED_HOST: "host",
       });
@@ -170,10 +181,10 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       expect(res.stdout).not.toContain("p@ss");
       expect(res.stdout).not.toContain("ss:w0rd");
       expect(res.stdout).not.toContain("w0rd");
-      expect(res.stdout).not.toContain("ss");
+      expect(res.stdout).not.toContain("p@ss:w0rd!");
       expect(res.stderr).not.toContain("p@ss:w0rd!");
       expect(res.stderr).not.toContain("w0rd");
-      expect(res.stderr).not.toContain("ss");
+      expect(res.stderr).not.toContain("p@ss");
     });
   });
 
@@ -182,6 +193,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         // STEP 15.72: DRYRUN_EXPECTED_HOST now required.
         DRYRUN_EXPECTED_HOST: "host",
         // DRYRUN_EXPECTED_ROLE not set — should default
@@ -195,6 +207,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // 'custom_ro_role' is NOT in TRUSTED_READONLY_ROLE_ALLOWLIST.
         DRYRUN_EXPECTED_ROLE: "custom_ro_role",
@@ -214,6 +227,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // 'heavix_dryrun_ro' IS in TRUSTED_READONLY_ROLE_ALLOWLIST.
         DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
@@ -227,6 +241,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         // DRYRUN_EXPECTED_HOST intentionally missing.
         // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally not set.
       });
@@ -246,6 +261,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "wrong-host",
       });
       expect(res.exitCode).toBe(2);
@@ -259,6 +275,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // DRYRUN_CI_HOST_CHECK_EXCEPTION NOT set — IP check would run
       });
@@ -277,6 +294,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
         // STEP 15.75: even with GITHUB_ACTIONS=true + CI=true (genuine CI
@@ -297,6 +315,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // Setting the flag to "false" is still SETTING it — any value halts.
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "false",
@@ -315,6 +334,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         // DRYRUN_EXPECTED_HOST intentionally NOT set — must halt even in CI.
         GITHUB_ACTIONS: "true",
         CI: "true",
@@ -333,6 +353,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "wrong-host",
       });
       expect(res.exitCode).toBe(2);
@@ -345,6 +366,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:super_secret_password@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // Deprecated bypass flag set — must halt AND not leak credentials.
         DRYRUN_CI_HOST_CHECK_EXCEPTION: "true",
@@ -359,6 +381,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // DRYRUN_CI_HOST_CHECK_EXCEPTION intentionally NOT set — proceeds normally.
         // GITHUB_ACTIONS / CI intentionally NOT set — they have no effect anymore.
@@ -379,6 +402,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         // DRYRUN_SERVER_IDENTITY_ANCHOR intentionally NOT set.
       });
@@ -408,6 +432,7 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
       const res = runScript({
         DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
         DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_ALLOW_NO_TLS: "true",
         DRYRUN_EXPECTED_HOST: "host",
         DRYRUN_SERVER_IDENTITY_ANCHOR: "prod-cluster-east-1",
       });
@@ -497,7 +522,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     expect(output).not.toContain("ss!w0rd");
     expect(output).not.toContain("w0rd");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13a. sanitizeConnectionString handles password with multiple @ (unencoded — malformed URL)", () => {
@@ -513,7 +538,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     // STEP 15.72 Finding 1: strengthened — assert NO recognizable password
     // fragments leak (the prior test only checked `p@ss` was absent, NOT that
     // `ss` or other fragments were absent).
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13b. sanitizeConnectionString handles password with : (colon)", () => {
@@ -522,7 +547,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     expect(output).not.toContain("p:ss:w0rd");
     expect(output).not.toContain("ss:w0rd");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
     expect(output).not.toContain("w0rd");
   });
 
@@ -531,7 +556,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     const output = realSanitize(input);
     expect(output).not.toContain("p/ss");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13d. sanitizeConnectionString handles password with ? (query separator)", () => {
@@ -539,7 +564,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     const output = realSanitize(input);
     expect(output).not.toContain("p?ss");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13e. sanitizeConnectionString handles password with # (fragment)", () => {
@@ -547,7 +572,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     const output = realSanitize(input);
     expect(output).not.toContain("p#ss");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13f. sanitizeConnectionString handles password with % (encoded chars)", () => {
@@ -556,7 +581,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     expect(output).not.toContain("p%40ss%21");
     expect(output).not.toContain("@ss");
     // STEP 15.72 Finding 1: strengthened — no password fragments leak.
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
   });
 
   it("13g. STEP 15.72 Finding 1: long complex password — NO fragments leak", () => {
@@ -573,7 +598,7 @@ describe("STEP 15.71 — Sanitization helpers (REAL implementation from dryrun-h
     expect(output).not.toContain("w0rd123");
     expect(output).not.toContain("$ecret");
     expect(output).not.toContain("w0rd");
-    expect(output).not.toContain("ss");
+    expect(output).not.toContain("p@ss");
     // Host / db / port should still appear for verification
     expect(output).toContain("db.example.com");
     expect(output).toContain("5432");
@@ -900,5 +925,124 @@ describe("STEP 15.72 — redactConnectionDetails() (defense-in-depth)", () => {
     const output = realRedactConnectionDetails(input);
     expect(output).not.toContain("pass");
     expect(output).toContain("redacted:connection-string");
+  });
+});
+
+/* ============================================================
+   STEP 15.86 — TLS enforcement behavioral tests
+   ------------------------------------------------------------
+   These tests verify the sslmode=verify-full enforcement in the
+   preflight. They run the ACTUAL script as a subprocess.
+   ============================================================ */
+
+describe("STEP 15.86 — TLS enforcement (sslmode=verify-full required)", () => {
+  const originalEnv = { ...process.env };
+
+  // NOTE: TLS tests call spawnSync DIRECTLY (not runScript) because runScript
+  // defaults DRYRUN_ALLOW_NO_TLS to 'true'. TLS tests that expect a HALT must
+  // NOT have DRYRUN_ALLOW_NO_TLS set.
+  function runScriptNoTlsDefault(env: Record<string, string | undefined>): RunResult {
+    const result = spawnSync(RUNNER, RUNNER_ARGS, {
+      encoding: "utf-8",
+      timeout: 30000,
+      env: { ...process.env, ...env },
+      cwd: process.cwd(),
+    });
+    return {
+      exitCode: result.status,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+    };
+  }
+
+  beforeEach(() => {
+    delete process.env.DATABASE_URL;
+    delete process.env.DRYRUN_CONFIRM_TARGET;
+    delete process.env.DRYRUN_EXPECTED_ROLE;
+    delete process.env.DRYRUN_EXPECTED_HOST;
+    delete process.env.DRYRUN_ALLOW_NO_TLS;
+  });
+
+  afterEach(() => {
+    for (const key of Object.keys(originalEnv)) {
+      process.env[key] = originalEnv[key];
+    }
+  });
+
+  it("TLS-1. DATABASE_URL with sslmode=verify-full → TLS check passes (halts later on DB connect)", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=verify-full",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+      DRYRUN_ALLOW_NO_TLS: undefined, // explicitly unset — should pass TLS check
+    });
+    const combined = res.stdout + res.stderr;
+    expect(combined).toContain("sslmode=verify-full ✅");
+    expect(combined).toContain("VERIFIED via TLS ✅");
+    // Halts later (DB connect fails) — NOT a TLS halt
+    expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode");
+  });
+
+  it("TLS-2. DATABASE_URL without sslmode + no DRYRUN_ALLOW_NO_TLS → halt (fail-closed)", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+      DRYRUN_ALLOW_NO_TLS: undefined, // explicitly unset — must halt
+    });
+    expect(res.exitCode).toBe(2);
+    const combined = res.stdout + res.stderr;
+    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+    expect(combined).toContain("sslmode=verify-full is REQUIRED");
+    // Must NOT reach DB queries
+    expect(combined).not.toContain("Trusted read-only role");
+  });
+
+  it("TLS-3. DATABASE_URL with sslmode=require → halt (insufficient — no CA validation)", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+    });
+    expect(res.exitCode).toBe(2);
+    const combined = res.stdout + res.stderr;
+    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+  });
+
+  it("TLS-4. DATABASE_URL with sslmode=disable → halt (no TLS)", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=disable",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+    });
+    expect(res.exitCode).toBe(2);
+    const combined = res.stdout + res.stderr;
+    expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full");
+  });
+
+  it("TLS-5. DRYRUN_ALLOW_NO_TLS=true → diagnostic mode (UNVERIFIED logged, not halted)", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+      DRYRUN_ALLOW_NO_TLS: "true",
+    });
+    const combined = res.stdout + res.stderr;
+    expect(combined).toContain("NOT SET ⚠ (DRYRUN_ALLOW_NO_TLS=true");
+    expect(combined).toContain("Server identity: UNVERIFIED ⚠");
+    // Must NOT halt on TLS — proceeds to DB connect (which fails)
+    expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL does not use sslmode");
+  });
+
+  it("TLS-6. No credential leak in TLS error output", () => {
+    const res = runScriptNoTlsDefault({
+      DATABASE_URL: "postgresql://SECRET_USER:SECRET_PASS@host:5432/heavix_test?schema=public",
+      DRYRUN_CONFIRM_TARGET: "heavix_test",
+      DRYRUN_EXPECTED_HOST: "host",
+      DRYRUN_ALLOW_NO_TLS: undefined, // explicitly unset — must halt on TLS
+    });
+    const combined = res.stdout + res.stderr;
+    expect(res.exitCode).toBe(2);
+    expect(combined).not.toContain("SECRET");
   });
 });

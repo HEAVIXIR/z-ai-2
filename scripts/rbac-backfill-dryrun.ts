@@ -248,7 +248,7 @@ async function preflightConnectionCheck(): Promise<void> {
   // If mismatch → halt with exit 2 (wrong server).
   const serverIdentityAnchor = process.env.DRYRUN_SERVER_IDENTITY_ANCHOR;
 
-  console.log('── STEP 15.68 Preflight (STEP 15.72 hardening) ─────────────');
+  console.log('── STEP 15.68 Preflight (STEP 15.86 TLS hardening) ─────────────');
 
   // F-15.68-01a: DATABASE_URL must be set
   if (!databaseUrl) {
@@ -328,6 +328,59 @@ async function preflightConnectionCheck(): Promise<void> {
   // verified when DRYRUN_SERVER_IDENTITY_ANCHOR is set (see trust-anchor
   // check below).
   console.log('  Hostname consistency     : PASS ✅ (Configuration consistency — NOT a server-identity proof)');
+
+  // STEP 15.86 (Finding D — TLS-based server identity verification):
+  // The preflight verifies that DATABASE_URL contains sslmode=verify-full.
+  // This is the ONLY mechanism that provides cryptographic server identity:
+  // the PostgreSQL driver validates the server's TLS certificate against a
+  // trusted CA AND verifies the hostname in the certificate matches the
+  // connection target. No in-database mechanism (table, GUC, content) can
+  // prove server identity — a cloned DB has identical contents.
+  //
+  // sslmode values (PostgreSQL standard):
+  //   verify-full  — TLS + CA validation + strict hostname check ✅ REQUIRED
+  //   verify-ca    — TLS + CA validation (no hostname check) — insufficient
+  //   require      — TLS but no CA validation (MITM vulnerable) — rejected
+  //   prefer       — TLS if available, plaintext if not — rejected
+  //   disable      — no TLS — rejected
+  //
+  // If sslmode is not verify-full → halt (fail-closed, no silent fallback).
+  //
+  // EXCEPTION: DRYRUN_ALLOW_NO_TLS=true allows diagnostic dry-runs without
+  // TLS (e.g., CI with a local postgres:17 container that doesn't have TLS).
+  // This is ONLY for diagnostic dry-runs — NEVER for staging/production.
+  // When this exception is used, server identity is logged as UNVERIFIED.
+  const allowNoTls = process.env.DRYRUN_ALLOW_NO_TLS === 'true';
+  try {
+    const parsedUrl = new URL(databaseUrl);
+    const sslmode = parsedUrl.searchParams.get('sslmode');
+    if (sslmode !== 'verify-full') {
+      if (allowNoTls) {
+        console.log('  TLS mode                 : NOT SET ⚠ (DRYRUN_ALLOW_NO_TLS=true — diagnostic only)');
+        console.log('    Server identity: UNVERIFIED ⚠ (no TLS — cannot prove server identity)');
+        console.log('    This is acceptable for diagnostic dry-run ONLY.');
+        console.log('    For staging/production, use sslmode=verify-full in DATABASE_URL.');
+      } else {
+        console.error('✗ PREFLIGHT FAIL: DATABASE_URL does not use sslmode=verify-full.');
+        console.error(`    Current sslmode: ${sslmode ?? '<not set — defaults to prefer/disable>'}`);
+        console.error('  sslmode=verify-full is REQUIRED for server identity verification.');
+        console.error('  This enforces TLS with CA validation AND strict hostname verification.');
+        console.error('  Without it, the connection is vulnerable to MITM and cannot prove server identity.');
+        console.error('  Update DATABASE_URL to include ?sslmode=verify-full');
+        console.error('  (For CI without TLS, set DRYRUN_ALLOW_NO_TLS=true — diagnostic dry-run only,');
+        console.error('   NEVER for staging/production. See STEP 15.86 policy.)');
+        process.exit(2);
+      }
+    } else {
+      console.log('  TLS mode                 : sslmode=verify-full ✅ (CA + hostname verified by driver)');
+      console.log('    Server identity: VERIFIED via TLS ✅ (cryptographic proof — not env-var-based)');
+    }
+  } catch {
+    // URL already parsed above (extractDbName/extractHost) — if we reach here,
+    // it's a race condition. Fail closed.
+    console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not a parseable URL for TLS verification.');
+    process.exit(2);
+  }
 
   // STEP 15.76: Independent trust-anchor status (logged EARLY, before DB
   // connect, so the operator sees the status even if the DB connection

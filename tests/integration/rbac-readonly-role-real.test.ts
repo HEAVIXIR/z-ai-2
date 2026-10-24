@@ -276,6 +276,7 @@ describe.skipIf(!RUN_TESTS)(
               // prove "this is GitHub Actions CI." DRYRUN_CI_HOST_CHECK_EXCEPTION
               // is now a deprecated bypass: ANY value halts with exit 2.
               DRYRUN_EXPECTED_HOST: "localhost",
+              DRYRUN_ALLOW_NO_TLS: "true", // CI postgres:17 has no TLS
             },
           },
         );

@@ -213,6 +213,7 @@ describe.skipIf(!RUN_TESTS)(
               DRYRUN_CONFIRM_TARGET: "heavix_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
               DRYRUN_EXPECTED_HOST: "localhost",
+              DRYRUN_ALLOW_NO_TLS: "true", // CI postgres:17 has no TLS
               DRYRUN_SERVER_IDENTITY_ANCHOR: wrongAnchor, // ← WRONG value
             },
           },
