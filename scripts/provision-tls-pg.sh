@@ -129,8 +129,14 @@ echo "Certificates generated in $CERT_DIR"
 
 # ─── 3. Initialize and start VALID PostgreSQL cluster (port 5433) ──────────
 echo "Initializing VALID cluster on port $VALID_PORT..."
-sudo -u postgres "$PG_BIN/initdb" -D "$PG_ROOT/valid" --auth=trust 2>/dev/null || \
+# On GitHub Actions (ubuntu-latest), run as the current user (runner).
+# On systems with a postgres user, try sudo -u postgres first.
+if id postgres &>/dev/null 2>&1; then
+  sudo -u postgres "$PG_BIN/initdb" -D "$PG_ROOT/valid" --auth=trust 2>/dev/null || \
+    "$PG_BIN/initdb" -D "$PG_ROOT/valid" --auth=trust
+else
   "$PG_BIN/initdb" -D "$PG_ROOT/valid" --auth=trust
+fi
 
 # Configure postgresql.conf
 cat >> "$PG_ROOT/valid/postgresql.conf" <<CONF
@@ -145,29 +151,34 @@ CONF
 # pg_hba.conf — require TLS for all connections
 cat > "$PG_ROOT/valid/pg_hba.conf" <<HBA
 # TYPE  DATABASE  USER  ADDRESS  METHOD  OPTIONS
-hostssl all       all   127.0.0.1/32  md5
-hostssl all       all   ::1/128       md5
+hostssl all       all   127.0.0.1/32  trust
+hostssl all       all   ::1/128       trust
 # Reject non-TLS connections
 host    all       all   127.0.0.1/32  reject
 host    all       all   ::1/128       reject
 HBA
 
+# Fix permissions on SSL key file (PostgreSQL requires 600 or owned by postgres)
+chmod 600 "$CERT_DIR/server-valid.key" "$CERT_DIR/server-expired.key"
+
 # Start the VALID cluster
-"$PG_BIN/pg_ctl" -D "$PG_ROOT/valid" -l "$PG_ROOT/valid.log" start -w -t 30
+"$PG_BIN/pg_ctl" -D "$PG_ROOT/valid" -l "$PG_ROOT/valid.log" -o "-c unix_socket_directories=/tmp" start -w -t 30
 sleep 2
 
 # Create test role + database
-"$PG_BIN/psql" -p $VALID_PORT -U "$USER" -d postgres -c "CREATE USER heavix_dryrun_ro WITH PASSWORD 'readonly_pass';" || true
-"$PG_BIN/psql" -p $VALID_PORT -U "$USER" -d postgres -c "CREATE DATABASE postgres OWNER $USER;" || true
-"$PG_BIN/psql" -p $VALID_PORT -U "$USER" -d postgres -c "GRANT CONNECT ON DATABASE postgres TO heavix_dryrun_ro;" || true
-"$PG_BIN/psql" -p $VALID_PORT -U "$USER" -d postgres -c "ALTER USER heavix_dryrun_ro WITH PASSWORD 'readonly_pass';" || true
+"$PG_BIN/psql" -h localhost -p $VALID_PORT -d postgres -c "CREATE USER heavix_dryrun_ro WITH PASSWORD 'readonly_pass';" || true
+"$PG_BIN/psql" -h localhost -p $VALID_PORT -d postgres -c "GRANT CONNECT ON DATABASE postgres TO heavix_dryrun_ro;" || true
 
 echo "VALID cluster started on port $VALID_PORT"
 
 # ─── 4. Initialize and start EXPIRED PostgreSQL cluster (port 5434) ───────
 echo "Initializing EXPIRED cluster on port $EXPIRED_PORT..."
-sudo -u postgres "$PG_BIN/initdb" -D "$PG_ROOT/expired" --auth=trust 2>/dev/null || \
+if id postgres &>/dev/null 2>&1; then
+  sudo -u postgres "$PG_BIN/initdb" -D "$PG_ROOT/expired" --auth=trust 2>/dev/null || \
+    "$PG_BIN/initdb" -D "$PG_ROOT/expired" --auth=trust
+else
   "$PG_BIN/initdb" -D "$PG_ROOT/expired" --auth=trust
+fi
 
 cat >> "$PG_ROOT/expired/postgresql.conf" <<CONF
 listen_addresses = 'localhost'
@@ -180,17 +191,17 @@ CONF
 
 cat > "$PG_ROOT/expired/pg_hba.conf" <<HBA
 # TYPE  DATABASE  USER  ADDRESS  METHOD  OPTIONS
-hostssl all       all   127.0.0.1/32  md5
-hostssl all       all   ::1/128       md5
+hostssl all       all   127.0.0.1/32  trust
+hostssl all       all   ::1/128       trust
 host    all       all   127.0.0.1/32  reject
 host    all       all   ::1/128       reject
 HBA
 
-"$PG_BIN/pg_ctl" -D "$PG_ROOT/expired" -l "$PG_ROOT/expired.log" start -w -t 30
+"$PG_BIN/pg_ctl" -D "$PG_ROOT/expired" -l "$PG_ROOT/expired.log" -o "-c unix_socket_directories=/tmp" start -w -t 30
 sleep 2
 
-"$PG_BIN/psql" -p $EXPIRED_PORT -U "$USER" -d postgres -c "CREATE USER heavix_dryrun_ro WITH PASSWORD 'readonly_pass';" || true
-"$PG_BIN/psql" -p $EXPIRED_PORT -U "$USER" -d postgres -c "GRANT CONNECT ON DATABASE postgres TO heavix_dryrun_ro;" || true
+"$PG_BIN/psql" -h localhost -p $EXPIRED_PORT -d postgres -c "CREATE USER heavix_dryrun_ro WITH PASSWORD 'readonly_pass';" || true
+"$PG_BIN/psql" -h localhost -p $EXPIRED_PORT -d postgres -c "GRANT CONNECT ON DATABASE postgres TO heavix_dryrun_ro;" || true
 
 echo "EXPIRED cluster started on port $EXPIRED_PORT"
 
