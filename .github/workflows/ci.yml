@@ -284,68 +284,25 @@ jobs:
       - name: "Run real Prisma v6 TLS behavioral tests (fail-closed: no skips allowed)"
         run: |
           set -e
-          # ─── Validate the fail-closed parser itself (STEP 15.94 directive 3) ─────
-          # Run the focused validation that proves the parser rejects incomplete
-          # and non-passing result sets (skipped, failed, todo, pending, running,
-          # unknown statuses, too-few, too-many, invalid JSON).
+          # Validate the SAME parser used below against incomplete/non-passing results.
           bash scripts/validate-tls-proof-fail-closed.sh
-          # Run tests with verbose reporter first (for human-readable CI log)
+          # Run tests with verbose reporter first (human-readable diagnostic output).
           echo "── Running TLS behavioral tests (verbose output) ──"
           bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=verbose --silent 2>&1 || true
           echo ""
           echo "── Parsing test results for fail-closed checks ──"
-          # Use --outputFile to write JSON to a file (avoids stdout pollution
-          # from vitest's own messages like "JSON report written to ...")
           JSON_FILE=$(mktemp)
-          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json --silent --outputFile="$JSON_FILE" 2>/dev/null || true
-          # Validate JSON file exists and is parseable
+          trap 'rm -f "$JSON_FILE"' EXIT
+          VITEST_EXIT=0
+          # Preserve the real Vitest exit status; a green-looking JSON report cannot mask process failure.
+          bunx vitest run tests/integration/rbac-tls-behavioral-real.test.ts --reporter=json --silent --outputFile="$JSON_FILE" 2>/dev/null || VITEST_EXIT=$?
           if [ ! -s "$JSON_FILE" ]; then
             echo "✗ FAIL: vitest JSON output file is empty or missing."
-            echo "  The --outputFile flag should have written JSON to $JSON_FILE."
             exit 1
           fi
-          if ! jq empty "$JSON_FILE" 2>/dev/null; then
-            echo "✗ FAIL: vitest JSON output is not valid JSON."
-            echo "  First 500 chars of output:"
-            head -c 500 "$JSON_FILE" || true
-            echo ""
-            exit 1
+          # Run the shared parser tested by validate-tls-proof-fail-closed.sh.
+          bash scripts/parse-tls-proof-results.sh "$JSON_FILE"
+          if [ "$VITEST_EXIT" -ne 0 ]; then
+            echo "✗ FAIL: Vitest exited with status $VITEST_EXIT despite producing a parseable result file."
+            exit "$VITEST_EXIT"
           fi
-          # Parse results — count by status
-          TOTAL_COUNT=$(jq '[.testResults[].assertionResults[]?] | length' "$JSON_FILE")
-          PASS_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "passed")] | length' "$JSON_FILE")
-          SKIP_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "skipped")] | length' "$JSON_FILE")
-          FAIL_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "failed")] | length' "$JSON_FILE")
-          TODO_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "todo")] | length' "$JSON_FILE")
-          PENDING_COUNT=$(jq '[.testResults[].assertionResults[]? | select(.status == "pending")] | length' "$JSON_FILE")
-          # Count any status that is NOT "passed" (covers skipped, failed, todo, pending, running, and any unknown future status)
-          NON_PASS_COUNT=$((TOTAL_COUNT - PASS_COUNT))
-          # List the non-pass statuses actually present (for diagnostic clarity)
-          NON_PASS_STATUSES=$(jq -r '[.testResults[].assertionResults[]? | select(.status != "passed") | .status] | unique | join(", ")' "$JSON_FILE")
-          echo ""
-          echo "── TLS Proof Test Summary ──"
-          echo "  Total:    $TOTAL_COUNT"
-          echo "  Passed:   $PASS_COUNT"
-          echo "  Failed:   $FAIL_COUNT"
-          echo "  Skipped:  $SKIP_COUNT"
-          echo "  Todo:     $TODO_COUNT"
-          echo "  Pending:  $PENDING_COUNT"
-          echo "  Expected: 13 (7 Prisma + 5 libpq + 1 verdict) ALL with status 'passed'"
-          # Fail-closed: exactly 13 tests must have status "passed" — no exceptions
-          if [ "$PASS_COUNT" -ne 13 ]; then
-            echo ""
-            echo "✗ FAIL: Expected exactly 13 tests with status 'passed', got $PASS_COUNT."
-            echo "  All 13 TLS behavioral tests MUST pass — no skips, no failures, no todo, no pending, no running."
-            exit 1
-          fi
-          # Fail-closed: no non-passing tests allowed — TOTAL must equal PASS
-          if [ "$NON_PASS_COUNT" -ne 0 ]; then
-            echo ""
-            echo "✗ FAIL: $NON_PASS_COUNT tests did not have status 'passed'."
-            echo "  Non-pass statuses present: ${NON_PASS_STATUSES:-<none>}"
-            echo "  The TLS proof job requires ALL tests to have status 'passed' (exactly 13)."
-            exit 1
-          fi
-          echo ""
-          echo "✓ Exactly 13 TLS behavioral tests passed (0 skips, 0 failures, 0 todo, 0 pending, 0 running)."
-          rm -f "$JSON_FILE"
