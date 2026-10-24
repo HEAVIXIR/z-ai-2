@@ -26,7 +26,7 @@
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { drainAuditOutbox, enqueueAuditOutbox, getAuditOutboxStats } from '@/lib/store-audit-outbox';
+import { drainAuditOutbox, enqueueAuditOutbox, getAuditOutboxStats, requeueFailedAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ─── Infrastructure detection (top-level) ──────────────────────────────────
 const STORE_DB_AVAILABLE = (() => {
@@ -318,6 +318,36 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
       await db.auditLog.deleteMany({ where: { idempotencyKey: outboxId } });
       await storeDb.auditOutbox.deleteMany({ where: { id: outboxId } });
     }
+  });
+
+
+  it('OUTBOX-11. exhausted rows become FAILED and can be explicitly requeued after investigation', async () => {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+      action: 'test.outbox.manual-replay',
+      entityType: 'TestEntity',
+      entityId: 'manual-replay-1',
+    }));
+    const failed = await drainAuditOutbox({
+      maxAttempts: 1,
+      auditWriter: async () => { throw new Error('simulated persistent sink failure'); },
+    });
+    expect(failed.failed).toBe(1);
+    let row = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(row!.status).toBe('FAILED');
+    expect(row!.lastError).toContain('persistent sink failure');
+
+    expect(await requeueFailedAuditOutbox([outboxId])).toBe(1);
+    row = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(row!.status).toBe('PENDING');
+    expect(row!.attempts).toBe(0);
+    expect(row!.lastError).toBeNull();
+
+    const replay = await drainAuditOutbox({
+      auditWriter: async () => {},
+    });
+    expect(replay.delivered).toBe(1);
+    row = await storeDb.auditOutbox.findUnique({ where: { id: outboxId } });
+    expect(row!.status).toBe('DELIVERED');
   });
 
 });
