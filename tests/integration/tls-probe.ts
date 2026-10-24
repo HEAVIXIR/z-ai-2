@@ -5,14 +5,12 @@
  * connection path (PrismaClient → Rust query engine → TLS) and prints
  * PROBE_RESULT=SUCCESS or PROBE_RESULT=FAILURE with the error.
  *
- * Run as a SUBPROCESS so each TLS scenario gets a fresh Prisma query engine
- * that reads PGSSLROOTCERT and the connection-string sslmode/sslrootcert
- * independently (Prisma's query engine is a singleton per-process and does
- * not re-read env vars after the first client is created).
+ * Run as a SUBPROCESS so each TLS scenario gets a fresh Prisma query engine.
+ * The connection URL uses Prisma ORM v6's documented sslmode=require,
+ * sslaccept=strict, and sslcert=<trusted CA path> settings.
  *
  * Env:
- *   PROBE_DATABASE_URL — full Prisma connection string (incl. sslmode, sslrootcert)
- *   PGSSLROOTCERT      — path to the CA cert (read by Prisma's query engine)
+ *   PROBE_DATABASE_URL — full Prisma connection string (incl. sslmode, sslaccept, sslcert)
  *
  * Output:
  *   PROBE_RESULT=SUCCESS        (exit 0) — TLS handshake + query succeeded
