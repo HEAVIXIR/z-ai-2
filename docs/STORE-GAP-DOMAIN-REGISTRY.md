@@ -1,79 +1,68 @@
 # HEAVIX — Store Gap Domain Registry
 
-> **Status:** Living document — updated as gap domains are implemented or delegated
-> **Last updated:** 2026-09-26 (T2-W1)
+> **Status:** Reconciled against the current Store Resource Completion Matrix
+> **Last updated:** 2026-10-25
 > **Track:** A1 — Store Gap Domains
+> **Primary evidence:** `docs/STORE-RESOURCE-MATRIX.md` (Batch C; 13 resources)
 
 ## Purpose
 
-This document registers the 7 Store Control Plane domains that had NO backend implementation. Each domain needs Schema → Service → API → Permission → UI → Audit → Tests to be considered Complete per the project DoD.
+This registry originally tracked seven Store Control Plane domains that lacked backend implementation. The original table became stale: the later Store Resource Completion Matrix documents schema, service, API, permission, admin UI, validation, audit, tests, monitoring, and documentation for Inventory, Returns, Procurement, and Shipments as well as Suppliers.
 
-## Gap Domains
+This file is now a **gap register**, not a historical snapshot. Statuses below distinguish implementation evidence from the still-open runtime/batch gate. A row is not production-complete merely because code or contract tests exist.
 
-| # | Domain | Schema? | Service? | API? | Permission? | Admin UI? | Audit? | Tests? | Status / Next Step |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | **Inventory** | ❌ (only `Part.stock` field) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | Open — Design: StockMovement model or accept stock-on-Part |
-| 2 | **Returns** | ❌ (only `Payment.status=REFUNDED`) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | Open — Design: Return/RMA model or formalize inline refund path |
-| 3 | **Suppliers** | ✅ `Supplier` (T2-W1-A) | n/a (thin) | ✅ (T2-W1-A) | ✅ store.read/manage | ✅ /admin/store/suppliers | ✅ store.supplier.{create,update,delete} | ✅ contract counts updated | **DONE T2-W1-A** — procurement join (SupplierPart) deferred to T2-W2 |
-| 4 | **Procurement** | ❌ | ❌ | ❌ (stub UI only) | ❌ | ⚠️ stub (587 LOC, no API) | ❌ | ❌ | Open — Delete stub or implement backend |
-| 5 | **Shipping** | ✅ `Shipment` (read-only) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | Open — Add write route + carrier integration |
-| 6 | **Media** | ✅ delegated (`Part.images` JSON) | n/a | ✅ `/api/admin/upload` | ✅ via upload perms | ✅ `/admin/media` | ✅ via upload audit | n/a | **DELEGATED T2-W1-B** — see "Media — Delegation Decision" below |
-| 7 | **SEO** | ✅ delegated (general admin) | n/a | ✅ `/api/admin/seo/*` | ✅ via SEO perms | ✅ `/admin/seo` | ✅ via SEO audit | n/a | **DELEGATED T2-W1-C** — see "SEO — Delegation Decision" below |
+## Current Gap Domains
 
-## Priority
+| # | Domain | Current implementation evidence | Status | Remaining work / gate |
+|---|---|---|---|---|
+| 1 | **Inventory** | `StockMovement` / `InventoryBalance` schema; `src/lib/store-inventory-service.ts`; `/api/admin/store/inventory`; `inventory.read/manage`; Store resource registry and admin UI; audit hooks; contract coverage; monitoring registry. See Resource Matrix §1. | **Implemented at Layer A; runtime gate open** | Verify real PostgreSQL behavior for stock adjustment, movement atomicity, and balance invariants; capture monitoring evidence. |
+| 2 | **Returns** | `Return` / `ReturnItem` schema; `src/lib/store-returns-service.ts`; GET/POST and item GET/PATCH routes; `returns.read/manage`; resource registry/UI, audit, contract coverage, and monitoring. See Resource Matrix §3. | **Implemented at Layer A; runtime gate open** | Verify return lifecycle transitions, item quantities, and refund/payment consistency against real PostgreSQL. |
+| 3 | **Suppliers** | `Supplier` schema and `src/lib/store-suppliers-service.ts`; list/create/update/delete routes; permission checks, resource registry/UI, audit, contract coverage, and monitoring. See Resource Matrix §7. | **CRUD implemented; relationship scope needs confirmation** | Separately verify whether supplier-to-part/procurement linkage is implemented and tested; do not infer this from Supplier CRUD alone. |
+| 4 | **Procurement** | `ProcurementRequest` schema; `src/lib/store-procurement-service.ts`; admin API, `procurement.read/manage`, resource registry/UI, validation, audit, contract coverage, and monitoring. See Resource Matrix §4. | **Implemented at Layer A; runtime gate open** | Verify procurement state transitions and purchase-order/stock side effects with real PostgreSQL. |
+| 5 | **Shipping / Shipments** | `Shipment` schema; `src/lib/store-shipments-service.ts`; admin shipment routes, permissions, registry/UI, audit/contract coverage, and monitoring as recorded in Resource Matrix §13. | **Implementation present; external carrier integration not evidenced here** | Verify shipment state transitions and tracking history in a real DB; separately scope any carrier integration before claiming it exists. |
+| 6 | **Media** | Delegated to shared admin Media: `Part.images`, `/admin/media`, and `/api/admin/upload`; no duplicate Store Media model. | **Delegated** | Maintain the shared upload permission/audit boundary; no Store-specific media subsystem unless a new decision supersedes this one. |
+| 7 | **SEO** | Delegated to shared admin SEO at `/admin/seo` and `/api/admin/seo/*`; no duplicate Store SEO model. | **Delegated** | Verify shared SEO metadata consumption for public Store routes during the broader runtime gate. |
 
-| Priority | Domain | Rationale |
+## Priority After Reconciliation
+
+| Priority | Work item | Rationale |
 |---|---|---|
-| P1 | Procurement | Stub UI is misleading — must delete or implement |
-| P1 | Shipping | Schema exists but unused — either wire or remove |
-| P2 | Inventory | Stock management is core to store operations |
-| P2 | Returns | Customer-facing — needed for complete order lifecycle |
-| ~~P3~~ | ~~Suppliers~~ | ✅ Implemented T2-W1-A — CRUD + audit + UI + tests |
-| ~~P3~~ | ~~Media~~ | ✅ Delegated T2-W1-B — uses general `/admin/media` |
-| ~~P3~~ | ~~SEO~~ | ✅ Delegated T2-W1-C — uses general `/admin/seo` |
+| P1 | **Store + Marketplace joint Batch Gate** | The resource matrix records Layer A evidence, but the documented joint runtime/monitoring/production-verification gate remains open. |
+| P1 | **Inventory / Returns / Procurement runtime invariants** | These domains affect stock, refunds, and purchasing state; static contract tests are not enough to establish transaction behavior. |
+| P2 | **Shipment lifecycle and carrier boundary** | Verify the internal shipment workflow; treat carrier integration as unimplemented unless concrete code and tests prove otherwise. |
+| P2 | **Supplier-to-part/procurement relationship** | Supplier CRUD does not by itself prove procurement linkage. Verify before closing this sub-scope. |
+| P3 | **Shared Media / SEO regression checks** | Keep delegated ownership and avoid parallel models or duplicate pipelines. |
+
+## Evidence and Gate Rules
+
+- The current Store Resource Completion Matrix is the implementation inventory for the 13 registered Store resources. This registry must not contradict it without newer code evidence.
+- Contract tests are structural/contract evidence; they do not independently prove transaction semantics, live monitoring, or production readiness.
+- The repository CI workflow provisions PostgreSQL 17, pushes both main and Store schemas, and runs the configured test suites. A green CI run is useful evidence, but it does not automatically close the documented joint Store/Marketplace runtime and production-verification gate.
+- Do not connect to staging or production, run a backfill, or perform a production deployment as part of this documentation reconciliation.
+- Do not create a duplicate Store Media or Store SEO domain; the accepted delegation decisions below remain in force.
 
 ## Media — Delegation Decision (T2-W1-B)
 
-**Decision:** Store media is delegated to the general admin Media layer. No
-store-specific Media model is created.
+**Decision:** Store media is delegated to the general admin Media layer. No store-specific Media model is created.
 
 **Rationale:**
 - `Part.images` (JSON string, default `"[]"`) already stores part image URLs.
-- The general `/admin/media` page (file-system browser of `/public/uploads/`)
-  + the general `/api/admin/upload` endpoint already cover the upload + URL
-  copy workflow for every admin domain, including the store.
-- A duplicate store-specific Media model would conflict with the existing
-  upload pipeline and the Universal Resource Engine (which is out of scope
-  per the Wave-1 critical constraints — DO NOT touch Universal Resource
-  Engine).
+- The general `/admin/media` page and `/api/admin/upload` endpoint cover upload and URL-copy workflows for every admin domain, including the Store.
+- A duplicate Store-specific Media model would conflict with the existing upload pipeline and Universal Resource Engine.
 
-**Operational note for store admins:** When adding/editing a `Part`, paste
-image URLs from `/admin/media` into the part's image picker. There is no
-separate "store media library" — the media library is shared across all
-admin domains.
+**Operational note:** When adding/editing a `Part`, use image URLs from `/admin/media`. There is no separate Store media library.
 
 ## SEO — Delegation Decision (T2-W1-C)
 
-**Decision:** Store SEO is delegated to the general admin SEO layer. No
-store-specific SEO model is created.
+**Decision:** Store SEO is delegated to the general admin SEO layer. No store-specific SEO model is created.
 
 **Rationale:**
-- The general `/admin/seo` page (`SEOAdminClient`) already provides advanced
-  SEO automation: page-level meta, OpenGraph, sitemap, robots, schema.org
-  structured data, content decay tracking, and hot-searches integration.
-- A duplicate store-specific SEO domain would re-implement meta/sitemap
-  infrastructure that the general layer already owns.
-- The store's public pages (`/store`, `/store/parts/[id]`, etc.) consume the
-  general SEO layer — there is no store-specific sitemap or robots.txt.
+- The general `/admin/seo` page provides shared page metadata, OpenGraph, sitemap, robots, structured-data, and related SEO workflows.
+- A duplicate Store SEO domain would re-implement infrastructure already owned by the general layer.
+- Public Store pages consume shared SEO helpers; no separate Store sitemap or robots subsystem is claimed here.
 
-**Operational note for store admins:** Store page metadata (title,
-description, OG tags, structured data) is managed centrally from
-`/admin/seo`. Store routes already render the shared `<head>` metadata
-helpers — no store-specific SEO admin page is needed.
+**Operational note:** Manage Store metadata through `/admin/seo`; verify the public-route integration as part of the joint runtime gate.
 
-## Note
+## Change Control
 
-These domains are registered here to prevent them from being silently treated
-as "non-blocking". Each domain must have its own Scope Freeze →
-Implementation → Evidence → Regression → Track Gate when work begins.
-
+Every newly discovered gap must follow: Scope Freeze → Implementation → Evidence → Regression → Track Gate. Update this registry and the resource matrix together when implementation status changes. Preserve the distinction between **implemented**, **runtime-verified**, and **production-approved**.
