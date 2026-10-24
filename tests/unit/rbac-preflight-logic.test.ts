@@ -438,6 +438,46 @@ describe("STEP 15.68 — Preflight Logic (F-15.68-01, F-15.68-02, F-15.68-07)", 
     });
   });
 
+  describe("STEP 15.89 — Prisma v6 strict TLS configuration gate", () => {
+    it("rejects libpq-only verify-full/sslrootcert settings that Prisma v6 does not document", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=verify-full&sslrootcert=%2Ftmp%2Fca.crt",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+      });
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      expect(combined).toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+      expect(combined).toContain("sslmode=require");
+      expect(combined).toContain("sslaccept=strict");
+      expect(combined).toContain("sslcert=<trusted-root-CA-path>");
+      expect(combined).not.toContain("DRYRUN_GATE:");
+    });
+
+    it("accepts only the documented strict TLS parameter set, then proceeds to DB connection", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require&sslaccept=strict&sslcert=%2Ftmp%2Fca.crt",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+      });
+      expect(res.exitCode).toBe(2);
+      const combined = res.stdout + res.stderr;
+      expect(combined).toContain("TLS configuration        : require + strict certificate validation + explicit CA path present");
+      expect(combined).toContain("Hostname consistency     : PASS");
+      expect(combined).not.toContain("PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings");
+    });
+
+    it("rejects strict mode without an explicit CA path", () => {
+      const res = runScript({
+        DATABASE_URL: "postgresql://user:pass@host:5432/heavix_test?schema=public&sslmode=require&sslaccept=strict",
+        DRYRUN_CONFIRM_TARGET: "heavix_test",
+        DRYRUN_EXPECTED_HOST: "host",
+      });
+      expect(res.exitCode).toBe(2);
+      expect(res.stdout + res.stderr).toContain("sslcert=<trusted-root-CA-path>");
+    });
+  });
+
   describe("Preflight ordering — runs BEFORE any DB query", () => {
     it("10. Missing DATABASE_URL — never reaches Role catalog loading", () => {
       const res = runScript({
