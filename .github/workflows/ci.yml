@@ -74,34 +74,17 @@ jobs:
             -f scripts/rbac-create-readonly-role.sql
       - name: Security tests
         run: bun run test:security
-      - name: Phase C dry-run gate (STEP 15.88 — requires TLS, SKIPPED in CI without TLS)
-        env:
-          # STEP 15.88: Prisma v6 requires sslmode=require, sslaccept=strict, and an explicit sslcert CA path.
-          # CI postgres:17 does NOT have TLS configured. The preflight will halt because the CI URL lacks strict TLS settings. The
-          # CI PostgreSQL service does not offer TLS or a configured trusted CA.
-          #
-          # INFRASTRUCTURE DEPENDENCY: a TLS-enabled PostgreSQL server is
-          # required to run the dry-run gate in CI. This is NOT available
-          # in the current postgres:17 Docker container.
-          #
-          # Finding D remains OPEN/UNVERIFIED until:
-          # 1. A TLS-enabled PostgreSQL server is configured in CI
-          # 2. The preflight's strict Prisma TLS settings are present and the real connection rejects invalid certificates
-          # 3. Actual TLS handshake validation (CA + hostname) is proven
-          #
-          # For now, the gate step is SKIPPED. The dry-run script is still
-          # tested via unit tests (which verify the sslmode CHECK logic).
-          DRYRUN_DATABASE_URL: postgresql://heavix_dryrun_ro:${{ env.DRYUN_RO_PW }}@localhost:5432/heavix_test?schema=public
-          DRYRUN_CONFIRM_TARGET: heavix_test
-          DRYRUN_EXPECTED_ROLE: heavix_dryrun_ro
-          DRYRUN_EXPECTED_HOST: localhost
+      - name: Phase C dry-run gate (not executed against non-TLS PostgreSQL service)
+        # This generic postgres:17 service is not configured for TLS, so this step
+        # does not execute the Phase C dry-run and does not establish Finding D.
+        # Real connection-path TLS evidence is produced by the separate tls-proof
+        # job, which provisions TLS-enabled PostgreSQL 17 and requires all 13
+        # behavioral tests to have status "passed" (zero skips or other statuses).
         run: |
-          echo "── STEP 15.88: Dry-run gate SKIPPED — CI postgres:17 does not have TLS."
-          echo "   Prisma v6 requires sslmode=require, sslaccept=strict, and an explicit sslcert CA path."
-          echo "   The CI postgres:17 container does not offer TLS connections."
-          echo "   Finding D remains OPEN/UNVERIFIED until TLS infrastructure is deployed."
-          echo "   Unit tests verify the strict TLS configuration gate; no handshake is claimed."
-          echo "── Gate step skipped."
+          echo "── Phase C dry-run gate NOT EXECUTED — this PostgreSQL service has no TLS configuration."
+          echo "   This step does not establish or reopen Finding D."
+          echo "   See the separate tls-proof job for real TLS connection-path validation."
+          echo "── Gate intentionally not run against the non-TLS service."
       - name: Integration — tenant-scope-real
         run: bunx tsx tests/integration/tenant-scope-real.ts
       - name: Integration — readonly-when-concurrency-real
