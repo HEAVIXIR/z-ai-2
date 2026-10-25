@@ -129,7 +129,10 @@ export async function getPriceStats(params: {
   brandId?: string;
   year?: number;
 }): Promise<PriceStats> {
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = {
+    status: "ACTIVE",
+    askingPrice: { not: null },
+  };
   if (params.productId) where.productId = params.productId;
   if (params.categoryId) where.categoryId = params.categoryId;
   if (params.brandId) where.brandId = params.brandId;
@@ -180,7 +183,11 @@ export async function getPriceHistory(params: {
   since.setMonth(since.getMonth() - months);
 
   // ── 1. Fetch PriceObservation rows (canonical) ──
-  const obsWhere: Record<string, unknown> = { observedAt: { gte: since } };
+  const obsWhere: Record<string, unknown> = {
+    observedAt: { gte: since },
+    status: "ACTIVE",
+    askingPrice: { not: null },
+  };
   if (params.brandId) obsWhere.brandId = params.brandId;
   if (params.categoryId) obsWhere.categoryId = params.categoryId;
   if (params.modelId) obsWhere.modelId = params.modelId;
@@ -188,17 +195,22 @@ export async function getPriceHistory(params: {
 
   const obs = await db.priceObservation.findMany({
     where: obsWhere,
-    select: { askingPrice: true, observedAt: true },
+    select: { askingPrice: true, observedAt: true, listingId: true },
     take: 2000,
     orderBy: { observedAt: "asc" },
   });
 
-  // ── 2. Also fold in PUBLISHED listings whose createdAt falls in window ──
-  // These are first-class price observations too.
+  // ── 2. Fold in recent PUBLISHED listings without an active observation ──
+  // This is a bootstrap fallback; exclude observed listings to avoid counting
+  // the same asking price twice in the same history window.
+  const observedListingIds = new Set(
+    obs.map((o) => o.listingId).filter((id): id is string => Boolean(id)),
+  );
   const listingWhere: Record<string, unknown> = {
     status: "PUBLISHED",
     price: { not: null },
     createdAt: { gte: since },
+    ...(observedListingIds.size ? { id: { notIn: [...observedListingIds] } } : {}),
   };
   if (params.brandId) listingWhere.brandId = params.brandId;
   if (params.categoryId) listingWhere.categoryId = params.categoryId;
@@ -206,7 +218,7 @@ export async function getPriceHistory(params: {
 
   const listings = await db.listing.findMany({
     where: listingWhere,
-    select: { price: true, createdAt: true },
+    select: { id: true, price: true, createdAt: true },
     take: 2000,
     orderBy: { createdAt: "asc" },
   });
@@ -290,7 +302,10 @@ export async function detectOutliers(listingId: string): Promise<OutlierResult> 
     };
   }
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = {
+    status: "ACTIVE",
+    askingPrice: { not: null },
+  };
   if (listing.categoryId) where.categoryId = listing.categoryId;
   if (listing.brandId) where.brandId = listing.brandId;
   // STEP 6C.3: Fixed year filter — relation filter via Listing.
@@ -360,7 +375,11 @@ export async function getPriceSuggestions(params: {
   year?: number;
   condition?: string;
 }): Promise<PriceSuggestion> {
-  const where: Record<string, unknown> = { categoryId: params.categoryId };
+  const where: Record<string, unknown> = {
+    categoryId: params.categoryId,
+    status: "ACTIVE",
+    askingPrice: { not: null },
+  };
   if (params.brandId) where.brandId = params.brandId;
   // STEP 6C.3: Fixed year/condition filter — PriceObservation has NO
   // year/condition fields. Use relation filter via Listing instead.
