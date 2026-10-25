@@ -433,7 +433,7 @@ jobs:
 
           # Verify all services are running (use jq, not python3)
           docker compose -f docker-compose.prod.yml ps --format json | \
-            jq -e 'all(.State == "running")' >/dev/null || {
+            jq -s -e 'all(.[]?.State == "running")' >/dev/null || {
               echo "FAIL: not all services running"
               docker compose -f docker-compose.prod.yml ps
               docker compose -f docker-compose.prod.yml down
