@@ -17,7 +17,7 @@
 	# Caddy automatically provisions Let's Encrypt certificates for this domain.
 	# It also handles the :80 -> :443 redirect automatically when a domain
 	# is specified as the site address (not :443 or :80).
-	reverse_proxy :3000 {
+	reverse_proxy app:3000 {
 		header_up Host {host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}

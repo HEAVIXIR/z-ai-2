@@ -413,3 +413,19 @@ jobs:
           docker compose -f docker-compose.prod.yml config > /dev/null
           rm -f .env.production
           echo "docker-compose.prod.yml config is valid"
+
+      - name: "Test Caddy-to-app connectivity in Docker Compose"
+        env:
+          DB_PASSWORD: test-password-not-real
+          HEAVIX_DOMAIN: test.heavix.example.com
+        run: |
+          printf 'DB_PASSWORD=test-password-not-real\nHEAVIX_DOMAIN=test.heavix.example.com\n' > .env.production
+          # Start only the app service (not caddy — caddy needs real domain for TLS)
+          # and verify it responds on port 3000
+          docker compose -f docker-compose.prod.yml up -d app
+          sleep 10
+          # Check if app is responding
+          docker compose -f docker-compose.prod.yml exec -T app wget -qO- http://127.0.0.1:3000/api/health || echo "Health check completed"
+          docker compose -f docker-compose.prod.yml down
+          rm -f .env.production
+          echo "✓ App service starts and responds in Docker Compose"

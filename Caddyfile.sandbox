@@ -18,7 +18,7 @@
 	}
 
 	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
+		reverse_proxy app:{query.XTransformPort} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
@@ -27,7 +27,7 @@
 	}
 
 	handle {
-		reverse_proxy localhost:3000 {
+		reverse_proxy app:3000 {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
