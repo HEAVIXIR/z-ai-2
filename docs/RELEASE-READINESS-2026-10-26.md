@@ -12,6 +12,7 @@ The following pull requests are merged:
 - #89 — Preview SQLite schema parity/runtime-build gate.
 - #90 — Store inventory/returns atomicity and transactional AuditOutbox on the canonical Store schema path.
 - #91 — Outbox drain timeout aligned with retry budget; workflow remains manual-only.
+- #92 — Fail-closed Store/Outbox PostgreSQL behavioral test gate.
 
 PR #91 merge commit observed: `bf0f9bfba1f892fbbdb1597679c95d6de5965c38`.
 
@@ -20,7 +21,7 @@ These repository changes and CI rehearsals do **not** establish that an independ
 ## Required gates
 
 ### G1 — Exact-SHA CI
-- Record the current `main` SHA.
+- Record the current `main` SHA. As of writing (2026-10-26), `main` HEAD is `32d7f0d37259ab0ea58ed3436420d5aa47e24053`; re-check at release decision.
 - Confirm all required checks pass for that SHA, not merely for an older PR head.
 - Re-run checks after any code change.
 
@@ -77,3 +78,9 @@ Until a separate release authorization is recorded:
 | Final release-readiness decision | **NO-GO / PENDING** |
 
 This is a checklist and status record, not proof that the pending operational activities have been executed.
+
+## Related tracking
+- [Issue #81 — Store/Marketplace operational audit (G3 owner)](https://github.com/HEAVIXIR/z-ai-2/issues/81)
+- [Issue #88 — Release roadmap](https://github.com/HEAVIXIR/z-ai-2/issues/88)
+- [Issue #80 — Database strategy tracking](https://github.com/HEAVIXIR/z-ai-2/issues/80)
+
