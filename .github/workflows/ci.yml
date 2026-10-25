@@ -105,6 +105,39 @@ jobs:
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-http-db-real.ts
       - name: Integration — p3a-auth-real-http-db (STEP 13.55 Commit B P3-A)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-auth-real-http-db.ts
+      - name: Store + Outbox PostgreSQL behavioral gate (fail closed)
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}" || { echo "FAIL: DATABASE_URL is required"; exit 1; }
+          test -n "${STORE_DATABASE_URL:-}" || { echo "FAIL: STORE_DATABASE_URL is required"; exit 1; }
+          REPORT_FILE=$(mktemp)
+          trap 'rm -f "$REPORT_FILE"' EXIT
+          VITEST_EXIT=0
+          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
+          test -s "$REPORT_FILE" || { echo "FAIL: Store/Outbox Vitest report missing"; exit 1; }
+          node - "$REPORT_FILE" "$VITEST_EXIT" <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const exitCode = Number(process.argv[3]);
+          const tests = (report.testResults || []).flatMap(file => file.assertionResults || []);
+          const skipped = tests.filter(test => ['pending', 'skipped', 'todo'].includes(test.status));
+          if (exitCode !== 0 || (report.numFailedTests || 0) > 0 || (report.numPendingTests || 0) > 0 || skipped.length > 0 || tests.length === 0) {
+            console.error(JSON.stringify({
+              exitCode,
+              numTotalTests: report.numTotalTests,
+              numPassedTests: report.numPassedTests,
+              numFailedTests: report.numFailedTests,
+              numPendingTests: report.numPendingTests,
+              skippedTests: skipped.map(test => test.fullName || test.title),
+              observedTests: tests.length
+            }, null, 2));
+            process.exit(1);
+          }
+          console.log(`PASS: ${tests.length} Store/Outbox PostgreSQL behavioral tests passed; no skips or pending tests.`);
+          NODE
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
