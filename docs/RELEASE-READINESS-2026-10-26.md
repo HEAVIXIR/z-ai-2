@@ -70,7 +70,7 @@ Until a separate release authorization is recorded:
 
 | Evidence | Status |
 |---|---|
-| Repository PRs #85, #87, #89, #90, #91 merged | Repository metadata observed |
+| Repository PRs #85, #87, #89, #90, #91, #92 merged | Repository metadata observed |
 | CI on the exact current `main` SHA | Must be rechecked at release decision |
 | Independent non-production PostgreSQL Store/Outbox run | **PENDING** |
 | Backup/restore drill completed and recorded | **PENDING** |
