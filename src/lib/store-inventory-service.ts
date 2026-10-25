@@ -34,6 +34,7 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_TYPES = [
@@ -426,8 +427,8 @@ export async function getWarehouse(id: string): Promise<any> {
  *   6. Update Part.stock to keep the public snapshot in sync with the
  *      sum of all warehouse balances (snapshot field, mirror of the
  *      warehouse-segmented source of truth).
- *   7. Audit: movement.create + part.update side-effect +
- *      inventorybalance.update.
+ *   7. Commit all Store DB mutations together. Cross-subsystem audit
+ *      records are emitted after commit because the audit sink is separate.
  *
  * @throws InventoryServiceError on validation (400) or lookup (404).
  */
@@ -457,134 +458,170 @@ export async function adjustStock(
     );
   }
 
-  // 1. Look up the part + warehouse in parallel.
-  const [part, warehouse] = await Promise.all([
-    storeDb.part.findUnique({ where: { id: partId } }),
-    storeDb.warehouse.findUnique({ where: { id: warehouseId } }),
-  ]);
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
-  if (!warehouse) {
-    throw new InventoryServiceError(404, 'انبار یافت نشد');
-  }
+  // Keep the balance, public stock snapshot, and ledger write in one DB
+  // transaction. Atomic increments + conditional decrements prevent lost
+  // updates and prevent concurrent requests from overselling the same stock.
+  const result = await storeDb.$transaction(async (tx) => {
+    const [part, warehouse] = await Promise.all([
+      tx.part.findUnique({ where: { id: partId } }),
+      tx.warehouse.findUnique({ where: { id: warehouseId } }),
+    ]);
+    if (!part) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    if (!warehouse) {
+      throw new InventoryServiceError(404, 'انبار یافت نشد');
+    }
 
-  // 2. Upsert the InventoryBalance row for this (part, warehouse).
-  const existingBalance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
-  });
-  const currentQty = existingBalance?.quantity ?? 0;
-  const newQty = currentQty + qty;
-  if (newQty < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی در انبار. فعلی: ${currentQty}، درخواست: ${qty}`,
-    );
-  }
+    const existingBalance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    const currentQty = existingBalance?.quantity ?? 0;
 
-  const balanceRow = await storeDb.inventoryBalance.upsert({
-    where: { partId_warehouseId: { partId, warehouseId } },
-    create: {
-      partId,
-      warehouseId,
-      quantity: newQty,
-      reserved: 0,
-      lowStockThreshold: part.lowStockThreshold ?? 5,
-    },
-    update: {
-      quantity: newQty,
-    },
-  });
+    if (qty < 0) {
+      // Conditional UPDATE is atomic in PostgreSQL. If another request has
+      // already consumed the available quantity, this request affects zero
+      // rows and the entire transaction is rejected.
+      const changed = await tx.inventoryBalance.updateMany({
+        where: {
+          partId,
+          warehouseId,
+          quantity: { gte: -qty },
+        },
+        data: { quantity: { increment: qty } },
+      });
+      if (changed.count !== 1) {
+        throw new InventoryServiceError(
+          400,
+          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
+        );
+      }
+    } else {
+      await tx.inventoryBalance.upsert({
+        where: { partId_warehouseId: { partId, warehouseId } },
+        create: {
+          partId,
+          warehouseId,
+          quantity: qty,
+          reserved: 0,
+          lowStockThreshold: part.lowStockThreshold ?? 5,
+        },
+        update: {
+          quantity: { increment: qty },
+        },
+      });
+    }
+    const balanceRow = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    if (!balanceRow) {
+      throw new InventoryServiceError(500, 'به‌روزرسانی موجودی انبار ناموفق بود');
+    }
 
-  // 3. New Part.stock snapshot = old Part.stock + qty (the adjustment
-  //    is the delta; we mirror it onto the public snapshot).
-  const newPartStock = part.stock + qty;
-  if (newPartStock < 0) {
-    // Should be unreachable (guarded above) but keep the invariant explicit.
-    throw new InventoryServiceError(400, 'موجودی قطعه منفی می‌شود');
-  }
-
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter: newPartStock,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-      warehouseId,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+    // Keep the storefront snapshot in sync with the same delta, while
+    // protecting against a negative public stock count under concurrency.
+    const partChanged = await tx.part.updateMany({
+      where: {
+        id: partId,
+        ...(qty < 0 ? { stock: { gte: -qty } } : {}),
       },
-      warehouse: {
-        select: { id: true, name: true, code: true },
+      data: { stock: { increment: qty } },
+    });
+    if (partChanged.count !== 1) {
+      throw new InventoryServiceError(400, 'موجودی قطعه منفی می‌شود');
+    }
+    const afterPart = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+    if (!afterPart) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        partId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+        createdBy: userId ?? null,
+        warehouseId,
       },
-    },
+      include: {
+        part: {
+          select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+        },
+        warehouse: {
+          select: { id: true, name: true, code: true },
+        },
+      },
+    });
+
+    // STEP 15.95+ — Transactional Audit Outbox. The audit events are written
+    // to the AuditOutbox table INSIDE the same storeDb transaction as the
+    // mutation (atomic). A replay worker drains the outbox to the main
+    // AuditLog table (db.auditLog) with retry + dedup. This guarantees the
+    // audit invariant: every committed mutation has a corresponding audit
+    // event that WILL eventually be delivered, even if the main DB is
+    // temporarily unavailable at commit time.
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.movement.create',
+      entityType: 'StockMovement',
+      entityId: movement.id,
+      after: {
+        partId,
+        warehouseId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+      },
+    });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.part.update',
+      entityType: 'Part',
+      entityId: partId,
+      before: { stock: part.stock },
+      after: { stock: afterPart.stock },
+    });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.balance.update',
+      entityType: 'InventoryBalance',
+      entityId: balanceRow.id,
+      before: { quantity: currentQty, reserved: existingBalance?.reserved ?? 0 },
+      after: { quantity: balanceRow.quantity, reserved: balanceRow.reserved },
+    });
+
+    return {
+      partBeforeStock: part.stock,
+      part: afterPart,
+      balance: balanceRow,
+      movement,
+      lowStock: balanceRow.quantity <= balanceRow.lowStockThreshold,
+      beforeBalance: currentQty,
+      beforeReserved: existingBalance?.reserved ?? 0,
+    };
   });
 
-  // 4. Update Part.stock snapshot.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: newPartStock },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // 5. Low-stock check — best-effort notification flag returned with the
-  //    result (no notification row created in T1-DEEP scope; the admin UI
-  //    can render an alert badge from this flag).
-  const lowStock = balanceRow.quantity <= balanceRow.lowStockThreshold;
-
-  // 6. Audit trail — 3 entries:
-  //    a. The StockMovement ledger entry (primary audit hook).
-  //    b. The Part.stock side-effect (mirrors createMovement pattern).
-  //    c. The InventoryBalance update (so the warehouse-scoped mutation
-  //       is auditable independently of the Part snapshot).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId,
-      warehouseId,
-      type,
-      quantity: qty,
-      balanceAfter: newPartStock,
-      reason: reason || null,
-      reference: reference || null,
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.balance.update',
-    entityType: 'InventoryBalance',
-    entityId: balanceRow.id,
-    before: { quantity: currentQty, reserved: existingBalance?.reserved ?? 0 },
-    after: { quantity: balanceRow.quantity, reserved: balanceRow.reserved },
-  });
+  // STEP 15.95+: audit events are now delivered via the Transactional Outbox
+  // (enqueued inside the storeDb transaction above). The replay worker
+  // (drainAuditOutbox) drains the outbox to the main AuditLog table. No
+  // post-commit logAudit calls remain — the audit invariant is now atomic.
 
   return {
-    movement: serialize(movement),
-    balance: balanceRow,
-    part: afterPart,
-    lowStock,
+    movement: serialize(result.movement),
+    balance: result.balance,
+    part: result.part,
+    lowStock: result.lowStock,
   };
 }
 

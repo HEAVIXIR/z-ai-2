@@ -31,6 +31,7 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_STATUSES = [
@@ -633,188 +634,211 @@ export async function resolveReturn(
     );
   }
 
-  const existing = await storeDb.return.findUnique({
-    where: { id: returnId },
-    include: {
-      items: {
-        include: {
-          orderItem: {
-            select: {
-              id: true,
-              quantity: true,
-              lineTotalIrr: true,
-              lineTotalUsd: true,
+  // The status claim, refund ledger entry, wallet increment, and resolution
+  // commit together. The conditional status update is the idempotency guard:
+  // concurrent resolve requests can only claim an INSPECTED return once.
+  const result = await storeDb.$transaction(async (tx) => {
+    const existing = await tx.return.findUnique({
+      where: { id: returnId },
+      include: {
+        items: {
+          include: {
+            orderItem: {
+              select: {
+                id: true,
+                quantity: true,
+                lineTotalIrr: true,
+                lineTotalUsd: true,
+              },
+            },
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customerId: true,
+            customer: {
+              select: { id: true, name: true, family: true, phone: true },
             },
           },
         },
       },
-      order: {
-        select: {
-          id: true,
-          orderNumber: true,
-          customerId: true,
-          customer: {
-            select: { id: true, name: true, family: true, phone: true },
-          },
-        },
-      },
-    },
-  });
-  if (!existing) {
-    throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
-  }
-
-  // State-machine: must be INSPECTED (or already RESOLVED for idempotent
-  // re-resolve — but only with the same resolution). For T2-DEEP, refuse
-  // re-resolve to keep the flow simple.
-  if (existing.status === 'REQUESTED' || existing.status === 'APPROVED') {
-    throw new ReturnsServiceError(
-      400,
-      'ابتدا مرجوعی را کارشناسی کنید (status = INSPECTED)',
-    );
-  }
-  if (existing.status === 'RESOLVED') {
-    throw new ReturnsServiceError(
-      400,
-      'مرجوعی قبلاً حل‌وفصل شده است',
-    );
-  }
-  if (existing.status === 'REJECTED') {
-    throw new ReturnsServiceError(
-      400,
-      'مرجوعی رد شده است و قابل حل‌وفصل نیست',
-    );
-  }
-  // status === 'INSPECTED' → proceed.
-
-  // For REFUND: compute refundAmountIrr from restockable items.
-  let refundAmountIrr = 0;
-  let walletTxnId: string | null = null;
-  if (resolution === 'REFUND') {
-    for (const item of existing.items as any[]) {
-      if (!item.restockable) continue;
-      const oi = item.orderItem;
-      if (!oi || oi.quantity <= 0) continue;
-      // Proportional refund: lineTotal × (returnedQty / orderedQty).
-      // lineTotalIrr already represents the FULL line total for the
-      // ordered quantity, so we scale by the returned fraction.
-      const fraction = item.quantity / oi.quantity;
-      const lineRefund = (oi.lineTotalIrr ?? 0) * fraction;
-      refundAmountIrr += lineRefund;
+    });
+    if (!existing) {
+      throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
     }
-    refundAmountIrr = Math.round(refundAmountIrr * 100) / 100;
+    if (existing.status === 'REQUESTED' || existing.status === 'APPROVED') {
+      throw new ReturnsServiceError(
+        400,
+        'ابتدا مرجوعی را کارشناسی کنید (status = INSPECTED)',
+      );
+    }
+    if (existing.status === 'RESOLVED') {
+      throw new ReturnsServiceError(400, 'مرجوعی قبلاً حل‌وفصل شده است');
+    }
+    if (existing.status === 'REJECTED') {
+      throw new ReturnsServiceError(400, 'مرجوعی رد شده است و قابل حل‌وفصل نیست');
+    }
+    if (existing.status !== 'INSPECTED') {
+      throw new ReturnsServiceError(400, 'وضعیت مرجوعی برای حل‌وفصل معتبر نیست');
+    }
 
-    // Create the wallet transaction + adjust the customer's balance.
-    // We do this AFTER updating the Return so the audit trail records
-    // both the resolution and the refund side-effect.
+    let refundAmountIrr = 0;
+    if (resolution === 'REFUND') {
+      for (const item of existing.items as any[]) {
+        if (!item.restockable) continue;
+        const oi = item.orderItem;
+        if (!oi || oi.quantity <= 0) continue;
+        const fraction = item.quantity / oi.quantity;
+        refundAmountIrr += (oi.lineTotalIrr ?? 0) * fraction;
+      }
+      refundAmountIrr = Math.round(refundAmountIrr * 100) / 100;
+    }
+
+    // Claim the transition before side effects. Under concurrent requests,
+    // PostgreSQL rechecks this predicate after waiting on the row lock; only
+    // one transaction can change INSPECTED -> RESOLVED.
+    const claimed = await tx.return.updateMany({
+      where: { id: returnId, status: 'INSPECTED' },
+      data: { status: 'RESOLVED', resolution },
+    });
+    if (claimed.count !== 1) {
+      throw new ReturnsServiceError(400, 'مرجوعی هم‌زمان تغییر کرده یا قبلاً حل‌وفصل شده است');
+    }
+
     const customerId = existing.order?.customerId;
-    if (customerId && refundAmountIrr > 0) {
-      const txn = await storeDb.walletTransaction.create({
+    let walletTxn: any = null;
+    let beforeWalletBalance: number | null = null;
+    let afterWalletBalance: number | null = null;
+
+    if (resolution === 'REFUND' && customerId && refundAmountIrr > 0) {
+      const beforeCustomer = await tx.customer.findUnique({
+        where: { id: customerId },
+        select: { walletBalanceIrr: true },
+      });
+      if (!beforeCustomer) {
+        throw new ReturnsServiceError(404, 'مشتری سفارش یافت نشد');
+      }
+      beforeWalletBalance = beforeCustomer.walletBalanceIrr;
+
+      walletTxn = await tx.walletTransaction.create({
         data: {
           customerId,
           amount: refundAmountIrr,
           type: 'CREDIT',
-          description: `بازگشت وجه مرجوعی ${returnId} — سفارش ${existing.order?.orderNumber ?? ''}`,
+          description: 'بازگشت وجه مرجوعی ' + returnId + ' — سفارش ' + (existing.order?.orderNumber ?? ''),
         },
       });
-      walletTxnId = txn.id;
-      const beforeCustomer = await storeDb.customer.findUnique({
-        where: { id: customerId },
-        select: { walletBalanceIrr: true },
-      });
-      const afterCustomer = await storeDb.customer.update({
+      const afterCustomer = await tx.customer.update({
         where: { id: customerId },
         data: { walletBalanceIrr: { increment: refundAmountIrr } },
         select: { id: true, walletBalanceIrr: true },
       });
-      // Side-effect audit: Customer.walletBalanceIrr changed by refund.
-      await logAudit({
+      afterWalletBalance = afterCustomer.walletBalanceIrr;
+    }
+
+    const ret = await tx.return.findUnique({
+      where: { id: returnId },
+      include: {
+        items: {
+          include: {
+            orderItem: {
+              select: {
+                id: true,
+                partNameSnapshot: true,
+                quantity: true,
+                lineTotalIrr: true,
+              },
+            },
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customer: {
+              select: { id: true, name: true, family: true, phone: true },
+            },
+          },
+        },
+      },
+    });
+    if (!ret) {
+      throw new ReturnsServiceError(404, 'مرجوعی پس از حل‌وفصل یافت نشد');
+    }
+
+    // STEP 15.95+ — Transactional Audit Outbox. Audit events for the
+    // financial state change (Customer wallet), Return status transition,
+    // and WalletTransaction creation are written to the AuditOutbox INSIDE
+    // the same storeDb transaction. The replay worker (drainAuditOutbox)
+    // delivers them to the main AuditLog table with retry + dedup. This
+    // guarantees the audit invariant: a committed refund always has a
+    // corresponding audit event, even if the main DB is unavailable at
+    // commit time.
+    if (customerId && walletTxn) {
+      await enqueueAuditOutbox(tx, {
         actorId: userId ?? null,
         actorType: 'ADMIN',
         action: 'store.return.resolve',
         entityType: 'Customer',
         entityId: customerId,
-        before: {
-          walletBalanceIrr: beforeCustomer?.walletBalanceIrr ?? null,
-        },
-        after: {
-          walletBalanceIrr: afterCustomer.walletBalanceIrr,
-        },
+        before: { walletBalanceIrr: beforeWalletBalance },
+        after: { walletBalanceIrr: afterWalletBalance },
       });
     }
-  }
-
-  const before = { ...existing };
-  const ret = await storeDb.return.update({
-    where: { id: returnId },
-    data: {
-      status: 'RESOLVED',
-      resolution,
-    },
-    include: {
-      items: {
-        include: {
-          orderItem: {
-            select: {
-              id: true,
-              partNameSnapshot: true,
-              quantity: true,
-              lineTotalIrr: true,
-            },
-          },
-        },
-      },
-      order: {
-        select: {
-          id: true,
-          orderNumber: true,
-          customer: {
-            select: { id: true, name: true, family: true, phone: true },
-          },
-        },
-      },
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.resolve',
-    entityType: 'Return',
-    entityId: returnId,
-    before: {
-      status: before.status,
-      resolution: before.resolution,
-    },
-    after: {
-      status: ret.status,
-      resolution: ret.resolution,
-      refundAmountIrr: resolution === 'REFUND' ? refundAmountIrr : null,
-      walletTxnId,
-    },
-  });
-
-  // If we created a wallet transaction, audit it as a side-effect
-  // (mirrors the payments/[id] order.update side-effect pattern).
-  if (walletTxnId) {
-    await logAudit({
+    await enqueueAuditOutbox(tx, {
       actorId: userId ?? null,
       actorType: 'ADMIN',
       action: 'store.return.resolve',
-      entityType: 'WalletTransaction',
-      entityId: walletTxnId,
+      entityType: 'Return',
+      entityId: returnId,
+      before: {
+        status: existing.status,
+        resolution: existing.resolution,
+      },
       after: {
-        returnId,
-        customerId: existing.order?.customerId ?? null,
-        amount: refundAmountIrr,
-        type: 'CREDIT',
+        status: ret.status,
+        resolution: ret.resolution,
+        refundAmountIrr: resolution === 'REFUND' ? refundAmountIrr : null,
+        walletTxnId: walletTxn?.id ?? null,
       },
     });
-  }
+    if (walletTxn) {
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.return.resolve',
+        entityType: 'WalletTransaction',
+        entityId: walletTxn.id,
+        after: {
+          returnId,
+          customerId: customerId ?? null,
+          amount: refundAmountIrr,
+          type: 'CREDIT',
+        },
+      });
+    }
+
+    return {
+      existing,
+      ret,
+      refundAmountIrr,
+      walletTxn,
+      customerId,
+      beforeWalletBalance,
+      afterWalletBalance,
+    };
+  });
+
+  // STEP 15.95+: audit events are now delivered via the Transactional Outbox
+  // (enqueued inside the storeDb transaction above). No post-commit logAudit
+  // calls remain — the audit invariant is now atomic for the refund flow.
 
   return serialize({
-    ...ret,
-    refundAmountIrr: resolution === 'REFUND' ? refundAmountIrr : null,
-    walletTxnId,
+    ...result.ret,
+    refundAmountIrr: resolution === 'REFUND' ? result.refundAmountIrr : null,
+    walletTxnId: result.walletTxn?.id ?? null,
   });
 }
+
