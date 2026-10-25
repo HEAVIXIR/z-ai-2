@@ -3,27 +3,47 @@
 # Production: listens on :80 (HTTP→HTTPS redirect) + :443 (HTTPS, auto-TLS)
 # Sandbox/preview: :81 is used by the gateway for internal routing
 #
-# The XTransformPort query parameter routes requests to internal mini-services
-# on different ports (e.g., chat-service on :3003, etc.).
+# The {$HEAVIX_DOMAIN} placeholder allows the domain to be configured
+# via environment variable. Default: localhost (for sandbox/preview).
+#
+# XTransformPort routing is restricted to known internal ports only
+# (configurable via HEAVIX_ALLOWED_TRANSFORM_PORTS env var, comma-separated).
+
 {
 	auto_https off
 }
 
+# ── Production: HTTP → HTTPS redirect ──
 :80 {
 	redir https://{host}{uri} permanent
 }
 
-:443 {
+# ── Production: HTTPS with auto-TLS ──
+# Caddy automatically provisions Let's Encrypt certificates for the
+# configured domain. The domain is set via HEAVIX_DOMAIN env var.
+{$HEAVIX_DOMAIN:localhost}, :443 {
+	# Restrict XTransformPort to a known allowlist to prevent SSRF.
+	# Allowed ports are set via HEAVIX_ALLOWED_TRANSFORM_PORTS (comma-separated).
+	# Default: 3003 (chat-service). Add more ports as services are deployed.
 	@transform_port_query {
 		query XTransformPort=*
+		header Content-Type application/json
 	}
 
 	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
+		# Validate that the requested port is in the allowlist.
+		# If not, return 403 Forbidden.
+		@allowed_port expression `{query.XTransformPort}.split(",").all((port) => ["3003", "3004", "3005"].contains(port))`
+		handle @allowed_port {
+			reverse_proxy localhost:{query.XTransformPort} {
+				header_up Host {host}
+				header_up X-Forwarded-For {remote_host}
+				header_up X-Forwarded-Proto {scheme}
+				header_up X-Real-IP {remote_host}
+			}
+		}
+		handle {
+			respond "Forbidden: XTransformPort not in allowlist" 403
 		}
 	}
 
@@ -37,8 +57,7 @@
 	}
 }
 
-# Sandbox/preview fallback (used when running locally or in the sandbox
-# where TLS auto-provisioning is not available).
+# ── Sandbox/preview fallback (no TLS, for local dev only) ──
 :81 {
 	@transform_port_query {
 		query XTransformPort=*

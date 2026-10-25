@@ -379,3 +379,24 @@ jobs:
           bunx tsx scripts/rbac-gate-ci.ts 2>&1 | tee "$OUTPUT_FILE"
           grep -Fq '"safeToBackfillCount":1' "$OUTPUT_FILE" || { echo "FAIL: expected exactly one MISSING user in the disposable fixture."; exit 1; }
           grep -Fq '"total":1' "$OUTPUT_FILE" || { echo "FAIL: expected the gate to classify exactly one fixture user."; exit 1; }
+
+  # ── DOCKER BUILD PROOF: verify Dockerfile produces a valid image ──
+  # F-01 regression guard: proves the Prisma schema paths in Dockerfile
+  # are correct and the image builds without errors.
+  docker-build-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Generate Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Build Docker image
+        run: docker build -t heavix-test-image .
+      - name: Verify image was created
+        run: docker image inspect heavix-test-image --format '{{.Id}}' > /dev/null && echo "✓ Docker image built successfully"
