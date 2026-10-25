@@ -9,6 +9,7 @@
 - Current lock: `migration_lock.toml` says `provider = "sqlite"`.
 - Current `0_init/migration.sql` includes SQLite-specific DDL such as `DATETIME`; it is **not** a valid reviewed PostgreSQL baseline.
 - A separate Store migration directory and PostgreSQL lock have not yet been established.
+- The active Main schema header still describes SQLite, and `.zscripts/database-runtime-build.sh` uses a SQLite `file:` URL with the Main PostgreSQL schema. These are unresolved legacy runtime/build references; do not treat that script as a validated PostgreSQL deployment path.
 
 See [ADR-001 — Database Strategy and Migration Recovery](../../docs/ADR-001-database-strategy.md) and [Issue #80](https://github.com/HEAVIXIR/z-ai-2/issues/80).
 
