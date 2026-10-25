@@ -402,7 +402,7 @@ jobs:
         run: docker image inspect heavix-test-image --format '{{.Id}}' > /dev/null && echo "✓ Docker image built successfully"
 
       - name: Validate Caddyfile syntax
-        run: docker run --rm -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+        run: docker run --rm -e HEAVIX_DOMAIN=test.heavix.example.com -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 
       - name: Validate docker-compose.prod.yml config
         env:
