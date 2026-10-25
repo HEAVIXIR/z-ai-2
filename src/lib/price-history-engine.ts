@@ -201,16 +201,20 @@ export async function getPriceHistory(params: {
   });
 
   // ── 2. Fold in recent PUBLISHED listings without an active observation ──
-  // This is a bootstrap fallback; exclude observed listings to avoid counting
-  // the same asking price twice in the same history window.
-  const observedListingIds = new Set(
-    obs.map((o) => o.listingId).filter((id): id is string => Boolean(id)),
-  );
+  // This is a bootstrap fallback. Exclude any listing that has an eligible
+  // observation in the window at the database level; deriving exclusions from
+  // the capped 2,000-row observation result could double-count older matches.
   const listingWhere: Record<string, unknown> = {
     status: "PUBLISHED",
     price: { not: null },
     createdAt: { gte: since },
-    ...(observedListingIds.size ? { id: { notIn: [...observedListingIds] } } : {}),
+    priceObservations: {
+      none: {
+        observedAt: { gte: since },
+        status: "ACTIVE",
+        askingPrice: { not: null },
+      },
+    },
   };
   if (params.brandId) listingWhere.brandId = params.brandId;
   if (params.categoryId) listingWhere.categoryId = params.categoryId;
