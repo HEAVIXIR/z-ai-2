@@ -15,13 +15,13 @@ if [ -f "$SOURCE_DB_PATH" ]; then
     echo "🗄️  复制 Preview 数据库到构建产物..."
     cp -a "$SOURCE_DB_DIR/." "$TARGET_DB_DIR/"
 else
-    echo "ℹ️  未找到 Preview 数据库 db/custom.db，将初始化空的生产数据库"
+    echo "ℹ️  未找到 Preview 数据库 db/custom.db，将初始化空的 Preview 数据库"
 fi
 
 echo "🗄️  同步构建产物中的数据库结构..."
 (
     cd "$PROJECT_DIR"
-    DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push
+    PREVIEW_DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push:preview
 )
 
 if [ ! -f "$TARGET_DB_PATH" ]; then
