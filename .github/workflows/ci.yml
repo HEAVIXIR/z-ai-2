@@ -107,23 +107,32 @@ jobs:
         run: bunx vitest run tests/e2e/
       - name: "PostgreSQL migration proof: migrate deploy on fresh DBs (Main + Store)"
         env:
-          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
-          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+          PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          echo "── Main: migrate deploy ──"
-          bunx prisma migrate deploy --schema=prisma/schema.prisma
+          # Create fresh isolated databases for migration proof (not the test DBs used by other steps)
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS heavix_migrate_main_proof;"
+          psql -h localhost -U postgres -c "CREATE DATABASE heavix_migrate_main_proof;"
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS heavix_migrate_store_proof;"
+          psql -h localhost -U postgres -c "CREATE DATABASE heavix_migrate_store_proof;"
+
+          echo "── Main: migrate deploy on fresh DB ──"
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
+            bunx prisma migrate deploy --schema=prisma/schema.prisma
           echo ""
           echo "── Main: migrate status ──"
-          bunx prisma migrate status --schema=prisma/schema.prisma
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
+            bunx prisma migrate status --schema=prisma/schema.prisma
           echo ""
-          echo "── Store: migrate deploy ──"
-          bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+          echo "── Store: migrate deploy on fresh DB ──"
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_store_proof?schema=public" \
+            bunx prisma migrate deploy --schema=prisma/store/schema.prisma
           echo ""
           echo "── Store: migrate status ──"
-          bunx prisma migrate status --schema=prisma/store/schema.prisma
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_store_proof?schema=public" \
+            bunx prisma migrate status --schema=prisma/store/schema.prisma
           echo ""
-          echo "✓ Both migration histories deployed and verified."
+          echo "✓ Both migration histories deployed and verified on fresh PostgreSQL 17 databases."
       - name: Production build
         run: bun run build
       - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
