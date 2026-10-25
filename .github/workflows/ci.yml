@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
       - name: Install dependencies
         run: bun install
       - name: Generate Prisma clients
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
       - name: Install dependencies
         run: bun install
       - name: Generate Prisma clients
@@ -222,7 +222,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
       - name: Install dependencies
         run: bun install
       - name: Generate Prisma clients
@@ -266,7 +266,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
       - name: Install dependencies
         run: bun install
       - name: Generate Prisma clients
@@ -389,7 +389,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
       - name: Install dependencies
         run: bun install
       - name: Generate Prisma clients
@@ -415,7 +415,10 @@ jobs:
           # Assert HEAVIX_DOMAIN was interpolated (not raw ${HEAVIX_DOMAIN})
           echo "$RENDERED" | grep -q 'test.heavix.example.com' || { echo "FAIL: HEAVIX_DOMAIN not interpolated"; exit 1; }
           # Assert DB_PASSWORD was interpolated (no raw ${DB_PASSWORD} in output)
-          echo "$RENDERED" | grep -q '${DB_PASSWORD}' && { echo "FAIL: DB_PASSWORD not interpolated"; exit 1; } || true
+          if echo "$RENDERED" | grep -q '${DB_PASSWORD}'; then
+            echo "FAIL: DB_PASSWORD not interpolated (raw placeholder found)"
+            exit 1
+          fi
           echo "Interpolated values verified"
 
       - name: "Test real Caddy→app connectivity in Docker Compose (fail-closed)"
