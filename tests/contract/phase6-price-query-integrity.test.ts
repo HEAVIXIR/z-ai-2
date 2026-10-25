@@ -44,5 +44,8 @@ describe("Phase 6 price observation query integrity", () => {
     const history = exportedFunction(historyEngine, "getPriceHistory");
     expect(history).toContain("observedListingIds");
     expect(history).toContain("id: { notIn: [...observedListingIds] }");
+    expect(history).toContain("if (params.productId) listingWhere.productId = params.productId;");
+    expect(history).toContain('orderBy: { observedAt: "desc" }');
+    expect(history).toContain('orderBy: { createdAt: "desc" }');
   });
 });
