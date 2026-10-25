@@ -105,6 +105,25 @@ jobs:
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
         run: bunx vitest run tests/e2e/
+      - name: "PostgreSQL migration proof: migrate deploy on fresh DBs (Main + Store)"
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+        run: |
+          set -euo pipefail
+          echo "── Main: migrate deploy ──"
+          bunx prisma migrate deploy --schema=prisma/schema.prisma
+          echo ""
+          echo "── Main: migrate status ──"
+          bunx prisma migrate status --schema=prisma/schema.prisma
+          echo ""
+          echo "── Store: migrate deploy ──"
+          bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+          echo ""
+          echo "── Store: migrate status ──"
+          bunx prisma migrate status --schema=prisma/store/schema.prisma
+          echo ""
+          echo "✓ Both migration histories deployed and verified."
       - name: Production build
         run: bun run build
       - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
@@ -351,22 +370,3 @@ jobs:
           bunx tsx scripts/rbac-gate-ci.ts 2>&1 | tee "$OUTPUT_FILE"
           grep -Fq '"safeToBackfillCount":1' "$OUTPUT_FILE" || { echo "FAIL: expected exactly one MISSING user in the disposable fixture."; exit 1; }
           grep -Fq '"total":1' "$OUTPUT_FILE" || { echo "FAIL: expected the gate to classify exactly one fixture user."; exit 1; }
-      - name: "PostgreSQL migration proof: migrate deploy on fresh DBs (Main + Store)"
-        env:
-          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
-          STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
-        run: |
-          set -euo pipefail
-          echo "── Main: migrate deploy ──"
-          bunx prisma migrate deploy --schema=prisma/schema.prisma
-          echo ""
-          echo "── Main: migrate status ──"
-          bunx prisma migrate status --schema=prisma/schema.prisma
-          echo ""
-          echo "── Store: migrate deploy ──"
-          bunx prisma migrate deploy --schema=prisma/store/schema.prisma
-          echo ""
-          echo "── Store: migrate status ──"
-          bunx prisma migrate status --schema=prisma/store/schema.prisma
-          echo ""
-          echo "✓ Both migration histories deployed and verified."
