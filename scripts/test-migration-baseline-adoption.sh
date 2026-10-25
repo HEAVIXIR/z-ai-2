@@ -57,15 +57,20 @@ test "$(psql -d "$MAIN_EXISTING" -tAc 'SELECT count(*) FROM "Brand" WHERE "id" =
 test "$(psql -d "$STORE_EXISTING" -tAc 'SELECT count(*) FROM "AdminUser" WHERE "id" = '\''baseline-adoption-fixture'\'';')" = "1"
 
 # Compare public schema DDL against the fresh migrate-deploy databases. Exclude
-# only Prisma's migration bookkeeping table; do not suppress table/index drift.
+# only Prisma's migration bookkeeping table. pg_dump adds randomized
+# \\restrict/\\unrestrict psql safety tokens, so normalize only those
+# non-DDL lines; all schema statements, tables, constraints and indexes remain
+# part of the strict comparison.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 for pair in "main:$MAIN_FRESH:$MAIN_EXISTING" "store:$STORE_FRESH:$STORE_EXISTING"; do
   IFS=: read -r name fresh existing <<<"$pair"
   pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$fresh" \
-    --schema-only --no-owner --no-privileges --exclude-table=public._prisma_migrations >"$TMP/$name-fresh.sql"
+    --schema-only --no-owner --no-privileges --exclude-table=public._prisma_migrations >"$TMP/$name-fresh.raw.sql"
   pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$existing" \
-    --schema-only --no-owner --no-privileges --exclude-table=public._prisma_migrations >"$TMP/$name-existing.sql"
+    --schema-only --no-owner --no-privileges --exclude-table=public._prisma_migrations >"$TMP/$name-existing.raw.sql"
+  sed -E '/^\\(un)?restrict[[:space:]]+/d' "$TMP/$name-fresh.raw.sql" >"$TMP/$name-fresh.sql"
+  sed -E '/^\\(un)?restrict[[:space:]]+/d' "$TMP/$name-existing.raw.sql" >"$TMP/$name-existing.sql"
   diff -u "$TMP/$name-fresh.sql" "$TMP/$name-existing.sql"
   echo "✓ $name existing-schema adoption matches fresh migration schema; sentinel row survived."
 done
