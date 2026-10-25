@@ -18,7 +18,7 @@ describe("Phase 6 price observation query integrity", () => {
   const historyEngine = readRepoFile("src/lib/price-history-engine.ts");
 
   it("uses the canonical PriceObservation filters for admin aggregation", () => {
-    const groupByStart = adminPage.indexOf("const allStats = db.priceObservation.groupBy({");
+    const groupByStart = adminPage.indexOf("const allStats = await db.priceObservation.groupBy({");
     const groupByEnd = adminPage.indexOf("// Hydrate category + brand names", groupByStart);
     expect(groupByStart).toBeGreaterThanOrEqual(0);
     expect(groupByEnd).toBeGreaterThan(groupByStart);
