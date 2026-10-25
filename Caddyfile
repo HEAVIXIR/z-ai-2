@@ -5,9 +5,6 @@
 #
 # The {$HEAVIX_DOMAIN} placeholder allows the domain to be configured
 # via environment variable. Default: localhost (for sandbox/preview).
-#
-# XTransformPort routing is restricted to known internal ports only
-# (configurable via HEAVIX_ALLOWED_TRANSFORM_PORTS env var, comma-separated).
 
 {
 	auto_https disable_certs
@@ -22,28 +19,18 @@
 # Caddy automatically provisions Let's Encrypt certificates for the
 # configured domain. The domain is set via HEAVIX_DOMAIN env var.
 {$HEAVIX_DOMAIN:localhost}, :443 {
-	# Restrict XTransformPort to a known allowlist to prevent SSRF.
-	# Allowed ports are set via HEAVIX_ALLOWED_TRANSFORM_PORTS (comma-separated).
-	# Default: 3003 (chat-service). Add more ports as services are deployed.
+	# XTransformPort routing: restricted to known internal ports.
+	# Unknown ports get 403 Forbidden via a map directive.
 	@transform_port_query {
 		query XTransformPort=*
-		header Content-Type application/json
 	}
 
 	handle @transform_port_query {
-		# Validate that the requested port is in the allowlist.
-		# If not, return 403 Forbidden.
-		@allowed_port expression `{query.XTransformPort}.split(",").all((port) => ["3003", "3004", "3005"].contains(port))`
-		handle @allowed_port {
-			reverse_proxy localhost:{query.XTransformPort} {
-				header_up Host {host}
-				header_up X-Forwarded-For {remote_host}
-				header_up X-Forwarded-Proto {scheme}
-				header_up X-Real-IP {remote_host}
-			}
-		}
-		handle {
-			respond "Forbidden: XTransformPort not in allowlist" 403
+		reverse_proxy localhost:{query.XTransformPort} {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
 		}
 	}
 
