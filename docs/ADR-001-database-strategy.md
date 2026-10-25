@@ -18,6 +18,9 @@ This section records the repository state observed on main at `727229c78e36c3eba
 - There is no dedicated active Store migration directory/lock in the repository tree.
 - `prisma/legacy-sqlite/schema.prisma` and `prisma/legacy-sqlite/store-schema.prisma` are legacy SQLite schemas used by data-migration tooling; they are not PostgreSQL migration histories.
 - CI currently prepares disposable PostgreSQL 17 databases with `prisma db push --accept-data-loss`. This validates schema-driven test setup but does not validate `prisma migrate deploy`, migration ordering, or existing-database baseline adoption.
+- `prisma/schema.prisma` still has a header calling it a “SQLite development schema”, contrary to its PostgreSQL datasource.
+- `.zscripts/database-runtime-build.sh` copies a SQLite `db/custom.db` file and then runs `bun run db:push` with a `file:` URL, while the active schema provider is PostgreSQL. This is unresolved legacy runtime/build logic and must be explicitly classified and repaired or retired before a build/deployment workflow can be considered trustworthy.
+- `docs/database/POSTGRES-SETUP.md` currently documents `db push --accept-data-loss` as schema setup. Those instructions must not be treated as a release procedure and need clear local/disposable-only scope.
 - The repository contains historical documentation that describes a baseline/cutover as complete. That statement is not supported by the current migration artifacts.
 
 **Conclusion:** the current committed migration history is not trustworthy for PostgreSQL deployment. No migration should be applied to staging or production until the gates in §5 pass.
@@ -88,7 +91,7 @@ A baseline generated from an empty schema and a baseline adopted by an already-p
 
 ## 4. Required implementation work
 
-1. Audit every reference to `prisma/store-schema.prisma`, migration paths, Prisma CLI invocations, generated clients, database scripts, CI jobs, deployment/build workflows, seeds, and database documentation.
+1. Audit every reference to `prisma/store-schema.prisma`, migration paths, Prisma CLI invocations, generated clients, database scripts, CI jobs, deployment/build workflows, seeds, and database documentation. Explicitly resolve `.zscripts/database-runtime-build.sh` and the SQLite `db/custom.db` artifact, and remove stale SQLite wording from the active Main schema header.
 2. Establish independent PostgreSQL migration directories and locks for Main and Store; update all references in the same reviewed PR.
 3. Generate each initial migration with the repository-pinned Prisma CLI and the correct schema/dialect. Inspect the generated SQL; do not hand-convert the existing SQLite SQL.
 4. Add CI jobs that run `prisma validate`, deploy each migration history to fresh PostgreSQL 17 databases, and compare schema/migration drift using a reviewed Prisma workflow.
