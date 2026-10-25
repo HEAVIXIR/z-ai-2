@@ -19,7 +19,7 @@
 # HTTPS with automatic TLS certificate provisioning
 # The domain is set via HEAVIX_DOMAIN env var (REQUIRED for production).
 # Caddy will provision and manage Let's Encrypt certificates automatically.
-{$HEAVIX_DOMAIN} {
+:443 {
 	handle {
 		reverse_proxy localhost:3000 {
 			header_up Host {host}

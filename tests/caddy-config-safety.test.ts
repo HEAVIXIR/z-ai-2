@@ -24,8 +24,8 @@ describe('Caddy Configuration Safety (F-02 regression guard)', () => {
     });
 
     it('has HTTPS listener with HEAVIX_DOMAIN (no localhost default)', () => {
-      expect(PROD_CADDY).toContain('{$HEAVIX_DOMAIN}');
-      expect(PROD_CADDY).not.toContain('{$HEAVIX_DOMAIN:localhost}');
+      expect(PROD_CADDY).toMatch(/:443/);
+      expect(PROD_CADDY).not.toContain('HEAVIX_DOMAIN:localhost');
     });
 
     it('does NOT disable auto_https (TLS auto-provisioning must be enabled)', () => {

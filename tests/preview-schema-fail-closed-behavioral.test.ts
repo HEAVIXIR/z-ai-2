@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, copyFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, copyFileSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -84,8 +84,7 @@ describe('F-03 Behavioral: REAL db:push:preview on disposable SQLite', () => {
       expect(existsSync(dbPath)).toBe(true);
 
       // File must be non-trivial (not empty)
-      const stats = require('node:fs').statSync(dbPath);
-      expect(stats.size).toBeGreaterThan(1000);
+      expect(statSync(dbPath).size).toBeGreaterThan(1000);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
