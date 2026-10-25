@@ -4,6 +4,12 @@
 **Date:** 2026-10-23
 **Merge baseline:** `4f7a2d747777659290237b6fdb387269438141fc`
 
+## CI Evidence Boundary (STEP 15.95)
+
+The CI `tls-proof` job provisions a disposable local PostgreSQL 17 cluster with TLS, creates a separate `heavix_preflight_test` database, pushes the Prisma schema, seeds the RBAC catalog, grants the read-only role, and executes `scripts/rbac-gate-ci.ts` against that database. The generic `postgres:17` service in the `verify` job remains non-TLS and does not execute this gate.
+
+This is **CI-only validation**. It is not a staging dry-run, does not inspect staging data, does not authorize backfill, and does not authorize Phase D/E or production deployment. The staging checklist and owner authorization requirements below remain unchanged.
+
 ---
 
 ## 1. Prerequisites

@@ -306,3 +306,48 @@ jobs:
             echo "✗ FAIL: Vitest exited with status $VITEST_EXIT despite producing a parseable result file."
             exit "$VITEST_EXIT"
           fi
+      - name: Create isolated TLS preflight database
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          psql "host=localhost port=5433 user=$(id -un) dbname=postgres sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_preflight_test;"
+      - name: Push schema and seed RBAC in isolated TLS database
+        run: |
+          set -euo pipefail
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          bunx prisma db push --schema=prisma/schema.prisma
+          bun run db:seed-rbac
+      - name: Create isolated MISSING-role classification fixture
+        run: |
+          set -euo pipefail
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          bun -e 'import { PrismaClient } from "@prisma/client"; const db = new PrismaClient(); await db.user.create({ data: { firstName: "CI", lastName: "Preflight", email: "phase-c-preflight@example.invalid", mobile: "+19999999999", passwordHash: "not-a-real-password", role: "BUYER", status: "ACTIVE" } }); await db.$disconnect();'
+      - name: Grant least-privilege access for TLS preflight
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          psql "host=localhost port=5433 user=$(id -un) dbname=heavix_preflight_test sslmode=verify-full sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT CONNECT ON DATABASE heavix_preflight_test TO heavix_dryrun_ro;
+          GRANT USAGE ON SCHEMA public TO heavix_dryrun_ro;
+          GRANT SELECT ON ALL TABLES IN SCHEMA public TO heavix_dryrun_ro;
+          REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM heavix_dryrun_ro;
+          REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM heavix_dryrun_ro;
+          GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO heavix_dryrun_ro;
+          REVOKE CREATE ON SCHEMA public FROM heavix_dryrun_ro;
+          REVOKE CREATE ON DATABASE heavix_preflight_test FROM heavix_dryrun_ro;
+          SQL
+      - name: Run Phase C read-only preflight gate against TLS PostgreSQL 17
+        env:
+          DATABASE_URL: "postgresql://heavix_dryrun_ro:readonly_pass@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${{ github.workspace }}/.tls-pg/certs/ca-valid.crt"
+          DRYRUN_CONFIRM_TARGET: "heavix_preflight_test"
+          DRYRUN_EXPECTED_HOST: "localhost"
+          DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro"
+        run: |
+          set -euo pipefail
+          OUTPUT_FILE=$(mktemp)
+          trap 'rm -f "$OUTPUT_FILE"' EXIT
+          bunx tsx scripts/rbac-gate-ci.ts 2>&1 | tee "$OUTPUT_FILE"
+          grep -Fq '"safeToBackfillCount":1' "$OUTPUT_FILE" || { echo "FAIL: expected exactly one MISSING user in the disposable fixture."; exit 1; }
+          grep -Fq '"total":1' "$OUTPUT_FILE" || { echo "FAIL: expected the gate to classify exactly one fixture user."; exit 1; }

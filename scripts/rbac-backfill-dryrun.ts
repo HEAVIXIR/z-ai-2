@@ -44,8 +44,10 @@
  *   connection error; this is expected in the sandbox):
  *     bunx tsx scripts/rbac-backfill-dryrun.ts
  *
- *   CI (against postgres:17 service container):
- *     bunx tsx scripts/rbac-backfill-dryrun.ts | tee dryrun.log
+ *   CI:
+ *     The tls-proof job runs the actual Phase C gate against a disposable,
+ *     TLS-enabled PostgreSQL 17 database after schema/role setup. This does
+ *     not connect to staging or production and does not authorize backfill.
  *
  *   Typecheck (the bare `tsc <file>` form does NOT respect tsconfig's
  *   `paths` alias mapping per TypeScript's CLI rules; use the dedicated
@@ -345,10 +347,11 @@ async function preflightConnectionCheck(): Promise<void> {
   //
   // STEP 15.88: the DRYRUN_ALLOW_NO_TLS env-var bypass was REMOVED. The
   // production path must fail closed unless all required TLS settings exist.
-  // CI's plain postgres:17 service does not provide TLS, so its DB-backed gate
-  // remains explicitly skipped; Finding D remains OPEN until the actual Prisma
-  // connection path passes trusted-CA, untrusted-CA, hostname-mismatch,
-  // expired-certificate, and no-TLS behavioral tests.
+  // The generic verify job's postgres:17 service has no TLS and intentionally
+  // does not run this gate. The separate tls-proof job provisions disposable
+  // TLS-enabled PostgreSQL 17, runs the real Prisma TLS behavioral suite, and
+  // executes the actual Phase C read-only gate against an isolated test DB.
+  // This CI evidence does not authorize staging execution or backfill.
   try {
     const parsedUrl = new URL(databaseUrl);
     const sslmode = parsedUrl.searchParams.get('sslmode');
