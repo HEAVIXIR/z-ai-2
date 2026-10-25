@@ -1,36 +1,33 @@
 /**
- * HEAVIX — F-03 Behavioral Test: Preview schema fail-closed
+ * HEAVIX — F-03 Behavioral Test: Preview schema fail-closed + positive path
  *
- * Proves that .zscripts/database-runtime-build.sh:
- * 1. Exits with non-zero code if prisma/preview-schema.prisma is missing
- * 2. Does NOT run db:push (main PostgreSQL schema) with file: URL
- * 3. Succeeds and creates SQLite file when preview-schema.prisma exists
+ * Tests:
+ * 1. runtime-build.sh exits non-zero when preview-schema.prisma is missing
+ * 2. No SQLite file created when script fails
+ * 3. REAL db:push:preview runs on disposable SQLite and creates the file
  */
 
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-describe('F-03 Behavioral: Preview schema fail-closed (script missing preview schema)', () => {
-  it('runtime-build.sh exits with non-zero code when preview-schema.prisma is missing', () => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'heavix-fail-closed-'));
-    const buildDir = mkdtempSync(join(tmpdir(), 'heavix-build-'));
+const SCRIPT_PATH = '.zscripts/database-runtime-build.sh';
+
+describe('F-03 Behavioral: Preview schema fail-closed', () => {
+  it('runtime-build.sh exits non-zero when preview-schema.prisma is missing', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'heavix-fail-'));
+    const buildDir = mkdtempSync(join(tmpdir(), 'heavix-build-fail-'));
 
     try {
-      const result = spawnSync('bash', ['.zscripts/database-runtime-build.sh'], {
-        env: {
-          ...process.env,
-          PROJECT_DIR: tempDir,
-          BUILD_DIR: buildDir,
-        },
+      const result = spawnSync('bash', [SCRIPT_PATH], {
+        env: { ...process.env, PROJECT_DIR: tempDir, BUILD_DIR: buildDir },
         encoding: 'utf8',
         timeout: 10_000,
       });
 
       expect(result.status).not.toBe(0);
-
       const combined = `${result.stdout}\n${result.stderr}`;
       expect(combined).toContain('FATAL');
       expect(combined).toContain('preview-schema.prisma');
@@ -41,21 +38,16 @@ describe('F-03 Behavioral: Preview schema fail-closed (script missing preview sc
     }
   });
 
-  it('runtime-build.sh does NOT create a SQLite file when preview schema is missing', () => {
+  it('does NOT create SQLite file when preview schema is missing', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'heavix-no-sqlite-'));
     const buildDir = mkdtempSync(join(tmpdir(), 'heavix-build-no-sqlite-'));
 
     try {
-      spawnSync('bash', ['.zscripts/database-runtime-build.sh'], {
-        env: {
-          ...process.env,
-          PROJECT_DIR: tempDir,
-          BUILD_DIR: buildDir,
-        },
+      spawnSync('bash', [SCRIPT_PATH], {
+        env: { ...process.env, PROJECT_DIR: tempDir, BUILD_DIR: buildDir },
         encoding: 'utf8',
         timeout: 10_000,
       });
-
       expect(existsSync(join(buildDir, 'db', 'custom.db'))).toBe(false);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -64,46 +56,38 @@ describe('F-03 Behavioral: Preview schema fail-closed (script missing preview sc
   });
 });
 
-describe('F-03 Behavioral: Preview schema positive path (schema present → script proceeds)', () => {
-  it('runtime-build.sh does NOT exit at FATAL check when preview-schema.prisma exists', () => {
-    const tempProject = mkdtempSync(join(tmpdir(), 'heavix-positive-'));
-    const buildDir = mkdtempSync(join(tmpdir(), 'heavix-build-positive-'));
+describe('F-03 Behavioral: REAL db:push:preview on disposable SQLite', () => {
+  it('prisma db:push:preview creates a valid SQLite file from preview-schema.prisma', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'heavix-real-sqlite-'));
+    const dbPath = join(tempDir, 'preview.db');
 
     try {
-      mkdirSync(join(tempProject, 'prisma'), { recursive: true });
-      const previewSchema = readFileSync('prisma/preview-schema.prisma', 'utf-8');
-      writeFileSync(join(tempProject, 'prisma', 'preview-schema.prisma'), previewSchema);
-
-      writeFileSync(
-        join(tempProject, 'package.json'),
-        JSON.stringify({
-          name: 'heavix-test',
-          scripts: {
-            'db:push:preview': 'echo "mock db:push:preview executed"',
-          },
-        })
-      );
-
-      const result = spawnSync('bash', ['.zscripts/database-runtime-build.sh'], {
+      // Run the REAL prisma db:push:preview against a disposable SQLite file
+      const result = spawnSync('bunx', [
+        'prisma', 'db', 'push',
+        '--accept-data-loss',
+        '--skip-generate',
+        '--schema=prisma/preview-schema.prisma',
+      ], {
         env: {
           ...process.env,
-          PROJECT_DIR: tempProject,
-          BUILD_DIR: buildDir,
+          PREVIEW_DATABASE_URL: `file:${dbPath}`,
         },
         encoding: 'utf8',
-        timeout: 10_000,
+        timeout: 60_000,
       });
 
-      const combined = `${result.stdout}\n${result.stderr}`;
+      // Must succeed
+      expect(result.status).toBe(0);
 
-      // The script should NOT fail at the FATAL preview-schema check
-      expect(combined).not.toContain('FATAL');
+      // SQLite file must exist
+      expect(existsSync(dbPath)).toBe(true);
 
-      // The script should have attempted to run db:push:preview
-      expect(combined).toContain('Preview');
+      // File must be non-trivial (not empty)
+      const stats = require('node:fs').statSync(dbPath);
+      expect(stats.size).toBeGreaterThan(1000);
     } finally {
-      rmSync(tempProject, { recursive: true, force: true });
-      rmSync(buildDir, { recursive: true, force: true });
+      rmSync(tempDir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

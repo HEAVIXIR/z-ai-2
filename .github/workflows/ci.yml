@@ -403,3 +403,10 @@ jobs:
 
       - name: Validate Caddyfile syntax
         run: docker run --rm -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Validate docker-compose.prod.yml config
+        env:
+          DB_PASSWORD: test-password-not-real
+          HEAVIX_DOMAIN: test.heavix.example.com
+        run: |
+          docker compose -f docker-compose.prod.yml config > /dev/null && echo "✓ docker-compose.prod.yml config is valid"

@@ -2,11 +2,11 @@
  * HEAVIX — Caddy Configuration Safety Test (F-02 regression guard)
  *
  * Validates that:
- * 1. Production Caddyfile has NO XTransformPort routing (SSRF prevention)
- * 2. Production Caddyfile has NO :81 sandbox listener
- * 3. Production Caddyfile has :80 redirect + :443 HTTPS
- * 4. Sandbox Caddyfile has XTransformPort + :81 (for local dev)
- * 5. Production and sandbox are separate files
+ * 1. Production Caddyfile has NO auto_https off (TLS auto-provisioning enabled)
+ * 2. Production Caddyfile has NO localhost default for HEAVIX_DOMAIN
+ * 3. Production Caddyfile has NO :81 sandbox listener
+ * 4. Production Caddyfile has NO XTransformPort
+ * 5. Sandbox Caddyfile is separate and has :81 + XTransformPort
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,26 +18,29 @@ const SANDBOX_CADDY = SANDBOX_EXISTS ? readFileSync('Caddyfile.sandbox', 'utf-8'
 
 describe('Caddy Configuration Safety (F-02 regression guard)', () => {
   describe('Production Caddyfile', () => {
-    it('has :80 listener for HTTP→HTTPS redirect', () => {
+    it('has :80 listener for HTTP->HTTPS redirect', () => {
       expect(PROD_CADDY).toMatch(/:80\s*\{/);
       expect(PROD_CADDY).toContain('redir https://{host}{uri} permanent');
     });
 
-    it('has :443 listener for production HTTPS', () => {
-      expect(PROD_CADDY).toMatch(/:443/);
+    it('has HTTPS listener with HEAVIX_DOMAIN (no localhost default)', () => {
+      expect(PROD_CADDY).toContain('{$HEAVIX_DOMAIN}');
+      expect(PROD_CADDY).not.toContain('{$HEAVIX_DOMAIN:localhost}');
     });
 
-    it('has domain placeholder for configurable TLS hostname', () => {
-      expect(PROD_CADDY).toContain('{$HEAVIX_DOMAIN:localhost}');
+    it('does NOT disable auto_https (TLS auto-provisioning must be enabled)', () => {
+      expect(PROD_CADDY).not.toContain('auto_https off');
+      expect(PROD_CADDY).not.toContain('auto_https disable_certs');
     });
 
     it('does NOT have :81 sandbox listener', () => {
       expect(PROD_CADDY).not.toMatch(/:81\s*\{/);
     });
 
-    it('does NOT have XTransformPort routing (SSRF prevention)', () => {
+    it('does NOT have XTransformPort or dynamic port routing', () => {
       expect(PROD_CADDY).not.toContain('XTransformPort');
       expect(PROD_CADDY).not.toContain('transform_port_query');
+      expect(PROD_CADDY).not.toContain('query.XTransformPort');
     });
   });
 
