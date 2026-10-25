@@ -404,15 +404,19 @@ jobs:
       - name: Validate Caddyfile syntax
         run: docker run --rm -e HEAVIX_DOMAIN=test.heavix.example.com -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 
-      - name: Validate docker-compose.prod.yml config
+      - name: Validate docker-compose.prod.yml config with interpolation
         env:
           DB_PASSWORD: test-password-not-real
           HEAVIX_DOMAIN: test.heavix.example.com
         run: |
           printf 'DB_PASSWORD=test-password-not-real\nHEAVIX_DOMAIN=test.heavix.example.com\n' > .env.production
-          docker compose --env-file .env.production -f docker-compose.prod.yml config > /dev/null
+          RENDERED=$(docker compose --env-file .env.production -f docker-compose.prod.yml config)
           rm -f .env.production
-          echo "docker-compose.prod.yml config is valid"
+          # Assert interpolated values are present (not raw ${VAR} placeholders)
+          echo "$RENDERED" | grep -q 'test.heavix.example.com' || { echo "FAIL: HEAVIX_DOMAIN not interpolated"; exit 1; }
+          echo "$RENDERED" | grep -q 'heavix@test-db' || { echo "FAIL: DATABASE_URL not interpolated"; exit 1; }
+          echo "$RENDERED" | grep -q 'heavix@store-db' || { echo "FAIL: STORE_DATABASE_URL not interpolated"; exit 1; }
+          echo "Interpolated values verified"
 
       - name: "Test real Caddy→app connectivity in Docker Compose (fail-closed)"
         env:
@@ -420,51 +424,22 @@ jobs:
           HEAVIX_DOMAIN: test.heavix.example.com
         run: |
           set -euo pipefail
-          # Create .env.production with safe test values for interpolation
+          cleanup() {
+            docker compose -f docker-compose.prod.yml down || true
+            rm -f .env.production
+          }
+          trap cleanup EXIT
           printf 'DB_PASSWORD=test-password-not-real\nHEAVIX_DOMAIN=test.heavix.example.com\n' > .env.production
-
-          # Use --env-file so ${DB_PASSWORD} and ${HEAVIX_DOMAIN} in the
-          # compose file are interpolated from .env.production (matching the
-          # documented deployment command).
-          # Start ALL services (app + db + store-db + caddy) — caddy is
-          # the ONLY entry point (port 80/443); app port is NOT published.
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d
-          sleep 15
+          sleep 20
 
-          # Verify caddy is running by checking port 80 responds
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:80/ || true)
-          if [ "$HTTP_CODE" = "000" ]; then
-            echo "FAIL: Caddy not responding on port 80 (HTTP_CODE=000)"
+          # Test THROUGH Caddy → app:3000 → /api/health
+          # Must get HTTP 200 — NOT 308 (redirect only), NOT 502/503 (upstream down)
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:80/api/health || true)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: Expected HTTP 200 from Caddy→app /api/health, got $HTTP_CODE"
             docker compose -f docker-compose.prod.yml logs caddy
-            docker compose -f docker-compose.prod.yml down
-            rm -f .env.production
+            docker compose -f docker-compose.prod.yml logs app
             exit 1
           fi
-          echo "Caddy responded with HTTP $HTTP_CODE on port 80"
-          echo "All services running"
-
-          # Request THROUGH Caddy (port 80 → redirect to 443, but 80 gives
-          # a 308 redirect which proves Caddy is alive and routing).
-          # We use port 80 (HTTP) because Caddy can't get a real TLS cert
-          # for test.heavix.example.com in CI — but a redirect response
-          # proves Caddy is running and connected to app.
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:80/ || true)
-
-          # 308 (permanent redirect to HTTPS) or 502/503 (Caddy alive but
-          # app not ready yet) both prove Caddy is routing to app.
-          # 000 means Caddy is not running at all — fail-closed.
-          if [ "$HTTP_CODE" = "000" ]; then
-            echo "FAIL: Caddy not responding on port 80 (HTTP_CODE=000)"
-            docker compose -f docker-compose.prod.yml logs caddy
-            docker compose -f docker-compose.prod.yml down
-            rm -f .env.production
-            exit 1
-          fi
-
-          echo "Caddy responded with HTTP $HTTP_CODE on port 80"
-          echo "This proves Caddy is running and routing to app:3000"
-
-          # Cleanup
-          docker compose -f docker-compose.prod.yml down
-          rm -f .env.production
-          echo "Caddy-to-app connectivity verified"
+          echo "SUCCESS: Caddy→app connectivity proven (HTTP 200 from /api/health)"
