@@ -197,7 +197,7 @@ export async function getPriceHistory(params: {
     where: obsWhere,
     select: { askingPrice: true, observedAt: true, listingId: true },
     take: 2000,
-    orderBy: { observedAt: "asc" },
+    orderBy: { observedAt: "desc" },
   });
 
   // ── 2. Fold in recent PUBLISHED listings without an active observation ──
@@ -215,12 +215,13 @@ export async function getPriceHistory(params: {
   if (params.brandId) listingWhere.brandId = params.brandId;
   if (params.categoryId) listingWhere.categoryId = params.categoryId;
   if (params.modelId) listingWhere.modelId = params.modelId;
+  if (params.productId) listingWhere.productId = params.productId;
 
   const listings = await db.listing.findMany({
     where: listingWhere,
     select: { id: true, price: true, createdAt: true },
     take: 2000,
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 
   // ── 3. Bucket by month ──
