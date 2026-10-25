@@ -2,7 +2,7 @@
 
 > **Recovery notice (2026-10-26): historical claims below are not release evidence.** The old cutover narrative and P0 checklist predate the current independent Main/Store migration work and must not be used to infer that production migration safety or baseline adoption has been operationally proven. Current release gates and evidence status are tracked in [Release Readiness](RELEASE-READINESS-2026-10-26.md) and [Issue #80](https://github.com/HEAVIXIR/z-ai-2/issues/80). Main/Store migration rehearsal in CI does not authorize production database changes. Do not run the legacy `db push --accept-data-loss` instructions against a production-shaped database.
 
-- **Status:** Accepted — PostgreSQL cutover EXECUTED 2026-09-22
+- **Status:** Accepted — PostgreSQL cutover EXECUTED 2026-09-22 *(historical; see recovery notice above — not release evidence)*
 - **Date:** 2026-09-20 (P0 baseline)
 - **Decision owners:** HEAVIX core team
 - **Supersedes:** none
@@ -202,3 +202,4 @@ require:
 
 These two criteria are now satisfied by this ADR and the
 accompanying baseline migration.
+
