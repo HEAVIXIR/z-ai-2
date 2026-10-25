@@ -11,7 +11,7 @@
  * Architecture note:
  *   The Universal Resource Engine's data-adapter currently uses only the
  *   main `db` Prisma client. Store-schema models (StockMovement, Warehouse,
- *   Return, ProcurementRequest) live in store-schema.prisma and are accessed
+ *   Return, ProcurementRequest) live in prisma/store/schema.prisma and are accessed
  *   via `storeDb`. To bridge this gap, the resources below declare an
  *   `apiBase` pointing to their existing dedicated routes under
  *   `/api/admin/store/...`. The Universal UI components
@@ -1082,7 +1082,7 @@ export const servicesConfig: AdminResourceConfig = {
 // Keyed as `store-categories` (NOT `categories`) to preserve domain
 // separation from the marketplace Category resource. The marketplace
 // has its own Category model in the main schema; the Store has its
-// own self-referential Category tree in store-schema.prisma. Both
+// own self-referential Category tree in prisma/store/schema.prisma. Both
 // use the existing `store.read`/`store.manage` permission keys.
 export const storeCategoriesConfig: AdminResourceConfig = {
   key: 'store-categories',
@@ -1178,7 +1178,7 @@ export const storeCategoriesConfig: AdminResourceConfig = {
 // Keyed as `store-brands` (NOT `brands`) to avoid collision with the
 // marketplace `brands` resource (registered in brand.ts with
 // brand.read/create/update/delete/publish). Store Brand is a separate
-// model in store-schema.prisma, accessed via /api/admin/store/brands.
+// model in prisma/store/schema.prisma, accessed via /api/admin/store/brands.
 // Both the marketplace and Store use distinct permission keys.
 export const storeBrandsConfig: AdminResourceConfig = {
   key: 'store-brands',
@@ -1283,7 +1283,7 @@ export const storeBrandsConfig: AdminResourceConfig = {
 // Distinct from the marketplace `transports` resource (B2B transport
 // request to move cargo between locations). Shipments are B2C: a
 // carrier delivers a customer's order. The Shipment model is in
-// store-schema.prisma (1:1 with Order via orderId @unique). The
+// prisma/store/schema.prisma (1:1 with Order via orderId @unique). The
 // admin route at /api/admin/store/shipments exposes GET (list) + POST
 // (create) + GET [id] (detail) + PATCH [id] (update). No DELETE —
 // shipments are immutable once created (audit trail).

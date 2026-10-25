@@ -42,7 +42,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -50,7 +50,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Typecheck
         run: bun run typecheck
       - name: Lint
@@ -105,6 +105,34 @@ jobs:
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
         run: bunx vitest run tests/e2e/
+      - name: "PostgreSQL migration proof: migrate deploy on fresh DBs (Main + Store)"
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # Create fresh isolated databases for migration proof (not the test DBs used by other steps)
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS heavix_migrate_main_proof;"
+          psql -h localhost -U postgres -c "CREATE DATABASE heavix_migrate_main_proof;"
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS heavix_migrate_store_proof;"
+          psql -h localhost -U postgres -c "CREATE DATABASE heavix_migrate_store_proof;"
+
+          echo "── Main: migrate deploy on fresh DB ──"
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
+            bunx prisma migrate deploy --schema=prisma/schema.prisma
+          echo ""
+          echo "── Main: migrate status ──"
+          DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
+            bunx prisma migrate status --schema=prisma/schema.prisma
+          echo ""
+          echo "── Store: migrate deploy on fresh DB ──"
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_store_proof?schema=public" \
+            bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+          echo ""
+          echo "── Store: migrate status ──"
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_store_proof?schema=public" \
+            bunx prisma migrate status --schema=prisma/store/schema.prisma
+          echo ""
+          echo "✓ Both migration histories deployed and verified on fresh PostgreSQL 17 databases."
       - name: Production build
         run: bun run build
       - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
@@ -144,7 +172,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -152,7 +180,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
         run: |
           bun run db:seed-rbac
@@ -200,7 +228,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -208,7 +236,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
         run: |
           bun run db:seed-rbac
@@ -244,7 +272,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Provision TLS-enabled PostgreSQL 17
         run: |
           bash scripts/provision-tls-pg.sh

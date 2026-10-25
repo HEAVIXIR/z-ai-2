@@ -5,7 +5,7 @@ import { PrismaClient } from "@/lib/generated/store-client";
  *
  * The HEAVIX auto-parts marketplace has its OWN PostgreSQL database
  * (`STORE_DATABASE_URL`) and its own Prisma schema
- * (`prisma/store-schema.prisma`). The generated client lives at
+ * (`prisma/store/schema.prisma`). The generated client lives at
  * `src/lib/generated/store-client` so it does NOT clash with the
  * main HEAVIX `@prisma/client`.
  *

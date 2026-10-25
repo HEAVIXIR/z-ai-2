@@ -232,7 +232,7 @@ export interface AdminResourceConfig {
   /**
    * P1 STORE-AWARENESS: Which Prisma client to use.
    * - 'main' (default): use `db` from '@/lib/db' (main schema)
-   * - 'store': use `storeDb` from '@/lib/store-db' (store-schema.prisma)
+   * - 'store': use `storeDb` from '@/lib/store-db' (prisma/store/schema.prisma)
    *
    * Store-schema resources (StockMovement, Warehouse, Return, Customer,
    * Mechanic, Supplier, etc.) MUST declare database: 'store'.

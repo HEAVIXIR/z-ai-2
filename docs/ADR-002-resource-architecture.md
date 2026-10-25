@@ -17,7 +17,7 @@ The HEAVIX project has TWO Prisma schemas serving TWO distinct business domains:
    - Prisma client: `db` (from `@/lib/db`)
    - DB: `heavix` (PostgreSQL)
 
-2. **Store schema** (`prisma/store-schema.prisma`) — Storefront domain
+2. **Store schema** (`prisma/store/schema.prisma`) — Storefront domain
    - Models: Order (cart), Payment (gateway), Part (SKU/price), Customer, Mechanic,
      Supplier, Warehouse, StockMovement, Shipment, Return, etc.
    - Prisma client: `storeDb` (from `@/lib/store-db`)

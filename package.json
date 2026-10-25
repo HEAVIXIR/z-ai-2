@@ -22,10 +22,10 @@
     "catalog:health": "tsx scripts/catalog-health.ts",
     "security:check": "eslint . && tsx scripts/security-check.ts",
     "migrate:sqlite-to-postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",
-    "store:db:generate": "prisma generate --schema=prisma/store-schema.prisma",
-    "store:db:push": "prisma db push --accept-data-loss --schema=prisma/store-schema.prisma",
-    "store:db:migrate": "prisma migrate dev --schema=prisma/store-schema.prisma",
-    "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/store-schema.prisma",
+    "store:db:generate": "prisma generate --schema=prisma/store/schema.prisma",
+    "store:db:push": "prisma db push --accept-data-loss --schema=prisma/store/schema.prisma",
+    "store:db:migrate": "prisma migrate dev --schema=prisma/store/schema.prisma",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/store/schema.prisma",
     "db:seed-brands-a": "tsx prisma/seed-brands-a.ts",
     "db:seed-brands-b": "tsx prisma/seed-brands-b.ts",
     "db:seed-attributes": "tsx prisma/seed-attributes.ts",
@@ -49,7 +49,7 @@
     "gen:sale-images": "tsx prisma/generate-sale-images.ts",
     "test:ai-gateway": "tsx prisma/test-ai-gateway.ts",
     "run:ai-agents": "tsx prisma/run-ai-agents.ts",
-    "store:db:reset": "prisma migrate reset --schema=prisma/store-schema.prisma"
+    "store:db:reset": "prisma migrate reset --schema=prisma/store/schema.prisma"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

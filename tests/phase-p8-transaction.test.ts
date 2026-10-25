@@ -50,7 +50,7 @@ const AUCTION_BIDS_ROUTE = "src/app/api/auctions/[id]/bids/route.ts";
 const AUCTION_END_ROUTE = "src/app/api/admin/auctions/[id]/end/route.ts";
 const ORDERS_DETAIL_ROUTE = "src/app/api/admin/store/orders/[id]/route.ts";
 
-const STORE_SCHEMA = "prisma/store-schema.prisma";
+const STORE_SCHEMA = "prisma/store/schema.prisma";
 
 function read(path: string): string {
   return fs.readFileSync(path, "utf8");
@@ -311,7 +311,7 @@ describe("Phase P8 — Rental + Auction + Commerce (Transaction deep)", () => {
   });
 
   // ── 5. Schema — Rental models added to store-schema ──────
-  describe("5. Schema (store-schema.prisma)", () => {
+  describe("5. Schema (store/schema.prisma)", () => {
     it("should define RentalListing model with the documented fields", () => {
       const c = read(STORE_SCHEMA);
       expect(c).toMatch(/model RentalListing \{/);

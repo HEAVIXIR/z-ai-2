@@ -925,4 +925,4 @@ This rule (Hard Rule #12) is enforced at THREE levels:
 
 ---
 
-**End of document.** This roadmap is documentation only. No code, schema, migration, or PR was modified. Every stage is grounded in the 9 STEP 11.31 deliverables (cited inline). The dependency graph reflects ACTUAL code dependencies verified against `prisma/schema.prisma`, `prisma/store-schema.prisma`, `src/lib/admin/**`, `src/lib/crm/**`, `src/lib/ai-*/**`, and the 5 Universal Resource API routes on `main = c4f11bf`.
+**End of document.** This roadmap is documentation only. No code, schema, migration, or PR was modified. Every stage is grounded in the 9 STEP 11.31 deliverables (cited inline). The dependency graph reflects ACTUAL code dependencies verified against `prisma/schema.prisma`, `prisma/store/schema.prisma`, `src/lib/admin/**`, `src/lib/crm/**`, `src/lib/ai-*/**`, and the 5 Universal Resource API routes on `main = c4f11bf`.
