@@ -409,4 +409,5 @@ jobs:
           DB_PASSWORD: test-password-not-real
           HEAVIX_DOMAIN: test.heavix.example.com
         run: |
-          docker compose -f docker-compose.prod.yml config > /dev/null && echo "✓ docker-compose.prod.yml config is valid"
+          echo "DB_PASSWORD=test-password-not-real
+HEAVIX_DOMAIN=test.heavix.example.com" > .env.production && docker compose -f docker-compose.prod.yml config > /dev/null && rm -f .env.production && echo "✓ docker-compose.prod.yml config is valid"
