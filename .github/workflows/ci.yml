@@ -39,6 +39,13 @@ jobs:
           bun-version: latest
       - name: Install dependencies
         run: bun install
+      - name: Validate and exercise the Preview SQLite schema (disposable file only)
+        env:
+          PREVIEW_DATABASE_URL: "file:/tmp/heavix-preview-schema-validation.db"
+        run: |
+          bunx prisma validate --schema=prisma/preview-schema.prisma
+          bun run db:push:preview
+          bash tests/database-runtime-build.sh
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
