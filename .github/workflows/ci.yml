@@ -141,7 +141,14 @@ jobs:
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
-        run: bunx vitest run tests/integration/*.test.ts
+        # Store/Outbox PostgreSQL tests are already run immediately above by
+        # the dedicated fail-closed gate (13 tests, zero skips). Exclude them
+        # from this broad parallel sweep to avoid duplicate DB-client loading;
+        # the dedicated gate remains the authoritative Store/Outbox check.
+        run: >-
+          bunx vitest run tests/integration/*.test.ts
+          --exclude tests/integration/store-audit-outbox-resilience.test.ts
+          --exclude tests/integration/store-inventory-return-atomicity.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
