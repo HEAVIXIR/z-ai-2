@@ -1,5 +1,7 @@
 # HEAVIX — PostgreSQL Setup Guide
 
+> **Migration release warning (2026-10-25):** This guide contains legacy `prisma db push --accept-data-loss` instructions. They are not a production or release migration procedure. The currently committed migration lock and initial SQL are SQLite-era artifacts and must not be applied to PostgreSQL. Use this guide only for disposable/local setup until Issue #80's PostgreSQL migration histories, fresh-database deploy tests, and existing-database baseline-adoption tests are completed and independently reviewed.
+
 ## Architecture
 - PostgreSQL 17.11 (user-space install, no sudo)
 - Installed at: /home/z/pg (extracted from .deb)
