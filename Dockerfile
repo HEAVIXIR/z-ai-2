@@ -8,7 +8,7 @@
 
 # ── Stage 1: Build ──
 # STEP 11.50 FIX: pin Bun version for reproducible builds
-FROM oven/bun:1.2.19 AS builder
+FROM oven/bun:1.3.14 AS builder
 
 WORKDIR /app
 
@@ -16,21 +16,23 @@ WORKDIR /app
 COPY package.json bun.lock ./
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy source
 COPY . .
 
 # Generate Prisma clients
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+ENV STORE_DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN bunx prisma generate --schema=prisma/schema.prisma
-RUN bunx prisma generate --schema=prisma/store-schema.prisma
+RUN bunx prisma generate --schema=prisma/store/schema.prisma
 
 # Build Next.js (standalone output)
 RUN bun run build
 
 # ── Stage 2: Runtime ──
 # STEP 11.50 FIX: pin Bun version for reproducible builds
-FROM oven/bun:1.2.19-slim AS runtime
+FROM oven/bun:1.3.14-slim AS runtime
 
 WORKDIR /app
 

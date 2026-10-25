@@ -1,23 +1,26 @@
-:81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
+# HEAVIX — Production Caddy gateway configuration
+#
+# This file is for PRODUCTION deployments. It does NOT include the
+# sandbox :81 listener or dynamic port routing.
+# For sandbox/local dev, use Caddyfile.sandbox instead.
+#
+# TLS: Caddy automatically provisions Let's Encrypt certificates when
+# the site address is a real domain name (not :443 or ).
+# The domain MUST be set via the HEAVIX_DOMAIN environment variable.
+# Caddy reads it at startup. If HEAVIX_DOMAIN is not set, Caddy will
+# refuse to start (fail-closed — no domain, no TLS, no deployment).
+#
+# SECURITY: No dynamic port routing in production — prevents SSRF.
 
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
-
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
+# HTTP -> HTTPS redirect (Caddy auto-redirects when site has a domain)
+{$HEAVIX_DOMAIN} {
+	# Caddy automatically provisions Let's Encrypt certificates for this domain.
+	# It also handles the :80 -> :443 redirect automatically when a domain
+	# is specified as the site address (not :443 or :80).
+	reverse_proxy app:3000 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
 	}
 }

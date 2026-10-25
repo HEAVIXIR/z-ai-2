@@ -1,16 +1,19 @@
 # HEAVIX — Production Docker Compose
-# Usage: docker compose -f docker-compose.prod.yml up -d
+# Usage: docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 #
 # This file defines the production deployment:
-# - HEAVIX Next.js app (port 3000)
-# - Main PostgreSQL (port 5432)
-# - Store PostgreSQL (port 5433)
-# - Caddy gateway (port 80/443, auto-TLS)
+# - HEAVIX Next.js app (port 3000, internal only — NOT exposed to host)
+# - Main PostgreSQL (port 5432, internal only)
+# - Store PostgreSQL (port 5433, internal only)
+# - Caddy gateway (port 80/443, auto-TLS, the ONLY external entry point)
 #
 # Prerequisites:
-# - .env.production file with real secrets
+# - .env.production file with real secrets (DB_PASSWORD, HEAVIX_DOMAIN)
 # - Domain name pointing to the host
-# - Caddy will auto-provision TLS certificates
+# - Caddy will auto-provision TLS certificates for HEAVIX_DOMAIN
+#
+# SECURITY: The app port (3000) is NOT published to the host. All traffic
+# MUST go through Caddy on port 80/443. This prevents bypassing TLS.
 
 services:
   app:
@@ -21,15 +24,19 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public
       - STORE_DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@store-db:5432/heavix_store?schema=public
-    ports:
-      - "3000:3000"
+      - HEAVIX_DOMAIN=${HEAVIX_DOMAIN}
+    # NO ports published — app is only reachable via Caddy on the
+    # Docker Compose internal network. This prevents direct access
+    # that would bypass TLS/HTTPS.
+    expose:
+      - "3000"
     depends_on:
       db:
         condition: service_healthy
       store-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -75,6 +82,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      - HEAVIX_DOMAIN=${HEAVIX_DOMAIN}
     depends_on:
       - app
 

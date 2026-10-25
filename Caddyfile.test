@@ -1,0 +1,12 @@
+# HEAVIX — CI test Caddyfile (no real TLS, for connectivity test only)
+# This file is used ONLY in CI for the connectivity test.
+# Production uses Caddyfile with real domain + auto-TLS.
+
+:80 {
+	reverse_proxy app:3000 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+}
