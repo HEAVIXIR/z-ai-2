@@ -14,7 +14,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model StockMovement` in `prisma/store-schema.prisma:416` |
+| Schema | ✅ | `model StockMovement` in `prisma/store/schema.prisma:416` |
 | Service | ✅ | `src/lib/store-inventory-service.ts` (774 lines) — `createMovement()`, `listMovements()`, `adjustStock()` |
 | API | ✅ | `src/app/api/admin/store/inventory/route.ts` (GET+POST), `[id]/route.ts` (GET) |
 | Permission | ✅ | `requirePermission(user.id, 'inventory.read/manage')` in route |
@@ -36,7 +36,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Warehouse` in `prisma/store-schema.prisma:444` |
+| Schema | ✅ | `model Warehouse` in `prisma/store/schema.prisma:444` |
 | Service | ✅ | `src/lib/store-inventory-service.ts` — `createWarehouse()`, `listWarehouses()`, `updateWarehouse()`, `deleteWarehouse()` |
 | API | ✅ | `src/app/api/admin/store/warehouses/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'inventory.read/manage')` |
@@ -58,7 +58,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Return` in `prisma/store-schema.prisma:493` |
+| Schema | ✅ | `model Return` in `prisma/store/schema.prisma:493` |
 | Service | ✅ | `src/lib/store-returns-service.ts` (820 lines) |
 | API | ✅ | `src/app/api/admin/store/returns/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH) |
 | Permission | ✅ | `requirePermission(user.id, 'returns.read/manage')` |
@@ -80,7 +80,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model ProcurementRequest` in `prisma/store-schema.prisma:548` |
+| Schema | ✅ | `model ProcurementRequest` in `prisma/store/schema.prisma:548` |
 | Service | ✅ | `src/lib/store-procurement-service.ts` (670 lines) |
 | API | ✅ | `src/app/api/admin/store/procurement/route.ts` (GET+POST), `[id]/route.ts` |
 | Permission | ✅ | `requirePermission(user.id, 'procurement.read/manage')` |
@@ -102,7 +102,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Customer` in `prisma/store-schema.prisma:39` |
+| Schema | ✅ | `model Customer` in `prisma/store/schema.prisma:39` |
 | Service | ✅ | `src/lib/store-customers-service.ts` (73 lines) — `listCustomers()` |
 | API | ✅ | `src/app/api/admin/store/customers/route.ts` (GET only — read-only) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read')` |
@@ -124,7 +124,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Mechanic` in `prisma/store-schema.prisma:62` |
+| Schema | ✅ | `model Mechanic` in `prisma/store/schema.prisma:62` |
 | Service | ✅ | `src/lib/store-mechanics-service.ts` (214 lines) — `listMechanics()`, `createMechanic()`, `updateMechanic()`, `deleteMechanic()`, `getMechanic()` |
 | API | ✅ | `src/app/api/admin/store/mechanics/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -146,7 +146,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Supplier` in `prisma/store-schema.prisma:380` |
+| Schema | ✅ | `model Supplier` in `prisma/store/schema.prisma:380` |
 | Service | ✅ | `src/lib/store-suppliers-service.ts` (174 lines) |
 | API | ✅ | `src/app/api/admin/store/suppliers/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -166,7 +166,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model CarModel` in `prisma/store-schema.prisma:85` |
+| Schema | ✅ | `model CarModel` in `prisma/store/schema.prisma:85` |
 | Service | ✅ | `src/lib/store-car-models-service.ts` (171 lines) |
 | API | ✅ | `src/app/api/admin/store/car-models/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -186,7 +186,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model CurrencyRate` in `prisma/store-schema.prisma:280` + `model CurrencySetting` at line 292 |
+| Schema | ✅ | `model CurrencyRate` in `prisma/store/schema.prisma:280` + `model CurrencySetting` at line 292 |
 | Service | ✅ | `src/lib/store-currency.ts` (65 lines) |
 | API | ✅ | `src/app/api/admin/store/currency/route.ts` (GET+POST — append-only, no PATCH/DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -208,7 +208,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model ServiceProvider` in `prisma/store-schema.prisma:741` + `model ServiceRequest` at line 761 |
+| Schema | ✅ | `model ServiceProvider` in `prisma/store/schema.prisma:741` + `model ServiceRequest` at line 761 |
 | Service | ✅ | `src/lib/services-service.ts` (631 lines) |
 | API | ✅ | `src/app/api/admin/store/services/providers/route.ts` (GET+POST), `providers/[id]/route.ts` (GET+PATCH+DELETE) + `requests/route.ts` (GET+POST), `requests/[id]/route.ts` |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -230,7 +230,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Category` in `prisma/store-schema.prisma:97` |
+| Schema | ✅ | `model Category` in `prisma/store/schema.prisma:97` |
 | Service | ✅ | `src/lib/store-categories-service.ts` (192 lines) |
 | API | ✅ | `src/app/api/admin/store/categories/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -250,7 +250,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Brand` in `prisma/store-schema.prisma:111` |
+| Schema | ✅ | `model Brand` in `prisma/store/schema.prisma:111` |
 | Service | ✅ | `src/lib/store-categories-service.ts` pattern (brand service bundled via `storeDb.brand`) |
 | API | ✅ | `src/app/api/admin/store/brands/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH+DELETE) |
 | Permission | ✅ | `requirePermission(user.id, 'store.read/manage')` |
@@ -270,7 +270,7 @@
 
 | Column | Status | Evidence |
 |---|---|---|
-| Schema | ✅ | `model Shipment` in `prisma/store-schema.prisma:249` + `model ShipmentTracking` at line 645 |
+| Schema | ✅ | `model Shipment` in `prisma/store/schema.prisma:249` + `model ShipmentTracking` at line 645 |
 | Service | ✅ | `src/lib/store-shipments-service.ts` (353 lines) |
 | API | ✅ | `src/app/api/admin/store/shipments/route.ts` (GET+POST), `[id]/route.ts` (GET+PATCH) |
 | Permission | ✅ | `requirePermission(user.id, 'shipping.read/manage')` |

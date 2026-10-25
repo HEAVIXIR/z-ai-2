@@ -67,7 +67,7 @@ const SHIPMENT_DELIVER_ROUTE =
 const SHIPMENT_EXCEPTION_ROUTE =
   'src/app/api/admin/store/shipments/[id]/exception/route.ts';
 
-const STORE_SCHEMA = 'prisma/store-schema.prisma';
+const STORE_SCHEMA = 'prisma/store/schema.prisma';
 
 function read(path: string): string {
   return fs.readFileSync(path, 'utf8');
@@ -344,7 +344,7 @@ describe('Phase P9 — Services Marketplace + Logistics Deep', () => {
   });
 
   // ── 4. Schema — Service models added to store-schema ──────
-  describe('4. Schema (store-schema.prisma)', () => {
+  describe('4. Schema (store/schema.prisma)', () => {
     it('should define ServiceProvider model with the documented fields', () => {
       const c = read(STORE_SCHEMA);
       expect(c).toMatch(/model ServiceProvider \{/);

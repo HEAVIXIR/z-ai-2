@@ -92,10 +92,10 @@ describe('Universal Store abstractions (P0/P1 hardening applies to all 13)', () 
 // ─── Per-Resource Contract Tests ────────────────────────────
 describe('Store Completion Matrix — 13 Resources', () => {
   // Schema verification
-  describe('Schema (Prisma model exists in store-schema.prisma)', () => {
+  describe('Schema (Prisma model exists in store/schema.prisma)', () => {
     for (const r of STORE_RESOURCES) {
-      it(`${r.key}: model ${r.model} exists in store-schema.prisma`, () => {
-        const schema = readFile('prisma/store-schema.prisma');
+      it(`${r.key}: model ${r.model} exists in store/schema.prisma`, () => {
+        const schema = readFile('prisma/store/schema.prisma');
         const modelPascal = r.model.charAt(0).toUpperCase() + r.model.slice(1);
         expect(schema).toContain(`model ${modelPascal} {`);
       });

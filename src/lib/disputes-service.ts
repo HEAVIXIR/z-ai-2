@@ -4,8 +4,8 @@
  * Extracted dispute lifecycle logic for the marketplace domain.
  *
  * Disputes are MAIN-DB entities (Dispute model in prisma/schema.prisma).
- * The legacy store WalletTransaction lives in store-schema.prisma
- * (per Wave 2D constraint: NO store-schema.prisma changes). When a
+ * The legacy store WalletTransaction lives in prisma/store/schema.prisma
+ * (per Wave 2D constraint: NO prisma/store/schema.prisma changes). When a
  * marketplace Dispute is resolved with a refund, the refund may
  * optionally credit a store Customer's wallet — we make this a
  * best-effort side-effect that LOOKS UP a matching store Customer by

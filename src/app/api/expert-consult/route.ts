@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * STEP 13.01 P0-3 FIX: This route previously referenced
  * `db.expertConsultation` which does NOT exist in either Prisma
- * schema (schema.prisma or store-schema.prisma). The @ts-nocheck
+ * schema (schema.prisma or prisma/store/schema.prisma). The @ts-nocheck
  * directive hid the type error, causing a runtime crash
  * (TypeError: Cannot read properties of undefined) on every call.
  *

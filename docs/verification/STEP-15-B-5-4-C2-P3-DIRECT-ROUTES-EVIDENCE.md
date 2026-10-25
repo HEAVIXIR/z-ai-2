@@ -166,7 +166,7 @@ For direct routes, the tag must be hardcoded or the mapping must use a different
 
 ### 6.1 Key finding: Store routes use `storeDb`, not `db`
 
-The store routes use `storeDb` (the store Prisma client from `prisma/store-schema.prisma`), NOT `db` (the main HEAVIX Prisma client from `prisma/schema.prisma`). Store brands/categories are in a **completely different database** from the Homepage data.
+The store routes use `storeDb` (the store Prisma client from `prisma/store/schema.prisma`), NOT `db` (the main HEAVIX Prisma client from `prisma/schema.prisma`). Store brands/categories are in a **completely different database** from the Homepage data.
 
 **This resolves the 5 AMBIGUOUS routes from C.1.** They're not AMBIGUOUS — they're **NOT-HOMEPAGE-AFFECTING** because they operate on a different database. No revalidation needed.
 

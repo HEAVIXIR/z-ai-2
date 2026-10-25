@@ -42,7 +42,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -50,7 +50,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Typecheck
         run: bun run typecheck
       - name: Lint
@@ -144,7 +144,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -152,7 +152,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
         run: |
           bun run db:seed-rbac
@@ -200,7 +200,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
           sudo apt-get install -y postgresql-client
@@ -208,7 +208,7 @@ jobs:
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
-          bunx prisma db push --accept-data-loss --schema=prisma/store-schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
         run: |
           bun run db:seed-rbac
@@ -244,7 +244,7 @@ jobs:
       - name: Generate Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
-          bunx prisma generate --schema=prisma/store-schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Provision TLS-enabled PostgreSQL 17
         run: |
           bash scripts/provision-tls-pg.sh

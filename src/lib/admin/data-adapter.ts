@@ -38,7 +38,7 @@ export interface ListResult<T> {
 // ── P1 STORE-AWARENESS: Get Prisma client based on config.database ──
 /**
  * Returns the correct Prisma client for this resource.
- * - config.database === 'store' → storeDb (store-schema.prisma)
+ * - config.database === 'store' → storeDb (prisma/store/schema.prisma)
  * - config.database === 'main' or undefined → db (main schema.prisma)
  *
  * This eliminates the need for resources to route via dedicated API

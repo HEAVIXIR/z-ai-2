@@ -151,7 +151,7 @@ phase. New product layers must reuse, not rebuild.
 
 ### 5.4 Store-Schema Models
 
-- 33 models in `prisma/store-schema.prisma` including `Part`, `Order`,
+- 33 models in `prisma/store/schema.prisma` including `Part`, `Order`,
   `Payment`, `Shipment`, `InventoryBalance`, `Warehouse`, `Supplier`,
   `RentalListing`, `RentalBooking`, `ServiceProvider`, `ServiceRequest`.
 - Reused by: Store Center §3 (inventory), §7 (financing referral mirror),

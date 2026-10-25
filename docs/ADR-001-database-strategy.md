@@ -11,7 +11,7 @@
 Section 2.4 / §4 action "Switch `provider = \"sqlite\"` → `provider =
 \"postgresql\"` at cutover time" has been executed for both databases:
 
-- `prisma/schema.prisma` and `prisma/store-schema.prisma` now declare
+- `prisma/schema.prisma` and `prisma/store/schema.prisma` now declare
   `provider = "postgresql"`, reading `DATABASE_URL` and
   `STORE_DATABASE_URL` respectively (two separate Postgres databases —
   see `.env` and `docker-compose.yml` for a local dev setup).

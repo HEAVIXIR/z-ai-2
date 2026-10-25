@@ -6,7 +6,7 @@
 #
 # Two separate Postgres instances (different ports) so the main
 # marketplace DB and the parts-store DB stay fully independent —
-# matches prisma/schema.prisma and prisma/store-schema.prisma.
+# matches prisma/schema.prisma and prisma/store/schema.prisma.
 
 services:
   db:
