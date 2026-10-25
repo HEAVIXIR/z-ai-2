@@ -427,9 +427,13 @@ jobs:
           cleanup() {
             docker compose -f docker-compose.prod.yml down || true
             rm -f .env.production
+            mv Caddyfile.prod Caddyfile 2>/dev/null || true
           }
           trap cleanup EXIT
           printf 'DB_PASSWORD=test-password-not-real\nHEAVIX_DOMAIN=test.heavix.example.com\n' > .env.production
+          # Use test Caddyfile (no real TLS) for connectivity test
+          cp Caddyfile Caddyfile.prod
+          cp Caddyfile.test Caddyfile
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d
           sleep 20
 
