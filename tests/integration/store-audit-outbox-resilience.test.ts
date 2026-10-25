@@ -99,9 +99,10 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     expect(row!.attempts).toBe(0);
   });
 
-  it('OUTBOX-3. getAuditOutboxStats reports pending/delivered/failed counts accurately', async () => {
-    await storeDb.auditOutbox.deleteMany({});
-
+  it('OUTBOX-3. getAuditOutboxStats reports pending/delivered/failed counts accurately without touching unrelated rows', async () => {
+    // Stats are global, so compare against a baseline instead of deleting shared
+    // Outbox rows. Tests must never erase events created by other processes.
+    const baseline = await getAuditOutboxStats();
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
       const id = await storeDb.$transaction(async (tx) => {
@@ -115,9 +116,9 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     }
 
     const stats = await getAuditOutboxStats();
-    expect(stats.pending).toBe(3);
-    expect(stats.delivered).toBe(0);
-    expect(stats.failed).toBe(0);
+    expect(stats.pending).toBeGreaterThanOrEqual(baseline.pending + 3);
+    expect(stats.delivered).toBeGreaterThanOrEqual(baseline.delivered);
+    expect(stats.failed).toBeGreaterThanOrEqual(baseline.failed);
     expect(stats.oldestPendingAt).not.toBeNull();
 
     // Manually mark one as DELIVERED (simulating a successful drain)
@@ -127,9 +128,9 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     });
 
     const stats2 = await getAuditOutboxStats();
-    expect(stats2.pending).toBe(2);
-    expect(stats2.delivered).toBe(1);
-    expect(stats2.failed).toBe(0);
+    expect(stats2.pending).toBeGreaterThanOrEqual(baseline.pending + 2);
+    expect(stats2.delivered).toBeGreaterThanOrEqual(baseline.delivered + 1);
+    expect(stats2.failed).toBeGreaterThanOrEqual(baseline.failed);
   });
 
   it('OUTBOX-4. multiple audit events can be enqueued in one transaction (atomic batch)', async () => {
