@@ -15,13 +15,22 @@ if [ -f "$SOURCE_DB_PATH" ]; then
     echo "🗄️  复制 Preview 数据库到构建产物..."
     cp -a "$SOURCE_DB_DIR/." "$TARGET_DB_DIR/"
 else
-    echo "ℹ️  未找到 Preview 数据库 db/custom.db，将初始化空的生产数据库"
+    echo "ℹ️  未找到 Preview 数据库 db/custom.db，将初始化空的 Preview 数据库"
 fi
 
 echo "🗄️  同步构建产物中的数据库结构..."
 (
     cd "$PROJECT_DIR"
-    DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push
+    # STEP 15.99+: Use the Preview SQLite schema (not the main PostgreSQL schema)
+    # The Preview schema is a mirror of Main with provider=sqlite for local/preview dev.
+    # If preview-schema.prisma exists, use it; otherwise fall back to db:push (legacy).
+    if [ -f "prisma/preview-schema.prisma" ]; then
+        PREVIEW_DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push:preview
+    else
+        echo "⚠️  prisma/preview-schema.prisma not found — falling back to legacy db:push"
+        echo "⚠️  This should not happen in production. See PR #83 for Preview schema isolation."
+        DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push
+    fi
 )
 
 if [ ! -f "$TARGET_DB_PATH" ]; then

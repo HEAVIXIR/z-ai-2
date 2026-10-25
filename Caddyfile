@@ -1,3 +1,44 @@
+# HEAVIX — Caddy gateway configuration
+#
+# Production: listens on :80 (HTTP→HTTPS redirect) + :443 (HTTPS, auto-TLS)
+# Sandbox/preview: :81 is used by the gateway for internal routing
+#
+# The XTransformPort query parameter routes requests to internal mini-services
+# on different ports (e.g., chat-service on :3003, etc.).
+{
+	auto_https off
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}
+
+:443 {
+	@transform_port_query {
+		query XTransformPort=*
+	}
+
+	handle @transform_port_query {
+		reverse_proxy localhost:{query.XTransformPort} {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle {
+		reverse_proxy localhost:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}
+
+# Sandbox/preview fallback (used when running locally or in the sandbox
+# where TLS auto-provisioning is not available).
 :81 {
 	@transform_port_query {
 		query XTransformPort=*

@@ -23,7 +23,7 @@ COPY . .
 
 # Generate Prisma clients
 RUN bunx prisma generate --schema=prisma/schema.prisma
-RUN bunx prisma generate --schema=prisma/store-schema.prisma
+RUN bunx prisma generate --schema=prisma/store/schema.prisma
 
 # Build Next.js (standalone output)
 RUN bun run build

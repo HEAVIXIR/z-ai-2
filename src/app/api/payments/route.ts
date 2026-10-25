@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Server error" },
       { status: 500 },
     );
   }
