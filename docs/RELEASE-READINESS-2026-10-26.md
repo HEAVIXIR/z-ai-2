@@ -55,7 +55,7 @@ Attach the exact commit SHA, PostgreSQL version, command, test results, and reda
 - No production deployment is implied by this test.
 
 ### G6 — Final release decision
-Release approval requires all previous gates to pass, independent review of the final code SHA, branch-protection requirements satisfied, an explicit release window, an operator/owner, a rollback trigger, and post-release verification steps.
+Release approval requires all previous gates to pass; a review of the exact final code SHA recorded by a GitHub account other than the PR author; branch-protection requirements satisfied; an explicit release window; an operator/owner; a rollback trigger; and post-release verification steps. The owner must separately record whether delegated-AI review is sufficient for the final release decision or a human reviewer is required; a non-author account alone does not settle that governance question.
 
 ## Safety boundaries
 
