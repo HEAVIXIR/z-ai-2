@@ -31,6 +31,9 @@ export LD_LIBRARY_PATH=/home/z/pg/usr/lib/postgresql/17/lib
 ## Schema + Seeds
 ```bash
 # Push schema (creates all tables)
+# ⚠️ DESTRUCTIVE — disposable local database ONLY.
+# See the safety warning at the top of this document.
+# Do NOT run against staging, production, or any database with valuable data.
 DATABASE_URL=postgresql://heavix@localhost:5432/heavix?schema=public bunx prisma db push --accept-data-loss
 
 # Run seeds
@@ -61,3 +64,4 @@ node_modules/.bin/next dev -p 3000
 1. Platform's /start.sh overwrites .env with SQLite URL — dev script has hardcoded override
 2. PostgreSQL binaries at /home/z/pg may be wiped on platform reset — .deb files in pgsrc/ for re-extraction
 3. Data directory at /home/z/pgdata may be wiped — backup in db/backups/
+
