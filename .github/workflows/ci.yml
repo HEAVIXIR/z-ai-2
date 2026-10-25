@@ -431,17 +431,16 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d
           sleep 15
 
-          # Verify all services are running
-          docker compose -f docker-compose.prod.yml ps --format json | python3 -c "
-          import json, sys
-          for line in sys.stdin:
-              s = json.loads(line)
-              state = s.get('State', '')
-              if state != 'running':
-                  print(f'FAIL: service {s.get(\"Service\",\"?\")} is {state}')
-                  sys.exit(1)
-          print('All services running')
-          "
+          # Verify all services are running (use jq, not python3)
+          docker compose -f docker-compose.prod.yml ps --format json | \
+            jq -e 'all(.State == "running")' >/dev/null || {
+              echo "FAIL: not all services running"
+              docker compose -f docker-compose.prod.yml ps
+              docker compose -f docker-compose.prod.yml down
+              rm -f .env.production
+              exit 1
+            }
+          echo "All services running"
 
           # Request THROUGH Caddy (port 80 → redirect to 443, but 80 gives
           # a 308 redirect which proves Caddy is alive and routing).
