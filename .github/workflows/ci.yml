@@ -133,6 +133,13 @@ jobs:
             bunx prisma migrate status --schema=prisma/store/schema.prisma
           echo ""
           echo "✓ Both migration histories deployed and verified on fresh PostgreSQL 17 databases."
+      - name: "PostgreSQL migration proof: adopt existing Main + Store schemas without data loss"
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y postgresql-client
+          bash scripts/test-migration-baseline-adoption.sh
       - name: Production build
         run: bun run build
       - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
