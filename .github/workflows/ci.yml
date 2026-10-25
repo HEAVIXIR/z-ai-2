@@ -400,3 +400,6 @@ jobs:
         run: docker build -t heavix-test-image .
       - name: Verify image was created
         run: docker image inspect heavix-test-image --format '{{.Id}}' > /dev/null && echo "✓ Docker image built successfully"
+
+      - name: Validate Caddyfile syntax
+        run: docker run --rm -v $(pwd)/Caddyfile:/etc/caddy/Caddyfile caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile

@@ -10,7 +10,7 @@
 # (configurable via HEAVIX_ALLOWED_TRANSFORM_PORTS env var, comma-separated).
 
 {
-	auto_https off
+	auto_https disable_certs
 }
 
 # ── Production: HTTP → HTTPS redirect ──

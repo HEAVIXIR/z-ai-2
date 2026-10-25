@@ -32,6 +32,6 @@ describe('Caddy Configuration Safety (F-02 regression guard)', () => {
   });
 
   it('auto_https is disabled (Caddy manages TLS manually via auto-HTTPS)', () => {
-    expect(CADDYFILE).toContain('auto_https off');
+    expect(CADDYFILE).toContain('auto_https disable_certs');
   });
 });
