@@ -414,7 +414,7 @@ jobs:
           rm -f .env.production
           # Assert interpolated values are present (not raw ${VAR} placeholders)
           echo "$RENDERED" | grep -q 'test.heavix.example.com' || { echo "FAIL: HEAVIX_DOMAIN not interpolated"; exit 1; }
-          echo "$RENDERED" | grep -q 'heavix@test-db' || { echo "FAIL: DATABASE_URL not interpolated"; exit 1; }
+          echo "$RENDERED" | grep -q 'heavix@db' || { echo "FAIL: DATABASE_URL not interpolated"; exit 1; }
           echo "$RENDERED" | grep -q 'heavix@store-db' || { echo "FAIL: STORE_DATABASE_URL not interpolated"; exit 1; }
           echo "Interpolated values verified"
 
