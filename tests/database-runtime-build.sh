@@ -12,15 +12,15 @@ cat >"$FAKE_BIN/bun" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-if [ "$#" -ne 2 ] || [ "$1" != "run" ] || [ "$2" != "db:push" ]; then
+if [ "$#" -ne 2 ] || [ "$1" != "run" ] || [ "$2" != "db:push:preview" ]; then
     echo "unexpected bun invocation: $*" >&2
     exit 1
 fi
 
-case "${DATABASE_URL:-}" in
-    file:*) db_path="${DATABASE_URL#file:}" ;;
+case "${PREVIEW_DATABASE_URL:-}" in
+    file:*) db_path="${PREVIEW_DATABASE_URL#file:}" ;;
     *)
-        echo "DATABASE_URL must be an absolute SQLite file URL" >&2
+        echo "PREVIEW_DATABASE_URL must be an absolute SQLite file URL" >&2
         exit 1
         ;;
 esac
@@ -37,7 +37,7 @@ mkdir -p "$(dirname "$db_path")"
 if [ ! -f "$db_path" ]; then
     printf 'initialized\n' >"$db_path"
 fi
-printf '%s\n' "$DATABASE_URL" >>"${DB_PUSH_CALLS:?}"
+printf '%s\n' "$PREVIEW_DATABASE_URL" >>"${DB_PUSH_CALLS:?}"
 EOF
 chmod +x "$FAKE_BIN/bun"
 
