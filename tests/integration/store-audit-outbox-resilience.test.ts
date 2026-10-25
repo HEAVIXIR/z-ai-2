@@ -50,19 +50,35 @@ beforeAll(async () => {
   }
 });
 
+// Track exact IDs created by this test process so cleanup can never touch
+// another concurrent test run's Outbox rows.
+const createdOutboxIds = new Set<string>();
+
+async function enqueueTestOutbox(
+  tx: Parameters<typeof enqueueAuditOutbox>[0],
+  params: Parameters<typeof enqueueAuditOutbox>[1],
+): Promise<string> {
+  const id = await enqueueAuditOutbox(tx, params);
+  createdOutboxIds.add(id);
+  return id;
+}
+
 afterEach(async () => {
   if (!STORE_DB_AVAILABLE) return;
+  const ids = [...createdOutboxIds];
+  createdOutboxIds.clear();
+  if (ids.length === 0) return;
   try {
-    await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: 'test.outbox.' } } });
+    await storeDb.auditOutbox.deleteMany({ where: { id: { in: ids } } });
   } catch {
-    // best-effort cleanup
+    // best-effort cleanup, strictly limited to IDs created by this process
   }
 });
 
 describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (real PostgreSQL store DB)', () => {
   it('OUTBOX-1. enqueueAuditOutbox writes a PENDING row inside a storeDb transaction', async () => {
     const outboxId = await storeDb.$transaction(async (tx) => {
-      return enqueueAuditOutbox(tx, {
+      return enqueueTestOutbox(tx, {
         actorId: 'test-user',
         actorType: 'ADMIN',
         action: 'test.outbox.enqueue',
@@ -86,7 +102,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
 
   it('OUTBOX-2. outbox row stays PENDING until drainAuditOutbox is called (not auto-delivered)', async () => {
     const outboxId = await storeDb.$transaction(async (tx) => {
-      return enqueueAuditOutbox(tx, {
+      return enqueueTestOutbox(tx, {
         action: 'test.outbox.pending',
         entityType: 'TestEntity',
         entityId: 'test-2',
@@ -106,7 +122,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
       const id = await storeDb.$transaction(async (tx) => {
-        return enqueueAuditOutbox(tx, {
+        return enqueueTestOutbox(tx, {
           action: 'test.outbox.stats',
           entityType: 'TestEntity',
           entityId: `stats-${i}`,
@@ -135,17 +151,17 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
 
   it('OUTBOX-4. multiple audit events can be enqueued in one transaction (atomic batch)', async () => {
     const ids = await storeDb.$transaction(async (tx) => {
-      const id1 = await enqueueAuditOutbox(tx, {
+      const id1 = await enqueueTestOutbox(tx, {
         action: 'test.outbox.batch.1',
         entityType: 'TestEntity',
         entityId: 'batch-1',
       });
-      const id2 = await enqueueAuditOutbox(tx, {
+      const id2 = await enqueueTestOutbox(tx, {
         action: 'test.outbox.batch.2',
         entityType: 'TestEntity',
         entityId: 'batch-2',
       });
-      const id3 = await enqueueAuditOutbox(tx, {
+      const id3 = await enqueueTestOutbox(tx, {
         action: 'test.outbox.batch.3',
         entityType: 'TestEntity',
         entityId: 'batch-3',
@@ -169,7 +185,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
     let thrownError: unknown = null;
     try {
       await storeDb.$transaction(async (tx) => {
-        await enqueueAuditOutbox(tx, {
+        await enqueueTestOutbox(tx, {
           action: 'test.outbox.rollback',
           entityType: 'TestEntity',
           entityId: 'rollback-1',
@@ -192,7 +208,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
   });
 
   it('OUTBOX-6. sink failure retains PENDING and a later retry delivers the same event', async () => {
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       action: 'test.outbox.sink-retry',
       entityType: 'TestEntity',
       entityId: 'retry-1',
@@ -224,7 +240,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
   });
 
   it('OUTBOX-7. replay uses the same idempotency key so a sink can deduplicate duplicate delivery', async () => {
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       action: 'test.outbox.deduplicate',
       entityType: 'TestEntity',
       entityId: 'dedupe-1',
@@ -250,7 +266,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
   });
 
   it('OUTBOX-8. competing workers atomically claim a row so only one writes it', async () => {
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       action: 'test.outbox.concurrent-claim',
       entityType: 'TestEntity',
       entityId: 'claim-1',
@@ -271,7 +287,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
   });
 
   it('OUTBOX-9. stale PROCESSING lease is reclaimed after a worker crash', async () => {
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       action: 'test.outbox.stale-lease',
       entityType: 'TestEntity',
       entityId: 'lease-1',
@@ -298,7 +314,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
 
   it.skipIf(!process.env.DATABASE_URL)('OUTBOX-10. real main PostgreSQL delivery is unique across a replay after sink success', async () => {
     const { db } = await import('@/lib/db');
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       actorType: 'SYSTEM',
       action: 'test.outbox.real-main-dedup',
       entityType: 'TestEntity',
@@ -328,7 +344,7 @@ describe.skipIf(!STORE_DB_AVAILABLE)('STEP 15.95+ — Audit Outbox Resilience (r
 
 
   it('OUTBOX-11. exhausted rows become FAILED and can be explicitly requeued after investigation', async () => {
-    const outboxId = await storeDb.$transaction(async (tx) => enqueueAuditOutbox(tx, {
+    const outboxId = await storeDb.$transaction(async (tx) => enqueueTestOutbox(tx, {
       action: 'test.outbox.manual-replay',
       entityType: 'TestEntity',
       entityId: 'manual-replay-1',
