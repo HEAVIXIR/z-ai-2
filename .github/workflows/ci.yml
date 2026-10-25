@@ -43,6 +43,7 @@ jobs:
         env:
           PREVIEW_DATABASE_URL: "file:/tmp/heavix-preview-schema-validation.db"
         run: |
+          bash tests/preview-schema-sync.sh
           bunx prisma validate --schema=prisma/preview-schema.prisma
           bun run db:push:preview
           bash tests/database-runtime-build.sh
