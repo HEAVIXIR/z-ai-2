@@ -42,8 +42,13 @@ describe("Phase 6 price observation query integrity", () => {
 
   it("does not double-count a listing already represented by an observation", () => {
     const history = exportedFunction(historyEngine, "getPriceHistory");
-    expect(history).toContain("observedListingIds");
-    expect(history).toContain("id: { notIn: [...observedListingIds] }");
+    // Exclusion must be performed by PostgreSQL, not from the capped
+    // observation sample, or listings beyond the first 2,000 rows can duplicate.
+    expect(history).toContain("priceObservations: {");
+    expect(history).toContain("none: {");
+    expect(history).toContain('status: "ACTIVE"');
+    expect(history).toContain("askingPrice: { not: null }");
+    expect(history).not.toContain("observedListingIds");
     expect(history).toContain("if (params.productId) listingWhere.productId = params.productId;");
     expect(history).toContain('orderBy: { observedAt: "desc" }');
     expect(history).toContain('orderBy: { createdAt: "desc" }');
