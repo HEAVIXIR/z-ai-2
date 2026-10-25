@@ -1,85 +1,51 @@
 # Prisma Migrations — HEAVIX
 
-This directory is the **canonical schema-change history** for the
-HEAVIX project. It is the source of truth that production deploys
-replay, in order, to reconstruct the database schema.
+> **Release status: BLOCKED for PostgreSQL deployment.** This directory currently contains a SQLite-era lock and a SQLite-specific initial SQL file. Do not run it against PostgreSQL.
 
-The strategy, rationale, and SQLite↔PostgreSQL cutover plan are
-governed by **`docs/ADR-001-database-strategy.md`**. Read that ADR
-before adding migrations or touching this directory.
+## Current state (audited 2026-10-25)
 
-## What lives here
+- Active Main schema: `prisma/schema.prisma` (`provider = "postgresql"`, `DATABASE_URL`).
+- Active Store schema path today: `prisma/store-schema.prisma` (`provider = "postgresql"`, `STORE_DATABASE_URL`).
+- Current lock: `migration_lock.toml` says `provider = "sqlite"`.
+- Current `0_init/migration.sql` includes SQLite-specific DDL such as `DATETIME`; it is **not** a valid reviewed PostgreSQL baseline.
+- A separate Store migration directory and PostgreSQL lock have not yet been established.
 
-```
-prisma/migrations/
-├── README.md                     ← this file
-├── migration_lock.toml           ← locks the Prisma provider
-└── 0_init/
-    └── migration.sql             ← baseline migration
-```
-
-- `0_init/migration.sql` was generated with:
-  ```bash
-  bunx prisma migrate diff \
-    --from-empty \
-    --to-schema-datamodel prisma/schema.prisma \
-    --script > prisma/migrations/0_init/migration.sql
-  ```
-  It captures the **entire** current schema (every model, index,
-  and relation present in `prisma/schema.prisma` at the time the
-  baseline was taken) as the initial state. There is no
-  pre-baseline migration history — anything before this point is
-  treated as "the schema was born here".
-
-- `migration_lock.toml` locks the Prisma provider. Today it says
-  `sqlite` because the dev/preview environment is SQLite. When the
-  project cuts over to PostgreSQL (see ADR-001), this file is
-  replaced with `provider = "postgresql"` and a fresh baseline is
-  taken if needed.
+See [ADR-001 — Database Strategy and Migration Recovery](../../docs/ADR-001-database-strategy.md) and [Issue #80](https://github.com/HEAVIXIR/z-ai-2/issues/80).
 
 ## Rules
 
-1. **Production uses PostgreSQL.** This is non-negotiable
-   (`HEAVIX-CORRECTED-REFERENCE-V1.1.md`,
-   `HEAVIX-PROJECT-PRINCIPLES.md` §اصل ۸).
-2. **`prisma/migrations/` is the source of truth** for schema
-   changes. Committed to git, reviewed in PRs, never hand-edited
-   except for genuine bug fixes (each fix gets a worklog entry).
-3. **`db push` is dev/preview only.** It mutates the local SQLite
-   file (`db/custom.db`) without leaving a migration trail. It
-   must NEVER be run against a production-shaped connection string.
-4. **`db push --accept-data-loss` is forbidden in production.**
-   The production deploy path uses `prisma migrate deploy`, which
-   is non-interactive and never accepts `--accept-data-loss`.
-5. **Adding a schema change:**
-   1. Edit `prisma/schema.prisma`.
-   2. Run `bunx prisma migrate dev --name <short_name>` against
-      the local SQLite DB. This generates a new timestamped
-      migration folder under `prisma/migrations/`.
-   3. Commit the new migration folder alongside the schema change.
-   4. The CI guard (P1) will validate that the migration history
-      matches `schema.prisma` exactly.
-6. **Do not delete existing data.** Schema changes that would
-   drop columns or tables must preserve data via a backfill/alias
-   step in the migration. Hard-delete migrations are forbidden
-   for business data
-   (`HEAVIX-PROJECT-PRINCIPLES.md` §اصل ۵:
-   "Hard delete ممنوع برای داده‌های business؛ ARCHIVE > DELETE").
+1. Do not apply the current `0_init/migration.sql` to PostgreSQL.
+2. Do not merely change the current lock provider or hand-edit SQLite SQL to look like PostgreSQL.
+3. Keep Main and Store migration histories separate.
+4. Generate reviewed PostgreSQL SQL with the repository-pinned Prisma CLI and the correct schema.
+5. Prove fresh-database `prisma migrate deploy` for both databases using disposable PostgreSQL 17 instances.
+6. Test baseline adoption for an existing data-filled database separately. Compare the actual schema first and prove the procedure on disposable representative data; only then may `prisma migrate resolve` be considered.
+7. `prisma db push --accept-data-loss` is permitted only for explicitly disposable local/CI setup. It is not a production deployment mechanism and does not prove migration history.
+8. Do not perform staging, backfill, Phase D/E, production, or scheduled-worker actions under this recovery task.
 
-## SQLite → PostgreSQL cutover (planned, P1)
+## Target layout (proposed; not implemented)
 
-The cutover plan is documented in
-`docs/ADR-001-database-strategy.md` §3 (Required follow-up
-actions). It is a one-shot, well-scoped operation:
+```text
+prisma/
+  schema.prisma
+  migrations/
+    migration_lock.toml   # provider = "postgresql"
+    <reviewed main migrations>
+  store/
+    schema.prisma
+    migrations/
+      migration_lock.toml # provider = "postgresql"
+      <reviewed Store migrations>
+```
 
-1. Apply the migration history to a fresh PostgreSQL DB.
-2. Backfill data from SQLite (per model, in FK-dependency order).
-3. Validate row counts and referential integrity.
-4. Switch `datasource db { provider = "sqlite" }` →
-   `provider = "postgresql"`.
-5. Replace `migration_lock.toml` accordingly.
+The proposed Store schema move must be accompanied by a complete reference audit and updates to package scripts, CI, generator output paths, application imports where needed, deployment/build scripts, seeds, utilities, and docs. Keep legacy SQLite source schemas separate from active PostgreSQL migration histories.
 
-Until the cutover is complete, the dev provider stays SQLite and
-the migration history is portable to PostgreSQL (no SQLite-only
-SQL constructs are emitted by `prisma migrate diff` against a
-PostgreSQL-compatible schema).
+## Required CI evidence
+
+- `prisma validate` for each active schema.
+- Fresh PostgreSQL 17 databases built using `prisma migrate deploy`, not `db push`.
+- Migration/schema drift check for each database.
+- Existing-database baseline-adoption test on disposable representative data.
+- Guard that prevents production deployment paths from invoking `db push --accept-data-loss`.
+
+This file is a status correction, not evidence that any migration has been generated, deployed, or adopted. No database operation was performed for this documentation update.
