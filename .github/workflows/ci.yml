@@ -412,30 +412,29 @@ jobs:
           printf 'DB_PASSWORD=test-password-not-real\nHEAVIX_DOMAIN=test.heavix.example.com\n' > .env.production
           RENDERED=$(docker compose --env-file .env.production -f docker-compose.prod.yml config)
           rm -f .env.production
-          # Use yq (YAML-aware parser) to extract specific service env values
-          # yq is pre-installed on GitHub Actions ubuntu-latest
           # 1. Assert caddy service has HEAVIX_DOMAIN = test.heavix.example.com
-          CADDY_DOMAIN=$(echo "$RENDERED" | yq -r '.services.caddy.environment[] | select(. == "HEAVIX_DOMAIN=test.heavix.example.com")' 2>/dev/null || echo "")
-          if [ -z "$CADDY_DOMAIN" ]; then
+          # Extract caddy service block (from 'caddy:' to next top-level service)
+          CADDY_BLOCK=$(echo "$RENDERED" | awk '/^  caddy:/{f=1} f{print} /^  [a-z]/&&!/^  caddy:/{if(f)exit}')
+          if ! echo "$CADDY_BLOCK" | grep -q 'HEAVIX_DOMAIN: test.heavix.example.com'; then
             echo "FAIL: caddy service does not have HEAVIX_DOMAIN=test.heavix.example.com"
             exit 1
           fi
-          echo "✓ caddy HEAVIX_DOMAIN verified"
+          echo "caddy HEAVIX_DOMAIN verified"
           # 2. Assert app service has HEAVIX_DOMAIN = test.heavix.example.com
-          APP_DOMAIN=$(echo "$RENDERED" | yq -r '.services.app.environment[] | select(. == "HEAVIX_DOMAIN=test.heavix.example.com")' 2>/dev/null || echo "")
-          if [ -z "$APP_DOMAIN" ]; then
+          APP_BLOCK=$(echo "$RENDERED" | awk '/^  app:/{f=1} f{print} /^  [a-z]/&&!/^  app:/{if(f)exit}')
+          if ! echo "$APP_BLOCK" | grep -q 'HEAVIX_DOMAIN: test.heavix.example.com'; then
             echo "FAIL: app service does not have HEAVIX_DOMAIN=test.heavix.example.com"
             exit 1
           fi
-          echo "✓ app HEAVIX_DOMAIN verified"
+          echo "app HEAVIX_DOMAIN verified"
           # 3. Assert DATABASE_URL contains the test password (interpolated, not raw)
           echo "$RENDERED" | grep -q 'postgresql://heavix:test-password-not-real@db:5432/heavix' \
             || { echo "FAIL: DATABASE_URL does not contain interpolated test password"; exit 1; }
-          echo "✓ DATABASE_URL interpolation verified"
+          echo "DATABASE_URL interpolation verified"
           # 4. Assert STORE_DATABASE_URL contains the test password (interpolated, not raw)
           echo "$RENDERED" | grep -q 'postgresql://heavix:test-password-not-real@store-db:5432/heavix_store' \
             || { echo "FAIL: STORE_DATABASE_URL does not contain interpolated test password"; exit 1; }
-          echo "✓ STORE_DATABASE_URL interpolation verified"
+          echo "STORE_DATABASE_URL interpolation verified"
           # 5. Assert no raw placeholders remain anywhere
           if echo "$RENDERED" | grep -q '${DB_PASSWORD}'; then
             echo "FAIL: raw \${DB_PASSWORD} placeholder found in rendered config"
