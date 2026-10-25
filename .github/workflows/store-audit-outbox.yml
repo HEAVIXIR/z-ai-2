@@ -15,7 +15,8 @@ jobs:
     # Explicit release gate: manual dispatch alone must not activate the worker.
     if: vars.STORE_AUDIT_OUTBOX_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # Allow curl's 3 x 45s maximum attempts plus retry delays and runner setup.
+    timeout-minutes: 4
     steps:
       - name: Validate worker configuration
         env:
