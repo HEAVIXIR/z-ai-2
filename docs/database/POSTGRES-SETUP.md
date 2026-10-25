@@ -31,7 +31,7 @@ export LD_LIBRARY_PATH=/home/z/pg/usr/lib/postgresql/17/lib
 ## Schema + Seeds
 ```bash
 # Push schema (creates all tables)
-# ⚠️ DESTRUCTIVE — disposable local database ONLY.
+# ⚠️ DESTRUCTIVE: `prisma db push --accept-data-loss` — disposable local database ONLY.
 # See the safety warning at the top of this document.
 # Do NOT run against staging, production, or any database with valuable data.
 DATABASE_URL=postgresql://heavix@localhost:5432/heavix?schema=public bunx prisma db push --accept-data-loss
