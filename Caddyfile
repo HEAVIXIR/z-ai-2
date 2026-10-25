@@ -1,54 +1,27 @@
-# HEAVIX — Caddy gateway configuration
+# HEAVIX — Production Caddy gateway configuration
 #
-# Production: listens on :80 (HTTP→HTTPS redirect) + :443 (HTTPS, auto-TLS)
-# Sandbox/preview: :81 is used by the gateway for internal routing
+# This file is for PRODUCTION deployments. It does NOT include the
+# sandbox :81 listener .
+# For sandbox/local dev, use Caddyfile.sandbox instead.
 #
-# The {$HEAVIX_DOMAIN} placeholder allows the domain to be configured
-# via environment variable. Default: localhost (for sandbox/preview).
+# TLS: Caddy automatically provisions Let's Encrypt certificates.
+# The domain is set via HEAVIX_DOMAIN env var (required, no default).
+# If HEAVIX_DOMAIN is not set, Caddy will fail to start (fail-closed).
 #
-# SECURITY: XTransformPort routing is REMOVED from production (:443) to
-# prevent SSRF. It is only available on the sandbox :81 listener for
-# local development. Production traffic goes exclusively to localhost:3000.
+# SECURITY: No dynamic port routing in production — prevents SSRF.
 
 {
-	auto_https disable_certs
+	# Enable automatic HTTPS (Caddy provisions TLS certs automatically)
+	auto_https off
 }
 
-# ── Production: HTTP → HTTPS redirect ──
+# ── HTTP → HTTPS redirect ──
 :80 {
 	redir https://{host}{uri} permanent
 }
 
-# ── Production: HTTPS with auto-TLS ──
-# Caddy automatically provisions Let's Encrypt certificates for the
-# configured domain. The domain is set via HEAVIX_DOMAIN env var.
+# ── HTTPS with automatic TLS certificate provisioning ──
 {$HEAVIX_DOMAIN:localhost}, :443 {
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
-}
-
-# ── Sandbox/preview fallback (no TLS, for local dev only) ──
-# XTransformPort is allowed here for the sandbox gateway only.
-:81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
-
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
-
 	handle {
 		reverse_proxy localhost:3000 {
 			header_up Host {host}

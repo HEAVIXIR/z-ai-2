@@ -2,8 +2,12 @@
  * HEAVIX — F-04 Integration Test: Payments API error leak prevention
  *
  * This test calls the REAL payments route handler with a simulated
- * database failure and inspects the actual HTTP 500 response body
- * to verify it does NOT contain internal error details.
+ * database failure on the ACTUAL dependency (@/lib/db, not @/lib/store-db)
+ * and inspects the actual HTTP 500 response body.
+ *
+ * The payments route imports { db } from '@/lib/db' and calls
+ * db.payment.findMany + db.payment.count. We mock BOTH to throw
+ * an error with internal details and verify the response doesn't leak them.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -16,24 +20,28 @@ vi.mock('next/headers', () => ({
   })),
 }));
 
-// Mock the store database to throw an error with internal details
-vi.mock('@/lib/store-db', () => ({
-  storeDb: {
+// Mock the ACTUAL dependency: @/lib/db (not @/lib/store-db)
+// The payments route uses db.payment.findMany and db.payment.count
+vi.mock('@/lib/db', () => ({
+  db: {
     payment: {
       findMany: vi.fn().mockRejectedValue(
+        new Error('ECONNREFUSED 127.0.0.1:5432 — password=secret123 db=heavix_test')
+      ),
+      count: vi.fn().mockRejectedValue(
         new Error('ECONNREFUSED 127.0.0.1:5432 — password=secret123 db=heavix_test')
       ),
     },
   },
 }));
 
-// Mock the auth module to skip auth (we're testing error handling, not auth)
+// Mock the auth module to provide a valid userId (so we reach the DB call)
 vi.mock('@/lib/auth', () => ({
   getCurrentUserId: vi.fn().mockResolvedValue('test-user-id'),
 }));
 
 describe('F-04 Integration: Payments API never leaks internal errors in HTTP 500', () => {
-  it('returns generic "Server error" in 500 response body (no internal details)', async () => {
+  it('returns generic "Server error" when db.payment.findMany throws (no internal details leaked)', async () => {
     const { GET } = await import('@/app/api/payments/route');
 
     const request = new Request('http://localhost:3000/api/payments', {

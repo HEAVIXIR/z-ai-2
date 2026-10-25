@@ -1,0 +1,37 @@
+# HEAVIX — Sandbox/Preview Caddy gateway configuration
+#
+# This file is for LOCAL DEVELOPMENT and SANDBOX only.
+# It includes the :81 listener with XTransformPort routing
+# for internal mini-service routing.
+#
+# DO NOT use this file in production. Production uses Caddyfile.
+
+{
+	auto_https off
+}
+
+# ── Sandbox listener on :81 ──
+# XTransformPort is allowed here for the sandbox gateway only.
+:81 {
+	@transform_port_query {
+		query XTransformPort=*
+	}
+
+	handle @transform_port_query {
+		reverse_proxy localhost:{query.XTransformPort} {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle {
+		reverse_proxy localhost:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}
