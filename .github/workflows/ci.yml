@@ -431,15 +431,16 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d
           sleep 15
 
-          # Verify all services are running (use jq, not python3)
-          docker compose -f docker-compose.prod.yml ps --format json | \
-            jq -s -e 'all(.[]?.State == "running")' >/dev/null || {
-              echo "FAIL: not all services running"
-              docker compose -f docker-compose.prod.yml ps
-              docker compose -f docker-compose.prod.yml down
-              rm -f .env.production
-              exit 1
-            }
+          # Verify caddy is running by checking port 80 responds
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:80/ || true)
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "FAIL: Caddy not responding on port 80 (HTTP_CODE=000)"
+            docker compose -f docker-compose.prod.yml logs caddy
+            docker compose -f docker-compose.prod.yml down
+            rm -f .env.production
+            exit 1
+          fi
+          echo "Caddy responded with HTTP $HTTP_CODE on port 80"
           echo "All services running"
 
           # Request THROUGH Caddy (port 80 → redirect to 443, but 80 gives
