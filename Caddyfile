@@ -5,6 +5,10 @@
 #
 # The {$HEAVIX_DOMAIN} placeholder allows the domain to be configured
 # via environment variable. Default: localhost (for sandbox/preview).
+#
+# SECURITY: XTransformPort routing is REMOVED from production (:443) to
+# prevent SSRF. It is only available on the sandbox :81 listener for
+# local development. Production traffic goes exclusively to localhost:3000.
 
 {
 	auto_https disable_certs
@@ -19,21 +23,6 @@
 # Caddy automatically provisions Let's Encrypt certificates for the
 # configured domain. The domain is set via HEAVIX_DOMAIN env var.
 {$HEAVIX_DOMAIN:localhost}, :443 {
-	# XTransformPort routing: restricted to known internal ports.
-	# Unknown ports get 403 Forbidden via a map directive.
-	@transform_port_query {
-		query XTransformPort=*
-	}
-
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
-
 	handle {
 		reverse_proxy localhost:3000 {
 			header_up Host {host}
@@ -45,6 +34,7 @@
 }
 
 # ── Sandbox/preview fallback (no TLS, for local dev only) ──
+# XTransformPort is allowed here for the sandbox gateway only.
 :81 {
 	@transform_port_query {
 		query XTransformPort=*

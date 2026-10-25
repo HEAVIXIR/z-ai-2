@@ -21,10 +21,9 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public
       - STORE_DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@store-db:5432/heavix_store?schema=public
+      - HEAVIX_DOMAIN=${HEAVIX_DOMAIN:-localhost}
     ports:
       - "3000:3000"
-    environment:
-      - HEAVIX_DOMAIN=${HEAVIX_DOMAIN:-localhost}
     depends_on:
       db:
         condition: service_healthy
