@@ -5,6 +5,7 @@
  * 1. runtime-build.sh exits non-zero when preview-schema.prisma is missing
  * 2. No SQLite file created when script fails
  * 3. REAL db:push:preview runs on disposable SQLite and creates the file
+ * 4. Full runtime-build.sh creates custom.db artifact using the real project
  */
 
 import { describe, it, expect } from 'vitest';
@@ -62,7 +63,6 @@ describe('F-03 Behavioral: REAL db:push:preview on disposable SQLite', () => {
     const dbPath = join(tempDir, 'preview.db');
 
     try {
-      // Run the REAL prisma db:push:preview against a disposable SQLite file
       const result = spawnSync('bunx', [
         'prisma', 'db', 'push',
         '--accept-data-loss',
@@ -77,16 +77,47 @@ describe('F-03 Behavioral: REAL db:push:preview on disposable SQLite', () => {
         timeout: 60_000,
       });
 
-      // Must succeed
       expect(result.status).toBe(0);
-
-      // SQLite file must exist
       expect(existsSync(dbPath)).toBe(true);
-
-      // File must be non-trivial (not empty)
       expect(statSync(dbPath).size).toBeGreaterThan(1000);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('F-03 Behavioral: Full runtime-build.sh with real project', () => {
+  it('script creates custom.db artifact using real project directory', () => {
+    // Use the REAL project directory (where node_modules + prisma exist)
+    const buildDir = mkdtempSync(join(tmpdir(), 'heavix-real-build-'));
+
+    try {
+      const result = spawnSync('bash', [SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          PROJECT_DIR: process.cwd(),  // Use the real project
+          BUILD_DIR: buildDir,
+        },
+        encoding: 'utf8',
+        timeout: 60_000,
+      });
+
+      const combined = `${result.stdout}\n${result.stderr}`;
+
+      // Script should not fail at FATAL check
+      expect(combined).not.toContain('FATAL');
+
+      // Script should succeed
+      expect(result.status).toBe(0);
+
+      // Artifact should exist
+      expect(existsSync(join(buildDir, 'db', 'custom.db'))).toBe(true);
+
+      // Artifact should be non-trivial
+      const dbPath = join(buildDir, 'db', 'custom.db');
+      expect(statSync(dbPath).size).toBeGreaterThan(1000);
+    } finally {
+      rmSync(buildDir, { recursive: true, force: true });
     }
   }, 60_000);
 });

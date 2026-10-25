@@ -5,27 +5,22 @@
 # For sandbox/local dev, use Caddyfile.sandbox instead.
 #
 # TLS: Caddy automatically provisions Let's Encrypt certificates when
-# auto_https is enabled (default). The domain MUST be set via the
-# HEAVIX_DOMAIN environment variable — there is NO default, because
-# a production deployment requires a real domain.
+# the site address is a real domain name (not :443 or ).
+# The domain MUST be set via the HEAVIX_DOMAIN environment variable.
+# Caddy reads it at startup. If HEAVIX_DOMAIN is not set, Caddy will
+# refuse to start (fail-closed — no domain, no TLS, no deployment).
 #
 # SECURITY: No dynamic port routing in production — prevents SSRF.
 
-# HTTP -> HTTPS redirect
-:80 {
-	redir https://{host}{uri} permanent
-}
-
-# HTTPS with automatic TLS certificate provisioning
-# The domain is set via HEAVIX_DOMAIN env var (REQUIRED for production).
-# Caddy will provision and manage Let's Encrypt certificates automatically.
-:443 {
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
+# HTTP -> HTTPS redirect (Caddy auto-redirects when site has a domain)
+{$HEAVIX_DOMAIN} {
+	# Caddy automatically provisions Let's Encrypt certificates for this domain.
+	# It also handles the :80 -> :443 redirect automatically when a domain
+	# is specified as the site address (not :443 or :80).
+	reverse_proxy :3000 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
 	}
 }
