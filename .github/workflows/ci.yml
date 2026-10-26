@@ -7,6 +7,119 @@ on:
     branches: [main, 'feature/**']
 
 jobs:
+  legacy-archive-inventory:
+    if: github.event_name == 'pull_request' && github.head_ref == 'audit/legacy-archive-reconciliation-20261026'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target tree
+        uses: actions/checkout@v4
+      - name: Fetch legacy archive repository
+        run: git clone --depth=1 https://github.com/HEAVIXIR/z.git "$RUNNER_TEMP/legacy"
+      - name: Compare archived files without importing them
+        run: |
+          python3 - <<'PY'
+          import csv, hashlib, os, zipfile
+          from collections import Counter, defaultdict
+          from pathlib import Path, PurePosixPath
+
+          target = Path.cwd()
+          legacy = Path(os.environ["RUNNER_TEMP"]) / "legacy"
+          out = target / "legacy-archive-audit"
+          out.mkdir(exist_ok=True)
+          archives = sorted(legacy.glob("*.zip"))
+          if not archives:
+              raise SystemExit("FAIL: no root-level ZIP archives in HEAVIXIR/z")
+
+          rows, unsafe, corrupt = [], [], []
+          for archive in archives:
+              try:
+                  with zipfile.ZipFile(archive) as zf:
+                      for info in zf.infolist():
+                          if info.is_dir():
+                              continue
+                          name = info.filename.replace("\\", "/")
+                          path = PurePosixPath(name)
+                          if path.is_absolute() or ".." in path.parts or not path.parts:
+                              unsafe.append((archive.name, name))
+                              continue
+                          data = zf.read(info)
+                          source_sha = hashlib.sha256(data).hexdigest()
+                          dest = target.joinpath(*path.parts)
+                          if not dest.exists():
+                              status, target_sha = "NEW", ""
+                          elif not dest.is_file():
+                              status, target_sha = "CONFLICT_NONFILE", ""
+                          else:
+                              target_sha = hashlib.sha256(dest.read_bytes()).hexdigest()
+                              status = "IDENTICAL" if source_sha == target_sha else "CONFLICT"
+                          lower = "/" + name.lower()
+                          sensitive = any(s in lower for s in (
+                              "/.env", ".pem", ".key", ".p12", ".pfx", "credential",
+                              "secret", "dump", "backup", ".sqlite", ".db", ".sql"
+                          ))
+                          rows.append({
+                              "archive": archive.name, "path": name, "size": info.file_size,
+                              "source_sha256": source_sha, "target_status": status,
+                              "target_sha256": target_sha,
+                              "sensitive_review": "REVIEW_REQUIRED" if sensitive else "normal",
+                          })
+              except Exception as exc:
+                  corrupt.append((archive.name, repr(exc)))
+
+          by_path = defaultdict(list)
+          for row in rows:
+              by_path[row["path"]].append(row)
+          for row in rows:
+              if len(by_path[row["path"]]) > 1:
+                  hashes = {r["source_sha256"] for r in by_path[row["path"]]}
+                  row["source_archive_overlap"] = "CONFLICTING" if len(hashes) > 1 else "DUPLICATE_IDENTICAL"
+              else:
+                  row["source_archive_overlap"] = "none"
+
+          fields = ["archive", "path", "size", "source_sha256", "target_status", "target_sha256", "source_archive_overlap", "sensitive_review"]
+          with (out / "manifest.csv").open("w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(f, fieldnames=fields)
+              writer.writeheader()
+              writer.writerows(rows)
+
+          counts = Counter(r["target_status"] for r in rows)
+          sensitive_count = sum(r["sensitive_review"] == "REVIEW_REQUIRED" for r in rows)
+          conflicting_dupes = sum(r["source_archive_overlap"] == "CONFLICTING" for r in rows)
+          summary = [
+              "# Legacy archive inventory (read-only)", "",
+              "- Source: https://github.com/HEAVIXIR/z, default branch main",
+              "- Target: checked-out HEAVIXIR/z-ai-2 pull-request tree",
+              "- No files are copied, modified, deleted, or deployed.",
+              f"- ZIP archives inspected: {len(archives)}",
+              f"- File entries inspected: {len(rows)}",
+              f"- New paths absent from target: {counts['NEW']}",
+              f"- Identical files already present: {counts['IDENTICAL']}",
+              f"- Existing-path conflicts: {counts['CONFLICT'] + counts['CONFLICT_NONFILE']}",
+              f"- Entries requiring sensitive/data review: {sensitive_count}",
+              f"- Source-archive duplicate rows with conflicting contents: {conflicting_dupes}",
+              f"- Unsafe archive paths skipped: {len(unsafe)}",
+              f"- Archive read errors: {len(corrupt)}", "",
+              "## Import policy", "",
+              "This is an inventory only. Before import, manually review candidates and exclude secrets, database dumps, generated artifacts, stale migrations, and files conflicting with the current canonical schema/auth/provider architecture.", ""
+          ]
+          if unsafe:
+              summary += ["## Unsafe paths", ""] + [f"- {a}: {p}" for a, p in unsafe] + [""]
+          if corrupt:
+              summary += ["## Archive errors", ""] + [f"- {a}: {e}" for a, e in corrupt] + [""]
+          (out / "summary.md").write_text("\n".join(summary), encoding="utf-8")
+          print("\n".join(summary))
+          if unsafe or corrupt:
+              raise SystemExit("FAIL-CLOSED: archive safety/read errors need investigation")
+          PY
+      - name: Upload inventory manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-archive-inventory
+          path: legacy-archive-audit/
+          if-no-files-found: error
+          retention-days: 7
+
   # ── BLOCKING job: all required security/contract/integration/build tests ──
   # Any failure fails the workflow and blocks merge.
   verify:
