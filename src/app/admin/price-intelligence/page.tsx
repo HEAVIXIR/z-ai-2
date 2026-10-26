@@ -51,21 +51,21 @@ export default async function PriceIntelligencePage({
 
   // STEP 6B.1: Ported from PriceRecord to PriceObservation (canonical model).
   // Build the where clause for PriceObservation aggregation
-  const priceWhere: any = {};
+  const priceWhere: any = {
+    status: "ACTIVE",
+    askingPrice: { not: null },
+  };
   if (categoryFilter) priceWhere.categoryId = categoryFilter;
   if (brandFilter) priceWhere.brandId = brandFilter;
-  // STEP 6C.3: Fixed year filter — PriceObservation has NO year field.
-  // Use relation filter via Listing instead.
-  if (yearFilter && Number.isFinite(yearFilter)) priceWhere.listing = { year: yearFilter };
+  // PriceObservation has no year field; apply the year constraint through Listing.
+  if (yearFilter && Number.isFinite(yearFilter)) {
+    priceWhere.listing = { year: yearFilter };
+  }
 
   // Per category+brand stats (top 30 by sample size)
   const allStats = await db.priceObservation.groupBy({
     by: ["categoryId", "brandId"],
-    where: {
-      ...(categoryFilter ? { categoryId: categoryFilter } : {}),
-      ...(brandFilter ? { brandId: brandFilter } : {}),
-      ...(yearFilter && Number.isFinite(yearFilter) ? { year: yearFilter } : {}),
-    },
+    where: priceWhere,
     _avg: { askingPrice: true },
     _min: { askingPrice: true },
     _max: { askingPrice: true },
