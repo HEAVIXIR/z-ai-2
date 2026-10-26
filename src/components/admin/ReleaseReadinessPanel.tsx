@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  RELEASE_READINESS_SNAPSHOT,
+  releaseReadiness,
   effectiveReadinessStatus,
 } from "@/lib/admin/release-readiness-snapshot";
 
@@ -21,7 +21,7 @@ export function ReleaseReadinessPanel() {
     process.env.GITHUB_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? null;
   const now = new Date();
   const stale =
-    !RELEASE_READINESS_SNAPSHOT.observedAt ||
+    !releaseReadiness.observedAt ||
     !Number.isFinite(Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt)) ||
     now.getTime() - Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt) < 0 ||
     now.getTime() - Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt) >
@@ -29,7 +29,7 @@ export function ReleaseReadinessPanel() {
   const allStatuses = RELEASE_READINESS_SNAPSHOT.gates.map((gate) =>
     effectiveReadinessStatus(gate, RELEASE_READINESS_SNAPSHOT, now, currentSha),
   );
-  const pending = allStatuses.filter((status) => status === "PENDING").length;
+  const blocked = allStatuses.filter((status) => status !== "PASS").length;
 
   return (
     <section
@@ -49,7 +49,7 @@ export function ReleaseReadinessPanel() {
           </p>
         </div>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
-          NO-GO · {pending} مورد در انتظار
+          NO-GO · {blocked} مورد نیازمند اقدام
         </span>
       </div>
 
