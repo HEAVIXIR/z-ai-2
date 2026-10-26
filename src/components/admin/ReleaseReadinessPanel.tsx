@@ -77,7 +77,7 @@ export function ReleaseReadinessPanel() {
       )}
 
       <ul className="mt-4 grid gap-2 md:grid-cols-2">
-        {RELEASE_READINESS_SNAPSHOT.gates.map((gate, index) => {
+        {RELEASE_READINESS_SNAPSHOT.gates.map((gate) => {
           const status = effectiveReadinessStatus(
             gate,
             RELEASE_READINESS_SNAPSHOT,
