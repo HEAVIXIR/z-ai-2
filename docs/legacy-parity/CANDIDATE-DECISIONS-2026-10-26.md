@@ -31,7 +31,7 @@ The legacy repository stores 13 ZIP archives rather than a normal source tree. T
 
 Two read-only scripts are added as maintainable diagnostics:
 
-- `scripts/audit-ai-gateway.mjs` identifies direct provider SDK references outside the canonical gateway. It is heuristic and report-only by default; `--strict` is an opt-in gate.
+- `scripts/audit-ai-gateway.mjs` scans API route handlers and `src/lib` modules for direct provider SDK references outside the canonical gateway route. The existing `src/lib/ai-gateway-service.ts` is a candidate for review, not automatically approved: repository quality-gate notes describe it as dead code with no callers and without the maintained `preflightAIRequest` flow. The audit is heuristic and report-only by default; `--strict` is an opt-in gate.
 - `scripts/audit-admin-rbac.mjs` groups admin routes by explicit permission marker, other recognized guard marker, or manual review. A marker is not proof of authorization; absence is not proof of a vulnerability. `--strict` only flags routes that need manual classification.
 
 These scripts support Issues #111 and #112; they do not replace route-by-route behavioral tests.
