@@ -1,99 +1,93 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { requirePermission } from "@/lib/authorization";
+import { AuthorizationError, requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
+import { buildBackupEnvironment } from "@/lib/backup-config";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
+const BACKUP_ID = /^\d{8}_\d{6}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* POST /api/admin/backup
-   --------------------------------
-   Admin-only. Triggers an immediate SQLite backup by shelling
-   out to scripts/backup.sh. Returns the filename of the new
-   backup (basename) so the admin UI can display it.
-
-   The backup script:
-     • copies db/custom.db to db/backups/custom-YYYYMMDD-HHMMSS.db
-     • rotates, keeping the last 10 backups
-
-   This endpoint runs the backup SYNCHRONOUSLY — fine for a 2MB
-   DB (sub-second). For a large DB, move to a queue + return
-   202 Accepted. */
+/**
+ * Admin-only paired PostgreSQL backup.
+ * Both Main and Store dumps must exist, be non-empty, and pass checksums
+ * before the API reports success. HTTP responses never expose paths,
+ * command output, connection URLs, or raw process errors.
+ */
 export async function POST() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "backup.manage");
+
+  // Permission denial must happen before any filesystem/process side effect.
+  try {
+    await requirePermission(user.id, "backup.manage");
+  } catch (err) {
+    if (err instanceof AuthorizationError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    throw err;
+  }
+
   try {
     const projectRoot = path.resolve(process.cwd());
     const scriptPath = path.join(projectRoot, "scripts", "backup.sh");
+    await fs.access(scriptPath);
 
-    // Guard: refuse if the script isn't on disk (e.g. dev env
-    // where scripts/ hasn't been created yet).
-    try {
-      await fs.access(scriptPath);
-    } catch {
-      return NextResponse.json(
-        { error: "backup.sh not found at " + scriptPath },
-        { status: 500 },
-      );
-    }
-
-    const { stdout, stderr } = await execFileAsync("bash", [scriptPath], {
+    const backupEnv = buildBackupEnvironment({
+      DATABASE_URL: process.env.DATABASE_URL,
+      STORE_DATABASE_URL: process.env.STORE_DATABASE_URL,
+    });
+    const { stdout } = await execFileAsync("bash", [scriptPath], {
       cwd: projectRoot,
-      maxBuffer: 1024 * 1024,
-      timeout: 30_000,
+      env: { ...process.env, ...backupEnv, BACKUP_ROOT: "./backups", BACKUP_DOCKER_MODE: "0" },
+      maxBuffer: 64 * 1024,
+      timeout: 240_000,
     });
 
-    // Parse the new backup filename from stdout. The script logs
-    // "[backup] OK: <abs path> (<size>)" on success.
-    const okLine = stdout
-      .split("\n")
-      .find((l) => l.startsWith("[backup] OK:"));
-    const absPath = okLine ? okLine.replace("[backup] OK:", "").trim().split(" ")[0] : null;
-    const filename = absPath ? path.basename(absPath) : null;
-
-    if (!filename) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Backup completed but filename could not be parsed",
-          stdout,
-          stderr,
-        },
-        { status: 500 },
-      );
+    const match = stdout.match(/Backup complete:\s+\.\/backups\/(\d{8}_\d{6})/);
+    const backupId = match?.[1];
+    if (!backupId || !BACKUP_ID.test(backupId)) {
+      throw new Error("Backup script did not return the expected completion marker");
     }
+
+    const backupDir = path.join(projectRoot, "backups", backupId);
+    for (const filename of ["main.sql", "store.sql", "checksums.txt"]) {
+      const info = await fs.stat(path.join(backupDir, filename));
+      if (!info.isFile() || info.size <= 0) {
+        throw new Error("Backup output validation failed");
+      }
+    }
+    await execFileAsync("sha256sum", ["-c", "checksums.txt"], {
+      cwd: backupDir,
+      maxBuffer: 16 * 1024,
+      timeout: 10_000,
+    });
 
     await logAudit({
       actorType: "ADMIN",
       action: "backup.create",
       entityType: "Database",
-      reason: `Manual DB backup: ${filename}`,
+      reason: "Manual paired PostgreSQL backup (Main + Store)",
     });
 
     return NextResponse.json({
       ok: true,
-      filename,
-      path: absPath,
-      stdout: stdout.trim(),
+      backupId,
+      databases: ["main", "store"],
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     trackError(err, { endpoint: "POST /api/admin/backup" });
     return NextResponse.json(
-      {
-        error: err?.message ?? "Server error",
-        stderr: err?.stderr ?? null,
-        stdout: err?.stdout ?? null,
-      },
+      { error: "Backup failed; no successful paired backup was confirmed." },
       { status: 500 },
     );
   }

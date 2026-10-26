@@ -30,6 +30,8 @@ services:
     # that would bypass TLS/HTTPS.
     expose:
       - "3000"
+    volumes:
+      - heavix_backups:/app/backups
     depends_on:
       db:
         condition: service_healthy
@@ -92,3 +94,4 @@ volumes:
   heavix_store_db_data:
   caddy_data:
   caddy_config:
+  heavix_backups:

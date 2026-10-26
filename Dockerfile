@@ -40,6 +40,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Runtime backup endpoint requires PostgreSQL client tools. Keep backups on
+# the named Compose volume and make the mount writable by the non-root user.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/backups /app/scripts \
+    && chown -R bun:bun /app/backups /app/scripts
+
 # Copy standalone build output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
@@ -51,8 +59,10 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/src/lib/generated ./src/lib/generated
 
-# Copy package.json for scripts
+# Copy package.json and the explicitly supported operator backup script.
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts/backup.sh ./scripts/backup.sh
+RUN chown bun:bun ./scripts/backup.sh && chmod 0750 ./scripts/backup.sh
 
 # STEP 11.50 FIX: run as non-root user (oven/bun images include a 'bun' user)
 USER bun
