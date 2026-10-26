@@ -14,8 +14,13 @@ jobs:
     steps:
       - name: Checkout target tree
         uses: actions/checkout@v4
-      - name: Fetch legacy archive repository
-        run: git clone --depth=1 https://github.com/HEAVIXIR/z.git "$RUNNER_TEMP/legacy"
+      - name: Fetch pinned legacy archive repository
+        run: |
+          git init "$RUNNER_TEMP/legacy"
+          git -C "$RUNNER_TEMP/legacy" remote add origin https://github.com/HEAVIXIR/z.git
+          git -C "$RUNNER_TEMP/legacy" fetch --depth=1 origin 217f98ecc800aa64ae4739d27ed2aeb95dd260ed
+          git -C "$RUNNER_TEMP/legacy" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/legacy" rev-parse HEAD)" = "217f98ecc800aa64ae4739d27ed2aeb95dd260ed"
       - name: Compare archived files without importing them
         run: |
           python3 - <<'PY'
@@ -106,7 +111,7 @@ jobs:
           conflicting_dupes = sum(r["source_archive_overlap"] == "CONFLICTING" for r in rows)
           summary = [
               "# Legacy archive inventory (read-only)", "",
-              "- Source: https://github.com/HEAVIXIR/z, default branch main",
+              "- Source: https://github.com/HEAVIXIR/z at commit 217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
               "- Target: checked-out HEAVIXIR/z-ai-2 pull-request tree",
               "- No files are copied, modified, deleted, or deployed.",
               f"- ZIP archives inspected: {len(archives)}",
