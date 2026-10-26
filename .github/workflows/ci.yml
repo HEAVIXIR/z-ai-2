@@ -143,7 +143,13 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          psql -h localhost -U postgres -d heavix_store_test -v ON_ERROR_STOP=1 \
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS heavix_store_manual_sql_proof WITH (FORCE);"
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_manual_sql_proof;"
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_store_manual_sql_proof?schema=public" \
+            bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+          STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_store_manual_sql_proof?schema=public" \
+            bunx prisma migrate status --schema=prisma/store/schema.prisma
+          psql -h localhost -U postgres -d heavix_store_manual_sql_proof -v ON_ERROR_STOP=1 \
             -f ops-verification/evidence/store-outbox-behavioral-tests-real.sql
       - name: Store backup/restore proof (disposable PostgreSQL 17)
         env:
