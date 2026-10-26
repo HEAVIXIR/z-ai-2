@@ -32,6 +32,19 @@ jobs:
         run: python3 scripts/legacy_archive_audit.py
       - name: Inventory nested ZIP patch bundles
         run: python3 scripts/legacy_nested_zip_audit.py
+      - name: Run legacy static audits against current source (report-only)
+        shell: bash
+        run: |
+          set +e
+          node docs/legacy-parity/candidates/nested/scripts/audit-ai-gateway.mjs > /tmp/legacy-ai-audit.txt 2>&1
+          ai_status=$?
+          node docs/legacy-parity/candidates/nested/scripts/audit-admin-rbac.mjs > /tmp/legacy-rbac-audit.txt 2>&1
+          rbac_status=$?
+          echo "=== Legacy AI Gateway audit (exit $ai_status; diagnostic only) ==="
+          cat /tmp/legacy-ai-audit.txt
+          echo "=== Legacy Admin RBAC audit (exit $rbac_status; diagnostic only) ==="
+          cat /tmp/legacy-rbac-audit.txt
+          echo "AUDIT_EXIT_CODES ai=$ai_status rbac=$rbac_status"
       - name: Persist report on audit branch
         shell: bash
         run: |
