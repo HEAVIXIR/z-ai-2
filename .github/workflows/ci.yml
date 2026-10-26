@@ -178,7 +178,14 @@ jobs:
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
-        run: bunx vitest run tests/integration/*.test.ts
+        # Store/Outbox suites run above in a dedicated fail-closed gate. Do not
+        # run those same DB suites a second time in this broad parallel sweep:
+        # duplicate generated-client loading can fail after the dedicated gate
+        # has already passed. The dedicated gate remains authoritative.
+        run: >-
+          bunx vitest run tests/integration/*.test.ts
+          --exclude tests/integration/store-audit-outbox-resilience.test.ts
+          --exclude tests/integration/store-inventory-return-atomicity.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
