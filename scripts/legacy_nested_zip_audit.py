@@ -43,6 +43,10 @@ for info in outer.infolist():
   if kind=="REVIEW_BINARY": excluded.append((path,kind)); continue
   try: data=nested.read(item)
   except Exception: conflicts.append((path,"READ_ERROR","")); continue
+  if path in {"docs/README.md","scripts/prepare-standalone.mjs","scripts/audit-ai-gateway.mjs","scripts/audit-admin-rbac.mjs"}:
+   candidate=ROOT/"docs/legacy-parity/candidates/nested"/path
+   candidate.parent.mkdir(parents=True,exist_ok=True)
+   candidate.write_bytes(data)
   h=sha(data); target=ROOT/path
   if target.is_file():
    try: current=sha(target.read_bytes())
