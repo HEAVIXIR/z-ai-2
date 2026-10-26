@@ -14,7 +14,8 @@ Configure these on the repository before enabling worker delivery:
 
 1. Repository variable HEAVIX_BASE_URL: canonical HTTPS origin of the deployed HEAVIX app, without a trailing path.
 2. Repository secret CRON_SECRET: a high-entropy random secret. Set the same value as the deployed app's CRON_SECRET environment variable.
-3. Deploy the app with the updated main and Store Prisma schemas before enabling production use of the worker.
+3. Repository variable STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS: a positive integer selected by the service owner as the maximum acceptable age for the oldest pending/processing event. The workflow fails if this SLO is missing/invalid, any delivery fails, any FAILED row exists, or outstanding work exceeds the configured age. This creates a visible GitHub Actions failure signal; it is not a substitute for a continuous external alerting system.
+4. Deploy the app with the updated main and Store Prisma schemas before enabling production use of the worker.
 
 The GitHub Actions workflow .github/workflows/store-audit-outbox.yml is manual-only in the current release gate (workflow_dispatch); there is no scheduled trigger. When manually dispatched, it invokes the authenticated endpoint only if STORE_AUDIT_OUTBOX_ENABLED is exactly true. Missing configuration fails the workflow visibly; it does not silently report successful delivery.
 

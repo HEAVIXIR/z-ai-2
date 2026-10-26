@@ -22,9 +22,14 @@ jobs:
         env:
           HEAVIX_BASE_URL: ${{ vars.HEAVIX_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS: ${{ vars.STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS }}
         run: |
           if [ -z "$HEAVIX_BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "::error::Set STORE_AUDIT_OUTBOX_ENABLED=true only after explicit release approval; also configure HEAVIX_BASE_URL and CRON_SECRET."
+            exit 1
+          fi
+          if ! [[ "$STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Configure STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS as a positive integer SLO before enabling the worker."
             exit 1
           fi
           case "$HEAVIX_BASE_URL" in
@@ -36,9 +41,11 @@ jobs:
         env:
           HEAVIX_BASE_URL: ${{ vars.HEAVIX_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS: ${{ vars.STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS }}
         run: |
-          curl --fail-with-body --silent --show-error \
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
             --max-time 45 --retry 2 --retry-delay 2 \
             -X POST "${HEAVIX_BASE_URL%/}/api/internal/store-audit-outbox" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Accept: application/json"
+            -H "Accept: application/json")"
+          printf '%s' "$RESPONSE" | node scripts/check-store-audit-outbox-response.mjs "$STORE_AUDIT_OUTBOX_MAX_PENDING_AGE_SECONDS"
