@@ -1,0 +1,54 @@
+HEAVIX Issue #81 — Operational Audit Evidence Metadata
+======================================================
+Generated: 2026-10-26T07:29:03Z
+Step: STEP 16.17
+Agent: Z.ai Code (dellk00k delegated inspector)
+
+Repository: HEAVIXIR/z-ai-2
+Branch: main
+SHA: 32d7f0d37259ab0ea58ed3436420d5aa47e24053
+Repo path: <repo-path>
+
+PostgreSQL environment:
+  Version: PostgreSQL 17.10 (Debian 17.10-1.pgdg+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 15.2.0-17) 15.2.0, 64-bit
+  Host: <redacted>
+  Port: <redacted>
+  User: <redacted>
+  Store DB (source): heavix_store_drill
+  Restore target DB: heavix_store_drill_restore
+  Data dir: <tmp-path> (fresh initdb, trust auth)
+  Binaries: <repo-path> (user-space install)
+
+Schema deployed:
+  Method: bunx prisma migrate deploy --schema prisma/store/schema.prisma
+  Migrations: 0001_init_store_baseline, 0002_add_audit_outbox
+  Tables: 36
+  Foreign keys: 36
+  _prisma_migrations rows: 2
+
+AuditOutbox actual schema (corrected — NO eventHash field):
+ column_name |          data_type          | is_nullable 
+-------------+-----------------------------+-------------
+ id          | text                        | NO
+ payloadJson | text                        | NO
+ status      | text                        | NO
+ attempts    | integer                     | NO
+ lastError   | text                        | YES
+ lockedAt    | timestamp without time zone | YES
+ createdAt   | timestamp without time zone | NO
+ updatedAt   | timestamp without time zone | NO
+(8 rows)
+
+Idempotency contract (verified from source):
+  - AuditOutbox.id (cuid) IS the idempotency key
+  - Delivered to main DB AuditLog table (prisma/schema.prisma, NOT Store schema)
+  - AuditLog.idempotencyKey has @unique constraint
+  - drainAuditOutbox() passes outbox.id as idempotencyKey to writeAuditToMainDb()
+  - Dedup enforced by main DB UNIQUE constraint, NOT by AuditOutbox index
+
+TEST CLASSIFICATION (honest):
+  - All behavioral tests in this bundle are SQL-manual-invariant tests
+  - They verify schema SUPPORTS the invariants but do NOT call real app routines
+  - The repo's CI integration tests (tests/integration/store-audit-outbox-resilience.test.ts)
+    are the AUTHORITATIVE behavioral tests (they call enqueueAuditOutbox/drainAuditOutbox/etc.)
+  - CI 5/5 PASS on 32d7f0d confirms the real-app-code behavioral tests pass
