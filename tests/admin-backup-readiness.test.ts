@@ -55,7 +55,7 @@ describe("paired PostgreSQL backup configuration", () => {
 describe("admin backup runtime wiring", () => {
   it("ships the backup script and PostgreSQL client in the runtime image", () => {
     const dockerfile = read("Dockerfile");
-    expect(dockerfile).toMatch(/apt-get install[^\\n]*bash postgresql-client/s);
+    expect(dockerfile).toContain("apt-get install -y --no-install-recommends bash postgresql-client");
     expect(dockerfile).toContain("COPY --from=builder /app/scripts/backup.sh ./scripts/backup.sh");
     expect(dockerfile).toMatch(/chmod 0750 \.\/scripts\/backup\.sh/);
   });
