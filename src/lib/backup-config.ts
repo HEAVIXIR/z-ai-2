@@ -46,8 +46,8 @@ function parseDatabaseUrl(raw: string | undefined, label: string): ParsedDatabas
  * Error messages deliberately never include raw URLs or credentials.
  */
 export function buildBackupEnvironment(
-  env: Pick<NodeJS.ProcessEnv, "DATABASE_URL" | "STORE_DATABASE_URL">,
-): NodeJS.ProcessEnv {
+  env: { DATABASE_URL?: string; STORE_DATABASE_URL?: string },
+): Record<string, string> {
   const main = parseDatabaseUrl(env.DATABASE_URL, "Main");
   const store = parseDatabaseUrl(env.STORE_DATABASE_URL, "Store");
 
