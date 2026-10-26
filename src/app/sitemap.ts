@@ -67,7 +67,7 @@ async function getSEOOverridesByType(
       });
     }
   } catch {
-    /* ignore — fall back to defaults */
+    console.error(`[sitemap] SEO override lookup failed for ${entityType}; using defaults`);
   }
   return out;
 }
@@ -82,25 +82,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         where: { active: true },
         select: { id: true, slug: true, updatedAt: true },
       })
-      .catch(() => []),
+      .catch(() => {
+        console.error("[sitemap] category lookup failed; category URLs omitted");
+        return [];
+      }),
     db.brand
       .findMany({
         where: { active: true },
         select: { id: true, slug: true, updatedAt: true },
       })
-      .catch(() => []),
+      .catch(() => {
+        console.error("[sitemap] brand lookup failed; brand URLs omitted");
+        return [];
+      }),
     db.listing
       .findMany({
         where: { status: "PUBLISHED" },
         select: { id: true, slug: true, updatedAt: true },
       })
-      .catch(() => []),
+      .catch(() => {
+        console.error("[sitemap] listing lookup failed; listing URLs omitted");
+        return [];
+      }),
     db.article
       .findMany({
         where: { status: "PUBLISHED" },
         select: { id: true, slug: true, updatedAt: true, publishedAt: true },
       })
-      .catch(() => []),
+      .catch(() => {
+        console.error("[sitemap] article lookup failed; article URLs omitted");
+        return [];
+      }),
   ]);
 
   // Fetch SEO overrides in parallel.
@@ -117,7 +129,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const p of STATIC_PATHS) {
     out.push({
       url: absoluteUrl(p.url),
-      lastModified: new Date(),
       changeFrequency: p.changeFreq as any,
       priority: p.priority,
     });
