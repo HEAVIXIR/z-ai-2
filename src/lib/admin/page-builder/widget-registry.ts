@@ -17,7 +17,8 @@ export interface DataSourceDef {
 
 export const DATA_SOURCES: DataSourceDef[] = [
   { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit=12', cacheTtl: 60, permissions: ['listing.read'] },
-  { key: 'listing.featured', label: 'آگهی‌های ویژه', apiPath: '/api/listings?featured=true&limit=8', cacheTtl: 120, permissions: ['listing.read'] },
+  { key: 'listing.featured', label: 'آگهی‌های ویژه', apiPath: '/api/listings?featured=true&limit=8', cacheTtl: 120, permissions: [] },
+  { key: 'taxonomy.categories', label: 'دسته‌بندی‌های عمومی', apiPath: '/api/taxonomy/categories?root=true&layer=CATALOG', cacheTtl: 300, permissions: [] },
   { key: 'product.latest', label: 'آخرین محصولات', apiPath: '/api/admin/resources/products?pageSize=12', cacheTtl: 120, permissions: ['product.read'] },
   { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?limit=24', cacheTtl: 300, permissions: ['brand.read'] },
   { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit=6', cacheTtl: 120, permissions: ['content.read'] },
@@ -53,7 +54,7 @@ export const WIDGETS: WidgetDef[] = [
       {key:'buttonLink',label:'لینک دکمه',type:'text'},
     ]},
   { key:'listing-grid', label:'شبکه آگهی‌ها', category:'data', icon:'LayoutGrid', description:'کارت‌های آگهی',
-    hasDataSource:true, defaultDataSource:'listing.latest', permissions:['listing.read'],
+    hasDataSource:true, defaultDataSource:'listing.latest', permissions:[],
     defaultSize:{desktop:{w:12,h:4},tablet:{w:12,h:4},mobile:{w:12,h:6}},
     propsSchema:[
       {key:'title',label:'عنوان',type:'text'},
@@ -61,7 +62,7 @@ export const WIDGETS: WidgetDef[] = [
       {key:'limit',label:'حداکثر',type:'number',defaultValue:8},
     ]},
   { key:'category-grid', label:'دسته‌بندی‌ها', category:'data', icon:'FolderGrid', description:'کارت دسته‌ها',
-    hasDataSource:true, defaultDataSource:'brand.popular', permissions:['taxonomy.read'],
+    hasDataSource:true, defaultDataSource:'taxonomy.categories', permissions:[],
     defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:4},mobile:{w:12,h:6}},
     propsSchema:[{key:'title',label:'عنوان',type:'text'},{key:'columns',label:'ستون',type:'select',defaultValue:'4',options:[{value:'3',label:'۳'},{value:'4',label:'۴'}]}]},
   { key:'search-box', label:'جستجو', category:'navigation', icon:'Search', description:'باکس جستجو', isSystem:true,
