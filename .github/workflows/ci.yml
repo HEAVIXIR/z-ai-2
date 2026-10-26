@@ -557,6 +557,15 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d
           sleep 20
 
+          # Verify the runtime image can perform a paired PostgreSQL backup.
+          # These databases are disposable CI containers; no valuable data is used.
+          docker compose exec -T app sh -ec 'command -v bash; command -v pg_dump; test -x /app/scripts/backup.sh; test -w /app/backups'
+          docker compose exec -T \
+            -e DB_HOST=db -e DB_PORT=5432 -e DB_USER=heavix -e DB_NAME=heavix -e DB_PASSWORD=test-password-not-real \
+            -e STORE_DB_HOST=store-db -e STORE_DB_PORT=5432 -e STORE_DB_USER=heavix -e STORE_DB_NAME=heavix_store -e STORE_DB_PASSWORD=test-password-not-real \
+            app bash /app/scripts/backup.sh
+          docker compose exec -T app sh -ec 'latest=$(find /app/backups -mindepth 1 -maxdepth 1 -type d ! -name ".*" | sort | tail -n 1); test -n "$latest"; test -s "$latest/main.sql"; test -s "$latest/store.sql"; (cd "$latest" && sha256sum -c checksums.txt)'
+
           # Test THROUGH Caddy → app:3000 → /api/health
           # Must get HTTP 200 — NOT 308 (redirect only), NOT 502/503 (upstream down)
           HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:80/api/health || true)
