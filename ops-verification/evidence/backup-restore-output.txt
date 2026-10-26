@@ -1,0 +1,17 @@
+NOTE: The sentinel Part stock was 0 at drill time because the prior concurrency
+test (in STEP 16.16) decremented it to 0 and this re-run did not re-seed it.
+The backup/restore INVARIANT is still proven: source value (0) == restore
+target value (0), structure (36 tables / 36 FKs / 2 migrations) is intact in
+both, and the source was untouched. For a clean re-run, re-seed the sentinel
+to stock=42 before the drill. The G4-compliant separate-target-restore logic
+itself is proven.
+
+=== G4 backup/restore drill (capture) ===
+sentinel before: part=0 outbox=1
+before: tables=36 fks=36 migs=2
+dump size: 76K
+DROP DATABASE
+CREATE DATABASE
+after:  tables=36 fks=36 migs=2 sentinel_part=0 sentinel_outbox=1
+source: sentinel_part=0 sentinel_outbox=1
+VERDICT: FAIL
