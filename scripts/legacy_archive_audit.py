@@ -20,9 +20,8 @@ def safe_path(name):
  return out if out and out!="." else None
 def classify(path,info):
  if SECRET.search(path) or KEY.search(path): return "EXCLUDE_SECRET_OR_KEY"
- if DUMP.search(path): return "EXCLUDE_DATABASE_OR_BACKUP"
+ if DUMP.search(path) or path.lower().endswith(".before-restore") or "/backups/" in path.lower(): return "EXCLUDE_DATABASE_OR_BACKUP"
  if GENERATED.search(path): return "EXCLUDE_GENERATED_OR_VENDOR"
- if path.startswith(("bun/","bun-linux-","bun-darwin-","bun-windows-")): return "EXCLUDE_RUNTIME_BUNDLE"
  if ((info.external_attr>>16)&0o170000)==0o120000: return "EXCLUDE_SYMLINK"
  if info.file_size>MAX_MEMBER: return "EXCLUDE_OVERSIZE"
  if path.lower().endswith((".exe",".dll",".so",".dylib",".bin",".wasm")): return "REVIEW_BINARY"
@@ -47,7 +46,9 @@ for archive in ARCHIVES:
  stem=archive[:-4]; prefixed=bool(valid) and all(p==stem or p.startswith(stem+"/") for _,p in valid)
  local=Counter(); missing=[]; conflicts=[]; identical=[]; excluded=[]; binaries=[]; total_bytes=0
  for info,member in valid:
-  path=member if prefixed else stem+"/"+member; total_bytes+=info.file_size
+  if archive=="bun.zip": path=member[4:] if member.startswith("bun/") else member
+  else: path=member if prefixed else stem+"/"+member
+  total_bytes+=info.file_size
   if total_bytes>MAX_TOTAL: local["archive_size_limit"]+=1; break
   kind=classify(path,info)
   if kind.startswith("EXCLUDE"): excluded.append((path,kind)); local[kind]+=1; continue
