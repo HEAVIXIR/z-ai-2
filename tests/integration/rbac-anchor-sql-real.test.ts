@@ -31,18 +31,23 @@ import { execFileSync } from "node:child_process";
      - clone simulation: documents the H-04 limitation (NOT an end-to-end test)
    ============================================================ */
 
-const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
+// This suite drops/recreates its anchor table. Require explicit CI opt-in and
+// use a dedicated disposable database so a local localhost DATABASE_URL alone
+// can never activate destructive setup against a developer's database.
+const RUN_TESTS =
+  process.env.HEAVIX_RUN_REAL_ANCHOR_TESTS === "1" &&
+  (process.env.DATABASE_URL?.includes("localhost") ?? false);
 
 function psqlAdmin(sql: string): string {
   return execFileSync(
     "psql",
-    ["-h", "localhost", "-U", "postgres", "-d", "heavix_test", "-t", "-A", "-c", sql],
+    ["-h", "localhost", "-U", "postgres", "-d", "heavix_anchor_test", "-t", "-A", "-c", sql],
     { encoding: "utf-8", timeout: 10000, env: { ...process.env, PGPASSWORD: "postgres" } },
   ).trim();
 }
 
 function psqlScript(scriptPath: string, vars: Record<string, string>): void {
-  const args = ["-h", "localhost", "-U", "postgres", "-d", "heavix_test", "-f", scriptPath];
+  const args = ["-h", "localhost", "-U", "postgres", "-d", "heavix_anchor_test", "-f", scriptPath];
   for (const [k, v] of Object.entries(vars)) {
     args.push("-v", `${k}=${v}`);
   }
@@ -58,7 +63,7 @@ function psqlRO(sql: string): string {
   if (!pw) throw new Error("DRYUN_RO_PW not set");
   return execFileSync(
     "psql",
-    ["-h", "localhost", "-U", "heavix_dryrun_ro", "-d", "heavix_test", "-t", "-A", "-c", sql],
+    ["-h", "localhost", "-U", "heavix_dryrun_ro", "-d", "heavix_anchor_test", "-t", "-A", "-c", sql],
     { encoding: "utf-8", timeout: 10000, env: { ...process.env, PGPASSWORD: pw } },
   ).trim();
 }
@@ -200,7 +205,7 @@ describe.skipIf(!RUN_TESTS)(
       // the anchor check. This is the CORRECT fail-closed behavior.
       const pw = process.env.DRYUN_RO_PW;
       if (!pw) throw new Error("DRYUN_RO_PW not set");
-      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
+      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_anchor_test?schema=public`;
       const wrongAnchor = "DEFINITELY_WRONG_ANCHOR_VALUE";
 
       let exitCode: number | null = null;
@@ -216,7 +221,7 @@ describe.skipIf(!RUN_TESTS)(
             env: {
               ...process.env,
               DATABASE_URL: roUrl,
-              DRYRUN_CONFIRM_TARGET: "heavix_test",
+              DRYRUN_CONFIRM_TARGET: "heavix_anchor_test",
               DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro",
               DRYRUN_EXPECTED_HOST: "localhost",
               // STEP 15.88: NO DRYRUN_ALLOW_NO_TLS bypass.
@@ -316,7 +321,7 @@ describe.skipIf(!RUN_TESTS)(
       let rotationFailed = false;
       try {
         execFileSync("psql", [
-          "-h", "localhost", "-U", "postgres", "-d", "heavix_test",
+          "-h", "localhost", "-U", "postgres", "-d", "heavix_anchor_test",
           "-f", "scripts/rbac-rotate-anchor.sql",
           // NOTE: no -v anchor_value=... → variable is unset → psql substitutes empty
         ], {
@@ -418,7 +423,7 @@ describe.skipIf(!RUN_TESTS)(
       let actualError = "";
       try {
         execFileSync("psql", [
-          "-h", "localhost", "-U", "postgres", "-d", "heavix_test",
+          "-h", "localhost", "-U", "postgres", "-d", "heavix_anchor_test",
           "-f", "scripts/rbac-create-anchor-table.sql",
           // NOTE: no -v anchor_value=... → variable is unset
         ], {
