@@ -39,7 +39,7 @@ The manually executed checks in this bundle use direct SQL against deployed sche
 | Source-contract tests | Presence/shape of expected source patterns | Runtime behavior or database concurrency guarantees |
 | CI PostgreSQL gate | The exact tests that ran, on the exact commit and CI database | Production readiness, backup/restore readiness, or behavior not covered by those tests |
 
-The historical behavioral-tests-output.txt transcript corresponds to the earlier script version. In particular, its Section 1 “idempotent refund” claim is not supported by the SQL shown: it reads the same stock value twice without applying a second refund or invoking a deduplication key. Its Section 5 eventHash finding is retracted. The corrected store-outbox-behavioral-tests-real.sql file narrows the claims and uses the application’s actual PROCESSING and DELIVERED status vocabulary, but it has not been independently run against PostgreSQL as part of this documentation commit.
+The historical behavioral-tests-output.txt transcript corresponds to the earlier script version. In particular, its Section 1 “idempotent refund” claim is not supported by the SQL shown: it reads the same stock value twice without applying a second refund or invoking a deduplication key. Its Section 5 eventHash finding is retracted. The corrected store-outbox-behavioral-tests-real.sql file narrows the claims and uses the application’s actual PROCESSING and DELIVERED status vocabulary. The PR’s CI workflow now executes it against a fresh Store PostgreSQL 17 database created with prisma migrate deploy; consult the exact-HEAD workflow run for its result. This is still SQL-level evidence and does not invoke application routines.
 
 The repository CI includes application integration tests, but the exact-HEAD workflow logs remain the source of truth for what ran and passed. A green CI run does not retroactively validate a separately captured manual SQL transcript.
 
@@ -61,7 +61,7 @@ The following files are now present in this PR:
 - store-outbox-behavioral-tests-real.sql
 - STEP-16.17-HONEST-CORRECTION.md
 
-The output text files are retained as historical captures, not rewritten as if they were new command output. They must be interpreted with the caveats in this document. In particular, behavioral-tests-output.txt was captured from the superseded SQL script and does not match the corrected script currently committed. The corrected script requires a fresh PostgreSQL execution and newly captured output before the bundle can be called fully reproducible.
+The output text files are retained as historical captures, not rewritten as if they were new command output. They must be interpreted with the caveats in this document. In particular, behavioral-tests-output.txt was captured from the superseded SQL script and does not match the corrected script currently committed. The corrected script is executed by the CI workflow against a fresh Store PostgreSQL 17 database. The committed behavioral-tests-output.txt remains a historical capture from the superseded script, not output from the corrected script. The workflow publishes a separate artifact for the current execution so historical evidence is not silently rewritten.
 
 The environment metadata redacts connection strings, host, port, user, and local paths. Review any future evidence capture for credentials, tokens, private hostnames, and other sensitive values before publishing.
 
