@@ -35,7 +35,10 @@ export async function POST() {
     const scriptPath = path.join(projectRoot, "scripts", "backup.sh");
     await fs.access(scriptPath);
 
-    const backupEnv = buildBackupEnvironment(process.env);
+    const backupEnv = buildBackupEnvironment({
+      DATABASE_URL: process.env.DATABASE_URL,
+      STORE_DATABASE_URL: process.env.STORE_DATABASE_URL,
+    });
     const { stdout } = await execFileAsync("bash", [scriptPath], {
       cwd: projectRoot,
       env: { ...process.env, ...backupEnv, BACKUP_ROOT: "./backups", BACKUP_DOCKER_MODE: "0" },
