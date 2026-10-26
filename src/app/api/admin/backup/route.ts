@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { requirePermission } from "@/lib/authorization";
+import { AuthorizationError, requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { buildBackupEnvironment } from "@/lib/backup-config";
@@ -28,7 +28,14 @@ export async function POST() {
   }
 
   // Permission denial must happen before any filesystem/process side effect.
-  await requirePermission(user.id, "backup.manage");
+  try {
+    await requirePermission(user.id, "backup.manage");
+  } catch (err) {
+    if (err instanceof AuthorizationError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    throw err;
+  }
 
   try {
     const projectRoot = path.resolve(process.cwd());
