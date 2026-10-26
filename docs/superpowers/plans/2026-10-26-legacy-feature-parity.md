@@ -4,7 +4,7 @@
 >
 > **Baseline inspected:** `main` at `4bf6c974ac94c01fa6739b293a56e4de4ca4231f` (2026-10-26).
 >
-> **Source constraint:** The provided legacy preview and chat links could not be read by the available fetch path. The ZIP described in the conversation is a copy of the current GitHub repository at this same baseline, not evidence of the older Z.ai project's source. Exact legacy parity is therefore blocked until the older project's source archive or export is supplied. Do not infer missing functionality from route names alone.
+> **Legacy source pinned:** `HEAVIXIR/z` at commit `217f98ecc800aa64ae4739d27ed2aeb95dd260ed` contains 13 ZIP archives. A read-only GitHub Actions inventory compared those archives with `z-ai-2` main baseline `4bf6c974ac94c01fa6739b293a56e4de4ca4231f` ([audit run](https://github.com/HEAVIXIR/z-ai-2/actions/runs/40325606586)). The report counted 75 archive-entry missing candidates, 633 same-path content differences, 990 identical entries, 15 excluded entries, and 2 binary entries requiring review. These counts include overlapping full-project and per-directory archives; they are not unique-file counts. No archive content has been imported. Use this pinned archive inventory as evidence, and do not infer feature gaps from route names alone.
 
 ## Goal
 
@@ -65,7 +65,8 @@ SEO infrastructure also exists in `src/app/layout.tsx`, `src/app/sitemap.ts`, `s
 
 **Files:** source archive supplied by owner; audit output in `docs/legacy-parity/`.
 
-- [ ] Obtain the older Z.ai project's source archive or complete source export. The current-GitHub ZIP is not a substitute.
+- [x] Locate and pin the legacy archive source in `HEAVIXIR/z` at `217f98ecc800aa64ae4739d27ed2aeb95dd260ed`; inventory all 13 ZIP files against the current target tree in read-only CI.
+- [ ] Review all missing candidates and conflicts semantically. The archive contains duplicate snapshots and stale variants; do not copy files solely because their paths are absent or hashes differ.
 - [ ] Inspect archive paths and file types before extraction; exclude secrets, environment files, database dumps, build outputs, dependencies, and executable artifacts from the migration set.
 - [ ] Enumerate old App Router/pages, navigation items, UI components, API handlers, static assets, SEO metadata, and user workflows.
 - [ ] Build a path/feature matrix with evidence for each item: `PRESENT_AND_VERIFIED`, `PRESENT_NEEDS_BEHAVIOR_TEST`, `MISSING`, `OBSOLETE`, or `BLOCKED_SOURCE`.
