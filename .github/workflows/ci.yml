@@ -32,6 +32,9 @@ jobs:
               raise SystemExit("FAIL: no root-level ZIP archives in HEAVIXIR/z")
 
           rows, unsafe, corrupt = [], [], []
+          candidates = {}
+          safe_text_suffixes = {".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".md", ".json", ".yml", ".yaml", ".txt", ".css", ".scss", ".html", ".svg", ".xml"}
+          blocked_roots = {"db", "prisma", "upload", "download", "mini-services"}
           for archive in archives:
               try:
                   with zipfile.ZipFile(archive) as zf:
@@ -64,6 +67,15 @@ jobs:
                               "target_sha256": target_sha,
                               "sensitive_review": "REVIEW_REQUIRED" if sensitive else "normal",
                           })
+                          if (
+                              status == "NEW" and not sensitive and path.suffix.lower() in safe_text_suffixes
+                              and path.parts[0] not in blocked_roots and len(path.parts) > 1
+                          ):
+                              prior = candidates.get(name)
+                              if prior is None:
+                                  candidates[name] = (source_sha, archive.name, data)
+                              elif prior[0] != source_sha:
+                                  candidates.pop(name, None)
               except Exception as exc:
                   corrupt.append((archive.name, repr(exc)))
 
@@ -82,6 +94,12 @@ jobs:
               writer = csv.DictWriter(f, fieldnames=fields)
               writer.writeheader()
               writer.writerows(rows)
+
+          candidate_root = out / "candidates"
+          for name, (digest, archive_name, data) in sorted(candidates.items()):
+              dest = candidate_root.joinpath(*PurePosixPath(name).parts)
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_bytes(data)
 
           counts = Counter(r["target_status"] for r in rows)
           sensitive_count = sum(r["sensitive_review"] == "REVIEW_REQUIRED" for r in rows)
@@ -109,6 +127,9 @@ jobs:
               summary += ["## Archive errors", ""] + [f"- {a}: {e}" for a, e in corrupt] + [""]
           (out / "summary.md").write_text("\n".join(summary), encoding="utf-8")
           print("\n".join(summary))
+          print(f"Reviewable new text/code files staged (not imported): {len(candidates)}")
+          for name in sorted(candidates):
+              print(f"CANDIDATE: {name}")
           if unsafe or corrupt:
               raise SystemExit("FAIL-CLOSED: archive safety/read errors need investigation")
           PY
