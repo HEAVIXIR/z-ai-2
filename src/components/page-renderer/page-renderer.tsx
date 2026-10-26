@@ -57,11 +57,12 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
 
   // Fetch data (server-side fetch)
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const deploymentHost = process.env.VERCEL_URL;
+    const base = process.env.NEXT_PUBLIC_BASE_URL || (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000');
     const res = await fetch(`${base}${apiPath}`, { next: { revalidate: ds.cacheTtl || 60 } });
     if (!res.ok) return null;
     const json = await res.json();
-    return json?.data?.items || json?.data || null;
+    return json?.data?.items ?? json?.items ?? json?.categories ?? json?.data ?? null;
   } catch {
     return null;
   }
