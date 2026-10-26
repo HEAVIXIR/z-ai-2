@@ -1,10 +1,7 @@
-NOTE: The sentinel Part stock was 0 at drill time because the prior concurrency
-test (in STEP 16.16) decremented it to 0 and this re-run did not re-seed it.
-The backup/restore INVARIANT is still proven: source value (0) == restore
-target value (0), structure (36 tables / 36 FKs / 2 migrations) is intact in
-both, and the source was untouched. For a clean re-run, re-seed the sentinel
-to stock=42 before the drill. The G4-compliant separate-target-restore logic
-itself is proven.
+CLASSIFICATION (editorial; not captured command output):
+STATUS: INCONCLUSIVE / FAIL — NOT BACKUP/RESTORE PROOF.
+The preceding concurrency test had reduced the sentinel stock to 0; this drill did not re-seed it to the intended non-zero value (for example, 42).
+Matching source and restore values of 0 and matching schema counts do not prove restoration of the intended non-zero sentinel. The captured command output begins below; preserve its final VERDICT: FAIL.
 
 === G4 backup/restore drill (capture) ===
 sentinel before: part=0 outbox=1
