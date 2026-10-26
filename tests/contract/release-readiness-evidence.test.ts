@@ -66,5 +66,11 @@ describe("release readiness evidence fail-closed rules", () => {
       effectiveReadinessStatus(gate, { ...snapshot, observedAt: "" }, now, sha),
     ).toBe("PENDING");
     expect(effectiveReadinessStatus(gate, snapshot, now, null)).toBe("PENDING");
+    expect(
+      effectiveReadinessStatus({ ...gate, sourceUrl: "" }, snapshot, now, sha),
+    ).toBe("PENDING");
+    expect(
+      effectiveReadinessStatus({ ...gate, evidence: "" }, snapshot, now, sha),
+    ).toBe("PENDING");
   });
 });
