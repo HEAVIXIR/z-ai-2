@@ -22,7 +22,6 @@ const checks: Check[] = [
   { label: "Listings", run: () => db.listing.count() },
   { label: "Companies", run: () => db.company.count() },
   { label: "Buy requests", run: () => db.buyRequest.count() },
-  { label: "Price records", run: () => db.priceRecord.count() },
   { label: "Price observations", run: () => db.priceObservation.count() },
   { label: "Users", run: () => db.user.count() },
   { label: "Audit logs", run: () => db.auditLog.count() },
