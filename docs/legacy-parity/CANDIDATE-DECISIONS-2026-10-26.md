@@ -7,7 +7,20 @@
 
 ## Evidence summary
 
-The legacy repository stores 13 ZIP archives rather than a normal source tree. The read-only inventory reported 75 missing-path candidates, 633 same-path content differences, 990 identical files, 15 excluded entries, 2 binary entries requiring manual review, zero unsafe paths, zero archive errors, and zero cross-archive hash collisions. These are archive-entry counts, not unique feature counts. Missing or changed paths are not automatic approval to import.
+The legacy repository stores ZIP bundles rather than a normal source tree. The initial inventory (run #40325606586) is retained as historical evidence; its counts were archive-entry counts, not unique paths.
+
+### Current pinned inventory refresh
+
+- Source: commit 217f98ecc800aa64ae4739d27ed2aeb95dd260ed.
+- Target under review: HEAVIXIR/z-ai-2, PR #117 inventory branch; the workflow does not modify application files.
+- Current workflow run: https://github.com/HEAVIXIR/z-ai-2/actions/runs/40343353041
+- 13 ZIP archives inspected; 1,715 file entries.
+- By archive-entry row: 86 NEW, 990 IDENTICAL, and 639 CONFLICT rows.
+- By unique path: 53 new paths absent from the target, 529 identical paths, and 327 conflicting paths.
+- 22 entries require sensitive/data review. Zero unsafe archive paths, zero archive read errors, and zero cross-archive content-hash collisions were reported.
+- 25 new text/code candidates were staged into a short-lived review artifact, excluding database files, .env, SQL/Prisma schema paths, upload artifacts, and binary/generated files. They were staged for review only; none were imported.
+
+Repeated files in multiple ZIPs explain why row counts exceed unique-path counts. This is a content inventory, not a feature-completeness verdict. Missing or changed paths are not automatic approval to import.
 
 ## Decisions
 
@@ -21,7 +34,7 @@ The legacy repository stores 13 ZIP archives rather than a normal source tree. T
 | `scripts/rebuild-taxonomy.ts` | **Hold; do not execute** | It writes taxonomy data and overlaps existing seed/taxonomy code. Compare its complete data set and idempotency semantics before considering a focused migration. |
 | `scripts/seed-store-comprehensive.ts` | **Reject direct import/execution** | It seeds categories, brands, models, parts, prices and stock. Data provenance, model compatibility and safe upsert semantics require a separate review; no seeding is authorized here. |
 | `src/components/compare/ComparePageClient.tsx` | **Do not copy** | The archived UI queries `/api/admin/listings` and expects a GET `/api/compare?ids=...` contract. The current comparison page uses a session-based API and sharing flow. Port only verified behavior through current APIs if a real gap remains. |
-| `src/components/listings/PriceIntelligence.tsx` | **Do not copy yet** | It expects `/api/ai-price-intelligence` and a verdict response. This contract has not been shown equivalent to the current `/api/ai-price-suggestion` flow. Any port must use canonical AI policy controls and tested response contracts. |
+| `src/components/listings/PriceIntelligence.tsx` | **Reject direct copy; reimplement only if a product gap is confirmed** | The archived widget expects flat `average`, `median`, `min`, `max`, `sampleSize`, and `reason` fields, while the existing `/api/ai-price-intelligence` route returns `similarCount`, nested `stats`, `diff`, and `message`. The response contract does not match; any replacement needs a tested current API contract and must preserve the distinction between observed prices and estimates. |
 | `src/lib/price-intelligence.ts` | **Reject direct import** | It reads/writes the deprecated `PriceRecord` model. Current repository decisions identify `PriceObservation` as canonical; follow Issue #95 and the reconciliation evidence instead. |
 | `public/robots.txt` | **Do not add blindly** | The target already has a Next.js `src/app/robots.ts` route. Avoid duplicate route ownership; review the rendered response instead. |
 | `scripts/clear-logo.ts`, `make-logos-dark.cjs`, `orange-ix.cjs`, `process-logos*.cjs` | **Hold; do not run** | They can mutate image assets. Inspect current asset usage, licensing, output paths, overwrite behavior, and dry-run support before any port. |
