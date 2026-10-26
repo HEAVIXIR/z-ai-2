@@ -584,10 +584,8 @@ test('SELLER_ASSISTANT input strips other-seller listings', async () => {
   - If the LLM returns `{ "title": "evil", "__proto__": { "polluted": true } }` — prototype pollution risk.
   - If the LLM returns extra keys (`{ title, script: "<script>alert(1)</script>" })` — they pass through to the caller unchecked.
 
-- `src/lib/ai-gateway-service.ts:107-113` (DEAD CODE — zero callers per `grep -rn "aiGateway.execute" src/`):
-  - Same `JSON.parse(trimmed)` with no validation.
-  - This file is a parallel AI gateway that BYPASSES the `preflightAIRequest` policy engine (L60-90 of `ai-gateway-service.ts` does its own ad-hoc policy check, NOT the 5-gate preflight).
-  - **MINOR RISK:** unused, but a future PR could import it by accident. Should be deleted or marked `@deprecated` with a redirect to `/api/ai-gateway`.
+- The unused `src/lib/ai-gateway-service.ts` parallel gateway has been removed: it had weaker ad-hoc policy checks and unvalidated JSON parsing, and repository code search found no callers. The canonical HTTP gateway is `src/app/api/ai-gateway/route.ts`.
+- **Important:** removing the dead service does not migrate active modules that still call the provider SDK directly. Issue #111 remains open until every runtime call site is classified, moved behind the reviewed policy-enforced boundary (or explicitly approved as an adapter), and covered by behavioral tests.
 
 **BLOCKER-AI-2 (PR-SC-09):** Every AI task handler MUST validate output with a zod (or valibot) schema BEFORE returning to the caller:
 
