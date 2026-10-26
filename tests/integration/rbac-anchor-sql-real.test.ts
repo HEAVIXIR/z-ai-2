@@ -205,7 +205,7 @@ describe.skipIf(!RUN_TESTS)(
       // the anchor check. This is the CORRECT fail-closed behavior.
       const pw = process.env.DRYUN_RO_PW;
       if (!pw) throw new Error("DRYUN_RO_PW not set");
-      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_test?schema=public`;
+      const roUrl = `postgresql://heavix_dryrun_ro:${pw}@localhost:5432/heavix_anchor_test?schema=public`;
       const wrongAnchor = "DEFINITELY_WRONG_ANCHOR_VALUE";
 
       let exitCode: number | null = null;
