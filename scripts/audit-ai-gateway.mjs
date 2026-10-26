@@ -2,27 +2,31 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const root = path.resolve("src/app/api");
 const args = new Set(process.argv.slice(2));
 if (args.has("--help")) {
   console.log("Usage: node scripts/audit-ai-gateway.mjs [--strict]");
-  console.log("Report-only by default. --strict exits 2 when direct provider SDK use is found outside the canonical gateway.");
+  console.log("Scans API route handlers and src/lib modules. Report-only by default; --strict exits 2 when direct provider SDK use exists outside the canonical gateway route.");
   process.exit(0);
 }
 
-// Only this route owns the provider SDK until a separately reviewed adapter is
-// explicitly added to this allowlist. Do not widen it to silence audit output.
+// The API gateway route is the only currently approved direct provider entry
+// point. A library module that imports the SDK is not automatically trusted:
+// it must be reviewed for policy, budget, timeout, audit, and output controls.
 const approvedProviderFiles = new Set([
   path.normalize("src/app/api/ai-gateway/route.ts"),
 ]);
+const roots = [
+  { dir: path.resolve("src/app/api"), kind: "route" },
+  { dir: path.resolve("src/lib"), kind: "module" },
+];
 const providerPatterns = [
   /\bfrom\s*["']z-ai-web-dev-sdk["']/,
   /\bimport\s*\(\s*["']z-ai-web-dev-sdk["']\s*\)/,
   /\bZAI\s*\.\s*create\s*\(/,
 ];
-const findings = [];
+const findings = new Map();
 
-async function walk(dir) {
+async function walk(dir, kind) {
   let entries = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -32,27 +36,31 @@ async function walk(dir) {
   for (const entry of entries) {
     const absolute = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      await walk(absolute);
+      await walk(absolute, kind);
       continue;
     }
-    if (!/^route\.(ts|tsx)$/.test(entry.name)) continue;
-    const relative = path.relative(process.cwd(), absolute);
-    if (approvedProviderFiles.has(path.normalize(relative))) continue;
+    const isApiRoute = kind === "route" && /^route\.(ts|tsx)$/.test(entry.name);
+    const isLibraryModule = kind === "module" && /\.(ts|tsx)$/.test(entry.name);
+    if (!isApiRoute && !isLibraryModule) continue;
+    const relative = path.normalize(path.relative(process.cwd(), absolute));
+    if (approvedProviderFiles.has(relative)) continue;
     const source = await readFile(absolute, "utf8");
     const matches = providerPatterns
       .map((pattern, index) => (pattern.test(source) ? index : -1))
       .filter((index) => index !== -1);
-    if (matches.length) findings.push({ path: relative, matches });
+    if (matches.length) findings.set(relative, matches);
   }
 }
 
-await walk(root);
+for (const root of roots) await walk(root.dir, root.kind);
+const sorted = [...findings.keys()].sort();
 console.log("AI provider boundary audit (heuristic; review findings manually).");
-console.log("Approved provider entry point: src/app/api/ai-gateway/route.ts");
-console.log(`Direct provider SDK candidates outside the allowlist: ${findings.length}`);
-for (const finding of findings) console.log(` - ${finding.path}`);
+console.log("Scope: API route handlers and src/lib TypeScript modules.");
+console.log("Approved direct provider entry point: src/app/api/ai-gateway/route.ts");
+console.log(`Direct provider SDK candidates outside the allowlist: ${sorted.length}`);
+for (const file of sorted) console.log(` - ${file}`);
 
-if (args.has("--strict") && findings.length > 0) {
+if (args.has("--strict") && sorted.length > 0) {
   console.error("STRICT FAIL: direct provider SDK candidates remain outside the approved entry point.");
   process.exitCode = 2;
 }
