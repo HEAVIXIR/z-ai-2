@@ -10,8 +10,8 @@ if (args.has("--help")) {
   process.exit(0);
 }
 
-const permissionMarker = /\b(?:requirePermission|assertPermission|hasPermission|checkPermission)\s*\(/;
-const authMarker = /\b(?:requireAdmin|getCurrentUser|getCurrentUserId|getServerSession|getCurrentSession|withAuth|withAdmin|requireRole|requireAuthenticatedUser|assertAuthenticated|checkAdminAccess)\s*\(/;
+const permissionMarker = /\b(?:requirePermission|requireAdminPermission|assertPermission|assertAdminPermission|hasPermission|checkPermission)\s*\(/;
+const authMarker = /\b(?:requireAdmin|isAdmin|isAuthenticated|getCurrentUser|getCurrentUserId|getServerSession|getCurrentSession|withAuth|withAdmin|requireRole|requireAuthenticatedUser|assertAuthenticated|checkAdminAccess)\s*\(/;
 const routes = [];
 
 async function walk(dir) {
