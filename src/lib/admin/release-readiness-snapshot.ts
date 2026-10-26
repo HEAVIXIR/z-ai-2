@@ -94,3 +94,6 @@ export function effectiveReadinessStatus(
   if (!gate.evidenceSha || gate.evidenceSha !== snapshot.mainSha) return "PENDING";
   return gate.status;
 }
+
+// Stable named export consumed by dashboard integrations and contract tests.
+export const releaseReadiness = RELEASE_READINESS_SNAPSHOT;
