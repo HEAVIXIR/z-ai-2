@@ -38,7 +38,7 @@ export async function POST() {
     const backupEnv = buildBackupEnvironment(process.env);
     const { stdout } = await execFileAsync("bash", [scriptPath], {
       cwd: projectRoot,
-      env: { ...process.env, ...backupEnv, BACKUP_ROOT: "./backups" },
+      env: { ...process.env, ...backupEnv, BACKUP_ROOT: "./backups", BACKUP_DOCKER_MODE: "0" },
       maxBuffer: 64 * 1024,
       timeout: 240_000,
     });
