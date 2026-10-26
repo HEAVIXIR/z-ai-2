@@ -1,0 +1,19 @@
+=== concurrency test (2 SERIALIZABLE sessions) ===
+--- session A output ---
+BEGIN
+DO
+COMMIT
+--- session B output ---
+BEGIN
+DO
+COMMIT
+--- results ---
+ session |   outcome   
+---------+-------------
+ A       | decremented
+ B       | skipped
+(2 rows)
+
+final stock: 0
+decremented count: 1
+VERDICT: PASS (exactly 1 decrement, final stock=0)
