@@ -22,12 +22,12 @@ export function ReleaseReadinessPanel() {
   const now = new Date();
   const stale =
     !releaseReadiness.observedAt ||
-    !Number.isFinite(Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt)) ||
-    now.getTime() - Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt) < 0 ||
-    now.getTime() - Date.parse(RELEASE_READINESS_SNAPSHOT.observedAt) >
+    !Number.isFinite(Date.parse(releaseReadiness.observedAt)) ||
+    now.getTime() - Date.parse(releaseReadiness.observedAt) < 0 ||
+    now.getTime() - Date.parse(releaseReadiness.observedAt) >
       4 * 60 * 60 * 1000;
-  const allStatuses = RELEASE_READINESS_SNAPSHOT.gates.map((gate) =>
-    effectiveReadinessStatus(gate, RELEASE_READINESS_SNAPSHOT, now, currentSha),
+  const allStatuses = releaseReadiness.gates.map((gate) =>
+    effectiveReadinessStatus(gate, releaseReadiness, now, currentSha),
   );
   const blocked = allStatuses.filter((status) => status !== "PASS").length;
 
@@ -55,13 +55,13 @@ export function ReleaseReadinessPanel() {
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
         <span>
-          SHA snapshot: <code>{RELEASE_READINESS_SNAPSHOT.mainSha.slice(0, 12)}</code>
+          SHA snapshot: <code>{releaseReadiness.mainSha.slice(0, 12)}</code>
         </span>
         <span>
-          زمان بررسی: {RELEASE_READINESS_SNAPSHOT.observedAt}
+          زمان بررسی: {releaseReadiness.observedAt}
         </span>
         <Link
-          href={RELEASE_READINESS_SNAPSHOT.sourceUrl}
+          href={releaseReadiness.sourceUrl}
           target="_blank"
           rel="noreferrer"
           className="font-bold text-[#F58220] hover:underline"
@@ -70,17 +70,17 @@ export function ReleaseReadinessPanel() {
         </Link>
       </div>
 
-      {(!currentSha || currentSha !== RELEASE_READINESS_SNAPSHOT.mainSha || stale) && (
+      {(!currentSha || currentSha !== releaseReadiness.mainSha || stale) && (
         <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
           SHA اجرا با snapshot همخوان نیست یا شواهد منقضی شده‌اند؛ وضعیت‌های PASS به PENDING تنزل می‌کنند تا snapshot از نو بررسی شود.
         </p>
       )}
 
       <ul className="mt-4 grid gap-2 md:grid-cols-2">
-        {RELEASE_READINESS_SNAPSHOT.gates.map((gate) => {
+        {releaseReadiness.gates.map((gate) => {
           const status = effectiveReadinessStatus(
             gate,
-            RELEASE_READINESS_SNAPSHOT,
+            releaseReadiness,
             now,
             currentSha,
           );
