@@ -1,0 +1,51 @@
+name: Legacy ZIP archive inventory
+on:
+  push:
+    branches:
+      - audit/legacy-archive-content-20261026
+    paths:
+      - ".github/workflows/legacy-archive-audit.yml"
+      - "scripts/legacy_archive_audit.py"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.ref_name }}
+      - name: Download pinned legacy archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/heavix-legacy-archives
+          base="https://raw.githubusercontent.com/HEAVIXIR/z/217f98ecc800aa64ae4739d27ed2aeb95dd260ed"
+          for archive in .zscripts.zip bun.zip db.zip docs.zip download.zip examples.zip mini-services.zip prisma.zip public.zip scripts.zip src.zip tests.zip upload.zip; do
+            curl --fail --silent --show-error --location --retry 3 "$base/$archive" -o "/tmp/heavix-legacy-archives/$archive"
+            printf '%s  %s\n' "$(sha256sum "/tmp/heavix-legacy-archives/$archive" | cut -d' ' -f1)" "$archive"
+          done
+      - name: Compare archive paths and hashes without extraction
+        run: python3 scripts/legacy_archive_audit.py
+      - name: Persist report on audit branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/legacy-parity/archive-inventory.md
+          if git diff --cached --quiet; then
+            echo "Inventory report unchanged."
+          else
+            git commit -m "docs: record legacy archive inventory"
+            git push origin "HEAD:\${{ github.ref_name }}"
+          fi
+      - name: Upload inventory artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-archive-inventory
+          path: docs/legacy-parity/archive-inventory.md
+          if-no-files-found: error
+          retention-days: 14
