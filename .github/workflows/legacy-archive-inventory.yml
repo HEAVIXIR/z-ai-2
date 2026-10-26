@@ -1,0 +1,139 @@
+name: Legacy archive inventory (read-only)
+
+on:
+  push:
+    branches:
+      - audit/legacy-archive-reconciliation-20261026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Fetch legacy archive repository
+        run: git clone --depth=1 https://github.com/HEAVIXIR/z.git "$RUNNER_TEMP/legacy"
+      - name: Inventory archived files against target tree
+        run: |
+          python3 - <<'PY'
+          import csv
+          import hashlib
+          import os
+          import zipfile
+          from collections import Counter, defaultdict
+          from pathlib import Path, PurePosixPath
+
+          target = Path.cwd()
+          legacy = Path(os.environ["RUNNER_TEMP"]) / "legacy"
+          out = target / "legacy-archive-audit"
+          out.mkdir(exist_ok=True)
+          archives = sorted(legacy.glob("*.zip"))
+          if not archives:
+              raise SystemExit("FAIL: no root-level zip archives found in HEAVIXIR/z")
+
+          entries = []
+          unsafe = []
+          corrupt = []
+          for archive in archives:
+              try:
+                  with zipfile.ZipFile(archive) as zf:
+                      for info in zf.infolist():
+                          if info.is_dir():
+                              continue
+                          name = info.filename.replace("\\", "/")
+                          p = PurePosixPath(name)
+                          if p.is_absolute() or ".." in p.parts or not p.parts:
+                              unsafe.append((archive.name, name))
+                              continue
+                          data = zf.read(info)
+                          digest = hashlib.sha256(data).hexdigest()
+                          dest = target.joinpath(*p.parts)
+                          if not dest.exists():
+                              status = "NEW"
+                              target_sha = ""
+                          elif not dest.is_file():
+                              status = "CONFLICT_NONFILE"
+                              target_sha = ""
+                          else:
+                              target_sha = hashlib.sha256(dest.read_bytes()).hexdigest()
+                              status = "IDENTICAL" if target_sha == digest else "CONFLICT"
+                          lower = "/" + name.lower()
+                          sensitive = any(x in lower for x in (
+                              "/.env", ".pem", ".key", ".p12", ".pfx", "credentials",
+                              "secret", "dump", "backup", ".sqlite", ".db", ".sql"
+                          ))
+                          entries.append({
+                              "archive": archive.name,
+                              "path": name,
+                              "size": info.file_size,
+                              "source_sha256": digest,
+                              "target_status": status,
+                              "target_sha256": target_sha,
+                              "sensitive_review": "REVIEW_REQUIRED" if sensitive else "normal",
+                          })
+              except Exception as e:
+                  corrupt.append((archive.name, repr(e)))
+
+          by_path = defaultdict(list)
+          for row in entries:
+              by_path[row["path"]].append(row)
+          for row in entries:
+              if len(by_path[row["path"]]) > 1:
+                  hashes = {r["source_sha256"] for r in by_path[row["path"]]}
+                  row["source_archive_overlap"] = "CONFLICTING" if len(hashes) > 1 else "DUPLICATE_IDENTICAL"
+              else:
+                  row["source_archive_overlap"] = "none"
+
+          fields = ["archive", "path", "size", "source_sha256", "target_status", "target_sha256", "source_archive_overlap", "sensitive_review"]
+          with (out / "manifest.csv").open("w", newline="", encoding="utf-8") as f:
+              w = csv.DictWriter(f, fieldnames=fields)
+              w.writeheader()
+              w.writerows(entries)
+
+          counts = Counter(row["target_status"] for row in entries)
+          sensitive_count = sum(row["sensitive_review"] == "REVIEW_REQUIRED" for row in entries)
+          overlap_conflicts = sum(row["source_archive_overlap"] == "CONFLICTING" for row in entries)
+          summary = [
+              "# Legacy archive inventory (read-only)",
+              "",
+              "- Source: https://github.com/HEAVIXIR/z (default branch main)",
+              "- Target: this checked-out HEAVIXIR/z-ai-2 commit",
+              "- This workflow does not copy, modify, delete, or deploy files.",
+              f"- Archives inspected: {len(archives)}",
+              f"- File entries inspected: {len(entries)}",
+              f"- New paths absent from target: {counts['NEW']}",
+              f"- Identical files already present: {counts['IDENTICAL']}",
+              f"- Existing-path content conflicts: {counts['CONFLICT'] + counts['CONFLICT_NONFILE']}",
+              f"- Paths duplicated across source archives with differing content (row count): {overlap_conflicts}",
+              f"- Entries requiring sensitive/data review: {sensitive_count}",
+              f"- Unsafe archive paths skipped: {len(unsafe)}",
+              f"- Archives with extraction/read errors: {len(corrupt)}",
+              "",
+              "## Required decision before import",
+              "",
+              "Import only after reviewing the manifest, excluding secrets, database dumps, generated artifacts, stale migrations, and files that conflict with the current canonical schema/auth/provider architecture. New files are candidates, not automatic approvals.",
+              "",
+          ]
+          if unsafe:
+              summary += ["## Unsafe paths", ""] + [f"- {a}: {p}" for a, p in unsafe] + [""]
+          if corrupt:
+              summary += ["## Archive errors", ""] + [f"- {a}: {e}" for a, e in corrupt] + [""]
+          (out / "summary.md").write_text("\n".join(summary), encoding="utf-8")
+          print("\n".join(summary))
+          if unsafe or corrupt:
+              raise SystemExit("FAIL-CLOSED: archive path or read errors require investigation")
+          PY
+      - name: Upload inventory report
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-archive-inventory
+          path: legacy-archive-audit/
+          if-no-files-found: error
+          retention-days: 7
