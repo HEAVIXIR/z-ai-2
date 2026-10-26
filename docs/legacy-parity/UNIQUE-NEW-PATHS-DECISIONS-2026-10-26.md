@@ -12,7 +12,7 @@ The source repository is an archive container, not a canonical live source tree.
 
 The audit artifact staged 26 text/code candidates for review only. **No candidate from that temporary artifact is imported by this document.** Path absence is not approval to restore an old implementation.
 
-## Complete decision register — all 53 unique NEW paths
+## Complete decision register — all 54 unique NEW paths
 
 | Legacy path | Decision | Evidence / reason |
 |---|---|---|
