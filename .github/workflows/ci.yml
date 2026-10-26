@@ -51,10 +51,11 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
-      - name: Create store test database
+      - name: Create store and isolated anchor test databases
         run: |
           sudo apt-get install -y postgresql-client
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_anchor_test;"
       - name: Push schemas
         run: |
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
@@ -178,6 +179,7 @@ jobs:
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
+          HEAVIX_RUN_REAL_ANCHOR_TESTS: '1'
         # Store/Outbox suites run above in a dedicated fail-closed gate. Do not
         # run those same DB suites a second time in this broad parallel sweep:
         # duplicate generated-client loading can fail after the dedicated gate
