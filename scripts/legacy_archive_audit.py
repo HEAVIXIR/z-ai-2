@@ -15,7 +15,8 @@ def digest(data): return hashlib.sha256(data).hexdigest()
 def safe_path(name):
  p=PurePosixPath(name.replace("\\","/"))
  if p.is_absolute() or any(x in ("..","") for x in p.parts): return None
- out=str(p).lstrip("./")
+ out=str(p)
+ if out.startswith("./"): out=out[2:]
  return out if out and out!="." else None
 def classify(path,info):
  if SECRET.search(path) or KEY.search(path): return "EXCLUDE_SECRET_OR_KEY"
