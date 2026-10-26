@@ -21,7 +21,7 @@
     "db:reset": "prisma migrate reset --schema=prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "catalog:health": "tsx scripts/catalog-health.ts",
-    "security:check": "eslint . && tsx scripts/security-check.ts",
+    "security:check": "bun run lint && bun run test:security",
     "migrate:sqlite-to-postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",
     "store:db:generate": "prisma generate --schema=prisma/store/schema.prisma",
     "store:db:push": "prisma db push --accept-data-loss --schema=prisma/store/schema.prisma",
