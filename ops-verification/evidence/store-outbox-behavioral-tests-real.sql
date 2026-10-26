@@ -36,6 +36,9 @@ END $$;
 \echo ''
 \echo '--- Section 1: SQL stock arithmetic (not refund idempotency) ---'
 BEGIN;
+  INSERT INTO "Category" ("id", "name", "slug", "createdAt")
+  VALUES ('cat-test', 'Test SQL Category', 'test-sql-category-' || txid_current()::text, now())
+  ON CONFLICT ("id") DO NOTHING;
   INSERT INTO "Part" (id, name, sku, "categoryId", "priceUsd", stock, "createdAt", "updatedAt")
   VALUES ('__test_stock_arithmetic', 'Test Stock Arithmetic', 'TEST-STOCK-ARITH-001', 'cat-test', 10.0, 10, now(), now())
   ON CONFLICT (id) DO UPDATE SET stock = 10, "updatedAt" = now();
@@ -52,6 +55,9 @@ ROLLBACK;
 \echo ''
 \echo '--- Section 2: direct SQL rollback invariant ---'
 BEGIN;
+  INSERT INTO "Category" ("id", "name", "slug", "createdAt")
+  VALUES ('cat-test', 'Test SQL Category', 'test-sql-category-' || txid_current()::text, now())
+  ON CONFLICT ("id") DO NOTHING;
   INSERT INTO "Part" (id, name, sku, "categoryId", "priceUsd", stock, "createdAt", "updatedAt")
   VALUES ('__test_tx', 'Test TX Part', 'TEST-TX-001', 'cat-test', 5.0, 5, now(), now());
   INSERT INTO "AuditOutbox" (id, "payloadJson", status, attempts, "createdAt", "updatedAt")
