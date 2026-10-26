@@ -5,8 +5,52 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { BookOpen, ArrowRight, Eye, Tag, Calendar } from "lucide-react";
 import { toFa, faDate } from "@/lib/format";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const article = await db.article.findUnique({
+    where: { slug },
+    select: {
+      title: true,
+      excerpt: true,
+      coverImage: true,
+      status: true,
+      publishedAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!article || article.status !== "PUBLISHED") {
+    return {
+      title: "مقاله یافت نشد",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const description = article.excerpt?.trim().slice(0, 160) ||
+    `مقاله «${article.title}» در دانش هویکس.`;
+  return {
+    title: article.title,
+    description,
+    alternates: { canonical: `/knowledge/${slug}` },
+    robots: { index: true, follow: true },
+    openGraph: {
+      type: "article",
+      title: article.title,
+      description,
+      publishedTime: article.publishedAt?.toISOString(),
+      modifiedTime: article.updatedAt?.toISOString(),
+      images: article.coverImage ? [article.coverImage] : undefined,
+    },
+  };
+}
 
 const CATEGORY_LABELS: Record<string, string> = { GUIDE: "راهنما", COMPARISON: "مقایسه", REVIEW: "نقد و بررسی", NEWS: "اخبار", TUTORIAL: "آموزش" };
 
