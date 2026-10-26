@@ -1,0 +1,58 @@
+
+====================================================================
+ HEAVIX Issue #81 — Store/Outbox Behavioral Tests (REAL PostgreSQL 17)
+ target: heavix_store_drill (freshly deployed via prisma migrate deploy)
+====================================================================
+
+--- Section 0: schema readiness ---
+psql:/tmp/store-outbox-behavioral-real.sql:28: NOTICE:  PASS 0: schema readiness — Part + AuditOutbox present with expected columns
+DO
+
+--- Section 1: idempotent refund ---
+BEGIN
+INSERT 0 1
+UPDATE 1
+psql:/tmp/store-outbox-behavioral-real.sql:42: NOTICE:  PASS 1a: first refund applied — stock = 13
+DO
+psql:/tmp/store-outbox-behavioral-real.sql:49: NOTICE:  PASS 1b: idempotent re-application — stock unchanged (13)
+DO
+ROLLBACK
+PASS 1: idempotent refund — transaction rolled back (isolated);
+
+--- Section 2: outbox transactional ---
+BEGIN
+INSERT 0 1
+INSERT 0 1
+ROLLBACK
+psql:/tmp/store-outbox-behavioral-real.sql:68: NOTICE:  PASS 2: rollback left no orphan Part and no orphan AuditOutbox (p=0, o=0)
+DO
+
+--- Section 3: outbox drain claim + complete ---
+psql:/tmp/store-outbox-behavioral-real.sql:91: NOTICE:  PASS 3a: claim — status=CLAIMED, attempts unchanged (0)
+psql:/tmp/store-outbox-behavioral-real.sql:91: NOTICE:  PASS 3b: complete — status=DONE
+DO
+PASS 3: outbox drain (claim + complete);
+
+--- Section 4: stale-lease recovery ---
+psql:/tmp/store-outbox-behavioral-real.sql:115: NOTICE:  PASS 4: stale lease re-claimed, active lease untouched
+DO
+PASS 4: lease recovery;
+
+--- Section 5: dedup index check ---
+psql:/tmp/store-outbox-behavioral-real.sql:133: NOTICE:  FINDING 5: no UNIQUE index on AuditOutbox(eventHash) — dedup must be enforced at application layer (inspector flagged as finding, not failure)
+DO
+
+--- Section 6: FAILED retry + dead-letter ---
+psql:/tmp/store-outbox-behavioral-real.sql:157: NOTICE:  PASS 6a: FAILED→PENDING retry, attempts incremented to 3
+psql:/tmp/store-outbox-behavioral-real.sql:157: NOTICE:  PASS 6b: dead-letter — row at max attempts (5) NOT retried
+DO
+PASS 6: FAILED retry + dead-letter;
+
+--- Section 7: migration history ---
+psql:/tmp/store-outbox-behavioral-real.sql:172: NOTICE:  PASS 7: _prisma_migrations present with 2 finished migration(s)
+DO
+
+====================================================================
+ Behavioral tests COMPLETE — all sections reached end-of-script.
+ If no EXCEPTION raised above → all PASS.
+====================================================================

@@ -1,0 +1,14 @@
+CLASSIFICATION (editorial; not captured command output):
+STATUS: INCONCLUSIVE / FAIL — NOT BACKUP/RESTORE PROOF.
+The preceding concurrency test had reduced the sentinel stock to 0; this drill did not re-seed it to the intended non-zero value (for example, 42).
+Matching source and restore values of 0 and matching schema counts do not prove restoration of the intended non-zero sentinel. The captured command output begins below; preserve its final VERDICT: FAIL.
+
+=== G4 backup/restore drill (capture) ===
+sentinel before: part=0 outbox=1
+before: tables=36 fks=36 migs=2
+dump size: 76K
+DROP DATABASE
+CREATE DATABASE
+after:  tables=36 fks=36 migs=2 sentinel_part=0 sentinel_outbox=1
+source: sentinel_part=0 sentinel_outbox=1
+VERDICT: FAIL

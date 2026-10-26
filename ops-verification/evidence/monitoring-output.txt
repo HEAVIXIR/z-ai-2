@@ -1,0 +1,15 @@
+ status  | rows 
+---------+------
+ PENDING |    1
+(1 row)
+
+ negative_stock_parts | total_parts 
+----------------------+-------------
+                    0 |           1
+(1 row)
+
+ failed_migrations | total 
+-------------------+-------
+                 0 |     2
+(1 row)
+

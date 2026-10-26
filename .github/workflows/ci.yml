@@ -138,10 +138,54 @@ jobs:
           }
           console.log(`PASS: ${tests.length} Store/Outbox PostgreSQL behavioral tests passed; no skips or pending tests.`);
           NODE
+      - name: Manual Store SQL invariants (PostgreSQL 17; direct SQL only)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          {
+            echo "commit: $GITHUB_SHA"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -Atc "SHOW server_version;"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS heavix_store_manual_sql_proof WITH (FORCE);"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_manual_sql_proof;"
+            STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_store_manual_sql_proof?schema=public" \
+              bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+            STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_store_manual_sql_proof?schema=public" \
+              bunx prisma migrate status --schema=prisma/store/schema.prisma
+            psql -h localhost -U postgres -d heavix_store_manual_sql_proof -v ON_ERROR_STOP=1 \
+              -f ops-verification/evidence/store-outbox-behavioral-tests-real.sql
+          } 2>&1 | tee "$RUNNER_TEMP/store-manual-sql-output.txt"
+      - name: Store backup/restore proof (disposable PostgreSQL 17)
+        env:
+          HEAVIX_ALLOW_DISPOSABLE_DB_RESET: '1'
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          bash scripts/test-store-backup-restore-ci.sh 2>&1 | tee "$RUNNER_TEMP/store-backup-restore-output.txt"
+      - name: Upload reproducible Store/Outbox evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-outbox-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/store-manual-sql-output.txt
+            ${{ runner.temp }}/store-backup-restore-output.txt
+          if-no-files-found: warn
+          retention-days: 14
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
-        run: bunx vitest run tests/integration/*.test.ts
+        # Store/Outbox suites run above in a dedicated fail-closed gate. Do not
+        # run those same DB suites a second time in this broad parallel sweep:
+        # duplicate generated-client loading can fail after the dedicated gate
+        # has already passed. The dedicated gate remains authoritative.
+        run: >-
+          bunx vitest run tests/integration/*.test.ts
+          --exclude tests/integration/store-audit-outbox-resilience.test.ts
+          --exclude tests/integration/store-inventory-return-atomicity.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
