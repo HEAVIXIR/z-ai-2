@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/legacy-archive-audit.yml"
       - "scripts/legacy_archive_audit.py"
+      - "scripts/legacy_nested_zip_audit.py"
   workflow_dispatch:
 permissions:
   contents: write
