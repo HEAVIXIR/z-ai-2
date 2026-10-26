@@ -55,7 +55,7 @@ for archive in ARCHIVES:
   try: data=zf.read(info)
   except Exception: local["read_error"]+=1; continue
   h=digest(data); cross[path].append((archive,h))
-  review_exports={"scripts/catalog-health.ts","scripts/security-check.ts","prisma/seed-price-records.ts","scripts/rebuild-taxonomy.ts","scripts/seed-store-comprehensive.ts"}
+  review_exports={"scripts/catalog-health.ts","scripts/security-check.ts","prisma/seed-price-records.ts","scripts/rebuild-taxonomy.ts","scripts/seed-store-comprehensive.ts","src/components/compare/ComparePageClient.tsx","src/components/listings/PriceIntelligence.tsx","src/lib/price-intelligence.ts"}
   if path in review_exports and not (ROOT/path).is_file():
    candidate=ROOT/"docs/legacy-parity/candidates"/path
    candidate.parent.mkdir(parents=True,exist_ok=True)
