@@ -71,10 +71,12 @@ of them is either dropped or moved to the Gated register (§8).
 5. **Grounded in real data.** Every "required data" field cites the actual
    Prisma model and field. Where a field does not yet exist, the portfolio
    says so and references the additive migration that would add it.
-6. **AI must go through the AI Gateway** (`src/lib/ai-gateway-service.ts`).
-   No direct `ZAI.create()` calls in new code. Existing pre-Gateway modules
-   (`ai-listing-builder.ts`, `ai-content-assistant.ts`) must be migrated to
-   the Gateway before their AI Listing Studio integration ships.
+6. **AI must use the canonical policy-enforced gateway boundary.**
+   No direct `ZAI.create()` calls in new code. The unused parallel
+   `src/lib/ai-gateway-service.ts` was removed because it did not implement
+   the maintained five-gate preflight. Existing modules with direct provider
+   calls must migrate through the reviewed shared adapter tracked in Issue #111
+   before their user-facing integration ships.
 7. **No generic chatbot.** Each AI capability is a specific product flow with
    structured output + a CTA (deep link to the page where the human acts).
 8. **Cost & rate limits are first-class.** Every AI idea declares an
@@ -107,7 +109,7 @@ delta changes which ideas are blocked vs. shippable.
 | **PR #10 — STEP 11.29 research + design foundation** (`f597562`, merged) | MERGED into `main` | Brought the 17-idea Innovation Program, ADR-005 amendment, Store Center UX prototype, financing/leasing docs. This portfolio is a distillation of that program. |
 | **`/api/listing-completeness` route** (`src/app/api/listing-completeness/route.ts`, 107 lines) | SHIPPED | A deterministic 0–100 listing-completeness score with a 10-item checklist (image, price, brand, category, description, year, hours, phone, specs, verified). This is the foundation for Idea #4 (Smart Inventory) — the MVP extends it, does not rebuild it. **Gap:** the route has no tenant-scope ownership check; it loads any listing by `id`. Must be wrapped in an ownership check before the seller-facing Smart Inventory UI ships (see §3.2). |
 | **`src/lib/ai-listing-builder.ts`** (333 lines) | SHIPPED (pre-Gateway) | `analyzeListing()` extracts brand/model/category/attributes/SEO description/fair-price-range from listing draft text; `improveListingContent()` rewrites title+description. Every value tagged `AI_SUGGESTED`. **Gap:** calls `ZAI.create()` directly, not via the AI Gateway. Must be migrated before Idea #6 (AI Listing Studio) ships. |
-| **`src/lib/ai-gateway-service.ts`** (189 lines) | SHIPPED | Central AI Gateway enforcing policy (`AITaskPolicy`), budget (`AIBudget`), audit (`AIGatewayLog`). All new AI calls must route through `aiGateway.execute({ taskType, userId, prompt, ... })`. |
+| **Canonical AI gateway** (`src/app/api/ai-gateway/route.ts`) | ACTIVE | HTTP entry point with policy preflight and budget/audit controls. Server-side helper modules still need a reviewed shared adapter; see Issue #111. The unused parallel service was removed. |
 | **`src/lib/crm/lead-status.ts`** + **`src/lib/crm/lead-score.ts`** | SHIPPED | The Lead CRM plumbing (status state machine + deterministic score v1 + override bookkeeping) is in place. Idea #3 needs UI + recalc job + tenant-scoped read, not a new algorithm. |
 
 ### 3.2 PR-SC-00 (tenant-scoping) status — UNMERGED, partial coverage
@@ -406,7 +408,7 @@ next day. The Copilot is the surface that compresses "open 6 pages, find the
 - **PR-SC-06** (Lead Score recalc job) — the Copilot reads `Lead.score`; if
   no recalc job runs, the score is stale and the "hottest lead" bullet is
   wrong.
-- **AI Gateway migration:** the Q&A path must go through `aiGateway.execute`
+- **AI Gateway migration:** the Q&A path must use the reviewed shared AI adapter (tracked in Issue #111)
   (not direct `ZAI.create()`).
 
 #### 1.12 Success metric (with baseline)
@@ -1194,7 +1196,7 @@ analysis.
   re-uploads images. The "improve photo" CTA links to the seller's own
   upload page.
 - **AI Gateway migration required:** the existing `ai-listing-builder.ts`
-  must be migrated to call `aiGateway.execute({ taskType: 'LISTING_BUILDER',
+  must migrate to the reviewed shared AI adapter with task policy `LISTING_BUILDER`
   ... })` instead of `ZAI.create()` directly. This is a refactor, not a
   rewrite — the prompts and JSON schemas stay.
 - `AITaskPolicy` for `LISTING_BUILDER`: `allowedRoles=ADMIN,SELLER`,
@@ -1262,7 +1264,7 @@ Persian speakers (a meaningful segment for industrial machinery in Iran).
 
 #### 6.11 Technical dependency
 - **AI Gateway migration of `ai-listing-builder.ts`** — refactor existing
-  direct `ZAI.create()` calls to `aiGateway.execute({ taskType:
+  direct provider calls to the reviewed shared AI adapter (tracked in Issue #111); task policy:
   'LISTING_BUILDER', ... })`. Hard blocker — Rule #6.
 - **New `AITaskPolicy` rows** for `LISTING_TRANSLATE` and (Future)
   `IMAGE_QUALITY`.
@@ -1474,7 +1476,7 @@ follow-up.
 
 ### 9.4 AI Gateway migration of `ai-listing-builder.ts`
 Idea #6 (AI Listing Studio) depends on migrating `ai-listing-builder.ts`
-from direct `ZAI.create()` to `aiGateway.execute()`. The existing function
+from direct provider calls to the reviewed shared AI adapter. The existing function
 is called by admin flows (`/api/admin/ai/listing-analyze`, etc.); the
 migration must preserve behavior. This is a refactor, not a rewrite — but
 it needs regression coverage.
