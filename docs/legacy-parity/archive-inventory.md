@@ -6,9 +6,9 @@ No archive content is extracted into the repository or executed. This report doe
 ## Summary
 
 - Archives expected: 13
-- Missing path candidates: 56
-- Same-path content conflicts: 314
-- Identical files: 516
+- Missing path candidates: 47
+- Same-path content conflicts: 315
+- Identical files: 524
 - Excluded entries: 828
 - Binary entries requiring review: 1
 - Unsafe paths skipped: 0
@@ -25,29 +25,25 @@ No archive content is extracted into the repository or executed. This report doe
 
 - Archive bytes: 13,543
 - Archive SHA-256: 9891d8682e85ef37e00edfc5535ef1ddbacc62da20b941e9802730dcbfd50424
-- ZIP entries: 10; normalized prefix retained: False
+- ZIP entries: 10; normalized prefix retained: True
 - Uncompressed bytes examined: 29,007
-- Counts: missing=10
+- Counts: conflict=1, identical=8, missing=1
 
-### Missing candidates (not imported) — 10
-- .zscripts/zscripts/build.sh (7,258 bytes; sha256 5339ee44f012d8d5)
-- .zscripts/zscripts/database-runtime-build.sh (901 bytes; sha256 08cc5e20d2ed0cec)
-- .zscripts/zscripts/dev.pid (5 bytes; sha256 41f610c24cd3eb47)
-- .zscripts/zscripts/dev.sh (4,168 bytes; sha256 00877abea9e13ed7)
-- .zscripts/zscripts/keep-dev-alive.sh (424 bytes; sha256 28444855d4495d15)
-- .zscripts/zscripts/mini-services-build.sh (2,365 bytes; sha256 c29b8708832fe74e)
-- .zscripts/zscripts/mini-services-install.sh (1,951 bytes; sha256 c4d0ac5a9101e170)
-- .zscripts/zscripts/mini-services-start.sh (3,326 bytes; sha256 14d922bdc4b1fba7)
-- .zscripts/zscripts/python-runtime-build.sh (4,190 bytes; sha256 af96c7fe2533b8df)
-- .zscripts/zscripts/start.sh (4,419 bytes; sha256 064d2471ef1fb3d8)
+### Missing candidates (not imported) — 1
+- .zscripts/dev.pid (5 bytes; sha256 41f610c24cd3eb47)
 
-### Path conflicts / different content
+### Path conflicts / different content — 1
+- .zscripts/database-runtime-build.sh (archive 08cc5e20d2ed0cec, current 2dbfa1d73c006028)
 
-None.
-
-### Identical files
-
-None.
+### Identical files — 8
+- .zscripts/build.sh
+- .zscripts/dev.sh
+- .zscripts/keep-dev-alive.sh
+- .zscripts/mini-services-build.sh
+- .zscripts/mini-services-install.sh
+- .zscripts/mini-services-start.sh
+- .zscripts/python-runtime-build.sh
+- .zscripts/start.sh
 
 ### Excluded files
 
@@ -63,7 +59,7 @@ None.
 - Archive SHA-256: 65e944aa86c2179e76739c7d2230d79b5915ad41b1ef36a3c89011dda3b457e0
 - ZIP entries: 821; normalized prefix retained: False
 - Uncompressed bytes examined: 42,916,167
-- Counts: EXCLUDE_DATABASE_OR_BACKUP=5, EXCLUDE_RUNTIME_BUNDLE=816
+- Counts: EXCLUDE_DATABASE_OR_BACKUP=5, EXCLUDE_RUNTIME_BUNDLE=815, EXCLUDE_SECRET_OR_KEY=1
 
 ### Missing candidates (not imported)
 
