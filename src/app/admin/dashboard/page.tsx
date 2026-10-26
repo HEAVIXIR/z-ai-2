@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { toFa, timeAgo, formatCompactPrice } from "@/lib/format";
+import { ReleaseReadinessPanel } from "@/components/admin/ReleaseReadinessPanel";
 import {
   Megaphone,
   Building2,
@@ -216,6 +217,8 @@ export default async function DashboardPage() {
           نمای کلی پلتفرم هویکس — سلامت سیستم، دسترسی سریع و فعالیت‌های اخیر
         </p>
       </div>
+
+      <ReleaseReadinessPanel />
 
       {/* Stat cards */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
