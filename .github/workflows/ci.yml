@@ -138,6 +138,21 @@ jobs:
           }
           console.log(`PASS: ${tests.length} Store/Outbox PostgreSQL behavioral tests passed; no skips or pending tests.`);
           NODE
+      - name: Manual Store SQL invariants (PostgreSQL 17; direct SQL only)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d heavix_store_test -v ON_ERROR_STOP=1 \
+            -f ops-verification/evidence/store-outbox-behavioral-tests-real.sql
+      - name: Store backup/restore proof (disposable PostgreSQL 17)
+        env:
+          HEAVIX_ALLOW_DISPOSABLE_DB_RESET: '1'
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash scripts/test-store-backup-restore-ci.sh
       - name: Integration test files
         env:
           DRYUN_RO_PW: ${{ env.DRYUN_RO_PW }}
