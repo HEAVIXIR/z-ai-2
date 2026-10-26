@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: \${{ github.ref_name }}
+          ref: ${{ github.ref_name }}
       - name: Download pinned legacy archives
         shell: bash
         run: |
@@ -40,7 +40,7 @@ jobs:
             echo "Inventory report unchanged."
           else
             git commit -m "docs: record legacy archive inventory"
-            git push origin "HEAD:\${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
           fi
       - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
