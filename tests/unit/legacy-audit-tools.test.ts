@@ -10,6 +10,7 @@ describe("legacy audit tools", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("heuristic");
     expect(result.stdout).toContain("src/app/api/ai-gateway/route.ts");
+    expect(result.stdout).toContain("src/lib/ai-gateway-service.ts");
     expect(result.stdout).not.toContain(" - src/app/api/ai-gateway/route.ts");
   });
 
