@@ -185,7 +185,7 @@ jobs:
         # avoid cross-suite DB/client races; Store/Outbox still has its dedicated gate.
         run: >-
           bunx vitest run tests/integration/*.test.ts
-          --maxWorkers=1 --minWorkers=1
+          --no-file-parallelism
           --exclude tests/integration/store-audit-outbox-resilience.test.ts
           --exclude tests/integration/store-inventory-return-atomicity.test.ts
       - name: All contract + unit tests
