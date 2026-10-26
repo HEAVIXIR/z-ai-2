@@ -2,15 +2,15 @@
 
 **Source repository:** [HEAVIXIR/z](https://github.com/HEAVIXIR/z)  
 **Pinned source commit:** `217f98ecc800aa64ae4739d27ed2aeb95dd260ed`  
-**Target baseline reviewed:** `a3d88ad879dac9dfbef04680a849b58a2e8f64b0`  
-**Inventory evidence:** [CI run #40343353041](https://github.com/HEAVIXIR/z-ai-2/actions/runs/40343353041), artifact `legacy-archive-inventory`  
+**Target main baseline reviewed:** `97e43ebd7349b56c54cddf000531c5e267f6c4f8`  
+**Inventory evidence:** [CI run #40374044751](https://github.com/HEAVIXIR/z-ai-2/actions/runs/40374044751), artifact `legacy-archive-inventory`  
 **Decision type:** static source/archive triage; not a runtime or feature-completeness claim.
 
 ## Inventory result
 
-The source repository is an archive container, not a canonical live source tree. Thirteen ZIP archives contained 1,715 archive-entry rows. Those rows collapse to 909 unique paths: 529 identical paths, 327 existing-path conflicts, and 53 unique paths absent from the target (86 NEW rows because some paths occur in more than one archive). The inventory reported 22 sensitive-review rows, zero unsafe archive paths, zero archive read errors, and zero cross-archive hash collisions.
+The source repository is an archive container, not a canonical live source tree. Thirteen ZIP archives contained 1,715 archive-entry rows. Those rows collapse to 909 unique paths: 528 identical paths, 327 existing-path conflicts, and 54 unique paths absent from current main (88 NEW rows because some paths occur in more than one archive). The inventory reported 22 sensitive-review rows, zero unsafe archive paths, zero archive read errors, and zero cross-archive hash collisions.
 
-The audit artifact staged 25 text/code candidates for review only. **No candidate from that temporary artifact is imported by this document.** Path absence is not approval to restore an old implementation.
+The audit artifact staged 26 text/code candidates for review only. **No candidate from that temporary artifact is imported by this document.** Path absence is not approval to restore an old implementation.
 
 ## Complete decision register — all 53 unique NEW paths
 
@@ -51,6 +51,7 @@ The audit artifact staged 25 text/code candidates for review only. **No candidat
 | `scripts/start-dev.sh` | **EXCLUDE / use canonical scripts** | Target package scripts own developer startup; environment-specific shell orchestration is not a product capability. |
 | `src/components/compare/ComparePageClient.tsx` | **REJECT direct copy; port behavior only if gap proven** | Archived UI expects `/api/admin/listings` and GET `/api/compare?ids=...`; target comparison uses a session-based API and share flow. Contracts are incompatible by assumption. |
 | `src/components/listings/PriceIntelligence.tsx` | **REJECT direct copy; reimplement only if needed** | Archived widget expects flat `average/median/min/max/sampleSize/reason` fields; current route response is structurally different. Use Issue #95 and tested canonical contracts. |
+| `src/lib/ai-gateway-service.ts` | **REJECT — do not restore** | Removed from current main by PR #119 because it was unused, implemented weaker ad-hoc policy checks, and parsed unvalidated JSON. Active direct provider call sites remain tracked separately in Issue #111; do not restore this parallel gateway. |
 | `src/lib/price-intelligence.ts` | **REJECT direct import** | Reads/writes deprecated `PriceRecord`; would create a parallel price domain instead of using canonical `PriceObservation`. |
 | `upload/HEAVIX-AUDIT-2026-09-20.md` | **REVIEW CONTENT; do not duplicate under upload** | Compare claims to current source and retain only updated, evidence-backed material in the canonical `docs/` location. |
 | `upload/HEAVIX-COMPLETION-SPECIFICATION-V1.0.md` | **REVIEW CONTENT; no blind import** | Reconcile with current architecture and release gates; archived specification is not implementation evidence. |
@@ -85,12 +86,10 @@ The audit artifact staged 25 text/code candidates for review only. **No candidat
 No missing path is approved for verbatim import by this inventory. A future capability PR must identify the concrete product gap, map the old behavior to current route/service/model/UI, use canonical schema paths, add contract and permission-negative tests, and pass exact-HEAD CI plus non-author review. Database seeds, taxonomy rebuilds, image transformations, migrations, backfills, production/staging changes, deployment and worker activation remain separately gated.
 
 
-## Post-baseline delta — 2026-10-26
+## Inventory refresh and baseline history
 
-This decision register's 53-path counts are pinned to the reviewed target baseline `a3d88ad879dac9dfbef04680a849b58a2e8f64b0`; they are not a fresh inventory of current `main`.
-
-| Path introduced as legacy-only after the pinned baseline | Decision | Evidence / reason |
-|---|---|---|
-| `src/lib/ai-gateway-service.ts` | **REJECT — do not restore** | Removed from current `main` by [PR #119](https://github.com/HEAVIXIR/z-ai-2/pull/119) because it was unused, implemented weaker ad-hoc policy checks, and parsed unvalidated JSON. Active direct provider call sites remain tracked separately in Issue #111; do not restore this parallel gateway. |
-
-The baseline inventory is retained as historical evidence. Before declaring current-main legacy parity complete, rerun the read-only archive inventory against current `main` and reconcile the path-count delta. No legacy file is approved for verbatim import by this register.
+- Current target main baseline reviewed: `97e43ebd7349b56c54cddf000531c5e267f6c4f8`.
+- Fresh read-only inventory: [CI run #40374044751](https://github.com/HEAVIXIR/z-ai-2/actions/runs/40374044751); 1,715 archive-entry rows, 909 unique paths, 528 identical paths, 327 conflicts, and 54 unique paths absent from current main (88 NEW rows).
+- The prior inventory at target baseline `a3d88ad879dac9dfbef04680a849b58a2e8f64b0` had 53 unique missing paths. The current delta includes `src/lib/ai-gateway-service.ts`, classified REJECT after its removal in PR #119.
+- The inventory job ran on a temporary audit PR based on current main with only a temporary workflow file added to produce the artifact. That workflow is not intended to merge and did not change main or application code.
+- This is source/archive triage, not a claim of feature parity. No legacy file is approved for verbatim import by this register.
