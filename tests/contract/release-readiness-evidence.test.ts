@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveReadinessStatus,
+  releaseReadiness,
   MAX_EVIDENCE_AGE_MS,
   type ReadinessGate,
   type ReadinessSnapshot,
@@ -24,6 +25,10 @@ const gate: ReadinessGate = {
 };
 
 describe("release readiness evidence fail-closed rules", () => {
+  it("exports the timestamped releaseReadiness snapshot", () => {
+    expect(releaseReadiness.mainSha).toMatch(/^[a-f0-9]{40}$/);
+    expect(releaseReadiness.gates.length).toBeGreaterThan(0);
+  });
   it("keeps fresh evidence PASS only when runtime SHA and evidence SHA match the snapshot", () => {
     expect(effectiveReadinessStatus(gate, snapshot, now, sha)).toBe("PASS");
   });
