@@ -85,13 +85,31 @@ export function effectiveReadinessStatus(
   now: Date,
   currentSha: string | null,
 ): ReadinessStatus {
-  if (!snapshot.mainSha || !snapshot.observedAt || !currentSha) return "PENDING";
+  const shaPattern = /^[a-f0-9]{40}$/;
+  if (
+    !shaPattern.test(snapshot.mainSha) ||
+    !snapshot.observedAt ||
+    !snapshot.sourceUrl ||
+    !currentSha ||
+    !shaPattern.test(currentSha) ||
+    !gate.title ||
+    !gate.sourceUrl ||
+    !gate.evidence
+  ) {
+    return "PENDING";
+  }
   const observedAt = Date.parse(snapshot.observedAt);
   if (!Number.isFinite(observedAt)) return "PENDING";
   const age = now.getTime() - observedAt;
   if (age < 0 || age > MAX_EVIDENCE_AGE_MS) return "PENDING";
   if (currentSha !== snapshot.mainSha) return "PENDING";
-  if (!gate.evidenceSha || gate.evidenceSha !== snapshot.mainSha) return "PENDING";
+  if (
+    !gate.evidenceSha ||
+    !shaPattern.test(gate.evidenceSha) ||
+    gate.evidenceSha !== snapshot.mainSha
+  ) {
+    return "PENDING";
+  }
   return gate.status;
 }
 
