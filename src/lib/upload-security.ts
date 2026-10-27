@@ -12,6 +12,10 @@
      • `sanitizeFilename()`     — random, opaque safe filename.
      • `validateImageBuffer()`  — combined size + magic-bytes gate.
 
+   Decoded dimension limits, orientation correction and static-image
+   metadata removal are implemented by `media-image-optimizer.ts`.
+   Malware scanning, video and document processing remain separate work.
+
    The client-supplied `file.type` and original filename are NEVER
    trusted; both are replaced server-side.
 
@@ -204,31 +208,4 @@ export function validateImageBuffer(buffer: Buffer): UploadValidation {
     ext: detected.ext,
     mime: detected.mime,
   };
-}
-
-/* ── EXIF sanitisation ──────────────────────────────────────── */
-
-/**
- * Best-effort EXIF-strip log helper.
- *
- * Full EXIF stripping requires decoding the JPEG APP1 marker and
- * re-encoding the image (e.g. with `sharp` or `jpeg-js`). That work
- * is tracked separately; for now we log the recommendation so the
- * security event is auditable per HEAVIX-SECURITY-BASELINE-V1 §10
- * ("upload rejection" / "suspicious activity").
- *
- * Call this from the upload route when a JPEG is accepted. It does
- * NOT mutate the buffer — it is a marker for the audit log until
- * the decode-and-re-encode pipeline lands (P1).
- */
-export function logExifSanitizationRecommendation(
-  type: ImageType,
-  bytes: number,
-): void {
-  if (type !== "jpeg") return;
-  console.warn(
-    `[upload-security] JPEG accepted (${bytes} bytes) — EXIF metadata NOT stripped. ` +
-      `TODO(P1): re-encode via sharp({ jpeg: true }) or strip APP1 marker before persisting. ` +
-      `Recommended by HEAVIX-SECURITY-BASELINE-V1 §7 (file security) and STEP 6 of P0-IMPLEMENTATION-PLAN.`,
-  );
 }

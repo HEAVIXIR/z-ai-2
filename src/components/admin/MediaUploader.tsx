@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
 import {
   Loader2,
   Upload,
@@ -14,8 +15,8 @@ import {
 /* ============================================================
    MediaUploader — reusable per-section media manager widget.
 
-   Lets the admin either (a) upload a new image via the public
-   /api/upload endpoint, or (b) paste an external URL directly.
+   Lets the admin either (a) upload a new image via the admin-only
+   /api/admin/upload endpoint, or (b) paste an external URL directly.
    Calls onChange(url) whenever the resulting URL changes.
 
    Designed theme-agnostic: works on light (zinc/white) surfaces
@@ -29,8 +30,8 @@ import {
      • onChange   — (url: string | null) => void
      • label?     — Persian label above the field
      • accept?    — input accept attr (default "image/*")
-     • maxSize?   — bytes, default 5MB
-     • endpoint?  — upload endpoint (default "/api/upload")
+     • maxSize?   — bytes, default 4 MiB
+     • endpoint?  — upload endpoint (default "/api/admin/upload")
      • theme?     — "light" | "dark" | "auto" (default "auto")
      • hint?      — small helper text under the field
      • compact?   — render a one-line variant (no big preview)
@@ -51,7 +52,7 @@ export interface MediaUploaderProps {
   className?: string;
 }
 
-const DEFAULT_MAX = 5 * 1024 * 1024;
+const DEFAULT_MAX = 4 * 1024 * 1024;
 
 export default function MediaUploader({
   value,
@@ -59,7 +60,7 @@ export default function MediaUploader({
   label,
   accept = "image/*",
   maxSize = DEFAULT_MAX,
-  endpoint = "/api/upload",
+  endpoint = "/api/admin/upload",
   theme = "auto",
   hint,
   compact = false,
@@ -69,6 +70,7 @@ export default function MediaUploader({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [compressionInfo, setCompressionInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrlBox, setShowUrlBox] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
@@ -105,26 +107,23 @@ export default function MediaUploader({
   const handleUpload = useCallback(
     async (file: File) => {
       setError(null);
+      setCompressionInfo(null);
       if (!file.type.startsWith("image/")) {
         setError("تنها فایل تصویری مجاز است.");
         return;
       }
-      if (file.size > maxSize) {
-        setError(
-          `حجم فایل بیش از ${Math.floor(maxSize / (1024 * 1024))} مگابایت است.`,
-        );
-        return;
-      }
       setUploading(true);
       try {
+        const prepared = await prepareImageForUpload(file, Math.min(maxSize, DEFAULT_MAX));
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", prepared.file);
         const res = await fetch(endpoint, { method: "POST", body: fd });
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.url) {
           throw new Error(json?.error ?? "آپلود ناموفق بود.");
         }
         onChange(json.url);
+        setCompressionInfo(describeCompression(prepared));
       } catch (err: any) {
         setError(err?.message ?? "خطای شبکه هنگام آپلود.");
       } finally {
@@ -164,6 +163,7 @@ export default function MediaUploader({
     setUrlDraft("");
     setShowUrlBox(false);
     setError(null);
+    setCompressionInfo(null);
   };
 
   const remove = () => {
@@ -171,6 +171,7 @@ export default function MediaUploader({
     setUrlDraft("");
     setShowUrlBox(false);
     setError(null);
+    setCompressionInfo(null);
   };
 
   /* ----- Compact one-line variant ----- */
@@ -234,6 +235,9 @@ export default function MediaUploader({
         )}
         {hint && !error && (
           <p className={`text-[10px] ${mutedCls}`}>{hint}</p>
+        )}
+        {compressionInfo && (
+          <p className={`text-[10px] ${mutedCls}`}>{compressionInfo}</p>
         )}
       </div>
     );
@@ -323,7 +327,7 @@ export default function MediaUploader({
             {uploading ? "در حال آپلود…" : "فایل را اینجا رها کنید یا کلیک کنید"}
           </div>
           <div className={`text-[10px] ${mutedCls}`}>
-            حداکثر {Math.floor(maxSize / (1024 * 1024))} مگابایت · تصویر
+            حداکثر {Math.floor(Math.min(maxSize, DEFAULT_MAX) / (1024 * 1024))} مگابایت · تصویر
           </div>
           <input
             ref={inputRef}
@@ -397,6 +401,9 @@ export default function MediaUploader({
       )}
       {hint && !error && (
         <p className={`text-[10px] ${mutedCls}`}>{hint}</p>
+      )}
+      {compressionInfo && (
+        <p className={`text-[10px] ${mutedCls}`}>{compressionInfo}</p>
       )}
     </div>
   );
