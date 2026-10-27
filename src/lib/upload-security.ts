@@ -123,7 +123,7 @@ export function detectImage(buffer: Buffer): DetectedImage | null {
   return { type, ext: EXT_BY_TYPE[type], mime: MIME_BY_TYPE[type] };
 }
 
-/* ── Filename sanitisation ────────────────────────────────────── */
+/* ── Filename sanitisation ──────────────────────────────────── */
 
 /**
  * Generate a safe, random, opaque filename.
@@ -131,10 +131,17 @@ export function detectImage(buffer: Buffer): DetectedImage | null {
  * The original user-supplied filename is NEVER used on disk — it
  * can carry path traversal segments, weird unicode, attacker-controlled
  * extensions, EXIF-leaking camera model names, etc. Instead we mint
- * a fresh identifier and append the server-derived extension.
+ * a fresh `cuid`-like identifier and append the server-derived
+ * extension. The returned string contains only `[a-z0-9]` and a
+ * single dot — safe to embed in any URL or filesystem path.
+ *
+ * Note: we use `crypto.randomBytes` for the random component (24 hex
+ * chars = 96 bits of entropy) plus a millisecond timestamp prefix to
+ * keep filenames lexically sortable by creation time.
  */
 export function sanitizeFilename(ext: string): string {
   const safeExt = (ext || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // 24 hex chars from 12 random bytes.
   const rand = randomHex(12);
   const ts = Date.now().toString(36);
   return `${ts}-${rand}${safeExt ? "." + safeExt : ""}`;
@@ -142,6 +149,7 @@ export function sanitizeFilename(ext: string): string {
 
 /** Generate `bytes` random bytes as a lowercase hex string. */
 function randomHex(bytes: number): string {
+  // Use the Node global crypto — works in the Next.js node runtime.
   const c = globalThis.crypto as unknown as {
     randomBytes?: (n: number) => Buffer;
     getRandomValues?: (arr: Uint8Array) => Uint8Array;
@@ -149,6 +157,7 @@ function randomHex(bytes: number): string {
   if (typeof c?.randomBytes === "function") {
     return c.randomBytes(bytes).toString("hex");
   }
+  // Fallback (Web Crypto) — slower but correct.
   const arr = new Uint8Array(bytes);
   c?.getRandomValues?.(arr);
   return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -166,7 +175,7 @@ export interface UploadValidation {
 
 /**
  * Combined size + magic-bytes gate. Callers should pass the FULL
- * uploaded buffer (after `arrayBuffer()`/ `Buffer.from(...)`).
+ * uploaded buffer (after `arrayBuffer()`/`Buffer.from(...)`).
  *
  * On success: `{ ok: true, type, ext, mime }`.
  * On failure: `{ ok: false, error }` with a Persian message suitable
