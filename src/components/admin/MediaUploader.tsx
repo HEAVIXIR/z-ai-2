@@ -30,7 +30,7 @@ import {
      • label?     — Persian label above the field
      • accept?    — input accept attr (default "image/*")
      • maxSize?   — bytes, default 5MB
-     • endpoint?  — upload endpoint (default "/api/upload")
+     • endpoint?  — upload endpoint (default "/api/admin/upload")
      • theme?     — "light" | "dark" | "auto" (default "auto")
      • hint?      — small helper text under the field
      • compact?   — render a one-line variant (no big preview)
@@ -59,7 +59,7 @@ export default function MediaUploader({
   label,
   accept = "image/*",
   maxSize = DEFAULT_MAX,
-  endpoint = "/api/upload",
+  endpoint = "/api/admin/upload",
   theme = "auto",
   hint,
   compact = false,
