@@ -1,37 +1,17 @@
-# Cloudflare Runtime Compatibility Audit
 
-**Audit baseline:** `main` at `54d9b25292d1f09a12899208dbbe057e006932f8` (2026-10-27)  
-**Status:** assessment in progress; no deployment or production changes.
 
-## Executive finding
-
-The current application is a full-stack Next.js 16 application with NextAuth 4, Prisma 6, and two PostgreSQL schemas/databases (main and store). The repository is not yet demonstrated to be compatible with Cloudflare Workers. A deployment adapter alone would not resolve the runtime and persistence constraints below.
-
-## Verified compatibility risks
+## Additional route and transitive-import findings
 
 | Area | Repository evidence | Impact / required action |
 |---|---|---|
-| Persistent media | `src/lib/media-service.ts` imports `node:fs` and `node:path`; admin media library route also imports filesystem APIs. | Worker-local filesystem is not durable shared storage. Introduce a storage abstraction and verify R2 access before migrating uploads; preserve metadata and authorization semantics. |
-| Backup operation | `src/app/api/admin/backup/route.ts` imports `node:child_process`, `node:fs/promises`, `node:path`, and `node:util`. | Shell/OS-dependent backup cannot be assumed to run on Workers. Keep it on a controlled Node runtime or design a separate authenticated backup job with restore verification. Do not drop backup coverage. |
-| Node runtime declarations | Multiple routes explicitly declare `runtime = "nodejs"`, including menu, orders, health, sitemap, auth/me, articles, settings, payments, services, and companies. | Inventory every route and its transitive imports. Runtime declarations and dependencies need an explicit compatibility decision; no bulk conversion to Edge is safe. |
-| Database drivers | `package.json` uses Prisma `^6.11.1`; `src/lib/db.ts` and `src/lib/store-db.ts` maintain separate clients. | Validate Prisma engine/driver compatibility and network connectivity for both PostgreSQL databases. Do not substitute D1 or run migrations as part of deployment setup. |
-| Build configuration | `next.config.ts` sets `output: "standalone"` and strict TypeScript build checking. | Current standalone output is a Node-oriented deployment signal. Confirm the currently supported Cloudflare Next.js adapter and its supported Next.js version/features before changing build configuration. |
-| Security headers | `next.config.ts` defines HSTS, CSP, frame and permissions policies through `headers()`. | Confirm adapter/platform behavior preserves headers and route protections in the deployed output; verify with runtime tests rather than assuming configuration parity. |
+| Session/auth | `src/lib/auth.ts` uses `node:crypto.randomBytes` and `next/headers`, then reads/writes sessions through Prisma. | Test token generation, cookie flags, session expiry, blocked-user handling, and fail-closed behavior on the target runtime. Do not weaken the canonical session contract. |
+| Main Prisma client | `src/lib/db.ts` uses guarded runtime `require('@prisma/client')`, inspects and deletes `require.cache`, and expects generated client files on disk. | This development hot-reload workaround is Node/filesystem-oriented. Check production bundling and Prisma engine strategy under the chosen adapter; likely requires a deliberate production-compatible client setup rather than carrying over dev cache-purge behavior blindly. |
+| Store Prisma client | `src/lib/store-db.ts` imports a separately generated client from `src/lib/generated/store-client`. | Validate generated artifacts and connection configuration independently for the store database. Main-database connectivity alone is insufficient. |
+| Admin media library | `src/app/api/admin/media-library/route.ts` recursively enumerates `public/uploads` and stats local files after checking `media.manage`. | Moving uploads to object storage requires replacing both media writes/reads and this administrative listing contract; preserve the permission check and response shape or explicitly version the API. |
+| Middleware | `src/middleware.ts` checks the `heavix-user` cookie for admin page/API routing; deeper authorization is implemented in route code. | Verify middleware behavior and every route's authorization independently in staging. A cookie's presence is not proof of a valid session; do not treat the middleware check as the full authorization boundary. |
 
-## Deployment gates
+## Adapter decision (external official documentation, checked 2026-10-27)
 
-1. Select the currently supported Cloudflare adapter/version and document the exact Next.js feature support.
-2. Produce a route inventory including Node-only imports, runtime declarations, auth/session dependencies, image processing, and background work.
-3. Prove both PostgreSQL connections using a supported driver/network path, without production schema changes.
-4. Implement and test durable media storage before moving uploads.
-5. Keep backup/restore on a compatible Node operational path until a replacement passes restore drills.
-6. Add a non-production deployment and smoke tests for public pages, login/session, protected admin routes, uploads, database reads/writes, headers, and error handling.
-7. Preserve required GitHub checks and protected `main`; do not switch DNS or production traffic until all gates pass.
+Cloudflare's current Next.js guide recommends vinext for new Workers deployments but labels it beta and asks users of existing applications to run compatibility checks and inspect the compatibility dashboard. Cloudflare's OpenNext guide remains available for existing apps and lists App Router, Route Handlers, RSC, SSR, middleware, and other common features as supported; Node.js middleware is specifically not yet supported. This repository's middleware does not appear to use Node built-ins directly, but the whole dependency graph still requires testing.
 
-## Cloudflare account state
-
-A prior read-only account audit found no Workers scripts/routes, Pages projects, D1 databases, KV namespaces, Queues, Hyperdrive configurations, Durable Objects, or AI Gateways. R2 listing returned HTTP 403 and remains unresolved; this is not proof that R2 is unavailable. No Cloudflare resources, DNS records, production data, or database schemas have been changed.
-
-## Next action
-
-Complete the route-by-route and transitive-import inventory, then validate the current official adapter requirements and Cloudflare resource permissions. This document is an initial evidence-based assessment, not a deployment approval.
+Given the size and security sensitivity of HEAVIX, the safe next step is a non-production compatibility experiment on an isolated branch, not a production migration. Compare OpenNext and vinext against the actual route inventory, Prisma behavior, auth/session tests, image handling, and both PostgreSQL connections. No adapter has yet been installed and no build or runtime compatibility result is claimed.
