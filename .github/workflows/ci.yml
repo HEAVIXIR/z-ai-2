@@ -620,3 +620,33 @@ jobs:
           path: ${{ runner.temp }}/vinext-compatibility.txt
           if-no-files-found: error
           retention-days: 14
+
+  # One-PR-only inventory job: downloads public legacy ZIPs to runner temp, scans metadata/text, uploads a redacted report.
+  # It never extracts or executes legacy code and does not run for normal PRs or main pushes.
+  legacy-archive-inventory:
+    name: Legacy archive inventory (read-only)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'audit/legacy-archive-inventory'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download legacy archive repository
+        run: git clone --depth=1 https://github.com/HEAVIXIR/z.git "$RUNNER_TEMP/heavix-legacy"
+      - name: Inventory ZIP contents without extraction or execution
+        run: |
+          python scripts/audit-legacy-archives.py \
+            --root "$RUNNER_TEMP/heavix-legacy" \
+            --report "$RUNNER_TEMP/legacy-archive-inventory.txt"
+      - name: Upload redacted inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-archive-inventory-${{ github.sha }}
+          path: ${{ runner.temp }}/legacy-archive-inventory.txt
+          if-no-files-found: error
+          retention-days: 14
+
