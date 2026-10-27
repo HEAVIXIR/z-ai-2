@@ -34,9 +34,8 @@ import crypto from "node:crypto";
 import {
   validateImageBuffer,
   sanitizeFilename,
-  logExifSanitizationRecommendation,
-  type ImageType,
 } from "@/lib/upload-security";
+import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
 import { logAudit } from "@/lib/audit";
 
 /* ── Constants ──────────────────────────────────────────────── */
@@ -206,8 +205,22 @@ export async function uploadAsset(
     return { ok: false, error: validation.error ?? "فایل نامعتبر است." };
   }
 
-  // 2. Sanitize filename (random, opaque)
-  const safeName = sanitizeFilename(validation.ext);
+  // 2. Decode under strict pixel/dimension limits and re-encode static images.
+  // Sharp strips embedded metadata by default; animated/multi-page images are
+  // preserved without flattening. Never expose decoder errors to the caller.
+  let optimized: Awaited<ReturnType<typeof optimizeImageBuffer>>;
+  try {
+    optimized = await optimizeImageBuffer(buffer, validation.type);
+  } catch {
+    return {
+      ok: false,
+      error: "تصویر نامعتبر است یا ابعاد آن بیش از حد مجاز است.",
+    };
+  }
+  const storedBuffer = optimized.buffer;
+
+  // 3. Sanitize filename (random, opaque) using the output format, not client MIME.
+  const safeName = sanitizeFilename(optimized.ext);
   const sub = monthSubfolder();
   const targetDir = path.join(UPLOAD_ROOT, sub);
   await fs.mkdir(targetDir, { recursive: true }).catch(() => {});
@@ -217,16 +230,13 @@ export async function uploadAsset(
 
   // 3. Write binary file (guard against accidental overwrite)
   try {
-    await fs.writeFile(fullDiskPath, buffer);
+    await fs.writeFile(fullDiskPath, storedBuffer);
   } catch (err) {
     return {
       ok: false,
       error: `ذخیره‌سازی فایل ناموفق بود: ${(err as Error).message}`,
     };
   }
-
-  // EXIF strip recommendation (P1 TODO marker — already logged internally)
-  logExifSanitizationRecommendation(validation.type as ImageType, buffer.length);
 
   // 4. Build sidecar metadata
   const assetId = generateAssetId();
@@ -235,9 +245,9 @@ export async function uploadAsset(
     filename: safeName,
     url: publicUrl,
     relativePath: relPath,
-    mimeType: validation.mime,
-    ext: validation.ext,
-    size: buffer.length,
+    mimeType: optimized.mime,
+    ext: optimized.ext,
+    size: storedBuffer.length,
     uploadedBy: input.uploadedBy ?? null,
     uploadedAt: new Date().toISOString(),
     entityType: input.entityType && ALLOWED_ENTITY_TYPES.has(input.entityType)
@@ -270,12 +280,12 @@ export async function uploadAsset(
     after: {
       filename: safeName,
       url: publicUrl,
-      mimeType: validation.mime,
-      size: buffer.length,
+      mimeType: optimized.mime,
+      size: storedBuffer.length,
       entityTypeRef: sidecar.entityType,
       entityIdRef: sidecar.entityId,
     },
-    reason: `بارگذاری رسانه جدید (${validation.mime}, ${buffer.length} بایت)`,
+    reason: `بارگذاری رسانه جدید (${optimized.mime}, ${storedBuffer.length} بایت)`,
   });
 
   return { ok: true, asset: { ...sidecar } };
