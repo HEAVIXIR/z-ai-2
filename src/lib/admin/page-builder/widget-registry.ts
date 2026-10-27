@@ -48,7 +48,7 @@ export const WIDGETS: WidgetDef[] = [
     defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:3},mobile:{w:12,h:4}},
     propsSchema:[
       {key:'title',label:'عنوان (سازگاری)',type:'text'},
-      {key:'title1',label:'بخش اول عنوان',type:'text',required:true,defaultValue:'خرید، فروش و اجاره'},
+      {key:'title1',label:'بخش اول عنوان',type:'text',defaultValue:'خرید، فروش و اجاره'},
       {key:'highlight',label:'عنوان برجسته نارنجی',type:'text',defaultValue:'ماشین‌آلات سنگین'},
       {key:'badge',label:'نشان بالای عنوان',type:'text'},
       {key:'subtitle',label:'زیرعنوان',type:'textarea'},
