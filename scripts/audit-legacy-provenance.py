@@ -133,6 +133,15 @@ unmapped_paths = sorted({
 })
 manifest_paths = sorted(decisions)
 archive_member_paths = {str(r["member_path"]) for r in occurrence_rows}
+mismatch_pairs = [
+    r for r in unique_rows
+    if "ALREADY_PRESENT_CONTENT_DIFFERS_REVIEW" in str(r["manifest_decisions"])
+]
+mismatch_paths = {str(r["member_path"]) for r in mismatch_pairs}
+hashes_by_path: dict[str, set[str]] = defaultdict(set)
+for member_path, digest in by_identity:
+    hashes_by_path[member_path].add(digest)
+multi_hash_paths = {path for path, hashes in hashes_by_path.items() if len(hashes) > 1}
 summary = {
     "legacy_source_ref": "217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
     "archives_found": len(zip_paths),
@@ -144,9 +153,9 @@ summary = {
     "manifest_paths_present_in_archive": sum(1 for p in manifest_paths if p in archive_member_paths),
     "unmapped_unique_paths": len(unmapped_paths),
     "unmapped_unique_path_sample": unmapped_paths[:100],
-    "target_path_content_mismatches": sum(
-        1 for r in unique_rows if "ALREADY_PRESENT_CONTENT_DIFFERS_REVIEW" in str(r["manifest_decisions"])
-    ),
+    "target_path_content_mismatch_pairs": len(mismatch_pairs),
+    "target_paths_with_content_mismatches": len(mismatch_paths),
+    "target_paths_with_multiple_legacy_hashes": len(multi_hash_paths),
     "secret_values_emitted": False,
     "archive_members_extracted": False,
     "archive_members_executed": False,
