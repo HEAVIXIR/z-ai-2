@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export async function GET(req: Request) {
-  const [user, error] = await requireAdmin("media.upload");
+  const [user, error] = await requireAdmin("media.read");
   if (error) return error;
   try {
     const url = new URL(req.url);
