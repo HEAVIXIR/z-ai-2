@@ -166,6 +166,17 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/test-store-backup-restore-ci.sh 2>&1 | tee "$RUNNER_TEMP/store-backup-restore-output.txt"
+      - name: Paired Main + Store backup/restore proof (disposable PostgreSQL 17)
+        env:
+          HEAVIX_ALLOW_DISPOSABLE_DB_RESET: '1'
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y postgresql-client
+          bash scripts/test-paired-backup-restore-ci.sh 2>&1 | tee "$RUNNER_TEMP/paired-backup-restore-output.txt"
       - name: Upload reproducible Store/Outbox evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -174,6 +185,7 @@ jobs:
           path: |
             ${{ runner.temp }}/store-manual-sql-output.txt
             ${{ runner.temp }}/store-backup-restore-output.txt
+            ${{ runner.temp }}/paired-backup-restore-output.txt
           if-no-files-found: warn
           retention-days: 14
       - name: Integration test files
