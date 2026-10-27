@@ -39,7 +39,7 @@ jobs:
       - name: Upload path/hash inventory
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-member-provenance-\${{ github.sha }}
+          name: legacy-member-provenance
           path: |
             provenance-output/legacy-member-provenance.csv
             provenance-output/legacy-unique-path-hashes.csv
