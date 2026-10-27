@@ -51,7 +51,7 @@ export interface MediaUploaderProps {
   className?: string;
 }
 
-const DEFAULT_MAX = 5 * 1024 * 1024;
+const DEFAULT_MAX = 4 * 1024 * 1024;
 
 export default function MediaUploader({
   value,
