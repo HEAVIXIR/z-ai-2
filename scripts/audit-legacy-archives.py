@@ -182,6 +182,9 @@ def main() -> int:
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2, sort_keys=True))
+    print("FINDINGS_REDACTED")
+    for finding in findings:
+        print(json.dumps(finding, sort_keys=True))
     print("ARCHIVE_SUMMARY")
     for item in results:
         print(json.dumps({
