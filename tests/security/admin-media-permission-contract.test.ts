@@ -21,6 +21,7 @@ vi.mock("@/lib/audit", () => ({
 }));
 
 import { GET, POST } from "@/app/api/admin/media/route";
+import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
 
 describe("/api/admin/media permission separation", () => {
   beforeEach(() => {
@@ -51,4 +52,42 @@ describe("/api/admin/media permission separation", () => {
     expect(mocks.requireAdmin).toHaveBeenCalledWith("media.upload");
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
+  it("rejects oversized declared bodies before multipart parsing", async () => {
+    const formData = vi.fn();
+    const request = {
+      headers: new Headers({
+        "content-length": String(MAX_UPLOAD_BYTES + 256 * 1024 + 1),
+      }),
+      formData,
+    } as unknown as Request;
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(413);
+    expect(formData).not.toHaveBeenCalled();
+    expect(mocks.uploadAsset).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized files before allocating an ArrayBuffer", async () => {
+    const file = new File(
+      [new Uint8Array(MAX_UPLOAD_BYTES + 1)],
+      "oversized.jpg",
+      { type: "image/jpeg" },
+    );
+    const arrayBuffer = vi.spyOn(file, "arrayBuffer");
+    const formData = {
+      get: (name: string) => (name === "file" ? file : null),
+    } as FormData;
+    const request = {
+      headers: new Headers(),
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(413);
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(mocks.uploadAsset).not.toHaveBeenCalled();
+  });
+
 });
