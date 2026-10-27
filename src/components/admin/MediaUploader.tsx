@@ -163,6 +163,7 @@ export default function MediaUploader({
     setUrlDraft("");
     setShowUrlBox(false);
     setError(null);
+    setCompressionInfo(null);
   };
 
   const remove = () => {
@@ -170,6 +171,7 @@ export default function MediaUploader({
     setUrlDraft("");
     setShowUrlBox(false);
     setError(null);
+    setCompressionInfo(null);
   };
 
   /* ----- Compact one-line variant ----- */
