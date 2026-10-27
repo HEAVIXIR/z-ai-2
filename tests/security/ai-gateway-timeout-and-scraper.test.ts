@@ -214,6 +214,21 @@ describe("STEP 11.43 Work Item 1: AbortController timeout on 6 migrated routes",
 });
 
 // ════════════════════════════════════════════════════════════
+// WORK ITEM 1B: Gateway's own provider calls receive the abort signal
+// ════════════════════════════════════════════════════════════
+
+describe("STEP 16.46: ai-gateway provider timeout wiring", () => {
+  it("SOURCE: every direct chat completion passes the AbortController signal", () => {
+    const src = readSource("ai-gateway/route.ts");
+    const providerCalls = src.match(/zai\.chat\.completions\.create\(/g) ?? [];
+    const abortSignals = src.match(/signal:\s*controller\.signal/g) ?? [];
+
+    expect(providerCalls).toHaveLength(3);
+    expect(abortSignals).toHaveLength(providerCalls.length);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
 // WORK ITEM 2A: SCRAPER case in ai-gateway
 // ════════════════════════════════════════════════════════════
 

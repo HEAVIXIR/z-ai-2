@@ -167,6 +167,7 @@ export async function POST(req: NextRequest) {
             { role: "user", content: query },
           ],
           thinking: { type: "disabled" },
+          signal: controller.signal,
         });
         const expanded = llmRes.choices?.[0]?.message?.content ?? query;
         result = { expandedQuery: expanded, originalQuery: query };
@@ -185,6 +186,7 @@ export async function POST(req: NextRequest) {
             { role: "user", content: desc },
           ],
           thinking: { type: "disabled" },
+          signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
         const m = content.match(/\{[\s\S]*\}/);
@@ -225,6 +227,7 @@ export async function POST(req: NextRequest) {
             { role: "user", content: text },
           ],
           thinking: { type: "disabled" },
+          signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
         const m = content.match(/\{[\s\S]*\}/);
@@ -285,7 +288,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (e: any) {
     success = false;
-    if (e?.name === "AbortError") {
+    if (e?.name === "AbortError" || controller.signal.aborted) {
       errorMsg = `timeout after ${policy.timeoutMs}ms`;
     } else {
       errorMsg = e?.message ?? String(e);
