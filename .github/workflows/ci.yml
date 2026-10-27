@@ -185,6 +185,7 @@ jobs:
           path: |
             ${{ runner.temp }}/store-manual-sql-output.txt
             ${{ runner.temp }}/store-backup-restore-output.txt
+            ${{ runner.temp }}/paired-backup-restore-output.txt
           if-no-files-found: warn
           retention-days: 14
       - name: Integration test files
