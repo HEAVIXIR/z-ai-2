@@ -590,3 +590,33 @@ jobs:
             exit 1
           fi
           echo "SUCCESS: Caddy→app connectivity proven (HTTP 200 from /api/health)"
+
+  # Report-only compatibility probe: does not deploy or touch production resources.
+  # Intentionally non-blocking while we learn whether vinext supports this app.
+  cloudflare-compatibility-report:
+    name: Cloudflare compatibility (report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install existing project dependencies
+        run: bun install
+      - name: Run official vinext compatibility check (non-blocking evidence)
+        shell: bash
+        run: |
+          set +e
+          npx --yes vinext check 2>&1 | tee "$RUNNER_TEMP/vinext-compatibility.txt"
+          rc=${PIPESTATUS[0]}
+          echo "VINEXT_COMPATIBILITY_EXIT_CODE=$rc" | tee -a "$RUNNER_TEMP/vinext-compatibility.txt"
+          # Report-only: preserve the diagnostic result without blocking existing required checks.
+          exit 0
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vinext-compatibility-report-${{ github.sha }}
+          path: ${{ runner.temp }}/vinext-compatibility.txt
+          if-no-files-found: error
+          retention-days: 14
