@@ -15,8 +15,8 @@ import {
 /* ============================================================
    MediaUploader — reusable per-section media manager widget.
 
-   Lets the admin either (a) upload a new image via the public
-   /api/upload endpoint, or (b) paste an external URL directly.
+   Lets the admin either (a) upload a new image via the admin-only
+   /api/admin/upload endpoint, or (b) paste an external URL directly.
    Calls onChange(url) whenever the resulting URL changes.
 
    Designed theme-agnostic: works on light (zinc/white) surfaces
@@ -30,7 +30,7 @@ import {
      • onChange   — (url: string | null) => void
      • label?     — Persian label above the field
      • accept?    — input accept attr (default "image/*")
-     • maxSize?   — bytes, default 5MB
+     • maxSize?   — bytes, default 4 MiB
      • endpoint?  — upload endpoint (default "/api/admin/upload")
      • theme?     — "light" | "dark" | "auto" (default "auto")
      • hint?      — small helper text under the field
