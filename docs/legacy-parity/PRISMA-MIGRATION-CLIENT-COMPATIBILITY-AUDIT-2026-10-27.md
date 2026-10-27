@@ -67,7 +67,7 @@ These are decisions about the **legacy-to-current transfer**, not instructions t
 | Store `Part` | Current adds relations to stock movements, inventory balances, and purchase-order items | **NO_CHANGE** | Keep current inventory/procurement relationships. Any data transformation is a separate proposal. |
 | Store `Order` | Current adds `returns` relation | **NO_CHANGE** | Preserve return workflow; do not transplant the Main `Order` model into Store. |
 | Store `Shipment` | Current adds pickup date, proof URL, and shipment-tracking relation | **NO_CHANGE** | Keep current tracking/proof contract. |
-| Store `AdminUser` | Legacy `auditLogs` relation is absent; current design routes audit writes to Main PostgreSQL via outbox | **REWRITE_FEATURE` only if reintroducing legacy behavior is proven necessary** | Do not restore the cross-database relation. The current outbox/audit ownership design is the baseline. No rewrite is proposed now. |
+| Store `AdminUser` | Legacy `auditLogs` relation is absent; current design routes audit writes to Main PostgreSQL via outbox | **REWRITE_FEATURE only if reintroducing legacy behavior is proven necessary** | Do not restore the cross-database relation. The current outbox/audit ownership design is the baseline. No rewrite is proposed now. |
 | Main `Listing` / `Product` and legacy `PriceRecord` | Current design uses `PriceObservation`; legacy `PriceRecord` is legacy-only | **REJECT_LEGACY** | Do not resurrect the deprecated model or import its migration/data without a separately approved mapping and product need. |
 
 ### General decision rule
@@ -116,4 +116,4 @@ If later evidence establishes a real issue, open a focused PR for exactly one of
 
 ## 8. Safety boundary
 
-This report is documentation-only. No Prisma project/resource was provisioned, no connection string or credential was read or printed, and no generated client, migration, seed, backfill, production database, DNS, Worker, or deployment operation was run. Production remains **NO-GO** pending independent release gates.
+This report is documentation-only and did not itself invoke Prisma CLI or connect to any database. The PR's standard CI workflow may generate both Prisma clients and exercise schema operations only against its disposable test databases; those CI checks are separate from this static audit and are not evidence of production migration state. No Prisma project/resource was provisioned, no connection string or credential was read or printed, and no production database, DNS, Worker, or deployment operation was changed. Production remains **NO-GO** pending independent release gates.
