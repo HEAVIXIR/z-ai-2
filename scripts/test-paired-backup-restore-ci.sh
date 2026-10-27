@@ -65,7 +65,7 @@ DB_HOST="$PGHOST" DB_PORT="$PGPORT" DB_USER="$PGUSER" DB_NAME="$MAIN_SOURCE" DB_
 STORE_DB_HOST="$PGHOST" STORE_DB_PORT="$PGPORT" STORE_DB_USER="$PGUSER" STORE_DB_NAME="$STORE_SOURCE" STORE_DB_PASSWORD="$PGPASSWORD" \
 BACKUP_DOCKER_MODE=0 bash scripts/backup.sh | tee "$TMP/backup-output.txt"
 
-backup_id="$(find "$TMP/backups" -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | grep -E '^[0-9]{8}_[0-9]{6}$')"
+backup_id="$(find "$TMP/backups" -mindepth 1 -maxdepth 1 -type d -printf '%f' | grep -E '^[0-9]{8}_[0-9]{6}$')"
 backup_dir="$TMP/backups/$backup_id"
 test -s "$backup_dir/main.sql"
 test -s "$backup_dir/store.sql"
