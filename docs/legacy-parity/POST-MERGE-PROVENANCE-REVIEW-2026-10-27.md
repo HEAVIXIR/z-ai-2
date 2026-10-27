@@ -66,3 +66,17 @@ A future code-transfer PR should be opened only after all of the following are d
 - No archive extraction into the repository and no archived code execution.
 - No secrets or secret values included.
 - No production deployment, DNS change, Worker activation, paid-resource provisioning, production database mutation, seed, migration, backfill, or bulk import.
+
+
+## Separate compatibility probe captured by the same PR CI
+
+The report-only job in CI run [#40565973676](https://github.com/HEAVIXIR/z-ai-2/actions/runs/40565973676) completed and uploaded artifact `vinext-compatibility-report-197766bec0abc95973ec391c7b2ead251ffca0f5` (artifact SHA-256 `53d1ddf4834b6e896e50e3036fa341b2d1423f474663a5113e19368262913fd5`). The artifact was downloaded and inspected.
+
+- Overall scanner result: **91% compatible**; 24 supported, 1 partial, 2 issues.
+- Imports: 6/6 fully supported.
+- Libraries: 9/10 marked compatible; **NextAuth 4 is flagged** because it relies on Next.js API route internals.
+- CommonJS globals: **`__dirname` / `__filename` flagged** in ESLint/Vitest config files and generated Prisma client files. These require case-by-case inspection; generated output should not be patched manually.
+- `reactStrictMode`: partial support note.
+- The scanner's process exit code was 0 even though it reported issues. The CI job is intentionally report-only and non-blocking, so its green status means the diagnostic completed—not that the application is production-compatible.
+
+This result reinforces **NO-GO for a vinext migration** until the authentication/session flow, both PostgreSQL Prisma clients and adapters, generated-client bundling, image processing, media persistence, and backup/restore operations are tested in an isolated non-production Worker runtime. Do not run `vinext init` on the production branch as a substitute for this review. OpenNext remains a comparison candidate; no adapter is selected by this scan alone.
