@@ -25,10 +25,10 @@ Archived schema evidence:
 The static model-block count in the checked-in files is:
 | Schema | Legacy SQLite | Current PostgreSQL | Delta |
 |---|---:|---:|---:|
-| Main | 109 | 120 | +11 |
-| Store | 19 | 34 | +15 |
+| Main | 110 | 120 | +10 |
+| Store | 20 | 34 | +14 |
 
-**Count reconciliation note:** an earlier parity document describes the legacy main schema as 110 models. The checked-in legacy schema text currently yields 109 `model` blocks using a literal model-declaration count. This discrepancy should be reconciled against the exact blob/version used by that earlier audit; it does not change the migration decision.
+**Independent count verification:** literal top-level `model Name {` declaration counts were computed from the exact checked-in schema files on `main` (`0a24fcbd7a86e8f19b6b6750812211d1612b10d0`): legacy main 110, current main 120, legacy Store 20, current Store 34. All declaration names are unique in each file. The prior parity document's legacy main count of 110 is consistent; the earlier apparent discrepancy was an audit counting error. These static counts do not establish live database contents or migration state.
 
 Canonical migration files currently present:
 - Main: `prisma/migrations/20261025081255_init_postgresql_baseline/migration.sql`
