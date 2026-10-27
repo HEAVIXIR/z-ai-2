@@ -40,7 +40,7 @@ The following additions were observed on models that exist in both schemas:
 | `Listing` | Current `deals` relation replaces legacy `priceRecords` relation | Treat the relation change as intentional; legacy `PriceRecord` is not a migration target. |
 | `Product` | Legacy `priceRecords` relation absent in current schema | Price history must use the current canonical model, not resurrect `PriceRecord`. |
 
-The current main schema also adds models absent from the legacy schema, including `Deal`, `Order`, `Dispute`, `DisputeEvidence`, and admin navigation/page-management models (`AdminNavigationGroup`, `AdminNavigationItem`, `AdminPreference`, `AdminSavedView`, `AdminPage`, `AdminPageVersion`, `AdminPageTemplate`). These are current capabilities, not import candidates.
+The current main schema also adds models absent from the legacy schema, including `Deal`, `Order`, `Dispute`, `DisputeEvidence`, and admin navigation/page-management models (`AdminNavigationGroup`, `AdminNavigationItem`, `AdminPreference`, `AdminSavedView`, `AdminPage`, `AdminPageVersion`, `AdminPageTemplate`). The legacy main schema also contains a `Review` model; it is not a current-only model. These are current capabilities, not import candidates.
 
 ## 4. Store schema — field and relation deltas
 
