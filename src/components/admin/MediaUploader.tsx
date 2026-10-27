@@ -114,7 +114,7 @@ export default function MediaUploader({
       }
       setUploading(true);
       try {
-        const prepared = await prepareImageForUpload(file, maxSize);
+        const prepared = await prepareImageForUpload(file, Math.min(maxSize, DEFAULT_MAX));
         const fd = new FormData();
         fd.append("file", prepared.file);
         const res = await fetch(endpoint, { method: "POST", body: fd });
@@ -327,7 +327,7 @@ export default function MediaUploader({
             {uploading ? "در حال آپلود…" : "فایل را اینجا رها کنید یا کلیک کنید"}
           </div>
           <div className={`text-[10px] ${mutedCls}`}>
-            حداکثر {Math.floor(maxSize / (1024 * 1024))} مگابایت · تصویر
+            حداکثر {Math.floor(Math.min(maxSize, DEFAULT_MAX) / (1024 * 1024))} مگابایت · تصویر
           </div>
           <input
             ref={inputRef}
