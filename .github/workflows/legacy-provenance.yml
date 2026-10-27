@@ -1,0 +1,51 @@
+name: Legacy archive provenance inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/issue-144-provenance-hash-map
+  pull_request:
+    paths:
+      - "scripts/audit-legacy-provenance.py"
+      - ".github/workflows/legacy-provenance.yml"
+      - "docs/legacy-parity/IMPORT-MANIFEST-2026-10-26.csv"
+
+permissions:
+  contents: read
+
+jobs:
+  provenance-inventory:
+    name: Read-only archive/member hash inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned legacy archive source
+        uses: actions/checkout@v4
+        with:
+          repository: HEAVIXIR/z
+          ref: 217f98ecc800aa64ae4739d27ed2aeb95dd260ed
+          path: legacy-source
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build provenance inventory (no extraction or execution)
+        run: python scripts/audit-legacy-provenance.py legacy-source
+
+      - name: Upload path/hash inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-member-provenance
+          path: |
+            provenance-output/legacy-member-provenance.csv
+            provenance-output/legacy-unique-path-hashes.csv
+            provenance-output/summary.json
+          if-no-files-found: error
+          retention-days: 30
