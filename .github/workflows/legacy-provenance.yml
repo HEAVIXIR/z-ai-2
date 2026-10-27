@@ -2,6 +2,9 @@ name: Legacy archive provenance inventory
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - audit/issue-144-provenance-hash-map
   pull_request:
     paths:
       - "scripts/audit-legacy-provenance.py"
