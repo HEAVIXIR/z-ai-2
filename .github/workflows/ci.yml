@@ -645,8 +645,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-archive-inventory-\${{ github.sha }}
-          path: \${{ runner.temp }}/legacy-archive-inventory.txt
+          name: legacy-archive-inventory-${{ github.sha }}
+          path: ${{ runner.temp }}/legacy-archive-inventory.txt
           if-no-files-found: error
           retention-days: 14
 
