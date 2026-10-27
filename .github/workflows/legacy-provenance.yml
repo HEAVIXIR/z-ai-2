@@ -4,7 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - audit/issue-144-provenance-hash-map
+    paths:
+      - "scripts/audit-legacy-provenance.py"
+      - ".github/workflows/legacy-provenance.yml"
+      - "docs/legacy-parity/IMPORT-MANIFEST-2026-10-26.csv"
   pull_request:
     paths:
       - "scripts/audit-legacy-provenance.py"
