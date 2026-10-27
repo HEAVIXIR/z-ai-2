@@ -100,10 +100,16 @@ export async function optimizeImageBuffer(
       : result(jpeg, "jpeg", true);
   }
 
-  // Static WebP, BMP and GIF are normalized to WebP. Metadata is not copied.
+  // Preserve decoded pixels for existing WebP and static GIF inputs while
+  // re-encoding to remove metadata. BMP can use lossy WebP because it is a
+  // typically uncompressed source format.
   const webp = await sharp(buffer, options)
     .rotate()
-    .webp({ quality: 82, effort: 4 })
+    .webp(
+      detectedType === "webp" || detectedType === "gif"
+        ? { lossless: true, effort: 4 }
+        : { quality: 82, effort: 4 },
+    )
     .toBuffer();
   return result(webp, "webp", true);
 }
