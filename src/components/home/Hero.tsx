@@ -138,7 +138,11 @@ export default function Hero({
             listing={cfg.cardExclusiveListingId ? cardExclusiveListing : undefined}
           />
         </div>
-        <div className={`order-3 flex justify-center lg:order-1 lg:justify-start ${sWidth}`} style={statsWrapStyle}><HeroStatsPanel stats={stats} paddingCustom={cfg.statsPaddingCustom} gapCustom={cfg.statsGapCustom} widthCustom={cfg.statsWidthCustom} /></div>
+        {stats.length > 0 && (
+          <div className={`order-3 flex justify-center lg:order-1 lg:justify-start ${sWidth}`} style={statsWrapStyle}>
+            <HeroStatsPanel stats={stats} paddingCustom={cfg.statsPaddingCustom} gapCustom={cfg.statsGapCustom} widthCustom={cfg.statsWidthCustom} />
+          </div>
+        )}
       </div>
       <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-transparent via-[#F58220] to-transparent" />
     </section>
