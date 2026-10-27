@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
 import {
   Loader2,
   Upload,
@@ -69,6 +70,7 @@ export default function MediaUploader({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [compressionInfo, setCompressionInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrlBox, setShowUrlBox] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
@@ -105,26 +107,23 @@ export default function MediaUploader({
   const handleUpload = useCallback(
     async (file: File) => {
       setError(null);
+      setCompressionInfo(null);
       if (!file.type.startsWith("image/")) {
         setError("تنها فایل تصویری مجاز است.");
         return;
       }
-      if (file.size > maxSize) {
-        setError(
-          `حجم فایل بیش از ${Math.floor(maxSize / (1024 * 1024))} مگابایت است.`,
-        );
-        return;
-      }
       setUploading(true);
       try {
+        const prepared = await prepareImageForUpload(file, maxSize);
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", prepared.file);
         const res = await fetch(endpoint, { method: "POST", body: fd });
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.url) {
           throw new Error(json?.error ?? "آپلود ناموفق بود.");
         }
         onChange(json.url);
+        setCompressionInfo(describeCompression(prepared));
       } catch (err: any) {
         setError(err?.message ?? "خطای شبکه هنگام آپلود.");
       } finally {
@@ -234,6 +233,9 @@ export default function MediaUploader({
         )}
         {hint && !error && (
           <p className={`text-[10px] ${mutedCls}`}>{hint}</p>
+        )}
+        {compressionInfo && (
+          <p className={`text-[10px] ${mutedCls}`}>{compressionInfo}</p>
         )}
       </div>
     );
@@ -397,6 +399,9 @@ export default function MediaUploader({
       )}
       {hint && !error && (
         <p className={`text-[10px] ${mutedCls}`}>{hint}</p>
+      )}
+      {compressionInfo && (
+        <p className={`text-[10px] ${mutedCls}`}>{compressionInfo}</p>
       )}
     </div>
   );
