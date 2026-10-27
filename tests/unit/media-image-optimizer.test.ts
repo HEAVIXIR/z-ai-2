@@ -50,6 +50,27 @@ describe("optimizeImageBuffer", () => {
     expect(output.mime).toBe(output.type === "png" ? "image/png" : "image/webp");
   });
 
+  it("does not add another lossy generation when normalizing WebP", async () => {
+    const input = await sharp({
+      create: {
+        width: 18,
+        height: 12,
+        channels: 3,
+        background: { r: 12, g: 140, b: 210 },
+      },
+    })
+      .webp({ quality: 65 })
+      .toBuffer();
+    const before = await sharp(input).raw().toBuffer();
+
+    const output = await optimizeImageBuffer(input, "webp");
+    const after = await sharp(output.buffer).raw().toBuffer();
+
+    expect(output.type).toBe("webp");
+    expect(output.reencoded).toBe(true);
+    expect(after.equals(before)).toBe(true);
+  });
+
   it("rejects images over the configured dimension limit", async () => {
     const oversized = await sharp({
       create: {
