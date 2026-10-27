@@ -47,14 +47,23 @@ export async function optimizeImageBuffer(
 
   const metadata = await sharp(buffer, options).metadata();
   const width = metadata.width;
-  const height = metadata.height;
+  const frameHeight = metadata.pageHeight ?? metadata.height;
+  const pages = metadata.pages ?? 1;
 
-  if (!width || !height || width > MAX_DIMENSION || height > MAX_DIMENSION || width * height > MAX_INPUT_PIXELS) {
+  // Count every decoded page, not just the compressed input bytes. For animated
+  // formats this prevents a small multi-frame file from expanding without bound.
+  if (
+    !width ||
+    !frameHeight ||
+    width > MAX_DIMENSION ||
+    frameHeight > MAX_DIMENSION ||
+    width * frameHeight * pages > MAX_INPUT_PIXELS
+  ) {
     throw new Error("Image dimensions exceed the supported limit");
   }
 
   // Do not flatten GIF/APNG or any other multi-page image.
-  if ((metadata.pages ?? 1) > 1) {
+  if (pages > 1) {
     return result(buffer, detectedType, false);
   }
 
