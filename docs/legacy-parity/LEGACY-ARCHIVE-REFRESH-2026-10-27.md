@@ -56,7 +56,7 @@ The scan identified:
 | Secrets, dotenv files, database files, uploads, workspace artifacts, generated/vendor files | Exclude from application source |
 | Read-only diagnostics | Consider only after type-safety, error transparency, data minimization, and current-schema compatibility are verified |
 
-The existing repository already contains decisions for the 54 unique missing paths from the earlier path-level audit. This refresh does not overturn those decisions. In particular, a missing path or different hash is not evidence that its implementation is safe or needed.
+The existing repository already contains decisions for the 54 unique missing paths from the earlier path-level audit. A fresh comparison against current `main` confirms those 54 manifest paths are still absent; that is intentional under their existing EXCLUDE / REJECT / HOLD dispositions, not an incomplete copy operation. Useful hero/machinery assets and canonical documents are already present in the target tree. This refresh does not overturn the prior decisions. A missing path or different hash is not evidence that its implementation is safe or needed.
 
 ## 4. Cloudflare / Next.js compatibility evidence
 
@@ -76,11 +76,19 @@ The job's exit code is deliberately report-only and does not prove runtime compa
 
 The owner has identified an existing Prisma Console account. This audit did not inspect the account's projects, credentials, billing, or provisioned resources; account existence alone is not evidence of an active database or usable connection.
 
-Prisma is a candidate to evaluate for managed PostgreSQL/connection management, subject to account access and cost verification. Preserve the application's two independent PostgreSQL connection contracts:
+Current official Prisma documentation makes **Prisma Postgres** a reasonable candidate to test with Cloudflare Workers, but the app must be validated against its actual Prisma ORM version and both generated clients:
+- [Prisma Postgres overview](https://www.prisma.io/docs/postgres)
+- [Prisma Postgres connection strings](https://www.prisma.io/docs/postgres/database/connecting-to-your-database)
+- [Prisma ORM with Cloudflare Workers](https://www.prisma.io/docs/guides/deployment/cloudflare-workers)
+- [Prisma Postgres pricing](https://www.prisma.io/pricing)
+
+Prisma Postgres documents pooled connections for application traffic and direct connections for migrations/admin tooling. Plan-specific connection limits, operation usage, storage, and backup retention must be checked before selecting a plan. Preserve the application's two independent PostgreSQL connection contracts:
 - `DATABASE_URL` for the Main Prisma schema;
 - `STORE_DATABASE_URL` for the separate Store Prisma schema.
 
-Before choosing Prisma Postgres, Accelerate, or Hyperdrive, verify supported deployment topology, TLS, connection limits, regional latency, backup/restore, pricing, and compatibility with both generated clients. Do not replace PostgreSQL with D1, point tests at production, create paid resources, or run migrations/data imports as part of this audit.
+**Do not build a new design around Prisma Accelerate:** Prisma's current docs state that Accelerate, including hosted Accelerate connections for Prisma Postgres, is scheduled for retirement on **2026-12-01**. Evaluate native Prisma Postgres pooling or Hyperdrive instead, based on tested compatibility and cost. See [Prisma Accelerate lifecycle notice](https://www.prisma.io/docs/accelerate).
+
+Do not replace PostgreSQL with D1, point tests at production, create paid resources, or run migrations/data imports as part of this audit.
 
 ## 6. Release and migration gate
 
@@ -88,6 +96,7 @@ Before choosing Prisma Postgres, Accelerate, or Hyperdrive, verify supported dep
 - [x] Scan all 13 ZIP archives without extraction or execution.
 - [x] Record redacted security indicators and archive/database artifact paths.
 - [x] Retrieve the real vinext compatibility artifact.
+- [x] Reconcile the 54 previously missing paths with the current main tree; preserve their existing dispositions.
 - [ ] Independently review any candidate credential and rotate only if exposure/active use is confirmed.
 - [ ] Compare each proposed feature against current implementation and acceptance tests.
 - [ ] Validate Main and Store against non-production PostgreSQL using least-privilege credentials.
