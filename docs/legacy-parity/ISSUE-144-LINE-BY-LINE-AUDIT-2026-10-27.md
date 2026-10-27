@@ -54,9 +54,9 @@ the inventory could not.
 
 ## 3. Line-by-line review of HOLD and REWRITE candidates (checklist item 3)
 
-The 54 manifest rows break down as: 18 `EXCLUDE_*`, 10 `REJECT_*`, 25 `HOLD_*`,
+The 54 manifest rows break down as: 19 `EXCLUDE_*`, 10 `REJECT_*`, 19 `HOLD_*`,
 6 `REWRITE_BEFORE_IMPORT`. This section records the line-by-line review of the
-31 `HOLD_*` + `REWRITE_BEFORE_IMPORT` candidates (the sets the Senior Director
+25 `HOLD_*` + `REWRITE_BEFORE_IMPORT` candidates (the sets the Senior Director
 directed the audit to start from). EXCLUDE/REJECT rows were confirmed against
 their stated rationale and are not re-reviewed line-by-line unless a credential
 finding overlapped them.
@@ -283,7 +283,7 @@ no code, no secrets, no DB changes).
 
 | Exit criterion | Status |
 |---|---|
-| Every unique candidate has an explicit disposition and review evidence | ✅ 54/54 reviewed (31 line-by-line in §3; 23 confirmed against stated rationale in §5) |
+| Every unique candidate has an explicit disposition and review evidence | ✅ 54/54 dispositioned (25 line-by-line in §3; 29 confirmed against stated rationale in §5) |
 | Every accepted transfer has focused tests and CI evidence | ✅ N/A — no transfers accepted |
 | All rejected/held candidates have reasons | ✅ documented in §3 and §5 |
 | No secret values are exposed | ✅ all credential findings redacted in §4 |
