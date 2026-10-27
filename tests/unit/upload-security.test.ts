@@ -107,7 +107,7 @@ describe("validateImageBuffer size + magic gate", () => {
     expect(r.error).toMatch(/خالی/);
   });
 
-  it("rejects an oversized buffer (>5 MB)", () => {
+  it("rejects an oversized buffer (>4 MiB)", () => {
     // Build a buffer that starts with the JPEG magic but is too big.
     const oversized = Buffer.alloc(MAX_UPLOAD_BYTES + 1, 0);
     JPEG_MAGIC.copy(oversized, 0);
