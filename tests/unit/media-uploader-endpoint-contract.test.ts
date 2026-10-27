@@ -10,6 +10,7 @@ describe("MediaUploader endpoint compatibility", () => {
     );
 
     expect(source).toContain('endpoint = "/api/admin/upload"');
+    expect(source).toContain("const DEFAULT_MAX = 4 * 1024 * 1024;");
     expect(source).not.toContain('endpoint = "/api/upload"');
   });
 });
