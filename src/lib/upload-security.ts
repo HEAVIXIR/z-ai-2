@@ -49,8 +49,8 @@ const MIME_BY_TYPE: Record<ImageType, string> = {
   bmp: "image/bmp",
 };
 
-/** Maximum upload size — 5 MB. Enforced in `validateImageBuffer`. */
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+/** Maximum upload size — 4 MiB to fit the hosting request-body limit. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 /* ── Magic-byte sniffing ────────────────────────────────────── */
 
