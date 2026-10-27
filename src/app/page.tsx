@@ -1,12 +1,9 @@
 /**
  * HEAVIX Homepage — Track T-C: Full PageRenderer Migration
  *
- * This page is now FULLY driven by PageRenderer.
- * If a published AdminPage with pageType=HOME exists, its layout is used.
- * Otherwise, a DEFAULT layout (defined below) renders using the same
- * PageRenderer — no legacy hardcoded fallback remains.
- *
- * The @ts-nocheck directive is GONE. This file is fully type-safe.
+ * This page is fully driven by PageRenderer. A published AdminPage with
+ * pageType=HOME takes precedence; otherwise the reference-aligned default
+ * layout below is rendered through the same maintained widget registry.
  */
 
 import { db } from "@/lib/db";
@@ -16,7 +13,9 @@ import Footer from "@/components/layout/Footer";
 
 export const dynamic = "force-dynamic";
 
-// Default homepage layout (used when no published AdminPage exists)
+// Default homepage layout follows the supplied HEAVIX visual reference:
+// dark machinery hero, orange-highlighted headline, two clear actions,
+// floating search panel, featured listings, and catalog categories.
 const DEFAULT_HOME_LAYOUT = {
   sections: [
     {
@@ -25,9 +24,26 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "hero",
           props: {
-            title: "هویکس",
-            subtitle: "بازار ماشین‌آلات صنعتی ایران",
-            description: "خرید، فروش و اجاره ماشین‌آلات صنعتی با تضمین کیفیت و قیمت منصفانه",
+            title: "خرید، فروش و اجاره",
+            title1: "خرید، فروش و اجاره",
+            highlight: "ماشین‌آلات سنگین",
+            badge: "بازار تخصصی ماشین‌آلات سنگین",
+            subtitle: "خرید، فروش و اجاره ماشین‌آلات سنگین، قطعات و خدمات صنعتی در ایران.",
+            buttonText: "ثبت آگهی رایگان",
+            buttonLink: "/listings/new",
+            secondBtnText: "مشاهده آگهی‌ها",
+            secondBtnLink: "/listings",
+            slide1: "/images/hero/hero-construction.png",
+            slide2: "/images/hero/hero-mining.png",
+            slide3: "/images/hero/hero-road.png",
+            cardServicesImg: "/images/hero/card-services.png",
+            cardFeaturedImg: "/images/hero/card-featured.png",
+            cardExclusiveImg: "/images/hero/card-exclusive.png",
+            titleFontSize: "normal",
+            statsWidth: "normal",
+            overlayColorCustom: "#0b0b0b",
+            slideOpacityCustom: "0.55",
+            slideIntervalCustom: "5000",
           },
         }],
       }],
@@ -37,7 +53,10 @@ const DEFAULT_HOME_LAYOUT = {
       rows: [{
         widgets: [{
           key: "search-box",
-          props: { placeholder: "جستجوی ماشین‌آلات، برندها، دسته‌بندی‌ها..." },
+          props: {
+            placeholder: "نام مدل، برند یا توضیحات... مانند PC220",
+            showFilters: true,
+          },
         }],
       }],
     },
@@ -46,7 +65,7 @@ const DEFAULT_HOME_LAYOUT = {
       rows: [{
         widgets: [{
           key: "listing-grid",
-          props: { title: "آگهی‌های منتخب", limit: 8 },
+          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4" },
           dataSource: "listing.featured",
         }],
       }],
@@ -56,7 +75,7 @@ const DEFAULT_HOME_LAYOUT = {
       rows: [{
         widgets: [{
           key: "category-grid",
-          props: { title: "دسته‌بندی‌ها", limit: 12 },
+          props: { title: "دسته‌بندی‌ها", limit: 12, columns: "4" },
           dataSource: "taxonomy.categories",
         }],
       }],
@@ -74,7 +93,7 @@ const DEFAULT_HOME_LAYOUT = {
 };
 
 export default async function HomePage() {
-  // Try to load a published homepage AdminPage
+  // Try to load a published homepage AdminPage.
   let layout: unknown = DEFAULT_HOME_LAYOUT;
 
   try {
@@ -98,14 +117,13 @@ export default async function HomePage() {
       }
     }
   } catch {
-    // DB unavailable — use default layout (PageRenderer handles gracefully)
+    // DB unavailable — use default layout (PageRenderer handles gracefully).
   }
 
   return (
     <>
       <Header />
       <main>
-        {/* PageRenderer renders the layout JSON using registered widgets */}
         <PageRenderer layout={layout} userId={null} />
       </main>
       <Footer />

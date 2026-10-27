@@ -1,20 +1,56 @@
 'use client';
-export default function HeroWidget({ props }: { props: Record<string, any>; data?: any }) {
-  return (
-    <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-800 p-8 md:p-12">
-      {props.backgroundImage && (
-        <img src={String(props.backgroundImage)} alt="" className="absolute inset-0 size-full object-cover opacity-30" />
-      )}
-      <div className="relative z-10 mx-auto max-w-3xl text-center">
-        {props.badge && <span className="mb-2 inline-block rounded-full bg-[#F58220]/20 px-3 py-1 text-xs font-medium text-[#F58220]">{props.badge}</span>}
-        {props.title && <h1 className="mb-2 text-2xl font-bold text-white md:text-4xl">{props.title}</h1>}
-        {props.subtitle && <p className="mb-4 text-sm text-zinc-300 md:text-base">{props.subtitle}</p>}
-        {props.buttonText && (
-          <a href={String(props.buttonLink || '#')} className="inline-block rounded-lg bg-[#F58220] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#F58220]/90">
-            {props.buttonText}
-          </a>
-        )}
-      </div>
-    </div>
-  );
+
+import Hero, { type HeroConfig, type HeroStat } from '@/components/home/Hero';
+
+type HeroWidgetProps = {
+  props: Record<string, unknown>;
+  data?: unknown;
+};
+
+function stringProp(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function readStats(value: unknown): HeroStat[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry): HeroStat[] => {
+    if (!entry || typeof entry !== 'object') return [];
+    const candidate = entry as Record<string, unknown>;
+    if (typeof candidate.value !== 'string' || typeof candidate.label !== 'string') return [];
+    if (!candidate.value.trim() || !candidate.label.trim()) return [];
+    return [{ value: candidate.value, label: candidate.label }];
+  }).slice(0, 4);
+}
+
+/**
+ * Reuse the maintained homepage hero instead of maintaining a visually
+ * divergent PageBuilder-only implementation. Older saved layouts that use
+ * generic title/backgroundImage/button props remain supported.
+ */
+export default function HeroWidget({ props }: HeroWidgetProps) {
+  const backgroundImage = stringProp(props.backgroundImage);
+  const config: HeroConfig = {
+    badge: stringProp(props.badge),
+    title1: stringProp(props.title1) ?? stringProp(props.title),
+    highlight: stringProp(props.highlight),
+    subtitle: stringProp(props.subtitle) ?? stringProp(props.description),
+    buttonText: stringProp(props.buttonText),
+    buttonLink: stringProp(props.buttonLink),
+    secondBtnText: stringProp(props.secondBtnText),
+    secondBtnLink: stringProp(props.secondBtnLink),
+    slide1: stringProp(props.slide1) ?? backgroundImage,
+    slide2: stringProp(props.slide2) ?? backgroundImage,
+    slide3: stringProp(props.slide3) ?? backgroundImage,
+    cardServicesImg: stringProp(props.cardServicesImg),
+    cardFeaturedImg: stringProp(props.cardFeaturedImg),
+    cardExclusiveImg: stringProp(props.cardExclusiveImg),
+    titleFontSize: stringProp(props.titleFontSize),
+    statsWidth: stringProp(props.statsWidth),
+    overlayColorCustom: stringProp(props.overlayColorCustom),
+    slideOpacityCustom: stringProp(props.slideOpacityCustom),
+    slideIntervalCustom: stringProp(props.slideIntervalCustom),
+  };
+
+  return <Hero config={config} stats={readStats(props.stats)} />;
 }
