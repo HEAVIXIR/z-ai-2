@@ -102,7 +102,8 @@ def inspect_archive(path: Path, report_lines: list[str], findings: list[dict]) -
                     if len(archive_result["path_candidates"]) < 3000:
                         archive_result["path_candidates"].append(name)
                 report_lines.append(f"FILE\t{info.file_size}\t{info.compress_size}\t{name}")
-                if suffix not in TEXT_SUFFIXES or info.file_size > MAX_TEXT_BYTES:
+                is_env_file = PurePosixPath(name).name.lower() == ".env" or PurePosixPath(name).name.lower().startswith(".env.")
+                if (suffix not in TEXT_SUFFIXES and not is_env_file) or info.file_size > MAX_TEXT_BYTES:
                     continue
                 try:
                     with zf.open(info) as stream:
