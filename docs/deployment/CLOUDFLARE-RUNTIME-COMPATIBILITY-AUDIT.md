@@ -1,17 +1,32 @@
 
 
-## Additional route and transitive-import findings
+## Follow-up audit — runtime-specific package risks (2026-10-27)
 
-| Area | Repository evidence | Impact / required action |
-|---|---|---|
-| Session/auth | `src/lib/auth.ts` uses `node:crypto.randomBytes` and `next/headers`, then reads/writes sessions through Prisma. | Test token generation, cookie flags, session expiry, blocked-user handling, and fail-closed behavior on the target runtime. Do not weaken the canonical session contract. |
-| Main Prisma client | `src/lib/db.ts` uses guarded runtime `require('@prisma/client')`, inspects and deletes `require.cache`, and expects generated client files on disk. | This development hot-reload workaround is Node/filesystem-oriented. Check production bundling and Prisma engine strategy under the chosen adapter; likely requires a deliberate production-compatible client setup rather than carrying over dev cache-purge behavior blindly. |
-| Store Prisma client | `src/lib/store-db.ts` imports a separately generated client from `src/lib/generated/store-client`. | Validate generated artifacts and connection configuration independently for the store database. Main-database connectivity alone is insufficient. |
-| Admin media library | `src/app/api/admin/media-library/route.ts` recursively enumerates `public/uploads` and stats local files after checking `media.manage`. | Moving uploads to object storage requires replacing both media writes/reads and this administrative listing contract; preserve the permission check and response shape or explicitly version the API. |
-| Middleware | `src/middleware.ts` checks the `heavix-user` cookie for admin page/API routing; deeper authorization is implemented in route code. | Verify middleware behavior and every route's authorization independently in staging. A cookie's presence is not proof of a valid session; do not treat the middleware check as the full authorization boundary. |
+Additional source inspection found another important risk:
 
-## Adapter decision (external official documentation, checked 2026-10-27)
+- `src/lib/media-image-optimizer.ts` imports `sharp`, performs metadata decoding and image re-encoding, and expects Node `Buffer` inputs. Node API compatibility alone does not establish that this native image-processing dependency can be bundled and run in Workers. The upload pipeline must be exercised in the actual target runtime; if unsupported, select a compatible image-processing service/library without weakening byte-signature checks, pixel/frame limits, EXIF stripping, or animation preservation.
+- `src/lib/db.ts` dynamically requires `@prisma/client` and purges Node `require.cache` entries for generated client files. This is specifically a hot-reload workaround, not proof of production Workers compatibility. Test production bundling and database access independently.
+- The backup endpoint's shell execution remains a hard separation boundary: Workers runtime compatibility does not provide an operating-system shell, persistent project directory, or arbitrary `sha256sum` process. Keep paired backup/restore on a separately secured Node operational path unless redesigned and verified.
 
-Cloudflare's current Next.js guide recommends vinext for new Workers deployments but labels it beta and asks users of existing applications to run compatibility checks and inspect the compatibility dashboard. Cloudflare's OpenNext guide remains available for existing apps and lists App Router, Route Handlers, RSC, SSR, middleware, and other common features as supported; Node.js middleware is specifically not yet supported. This repository's middleware does not appear to use Node built-ins directly, but the whole dependency graph still requires testing.
+## Adapter evaluation — evidence and provisional decision
 
-Given the size and security sensitivity of HEAVIX, the safe next step is a non-production compatibility experiment on an isolated branch, not a production migration. Compare OpenNext and vinext against the actual route inventory, Prisma behavior, auth/session tests, image handling, and both PostgreSQL connections. No adapter has yet been installed and no build or runtime compatibility result is claimed.
+Official Cloudflare documentation checked on 2026-10-27:
+
+- Next.js on Workers guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/
+  - Cloudflare recommends vinext as the default path, but explicitly labels it beta and instructs existing production applications to run compatibility checks and inspect the compatibility dashboard.
+- OpenNext adapter guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/opennext/
+  - The guide documents broad support for App Router, Route Handlers, RSC, SSR, middleware, and image optimization; Node.js middleware is not yet supported.
+- Workers Node.js compatibility: https://developers.cloudflare.com/workers/runtime-apis/nodejs/
+  - Workers exposes a subset of Node.js APIs; some imports may be shims/stubs and not functional implementations. Presence of `nodejs_compat` is not proof that every Node dependency works.
+
+**Provisional recommendation for the first experiment:** evaluate OpenNext first as the conservative compatibility candidate for this existing Next.js 16 application, while running vinext's official compatibility check as a comparison. This is not a final architecture choice: package compatibility, both PostgreSQL connections, authentication/RBAC, media processing, headers, and operational backup coverage must pass in a non-production environment before choosing a path.
+
+## Experiment plan (no production effects)
+
+1. Run the official vinext compatibility check in an isolated worktree/branch and record unsupported imports/routes.
+2. Prepare a separate OpenNext adapter branch with only adapter/config changes; do not modify `main` and do not deploy.
+3. Build both candidates in CI; classify build failures separately from runtime failures.
+4. If a build passes, run Worker-runtime preview smoke tests using non-production secrets and databases only.
+5. Test login/logout/session expiry, blocked accounts, admin RBAC, both database clients, image validation/optimization, asset persistence, security headers, and all error paths.
+6. Confirm paired backup/restore remains available on a secured Node host or job; do not expose a backup implementation that silently skips either database.
+7. Compare evidence and only then propose a deployment choice. Do not create paid resources, change DNS, or migrate production data during this experiment.
