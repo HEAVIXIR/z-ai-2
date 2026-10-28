@@ -41,11 +41,7 @@ Where this document repeats manifest content, it does so only to provide a per-f
 | Documents produced by this audit | 1 (this file) — docs-only, no code, no DB changes, no secrets |
 
 **Headline conclusion:** The legacy repository's 899 files organize cleanly into 19 feature
-areas. Of those, **all 19 feature areas are already represented in the current target** at
-`z-ai-2/main @ 833bec6`. The 54 absent paths (per manifest) fall entirely into four
-non-transfer buckets — secrets, databases, audit scripts, and parallel/rejected implementations
-— and were each dispositioned in PR #145. **This comprehensive review confirms the prior
-line-by-line audit's finding of 0 transfer candidates.** No new product gap was identified.
+areas. This section reflects the historical comparison against `z-ai-2/main @ 833bec6`; it is not a current-main parity claim. The earlier binary disposition recorded no direct transfer candidates, but that conclusion is superseded by the canonical four-way disposition in [`VALUE-BASED-DISPOSITION-2026-10-27.md`](./VALUE-BASED-DISPOSITION-2026-10-27.md), which identifies 17 `ADAPT_THEN_INTEGRATE` items for staged implementation. The 54 paths absent from the historical snapshot remain listed below as an inventory of earlier decisions; they must be re-evaluated under the current disposition before any action.
 
 **Breakdown of the 53 absent paths in inventory.json by feature area:**
 
@@ -1513,12 +1509,7 @@ is represented in the current target. The 53 absent paths in inventory.json
    - 6 × `upload/HEAVIX-*.md` (HOLD_COMPARE_CANONICAL_DOC — same docs in `docs/`)
    - 1 × `public/robots.txt` (REJECT_DUPLICATE_ROUTE — dynamic `app/robots.ts`)
 
-**Conclusion:** This comprehensive review CONFIRMS the prior line-by-line audit's
-finding of 0 transfer candidates (PR #145 §7). No additional product gaps
-beyond what was already documented were identified. The legacy repository is
-fully represented in the current target; the 54 absent paths are deliberate
-rejections, holds, or policy exclusions — each with explicit rationale in the
-manifest and PR #145.
+**Historical conclusion (target snapshot `833bec6`):** This inventory recorded no additional gaps under the then-current binary framework. It is not the current integration decision. The canonical four-way disposition in [`VALUE-BASED-DISPOSITION-2026-10-27.md`](./VALUE-BASED-DISPOSITION-2026-10-27.md) supersedes the old “0 transfer candidates” framing and identifies 17 `ADAPT_THEN_INTEGRATE` items for staged, tested implementation.
 
 ---
 
