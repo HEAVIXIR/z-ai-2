@@ -2,15 +2,20 @@
  * HEAVIX — Admin Auction End API (PHASE-P8-TRANSACTION)
  * POST /api/admin/auctions/[id]/end — end an auction + pick winner
  *
- * Permission: marketplace (admin guard via isAuthenticated for legacy
- * parity with the existing /api/admin/auctions/* routes; the deep
- * RBAC layer is auction.manage). The state-machine + winner-selection
- * + audit lives in src/lib/auction-service.ts (endAuction).
+ * Permission: auction.manage (admin guard via requireAdmin from
+ * @/lib/admin-guard). The state-machine + winner-selection + audit
+ * lives in src/lib/auction-service.ts (endAuction).
+ *
+ * STEP 16.83 (Issue #112): Replaced the previous getCurrentUser()-only
+ * check (which admitted ANY authenticated user, including BUYERs) with
+ * requireAdmin("auction.manage") — the canonical RBAC guard. The dead
+ * import of requirePermission (never called) was removed. Audit
+ * attribution now uses the verified admin user id (never null).
+ * Same fix class as STEP 11.35 isAuthenticated()-IDOR pattern.
  */
 
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from "@/lib/auth";
-import { requirePermission } from "@/lib/authorization";
+import { requireAdmin } from "@/lib/admin-guard";
 import { endAuction, AuctionServiceError } from "@/lib/auction-service";
 
 export const runtime = 'nodejs';
@@ -35,17 +40,21 @@ function toErrorResponse(e: unknown) {
   );
 }
 
-/* POST /api/admin/auctions/[id]/end — end auction + set winner */
+/* POST /api/admin/auctions/[id]/end — end auction + set winner
+ *
+ * Authorization: requireAdmin("auction.manage") returns
+ *   [null, 401] if not authenticated,
+ *   [null, 403] if authenticated but lacks admin role + permission,
+ *   [user, null] if authorized.
+ * The verified user.id is passed to endAuction for audit attribution
+ * (never null — the previous `user?.id ?? null` could misattribute
+ * audit logs to a null userId). */
 export async function POST(_req: Request, { params }: Args) {
-  const authed = await getCurrentUser();
-  if (!authed) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const user = await getCurrentUser();
-  const userId = user?.id ?? null;
+  const [user, error] = await requireAdmin("auction.manage");
+  if (error) return error;
   try {
     const { id } = await params;
-    const auction = await endAuction(id, userId);
+    const auction = await endAuction(id, user!.id);
     return NextResponse.json({ success: true, data: auction });
   } catch (err) {
     return toErrorResponse(err);
