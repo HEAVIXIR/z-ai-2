@@ -18,23 +18,23 @@
 
 | Bucket | Count | % | Action proposed | Authorizes what |
 |---|---:|---:|---|---|
-| **INTEGRATE** | 845 | 93.9% | Confirm standards compliance; surface 8 already-present `@ts-nocheck` files as a separate cleanup backlog. | No transfer action (already live). |
+| **INTEGRATE** | 845 | 93.9% | Confirm standards compliance; surface 7 already-present code files containing `@ts-nocheck` as a separate cleanup backlog; `worklog.md` is a lexical false positive, not a cleanup target. | No transfer action (already live). |
 | **ADAPT_THEN_INTEGRATE** | 17 | 1.9% | Approve the 17-item adaptation backlog (§4); sequence into 6 PRs. | Code PRs (typed, tested, reviewed). |
 | **PRESERVE_AS_REFERENCE** | 19 | 2.1% | Phase 0 (provenance) is MERGED on main (`3bd8150`). Phase 0.5 (commit source content with provenance headers + SHA-256) is the next proposed docs-only PR. | 1 docs-only PR (Phase 0.5). |
 | **SAFE_ARCHIVE** | 18 | 2.0% | Phase 1 (redacted documentation + SHA-256 + provenance) is the second proposed docs-only PR. | 1 docs-only PR (Phase 1). |
-| **Total** | **899** | 100% | Every file has a proposed action. | 8 PRs total (2 docs-only + 6 code). |
+| **Total** | **899** | 100% | Every legacy path has a proposed disposition. | 8 planned PRs (2 docs-only + 6 code; Phase 4 may split into two domain PRs, yielding 9). |
 
 **Key points**
 
 1. **94 % of legacy files are already integrated** as the canonical active version in `z-ai-2/main @ 3bd8150`. No transfer work needed for them — the target's active copy *is* the integration.
-2. **The 8 already-present `@ts-nocheck` files** (5 prisma seeds + 2 operational scripts + 1 historical worklog) are surfaced as a **Phase 7 standards-cleanup backlog** — strictly separate from legacy transfer so each change gets its own test/CI evidence.
+2. **The 7 already-present code files containing `@ts-nocheck`** (5 Prisma seeds + 2 operational scripts; `worklog.md` is a lexical false positive and not a cleanup target) are surfaced as a **Phase 7 standards-cleanup backlog** — strictly separate from legacy transfer so each change gets its own test/CI evidence.
 3. **The 17 ADAPT items are organized into 6 phased PRs** (batches A → E + Phase 6 high-risk), escalating complexity S → M → L and gating the only 2 data-mutating items behind `--confirm` flags.
 4. **Every non-INTEGRATE proposal specifies target file path + standards checklist + goal alignment + adaptation spec + test plan + risk + dependencies.** No "review later" placeholders.
 5. **All 18 SAFE_ARCHIVE binary items now have SHA-256 hashes** (independently computed during STEP 16.80 — §6 below). No binary bytes enter Git. No active credentials committed. No DB data inspected.
 6. **All 18 file-bearing PRESERVE members also have SHA-256 hashes** (computed in STEP 16.78 review comment + re-verified during STEP 16.80). The Phase-0 PR #156 completion gate's first unchecked box ("Verify content SHA-256 for every extracted member") is now satisfiable for the 18 file-bearing members.
 7. **Safety boundaries (all in effect):** no production deployment, no DB mutation, no backfill, no Worker activation, no DNS, no paid resources, no secret printing, no `.env` / `.db` / `.jpg` / `.tar` / `.zip` content reads, no code transfer without authorization. Every PR includes provenance header + required tests + non-author review.
 
-**Headline recommendation (§10):** Authorize **Phase 0.5 + Phase 1** (two docs-only PRs, low-risk, no code execution, no binary bytes committed, no DB mutation). They close the Phase-0 completion gate and stand up the safe-archive documentation. Authorize **Phase 2 (ADAPT batch A, 4 items, complexity S)** as the first code-touching PR — small surface, fast feedback, demonstrates the adaptation pattern for the later batches.
+**Headline recommendation (§10):** Authorize **Phase 0.5 + Phase 1** (two docs-only PRs, low-risk, no code execution, no binary bytes committed, no DB mutation). They close the Phase-0 completion gate and stand up the safe-archive documentation. Authorize **Phase 2 (ADAPT batch A, 3 items, complexity S)** as the first code-touching PR — small surface, fast feedback, demonstrates the adaptation pattern for the later batches.
 
 ---
 
@@ -118,9 +118,9 @@ These files are **already tracked in `z-ai-2/main @ 3bd8150`** as the canonical 
 | S | Excluded Files | 0 | N/A (all 24 paths here are PRESERVE or SAFE_ARCHIVE). |
 | **Total** | | **845** | |
 
-### 3.2 Standards cleanup backlog — the 8 already-present `@ts-nocheck` files
+### 3.2 Standards cleanup backlog — the 7 already-present code files containing `@ts-nocheck`
 
-Per comprehensive-audit §4.3, 16 unique legacy paths contain `// @ts-nocheck`. 8 are ABSENT (already rejected per manifest — covered by ADAPT items #6-#13). The other 8 are **already in the target** and need a hygiene cleanup PR. These are NOT legacy-transfer items; they are **already-integrated files that fail the §2.1 TypeScript-strict standard**.
+Per comprehensive-audit §4.3, the lexical scan identified 16 candidate paths mentioning `// @ts-nocheck`. Eight actual code files are absent (7 phase-audit scripts + 1 security-check script; verbatim import is not approved and rewrites are tracked by ADAPT items #6-#13). Seven actual code files containing the directive are already in the target and need a hygiene cleanup PR. `worklog.md` is the remaining lexical false positive: it mentions the string in prose but contains no directive. These are NOT legacy-transfer items; the 7 code files fail the §2.1 TypeScript-strict standard.
 
 | # | File | Size | Already in target? | Reason for `@ts-nocheck` | Cleanup action |
 |---:|---|---:|---|---|---|
@@ -486,7 +486,7 @@ Alternatively, all 7 can be one PR if the shared pattern keeps the diff small.
 | 16 | `scripts/make-logos-dark.cjs` | O | `scripts/image-transform-logo-dark.ts` | M | LOW | 5 |
 | 17 | `scripts/process-logos.cjs` | O | `scripts/image-transform-logo-transparent.ts` | S | LOW | 2 |
 
-**Complexity totals:** S × 4 (items #2, #5, #12, #17) + M × 10 (items #1, #3, #4, #6–#11, #13, #16) + L × 2 (items #14, #15) = 17 items.
+**Complexity totals:** S × 4 (items #2, #5, #12, #17) + M × 11 (items #1, #3, #4, #6–#11, #13, #16) + L × 2 (items #14, #15) = 17 items.
 
 ---
 
@@ -500,7 +500,7 @@ The PR's `README.md` includes a 6-checkbox completion gate, all currently unchec
 
 - [ ] Verify exact ZIP member paths at the pinned source commit.
 - [ ] Verify content SHA-256 for every extracted member.
-- [ ] Secret scan the 19 reference candidates; redact/reject any sensitive content.
+- [ ] Secret-scan the 12 proposed source-content files before commit; verify the six canonical-document duplicates by hash/cross-reference without copying them.
 - [ ] Compare the six upload documents against canonical target docs and preserve only genuinely unique material.
 - [ ] Confirm historical migration/schema and static robots are stored outside runtime paths.
 - [ ] Independent review + CI before merge.
@@ -513,14 +513,14 @@ These hashes complete checkbox #2 of the Phase-0 completion gate for the 18 file
 
 ### 5.3 Proposed action — Phase 0.5 (commit source content with provenance headers)
 
-**Single docs-only PR.** Populates `docs/legacy-parity/reference/<area>/<file>` with the actual source content (NOT just the provenance record) for the 18 file-bearing members. Each file receives a provenance header. Each file's SHA-256 is recorded in an `INTEGRITY.md` index.
+**Single docs-only PR.** Populates `docs/legacy-parity/reference/<area>/<file>` with actual source content (not just provenance records) for 12 non-duplicate text/source members. The 6 upload documents that duplicate canonical target docs remain provenance/hash cross-references only under Option A. Each of the 12 committed files receives a provenance header; all 18 file-bearing members have SHA-256 entries in `INTEGRITY.md`.
 
 **Target paths (post-Phase-0.5):**
 
 ```
 docs/legacy-parity/reference/
 ├── README.md                                        # Update with SHA-256 table + checked completion gate
-├── INTEGRITY.md                                     # NEW: SHA-256 index for all 18 file-bearing members
+├── INTEGRITY.md                                     # NEW: SHA-256 index for all 18 file-bearing members (12 committed source files + 6 duplicate-doc cross-references)
 ├── infrastructure/
 │   └── dev-pid-convention.md                        # Already merged (Phase 0); no source content
 ├── prisma/
@@ -541,7 +541,7 @@ docs/legacy-parity/reference/
 ├── public/
 │   └── robots.txt                                    # NEW (Phase 0.5) — 160 bytes, safe plain text
 └── uploads/
-    └── (6 HEAVIX-*.md files — see §5.5)
+    └── (6 Phase-0 provenance records only; no duplicate source copies under Option A — see §5.5)
 ```
 
 **Provenance header (committed with each source file):**
@@ -586,7 +586,7 @@ The hashes below are the verified SHA-256 of the 18 file-bearing PRESERVE member
 | 18 | `upload/HEAVIX-SECURITY-BASELINE-V1.md` | 2,210 | `024f4a7422e54bb65169a22c2e07cc331ac1dd258bb844aff20af190c38f43c7` | `docs/legacy-parity/reference/uploads/HEAVIX-SECURITY-BASELINE-V1.md` |
 | 19 | `.zscripts/dev.pid` | 5 | (no content hash — runtime PID marker; convention-only) | `docs/legacy-parity/reference/infrastructure/dev-pid-convention.md` (Phase 0; no source content) |
 
-**Total Phase-0.5 source content size:** 18 files × ~10 KB average ≈ ~165 KB of plain text. No binaries. No secrets. No DB data. Safe to commit.
+**Total Phase-0.5 source content size:** 12 non-duplicate files totaling 104,427 bytes (about 102 KiB); the six canonical-document duplicates are hash/cross-reference only. No binaries. Secret-scan the 12 files before committing; no database data is approved.
 
 ### 5.5 Handling of the 6 `upload/HEAVIX-*.md` files (items #13-#18)
 
@@ -599,14 +599,14 @@ The 6 `upload/HEAVIX-*.md` files are content-identical to canonical `docs/HEAVIX
 
 ### 5.6 Standards check for Phase 0.5
 
-For each of the 18 source-content files committed in Phase 0.5:
+For each of the 12 non-duplicate source-content files committed in Phase 0.5:
 
 - ✅ **No active code** — files live under `docs/legacy-parity/reference/`, NOT under `src/`, `prisma/`, `public/`, or `scripts/` active trees. They cannot be imported or executed.
-- ✅ **No secrets** — secret-scan all 18 files before commit; reject or redact any sensitive content (e.g., the `start-dev.sh` hardcoded `/home/z/my-project` path is acceptable as it's a provenance artifact, not active config).
-- ✅ **No binary blobs** — all 18 are plain text.
-- ✅ **No DB data** — none of the 18 files contain DB data.
+- ✅ **No secrets** — secret-scan all 12 files before commit; reject or redact any sensitive content (e.g., the `start-dev.sh` hardcoded `/home/z/my-project` path is acceptable as it's a provenance artifact, not active config).
+- ✅ **No binary blobs** — all 12 committed source files are plain text.
+- ✅ **No DB data** — none of the 12 committed source files contain DB data.
 - ✅ **Provenance preserved** — each file's header documents source path + source commit + SHA-256 + cross-reference to Phase-0 provenance record.
-- ✅ **Outside runtime path** — none of the 18 files are placed under `src/`, `prisma/`, `public/`, or `scripts/` active trees.
+- ✅ **Outside runtime path** — none of the 12 committed source files are placed under active `src/`, `prisma/`, `public/`, or `scripts/` trees.
 
 ### 5.7 Risk assessment
 
@@ -718,27 +718,27 @@ Per PR #145 §4.1.1: *"If the flagged credential was ever used in any environmen
 
 ## 7. Phased execution plan
 
-The plan sequences the 17 ADAPT items + the Phase 0.5 source-content commit + the Phase 1 safe-archive documentation + the Phase 7 standards cleanup into 8 PRs. Each phase is a single PR (or, for the 7 phase-audit scripts which share an adaptation pattern, 2 PRs grouped by domain).
+The plan sequences the 17 ADAPT items + the Phase 0.5 source-content/reference accounting + the Phase 1 safe-archive documentation + the Phase 7 standards cleanup into 8 planned PRs. Phase 4 may be split into 2 domain PRs, which would make 9 PRs total.
 
 ### 7.1 Phase table
 
 | Phase | Scope | Files | PR type | Risk | Dependencies | Cumulative files actioned |
 |---|---|---:|---|---|---|---:|
 | 0 | PRESERVE provenance records | 19 | docs-only | LOW | — | ✅ DONE (PR #156 merged on main @ `3bd8150`). |
-| **0.5** | PRESERVE source content + SHA-256 index | 18 (+1 INTEGRITY.md) | docs-only | LOW | Phase 0 done | 18 |
+| **0.5** | PRESERVE source content + SHA-256 index (12 source copies + 6 duplicate-doc references) | 18 (+1 INTEGRITY.md) | docs-only | LOW | Phase 0 done | 18 |
 | **1** | SAFE_ARCHIVE documentation + SHA-256 index | 18 (+1 INTEGRITY.md) | docs-only | LOW | None (independent of Phase 0.5) | 36 |
-| **2** | ADAPT batch A (S complexity, 4 items) | 4 | code | LOW | None | 40 |
-| **3** | ADAPT batch B (M complexity, feature areas B+C+E, 2 items) | 2 | code | MEDIUM | Phase 2 | 42 |
-| **4** | ADAPT batch C (phase-audit scripts, 7 items) | 7 | code | MEDIUM | Phase 2 | 49 |
-| **5** | ADAPT batch D (security + logos + AI gateway, 3 items) | 3 | code | MEDIUM | Phase 2 | 52 |
-| **6** | ADAPT batch E (data-mutating, L complexity, 2 items) | 2 | code (gated behind `--confirm`) | HIGH | Phase 4 | 54 |
-| **7** | Standards cleanup (`@ts-nocheck` removal, 7 files) | 7 | code | LOW | Independent (may run in parallel with Phases 2-6) | 61 |
-| **Total non-INTEGRATE items actioned** | | **56** + 845 INTEGRATE = **899** | | | | |
+| **2** | ADAPT batch A (S complexity, 3 items) | 3 | code | LOW | None | 39 |
+| **3** | ADAPT batch B (M complexity, feature areas B+C+E, 2 items) | 2 | code | MEDIUM | Phase 2 | 41 |
+| **4** | ADAPT batch C (phase-audit scripts, 7 items) | 7 | code | MEDIUM | Phase 2 | 48 |
+| **5** | ADAPT batch D (security + logos + AI gateway, 3 items) | 3 | code | MEDIUM | Phase 2 | 51 |
+| **6** | ADAPT batch E (data-mutating, L complexity, 2 items) | 2 | code (gated behind `--confirm`) | HIGH | Phase 4 | 53 |
+| **7** | Standards cleanup (`@ts-nocheck` removal, 7 files) | 7 | code | LOW | Independent (may run in parallel with Phases 2-6) | 60 |
+| **Planned file-level actions after Phase 0** | | **60** (12 source copies + 6 duplicate-document references + 18 safe-archive records + 17 adaptations + 7 hygiene targets) | | | | |
 
 **Notes:**
 - The 845 INTEGRATE items require no transfer PRs (target's active copy is canonical). The 56 non-INTEGRATE items are the actionable backlog.
 - Phase 7 (`@ts-nocheck` cleanup) is independent of Phases 2-6 and may be authorized in parallel.
-- The 6 ADAPT items grouped as "batch C" (Phase 4) all share the same adaptation pattern (§4.6-4.12); they can be a single PR if the shared diff is small, or 2 PRs grouped by domain.
+- The 7 ADAPT items grouped as "batch C" (Phase 4) all share the same adaptation pattern (§4.6-4.12); they can be a single PR if the shared diff is small, or 2 PRs grouped by domain.
 
 ### 7.2 Phase 0 — PRESERVE provenance (DONE)
 
@@ -748,7 +748,7 @@ The plan sequences the 17 ADAPT items + the Phase 0.5 source-content commit + th
 
 ### 7.3 Phase 0.5 — PRESERVE source content (proposed)
 
-- **Scope:** Commit the 18 file-bearing members' source content with provenance headers + `INTEGRITY.md` SHA-256 index.
+- **Scope:** Account for all 18 file-bearing members with provenance + `INTEGRITY.md` SHA-256 index: commit 12 non-duplicate text/source files with provenance headers; for the 6 upload documents already represented by canonical target docs, record SHA-256 + canonical cross-reference only (Option A). The 19th path, `.zscripts/dev.pid`, remains a provenance-only runtime-marker convention.
 - **PR type:** docs-only.
 - **Risk:** LOW.
 - **Tests:** None (docs-only).
@@ -758,8 +758,8 @@ The plan sequences the 17 ADAPT items + the Phase 0.5 source-content commit + th
 - **Action items:**
   1. Update `docs/legacy-parity/reference/README.md` to reflect Phase-0.5 status.
   2. Create `docs/legacy-parity/reference/INTEGRITY.md` with the 18 SHA-256 hashes from §5.4.
-  3. Commit the 18 source files at the target paths in §5.4 (with provenance headers).
-  4. For items #13-#18 (the 6 `upload/HEAVIX-*.md` files): apply Option A (do NOT commit source content; record SHA-256 + canonical-doc cross-reference in `INTEGRITY.md` only).
+  3. Commit the 12 non-duplicate source files at the target paths in §5.4 (with provenance headers).
+  4. For items #13-#18 (the 6 `upload/HEAVIX-*.md` files): apply Option A (do NOT commit duplicate source content; record SHA-256 + canonical-doc cross-reference in `INTEGRITY.md` only).
   5. Check 4 of the 6 Phase-0 completion-gate checkboxes (paths verified, SHA-256 verified, secrets scanned, runtime-path exclusion confirmed). Items #5 ("Compare upload docs against canonical") and #6 ("Independent review + CI before merge") remain for the Phase-0.5 review.
 
 ### 7.4 Phase 1 — SAFE_ARCHIVE documentation (proposed)
@@ -777,9 +777,9 @@ The plan sequences the 17 ADAPT items + the Phase 0.5 source-content commit + th
   3. Document the rotation recommendation for SECRET (.env — dev-only, no production rotation needed; if ever deployed to a reachable environment, rotate the dev DB password).
   4. Cross-reference PR #145 §4.1.1 (historical hardcoded admin credential — NOT in `.env`).
 
-### 7.5 Phase 2 — ADAPT batch A (S complexity, 4 items)
+### 7.5 Phase 2 — ADAPT batch A (S complexity, 3 items)
 
-- **Scope:** Items #2, #5, #12, #17 (the 4 S-complexity adaptations).
+- **Scope:** Items #2, #5, #17 (the 3 S-complexity adaptations assigned to Phase 2). ADAPT-12 remains with the other phase-audit scripts in Phase 4, so each adaptation item is assigned to exactly one phase.
 - **PR type:** code (typed, tested).
 - **Risk:** LOW.
 - **Tests:** Required per §4 specs.
@@ -788,7 +788,6 @@ The plan sequences the 17 ADAPT items + the Phase 0.5 source-content commit + th
 - **Items:**
   - #2 `PriceVerdictBadge.tsx` (snapshot test for 3 verdict states).
   - #5 `prisma/migrations/README.md` (doc review only).
-  - #12 `audit-phase11-notifications.ts` (vitest fixture with mock Prisma client).
   - #17 `image-transform-logo-transparent.ts` (vitest pixel-diff fixture).
 - **Standards check:** §2.1 for each item.
 
@@ -928,14 +927,14 @@ Authorize the 8 PRs in the following order:
 1. **Phase 0.5 + Phase 1 (parallel, docs-only, LOW risk).** Close the Phase-0 completion gate; stand up the safe-archive documentation. Combined: ~5 hours, ~36 files documented, 0 code execution paths, 0 binary bytes committed, 0 DB mutations. **Recommend authorizing both immediately.**
 2. **Phase 2 (ADAPT batch A, 4 S-complexity items, LOW risk).** Demonstrates the adaptation pattern with the smallest changes. ~6 hours, 4 new files with tests. **Recommend authorizing after Phases 0.5 + 1 land.**
 3. **Phase 7 (standards cleanup, 7 already-present `@ts-nocheck` files, LOW risk, INDEPENDENT).** Improves TypeScript hygiene without touching legacy transfer. ~4 hours. **Recommend authorizing in parallel with Phases 2-6.**
-4. **Phase 3 + Phase 4 + Phase 5 (M complexity, 12 items total).** Sequenced per §7.2 dependencies. Combined: ~40 hours, 12 new files with tests. **Recommend authorizing after Phase 2 lands.**
+4. **Phase 3 + Phase 4 + Phase 5 (12 items total: 11 M-complexity + 1 S-complexity adaptation).** Sequenced per §7.2 dependencies. Combined: ~40 hours, 12 new files with tests. **Recommend authorizing after Phase 2 lands.**
 5. **Phase 6 (ADAPT batch E, 2 L-complexity data-mutating items, HIGH risk).** The 2 data-mutating scripts (`rebuild-taxonomy` + `seed-store-comprehensive`). ~24 hours, 5+ new files with tests, `--confirm`-gated. **Recommend authorizing LAST, after Phase 4 establishes the test infrastructure. Production seeding requires separate authorization.**
 
 ### 10.2 Why this order
 
 - **Docs before code:** Phase 0.5 + Phase 1 are LOW risk and establish the provenance + safe-archive baseline. They also close the Phase-0 completion gate's first 4 checkboxes (paths verified, SHA-256 verified, secrets scanned, runtime-path exclusion confirmed). Doing these first means every subsequent code PR can reference the documented provenance.
 - **S before M before L:** Phase 2 (S complexity) demonstrates the adaptation pattern with the smallest possible changes. Fast feedback (snapshot tests, pixel-diff fixtures). Phase 3-5 (M complexity) build on the pattern. Phase 6 (L complexity, data-mutating) lands last, when the test infrastructure from Phase 4 is in place.
-- **Phase 7 in parallel:** The `@ts-nocheck` cleanup is independent of the legacy-transfer work. It can be authorized immediately and run in parallel with Phases 2-6 without conflict.
+- **Phase 7 in parallel:** The 7-file `@ts-nocheck` cleanup is independent of the legacy-transfer work. It can be authorized immediately and run in parallel with Phases 2-6 without conflict.
 - **Phase 6 last:** The 2 data-mutating scripts are the highest risk. Even though `--confirm`-gated, they touch the canonical taxonomy seed + store comprehensive seed. Better to land them after the test infrastructure (Phase 4) and the pattern (Phases 2-5) are established. **Production seeding requires separate authorization** — this proposal commits the scripts to the repo but does NOT authorize execution.
 
 ### 10.3 What this proposal does NOT do
@@ -959,7 +958,7 @@ Authorize the 8 PRs in the following order:
 | ADAPT_THEN_INTEGRATE (capability gap → rewrite → integrate) | **17** (1.9%) — phased into 6 PRs (Phases 2-6) |
 | PRESERVE_AS_REFERENCE (historical / pattern-source) | **19** (2.1%) — Phase 0 (DONE) + Phase 0.5 (proposed) |
 | SAFE_ARCHIVE (secrets / DB data / binary → redacted manifest) | **18** (2.0%) — Phase 1 (proposed) |
-| Standards cleanup (already-present `@ts-nocheck` files) | **7** — Phase 7 (independent, parallel) |
+| Standards cleanup (already-present code files containing `@ts-nocheck`) | **7** — Phase 7 (independent, parallel) |
 | Files with no proposed action | **0** |
 | Secret values printed | **0** |
 | Database files inspected (content read) | **0** (SHA-256 computed via `sha256sum`; table lists from schema not from .db) |
