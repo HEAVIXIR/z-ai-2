@@ -157,12 +157,18 @@ describe("Issue #112 / STEP 16.83 — source-code contract", () => {
       ),
       "utf-8",
     );
+    // Strip comments before matching — the header comment documents
+    // the previous buggy pattern (`user?.id ?? null`) for provenance,
+    // which would falsely match the regex. We only check actual code.
+    const codeOnly = source
+      .replace(/\/\*[\s\S]*?\*\//g, "") // block comments
+      .replace(/\/\/.*$/gm, "");        // line comments
     // The previous pattern `user?.id ?? null` could pass null to
     // endAuction, causing false audit attribution. After the fix,
     // the verified user.id is passed (non-null because requireAdmin
     // returned successfully).
-    expect(source).not.toMatch(/\?\.\s*id\s*\?\?\s*null/);
-    expect(source).toMatch(/endAuction\(.*user!?\.id\)/);
+    expect(codeOnly).not.toMatch(/\?\.\s*id\s*\?\?\s*null/);
+    expect(codeOnly).toMatch(/endAuction\(.*user!?\.id\)/);
   });
 });
 
