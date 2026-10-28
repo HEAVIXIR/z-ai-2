@@ -1725,17 +1725,7 @@ This is a known item tracked by Issue #144 exit criteria. **No new finding.**
 
 ### 5.1 Recommendation
 
-**This comprehensive review CONFIRMS the line-by-line audit's (PR #145)
-finding of 0 transfer candidates.** The legacy repository HEAVIXIR/z @
-`217f98e` contains 899 unique paths organized into 19 feature areas, all
-of which are already represented in the current target z-ai-2 @ `833bec6`.
-The 54 absent paths (per manifest) are deliberate rejections, holds, or
-policy exclusions — each with documented rationale in `IMPORT-MANIFEST-2026-10-26.csv`
-and PR #145 §3/§5.
-
-**No new product gaps were identified** beyond what was already documented.
-**No new security findings** beyond what was already documented in PR #145 §4.
-**No transfer is warranted.**
+**Historical inventory conclusion — not a current transfer decision.** This document compares 899 paths against the historical target snapshot `833bec6`; it has not been re-run against current `main`. Use [`VALUE-BASED-DISPOSITION-2026-10-27.md`](./VALUE-BASED-DISPOSITION-2026-10-27.md) as the canonical decision record: 845 `INTEGRATE`, 17 `ADAPT_THEN_INTEGRATE`, 19 `PRESERVE_AS_REFERENCE`, and 18 `SAFE_ARCHIVE`. The older “0 transfer candidates” conclusion is superseded. Adaptation candidates must be implemented individually with current-contract reviews and tests; no bulk copying or production operation is authorized.
 
 ### 5.2 Issue #144 exit criteria status
 
@@ -1749,7 +1739,7 @@ and PR #145 §3/§5.
 | Post-merge provenance run observed on main | ✅ PR #149 + PR #150 |
 | Credential-pattern findings classified, no values exposed | ✅ PR #145 §4 + this audit §4.1 |
 | No code transferred, no DB mutation, no secret committed | ✅ Read-only audit |
-| **Issue #144 substantive completion** | ✅ **Complete** — comprehensive file-by-file audit (this document) confirms prior findings |
+| **Historical inventory deliverable** | ✅ Complete for the `833bec6` snapshot; current disposition and adaptation work are governed by `VALUE-BASED-DISPOSITION-2026-10-27.md` |
 
 ### 5.3 Remaining open items (out of scope for Issue #144)
 
