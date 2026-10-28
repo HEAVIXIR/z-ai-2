@@ -1,8 +1,11 @@
 # Issue #144 — Comprehensive legacy file-by-file audit
 
+> **Status update (2026-10-28): historical inventory, not the canonical disposition.** This audit compares against target snapshot `833bec6169a214319857b2ac1cfadfa6bf195a88`; it has not been re-run against current `main`. Use [`VALUE-BASED-DISPOSITION-2026-10-27.md`](./VALUE-BASED-DISPOSITION-2026-10-27.md) for current disposition totals and decisions. The earlier “0 transfer candidates” conclusion is superseded by the 17-item `ADAPT_THEN_INTEGRATE` backlog. Do not bulk-copy legacy files; each adaptation requires implementation, security review, tests, and a dedicated PR.
+
+
 **Audit date:** 2026-10-27
 **Source:** HEAVIXIR/z @ `217f98ecc800aa64ae4739d27ed2aeb95dd260ed`
-**Target baseline:** z-ai-2/main @ `833bec6169a214319857b2ac1cfadfa6bf195a88`
+**Historical target snapshot (not current main):** z-ai-2/main @ `833bec6169a214319857b2ac1cfadfa6bf195a88`
 **Scope:** all 899 unique paths across 13 ZIP archives (`.zscripts`, `bun`, `db`, `docs`, `download`, `examples`, `mini-services`, `prisma`, `public`, `scripts`, `src`, `tests`, `upload`)
 **Method:** read-only file inspection; no extraction into target, no code execution, no secret printing
 **Auditor:** general-purpose subagent (acting under dellk00k non-author review delegation)
@@ -28,7 +31,7 @@ Where this document repeats manifest content, it does so only to provide a per-f
 | Metric | Value |
 |---|---:|
 | Total unique legacy paths audited | **899** |
-| Already tracked in target (z-ai-2/main @ 833bec6) | **846** (94.1%) |
+| Already tracked in target (historical snapshot: z-ai-2/main @ 833bec6) | **845** (94.0%) |
 | Absent from target (covered by `IMPORT-MANIFEST-2026-10-26.csv`) | **53** in inventory + **1** `.zscripts/dev.pid` runtime file = **54** total (manifest authority) |
 | Feature areas identified | **19** (A through S) |
 | Real product gaps identified | **0** |
@@ -1709,7 +1712,7 @@ This is a known item tracked by Issue #144 exit criteria. **No new finding.**
 |---|---:|
 | Total unique legacy paths reviewed | **899** |
 | Feature areas identified | **19** (A through S) |
-| Paths already tracked in target (`z-ai-2/main @ 833bec6`) | **846** (94.1%) |
+| Paths already tracked in target (historical snapshot: `z-ai-2/main @ 833bec6`) | **845** (94.0%) |
 | Paths absent from target | **53** in inventory + **1** runtime marker = **54** per manifest |
 | Real product gaps identified | **0** |
 | Transfer candidates | **0** (confirms PR #145 §7 finding) |
@@ -1738,7 +1741,7 @@ and PR #145 §3/§5.
 
 | Exit criterion | Status |
 |---|---|
-| Every unique path has explicit disposition | ✅ 899/899 dispositioned (846 ALREADY_PRESENT + 53 ABSENT per manifest + 1 runtime marker) |
+| Every unique path has explicit disposition | ✅ 899/899 dispositioned (845 ALREADY_PRESENT + 53 ABSENT per manifest + 1 runtime marker) |
 | Every absent path has manifest rationale | ✅ 54/54 (19 EXCLUDE, 10 REJECT, 19 HOLD, 6 REWRITE — see `IMPORT-MANIFEST-2026-10-26.csv`) |
 | Every HOLD+REWRITE candidate reviewed line-by-line | ✅ 25/25 reviewed in PR #145 §3 |
 | Prisma schema deltas documented (model + field level) | ✅ PR #146 + PR #151 |
