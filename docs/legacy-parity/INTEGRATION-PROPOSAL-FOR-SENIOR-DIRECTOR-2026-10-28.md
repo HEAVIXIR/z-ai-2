@@ -736,7 +736,7 @@ The plan sequences the 17 ADAPT items + the Phase 0.5 source-content/reference a
 | **Planned file-level actions after Phase 0** | | **60** (12 source copies + 6 duplicate-document references + 18 safe-archive records + 17 adaptations + 7 hygiene targets) | | | | |
 
 **Notes:**
-- The 845 INTEGRATE items require no transfer PRs (target's active copy is canonical). The 56 non-INTEGRATE items are the actionable backlog.
+- The 845 INTEGRATE paths require no transfer PRs (the target's active copy is canonical). The 54 non-INTEGRATE legacy paths are 17 ADAPT + 19 PRESERVE + 18 SAFE_ARCHIVE; the 60 planned file-level actions after Phase 0 also include 7 separate hygiene targets and exclude the runtime-marker content already handled in Phase 0.
 - Phase 7 (`@ts-nocheck` cleanup) is independent of Phases 2-6 and may be authorized in parallel.
 - The 7 ADAPT items grouped as "batch C" (Phase 4) all share the same adaptation pattern (§4.6-4.12); they can be a single PR if the shared diff is small, or 2 PRs grouped by domain.
 
@@ -925,7 +925,7 @@ For each of the 10 project goals, which legacy files support it (and via which d
 Authorize the 8 PRs in the following order:
 
 1. **Phase 0.5 + Phase 1 (parallel, docs-only, LOW risk).** Close the Phase-0 completion gate; stand up the safe-archive documentation. Combined: ~5 hours, ~36 files documented, 0 code execution paths, 0 binary bytes committed, 0 DB mutations. **Recommend authorizing both immediately.**
-2. **Phase 2 (ADAPT batch A, 4 S-complexity items, LOW risk).** Demonstrates the adaptation pattern with the smallest changes. ~6 hours, 4 new files with tests. **Recommend authorizing after Phases 0.5 + 1 land.**
+2. **Phase 2 (ADAPT batch A, 3 S-complexity items, LOW risk).** Demonstrates the adaptation pattern with the smallest changes. ~6 hours, 3 scoped files (two code utilities/components plus the migration-guidance document) with relevant tests/review. **Recommend authorizing after Phases 0.5 + 1 land.**
 3. **Phase 7 (standards cleanup, 7 already-present `@ts-nocheck` files, LOW risk, INDEPENDENT).** Improves TypeScript hygiene without touching legacy transfer. ~4 hours. **Recommend authorizing in parallel with Phases 2-6.**
 4. **Phase 3 + Phase 4 + Phase 5 (12 items total: 11 M-complexity + 1 S-complexity adaptation).** Sequenced per §7.2 dependencies. Combined: ~40 hours, 12 new files with tests. **Recommend authorizing after Phase 2 lands.**
 5. **Phase 6 (ADAPT batch E, 2 L-complexity data-mutating items, HIGH risk).** The 2 data-mutating scripts (`rebuild-taxonomy` + `seed-store-comprehensive`). ~24 hours, 5+ new files with tests, `--confirm`-gated. **Recommend authorizing LAST, after Phase 4 establishes the test infrastructure. Production seeding requires separate authorization.**
