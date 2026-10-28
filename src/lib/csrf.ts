@@ -27,20 +27,28 @@ function toOrigin(value: string | null | undefined): string | null {
 }
 
 /**
- * Accept the configured canonical origin AND the actual request URL origin.
- * NEXTAUTH_URL may intentionally point at a canonical domain while users
- * arrive through a Vercel alias/preview hostname. The request URL origin is
- * derived by the framework from the incoming request; checking against it
- * avoids false CSRF failures without trusting arbitrary Origin/Referer values.
+ * Build the allowlist only from deployment configuration, never from the
+ * incoming request URL/Host headers. Vercel supplies these hostnames for the
+ * active deployment/branch/project, which permits known aliases without
+ * trusting a client-controlled host value as an allowed origin.
  */
-function allowedOrigins(req: Request): Set<string> {
+function allowedOrigins(): Set<string> {
   const allowed = new Set<string>();
-  const configured = toOrigin(process.env.NEXTAUTH_URL);
-  const requestOrigin = toOrigin(req.url);
-  if (configured) allowed.add(configured);
-  if (requestOrigin) allowed.add(requestOrigin);
+  const configured = [
+    process.env.NEXTAUTH_URL,
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ];
 
-  // Development/test fallback only when neither source yielded an origin.
+  for (const value of configured) {
+    if (!value) continue;
+    const normalized = value.includes("://") ? value : `https://${value}`;
+    const origin = toOrigin(normalized);
+    if (origin) allowed.add(origin);
+  }
+
+  // Development/test fallback only when no configured origin is available.
   if (allowed.size === 0 && process.env.NODE_ENV !== "production") {
     allowed.add("http://localhost:3000");
   }
@@ -63,7 +71,7 @@ function originMatches(value: string | null, allowed: Set<string>): boolean {
  * Fail-closed CSRF check.
  * Mutation requests require a matching Origin or Referer, unless they use
  * an explicit non-browser authentication header. If both headers are sent,
- * both must match an allowed origin.
+ * both must match a deployment-configured origin.
  */
 export function checkCsrf(req: Request): boolean {
   const method = (req.method || "GET").toUpperCase();
@@ -74,7 +82,7 @@ export function checkCsrf(req: Request): boolean {
   const referer = req.headers.get("referer");
   if (!origin && !referer) return false;
 
-  const allowed = allowedOrigins(req);
+  const allowed = allowedOrigins();
   if (allowed.size === 0) return false;
   if (origin && !originMatches(origin, allowed)) return false;
   if (referer && !originMatches(referer, allowed)) return false;
