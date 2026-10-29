@@ -16,7 +16,7 @@
 
 import { db } from '@/lib/db';
 import { headers } from 'next/headers';
-import { Prisma } from '@/lib/generated/client/client';
+import { Prisma } from '@prisma/client';
 
 export type AuditActorType = 'USER' | 'ADMIN' | 'SYSTEM' | 'AI';
 

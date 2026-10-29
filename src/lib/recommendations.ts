@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { Listing, UserRecommendation } from '@/lib/generated/client/client';
+import type { Listing, UserRecommendation } from '@prisma/client';
 
 /* ============================================================
    HEAVIX — Recommendation Engine (P2-24)

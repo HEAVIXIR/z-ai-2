@@ -39,7 +39,7 @@
      bunx tsx prisma/seed-price-observations.ts
      bun run db:seed-price-observations
 */
-import { PrismaClient } from '../src/lib/generated/client/client'
+import { PrismaClient } from '@prisma/client'
 import { createPrismaClient } from './prismaClient';
 
 // Import the live engine — `tsx` resolves the `@/` alias from tsconfig.json.

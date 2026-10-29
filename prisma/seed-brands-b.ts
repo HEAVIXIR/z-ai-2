@@ -26,7 +26,7 @@
 
    Run:  bunx tsx prisma/seed-brands-b.ts
 */
-import { PrismaClient } from '../src/lib/generated/client/client'
+import { PrismaClient } from '@prisma/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();

@@ -38,7 +38,7 @@
      bunx tsx prisma/seed-listing-attributes.ts
      bun run db:seed-listing-attributes
 */
-import { PrismaClient } from '../src/lib/generated/client/client'
+import { PrismaClient } from '@prisma/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();

@@ -19,7 +19,7 @@
 
    Run:  cd /home/z/my-project && bunx tsx prisma/seed-attribute-catalog.ts
 */
-import { PrismaClient } from '../src/lib/generated/client/client'
+import { PrismaClient } from '@prisma/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();

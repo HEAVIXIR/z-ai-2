@@ -11,7 +11,7 @@
  *   7. Field Policy: listSchema returns at least 1 column
  *   8. Database: underlying Prisma model exists
  */
-import { PrismaClient } from '../src/lib/generated/client/client';
+import { PrismaClient } from '@prisma/client';
 import { getResource, registry } from '@/lib/admin/resource-registry';
 import '@/lib/admin/resource-index'; // side-effect: registers all 18 resources
 import * as fs from 'fs';

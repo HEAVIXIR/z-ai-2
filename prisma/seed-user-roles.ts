@@ -25,7 +25,7 @@
    or:
      bun run db:seed-user-roles
 */
-import { PrismaClient } from '../src/lib/generated/client/client'
+import { PrismaClient } from '@prisma/client'
 import { createPrismaClient } from './prismaClient';
 import bcrypt from "bcryptjs";
 

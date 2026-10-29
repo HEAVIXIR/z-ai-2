@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { PrismaClient } from '@/lib/generated/client/client';
+import { PrismaClient } from '@prisma/client';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '@/lib/authorization/permissions';
 
 const prisma = new PrismaClient();

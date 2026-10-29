@@ -23,7 +23,7 @@
  * Pure experiment — NO production code change.
  */
 
-import { PrismaClient } from '../src/lib/generated/client/client';
+import { PrismaClient } from '@prisma/client';
 import { performance } from 'perf_hooks';
 
 const prisma = new PrismaClient({
