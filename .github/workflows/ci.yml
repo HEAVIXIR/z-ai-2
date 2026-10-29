@@ -449,13 +449,13 @@ jobs:
       - name: Push schema and seed RBAC in isolated TLS database
         run: |
           set -euo pipefail
-          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=verify-full&sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bunx prisma db push --schema=prisma/schema.prisma
           bun run db:seed-rbac
       - name: Create isolated MISSING-role classification fixture
         run: |
           set -euo pipefail
-          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=verify-full&sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bun -e 'import { PrismaClient } from "@prisma/client"; const db = new PrismaClient(); await db.user.create({ data: { firstName: "CI", lastName: "Preflight", email: "phase-c-preflight@example.invalid", mobile: "+19999999999", passwordHash: "not-a-real-password", role: "BUYER", status: "ACTIVE" } }); await db.$disconnect();'
       - name: Grant least-privilege access for TLS preflight
         run: |
@@ -474,7 +474,7 @@ jobs:
           SQL
       - name: Run Phase C read-only preflight gate against TLS PostgreSQL 17
         env:
-          DATABASE_URL: "postgresql://heavix_dryrun_ro:readonly_pass@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${{ github.workspace }}/.tls-pg/certs/ca-valid.crt"
+          DATABASE_URL: "postgresql://heavix_dryrun_ro:readonly_pass@localhost:5433/heavix_preflight_test?schema=public&sslmode=verify-full&sslrootcert=${{ github.workspace }}/.tls-pg/certs/ca-valid.crt"
           DRYRUN_CONFIRM_TARGET: "heavix_preflight_test"
           DRYRUN_EXPECTED_HOST: "localhost"
           DRYRUN_EXPECTED_ROLE: "heavix_dryrun_ro"
