@@ -36,8 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
-# generated OpenNext build artifacts
+# generated OpenNext and Prisma build artifacts
 /.open-next/
+/src/lib/generated/
 
 # typescript
 *.tsbuildinfo
