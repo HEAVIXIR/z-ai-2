@@ -12,8 +12,8 @@ trap 'rm -f "$TMP_SCHEMA" "$TMP_MAIN_SCHEMA"' EXIT
 # intentionally keeps Prisma's default engine, so exclude that one line from
 # this parity comparison.
 sed \
-  -e '1c\\// HEAVIX — Industrial heavy-machinery marketplace' \
-  -e '2c\\// SQLite development schema (PostgreSQL for production — switch provider + url for deployment)' \
+  -e '1c\// HEAVIX — Industrial heavy-machinery marketplace' \
+  -e '2c\// SQLite development schema (PostgreSQL for production — switch provider + url for deployment)' \
   -e '/^[[:space:]]*output   = "..\/src\/lib\/generated\/preview-sqlite-client"$/d' \
   -e 's/provider = "sqlite"/provider = "postgresql"/' \
   -e 's/url      = env("PREVIEW_DATABASE_URL")/url      = env("DATABASE_URL")/' \
