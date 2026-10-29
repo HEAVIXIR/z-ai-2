@@ -1,3 +1,4 @@
+// OpenNext Worker build configuration; deploys are gated separately.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "heavix-preview",
