@@ -9,6 +9,12 @@ generator client {
   runtime    = "cloudflare"
 }
 
+generator nodeClient {
+  provider   = "prisma-client-js"
+  output     = "../../src/lib/generated/store-node-client"
+  engineType = "client"
+}
+
 datasource db {
   provider = "postgresql"
 }
