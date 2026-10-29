@@ -127,7 +127,8 @@
     "zod": "^4.0.2",
     "zustand": "^5.0.6",
     "@prisma/adapter-pg": "6.19.3",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "pg-cloudflare": "^1.4.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
