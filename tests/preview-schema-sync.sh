@@ -15,6 +15,7 @@ normalize_schema() {
     -e '/^[[:space:]]*output[[:space:]]*=/d' \
     -e '/^[[:space:]]*runtime[[:space:]]*=/d' \
     -e '/^[[:space:]]*generator nodeClient[[:space:]]*{/,/^[[:space:]]*}/d' \
+    -e '/^[[:space:]]*generator nodeRuntimeClient[[:space:]]*{/,/^[[:space:]]*}/d' \
     -e 's/provider[[:space:]]*=[[:space:]]*"sqlite"/provider = "postgresql"/' \
     -e '/^[[:space:]]*$/d' \
     "$input" > "$output"
