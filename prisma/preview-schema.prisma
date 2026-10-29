@@ -2,12 +2,12 @@
 // SQLite development schema (PostgreSQL for production — switch provider + url for deployment)
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client"
+  output     = "../src/lib/generated/preview-client"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("PREVIEW_DATABASE_URL")
 }
 
 // ════════════════════════════════════════════════════════════
