@@ -1,26 +1,29 @@
 import { PrismaClient } from "@/lib/generated/store-client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
- * HEAVIX Store Prisma Client (singleton).
+ * HEAVIX Store Prisma Client singleton.
  *
- * The HEAVIX auto-parts marketplace has its OWN PostgreSQL database
- * (`STORE_DATABASE_URL`) and its own Prisma schema
- * (`prisma/store/schema.prisma`). The generated client lives at
- * `src/lib/generated/store-client` so it does NOT clash with the
- * main HEAVIX `@prisma/client`.
- *
- * The instance is cached on `globalThis` to avoid connection
- * exhaustion in dev-mode hot reloads (same pattern as `@/lib/db`).
+ * Store uses its own PostgreSQL database and STORE_DATABASE_URL. The
+ * engine-less Prisma client plus pg adapter avoids shipping a Rust query
+ * engine binary in the Cloudflare Workers runtime.
  */
 const globalForStore = globalThis as unknown as {
   storeDb: PrismaClient | undefined;
 };
 
-export const storeDb =
-  globalForStore.storeDb ??
-  new PrismaClient({
+function createStorePrismaClient(): PrismaClient {
+  const adapter = new PrismaPg({
+    connectionString: process.env.STORE_DATABASE_URL as string,
+  });
+
+  return new PrismaClient({
+    adapter,
     log: ["error", "warn"],
   });
+}
+
+export const storeDb = globalForStore.storeDb ?? createStorePrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForStore.storeDb = storeDb;
