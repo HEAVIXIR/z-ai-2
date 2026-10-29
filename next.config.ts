@@ -98,6 +98,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // OpenNext/esbuild needs the workerd-conditioned pg-cloudflare entrypoints.
+  // Next's output file tracer otherwise omits these dynamically required files.
+  outputFileTracingIncludes: {
+    "**/*": [
+      "./node_modules/pg-cloudflare/dist/**",
+      "./node_modules/pg-cloudflare/esm/**",
+    ],
+  },
   typescript: {
     // F-013: build MUST fail on type errors. Was previously `true` which masked
     // security-relevant type mismatches at build time.
