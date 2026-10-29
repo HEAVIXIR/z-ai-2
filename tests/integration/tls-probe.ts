@@ -19,7 +19,7 @@
  *   PROBE_EXIT_CODE=<n>         — the process exit code
  *
  * ──────────────────────────────────────────────────────────────────────── */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/lib/generated/client/client';
 
 async function main(): Promise<void> {
   const url = process.env.PROBE_DATABASE_URL;

@@ -25,10 +25,11 @@
    or:
      bun run db:seed-user-roles
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 import bcrypt from "bcryptjs";
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 /*
  * Admin credentials are read ONLY from environment variables.

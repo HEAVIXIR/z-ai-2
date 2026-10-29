@@ -14,9 +14,10 @@
    or:
      bun run db:seed-ai-policies
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 /* ───────────── Default AI task policies ───────────── */
 

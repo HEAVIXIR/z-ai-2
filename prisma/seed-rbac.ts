@@ -10,10 +10,11 @@
    or:
      bun run db:seed-rbac
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 import { PERMISSIONS as CANONICAL_PERMISSIONS, ROLE_PERMISSIONS as CANONICAL_ROLE_PERMISSIONS } from "../src/lib/authorization/permissions";
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 /* ───────────── Roles ───────────── */
 

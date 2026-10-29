@@ -39,12 +39,13 @@
      bunx tsx prisma/seed-price-observations.ts
      bun run db:seed-price-observations
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
 // Import the live engine — `tsx` resolves the `@/` alias from tsconfig.json.
 import { estimatePrice, PRICE_MODEL_VERSION } from "../src/lib/price-engine";
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 async function main() {
   const listings = await db.listing.findMany({

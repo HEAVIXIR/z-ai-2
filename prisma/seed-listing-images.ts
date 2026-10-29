@@ -4,9 +4,10 @@
    Picks 1-3 images per listing from /public/images/{machinery,sections,hero}
    based on the listing's category nameEn (root English category).
    First image of each batch is marked isPrimary=true. */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 /* Map root-category English name → list of public image URLs that
    visually match that machine/equipment type. Falls back to a generic

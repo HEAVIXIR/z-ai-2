@@ -23,9 +23,10 @@
    or:
      bun run test:ai-gateway
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const GATEWAY_URL =
   process.env.AI_GATEWAY_URL ?? "http://localhost:3000/api/ai-gateway";

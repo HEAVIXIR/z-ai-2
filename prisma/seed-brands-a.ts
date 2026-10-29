@@ -20,9 +20,10 @@
 
    Run:  bunx tsx prisma/seed-brands-a.ts
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const slugifyEn = (s: string) =>
   s

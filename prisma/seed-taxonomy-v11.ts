@@ -15,9 +15,10 @@
    matches a V1.1 child slug are reparented (parentId/level/layer/taxPath updated). Existing categories
    whose slug does NOT match a V1.1 child are left alone. */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 // ════════════════════════════════════════════════════════════
 // 1. TRANSACTION TYPES — HBR §18 (6)

@@ -2,9 +2,10 @@
    Idempotent upsert by `key`. Safe to re-run; never deletes
    existing rows or changes admin-edited fields beyond the
    defaults below. */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '../src/lib/generated/client/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const DEFAULTS: Array<{
   key: string;
