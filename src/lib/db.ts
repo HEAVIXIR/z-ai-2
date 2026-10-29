@@ -1,17 +1,12 @@
+import { PrismaClient as NodePrismaClient } from "@prisma/client";
 import { PrismaClient as WorkerPrismaClient } from "@/lib/generated/client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-/**
- * Main HEAVIX Prisma client.
- * Node.js processes use the Node-generated client; Cloudflare Preview uses
- * the separately generated Cloudflare runtime client. Both are generated from
- * the same schema; expose the Node client contract to keep overloaded
- * transaction APIs callable across the application.
- */
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
 type PrismaGlobal = typeof globalThis & {
-  prisma?: WorkerPrismaClient;
+  prismaNode?: NodePrismaClient;
+  prismaWorker?: WorkerPrismaClient;
   prismaSchemaVersion?: string;
 };
 
@@ -19,28 +14,39 @@ const globalForPrisma = globalThis as PrismaGlobal;
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
 }
 
-function createPrismaClient(): WorkerPrismaClient {
-  const adapter = new PrismaPg({
-    connectionString: requiredEnv("DATABASE_URL"),
-  });
+function createNodePrismaClient(): NodePrismaClient {
+  const adapter = new PrismaPg({ connectionString: requiredEnv("DATABASE_URL") });
+  return new NodePrismaClient({ adapter });
+}
 
+function createWorkerPrismaClient(): WorkerPrismaClient {
+  const adapter = new PrismaPg({ connectionString: requiredEnv("DATABASE_URL") });
   return new WorkerPrismaClient({ adapter });
 }
 
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
-  globalForPrisma.prisma = undefined;
+  globalForPrisma.prismaNode = undefined;
+  globalForPrisma.prismaWorker = undefined;
   globalForPrisma.prismaSchemaVersion = SCHEMA_VERSION;
 }
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+const isWorkerRuntime = process.env.HEAVIX_ENV === "preview";
+
+function getPrismaClient(): NodePrismaClient | WorkerPrismaClient {
+  if (isWorkerRuntime) {
+    globalForPrisma.prismaWorker ??= createWorkerPrismaClient();
+    return globalForPrisma.prismaWorker;
+  }
+  globalForPrisma.prismaNode ??= createNodePrismaClient();
+  return globalForPrisma.prismaNode;
+}
+
+export const db = getPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = db;
   globalForPrisma.prismaSchemaVersion = SCHEMA_VERSION;
 }
