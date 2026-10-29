@@ -2,18 +2,24 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TMP_SCHEMA="$(mktemp)"
-trap 'rm -f "$TMP_SCHEMA"' EXIT
+TMP_MAIN="$(mktemp)"
+TMP_PREVIEW="$(mktemp)"
+trap 'rm -f "$TMP_MAIN" "$TMP_PREVIEW"' EXIT
 
-# The Preview schema is an exact mirror of Main except for its datasource
-# provider/URL and a separate generated-client output path. Fail CI on drift.
-sed \
-  -e '1c\// HEAVIX — Industrial heavy-machinery marketplace' \
-  -e '2c\// SQLite development schema (PostgreSQL for production — switch provider + url for deployment)' \
-  -e '/^[[:space:]]*output   = "..\/src\/lib\/generated\/preview-sqlite-client"$/d' \
-  -e 's/provider = "sqlite"/provider = "postgresql"/' \
-  -e 's/url      = env("PREVIEW_DATABASE_URL")/url      = env("DATABASE_URL")/' \
-  "$ROOT/prisma/preview-schema.prisma" > "$TMP_SCHEMA"
+# Prisma 7 keeps datasource URLs in prisma.config.ts. The Preview schema must
+# match the main data model while using SQLite and a separate client output.
+normalize_schema() {
+  local input="$1"
+  local output="$2"
+  sed \
+    -e '/^[[:space:]]*output[[:space:]]*=/d' \
+    -e '/^[[:space:]]*runtime[[:space:]]*=/d' \
+    -e 's/provider[[:space:]]*=[[:space:]]*"sqlite"/provider = "postgresql"/' \
+    "$input" > "$output"
+}
 
-diff -u "$ROOT/prisma/schema.prisma" "$TMP_SCHEMA"
-echo "Preview schema matches Main schema (only datasource/client-output differences)."
+normalize_schema "$ROOT/prisma/schema.prisma" "$TMP_MAIN"
+normalize_schema "$ROOT/prisma/preview-schema.prisma" "$TMP_PREVIEW"
+
+diff -u "$TMP_MAIN" "$TMP_PREVIEW"
+echo "Preview schema matches Main schema (only datasource provider and client output/runtime differ)."
