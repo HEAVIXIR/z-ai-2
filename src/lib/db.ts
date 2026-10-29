@@ -5,13 +5,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 /**
  * Main HEAVIX Prisma client.
  * Node.js processes use the Node-generated client; Cloudflare Preview uses
- * the separately generated Cloudflare runtime client.
+ * the separately generated Cloudflare runtime client. Both are generated from
+ * the same schema; expose the Node client contract to keep overloaded
+ * transaction APIs callable across the application.
  */
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
-type MainPrismaClient = NodePrismaClient | WorkerPrismaClient;
 type PrismaGlobal = typeof globalThis & {
-  prisma?: MainPrismaClient;
+  prisma?: NodePrismaClient;
   prismaSchemaVersion?: string;
 };
 
@@ -25,15 +26,16 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createPrismaClient(): MainPrismaClient {
+function createPrismaClient(): NodePrismaClient {
   const adapter = new PrismaPg({
     connectionString: requiredEnv("DATABASE_URL"),
   });
-  const options = { adapter, log: ["error", "warn"] };
 
-  return process.env.HEAVIX_ENV === "preview"
-    ? new WorkerPrismaClient(options)
-    : new NodePrismaClient(options);
+  if (process.env.HEAVIX_ENV === "preview") {
+    return new WorkerPrismaClient({ adapter, log: ["error", "warn"] });
+  }
+
+  return new NodePrismaClient({ adapter, log: ["error", "warn"] });
 }
 
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
