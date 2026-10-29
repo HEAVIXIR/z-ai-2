@@ -591,6 +591,31 @@ jobs:
           fi
           echo "SUCCESS: Caddy→app connectivity proven (HTTP 200 from /api/health)"
 
+  # Exact OpenNext Cloudflare build used by Workers Builds, but build-only:
+  # this job never runs the deploy command or touches Cloudflare resources.
+  opennext-build-proof:
+    name: OpenNext Cloudflare build proof (no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEAVIX_ENV: preview
+      NODE_ENV: production
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install locked project dependencies
+        run: bun install --frozen-lockfile
+      - name: Run the Workers Builds OpenNext build command without deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          bun add --no-save --ignore-scripts @opennextjs/cloudflare@1.20.13 wrangler@4.154.0
+          bunx opennextjs-cloudflare build
+
   # Report-only compatibility probe: does not deploy or touch production resources.
   # Intentionally non-blocking while we learn whether vinext supports this app.
   cloudflare-compatibility-report:
