@@ -28,10 +28,10 @@ function createStorePrismaClient(): NodeStorePrismaClient {
   });
 
   if (process.env.HEAVIX_ENV === "preview") {
-    return new WorkerStorePrismaClient({ adapter, log: ["error", "warn"] });
+    return new WorkerStorePrismaClient({ adapter });
   }
 
-  return new NodeStorePrismaClient({ adapter, log: ["error", "warn"] });
+  return new NodeStorePrismaClient({ adapter });
 }
 
 export const storeDb = globalForStore.storeDb ?? createStorePrismaClient();
