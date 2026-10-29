@@ -1,12 +1,10 @@
-import { PrismaClient as NodePrismaClient } from "@prisma/client";
-import { PrismaClient as WorkerPrismaClient } from "@/lib/generated/client/client";
+import { PrismaClient } from "@/lib/generated/client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
 type PrismaGlobal = typeof globalThis & {
-  prismaNode?: NodePrismaClient;
-  prismaWorker?: WorkerPrismaClient;
+  prisma?: PrismaClient;
   prismaSchemaVersion?: string;
 };
 
@@ -14,38 +12,31 @@ const globalForPrisma = globalThis as PrismaGlobal;
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
   return value;
 }
 
-function createNodePrismaClient(): NodePrismaClient {
-  const adapter = new PrismaPg({ connectionString: requiredEnv("DATABASE_URL") });
-  return new NodePrismaClient({ adapter });
+function createPrismaClient(): PrismaClient {
+  const adapter = new PrismaPg({
+    connectionString: requiredEnv("DATABASE_URL"),
+  });
+
+  return new PrismaClient({ adapter });
 }
 
-function createWorkerPrismaClient(): WorkerPrismaClient {
-  const adapter = new PrismaPg({ connectionString: requiredEnv("DATABASE_URL") });
-  return new WorkerPrismaClient({ adapter });
-}
-
+// Use one generated Prisma 7 Cloudflare-compatible client in every server
+// runtime. A Node/Worker union makes every model delegate uncallable to
+// TypeScript because the generated delegate signatures are not identical.
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
-  globalForPrisma.prismaNode = undefined;
-  globalForPrisma.prismaWorker = undefined;
+  globalForPrisma.prisma = undefined;
   globalForPrisma.prismaSchemaVersion = SCHEMA_VERSION;
 }
 
-const isWorkerRuntime = process.env.HEAVIX_ENV === "preview";
+globalForPrisma.prisma ??= createPrismaClient();
 
-function getPrismaClient(): NodePrismaClient | WorkerPrismaClient {
-  if (isWorkerRuntime) {
-    globalForPrisma.prismaWorker ??= createWorkerPrismaClient();
-    return globalForPrisma.prismaWorker;
-  }
-  globalForPrisma.prismaNode ??= createNodePrismaClient();
-  return globalForPrisma.prismaNode;
-}
-
-export const db = getPrismaClient();
+export const db: PrismaClient = globalForPrisma.prisma;
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prismaSchemaVersion = SCHEMA_VERSION;
