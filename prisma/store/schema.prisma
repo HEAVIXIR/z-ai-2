@@ -15,6 +15,12 @@ generator nodeClient {
   engineType = "client"
 }
 
+generator nodeRuntimeClient {
+  provider = "prisma-client"
+  output   = "../../src/lib/generated/store-node-runtime-client"
+  runtime  = "nodejs"
+}
+
 datasource db {
   provider = "postgresql"
 }
