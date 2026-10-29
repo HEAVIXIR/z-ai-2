@@ -32,10 +32,10 @@ function createPrismaClient(): NodePrismaClient {
   });
 
   if (process.env.HEAVIX_ENV === "preview") {
-    return new WorkerPrismaClient({ adapter, log: ["error", "warn"] });
+    return new WorkerPrismaClient({ adapter });
   }
 
-  return new NodePrismaClient({ adapter, log: ["error", "warn"] });
+  return new NodePrismaClient({ adapter });
 }
 
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
