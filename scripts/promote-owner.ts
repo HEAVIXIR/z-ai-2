@@ -4,24 +4,25 @@
  * Safety contract:
  * - Never creates an account or sets/resets a password.
  * - Requires an ACTIVE account with verified email and mobile.
- * - Requires explicit confirmation of email, DB host, DB name, and execute mode.
- * - Production promotion requires a second, repository-specific confirmation.
+ * - Requires explicit confirmation of email, DB host, DB name, target environment, and execute mode.
+ * - Production promotion requires a separate allow flag and repository-specific confirmation.
  * - Refuses to modify a different account or silently repair missing RBAC catalog.
  *
  * Usage (after a user has registered and verified email + mobile):
- *   HEAVIX_OWNER_PROMOTION_CONFIRM_EMAIL=owner@example.com \
+ *   HEAVIX_OWNER_PROMOTION_CONFIRM_EMAIL=heavixir@gmail.com \
  *   HEAVIX_OWNER_DB_HOST_CONFIRM=db.example.com \
  *   HEAVIX_OWNER_DB_NAME_CONFIRM=heavix \
- *   HEAVIX_OWNER_PROMOTION_EXECUTE=YES \
+ *   HEAVIX_OWNER_TARGET_ENV_CONFIRM=non-production \
  *   bun run admin:promote-owner
  *
- * For production, also set:
+ * For production, set HEAVIX_OWNER_TARGET_ENV_CONFIRM=production and also:
  *   HEAVIX_OWNER_PROMOTION_ALLOW_PRODUCTION=YES
- *   HEAVIX_OWNER_PROMOTION_CONFIRM_PRODUCTION=HEAVIXIR/z-ai-2:main:owner@example.com
+ *   HEAVIX_OWNER_PROMOTION_CONFIRM_PRODUCTION=HEAVIXIR/z-ai-2:main:heavixir@gmail.com
  *
  * DATABASE_URL must be set through the operator's secure environment; it is never printed.
  */
 import { PrismaClient } from "@prisma/client";
+import { assertOwnerPromotionTargetEnvironment } from "./owner-promotion-environment";
 
 const OWNER_EMAIL = "heavixir@gmail.com";
 const db = new PrismaClient();
@@ -53,16 +54,8 @@ async function main() {
   if (confirmedHost !== host) throw new Error("DB host confirmation does not match DATABASE_URL.");
   if (confirmedDb !== databaseName) throw new Error("DB name confirmation does not match DATABASE_URL.");
 
-  const productionConfirmation = process.env.HEAVIX_OWNER_PROMOTION_CONFIRM_PRODUCTION;
-  const isProductionTarget = process.env.NODE_ENV === "production" || Boolean(productionConfirmation);
-  if (isProductionTarget) {
-    if (process.env.HEAVIX_OWNER_PROMOTION_ALLOW_PRODUCTION !== "YES") {
-      throw new Error("Production target requires HEAVIX_OWNER_PROMOTION_ALLOW_PRODUCTION=YES.");
-    }
-    if (productionConfirmation !== `HEAVIXIR/z-ai-2:main:${OWNER_EMAIL}`) {
-      throw new Error("Production confirmation string does not match the repository and owner.");
-    }
-  }
+  // Fail closed unless the operator explicitly attests to the DATABASE_URL target environment.
+  assertOwnerPromotionTargetEnvironment(process.env);
 
   const user = await db.user.findUnique({
     where: { email: OWNER_EMAIL },
