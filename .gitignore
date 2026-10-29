@@ -36,6 +36,8 @@ yarn-error.log*
 # vercel
 .vercel
 
+# generated OpenNext build artifacts
+/.open-next/
 
 # typescript
 *.tsbuildinfo
@@ -56,7 +58,6 @@ server.log
 download/*.zip
 download/*.png
 
-
 # HEAVIX backup schema files
 prisma/schema.prisma.my-version
 prisma/schema.prisma.phase12-backup
@@ -66,10 +67,8 @@ db/*.db
 db/heavix-source.db
 db/heavix-store-source.db
 
-
 # HEAVIX source zip files (downloaded from GitHub, extracted to /tmp)
 heavixselectedfile*.zip
-
 
 # Phase 12 backup (replaced by real HEAVIX app)
 src/app.phase12-backup/
