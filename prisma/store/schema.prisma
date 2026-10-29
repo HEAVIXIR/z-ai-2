@@ -4,8 +4,9 @@
 //  with the main HEAVIX @prisma/client).
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../src/lib/generated/store-client"
+  provider   = "prisma-client-js"
+  output     = "../../src/lib/generated/store-client"
+  engineType = "client"
 }
 
 datasource db {
