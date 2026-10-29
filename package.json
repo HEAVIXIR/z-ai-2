@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build",
+    "build": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/store/schema.prisma && next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -126,7 +126,10 @@
     "vaul": "^1.1.2",
     "z-ai-web-dev-sdk": "^0.0.18",
     "zod": "^4.0.2",
-    "zustand": "^5.0.6"
+    "zustand": "^5.0.6",
+    "@prisma/adapter-pg": "6.19.3",
+    "pg": "^8.16.3",
+    "pg-cloudflare": "^1.4.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -139,7 +142,8 @@
     "tsx": "^4.23.14",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "@types/pg": "^8.15.5"
   },
   "overrides": {
     "@humanfs/node": "^0.17.0",
@@ -159,10 +163,7 @@
     "postcss": "^8.5.23",
     "prismjs": "^1.30.0",
     "source-map-js": "^1.2.2",
-    "vite": "8.3.5",
-    "micromatch": {
-      "picomatch": "^2.3.2"
-    }
+    "vite": "8.3.5"
   },
   "trustedDependencies": [
     "@parcel/watcher",
