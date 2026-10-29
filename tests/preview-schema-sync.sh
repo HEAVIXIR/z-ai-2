@@ -14,6 +14,7 @@ normalize_schema() {
   sed \
     -e '/^[[:space:]]*output[[:space:]]*=/d' \
     -e '/^[[:space:]]*runtime[[:space:]]*=/d' \
+    -e '/^[[:space:]]*generator nodeClient[[:space:]]*{/,/^[[:space:]]*}/d' \
     -e 's/provider[[:space:]]*=[[:space:]]*"sqlite"/provider = "postgresql"/' \
     "$input" > "$output"
 }
