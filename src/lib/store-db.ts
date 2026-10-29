@@ -1,5 +1,5 @@
 import { PrismaClient } from "@/lib/generated/store-client";
-import { PrismaClient as WorkerStorePrismaClient } from "@/lib/generated/store-worker-client/wasm";
+import { PrismaClient as WorkerStorePrismaClient } from "@/lib/generated/store-worker-client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
