@@ -1,0 +1,31 @@
+name: Temporary Bun lockfile sync
+on:
+  push:
+    branches:
+      - fix/bun-lockfile-sync-2026-10-29
+permissions:
+  contents: write
+jobs:
+  sync-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/bun-lockfile-sync-2026-10-29
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Regenerate lockfile without changing package manifest
+        run: bun install --lockfile-only
+      - name: Commit generated lockfile if changed
+        run: |
+          if git diff --quiet -- bun.lock; then
+            echo "bun.lock already matches package.json"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bun.lock
+          git commit -m "fix: synchronize Bun lockfile overrides"
+          git push origin HEAD:fix/bun-lockfile-sync-2026-10-29
