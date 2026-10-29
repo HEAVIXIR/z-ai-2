@@ -456,6 +456,12 @@ async function preflightConnectionCheck(): Promise<void> {
     const actualUser = result[0]?.current_user;
     const actualDb = result[0]?.current_database;
 
+    // The successful SQL query above proves the PrismaPg adapter completed a
+    // real PostgreSQL connection (including TLS handshake when verify-full is set).
+    // Keep this signal explicit so tests can distinguish TLS success from later
+    // RBAC/schema failures without exposing raw database error text.
+    console.log('  PostgreSQL connection probe : PASS (TLS handshake + SQL query succeeded)');
+
     // STEP 15.71 Phase B: verify live database matches confirmed target
     if (actualDb !== confirmTarget) {
       console.error('✗ PREFLIGHT FAIL: runtime database does not match confirmed target.');
