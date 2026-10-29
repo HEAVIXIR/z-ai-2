@@ -10,14 +10,14 @@
  *   (A) The REAL PRISMA connection path (PrismaClient → Rust query engine → TLS)
  *   (B) The libpq/psql reference path (the standard PostgreSQL TLS implementation)
  *
- *   This dual-path approach checks the supported Prisma v6 strict TLS URL
+ *   This dual-path approach checks the supported PrismaPg adapter strict TLS URL
  *   against the libpq reference path.
  *
  * ─── FINDING (discovered during STEP 15.88, corrected in STEP 15.89) ──────
  *
  *   STEP 15.88 first tested libpq-style `sslmode=verify-full&sslrootcert=...`,
- *   which is not Prisma ORM v6's documented strict TLS configuration. The
- *   supported v6 configuration is `sslmode=require&sslaccept=strict&sslcert=...`.
+ *   which is not Prisma 7 PrismaPg adapter's documented strict TLS configuration. The
+ *   supported v6 configuration is `sslmode=verify-full&sslrootcert=...`.
  *   This suite tests the supported configuration through Prisma itself.
  *
  *   STEP 15.90 provisioned real TLS-enabled PostgreSQL 17 in CI (the
@@ -26,8 +26,8 @@
  *   TLS-enabled PostgreSQL 17, with 0 skips, 0 failures, 0 todo, 0 pending.
  *
  *   ─── GOVERNANCE IMPLICATION ──────────────────────────────────────────────
- *   The preflight requires Prisma v6's documented strict configuration
- *   (`sslmode=require&sslaccept=strict&sslcert=<path>`). The live behavioral
+ *   The preflight requires PrismaPg adapter's documented strict configuration
+ *   (`sslmode=verify-full&sslrootcert=<path>`). The live behavioral
  *   tests (not string parsing) determine that server identity verification
  *   is enforced. The CI `tls-proof` job provisions the TLS infrastructure
  *   on-the-fly and runs these tests with `HEAVIX_TLS_PROOF_RUN=1`; the job
@@ -165,37 +165,37 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
     async () => {
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
-        `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
+        `?schema=public&sslmode=verify-full&sslrootcert=${encodeURIComponent(CA_VALID)}`;
       const r = prismaProbe(url);
       expect(r.success, `Valid TLS must succeed via Prisma.\n${r.raw}`).toBe(true);
     },
   );
 
   it.skipIf(!INFRA_AVAILABLE)(
-    'PRISMA-2. UNTRUSTED CA via Prisma with sslaccept=strict → REJECTED',
+    'PRISMA-2. UNTRUSTED CA via Prisma with sslmode=verify-full → REJECTED',
     async () => {
-      // Prisma ORM v6 requires its documented sslaccept=strict + sslcert
+      // Prisma 7 PrismaPg adapter requires its documented sslmode=verify-full + sslrootcert
       // parameters. This must reject a CA that did not sign the server cert.
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
-        `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_UNTRUSTED)}`;
+        `?schema=public&sslmode=verify-full&sslrootcert=${encodeURIComponent(CA_UNTRUSTED)}`;
       const r = prismaProbe(url);
       // Fail if the actual Prisma path accepts an untrusted CA.
       expect(
         r.success,
-        `Prisma must reject an untrusted CA with sslaccept=strict. Output:\n${r.raw}`,
+        `Prisma must reject an untrusted CA with sslmode=verify-full. Output:\n${r.raw}`,
       ).toBe(false);
     },
   );
 
   it.skipIf(!INFRA_AVAILABLE)(
-    'PRISMA-3. HOSTNAME MISMATCH via Prisma with sslaccept=strict → REJECTED',
+    'PRISMA-3. HOSTNAME MISMATCH via Prisma with sslmode=verify-full → REJECTED',
     async () => {
-      // The strict Prisma TLS configuration must reject a cert whose CN/SAN
+      // The PrismaPg verify-full TLS configuration must reject a cert whose CN/SAN
       // does not match the connection hostname.
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@127.0.0.1:${VALID_PORT}/postgres` +
-        `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
+        `?schema=public&sslmode=verify-full&sslrootcert=${encodeURIComponent(CA_VALID)}`;
       const r = prismaProbe(url);
       expect(
         r.success,
@@ -211,7 +211,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       // the TLS library regardless of CA validation).
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${EXPIRED_PORT}/postgres` +
-        `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`;
+        `?schema=public&sslmode=verify-full&sslrootcert=${encodeURIComponent(CA_VALID)}`;
       const r = prismaProbe(url);
       expect(
         r.success,
@@ -235,12 +235,12 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
   );
 
   it.skipIf(!INFRA_AVAILABLE)(
-    'PRISMA-6. sslcert=NONEXISTENT via Prisma → REJECTED',
+    'PRISMA-6. sslrootcert=NONEXISTENT via Prisma → REJECTED',
     async () => {
-      // A missing explicit CA file must fail closed under sslaccept=strict.
+      // A missing explicit CA file must fail closed under sslmode=verify-full.
       const url =
         `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
-        `?schema=public&sslmode=require&sslaccept=strict&sslcert=%2Fnonexistent%2Fca.crt`;
+        `?schema=public&sslmode=verify-full&sslrootcert=%2Fnonexistent%2Fca.crt`;
       const r = prismaProbe(url);
       expect(
         r.success,
@@ -256,7 +256,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
         ...process.env,
         DATABASE_URL:
           `postgresql://heavix_dryrun_ro:readonly_pass@localhost:${VALID_PORT}/postgres` +
-          `?schema=public&sslmode=require&sslaccept=strict&sslcert=${encodeURIComponent(CA_VALID)}`,
+          `?schema=public&sslmode=verify-full&sslrootcert=${encodeURIComponent(CA_VALID)}`,
         PGSSLROOTCERT: CA_VALID,
         DRYRUN_CONFIRM_TARGET: 'postgres',
         DRYRUN_EXPECTED_HOST: 'localhost',
@@ -268,7 +268,7 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       );
       const combined = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
       // Must pass the TLS string check
-      expect(combined).toContain('TLS configuration        : require + strict certificate validation + explicit CA path present');
+      expect(combined).toContain('TLS configuration        : verify-full + explicit root CA path present');
       // Must pass hostname consistency
       expect(combined).toContain('Hostname consistency     : PASS');
       // Must resolve the trusted role (proves the preflight reached role logic)
@@ -377,8 +377,8 @@ describe('STEP 15.88 — Section C: Finding D verdict', () => {
       // does not enforce CA/hostname validation was based on libpq-style
       // parameters (sslmode=verify-full&sslrootcert), which are NOT Prisma ORM
       // v6's documented TLS settings. With the documented strict configuration
-      // (sslmode=require&sslaccept=strict&sslcert=<path>), the behavioral
-      // tests in Section A PROVE that Prisma v6 enforces:
+      // (sslmode=verify-full&sslrootcert=<path>), the behavioral
+      // tests in Section A PROVE that PrismaPg adapter enforces:
       //   - CA validation      (PRISMA-2: "certificate verify failed")
       //   - hostname validation (PRISMA-3: "IP address mismatch")
       //   - cert file existence (PRISMA-6: "cert file not found")
@@ -390,7 +390,7 @@ describe('STEP 15.88 — Section C: Finding D verdict', () => {
       // HEAVIX_TLS_EXPIRED_PORT) via the REAL Prisma connection path.
       //
       // Finding D (server identity verification) is VERIFIED IN CI when:
-      //   (1) The preflight gate enforces the strict Prisma v6 config (DONE)
+      //   (1) The preflight gate enforces the strict PrismaPg adapter config (DONE)
       //   (2) The behavioral tests prove rejection of invalid certs (DONE)
       //   (3) CI runs the behavioral tests against real TLS infra (DONE —
       //       the tls-proof CI job provisions TLS-enabled PostgreSQL 17
@@ -401,9 +401,9 @@ describe('STEP 15.88 — Section C: Finding D verdict', () => {
         findingD: 'VERIFIED-IN-CI',
         reason:
           'STEP 15.89 corrected the TLS configuration from libpq-style ' +
-          '(sslmode=verify-full&sslrootcert) to Prisma ORM v6 documented ' +
-          '(sslmode=require&sslaccept=strict&sslcert=<path>). With the correct ' +
-          'settings, Prisma v6 ENFORCES CA validation, hostname validation, ' +
+          '(sslmode=verify-full&sslrootcert) to Prisma 7 PrismaPg adapter documented ' +
+          '(sslmode=verify-full&sslrootcert=<path>). With the correct ' +
+          'settings, PrismaPg adapter ENFORCES CA validation, hostname validation, ' +
           'cert expiry, and cert file existence (proven by PRISMA-2/3/4/6). ' +
           'Finding D is VERIFIED IN CI — the tls-proof CI job provisions TLS ' +
           'infrastructure, runs 13 behavioral tests, and fail-closes on any skip.',
