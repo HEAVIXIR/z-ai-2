@@ -1,15 +1,13 @@
-import { PrismaClient as NodeStorePrismaClient } from "@/lib/generated/store-node-runtime-client/client";
 import { PrismaClient as WorkerStorePrismaClient } from "@/lib/generated/store-client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
  * Store Prisma client.
- * Node.js processes use the Node-generated client; Cloudflare Preview uses
- * the separately generated Worker client. Both share the same store schema;
- * expose the Node client contract to preserve callable transaction overloads.
+ * The Cloudflare-compatible generated client is used across runtimes to keep
+ * transaction and model types canonical.
  */
 type StorePrismaGlobal = typeof globalThis & {
-  storeDb?: NodeStorePrismaClient | WorkerStorePrismaClient;
+  storeDb?: WorkerStorePrismaClient;
 };
 
 const globalForStore = globalThis as StorePrismaGlobal;
@@ -22,16 +20,12 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createStorePrismaClient(): NodeStorePrismaClient | WorkerStorePrismaClient {
+function createStorePrismaClient(): WorkerStorePrismaClient {
   const adapter = new PrismaPg({
     connectionString: requiredEnv("STORE_DATABASE_URL"),
   });
 
-  if (process.env.HEAVIX_ENV === "preview") {
-    return new WorkerStorePrismaClient({ adapter });
-  }
-
-  return new NodeStorePrismaClient({ adapter });
+  return new WorkerStorePrismaClient({ adapter });
 }
 
 export const storeDb = globalForStore.storeDb ?? createStorePrismaClient();
