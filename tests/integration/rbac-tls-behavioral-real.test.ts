@@ -273,10 +273,9 @@ describe('STEP 15.88 — Section A: Prisma connection path TLS behavior', () => 
       expect(combined).toContain('Hostname consistency     : PASS');
       // Must resolve the trusted role (proves the preflight reached role logic)
       expect(combined).toContain('heavix_dryrun_ro');
-      // Must actually connect over TLS — proven by reaching a Prisma query
-      // that returns a real PostgreSQL error (42P01 = undefined_table, because
-      // the fresh cluster has no User table).
-      expect(combined).toMatch(/42P01|relation "public\.User"|public\.User/);
+      // Must prove the PrismaPg adapter completed a real SQL query over TLS.
+      // Later RBAC/schema checks may fail because this isolated cluster is intentionally unseeded.
+      expect(combined).toContain('PostgreSQL connection probe : PASS (TLS handshake + SQL query succeeded)');
       // Must NOT fail the TLS configuration preflight.
       expect(combined).not.toContain('PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings');
     },
