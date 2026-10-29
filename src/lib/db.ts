@@ -1,13 +1,13 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaClient as WorkerPrismaClient } from "@/lib/generated/main-worker-client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**
- * Main HEAVIX Prisma Client singleton.
+ * Main HEAVIX Prisma Client.
  *
- * Use Prisma's engine-less client and the PostgreSQL driver adapter so the
- * client does not require a Rust query-engine binary in Cloudflare Workers.
- * Cache the client in development to avoid exhausting connections during
- * Next.js hot reloads.
+ * Keep the standard generated client for Node.js tasks and tests. The
+ * Cloudflare Preview Worker uses a separate engine-less client plus pg
+ * adapter, avoiding a Rust query-engine binary in workerd.
  */
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
@@ -17,14 +17,18 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL as string,
-  });
+  if (process.env.HEAVIX_ENV === "preview") {
+    const adapter = new PrismaPg({
+      connectionString: process.env.DATABASE_URL as string,
+    });
 
-  return new PrismaClient({
-    adapter,
-    log: ["error", "warn"],
-  });
+    return new WorkerPrismaClient({
+      adapter,
+      log: ["error", "warn"],
+    }) as unknown as PrismaClient;
+  }
+
+  return new PrismaClient({ log: ["error", "warn"] });
 }
 
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
