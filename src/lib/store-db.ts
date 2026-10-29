@@ -1,4 +1,4 @@
-import { PrismaClient as NodeStorePrismaClient } from "@/lib/generated/store-node-client";
+import { PrismaClient as NodeStorePrismaClient } from "@/lib/generated/store-node-runtime-client/client";
 import { PrismaClient as WorkerStorePrismaClient } from "@/lib/generated/store-client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
