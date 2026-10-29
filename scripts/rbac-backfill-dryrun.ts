@@ -339,11 +339,10 @@ async function preflightConnectionCheck(): Promise<void> {
   // the exact Prisma/runtime configuration. No in-database mechanism (table,
   // GUC, content) can independently prove physical server identity.
   //
-  // Prisma ORM v6's documented PostgreSQL TLS parameters are not libpq's
-  // sslmode=verify-full semantics. In this version, use sslmode=require to
-  // require encryption, sslaccept=strict to reject invalid certificates, and
-  // sslcert=<trusted root CA file> to pin the expected CA. Do not claim that
-  // merely parsing these parameters proves a live TLS handshake.
+  // Prisma 7 uses the PrismaPg adapter backed by node-postgres. Require
+  // sslmode=verify-full and sslrootcert so the driver verifies both the CA
+  // chain and the server hostname. Parsing these parameters alone does not
+  // prove a live TLS handshake.
   //
   // STEP 15.88: the DRYRUN_ALLOW_NO_TLS env-var bypass was REMOVED. The
   // production path must fail closed unless all required TLS settings exist.
@@ -355,21 +354,21 @@ async function preflightConnectionCheck(): Promise<void> {
   try {
     const parsedUrl = new URL(databaseUrl);
     const sslmode = parsedUrl.searchParams.get('sslmode');
-    const sslaccept = parsedUrl.searchParams.get('sslaccept');
-    const sslcert = parsedUrl.searchParams.get('sslcert');
+    const sslrootcert = parsedUrl.searchParams.get('sslrootcert');
+    
     const missing: string[] = [];
-    if (sslmode !== 'require') missing.push('sslmode=require');
-    if (sslaccept !== 'strict') missing.push('sslaccept=strict');
-    if (!sslcert || !sslcert.trim()) missing.push('sslcert=<trusted-root-CA-path>');
+    if (sslmode !== 'verify-full') missing.push('sslmode=verify-full');
+    
+    if (!sslrootcert || !sslrootcert.trim()) missing.push('sslrootcert=<trusted-root-CA-path>');
     if (missing.length > 0) {
       console.error('✗ PREFLIGHT FAIL: DATABASE_URL lacks required Prisma TLS settings.');
       console.error(`    Missing/invalid: ${missing.join(', ')}`);
-      console.error('  Required for Prisma ORM v6: sslmode=require&sslaccept=strict&sslcert=<trusted-root-CA-path>');
+      console.error('  Required for PrismaPg: sslmode=verify-full&sslrootcert=<trusted-root-CA-path>');
       console.error('  This is a configuration gate only; actual CA/hostname validation must be proven by TLS behavioral tests.');
       console.error('  (STEP 15.88: NO env-var bypass. The production path fails closed without these settings.)');
       process.exit(2);
     }
-    console.log('  TLS configuration        : require + strict certificate validation + explicit CA path present (handshake not proven by this check)');
+    console.log('  TLS configuration        : verify-full + explicit root CA path present (handshake not proven by this check)');
   } catch {
     console.error('✗ PREFLIGHT FAIL: DATABASE_URL is not a parseable URL for TLS verification.');
     process.exit(2);
