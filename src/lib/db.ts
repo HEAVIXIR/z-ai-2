@@ -1,4 +1,3 @@
-import { PrismaClient as NodePrismaClient } from "@/lib/generated/node-runtime-client/client";
 import { PrismaClient as WorkerPrismaClient } from "@/lib/generated/client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -12,7 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
 type PrismaGlobal = typeof globalThis & {
-  prisma?: NodePrismaClient | WorkerPrismaClient;
+  prisma?: WorkerPrismaClient;
   prismaSchemaVersion?: string;
 };
 
@@ -26,16 +25,12 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createPrismaClient(): NodePrismaClient | WorkerPrismaClient {
+function createPrismaClient(): WorkerPrismaClient {
   const adapter = new PrismaPg({
     connectionString: requiredEnv("DATABASE_URL"),
   });
 
-  if (process.env.HEAVIX_ENV === "preview") {
-    return new WorkerPrismaClient({ adapter });
-  }
-
-  return new NodePrismaClient({ adapter });
+  return new WorkerPrismaClient({ adapter });
 }
 
 if (globalForPrisma.prismaSchemaVersion !== SCHEMA_VERSION) {
