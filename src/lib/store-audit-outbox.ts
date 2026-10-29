@@ -9,7 +9,7 @@
  * but before the outbox row is marked DELIVERED.
  */
 
-import { PrismaClient } from '@/lib/generated/store-client';
+import { PrismaClient } from '@/lib/generated/store-client/client';
 import { storeDb } from '@/lib/store-db';
 import type { LogAuditParams } from '@/lib/admin/audit';
 

@@ -4,13 +4,13 @@
 //  with the main HEAVIX @prisma/client).
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../src/lib/generated/store-client"
+  provider   = "prisma-client"
+  output     = "../../src/lib/generated/store-client"
+  runtime    = "cloudflare"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("STORE_DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------------
