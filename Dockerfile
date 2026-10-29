@@ -8,7 +8,7 @@
 
 # ── Stage 1: Build ──
 # STEP 11.50 FIX: pin Bun version for reproducible builds
-FROM oven/bun:1.3.14 AS builder
+FROM oven/bun:1.4.4 AS builder
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN bun run build
 
 # ── Stage 2: Runtime ──
 # STEP 11.50 FIX: pin Bun version for reproducible builds
-FROM oven/bun:1.3.14-slim AS runtime
+FROM oven/bun:1.4.4-slim AS runtime
 
 WORKDIR /app
 
