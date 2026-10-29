@@ -12,7 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const SCHEMA_VERSION = "p2-auction-company-rental";
 
 type PrismaGlobal = typeof globalThis & {
-  prisma?: NodePrismaClient;
+  prisma?: NodePrismaClient | WorkerPrismaClient;
   prismaSchemaVersion?: string;
 };
 
@@ -26,7 +26,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createPrismaClient(): NodePrismaClient {
+function createPrismaClient(): NodePrismaClient | WorkerPrismaClient {
   const adapter = new PrismaPg({
     connectionString: requiredEnv("DATABASE_URL"),
   });

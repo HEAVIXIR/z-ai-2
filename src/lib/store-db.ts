@@ -9,7 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
  * expose the Node client contract to preserve callable transaction overloads.
  */
 type StorePrismaGlobal = typeof globalThis & {
-  storeDb?: NodeStorePrismaClient;
+  storeDb?: NodeStorePrismaClient | WorkerStorePrismaClient;
 };
 
 const globalForStore = globalThis as StorePrismaGlobal;
@@ -22,7 +22,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createStorePrismaClient(): NodeStorePrismaClient {
+function createStorePrismaClient(): NodeStorePrismaClient | WorkerStorePrismaClient {
   const adapter = new PrismaPg({
     connectionString: requiredEnv("STORE_DATABASE_URL"),
   });
