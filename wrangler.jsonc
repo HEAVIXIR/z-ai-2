@@ -8,6 +8,9 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "HEAVIX_ENV": "preview"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
