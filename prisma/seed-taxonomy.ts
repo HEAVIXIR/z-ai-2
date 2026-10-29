@@ -7,9 +7,10 @@
    
    Also seeds common attributes for MACHINE domain.
    Run: bunx tsx prisma/seed-taxonomy.ts */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const slugify = (s: string) =>
   s

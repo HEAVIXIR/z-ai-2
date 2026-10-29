@@ -29,10 +29,11 @@
    have a `$2…` hash on the second run.
    ============================================================ */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 import bcrypt from "bcryptjs";
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const ROUNDS = 10;
 const HEAVIX_PREFIX = "heavix:";

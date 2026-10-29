@@ -9,10 +9,11 @@
  * Usage: bunx tsx prisma/seed-permission-matrix.ts
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../src/lib/authorization/permissions';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
   console.log('→ Seeding Permission Matrix (V2.1) …');

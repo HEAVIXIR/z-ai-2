@@ -1,0 +1,21 @@
+// OpenNext Worker build configuration; deploys are gated separately.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heavix-preview",
+  "main": ".open-next/worker.js",
+  "upload_source_maps": true,
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "HEAVIX_ENV": "preview"
+  },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
