@@ -16,6 +16,7 @@ normalize_schema() {
     -e '/^[[:space:]]*runtime[[:space:]]*=/d' \
     -e '/^[[:space:]]*generator nodeClient[[:space:]]*{/,/^[[:space:]]*}/d' \
     -e 's/provider[[:space:]]*=[[:space:]]*"sqlite"/provider = "postgresql"/' \
+    -e '/^[[:space:]]*$/d' \
     "$input" > "$output"
 }
 
@@ -23,4 +24,4 @@ normalize_schema "$ROOT/prisma/schema.prisma" "$TMP_MAIN"
 normalize_schema "$ROOT/prisma/preview-schema.prisma" "$TMP_PREVIEW"
 
 diff -u "$TMP_MAIN" "$TMP_PREVIEW"
-echo "Preview schema matches Main schema (only datasource provider and client output/runtime differ)."
+echo "Preview schema matches Main data model (Node-only generator excluded; datasource provider and client output/runtime differ)."
