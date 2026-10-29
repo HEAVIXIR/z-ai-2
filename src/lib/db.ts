@@ -1,4 +1,4 @@
-import { PrismaClient as NodePrismaClient } from "@prisma/client";
+import { PrismaClient as NodePrismaClient } from "@/lib/generated/node-runtime-client/client";
 import { PrismaClient as WorkerPrismaClient } from "@/lib/generated/client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
