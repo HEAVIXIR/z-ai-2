@@ -36,7 +36,7 @@
 import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
 import { uniqueSlug } from '@/lib/api-helpers';
-import type { Article, Prisma } from '@prisma/client';
+import type { Article, Prisma } from '@/lib/generated/node-runtime-client/client';
 
 // ── Types ──────────────────────────────────────────────────
 
