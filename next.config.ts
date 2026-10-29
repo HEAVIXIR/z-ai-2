@@ -104,6 +104,11 @@ const nextConfig: NextConfig = {
     "**/*": [
       "./node_modules/pg-cloudflare/dist/**",
       "./node_modules/pg-cloudflare/esm/**",
+      // Prisma's engineType="client" Worker clients load this WASM compiler
+      // at runtime. Without explicit tracing includes, Next/OpenNext can omit
+      // it from the deployed bundle and every Prisma query fails with ENOENT.
+      "./src/lib/generated/main-worker-client/query_compiler_bg.wasm",
+      "./src/lib/generated/store-worker-client/query_compiler_bg.wasm",
     ],
   },
   typescript: {
