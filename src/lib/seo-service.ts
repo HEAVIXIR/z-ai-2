@@ -17,7 +17,7 @@
    ============================================================ */
 
 import { db } from "@/lib/db";
-import type { SEOMetadata } from '@prisma/client';
+import type { SEOMetadata } from '@/lib/generated/node-runtime-client/client';
 import {
   getSEO as fetchSEO,
   upsertSEO,
