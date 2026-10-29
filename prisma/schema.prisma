@@ -2,7 +2,7 @@
 // SQLite development schema (PostgreSQL for production — switch provider + url for deployment)
 
 generator client {
-  provider   = "prisma-client-js"
+  provider = "prisma-client-js"
   engineType = "client"
 }
 
