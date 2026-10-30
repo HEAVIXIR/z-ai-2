@@ -17,7 +17,7 @@ import type { LogAuditParams } from '@/lib/admin/audit';
  * operation. This structural contract is intentionally independent of either
  * generated Prisma runtime and is checked by both Node/Worker call-site tests.
  */
-type AuditOutboxCreateTransaction = {
+export type AuditOutboxCreateTransaction = {
   auditOutbox: {
     create(args: {
       data: { payloadJson: string; status: 'PENDING' };
