@@ -24,6 +24,9 @@
       }
     ],
     "paths": {
+      "@/lib/store-db": [
+        "./src/lib/store-db.node.ts"
+      ],
       "@/*": [
         "./src/*"
       ]
