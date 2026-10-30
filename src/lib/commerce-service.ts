@@ -299,7 +299,7 @@ export async function createOrder(params: {
 
   // Persist the order + side-effects in a transaction.
   const orderNumber = genOrderNumber();
-  const order = await storeDb.$transaction(async (tx: any) => {
+  const order = await storeDb.$transaction(async (tx) => {
     const o = await tx.order.create({
       data: {
         orderNumber,
