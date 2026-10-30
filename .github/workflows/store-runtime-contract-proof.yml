@@ -161,21 +161,42 @@ jobs:
           bun run db:seed-brands-b
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
-      - name: Build Node standalone artifact with Node Store entrypoint
+      - name: Build and preserve Node standalone artifact
         run: |
+          set -euo pipefail
           unset HEAVIX_ENV
-          bun run build
+          echo "=== Node build resource baseline ==="
+          date -u
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          /usr/bin/time -v bun run build
           bun run verify:store-runtime-artifacts -- node .next/server
-      - name: Build Cloudflare OpenNext artifact with Worker Store entrypoint
+          mkdir -p .ci-artifacts/node
+          cp -a .next/server .ci-artifacts/node/server
+          test -d .ci-artifacts/node/server
+          echo "PASS: Node standalone evidence preserved at .ci-artifacts/node/server"
+      - name: Build Next.js with Worker runtime entrypoints
         env:
           HEAVIX_ENV: preview
         run: |
           set -euo pipefail
-          echo "=== OpenNext runner resource baseline ==="
+          echo "=== Worker Next.js build resource baseline ==="
+          date -u
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          /usr/bin/time -v ./node_modules/.bin/next build
+          test -d .next/server
+          echo "PASS: Worker-mode Next.js output exists at .next/server"
+      - name: Bundle existing Worker build with OpenNext (skip Next.js build)
+        env:
+          HEAVIX_ENV: preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== OpenNext bundling resource baseline ==="
           date -u
           free -h
           df -h .
-          echo "--- /proc/meminfo ---"
           grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
           echo "=== Starting periodic process/RAM telemetry (10s interval) ==="
           (
@@ -192,7 +213,7 @@ jobs:
             wait "$MONITOR_PID" 2>/dev/null || true
           }
           trap cleanup_monitor EXIT
-          npm exec --no -- opennextjs-cloudflare build --noMinify
+          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify
           bun run verify:store-runtime-artifacts -- worker .open-next
       - name: Upload Node and Worker build evidence
         if: always()
@@ -200,6 +221,7 @@ jobs:
         with:
           name: store-runtime-artifacts-${{ github.sha }}
           path: |
+            .ci-artifacts/node/server
             .next/server
             .open-next
           if-no-files-found: warn
