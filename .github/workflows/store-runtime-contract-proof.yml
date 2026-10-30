@@ -216,18 +216,19 @@ jobs:
           const traces = [];
           const dependencyBytes = new Map();
           const dependencyRefs = new Map();
+          const bytesByPath = new Map(files.map(file => [file.path, file.bytes]));
           for (const file of files.filter(file => file.path.endsWith(".nft.json"))) {
             try {
               const trace = JSON.parse(fs.readFileSync(file.path, "utf8"));
               const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
               traces.push({ route: file.path, references: refs.length });
               for (const ref of refs) {
-                const normalized = ref.replace(/\\/g, "/");
-                const match = normalized.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/);
+                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replace(/\\\\/g, "/")));
+                const match = resolved.match(/(?:^|\\/)node_modules\\/((?:@[^/]+\\/)?[^/]+)/);
                 if (!match) continue;
                 const name = match[1];
                 dependencyRefs.set(name, (dependencyRefs.get(name) || 0) + 1);
-                dependencyBytes.set(name, (dependencyBytes.get(name) || 0) + (files.find(item => item.path.endsWith("/" + normalized))?.bytes || 0));
+                dependencyBytes.set(name, (dependencyBytes.get(name) || 0) + (bytesByPath.get(resolved) || 0));
               }
             } catch (error) {
               traces.push({ route: file.path, parseError: String(error) });
