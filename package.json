@@ -55,7 +55,8 @@
     "store:db:reset": "prisma migrate reset --schema=prisma/store/schema.prisma",
     "admin:promote-owner": "tsx scripts/promote-owner.ts",
     "typecheck:store:node": "tsc --noEmit -p tsconfig.json",
-    "typecheck:store:worker": "tsc --noEmit -p tsconfig.store-worker.json"
+    "typecheck:store:worker": "tsc --noEmit -p tsconfig.store-worker.json",
+    "verify:store-runtime-graph": "node scripts/verify-store-runtime-graph.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
