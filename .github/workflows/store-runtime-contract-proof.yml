@@ -214,9 +214,10 @@ jobs:
           walk(root);
 
           const traces = [];
-          const dependencyBytes = new Map();
-          const dependencyRefs = new Map();
+          const packageStats = new Map();
           const bytesByPath = new Map(files.map(file => [file.path, file.bytes]));
+          let unresolvedNodeModulesReferences = 0;
+
           for (const file of files.filter(file => file.path.endsWith(".nft.json"))) {
             try {
               const trace = JSON.parse(fs.readFileSync(file.path, "utf8"));
@@ -224,28 +225,56 @@ jobs:
               traces.push({ route: file.path, references: refs.length });
               for (const ref of refs) {
                 const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replace(/\\\\/g, "/")));
-                const match = resolved.match(/(?:^|\\/)node_modules\\/((?:@[^/]+\\/)?[^/]+)/);
-                if (!match) continue;
-                const name = match[1];
-                dependencyRefs.set(name, (dependencyRefs.get(name) || 0) + 1);
-                dependencyBytes.set(name, (dependencyBytes.get(name) || 0) + (bytesByPath.get(resolved) || 0));
+                const segments = resolved.split("/");
+                const nodeModulesIndex = segments.lastIndexOf("node_modules");
+                if (nodeModulesIndex < 0 || nodeModulesIndex + 1 >= segments.length) continue;
+
+                const first = segments[nodeModulesIndex + 1];
+                const packageName = first.startsWith("@") && segments[nodeModulesIndex + 2]
+                  ? first + "/" + segments[nodeModulesIndex + 2]
+                  : first;
+                let stat;
+                try {
+                  stat = fs.statSync(resolved);
+                  if (!stat.isFile()) continue;
+                } catch {
+                  unresolvedNodeModulesReferences += 1;
+                  continue;
+                }
+
+                let entry = packageStats.get(packageName);
+                if (!entry) {
+                  entry = { references: 0, files: new Set(), bytes: 0 };
+                  packageStats.set(packageName, entry);
+                }
+                entry.references += 1;
+                if (!entry.files.has(resolved)) {
+                  entry.files.add(resolved);
+                  entry.bytes += stat.size;
+                }
               }
             } catch (error) {
               traces.push({ route: file.path, parseError: String(error) });
             }
           }
 
+          const packages = [...packageStats.entries()].map(([name, stats]) => ({
+            name,
+            references: stats.references,
+            uniqueFiles: stats.files.size,
+            uniqueBytes: stats.bytes,
+          }));
           const report = {
             root,
             totalFiles: files.length,
             totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
             traceFiles: traces.length,
             traceReferenceCount: traces.reduce((sum, trace) => sum + (trace.references || 0), 0),
+            unresolvedNodeModulesReferences,
             largestFiles: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 50),
             largestRouteTraces: [...traces].sort((a, b) => (b.references || 0) - (a.references || 0)).slice(0, 50),
-            mostReferencedPackages: [...dependencyRefs.entries()]
-              .map(([name, references]) => ({ name, references, observedBytes: dependencyBytes.get(name) || 0 }))
-              .sort((a, b) => b.references - a.references).slice(0, 100),
+            mostReferencedPackages: [...packages].sort((a, b) => b.references - a.references).slice(0, 100),
+            largestPackages: [...packages].sort((a, b) => b.uniqueBytes - a.uniqueBytes).slice(0, 100),
           };
           fs.writeFileSync(".ci-artifacts/worker-next/bundle-composition.json", JSON.stringify(report, null, 2));
           console.log(JSON.stringify({
