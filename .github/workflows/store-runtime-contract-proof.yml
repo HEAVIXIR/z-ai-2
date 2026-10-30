@@ -127,7 +127,7 @@ jobs:
       - name: Install locked project dependencies
         run: bun install --frozen-lockfile
       - name: Verify runtime artifact evidence classification
-        run: bunx vitest run tests/contract/store-runtime-artifact-verifier.test.ts tests/contract/robots-route-runtime-boundary.test.ts
+        run: bunx vitest run tests/contract/store-runtime-artifact-verifier.test.ts tests/contract/robots-route-runtime-boundary.test.ts tests/contract/prisma-config-migrations-path.test.ts
       - name: Install pinned OpenNext and Wrangler build tools without changing project manifests
         run: bun install --no-save @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
       - name: Generate Main and both Store Prisma clients
