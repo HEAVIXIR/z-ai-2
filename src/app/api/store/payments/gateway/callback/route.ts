@@ -96,11 +96,11 @@ export async function GET(req: Request) {
     }
 
     // recompute order's payment status from approved payments sum
-    await storeDb.$transaction(async (tx: any) => {
+    await storeDb.$transaction(async (tx) => {
       const approvedPayments = await tx.payment.findMany({
         where: { orderId: order.id, status: "APPROVED" },
       });
-      const approvedSum = approvedPayments.reduce((s: number, p: any) => s + Number(p.amountIrr), 0);
+      const approvedSum = approvedPayments.reduce((s: number, p) => s + Number(p.amountIrr), 0);
       const totalIrr = Number(order.totalIrr);
       const newPayStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
       await tx.order.update({
