@@ -642,9 +642,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Run build tooling in Bun's isolated package cache so project-wide minimatch overrides remain intact.
-          # npm exec uses a temporary package cache; it must not mutate project manifests or dependency overrides.
-          npx --yes --package=@opennextjs/cloudflare@1.20.14 --package=wrangler@4.156.0 opennextjs-cloudflare build
+          cp package.json /tmp/heavix-package.json
+          trap 'cp /tmp/heavix-package.json package.json' EXIT
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
+          bunx opennextjs-cloudflare build
 
   # Report-only compatibility probe: does not deploy or touch production resources.
   # Intentionally non-blocking while we learn whether vinext supports this app.

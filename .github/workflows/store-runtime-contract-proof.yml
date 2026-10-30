@@ -129,6 +129,14 @@ jobs:
       - name: Verify runtime artifact evidence classification
         # Guards runtime artifact evidence and schema-specific migration directory selection.
         run: bunx vitest run tests/contract/store-runtime-artifact-verifier.test.ts tests/contract/robots-route-runtime-boundary.test.ts tests/contract/prisma-config-migrations-path.test.ts
+      - name: Install OpenNext tooling with isolated dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package.json /tmp/heavix-package.json
+          trap 'cp /tmp/heavix-package.json package.json' EXIT
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
       - name: Generate Main and both Store Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
@@ -161,7 +169,7 @@ jobs:
         env:
           HEAVIX_ENV: preview
         run: |
-          npx --yes --package=@opennextjs/cloudflare@1.20.14 --package=wrangler@4.156.0 opennextjs-cloudflare build
+          bunx opennextjs-cloudflare build
           bun run verify:store-runtime-artifacts -- worker .open-next
       - name: Upload Node and Worker build evidence
         if: always()
