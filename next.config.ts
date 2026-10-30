@@ -99,6 +99,10 @@ const securityHeaders = [
 
 // The Preview/OpenNext build selects the Cloudflare-generated Store client.
 const storeRuntimeTarget = process.env.HEAVIX_ENV === "preview" ? "worker" : "node";
+const mainDbEntrypoint = path.resolve(
+  __dirname,
+  storeRuntimeTarget === "worker" ? "src/lib/db.worker.ts" : "src/lib/db.node.ts",
+);
 const storeDbEntrypoint = path.resolve(
   __dirname,
   storeRuntimeTarget === "worker"
@@ -119,12 +123,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       "@/lib/store-db": storeDbEntrypoint,
+      "@/lib/db": mainDbEntrypoint,
     },
   },
   webpack(config) {
     config.resolve.alias = {
       ...config.resolve.alias,
       "@/lib/store-db$": storeDbEntrypoint,
+      "@/lib/db$": mainDbEntrypoint,
     };
     return config;
   },
