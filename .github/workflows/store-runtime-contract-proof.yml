@@ -218,10 +218,12 @@ jobs:
           const bytesByPath = new Map(files.map(file => [file.path, file.bytes]));
           let unresolvedNodeModulesReferences = 0;
 
+          const routePackageStats = [];
           for (const file of files.filter(file => file.path.endsWith(".nft.json"))) {
             try {
               const trace = JSON.parse(fs.readFileSync(file.path, "utf8"));
               const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
+              const routePackages = new Map();
               traces.push({ route: file.path, references: refs.length });
               for (const ref of refs) {
                 const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replaceAll(String.fromCharCode(92), "/")));
@@ -252,7 +254,31 @@ jobs:
                   entry.files.add(resolved);
                   entry.bytes += stat.size;
                 }
+
+                let routeEntry = routePackages.get(packageName);
+                if (!routeEntry) {
+                  routeEntry = { references: 0, files: new Set(), bytes: 0 };
+                  routePackages.set(packageName, routeEntry);
+                }
+                routeEntry.references += 1;
+                if (!routeEntry.files.has(resolved)) {
+                  routeEntry.files.add(resolved);
+                  routeEntry.bytes += stat.size;
+                }
               }
+              const routePackageList = [...routePackages.entries()].map(([name, stats]) => ({
+                name,
+                references: stats.references,
+                uniqueFiles: stats.files.size,
+                uniqueBytes: stats.bytes,
+              })).sort((a, b) => b.uniqueBytes - a.uniqueBytes);
+              routePackageStats.push({
+                route: file.path,
+                references: refs.length,
+                nodeModulesPackageCount: routePackageList.length,
+                nodeModulesUniqueBytes: routePackageList.reduce((sum, item) => sum + item.uniqueBytes, 0),
+                largestPackages: routePackageList.slice(0, 12),
+              });
             } catch (error) {
               traces.push({ route: file.path, parseError: String(error) });
             }
@@ -273,6 +299,7 @@ jobs:
             unresolvedNodeModulesReferences,
             largestFiles: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 50),
             largestRouteTraces: [...traces].sort((a, b) => (b.references || 0) - (a.references || 0)).slice(0, 50),
+            routePackageComposition: routePackageStats.sort((a, b) => b.nodeModulesUniqueBytes - a.nodeModulesUniqueBytes),
             mostReferencedPackages: [...packages].sort((a, b) => b.references - a.references).slice(0, 100),
             largestPackages: [...packages].sort((a, b) => b.uniqueBytes - a.uniqueBytes).slice(0, 100),
           };
@@ -283,6 +310,7 @@ jobs:
             traceFiles: report.traceFiles,
             traceReferenceCount: report.traceReferenceCount,
             largestRouteTraces: report.largestRouteTraces.slice(0, 10),
+            largestRoutePackageCompositions: report.routePackageComposition.slice(0, 10),
             mostReferencedPackages: report.mostReferencedPackages.slice(0, 20),
           }, null, 2));
           NODE
