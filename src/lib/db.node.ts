@@ -30,3 +30,4 @@ globalForPrisma.prismaNode ??= createNodePrismaClient();
 
 export const db: PrismaClient = globalForPrisma.prismaNode;
 export { Prisma };
+export type { Article } from "@/lib/generated/node-client";

@@ -36,7 +36,7 @@
 import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
 import { uniqueSlug } from '@/lib/api-helpers';
-import type { Article, Prisma } from '@/lib/db';
+import { Prisma, type Article } from '@/lib/db';
 
 // ── Types ──────────────────────────────────────────────────
 

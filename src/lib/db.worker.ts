@@ -30,3 +30,4 @@ globalForPrisma.prismaWorker ??= createWorkerPrismaClient();
 
 export const db: PrismaClient = globalForPrisma.prismaWorker;
 export { Prisma };
+export type { Article } from "@/lib/generated/client/client";
