@@ -74,6 +74,7 @@ function verifyTarget({ name, config, expectedClient, forbiddenClient, expectedE
   const options = readTsConfig(config);
   const pending = collectSourceFiles(sourceRoot);
   const visited = new Set();
+  const generatedImportEdges = [];
   while (pending.length) {
     const fileName = path.resolve(pending.pop());
     if (visited.has(fileName)) continue;
@@ -87,6 +88,7 @@ function verifyTarget({ name, config, expectedClient, forbiddenClient, expectedE
         pending.push(absolute);
       } else if (absolute.startsWith(generatedRoot + path.sep)) {
         visited.add(absolute);
+        generatedImportEdges.push({ from: fileName.replaceAll(path.sep, "/"), specifier, resolved: absolute.replaceAll(path.sep, "/") });
       }
     }
   }
@@ -104,6 +106,7 @@ function verifyTarget({ name, config, expectedClient, forbiddenClient, expectedE
       forbiddenClientHits,
       expectedEntryHits,
       forbiddenEntryHits,
+      forbiddenClientImportEdges: generatedImportEdges.filter((edge) => edge.resolved.includes(forbiddenClient)),
     }, null, 2));
     process.exitCode = 1;
     return;
