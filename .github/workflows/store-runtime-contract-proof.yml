@@ -224,7 +224,7 @@ jobs:
               const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
               traces.push({ route: file.path, references: refs.length });
               for (const ref of refs) {
-                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replace(/\\\\/g, "/")));
+                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replaceAll(String.fromCharCode(92), "/")));
                 const segments = resolved.split("/");
                 const nodeModulesIndex = segments.lastIndexOf("node_modules");
                 if (nodeModulesIndex < 0 || nodeModulesIndex + 1 >= segments.length) continue;
