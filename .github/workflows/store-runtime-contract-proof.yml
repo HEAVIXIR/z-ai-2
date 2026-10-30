@@ -74,7 +74,7 @@ jobs:
           REPORT_FILE=$(mktemp)
           trap 'rm -f "$REPORT_FILE"' EXIT
           VITEST_EXIT=0
-          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
+          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=default --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
           test -s "$REPORT_FILE" || { echo "FAIL: Store/Outbox Vitest report missing"; exit 1; }
           node - "$REPORT_FILE" "$VITEST_EXIT" <<'NODE'
           const fs = require('node:fs');
@@ -90,6 +90,7 @@ jobs:
               numFailedTests: report.numFailedTests,
               numPendingTests: report.numPendingTests,
               skippedTests: skipped.map(test => test.fullName || test.title),
+              failedTests: tests.filter(test => test.status === 'failed').map(test => ({ name: test.fullName || test.title, messages: test.failureMessages || [] })),
               observedTests: tests.length
             }, null, 2));
             process.exit(1);
@@ -140,6 +141,10 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed build-time catalog fixtures
+        env:
+          # Disposable CI-only credentials; never used outside the ephemeral PostgreSQL service.
+          ADMIN_USERNAME: "+15555550100"
+          ADMIN_PASSWORD: "heavix-ci-only-not-a-real-secret"
         run: |
           bun run db:seed-rbac
           bun run db:seed-brands-a
