@@ -29,3 +29,141 @@ jobs:
         run: bun run typecheck:store:node
       - name: Typecheck complete application against Cloudflare Worker Store client
         run: bun run typecheck:store:worker
+
+  store-behavioral:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Main and Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Create disposable Store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas to disposable PostgreSQL 17 databases
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
+      - name: Run Store and Outbox behavioral tests (fail closed; zero skips)
+        run: |
+          set -euo pipefail
+          REPORT_FILE=$(mktemp)
+          trap 'rm -f "$REPORT_FILE"' EXIT
+          VITEST_EXIT=0
+          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
+          test -s "$REPORT_FILE" || { echo "FAIL: Store/Outbox Vitest report missing"; exit 1; }
+          node - "$REPORT_FILE" "$VITEST_EXIT" <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const exitCode = Number(process.argv[3]);
+          const tests = (report.testResults || []).flatMap(file => file.assertionResults || []);
+          const skipped = tests.filter(test => ['pending', 'skipped', 'todo'].includes(test.status));
+          if (exitCode !== 0 || (report.numFailedTests || 0) > 0 || (report.numPendingTests || 0) > 0 || skipped.length > 0 || tests.length === 0) {
+            console.error(JSON.stringify({
+              exitCode,
+              numTotalTests: report.numTotalTests,
+              numPassedTests: report.numPassedTests,
+              numFailedTests: report.numFailedTests,
+              numPendingTests: report.numPendingTests,
+              skippedTests: skipped.map(test => test.fullName || test.title),
+              observedTests: tests.length
+            }, null, 2));
+            process.exit(1);
+          }
+          console.log(`PASS: ${tests.length} Store/Outbox PostgreSQL behavioral tests passed; no skips or pending tests.`);
+          NODE
+
+  runtime-artifact-proof:
+    needs: [dual-runtime-typecheck]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install locked project dependencies
+        run: bun install --frozen-lockfile
+      - name: Install pinned OpenNext and Wrangler build tools without changing project manifests
+        run: bun install --no-save @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
+      - name: Generate Main and both Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Create disposable Store build database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas to disposable PostgreSQL 17 databases
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
+      - name: Seed build-time catalog fixtures
+        run: |
+          bun run db:seed-rbac
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
+      - name: Build Node standalone artifact with Node Store entrypoint
+        run: |
+          unset HEAVIX_ENV
+          bun run build
+          bun run verify:store-runtime-artifacts -- node .next/server
+      - name: Build Cloudflare OpenNext artifact with Worker Store entrypoint
+        env:
+          HEAVIX_ENV: preview
+        run: |
+          bunx opennextjs-cloudflare build
+          bun run verify:store-runtime-artifacts -- worker .open-next
+      - name: Upload Node and Worker build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-runtime-artifacts-${{ github.sha }}
+          path: |
+            .next/server
+            .open-next
+          if-no-files-found: warn
+          retention-days: 14
