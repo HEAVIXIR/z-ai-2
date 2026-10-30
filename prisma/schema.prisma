@@ -8,9 +8,9 @@ generator client {
 }
 
 generator nodeClient {
-  provider   = "prisma-client-js"
+  provider = "prisma-client"
   output     = "../src/lib/generated/node-client"
-  engineType = "client"
+  runtime  = "nodejs"
 }
 
 

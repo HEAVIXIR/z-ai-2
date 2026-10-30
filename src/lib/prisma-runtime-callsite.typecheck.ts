@@ -8,7 +8,7 @@
  * The explicit scalar assignments below verify useful result property types,
  * not merely the existence of result keys. No casts, any, or suppressions.
  */
-import type { PrismaClient as StoreNodeClient } from "@/lib/generated/store-node-client";
+import type { PrismaClient as StoreNodeClient } from "@/lib/generated/store-node-client/client";
 import type { PrismaClient as StoreWorkerClient } from "@/lib/generated/store-client/client";
 import type { AuditOutboxCreateTransaction } from "@/lib/store-audit-outbox";
 

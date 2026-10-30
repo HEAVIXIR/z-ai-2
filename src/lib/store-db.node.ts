@@ -1,4 +1,4 @@
-import { PrismaClient } from "@/lib/generated/store-node-client";
+import { PrismaClient } from "@/lib/generated/store-node-client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 type StorePrismaGlobal = typeof globalThis & {
