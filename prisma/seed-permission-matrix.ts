@@ -9,7 +9,7 @@
  * Usage: bunx tsx prisma/seed-permission-matrix.ts
  */
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../src/lib/authorization/permissions';
 

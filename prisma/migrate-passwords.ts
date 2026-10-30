@@ -29,7 +29,7 @@
    have a `$2…` hash on the second run.
    ============================================================ */
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 import bcrypt from "bcryptjs";
 

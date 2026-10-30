@@ -14,7 +14,7 @@
  *
  * Every import is type-only. No casts, any, or suppression directives.
  */
-import type { Prisma as MainNodePrisma, PrismaClient as MainNodeClient } from "@prisma/client";
+import type { Prisma as MainNodePrisma, PrismaClient as MainNodeClient } from "@/lib/generated/node-client/client";
 import type { Prisma as MainWorkerPrisma, PrismaClient as MainWorkerClient } from "@/lib/generated/client/client";
 import type { Prisma as StoreNodePrisma, PrismaClient as StoreNodeClient } from "@/lib/generated/store-node-client";
 import type { Prisma as StoreWorkerPrisma, PrismaClient as StoreWorkerClient } from "@/lib/generated/store-client/client";

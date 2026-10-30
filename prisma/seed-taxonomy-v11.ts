@@ -15,7 +15,7 @@
    matches a V1.1 child slug are reparented (parentId/level/layer/taxPath updated). Existing categories
    whose slug does NOT match a V1.1 child are left alone. */
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();
