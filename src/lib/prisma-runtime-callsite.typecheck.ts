@@ -10,6 +10,7 @@
  */
 import type { PrismaClient as StoreNodeClient } from "@/lib/generated/store-node-client";
 import type { PrismaClient as StoreWorkerClient } from "@/lib/generated/store-client/client";
+import type { AuditOutboxCreateTransaction } from "@/lib/store-audit-outbox";
 
 function assertString(_value: string): void {}
 function assertNumber(_value: number): void {}
@@ -197,5 +198,20 @@ export async function verifyWorkerTransactionCallSites(client: StoreWorkerClient
       select: { id: true },
     });
     assertString(outbox.id);
+  });
+}
+
+/** The outbox enqueue contract must accept both generated transaction clients. */
+export async function verifyNodeOutboxTransactionContract(client: StoreNodeClient): Promise<void> {
+  await client.$transaction(async (tx) => {
+    const writer: AuditOutboxCreateTransaction = tx;
+    void writer;
+  });
+}
+
+export async function verifyWorkerOutboxTransactionContract(client: StoreWorkerClient): Promise<void> {
+  await client.$transaction(async (tx) => {
+    const writer: AuditOutboxCreateTransaction = tx;
+    void writer;
   });
 }
