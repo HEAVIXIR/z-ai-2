@@ -71,7 +71,7 @@ for (const file of files) {
       if (forbidden.includes(marker)) forbiddenCompiledSources.add(marker);
     }
 
-    const javascriptPath = relative.replace(/\\.map$/, "");
+    const javascriptPath = relative.replace(/\.map$/, "");
     sourceMapByJavaScript.set(javascriptPath, sources);
   } catch {
     invalidSourceMaps.push(relative);
