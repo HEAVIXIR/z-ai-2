@@ -3,4 +3,4 @@
  * module to the target-specific main database runtime; Worker builds alias
  * it to db.worker.ts.
  */
-export { db, Prisma } from "@/lib/db.node";
+export { db, Prisma, type Article } from "./db.node";

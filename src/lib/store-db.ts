@@ -3,4 +3,4 @@
  * module to the target-specific entrypoint; Worker builds alias it to
  * store-db.worker.ts and Node builds alias it to store-db.node.ts.
  */
-export { storeDb } from "@/lib/store-db.node";
+export { storeDb } from "./store-db.node";
