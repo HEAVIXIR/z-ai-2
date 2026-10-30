@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -96,12 +97,36 @@ const securityHeaders = [
   },
 ];
 
+// The Preview/OpenNext build selects the Cloudflare-generated Store client.
+const storeRuntimeTarget = process.env.HEAVIX_ENV === "preview" ? "worker" : "node";
+const storeDbEntrypoint = path.resolve(
+  __dirname,
+  storeRuntimeTarget === "worker"
+    ? "src/lib/store-db.worker.ts"
+    : "src/lib/store-db.node.ts",
+);
+
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
     // F-013: build MUST fail on type errors. Was previously `true` which masked
     // security-relevant type mismatches at build time.
     ignoreBuildErrors: false,
+    tsconfigPath: storeRuntimeTarget === "worker" ? "tsconfig.store-worker.json" : "tsconfig.json",
+  },
+  // Keep both bundlers on the same concrete Store runtime. A static import of
+  // both generated clients is intentionally forbidden by this boundary.
+  turbopack: {
+    resolveAlias: {
+      "@/lib/store-db": storeDbEntrypoint,
+    },
+  },
+  webpack(config) {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@/lib/store-db$": storeDbEntrypoint,
+    };
+    return config;
   },
   reactStrictMode: false,
   allowedDevOrigins: [
