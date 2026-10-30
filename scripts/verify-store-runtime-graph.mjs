@@ -10,6 +10,9 @@ const excludedEntrypoints = new Set([
   path.join(sourceRoot, "lib", "store-db.ts"),
   path.join(sourceRoot, "lib", "store-db.node.ts"),
   path.join(sourceRoot, "lib", "store-db.worker.ts"),
+  path.join(sourceRoot, "lib", "db.ts"),
+  path.join(sourceRoot, "lib", "db.node.ts"),
+  path.join(sourceRoot, "lib", "db.worker.ts"),
 ]);
 
 function readTsConfig(fileName) {
@@ -123,5 +126,21 @@ verifyTarget({
   forbiddenClient: "/generated/store-node-client/",
   expectedEntrypoint: "/store-db.worker.ts",
   forbiddenEntrypoint: "/store-db.node.ts",
+});
+verifyTarget({
+  name: "Node Main",
+  config: "tsconfig.json",
+  expectedClient: "/generated/node-client/",
+  forbiddenClient: "/generated/client/",
+  expectedEntrypoint: "/db.node.ts",
+  forbiddenEntrypoint: "/db.worker.ts",
+});
+verifyTarget({
+  name: "Cloudflare Worker Main",
+  config: "tsconfig.store-worker.json",
+  expectedClient: "/generated/client/",
+  forbiddenClient: "/generated/node-client/",
+  expectedEntrypoint: "/db.worker.ts",
+  forbiddenEntrypoint: "/db.node.ts",
 });
 if (process.exitCode) process.exit(process.exitCode);
