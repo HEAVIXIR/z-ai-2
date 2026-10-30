@@ -1,6 +1,6 @@
 # HEAVIX — STEP 17.82 Runtime Entry-Point Design
 
-Status: design recorded; implementation is gated on the dual-runtime call-site fixtures and CI evidence.
+Status: isolated implementation recorded on `feature/prisma7-runtime-contract-proof`. CI run #11 passed Node and Worker full-application typechecks plus the static runtime source-graph isolation check. Produced-bundle inspection and the broader acceptance gates remain open.
 
 ## Findings from the current branch
 
@@ -11,7 +11,7 @@ Status: design recorded; implementation is gated on the dual-runtime call-site f
 - `src/lib/store-audit-outbox.ts` types its transaction argument from the Cloudflare-generated client even though its callers are shared service code. This is an independent coupling point that must be corrected before a Node Store entry point can be considered valid.
 - Current consumers use a broad range of model delegates and include shapes; a handful of model fixtures cannot justify changing the shared runtime entry point.
 
-## Target layout (not yet implemented)
+## Implemented target layout
 
 1. `src/lib/store-db.node.ts`
    - Imports only the Node-generated Store client and `PrismaPg`.
@@ -27,6 +27,7 @@ Status: design recorded; implementation is gated on the dual-runtime call-site f
    - Node TypeScript config maps it to `src/lib/store-db.node.ts`.
    - Worker TypeScript config maps it to `src/lib/store-db.worker.ts`.
    - Vitest Node config maps it to the Node entry point.
+   - `scripts/verify-store-runtime-graph.mjs` resolves runtime imports under both tsconfigs and rejects the opposite generated client entrypoint.
    - Next/OpenNext build config must select the matching alias and matching TypeScript config for the target. Both the Webpack and Turbopack resolution paths must be accounted for; a webpack-only alias is not sufficient evidence for an OpenNext/Turbopack build.
 
 4. CI runs two independent strict typechecks (Node and Worker) over the same application call sites. The ordinary project typecheck must not silently validate only one target.
@@ -42,7 +43,7 @@ Status: design recorded; implementation is gated on the dual-runtime call-site f
 - Worker/OpenNext graph contains no Node-generated Store client.
 - Vitest runs against the Node entry point and transaction integration tests remain green.
 - OpenNext Cloudflare build, Docker build, Store behavioral tests, outbox/audit tests, TLS proof, and all required CI gates pass.
-- Runtime selection is verified from produced module graphs/build artifacts, not inferred only from environment variables or typechecks.
+- Runtime selection is verified from produced module graphs/build artifacts, not inferred only from environment variables or typechecks. The current source-graph check is an intermediate proof; a produced-bundle inspection is still required.
 
 ## Safety boundary
 
