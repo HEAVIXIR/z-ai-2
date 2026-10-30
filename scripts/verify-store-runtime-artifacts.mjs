@@ -13,8 +13,8 @@ if (!fs.existsSync(outputRoot) || !fs.statSync(outputRoot).isDirectory()) {
   throw new Error(`Artifact directory does not exist: ${outputRoot}`);
 }
 
-const expected = target === "node" ? "generated/store-node-client" : "generated/store-client";
-const forbidden = target === "node" ? "generated/store-client" : "generated/store-node-client";
+const expected = target === "node" ? ["generated/store-node-client", "generated/node-client"] : ["generated/store-client", "generated/client"];
+const forbidden = target === "node" ? ["generated/store-client", "generated/client"] : ["generated/store-node-client", "generated/node-client"];
 const textExtensions = new Set([".js", ".mjs", ".cjs", ".json", ".map", ".txt", ".wasm", ".html"]);
 const files = [];
 function walk(directory) {
@@ -26,7 +26,7 @@ function walk(directory) {
 }
 walk(outputRoot);
 
-let expectedHits = 0;
+const expectedHits = Object.fromEntries(expected.map((marker) => [marker, 0]));
 const forbiddenHits = [];
 const wasmFiles = [];
 const inspected = [];
@@ -40,13 +40,13 @@ for (const file of files) {
   if (content.includes(0)) continue;
   const text = content.toString("utf8");
   inspected.push(relative);
-  if (text.includes(expected)) expectedHits++;
-  if (text.includes(forbidden)) forbiddenHits.push(relative);
+  for (const marker of expected) if (text.includes(marker)) expectedHits[marker]++;
+  for (const marker of forbidden) if (text.includes(marker)) forbiddenHits.push({ file: relative, marker });
 }
 
 const failures = [];
-if (expectedHits === 0) failures.push(`expected generated client marker not found: ${expected}`);
-if (forbiddenHits.length) failures.push(`forbidden generated client marker found: ${forbiddenHits.join(", ")}`);
+for (const marker of expected) if (expectedHits[marker] === 0) failures.push(`expected generated client marker not found: ${marker}`);
+if (forbiddenHits.length) failures.push(`forbidden generated client markers found: ${JSON.stringify(forbiddenHits)}`);
 if (target === "node" && wasmFiles.length) failures.push(`Node server artifact contains WASM files: ${wasmFiles.join(", ")}`);
 
 const report = {
@@ -54,9 +54,9 @@ const report = {
   artifactDirectory: outputRoot,
   totalFiles: files.length,
   inspectedTextFiles: inspected.length,
-  expectedClientMarker: expected,
+  expectedClientMarkers: expected,
   expectedMarkerHits: expectedHits,
-  forbiddenClientMarker: forbidden,
+  forbiddenClientMarkers: forbidden,
   forbiddenMarkerFiles: forbiddenHits,
   wasmFiles,
   result: failures.length ? "FAIL" : "PASS",
