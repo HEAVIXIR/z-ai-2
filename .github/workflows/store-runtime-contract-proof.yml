@@ -101,6 +101,7 @@ jobs:
   runtime-artifact-proof:
     needs: [dual-runtime-typecheck]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -170,6 +171,28 @@ jobs:
         env:
           HEAVIX_ENV: preview
         run: |
+          set -euo pipefail
+          echo "=== OpenNext runner resource baseline ==="
+          date -u
+          free -h
+          df -h .
+          echo "--- /proc/meminfo ---"
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          echo "=== Starting periodic process/RAM telemetry (10s interval) ==="
+          (
+            while true; do
+              echo "--- resource sample $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
+              grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+              ps -eo pid,ppid,rss,vsz,comm --sort=-rss | head -n 12
+              sleep 10
+            done
+          ) &
+          MONITOR_PID=$!
+          cleanup_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+          trap cleanup_monitor EXIT
           bunx opennextjs-cloudflare build
           bun run verify:store-runtime-artifacts -- worker .open-next
       - name: Upload Node and Worker build evidence
