@@ -199,42 +199,76 @@ jobs:
           import path from "node:path";
 
           const root = ".next/server";
+          const suspects = new Set([
+            "@prisma/client", "prisma", "@prisma/studio-core", "@prisma/dev",
+            "@prisma/engines", "@mdxeditor/editor", "@codesandbox/sandpack-client",
+            "@electric-sql/pglite", "pglite-server", "typescript",
+          ]);
+          const packageRoles = {
+            "@prisma/client": "runtime-client",
+            "prisma": "cli-tooling",
+            "@prisma/studio-core": "studio-tooling",
+            "@prisma/dev": "studio-development-tooling",
+            "@prisma/engines": "engine-tooling",
+            "@mdxeditor/editor": "editor-dependency",
+            "@codesandbox/sandpack-client": "editor-transitive-dependency",
+            "@electric-sql/pglite": "standalone-database-tooling-candidate",
+            "pglite-server": "standalone-database-tooling-candidate",
+            "typescript": "compiler-tooling",
+          };
+          const sourceRoots = ["src", "app", "pages", "components", "hooks", "lib", "scripts", "prisma"];
+          const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
           const files = [];
-          function walk(dir) {
+          function walk(dir, visit) {
             if (!fs.existsSync(dir)) return;
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
               const full = path.join(dir, entry.name);
-              if (entry.isDirectory()) walk(full);
-              else if (entry.isFile()) {
-                const stat = fs.statSync(full);
-                files.push({ path: full.split(path.sep).join("/"), bytes: stat.size });
-              }
+              if (entry.isDirectory()) walk(full, visit);
+              else if (entry.isFile()) visit(full);
             }
           }
-          walk(root);
+          walk(root, full => {
+            const stat = fs.statSync(full);
+            files.push({ path: full.split(path.sep).join("/"), bytes: stat.size });
+          });
+          function packageNameFromPath(resolved) {
+            const segments = resolved.split("/");
+            const i = segments.lastIndexOf("node_modules");
+            if (i < 0 || i + 1 >= segments.length) return null;
+            const first = segments[i + 1];
+            return first.startsWith("@") && segments[i + 2] ? first + "/" + segments[i + 2] : first;
+          }
+          function fileRole(packageName, filePath) {
+            const p = filePath.toLowerCase();
+            if (packageName === "prisma" || packageName === "@prisma/engines" || packageName === "typescript") return "tooling";
+            if (packageName === "@prisma/studio-core" || packageName === "@prisma/dev") return "studio";
+            if (packageName === "@mdxeditor/editor" || packageName === "@codesandbox/sandpack-client") return "editor";
+            if (packageName === "@electric-sql/pglite" || packageName === "pglite-server") return "standalone-db-tooling-candidate";
+            if (p.includes("/studio/") || p.includes("/studio-")) return "studio-subpath";
+            if (p.includes("/cli/") || p.includes("/bin/") || p.includes("/engines/")) return "tooling-subpath";
+            if (packageName === "@prisma/client") return "client-runtime";
+            return "package-file-unclassified";
+          }
 
           const traces = [];
           const packageStats = new Map();
-          const bytesByPath = new Map(files.map(file => [file.path, file.bytes]));
-          let unresolvedNodeModulesReferences = 0;
-
           const routePackageStats = [];
-          for (const file of files.filter(file => file.path.endsWith(".nft.json"))) {
+          const traceDetails = [];
+          const fileRouteIndex = new Map();
+          let unresolvedNodeModulesReferences = 0;
+          let malformedTraceFiles = 0;
+
+          for (const traceFile of files.filter(item => item.path.endsWith(".nft.json"))) {
             try {
-              const trace = JSON.parse(fs.readFileSync(file.path, "utf8"));
+              const trace = JSON.parse(fs.readFileSync(traceFile.path, "utf8"));
               const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
               const routePackages = new Map();
-              traces.push({ route: file.path, references: refs.length });
+              const suspectReferences = [];
+              traces.push({ route: traceFile.path, references: refs.length });
               for (const ref of refs) {
-                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), ref.replaceAll(String.fromCharCode(92), "/")));
-                const segments = resolved.split("/");
-                const nodeModulesIndex = segments.lastIndexOf("node_modules");
-                if (nodeModulesIndex < 0 || nodeModulesIndex + 1 >= segments.length) continue;
-
-                const first = segments[nodeModulesIndex + 1];
-                const packageName = first.startsWith("@") && segments[nodeModulesIndex + 2]
-                  ? first + "/" + segments[nodeModulesIndex + 2]
-                  : first;
+                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(traceFile.path), ref.replaceAll(String.fromCharCode(92), "/")));
+                const packageName = packageNameFromPath(resolved);
+                if (!packageName) continue;
                 let stat;
                 try {
                   stat = fs.statSync(resolved);
@@ -243,18 +277,16 @@ jobs:
                   unresolvedNodeModulesReferences += 1;
                   continue;
                 }
-
-                let entry = packageStats.get(packageName);
-                if (!entry) {
-                  entry = { references: 0, files: new Set(), bytes: 0 };
-                  packageStats.set(packageName, entry);
+                let globalEntry = packageStats.get(packageName);
+                if (!globalEntry) {
+                  globalEntry = { references: 0, files: new Set(), bytes: 0 };
+                  packageStats.set(packageName, globalEntry);
                 }
-                entry.references += 1;
-                if (!entry.files.has(resolved)) {
-                  entry.files.add(resolved);
-                  entry.bytes += stat.size;
+                globalEntry.references += 1;
+                if (!globalEntry.files.has(resolved)) {
+                  globalEntry.files.add(resolved);
+                  globalEntry.bytes += stat.size;
                 }
-
                 let routeEntry = routePackages.get(packageName);
                 if (!routeEntry) {
                   routeEntry = { references: 0, files: new Set(), bytes: 0 };
@@ -265,54 +297,153 @@ jobs:
                   routeEntry.files.add(resolved);
                   routeEntry.bytes += stat.size;
                 }
+                if (suspects.has(packageName)) {
+                  const record = {
+                    package: packageName,
+                    packageRole: packageRoles[packageName] || "unclassified",
+                    path: resolved,
+                    realPath: fs.realpathSync(resolved).split(path.sep).join("/"),
+                    bytes: stat.size,
+                    fileRole: fileRole(packageName, resolved),
+                  };
+                  suspectReferences.push(record);
+                  const key = packageName + "::" + resolved;
+                  let indexed = fileRouteIndex.get(key);
+                  if (!indexed) {
+                    indexed = { ...record, routes: new Set(), traceReferenceCount: 0 };
+                    fileRouteIndex.set(key, indexed);
+                  }
+                  indexed.routes.add(traceFile.path);
+                  indexed.traceReferenceCount += 1;
+                }
               }
-              const routePackageList = [...routePackages.entries()].map(([name, stats]) => ({
-                name,
-                references: stats.references,
-                uniqueFiles: stats.files.size,
-                uniqueBytes: stats.bytes,
+              const packageList = [...routePackages.entries()].map(([name, stats]) => ({
+                name, references: stats.references, uniqueFiles: stats.files.size, uniqueBytes: stats.bytes,
               })).sort((a, b) => b.uniqueBytes - a.uniqueBytes);
+              const suspectPackages = new Map();
+              for (const ref of suspectReferences) {
+                let item = suspectPackages.get(ref.package);
+                if (!item) {
+                  item = { name: ref.package, packageRole: ref.packageRole, references: 0, files: [] };
+                  suspectPackages.set(ref.package, item);
+                }
+                item.references += 1;
+                if (!item.files.some(existing => existing.path === ref.path)) item.files.push(ref);
+              }
+              const uniqueBytes = packageList.reduce((sum, item) => sum + item.uniqueBytes, 0);
+              const heavy = uniqueBytes >= 10 * 1024 * 1024;
               routePackageStats.push({
-                route: file.path,
-                references: refs.length,
-                nodeModulesPackageCount: routePackageList.length,
-                nodeModulesUniqueBytes: routePackageList.reduce((sum, item) => sum + item.uniqueBytes, 0),
-                largestPackages: routePackageList.slice(0, 12),
+                route: traceFile.path, references: refs.length,
+                nodeModulesPackageCount: packageList.length, nodeModulesUniqueBytes: uniqueBytes,
+                heavy, largestPackages: packageList.slice(0, 12),
+              });
+              traceDetails.push({
+                route: traceFile.path,
+                entrypointCandidate: traceFile.path.replace(/\.nft\.json$/, ""),
+                references: refs.length, nodeModulesUniqueBytes: uniqueBytes, heavy,
+                suspectPackages: [...suspectPackages.values()].map(item => ({
+                  ...item,
+                  uniqueFiles: item.files.length,
+                  uniqueBytes: item.files.reduce((sum, ref) => sum + ref.bytes, 0),
+                  files: item.files.sort((a, b) => a.path.localeCompare(b.path)),
+                })).sort((a, b) => a.name.localeCompare(b.name)),
               });
             } catch (error) {
-              traces.push({ route: file.path, parseError: String(error) });
+              malformedTraceFiles += 1;
+              traces.push({ route: traceFile.path, parseError: String(error) });
             }
           }
 
+          // Static literal-specifier scan; findings are source references, not a full module-resolution graph.
+          const sourceImportMatches = [];
+          const importPattern = /(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\(|\bimport\s*)['"]([^'"]+)['"]/g;
+          for (const sourceRoot of sourceRoots) {
+            walk(sourceRoot, full => {
+              if (!sourceExtensions.has(path.extname(full))) return;
+              const lines = fs.readFileSync(full, "utf8").split(/\r?\n/);
+              for (let i = 0; i < lines.length; i += 1) {
+                importPattern.lastIndex = 0;
+                let match;
+                while ((match = importPattern.exec(lines[i])) !== null) {
+                  const specifier = match[1];
+                  const packageName = specifier.startsWith("@")
+                    ? specifier.split("/").slice(0, 2).join("/")
+                    : specifier.split("/")[0];
+                  if (!suspects.has(packageName)) continue;
+                  sourceImportMatches.push({
+                    source: full.split(path.sep).join("/"),
+                    line: i + 1,
+                    package: packageName,
+                    specifier,
+                    statement: lines[i].trim().slice(0, 500),
+                  });
+                }
+              }
+            });
+          }
+          sourceImportMatches.sort((a, b) => a.package.localeCompare(b.package) || a.source.localeCompare(b.source) || a.line - b.line);
+
+          const suspectPackageFiles = [...fileRouteIndex.values()].map(item => ({
+            ...item,
+            routes: [...item.routes].sort(),
+            routeCount: item.routes.size,
+            traceReferenceCount: item.traceReferenceCount,
+            occurrence: item.routes.size > 1 ? "shared-across-traces" : "exclusive-to-one-trace",
+          })).sort((a, b) => a.package.localeCompare(b.package) || a.path.localeCompare(b.path));
+          const sharedExclusive = [...suspects].map(name => {
+            const entries = suspectPackageFiles.filter(item => item.package === name);
+            return {
+              package: name,
+              packageRole: packageRoles[name] || "unclassified",
+              files: entries.length,
+              sharedFiles: entries.filter(item => item.routeCount > 1).length,
+              exclusiveFiles: entries.filter(item => item.routeCount === 1).length,
+              routesReferencingPackage: new Set(entries.flatMap(item => item.routes)).size,
+              uniqueBytes: entries.reduce((sum, item) => sum + item.bytes, 0),
+            };
+          }).sort((a, b) => b.uniqueBytes - a.uniqueBytes);
           const packages = [...packageStats.entries()].map(([name, stats]) => ({
-            name,
-            references: stats.references,
-            uniqueFiles: stats.files.size,
-            uniqueBytes: stats.bytes,
+            name, references: stats.references, uniqueFiles: stats.files.size, uniqueBytes: stats.bytes,
           }));
           const report = {
+            schemaVersion: 2,
+            generatedAt: new Date().toISOString(),
             root,
-            totalFiles: files.length,
-            totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
-            traceFiles: traces.length,
-            traceReferenceCount: traces.reduce((sum, trace) => sum + (trace.references || 0), 0),
-            unresolvedNodeModulesReferences,
+            methodology: {
+              heavyTraceThresholdBytes: 10 * 1024 * 1024,
+              heavyTraceDefinition: "per-trace unique bytes across resolved node_modules files >= 10 MiB",
+              pathSemantics: "workspace-relative normalized path plus filesystem realPath",
+              importerScan: "literal static import/from/re-export/require/dynamic-import specifiers; not a complete resolver or runtime call graph",
+              routeToImporterLimit: "trace entrypoint candidates and source import matches are reported separately; no causal edge is asserted without resolver-backed evidence",
+            },
+            totals: {
+              totalFiles: files.length,
+              totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+              traceFiles: traces.length,
+              traceReferenceCount: traces.reduce((sum, trace) => sum + (trace.references || 0), 0),
+              unresolvedNodeModulesReferences,
+              malformedTraceFiles,
+              heavyTraceCount: routePackageStats.filter(item => item.heavy).length,
+              sourceImportMatches: sourceImportMatches.length,
+            },
             largestFiles: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 50),
             largestRouteTraces: [...traces].sort((a, b) => (b.references || 0) - (a.references || 0)).slice(0, 50),
             routePackageComposition: routePackageStats.sort((a, b) => b.nodeModulesUniqueBytes - a.nodeModulesUniqueBytes),
+            routeTraceDetails: traceDetails.sort((a, b) => a.route.localeCompare(b.route)),
+            suspectPackageFiles,
+            sharedExclusive,
+            sourceImportMatches,
             mostReferencedPackages: [...packages].sort((a, b) => b.references - a.references).slice(0, 100),
             largestPackages: [...packages].sort((a, b) => b.uniqueBytes - a.uniqueBytes).slice(0, 100),
           };
           fs.writeFileSync(".ci-artifacts/worker-next/bundle-composition.json", JSON.stringify(report, null, 2));
           console.log(JSON.stringify({
-            totalFiles: report.totalFiles,
-            totalBytes: report.totalBytes,
-            traceFiles: report.traceFiles,
-            traceReferenceCount: report.traceReferenceCount,
-            largestRouteTraces: report.largestRouteTraces.slice(0, 10),
+            ...report.totals,
+            sharedExclusive: report.sharedExclusive,
+            sourceImportMatches: report.sourceImportMatches,
             largestRoutePackageCompositions: report.routePackageComposition.slice(0, 10),
-            mostReferencedPackages: report.mostReferencedPackages.slice(0, 20),
           }, null, 2));
+          NODE
           NODE
           test -s .ci-artifacts/worker-next/bundle-composition.json
           echo "=== Compact bundle composition report ==="
