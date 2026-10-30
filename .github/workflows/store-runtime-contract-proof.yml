@@ -1,10 +1,9 @@
 name: Store Runtime Contract Proof
 
 on:
-  push:
-    branches: [feature/prisma7-runtime-contract-proof]
   pull_request:
     branches: [migration/prisma7-cloudflare-workers]
+  workflow_dispatch:
 
 jobs:
   dual-runtime-typecheck:
