@@ -38,8 +38,7 @@ export async function POST() {
   }
 
   try {
-    const projectRoot = path.resolve(process.cwd());
-    const scriptPath = path.join(projectRoot, "scripts", "backup.sh");
+    const scriptPath = path.join(process.cwd(), "scripts", "backup.sh");
     await fs.access(scriptPath);
 
     const backupEnv = buildBackupEnvironment({
