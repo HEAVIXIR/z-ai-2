@@ -1,0 +1,29 @@
+name: Store Runtime Contract Proof
+
+on:
+  push:
+    branches: [feature/prisma7-runtime-contract-proof]
+  pull_request:
+    branches: [migration/prisma7-cloudflare-workers]
+
+jobs:
+  dual-runtime-typecheck:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Main and Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck complete application against Node Store client
+        run: bun run typecheck:store:node
+      - name: Typecheck complete application against Cloudflare Worker Store client
+        run: bun run typecheck:store:worker
