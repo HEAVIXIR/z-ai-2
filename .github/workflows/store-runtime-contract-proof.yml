@@ -286,16 +286,17 @@ jobs:
             mostReferencedPackages: report.mostReferencedPackages.slice(0, 20),
           }, null, 2));
           NODE
-      - name: Upload pre-OpenNext diagnostics
+          test -s .ci-artifacts/worker-next/bundle-composition.json
+          echo "=== Compact bundle composition report ==="
+          wc -c .ci-artifacts/worker-next/bundle-composition.json
+      - name: Upload compact Worker composition report
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: worker-next-diagnostics-${{ github.sha }}
-          path: |
-            .ci-artifacts/worker-next
-            .next/server/**/*.nft.json
-          if-no-files-found: warn
+          name: worker-next-composition-${{ github.sha }}
+          path: .ci-artifacts/worker-next/bundle-composition.json
+          if-no-files-found: error
           retention-days: 14
       - name: Bundle existing Worker build with OpenNext (skip Next.js build)
         env:
