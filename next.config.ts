@@ -101,13 +101,13 @@ const securityHeaders = [
 const storeRuntimeTarget = process.env.HEAVIX_ENV === "preview" ? "worker" : "node";
 const mainDbEntrypoint = path.resolve(
   __dirname,
-  storeRuntimeTarget === "worker" ? "src/lib/db.worker.ts" : "src/lib/db.node.ts",
+  storeRuntimeTarget === "worker" ? "src/lib/db.worker" : "src/lib/db.node",
 );
 const storeDbEntrypoint = path.resolve(
   __dirname,
   storeRuntimeTarget === "worker"
-    ? "src/lib/store-db.worker.ts"
-    : "src/lib/store-db.node.ts",
+    ? "src/lib/store-db.worker"
+    : "src/lib/store-db.node",
 );
 
 const nextConfig: NextConfig = {
@@ -120,20 +120,9 @@ const nextConfig: NextConfig = {
   },
   // Keep both bundlers on the same concrete Store runtime. A static import of
   // both generated clients is intentionally forbidden by this boundary.
-  turbopack: {
-    resolveAlias: {
-      "@/lib/store-db": storeDbEntrypoint,
-      "@/lib/db": mainDbEntrypoint,
-    },
-  },
-  webpack(config) {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "@/lib/store-db$": storeDbEntrypoint,
-      "@/lib/db$": mainDbEntrypoint,
-    };
-    return config;
-  },
+  // Turbopack uses tsconfig.json paths for @/lib/db and @/lib/store-db.
+  // No resolveAlias needed — tsconfig already maps these to .node.ts variants.
+  // Webpack uses tsconfig.json paths for @/lib/db and @/lib/store-db.
   reactStrictMode: false,
   allowedDevOrigins: [
     "127.0.0.1",
