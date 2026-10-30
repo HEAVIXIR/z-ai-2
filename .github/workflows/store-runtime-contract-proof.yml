@@ -444,7 +444,6 @@ jobs:
             largestRoutePackageCompositions: report.routePackageComposition.slice(0, 10),
           }, null, 2));
           NODE
-          NODE
           test -s .ci-artifacts/worker-next/bundle-composition.json
           echo "=== Compact bundle composition report ==="
           wc -c .ci-artifacts/worker-next/bundle-composition.json
