@@ -187,6 +187,86 @@ jobs:
           /usr/bin/time -v ./node_modules/.bin/next build
           test -d .next/server
           echo "PASS: Worker-mode Next.js output exists at .next/server"
+      - name: Capture Worker Next.js trace and bundle composition before OpenNext
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-artifacts/worker-next
+          if [ -f .next/trace ]; then cp .next/trace .ci-artifacts/worker-next/next-trace; fi
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+
+          const root = ".next/server";
+          const files = [];
+          function walk(dir) {
+            if (!fs.existsSync(dir)) return;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (entry.isFile()) {
+                const stat = fs.statSync(full);
+                files.push({ path: full.split(path.sep).join("/"), bytes: stat.size });
+              }
+            }
+          }
+          walk(root);
+
+          const traces = [];
+          const dependencyBytes = new Map();
+          const dependencyRefs = new Map();
+          for (const file of files.filter(file => file.path.endsWith(".nft.json"))) {
+            try {
+              const trace = JSON.parse(fs.readFileSync(file.path, "utf8"));
+              const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
+              traces.push({ route: file.path, references: refs.length });
+              for (const ref of refs) {
+                const normalized = ref.replace(/\\/g, "/");
+                const match = normalized.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/);
+                if (!match) continue;
+                const name = match[1];
+                dependencyRefs.set(name, (dependencyRefs.get(name) || 0) + 1);
+                dependencyBytes.set(name, (dependencyBytes.get(name) || 0) + (files.find(item => item.path.endsWith("/" + normalized))?.bytes || 0));
+              }
+            } catch (error) {
+              traces.push({ route: file.path, parseError: String(error) });
+            }
+          }
+
+          const report = {
+            root,
+            totalFiles: files.length,
+            totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+            traceFiles: traces.length,
+            traceReferenceCount: traces.reduce((sum, trace) => sum + (trace.references || 0), 0),
+            largestFiles: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 50),
+            largestRouteTraces: [...traces].sort((a, b) => (b.references || 0) - (a.references || 0)).slice(0, 50),
+            mostReferencedPackages: [...dependencyRefs.entries()]
+              .map(([name, references]) => ({ name, references, observedBytes: dependencyBytes.get(name) || 0 }))
+              .sort((a, b) => b.references - a.references).slice(0, 100),
+          };
+          fs.writeFileSync(".ci-artifacts/worker-next/bundle-composition.json", JSON.stringify(report, null, 2));
+          console.log(JSON.stringify({
+            totalFiles: report.totalFiles,
+            totalBytes: report.totalBytes,
+            traceFiles: report.traceFiles,
+            traceReferenceCount: report.traceReferenceCount,
+            largestRouteTraces: report.largestRouteTraces.slice(0, 10),
+            mostReferencedPackages: report.mostReferencedPackages.slice(0, 20),
+          }, null, 2));
+          NODE
+      - name: Upload pre-OpenNext diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-next-diagnostics-${{ github.sha }}
+          path: |
+            .ci-artifacts/worker-next
+            .next/server/**/*.nft.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Bundle existing Worker build with OpenNext (skip Next.js build)
         env:
           HEAVIX_ENV: preview
