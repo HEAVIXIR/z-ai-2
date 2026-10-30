@@ -45,7 +45,7 @@ import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
 import { requirePermission, AuthorizationError } from '@/lib/authorization';
 import { headers } from 'next/headers';
-import type { Prisma } from '@/lib/generated/node-client/client';
+import type { Prisma } from '@/lib/db';
 
 // ── Types ──────────────────────────────────────────────────
 export interface AuditMutationContext {
