@@ -4,9 +4,7 @@ import process from "node:process";
 
 const [target, outputArg] = process.argv.slice(2);
 if (!["node", "worker"].includes(target) || !outputArg) {
-  console.error(
-    "Usage: node scripts/verify-store-runtime-artifacts.mjs <node|worker> <artifact-directory>",
-  );
+  console.error("Usage: node scripts/verify-store-runtime-artifacts.mjs <node|worker> <artifact-directory>");
   process.exit(2);
 }
 
@@ -25,8 +23,8 @@ const forbidden =
     : ["generated/store-node-client", "generated/node-client"];
 const allMarkers = [...expected, ...forbidden];
 
-const files: string[] = [];
-function walk(directory: string) {
+const files = [];
+function walk(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) walk(full);
@@ -35,23 +33,20 @@ function walk(directory: string) {
 }
 walk(outputRoot);
 
-const relativePath = (file: string) =>
+const relativePath = (file) =>
   path.relative(outputRoot, file).split(path.sep).join("/");
-const markerHits = (value: string) =>
+const markerHits = (value) =>
   allMarkers.filter((marker) => value.replace(/\\/g, "/").includes(marker));
 
-const expectedCompiledSources = new Set<string>();
-const forbiddenCompiledSources = new Set<string>();
-const sourceMapFiles: string[] = [];
-const invalidSourceMaps: string[] = [];
-const sourceMapByJavaScript = new Map<string, string[]>();
-const wasmFiles: string[] = [];
-const traceMetadata: Array<{
-  file: string;
-  forbiddenReferences: string[];
-}> = [];
-const unmappedMarkerChunks: string[] = [];
-const inspectedJavaScript: string[] = [];
+const expectedCompiledSources = new Set();
+const forbiddenCompiledSources = new Set();
+const sourceMapFiles = [];
+const invalidSourceMaps = [];
+const sourceMapByJavaScript = new Map();
+const wasmFiles = [];
+const traceMetadata = [];
+const unmappedMarkerChunks = [];
+const inspectedJavaScript = [];
 
 // Source maps describe which source modules produced an executable chunk.
 // Only the "sources" path list is used as compilation provenance. The
@@ -65,11 +60,9 @@ for (const file of files) {
 
   sourceMapFiles.push(relative);
   try {
-    const sourceMap = JSON.parse(fs.readFileSync(file, "utf8")) as {
-      sources?: unknown;
-    };
+    const sourceMap = JSON.parse(fs.readFileSync(file, "utf8"));
     const sources = Array.isArray(sourceMap.sources)
-      ? sourceMap.sources.filter((source): source is string => typeof source === "string")
+      ? sourceMap.sources.filter((source) => typeof source === "string")
       : [];
     const compiledMarkers = new Set(sources.flatMap(markerHits));
 
@@ -114,11 +107,9 @@ for (const file of files) {
   if (!file.endsWith(".nft.json")) continue;
   const relative = relativePath(file);
   try {
-    const trace = JSON.parse(fs.readFileSync(file, "utf8")) as {
-      files?: unknown;
-    };
+    const trace = JSON.parse(fs.readFileSync(file, "utf8"));
     const tracedFiles = Array.isArray(trace.files)
-      ? trace.files.filter((entry): entry is string => typeof entry === "string")
+      ? trace.files.filter((entry) => typeof entry === "string")
       : [];
     const references = new Set(tracedFiles.flatMap(markerHits));
     const forbiddenReferences = [...references].filter((marker) =>
@@ -128,8 +119,7 @@ for (const file of files) {
       traceMetadata.push({ file: relative, forbiddenReferences });
     }
   } catch {
-    // Malformed trace metadata is reported separately by the build tooling;
-    // it is not reclassified as executable code by this runtime verifier.
+    // Malformed trace metadata is not reclassified as executable code.
   }
 }
 
@@ -137,7 +127,7 @@ for (const file of files) {
   if (file.endsWith(".wasm")) wasmFiles.push(relativePath(file));
 }
 
-const failures: string[] = [];
+const failures = [];
 for (const marker of expected) {
   if (!expectedCompiledSources.has(marker)) {
     failures.push(`expected compiled generated-client source not found: ${marker}`);
