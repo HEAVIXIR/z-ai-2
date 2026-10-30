@@ -23,6 +23,8 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Verify Node and Worker runtime source graphs are disjoint
+        run: bun run verify:store-runtime-graph
       - name: Typecheck complete application against Node Store client
         run: bun run typecheck:store:node
       - name: Typecheck complete application against Cloudflare Worker Store client
