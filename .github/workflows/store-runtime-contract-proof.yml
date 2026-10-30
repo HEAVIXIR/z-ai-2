@@ -193,7 +193,7 @@ jobs:
             wait "$MONITOR_PID" 2>/dev/null || true
           }
           trap cleanup_monitor EXIT
-          bunx opennextjs-cloudflare build --noMinify
+          npm exec --no -- opennextjs-cloudflare build --noMinify
           bun run verify:store-runtime-artifacts -- worker .open-next
       - name: Upload Node and Worker build evidence
         if: always()
