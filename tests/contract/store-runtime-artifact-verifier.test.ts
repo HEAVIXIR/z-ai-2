@@ -58,6 +58,12 @@ describe("Store runtime artifact verifier", () => {
           'generator client { output = "../src/lib/generated/store-client" runtime = "cloudflare" }',
         ],
       }),
+      "chunks/node-main-client.js": "export const runtime = 'node';",
+      "chunks/node-main-client.js.map": JSON.stringify({
+        version: 3,
+        sources: ["../../../src/lib/generated/node-client/client.ts"],
+        sourcesContent: [],
+      }),
       "app/api/admin/backup/route.js.nft.json": JSON.stringify({
         files: [
           "../../../../src/lib/generated/store-client/client.ts",
@@ -83,6 +89,7 @@ describe("Store runtime artifact verifier", () => {
         version: 3,
         sources: [
           "../../../src/lib/generated/store-node-client/client.ts",
+          "../../../src/lib/generated/node-client/client.ts",
           "../../../src/lib/generated/store-client/client.ts",
         ],
         sourcesContent: [],
