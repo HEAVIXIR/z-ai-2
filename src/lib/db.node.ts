@@ -1,4 +1,4 @@
-import { PrismaClient } from "@/lib/generated/node-client";
+import { Prisma, PrismaClient } from "@/lib/generated/node-client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const SCHEMA_VERSION = "p2-auction-company-rental";
@@ -29,3 +29,4 @@ if (globalForPrisma.prismaNodeSchemaVersion !== SCHEMA_VERSION) {
 globalForPrisma.prismaNode ??= createNodePrismaClient();
 
 export const db: PrismaClient = globalForPrisma.prismaNode;
+export { Prisma };
