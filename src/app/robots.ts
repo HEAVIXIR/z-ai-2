@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
-import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { absoluteUrl, SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — robots.ts (P2-28)
