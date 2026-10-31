@@ -890,19 +890,31 @@ jobs:
           # Parses /proc/PID/smaps format: mapping header line + Size/Rss/Pss fields
           extract_top_mappings() {
             local threshold=$1
-            local smaps_file=$2
-            if [ ! -r "$smaps_file" ]; then return; fi
-            # awk: capture mapping header, Size, Rss, Pss; output rss	pss	size	header
-            awk '
-              /^[0-9a-f]/ { if (rss > 0) print rss "	" pss "	" size "	" header; header=$0; rss=0; pss=0; size=0 }
-              /^Size:/ { size=$2 }
-              /^Rss:/ { rss=$2 }
-              /^Pss:/ { pss=$2 }
-              END { if (rss > 0) print rss "	" pss "	" size "	" header }
-            ' "$smaps_file" | sort -t$'"'"'\t'"'"' -k1 -rn | head -30 | while IFS='"'"'\t'"'"' read -r rss pss size header; do
-              # Escape header for JSON
-              header_escaped=$(echo "$header" | sed 's/"/\"/g' | tr -d '\n')
-              smaps_log "{\"type\":\"SMAPS_MAPPING\",\"threshold_gb\":$threshold,\"rss_kb\":$rss,\"pss_kb\":$pss,\"size_kb\":$size,\"mapping\":\"$header_escaped\"}"
+            local pid=$2
+            local maps_file="/proc/$pid/maps"
+            if [ ! -r "$maps_file" ]; then return; fi
+            awk '{
+              split($1, addrs, "-")
+              start = strtonum("0x" addrs[1])
+              end = strtonum("0x" addrs[2])
+              size_kb = int((end - start) / 1024)
+              pathname = ""
+              for (i=6; i<=NF; i++) pathname = pathname (i>6?" ":"") $i
+              type = "unnamed"
+              if (pathname == "[heap]") type = "heap"
+              else if (pathname == "[stack]") type = "stack"
+              else if (pathname == "[anon]") type = "anon"
+              else if (index(pathname, "[anon:") > 0) type = "anon_named"
+              else if (index(pathname, ".wasm") > 0) type = "wasm"
+              else if (index(pathname, "node_modules") > 0) type = "node_modules"
+              else if (index(pathname, ".so") > 0) type = "shared_lib"
+              else if (pathname == "") type = "anonymous"
+              else type = "file"
+              print size_kb "\t" type "\t" pathname "\t" $1 "\t" $2
+            }' "$maps_file" | sort -t"\t" -k1 -rn | head -30 | while IFS='\t' read -r size_kb type pathname addr perm; do
+              pathname_esc=$(echo "$pathname" | sed 's/"/\\"/g' | tr -d '\n')
+              addr_esc=$(echo "$addr" | sed 's/"/\\"/g' | tr -d '\n')
+              smaps_log "{\"type\":\"SMAPS_MAPPING\",\"threshold_gb\":$threshold,\"size_kb\":$size_kb,\"mapping_type\":\"$type\",\"pathname\":\"$pathname_esc\",\"address\":\"$addr_esc\",\"perm\":\"$perm\"}"
             done
           }
           
@@ -963,19 +975,19 @@ jobs:
             # Threshold-based full smaps snapshot (large output, only at thresholds)
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
-              extract_top_mappings 6 "$SNAPSHOT_DIR/smaps-6gb.txt"
+              extract_top_mappings 6 "$OPENNEXT_PID"
               SNAPSHOT_TAKEN_6GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"path\":\"$SNAPSHOT_DIR/smaps-6gb.txt\"}"
             fi
             if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb.txt" 2>/dev/null
-              extract_top_mappings 10 "$SNAPSHOT_DIR/smaps-10gb.txt"
+              extract_top_mappings 10 "$OPENNEXT_PID"
               SNAPSHOT_TAKEN_10GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"path\":\"$SNAPSHOT_DIR/smaps-10gb.txt\"}"
             fi
             if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb.txt" 2>/dev/null
-              extract_top_mappings 13 "$SNAPSHOT_DIR/smaps-13gb.txt"
+              extract_top_mappings 13 "$OPENNEXT_PID"
               SNAPSHOT_TAKEN_13GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"path\":\"$SNAPSHOT_DIR/smaps-13gb.txt\"}"
             fi
