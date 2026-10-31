@@ -489,7 +489,7 @@ jobs:
               done
               sleep 2
             done
-          ) > .ci-artifacts/oom-instrumentation/rss-2s-samples.log 2>&1 &
+          ) > >(tee .ci-artifacts/oom-instrumentation/rss-2s-samples.log) 2>&1 &
           MONITOR_PID=$!
           cleanup_monitor() {
             kill "$MONITOR_PID" 2>/dev/null || true
