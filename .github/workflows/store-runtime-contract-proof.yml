@@ -957,7 +957,9 @@ jobs:
           mkdir -p .ci-artifacts/oom-instrumentation
           echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
           # === A-3: Start smaps_rollup sampler (2s, aligned with E and V8SAMPLE) ===
-          /tmp/smaps-sampler.sh > >(tee .ci-artifacts/oom-instrumentation/smaps-samples.log) 2>&1 &
+          # NOTE: smaps_log() writes to stderr directly (captured in CI log)
+          # No tee redirect — stderr goes directly to GitHub Actions log
+          /tmp/smaps-sampler.sh 2>&1 &
           SMAPS_PID=$!
           cleanup_smaps() {
             kill "$SMAPS_PID" 2>/dev/null || true
