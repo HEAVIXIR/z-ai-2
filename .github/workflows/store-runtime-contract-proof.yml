@@ -870,6 +870,72 @@ jobs:
           HOOKJS
           # === A-3: Write smaps_rollup sampler to /tmp ===
           # Captures per-process Anonymous/File-backed/Private/Shared/Swap
+          # === A-3.3: Write smaps parser script to /tmp ===
+          cat > /tmp/parse_smaps.py << 'PARSES'
+          import sys, json
+          threshold = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+          pid = sys.argv[2] if len(sys.argv) > 2 else ''
+          smaps_path = f'/proc/{pid}/smaps'
+          groups = {}
+          top_mappings = []
+          try:
+              with open(smaps_path) as f:
+                  cp = ''
+                  cr, cpss, ca, cpd = 0, 0, 0, 0
+                  for line in f:
+                      line = line.strip()
+                      if line and line[0] in '0123456789abcdef' and '-' in line[:20]:
+                          if cr > 0:
+                              pn = cp
+                              if pn == '[heap]': cat = 'heap'
+                              elif pn == '[stack]': cat = 'stack'
+                              elif pn.startswith('[anon:'): cat = 'anon_named'
+                              elif pn == '': cat = 'anonymous'
+                              elif '.so' in pn: cat = 'shared_lib'
+                              elif 'node_modules' in pn: cat = 'node_modules'
+                              elif '.wasm' in pn: cat = 'wasm'
+                              elif pn.endswith('.node'): cat = 'native_addon'
+                              else: cat = 'file'
+                              if cat not in groups: groups[cat] = {'count':0,'rss':0,'pss':0,'anon':0,'pd':0}
+                              groups[cat]['count'] += 1
+                              groups[cat]['rss'] += cr
+                              groups[cat]['pss'] += cpss
+                              groups[cat]['anon'] += ca
+                              groups[cat]['pd'] += cpd
+                              top_mappings.append((cr, pn[:80]))
+                          parts = line.split()
+                          cp = ' '.join(parts[5:]) if len(parts) > 5 else ''
+                          cr, cpss, ca, cpd = 0, 0, 0, 0
+                      elif line.startswith('Rss:'): cr = int(line.split()[1])
+                      elif line.startswith('Pss:'): cpss = int(line.split()[1])
+                      elif line.startswith('Anonymous:'): ca = int(line.split()[1])
+                      elif line.startswith('Private_Dirty:'): cpd = int(line.split()[1])
+                  if cr > 0:
+                      pn = cp
+                      if pn == '[heap]': cat = 'heap'
+                      elif pn == '[stack]': cat = 'stack'
+                      elif pn.startswith('[anon:'): cat = 'anon_named'
+                      elif pn == '': cat = 'anonymous'
+                      elif '.so' in pn: cat = 'shared_lib'
+                      elif 'node_modules' in pn: cat = 'node_modules'
+                      elif '.wasm' in pn: cat = 'wasm'
+                      elif pn.endswith('.node'): cat = 'native_addon'
+                      else: cat = 'file'
+                      if cat not in groups: groups[cat] = {'count':0,'rss':0,'pss':0,'anon':0,'pd':0}
+                      groups[cat]['count'] += 1
+                      groups[cat]['rss'] += cr
+                      groups[cat]['pss'] += cpss
+                      groups[cat]['anon'] += ca
+                      groups[cat]['pd'] += cpd
+                      top_mappings.append((cr, pn[:80]))
+          except Exception as e:
+              print(json.dumps({'type':'SMAPS_ERROR','threshold_gb':threshold,'error':str(e)}))
+          for cat, info in sorted(groups.items(), key=lambda x: -x[1]['rss']):
+              print(json.dumps({'type':'SMAPS_GROUP','threshold_gb':threshold,'category':cat,'mapping_count':info['count'],'rss_kb':info['rss'],'pss_kb':info['pss'],'anonymous_kb':info['anon'],'private_dirty_kb':info['pd']}))
+          for rss, pn in sorted(top_mappings, key=lambda x: -x[0])[:10]:
+              print(json.dumps({'type':'SMAPS_TOP_MAPPING','threshold_gb':threshold,'rss_kb':rss,'pathname':pn}))
+          PARSES
+          echo "=== smaps parser written to /tmp/parse_smaps.py ==="
           cat > /tmp/smaps-sampler.sh << 'SMAPS'
           #!/bin/bash
           # A-3 smaps_rollup sampler — runs as background process
@@ -891,78 +957,9 @@ jobs:
           extract_top_mappings() {
             local threshold=$1
             local pid=$2
-            local smaps_file="/proc/$pid/smaps"
-            if [ ! -r "$smaps_file" ]; then return; fi
-            # Parse /proc/PID/smaps with awk:
-            # - Lines starting with hex address = new mapping header (contains pathname)
-            # - Rss: / Pss: / Private_Dirty: / Anonymous: lines = per-mapping stats
-            # Aggregate by mapping category, output summary JSON
-            awk '
-              BEGIN { rss=0; pss=0; anon=0; priv_dirty=0; pathname=""; category="" }
-              /^[0-9a-f]/ {
-                # New mapping: output previous mapping stats if any
-                if (rss > 0) {
-                  print category "|" rss "|" pss "|" anon "|" priv_dirty "|" pathname
-                }
-                # Parse new mapping header
-                rss=0; pss=0; anon=0; priv_dirty=0
-                pathname=""
-                # Extract pathname (field 6+)
-                n = split($0, fields, " ")
-                if (n >= 6) {
-                  for (i=6; i<=n; i++) pathname = pathname (i>6?" ":"") fields[i]
-                }
-                # Categorize
-                if (pathname == "[heap]") category = "heap"
-                else if (pathname == "[stack]") category = "stack"
-                else if (pathname ~ /\[anon:/) category = "anon_named"
-                else if (pathname == "") category = "anonymous"
-                else if (pathname ~ /\.so/) category = "shared_lib"
-                else if (pathname ~ /node_modules/) category = "node_modules"
-                else if (pathname ~ /\.wasm/) category = "wasm"
-                else if (pathname ~ /\.node$/) category = "native_addon"
-                else category = "file"
-              }
-              /^Rss:/ { rss = $2 }
-              /^Pss:/ { pss = $2 }
-              /^Anonymous:/ { anon = $2 }
-              /^Private_Dirty:/ { priv_dirty = $2 }
-              END {
-                if (rss > 0) {
-                  print category "|" rss "|" pss "|" anon "|" priv_dirty "|" pathname
-                }
-              }
-            ' "$smaps_file" | sort | awk -F'\t' '
-              BEGIN { }
-              {
-                cat = $1
-                rss[cat] += $2
-                pss[cat] += $3
-                anon[cat] += $4
-                priv_dirty[cat] += $5
-                count[cat] += 1
-              }
-              END {
-                for (cat in rss) {
-                  printf "%s\t%d\t%d\t%d\t%d\t%d\n", cat, count[cat], rss[cat], pss[cat], anon[cat], priv_dirty[cat]
-                }
-              }
-            ' | sort -t'|' -k3 -rn | while IFS='|' read -r cat count rss pss anon priv_dirty; do
-              smaps_log "{\"type\":\"SMAPS_GROUP\",\"threshold_gb\":$threshold,\"category\":\"$cat\",\"mapping_count\":$count,\"rss_kb\":$rss,\"pss_kb\":$pss,\"anonymous_kb\":$anon,\"private_dirty_kb\":$priv_dirty}"
-            done
-            # Also output top 10 individual mappings by RSS
-            awk '
-              /^[0-9a-f]/ {
-                if (rss > 0) print rss "\t" pathname
-                rss=0; pathname=""
-                n = split($0, fields, " ")
-                if (n >= 6) { for (i=6; i<=n; i++) pathname = pathname (i>6?" ":"") fields[i] }
-              }
-              /^Rss:/ { rss = $2 }
-              END { if (rss > 0) print rss "\t" pathname }
-            ' "$smaps_file" | sort -t'|' -k1 -rn | head -10 | while IFS='|' read -r rss pathname; do
-              pathname_esc=$(echo "$pathname" | sed 's/"/\\"/g' | tr -d '\n')
-              smaps_log "{\"type\":\"SMAPS_TOP_MAPPING\",\"threshold_gb\":$threshold,\"rss_kb\":$rss,\"pathname\":\"$pathname_esc\"}"
+            if [ ! -r "/proc/$pid/smaps" ]; then return; fi
+            python3 /tmp/parse_smaps.py "$threshold" "$pid" 2>&1 | while IFS= read -r json_line; do
+              smaps_log "$json_line"
             done
           }
           
