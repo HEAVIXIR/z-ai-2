@@ -24,8 +24,14 @@
       }
     ],
     "paths": {
+      "@/lib/store-db": [
+        "./src/lib/store-db.node.ts"
+      ],
       "@/*": [
         "./src/*"
+      ],
+      "@/lib/db": [
+        "./src/lib/db.node.ts"
       ]
     }
   },

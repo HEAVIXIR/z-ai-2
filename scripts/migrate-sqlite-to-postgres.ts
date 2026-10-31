@@ -15,7 +15,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/lib/generated/node-client/client';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 

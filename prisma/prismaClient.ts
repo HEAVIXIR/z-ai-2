@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/lib/generated/node-client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 /**

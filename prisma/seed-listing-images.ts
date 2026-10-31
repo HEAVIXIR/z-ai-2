@@ -4,7 +4,7 @@
    Picks 1-3 images per listing from /public/images/{machinery,sections,hero}
    based on the listing's category nameEn (root English category).
    First image of each batch is marked isPrimary=true. */
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();
