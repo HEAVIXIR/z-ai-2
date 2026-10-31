@@ -881,6 +881,11 @@ jobs:
           SNAPSHOT_TAKEN_6GB=0
           SNAPSHOT_TAKEN_10GB=0
           SNAPSHOT_TAKEN_13GB=0
+          # Helper: write to both file and stderr (stderr is captured in CI log)
+          smaps_log() {
+            echo "$1" >> "$SMAPS_LOG"
+            echo "$1" >&2
+          }
           
           while true; do
             TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
