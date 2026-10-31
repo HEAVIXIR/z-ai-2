@@ -891,15 +891,79 @@ jobs:
           extract_top_mappings() {
             local threshold=$1
             local pid=$2
-            local maps_file="/proc/$pid/maps"
-            if [ ! -r "$maps_file" ]; then return; fi
-            # Read /proc/PID/maps and output each line as SMAPS_MAPPING JSON
-            # The maps file is small (~100KB), safe to read even under OOM pressure
-            while IFS= read -r map_line; do
-              # Escape for JSON
-              map_escaped=$(echo "$map_line" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
-              smaps_log "{\"type\":\"SMAPS_MAPPING\",\"threshold_gb\":$threshold,\"raw_mapping\":\"$map_escaped\"}"
-            done < "$maps_file"
+            local smaps_file="/proc/$pid/smaps"
+            if [ ! -r "$smaps_file" ]; then return; fi
+            # Parse /proc/PID/smaps with awk:
+            # - Lines starting with hex address = new mapping header (contains pathname)
+            # - Rss: / Pss: / Private_Dirty: / Anonymous: lines = per-mapping stats
+            # Aggregate by mapping category, output summary JSON
+            awk '
+              BEGIN { rss=0; pss=0; anon=0; priv_dirty=0; pathname=""; category="" }
+              /^[0-9a-f]/ {
+                # New mapping: output previous mapping stats if any
+                if (rss > 0) {
+                  print category "\t" rss "\t" pss "\t" anon "\t" priv_dirty "\t" pathname
+                }
+                # Parse new mapping header
+                rss=0; pss=0; anon=0; priv_dirty=0
+                pathname=""
+                # Extract pathname (field 6+)
+                n = split($0, fields, " ")
+                if (n >= 6) {
+                  for (i=6; i<=n; i++) pathname = pathname (i>6?" ":"") fields[i]
+                }
+                # Categorize
+                if (pathname == "[heap]") category = "heap"
+                else if (pathname == "[stack]") category = "stack"
+                else if (pathname ~ /\[anon:/) category = "anon_named"
+                else if (pathname == "") category = "anonymous"
+                else if (pathname ~ /\.so/) category = "shared_lib"
+                else if (pathname ~ /node_modules/) category = "node_modules"
+                else if (pathname ~ /\.wasm/) category = "wasm"
+                else if (pathname ~ /\.node$/) category = "native_addon"
+                else category = "file"
+              }
+              /^Rss:/ { rss = $2 }
+              /^Pss:/ { pss = $2 }
+              /^Anonymous:/ { anon = $2 }
+              /^Private_Dirty:/ { priv_dirty = $2 }
+              END {
+                if (rss > 0) {
+                  print category "\t" rss "\t" pss "\t" anon "\t" priv_dirty "\t" pathname
+                }
+              }
+            ' "$smaps_file" | sort | awk -F'\t' '
+              BEGIN { }
+              {
+                cat = $1
+                rss[cat] += $2
+                pss[cat] += $3
+                anon[cat] += $4
+                priv_dirty[cat] += $5
+                count[cat] += 1
+              }
+              END {
+                for (cat in rss) {
+                  printf "%s\t%d\t%d\t%d\t%d\t%d\n", cat, count[cat], rss[cat], pss[cat], anon[cat], priv_dirty[cat]
+                }
+              }
+            ' | sort -t'\t' -k3 -rn | while IFS='\t' read -r cat count rss pss anon priv_dirty; do
+              smaps_log "{\"type\":\"SMAPS_GROUP\",\"threshold_gb\":$threshold,\"category\":\"$cat\",\"mapping_count\":$count,\"rss_kb\":$rss,\"pss_kb\":$pss,\"anonymous_kb\":$anon,\"private_dirty_kb\":$priv_dirty}"
+            done
+            # Also output top 10 individual mappings by RSS
+            awk '
+              /^[0-9a-f]/ {
+                if (rss > 0) print rss "\t" pathname
+                rss=0; pathname=""
+                n = split($0, fields, " ")
+                if (n >= 6) { for (i=6; i<=n; i++) pathname = pathname (i>6?" ":"") fields[i] }
+              }
+              /^Rss:/ { rss = $2 }
+              END { if (rss > 0) print rss "\t" pathname }
+            ' "$smaps_file" | sort -t'\t' -k1 -rn | head -10 | while IFS='\t' read -r rss pathname; do
+              pathname_esc=$(echo "$pathname" | sed 's/"/\\"/g' | tr -d '\n')
+              smaps_log "{\"type\":\"SMAPS_TOP_MAPPING\",\"threshold_gb\":$threshold,\"rss_kb\":$rss,\"pathname\":\"$pathname_esc\"}"
+            done
           }
           
           while true; do
