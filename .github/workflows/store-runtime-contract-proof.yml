@@ -902,7 +902,7 @@ jobs:
               /^[0-9a-f]/ {
                 # New mapping: output previous mapping stats if any
                 if (rss > 0) {
-                  print category "\t" rss "\t" pss "\t" anon "\t" priv_dirty "\t" pathname
+                  print category "|" rss "|" pss "|" anon "|" priv_dirty "|" pathname
                 }
                 # Parse new mapping header
                 rss=0; pss=0; anon=0; priv_dirty=0
@@ -929,7 +929,7 @@ jobs:
               /^Private_Dirty:/ { priv_dirty = $2 }
               END {
                 if (rss > 0) {
-                  print category "\t" rss "\t" pss "\t" anon "\t" priv_dirty "\t" pathname
+                  print category "|" rss "|" pss "|" anon "|" priv_dirty "|" pathname
                 }
               }
             ' "$smaps_file" | sort | awk -F'\t' '
@@ -947,7 +947,7 @@ jobs:
                   printf "%s\t%d\t%d\t%d\t%d\t%d\n", cat, count[cat], rss[cat], pss[cat], anon[cat], priv_dirty[cat]
                 }
               }
-            ' | sort -t'\t' -k3 -rn | while IFS='\t' read -r cat count rss pss anon priv_dirty; do
+            ' | sort -t'|' -k3 -rn | while IFS='|' read -r cat count rss pss anon priv_dirty; do
               smaps_log "{\"type\":\"SMAPS_GROUP\",\"threshold_gb\":$threshold,\"category\":\"$cat\",\"mapping_count\":$count,\"rss_kb\":$rss,\"pss_kb\":$pss,\"anonymous_kb\":$anon,\"private_dirty_kb\":$priv_dirty}"
             done
             # Also output top 10 individual mappings by RSS
@@ -960,7 +960,7 @@ jobs:
               }
               /^Rss:/ { rss = $2 }
               END { if (rss > 0) print rss "\t" pathname }
-            ' "$smaps_file" | sort -t'\t' -k1 -rn | head -10 | while IFS='\t' read -r rss pathname; do
+            ' "$smaps_file" | sort -t'|' -k1 -rn | head -10 | while IFS='|' read -r rss pathname; do
               pathname_esc=$(echo "$pathname" | sed 's/"/\\"/g' | tr -d '\n')
               smaps_log "{\"type\":\"SMAPS_TOP_MAPPING\",\"threshold_gb\":$threshold,\"rss_kb\":$rss,\"pathname\":\"$pathname_esc\"}"
             done
