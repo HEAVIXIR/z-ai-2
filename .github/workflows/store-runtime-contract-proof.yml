@@ -893,29 +893,13 @@ jobs:
             local pid=$2
             local maps_file="/proc/$pid/maps"
             if [ ! -r "$maps_file" ]; then return; fi
-            awk '{
-              split($1, addrs, "-")
-              start = strtonum("0x" addrs[1])
-              end = strtonum("0x" addrs[2])
-              size_kb = int((end - start) / 1024)
-              pathname = ""
-              for (i=6; i<=NF; i++) pathname = pathname (i>6?" ":"") $i
-              type = "unnamed"
-              if (pathname == "[heap]") type = "heap"
-              else if (pathname == "[stack]") type = "stack"
-              else if (pathname == "[anon]") type = "anon"
-              else if (index(pathname, "[anon:") > 0) type = "anon_named"
-              else if (index(pathname, ".wasm") > 0) type = "wasm"
-              else if (index(pathname, "node_modules") > 0) type = "node_modules"
-              else if (index(pathname, ".so") > 0) type = "shared_lib"
-              else if (pathname == "") type = "anonymous"
-              else type = "file"
-              print size_kb "\t" type "\t" pathname "\t" $1 "\t" $2
-            }' "$maps_file" | sort -t"\t" -k1 -rn | head -30 | while IFS='\t' read -r size_kb type pathname addr perm; do
-              pathname_esc=$(echo "$pathname" | sed 's/"/\\"/g' | tr -d '\n')
-              addr_esc=$(echo "$addr" | sed 's/"/\\"/g' | tr -d '\n')
-              smaps_log "{\"type\":\"SMAPS_MAPPING\",\"threshold_gb\":$threshold,\"size_kb\":$size_kb,\"mapping_type\":\"$type\",\"pathname\":\"$pathname_esc\",\"address\":\"$addr_esc\",\"perm\":\"$perm\"}"
-            done
+            # Read /proc/PID/maps and output each line as SMAPS_MAPPING JSON
+            # The maps file is small (~100KB), safe to read even under OOM pressure
+            while IFS= read -r map_line; do
+              # Escape for JSON
+              map_escaped=$(echo "$map_line" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
+              smaps_log "{\"type\":\"SMAPS_MAPPING\",\"threshold_gb\":$threshold,\"raw_mapping\":\"$map_escaped\"}"
+            done < "$maps_file"
           }
           
           while true; do
