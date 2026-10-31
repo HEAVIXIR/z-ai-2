@@ -891,18 +891,23 @@ jobs:
             TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
             # Find the OpenNext process (node + opennextjs-cloudflare in cmdline)
             OPENNEXT_PID=""
+            OPENNEXT_EXEC=""
+            OPENNEXT_ARGV1=""
             for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
-              if [ -r "/proc/$pid/cmdline" ]; then
-                CMD=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)
-                if echo "$CMD" | grep -q "opennextjs-cloudflare"; then
+              if [ -r "/proc/$pid/cmdline" ] && [ -r "/proc/$pid/exe" ]; then
+                EXEC=$(readlink /proc/$pid/exe 2>/dev/null || echo "")
+                ARGV1=$(tr '\0' '\n' < /proc/$pid/cmdline 2>/dev/null | sed -n '2p')
+                if echo "$EXEC" | grep -q "node" && echo "$ARGV1" | grep -q "opennextjs-cloudflare"; then
                   OPENNEXT_PID=$pid
+                  OPENNEXT_EXEC="$EXEC"
+                  OPENNEXT_ARGV1="$ARGV1"
                   break
                 fi
               fi
             done
           
             if [ -z "$OPENNEXT_PID" ]; then
-              echo "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}" >> "$SMAPS_LOG"
+              smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}"
               sleep 2
               continue
             fi
@@ -934,7 +939,7 @@ jobs:
             ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
           
             # Write JSON line
-            echo "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-0},\"Pss\":${PSS:-0},\"Pss_Anon\":${PSS_ANON:-0},\"Pss_File\":${PSS_FILE:-0},\"Pss_Shmem\":${PSS_SHMEM:-0},\"Private_Anon\":${PRIVATE_ANON:-0},\"Private_Dirty\":${PRIVATE_DIRTY:-0},\"Private_Clean\":${PRIVATE_CLEAN:-0},\"Shared_Anon\":${SHARED_ANON:-0},\"Shared_Dirty\":${SHARED_DIRTY:-0},\"Shared_Clean\":${SHARED_CLEAN:-0},\"SwapPss\":${SWAP_PSS:-0},\"Swap\":${SWAP:-0},\"AnonHugePages\":${ANON_HUGE:-0}}}" >> "$SMAPS_LOG"
+            smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
           
             # Threshold-based full smaps snapshot (large output, only at thresholds)
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
@@ -997,7 +1002,8 @@ jobs:
             kill "$MONITOR_PID" 2>/dev/null || true
             wait "$MONITOR_PID" 2>/dev/null || true
           }
-          trap cleanup_monitor EXIT
+          # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
+          # Do NOT overwrite — first trap handles both
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
           # === A-2: Fix BUILD_EXIT — use FIFO to capture real exit code ===
           # Process substitution (< <(...)) does NOT propagate exit code to $?
