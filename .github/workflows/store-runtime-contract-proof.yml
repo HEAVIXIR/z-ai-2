@@ -459,6 +459,7 @@ jobs:
       - name: Bundle existing Worker build with OpenNext (skip Next.js build)
         env:
           HEAVIX_ENV: preview
+          NODE_OPTIONS: "--require /tmp/v8-memory-hook.js"
         shell: bash
         run: |
           set -euo pipefail
@@ -466,7 +467,408 @@ jobs:
           date -u
           free -h
           df -h .
-          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          # === A-1: Write V8 memory hook to /tmp (no committed file) ===
+          cat > /tmp/v8-memory-hook.js << 'HOOKJS'
+          // v8-memory-hook.js — V8 + native memory instrumentation (FINAL v7)
+          // Injected via NODE_OPTIONS=--require /tmp/v8-memory-hook.js
+          // Runs INSIDE the OpenNext Node.js process
+          //
+          // CORRECTIONS APPLIED (steward final review v7):
+          //   1. cgroup2 mount resolved via /proc/self/mountinfo (not assumed under /sys/fs/cgroup)
+          //   2. mountinfo paths decoded for octal escapes (\040=space, \011=tab, \134=backslash)
+          //      Uses codePointAt to handle surrogate pairs correctly (Unicode outside BMP)
+          //      Buffer-based UTF-8 decode for byte-accurate multi-byte handling
+          //   3. '-' separator found by value, not by fixed field index (optional fields vary)
+          //   4. Segment-boundary matching: /slice/run does NOT match /slice/runner/job1
+          //   5. Path canonicalization: path.resolve + path.relative containment check
+          //      Rejects '..', null bytes, paths outside mount, non-absolute paths
+          //   6. mountRoot ≠ root of real cgroup hierarchy — ancestor walk limited to visible subtree
+          //      This limitation is EXPLICIT in output (cgroup_visibility field)
+          //   7. If mount mapping unresolved → status = 'unavailable', ancestor walk SKIPPED
+          //   8. PID role from identity (argv/execPath/ppid), NOT from memory consumption
+          //   9. JSON line format; arrayBuffers ⊂ external (do NOT sum)
+          //  10. Category 4 = "Unattributed RSS / Residual" (difference indicator, NOT measurement)
+          //  11. 'represents' field uses path.posix.join (avoids // for mountRoot=/)
+          //  12. Multiple cgroup2 mounts: select MOST SPECIFIC (longest mountRoot), not first match
+          //      Collects all matching mounts, sorts by mountRoot length descending
+          //  13. Decoder cleaned: single function decodeMountinfoPath (no redundant loop)
+          
+          const v8 = require('v8');
+          const fs = require('fs');
+          const path = require('path');
+          
+          const INTERVAL_MS = 2000;
+          const LOG_FILE = '/tmp/v8-memory-samples.log';
+          let sampleCount = 0;
+          
+          // === Decode octal escapes in mountinfo paths (\040=space, \011=tab, \134=\)
+          // Uses codePointAt to handle surrogate pairs correctly (Unicode outside BMP).
+          // Buffer-based UTF-8 decode for byte-accurate multi-byte handling.
+          // NOTE: In practice, cgroup mount points are ASCII-only (kernel-created paths).
+          // This decoder handles the theoretical case of non-ASCII characters in escaped or literal form.
+          function decodeMountinfoPath(s) {
+              const bytes = [];
+              let i = 0;
+              while (i < s.length) {
+                  if (s[i] === '\\' && i + 3 < s.length + 1) {
+                      const octal = s.substring(i + 1, i + 4);
+                      if (/^[0-7]{3}$/.test(octal)) {
+                          bytes.push(parseInt(octal, 8));
+                          i += 4;
+                          continue;
+                      }
+                  }
+                  // Not an escape: convert this code point to UTF-8 bytes
+                  // Use codePointAt to handle surrogate pairs correctly
+                  const codePoint = s.codePointAt(i);
+                  const charStr = String.fromCodePoint(codePoint);
+                  const charBytes = Buffer.from(charStr, 'utf8');
+                  for (let j = 0; j < charBytes.length; j++) bytes.push(charBytes[j]);
+                  // Advance by the number of code units this character occupies (1 or 2 for surrogates)
+                  i += charStr.length;
+              }
+              return Buffer.from(bytes).toString('utf8');
+          }
+          
+          // === Path security: reject traversal and null bytes ===
+          function isSafePath(p) {
+              if (!p || typeof p !== 'string') return false;
+              if (p.indexOf('\0') !== -1) return false;
+              if (p.indexOf('..') !== -1) return false;
+              return true;
+          }
+          
+          // === Containment check using path.relative (canonical) ===
+          function isPathWithin(base, target) {
+              // Both must be absolute
+              if (!path.isAbsolute(base) || !path.isAbsolute(target)) return false;
+              const relative = path.relative(base, target);
+              return relative === '' ||
+                  (!path.isAbsolute(relative) &&
+                   relative !== '..' &&
+                   !relative.startsWith('..' + path.sep));
+          }
+          
+          // === Segment-boundary-safe prefix check ===
+          // '/slice/run' must NOT match '/slice/runner/job1'
+          function isUnderMount(mountRoot, cgroupPath) {
+              if (!isSafePath(mountRoot) || !isSafePath(cgroupPath)) return false;
+              if (!path.isAbsolute(mountRoot) || !path.isAbsolute(cgroupPath)) return false;
+              if (cgroupPath === mountRoot) return true;
+              if (mountRoot === '/') return true;
+              return cgroupPath.startsWith(mountRoot + '/');
+          }
+          
+          // === Parse /proc/self/mountinfo to find cgroup2 mounts ===
+          // Uses '-' separator by value (not fixed field index, since optional fields vary)
+          function resolveCgroup2Mounts() {
+              try {
+                  const mountinfo = fs.readFileSync('/proc/self/mountinfo', 'utf8').trim().split('\n');
+                  const mounts = [];
+                  for (const line of mountinfo) {
+                      if (!line) continue;
+                      const parts = line.split(/\s+/);
+                      // Find the '-' separator (field after optional fields)
+                      const sepIdx = parts.indexOf('-');
+                      if (sepIdx < 0 || sepIdx + 1 >= parts.length) continue;
+                      const fsType = parts[sepIdx + 1];
+                      if (fsType !== 'cgroup2') continue;
+                      // Field 4 (0-indexed 3) = mount root, Field 5 (0-indexed 4) = mount point
+                      // Decode octal escapes in paths
+                      const mountRoot = decodeMountinfoPath(parts[3]);
+                      const mountPoint = decodeMountinfoPath(parts[4]);
+                      if (!isSafePath(mountRoot) || !isSafePath(mountPoint)) continue;
+                      if (!path.isAbsolute(mountRoot) || !path.isAbsolute(mountPoint)) continue;
+                      mounts.push({ mountRoot: mountRoot, mountPoint: mountPoint });
+                  }
+                  return mounts;
+              } catch (e) {
+                  return null;
+              }
+          }
+          
+          // === Read a cgroup file at a given filesystem path ===
+          function readCgroupFile(fsPath, filename) {
+              if (!fsPath || !isSafePath(fsPath)) return null;
+              if (!path.isAbsolute(fsPath)) return null;
+              try {
+                  return fs.readFileSync(fsPath + '/' + filename, 'utf8').trim();
+              } catch (e) {
+                  return null;
+              }
+          }
+          
+          // === Resolve cgroup path with mount mapping ===
+          let cgroupStatus = 'unavailable (not yet resolved)';
+          let cgroupFsBase = null;
+          let cgroupRelPath = null;
+          let cgroupMountInfo = null;
+          let cgroupAncestors = [];
+          let cgroupVisibility = 'unknown';
+          let cgroupMountSelection = null;  // records which mount was selected and why
+          
+          (function resolveCgroup() {
+              const mounts = resolveCgroup2Mounts();
+              if (mounts === null) {
+                  cgroupStatus = 'unavailable (mountinfo unreadable)';
+                  return;
+              }
+              if (mounts.length === 0) {
+                  cgroupStatus = 'unavailable (no cgroup2 mount found)';
+                  return;
+              }
+          
+              // Read /proc/self/cgroup
+              let cgroupRawPath = null;
+              try {
+                  const selfCgroup = fs.readFileSync('/proc/self/cgroup', 'utf8').trim();
+                  const match = selfCgroup.match(/^0::(.+)$/m);
+                  if (match) {
+                      cgroupRawPath = match[1];
+                  } else {
+                      cgroupStatus = 'unavailable (no 0:: entry in /proc/self/cgroup)';
+                      return;
+                  }
+              } catch (e) {
+                  cgroupStatus = 'unavailable (/proc/self/cgroup unreadable)';
+                  return;
+              }
+          
+              if (!isSafePath(cgroupRawPath)) {
+                  cgroupStatus = 'unavailable (cgroup path failed safety check)';
+                  return;
+              }
+              if (!path.isAbsolute(cgroupRawPath)) {
+                  cgroupStatus = 'unavailable (cgroup path is not absolute)';
+                  return;
+              }
+          
+              // Collect ALL matching mounts (not just the first)
+              const matchingMounts = [];
+              for (const mount of mounts) {
+                  if (isUnderMount(mount.mountRoot, cgroupRawPath)) {
+                      matchingMounts.push(mount);
+                  }
+              }
+          
+              if (matchingMounts.length === 0) {
+                  cgroupStatus = 'unavailable (mount mapping unresolved: cgroup path ' +
+                                 cgroupRawPath + ' not under any cgroup2 mount root)';
+                  cgroupVisibility = 'none (mapping unresolved)';
+                  return;  // ancestor walk SKIPPED — would read wrong files
+              }
+          
+              // Sort by mountRoot length DESCENDING (most specific first)
+              // Longer mountRoot = more specific = higher priority
+              matchingMounts.sort(function (a, b) {
+                  return b.mountRoot.length - a.mountRoot.length;
+              });
+          
+              // Try each matching mount in priority order (most specific first)
+              // The first one that resolves to a valid filesystem path wins
+              let resolved = false;
+              const triedMounts = [];
+              for (const mount of matchingMounts) {
+                  // Compute relative path and filesystem base
+                  let relPath;
+                  if (mount.mountRoot === '/') {
+                      relPath = cgroupRawPath;
+                  } else if (cgroupRawPath === mount.mountRoot) {
+                      relPath = '/';
+                  } else {
+                      // cgroupRawPath starts with mountRoot + '/'
+                      relPath = cgroupRawPath.substring(mount.mountRoot.length);
+                  }
+          
+                  // Canonicalize the filesystem base path
+                  const fsBase = path.resolve(mount.mountPoint + relPath);
+          
+                  // Verify resolved path is within mountPoint (lexical containment check)
+                  // NOTE: Under current validation constraints (isSafePath rejects '..' and null;
+                  // isUnderMount checks segment boundary; relPath is a substring of cgroupRawPath),
+                  // this containment check is a DEFENSIVE SAFETY NET. It cannot fail for any input
+                  // that passes the preceding validations, because:
+                  //   - relPath has no '..' (it's a substring of cgroupRawPath which passed isSafePath)
+                  //   - mountPoint is absolute and has no '..'
+                  //   - path.resolve(mountPoint + relPath) always produces a path within mountPoint
+                  // The fallback branch (continue to next mount) is kept as defense-in-depth
+                  // against future changes that might relax validation constraints.
+                  // It is NOT practically reachable and cannot be tested with valid inputs.
+                  // LIMITATION: This is LEXICAL containment only. It does NOT resolve symlinks.
+                  // If mountPoint or any ancestor is a symlink, the resolved path may differ
+                  // from the lexical path. This limitation is acceptable for cgroup paths
+                  // (kernel-created, not symlinked) but must be noted.
+                  if (!isPathWithin(mount.mountPoint, fsBase)) {
+                      triedMounts.push({ mountRoot: mount.mountRoot, mountPoint: mount.mountPoint, result: 'containment_failed' });
+                      continue;
+                  }
+          
+                  cgroupFsBase = fsBase;
+                  cgroupRelPath = relPath;
+                  cgroupMountInfo = mount;
+                  resolved = true;
+          
+                  // Record this mount as successfully selected
+                  triedMounts.push({ mountRoot: mount.mountRoot, mountPoint: mount.mountPoint, result: 'selected' });
+          
+                  // Record mount selection decision with accurate reason
+                  // NOTE: failedCount will always be 0 under current validation constraints
+                  // (containment cannot fail for valid inputs — see comment above).
+                  // Defensive fallback for future changes to path validation or mapping.
+                  // Under current validation invariants, containment failure is unreachable.
+                  const failedCount = triedMounts.filter(function (t) { return t.result === 'containment_failed'; }).length;
+                  let reason;
+                  if (matchingMounts.length === 1) {
+                      reason = 'single matching mount passed containment';
+                  } else if (failedCount === 0) {
+                      reason = 'most specific matching mount passed containment (0 fallbacks needed)';
+                  } else {
+                      reason = 'fallback: ' + failedCount + ' more specific matching mount(s) failed containment; selected first passing mount';
+                      // This branch is defensive — practically unreachable under current constraints.
+                  }
+                  cgroupMountSelection = {
+                      selected: { mountRoot: mount.mountRoot, mountPoint: mount.mountPoint },
+                      reason: reason,
+                      selectedRank: triedMounts.length,  // 1-based rank among tried mounts (1 = most specific)
+                      allMatching: matchingMounts.map(function (m) {
+                          return { mountRoot: m.mountRoot, mountPoint: m.mountPoint };
+                      }),
+                      tried: triedMounts
+                  };
+          
+                  // Determine visibility: mountRoot = '/' means full hierarchy visible
+                  // Otherwise, ancestor walk is limited to subtree under mountRoot
+                  cgroupVisibility = (mount.mountRoot === '/')
+                      ? 'full hierarchy (mountRoot is /)'
+                      : 'limited to subtree under mountRoot ' + mount.mountRoot + ' (real hierarchy ancestors above mountRoot are NOT visible)';
+          
+                  break;
+              }
+          
+              if (!resolved) {
+                  cgroupStatus = 'unavailable (mount mapping unresolved: ' + matchingMounts.length +
+                                 ' matching mount(s) but none passed containment check)';
+                  cgroupVisibility = 'none (mapping unresolved)';
+                  cgroupMountSelection = {
+                      selected: null,
+                      reason: 'no matching mount passed containment check (' + triedMounts.length + ' tried, all failed)',
+                      allMatching: matchingMounts.map(function (m) {
+                          return { mountRoot: m.mountRoot, mountPoint: m.mountPoint };
+                      }),
+                      tried: triedMounts
+                  };
+                  return;  // ancestor walk SKIPPED
+              }
+          
+              cgroupStatus = cgroupRawPath;
+          
+              // Ancestor walk: only after valid mount mapping
+              // NOTE: walks from mountPoint (representing mountRoot) down to current cgroup
+              // Ancestors ABOVE mountRoot are NOT accessible through this mount
+              const segments = cgroupRelPath.split('/').filter(function (s) { return s.length > 0; });
+              let ancestorFsPath = cgroupMountInfo.mountPoint;
+          
+              // mountPoint represents mountRoot in the process namespace
+              cgroupAncestors.push({
+                  path: '/',
+                  fs_path: ancestorFsPath,
+                  represents: cgroupMountInfo.mountRoot,  // mountRoot itself
+                  memory_max: readCgroupFile(ancestorFsPath, 'memory.max'),
+                  swap_max: readCgroupFile(ancestorFsPath, 'memory.swap.max')
+              });
+          
+              for (let i = 0; i < segments.length; i++) {
+                  const segPath = path.resolve(ancestorFsPath, segments[i]);
+                  if (!isPathWithin(cgroupMountInfo.mountPoint, segPath)) break;
+                  // Use path.posix.join for 'represents' to avoid // for mountRoot=/
+                  const representsPath = path.posix.join(cgroupMountInfo.mountRoot, ...segments.slice(0, i + 1));
+                  cgroupAncestors.push({
+                      path: '/' + segments.slice(0, i + 1).join('/'),
+                      fs_path: segPath,
+                      represents: representsPath,
+                      memory_max: readCgroupFile(segPath, 'memory.max'),
+                      swap_max: readCgroupFile(segPath, 'memory.swap.max')
+                  });
+                  ancestorFsPath = segPath;
+              }
+          })();
+          
+          function readCgroupCurrent(name) {
+              if (!cgroupFsBase) return null;
+              return readCgroupFile(cgroupFsBase, name);
+          }
+          
+          function sample() {
+              sampleCount++;
+              const ts = new Date().toISOString();
+              const mu = process.memoryUsage();
+              const hs = v8.getHeapStatistics();
+              const spaces = v8.getHeapSpaceStatistics().map(function (s) {
+                  return { name: s.space_name, size: s.space_size, used: s.space_used_size };
+              });
+          
+              const obj = {
+                  type: 'V8SAMPLE',
+                  timestamp: ts,
+                  sample: sampleCount,
+                  pid: process.pid,
+                  ppid: process.ppid,
+                  execPath: process.execPath,
+                  title: process.title,
+                  argv: process.argv,
+                  rss: mu.rss,
+                  heapTotal: mu.heapTotal,
+                  heapUsed: mu.heapUsed,
+                  external: mu.external,
+                  arrayBuffers: mu.arrayBuffers,
+                  heap_size_limit: hs.heap_size_limit,
+                  total_heap_size: hs.total_heap_size,
+                  used_heap_size: hs.used_heap_size,
+                  total_physical_size: hs.total_physical_size,
+                  total_available_size: hs.total_available_size,
+                  malloced_memory: hs.malloced_memory,
+                  peak_malloced_memory: hs.peak_malloced_memory,
+                  external_memory: hs.external_memory,
+                  native_contexts: hs.number_of_native_contexts,
+                  detached_contexts: hs.number_of_detached_contexts,
+                  spaces: spaces,
+                  cgroup_status: cgroupStatus,
+                  cgroup_fs_base: cgroupFsBase,
+                  cgroup_mount: cgroupMountInfo,
+                  cgroup_mount_selection: cgroupMountSelection,
+                  cgroup_visibility: cgroupVisibility,
+                  cgroup_memory_current: readCgroupCurrent('memory.current'),
+                  cgroup_swap_current: readCgroupCurrent('memory.swap.current'),
+                  cgroup_ancestors: cgroupAncestors
+              };
+          
+              const line = JSON.stringify(obj);
+              process.stderr.write(line + '\n');
+              try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (e) {}
+          }
+          
+          sample();
+          const interval = setInterval(sample, INTERVAL_MS);
+          interval.unref();
+          
+          process.stderr.write(JSON.stringify({
+              type: 'V8HOOK_INIT',
+              timestamp: new Date().toISOString(),
+              pid: process.pid,
+              ppid: process.ppid,
+              execPath: process.execPath,
+              argv: process.argv,
+              cgroup_status: cgroupStatus,
+              cgroup_fs_base: cgroupFsBase,
+              cgroup_mount: cgroupMountInfo,
+              cgroup_mount_selection: cgroupMountSelection,
+              cgroup_visibility: cgroupVisibility,
+              cgroup_ancestors: cgroupAncestors,
+              note: 'arrayBuffers ⊂ external (do NOT sum). Role from identity (argv/execPath/ppid), NOT RSS. Category 4 = Unattributed RSS/Residual, NOT measurement. cgroup2 mount resolved via /proc/self/mountinfo with octal-escape decoding (codePointAt for Unicode), segment-boundary matching, path.resolve canonicalization and path.relative containment. Most specific mountRoot selected (longest path) among matching mounts. Ancestor walk only after valid mount mapping; limited to subtree under mountRoot. Effective limit NOT declared.'
+          }) + '\n');
+          
+          HOOKJS
+          echo "=== V8 memory hook written to /tmp/v8-memory-hook.js ==="
           mkdir -p .ci-artifacts/oom-instrumentation
           echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
           (
@@ -512,8 +914,18 @@ jobs:
               esac
               echo "$line"
             done
-          ) < <(/usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify 2>&1)
+          # === A-2: Fix BUILD_EXIT — use FIFO to capture real exit code ===
+          # Process substitution (< <(...)) does NOT propagate exit code to $?
+          # Use a named pipe (FIFO) so we can capture the real build exit code
+          BUILD_FIFO=/tmp/opennext-build.fifo
+          rm -f "$BUILD_FIFO"
+          mkfifo "$BUILD_FIFO"
+          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
+          BUILD_CMD_PID=$!
+          ) < "$BUILD_FIFO"
+          wait "$BUILD_CMD_PID"
           BUILD_EXIT=$?
+          rm -f "$BUILD_FIFO"
           echo "OpenNext build exit code: $BUILD_EXIT"
           echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext process exited (code=$BUILD_EXIT)" >> .ci-artifacts/oom-instrumentation/stage-markers.log
           if [ "$BUILD_EXIT" -ne 0 ]; then
@@ -528,6 +940,15 @@ jobs:
           name: oom-instrumentation-${{ github.sha }}
           path: |
             .ci-artifacts/oom-instrumentation/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload V8 memory samples (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-memory-samples-${{ github.sha }}
+          path: |
+            /tmp/v8-memory-samples.log
           if-no-files-found: warn
           retention-days: 30
       - name: Upload Node and Worker build evidence
