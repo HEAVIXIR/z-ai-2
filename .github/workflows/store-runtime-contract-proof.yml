@@ -467,6 +467,12 @@ jobs:
           date -u
           free -h
           df -h .
+          # === A-3.4: Compile mallinfo2 LD_PRELOAD library ===
+          echo 'I2RlZmluZSBfR05VX1NPVVJDRQojaW5jbHVkZSA8c3RkaW8uaD4KI2luY2x1ZGUgPHN0ZGxpYi5oPgojaW5jbHVkZSA8c3RyaW5nLmg+CiNpbmNsdWRlIDxtYWxsb2MuaD4KI2luY2x1ZGUgPHVuaXN0ZC5oPgojaW5jbHVkZSA8cHRocmVhZC5oPgojaW5jbHVkZSA8dGltZS5oPgojaW5jbHVkZSA8c3RkYXRvbWljLmg+CnN0YXRpYyBhdG9taWNfaW50IGdfcnVubmluZyA9IDA7CnN0YXRpYyBwdGhyZWFkX3QgZ190aHJlYWQ7CnN0YXRpYyB2b2lkICpzYW1wbGVfdGhyZWFkKHZvaWQgKmFyZykgewogICAgKHZvaWQpYXJnOwogICAgd2hpbGUgKGF0b21pY19sb2FkKCZnX3J1bm5pbmcpKSB7CiAgICAgICAgc3RydWN0IG1hbGxpbmZvMiBtaSA9IG1hbGxpbmZvMigpOwogICAgICAgIGNoYXIgdHNbMzJdOwogICAgICAgIHRpbWVfdCBub3cgPSB0aW1lKE5VTEwpOwogICAgICAgIHN0cnVjdCB0bSB0bV91dGM7CiAgICAgICAgZ210aW1lX3IoJm5vdywgJnRtX3V0Yyk7CiAgICAgICAgc3RyZnRpbWUodHMsIHNpemVvZih0cyksICIlWS0lbS0lZFQlSDolTTolU1oiLCAmdG1fdXRjKTsKICAgICAgICBmcHJpbnRmKHN0ZGVyciwKICAgICAgICAgICAgIntcInR5cGVcIjpcIk1BTExJTkZPXCIsXCJ0aW1lc3RhbXBcIjpcIiVzXCIsXCJwaWRcIjolZCwiCiAgICAgICAgICAgICJcImFyZW5hXCI6JWxkLFwib3JkYmxrc1wiOiVsZCxcInNtYmxrc1wiOiVsZCwiCiAgICAgICAgICAgICJcImhibGtzXCI6JWxkLFwiaGJsa2hkXCI6JWxkLCIKICAgICAgICAgICAgIlwidXNtYmxrc1wiOiVsZCxcImZzbWJsa3NcIjolbGQsIgogICAgICAgICAgICAiXCJ1b3JkYmxrc1wiOiVsZCxcImZvcmRibGtzXCI6JWxkLFwia2VlcGNvc3RcIjolbGR9XG4iLAogICAgICAgICAgICB0cywgZ2V0cGlkKCksCiAgICAgICAgICAgIChsb25nKW1pLmFyZW5hLCAobG9uZyltaS5vcmRibGtzLCAobG9uZyltaS5zbWJsa3MsCiAgICAgICAgICAgIChsb25nKW1pLmhibGtzLCAobG9uZyltaS5oYmxraGQsCiAgICAgICAgICAgIChsb25nKW1pLnVzbWJsa3MsIChsb25nKW1pLmZzbWJsa3MsCiAgICAgICAgICAgIChsb25nKW1pLnVvcmRibGtzLCAobG9uZyltaS5mb3JkYmxrcywgKGxvbmcpbWkua2VlcGNvc3QKICAgICAgICApOwogICAgICAgIGZmbHVzaChzdGRlcnIpOwogICAgICAgIHN0cnVjdCB0aW1lc3BlYyBzbGVlcF90cyA9IHsyLCAwfTsKICAgICAgICBuYW5vc2xlZXAoJnNsZWVwX3RzLCBOVUxMKTsKICAgIH0KICAgIHJldHVybiBOVUxMOwp9Cl9fYXR0cmlidXRlX18oKGNvbnN0cnVjdG9yKSkKc3RhdGljIHZvaWQgbWFsbGluZm9faW5pdCh2b2lkKSB7CiAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMSk7CiAgICBmcHJpbnRmKHN0ZGVyciwgIntcInR5cGVcIjpcIk1BTExJTkZPX0lOSVRcIixcInBpZFwiOiVkLFwibm90ZVwiOlwiTERfUFJFTE9BRCBtYWxsaW5mbzIgc2FtcGxlciBzdGFydGVkXCJ9XG4iLCBnZXRwaWQoKSk7CiAgICBmZmx1c2goc3RkZXJyKTsKICAgIGlmIChwdGhyZWFkX2NyZWF0ZSgmZ190aHJlYWQsIE5VTEwsIHNhbXBsZV90aHJlYWQsIE5VTEwpICE9IDApIHsKICAgICAgICBmcHJpbnRmKHN0ZGVyciwgIntcInR5cGVcIjpcIk1BTExJTkZPX0VSUk9SXCIsXCJlcnJvclwiOlwicHRocmVhZF9jcmVhdGUgZmFpbGVkXCJ9XG4iKTsKICAgICAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMCk7CiAgICB9IGVsc2UgewogICAgICAgIHB0aHJlYWRfZGV0YWNoKGdfdGhyZWFkKTsKICAgIH0KfQpfX2F0dHJpYnV0ZV9fKChkZXN0cnVjdG9yKSkKc3RhdGljIHZvaWQgbWFsbGluZm9fZmluaSh2b2lkKSB7CiAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMCk7CiAgICBzdHJ1Y3QgbWFsbGluZm8yIG1pID0gbWFsbGluZm8yKCk7CiAgICBmcHJpbnRmKHN0ZGVyciwKICAgICAgICAie1widHlwZVwiOlwiTUFMTElORk9fRklOQUxcIixcInBpZFwiOiVkLCIKICAgICAgICAiXCJhcmVuYVwiOiVsZCxcInVvcmRibGtzXCI6JWxkLFwiZm9yZGJsa3NcIjolbGQsXCJoYmxraGRcIjolbGQsXCJrZWVwY29zdFwiOiVsZH1cbiIsCiAgICAgICAgZ2V0cGlkKCksCiAgICAgICAgKGxvbmcpbWkuYXJlbmEsIChsb25nKW1pLnVvcmRibGtzLCAobG9uZyltaS5mb3JkYmxrcywKICAgICAgICAobG9uZyltaS5oYmxraGQsIChsb25nKW1pLmtlZXBjb3N0CiAgICApOwogICAgZmZsdXNoKHN0ZGVycik7Cn0K' | base64 -d > /tmp/mallinfo_preload.c
+          gcc -shared -fPIC -o /tmp/mallinfo_preload.so /tmp/mallinfo_preload.c -lpthread 2>/dev/null || \
+          echo "WARNING: mallinfo_preload compilation failed"
+          echo "=== mallinfo2 preload library compiled ==="
+
           # === A-1: Write V8 memory hook to /tmp (no committed file) ===
           cat > /tmp/v8-memory-hook.js << 'HOOKJS'
           // v8-memory-hook.js — V8 + native memory instrumentation (FINAL v7)
@@ -1092,7 +1098,7 @@ jobs:
           BUILD_FIFO=/tmp/opennext-build.fifo
           rm -f "$BUILD_FIFO"
           mkfifo "$BUILD_FIFO"
-          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
+          LD_PRELOAD=/tmp/mallinfo_preload.so /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
           BUILD_CMD_PID=$!
           (
             while IFS= read -r line; do
