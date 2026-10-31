@@ -467,23 +467,69 @@ jobs:
           free -h
           df -h .
           grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
-          echo "=== Starting periodic process/RAM telemetry (10s interval) ==="
+          mkdir -p .ci-artifacts/oom-instrumentation
+          echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
           (
             while true; do
-              echo "--- resource sample $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
-              grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
-              ps -eo pid,ppid,rss,vsz,comm --sort=-rss | head -n 12
-              sleep 10
+              TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+              MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+              SWAP_FREE=$(awk '/SwapFree/ {print $2}' /proc/meminfo)
+              echo "===SAMPLE $TS mem_avail_kb=$MEM_AVAIL swap_free_kb=$SWAP_FREE ==="
+              for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+                if [ -r "/proc/$pid/status" ]; then
+                  RSS=$(awk '/^VmRSS:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                  if [ -n "$RSS" ] && [ "$RSS" -gt 30000 ] 2>/dev/null; then
+                    PPID_VAL=$(awk '/^PPid:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    PSS=$(awk '/^Pss:/ {print $2}' /proc/$pid/smaps_rollup 2>/dev/null || echo "N/A")
+                    CMDLINE=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | head -c 200)
+                    [ -z "$CMDLINE" ] && CMDLINE=$(awk '/^Name:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    echo "  pid=$pid ppid=$PPID_VAL rss_kb=$RSS pss_kb=$PSS cmd=$CMDLINE"
+                  fi
+                fi
+              done
+              sleep 2
             done
-          ) &
+          ) > .ci-artifacts/oom-instrumentation/rss-2s-samples.log 2>&1 &
           MONITOR_PID=$!
           cleanup_monitor() {
             kill "$MONITOR_PID" 2>/dev/null || true
             wait "$MONITOR_PID" 2>/dev/null || true
           }
           trap cleanup_monitor EXIT
-          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify
-          bun run verify:store-runtime-artifacts -- worker .open-next
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+          (
+            while IFS= read -r line; do
+              case "$line" in
+                *"Building Next.js app"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Building Next.js app" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Generating bundle"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Generating bundle" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Bundling middleware"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling middleware" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Bundling static assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling static assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Bundling cache assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling cache assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Building server function: default"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: createServerBundle START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Bundling the OpenNext server"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: bundleServer (esbuild bundle:true) START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"Worker saved"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: bundleServer COMPLETE" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                *"OpenNext build complete"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext build complete" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+              esac
+              echo "$line"
+            done
+          ) < <(/usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify 2>&1)
+          BUILD_EXIT=$?
+          echo "OpenNext build exit code: $BUILD_EXIT"
+          echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext process exited (code=$BUILD_EXIT)" >> .ci-artifacts/oom-instrumentation/stage-markers.log
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo "=== Build failed (exit $BUILD_EXIT) — instrumentation preserved ==="
+          else
+            bun run verify:store-runtime-artifacts -- worker .open-next
+          fi
+      - name: Upload OOM instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oom-instrumentation-${{ github.sha }}
+          path: |
+            .ci-artifacts/oom-instrumentation/
+          if-no-files-found: warn
+          retention-days: 30
       - name: Upload Node and Worker build evidence
         if: always()
         uses: actions/upload-artifact@v4
