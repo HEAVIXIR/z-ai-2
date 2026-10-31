@@ -899,6 +899,16 @@ jobs:
           }
           trap cleanup_monitor EXIT
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
+          # === A-2: Fix BUILD_EXIT — use FIFO to capture real exit code ===
+          # Process substitution (< <(...)) does NOT propagate exit code to $?
+          # Use a named pipe (FIFO) so we can capture the real build exit code
+          # NOTE: FIFO must be created BEFORE the subshell that reads from it,
+          # because redirections are evaluated when the subshell starts.
+          BUILD_FIFO=/tmp/opennext-build.fifo
+          rm -f "$BUILD_FIFO"
+          mkfifo "$BUILD_FIFO"
+          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
+          BUILD_CMD_PID=$!
           (
             while IFS= read -r line; do
               case "$line" in
@@ -914,14 +924,6 @@ jobs:
               esac
               echo "$line"
             done
-          # === A-2: Fix BUILD_EXIT — use FIFO to capture real exit code ===
-          # Process substitution (< <(...)) does NOT propagate exit code to $?
-          # Use a named pipe (FIFO) so we can capture the real build exit code
-          BUILD_FIFO=/tmp/opennext-build.fifo
-          rm -f "$BUILD_FIFO"
-          mkfifo "$BUILD_FIFO"
-          /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
-          BUILD_CMD_PID=$!
           ) < "$BUILD_FIFO"
           wait "$BUILD_CMD_PID"
           BUILD_EXIT=$?
