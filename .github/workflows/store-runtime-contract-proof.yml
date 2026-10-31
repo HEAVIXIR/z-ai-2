@@ -868,9 +868,102 @@ jobs:
           }) + '\n');
           
           HOOKJS
-          echo "=== V8 memory hook written to /tmp/v8-memory-hook.js ==="
+          # === A-3: Write smaps_rollup sampler to /tmp ===
+          # Captures per-process Anonymous/File-backed/Private/Shared/Swap
+          cat > /tmp/smaps-sampler.sh << 'SMAPS'
+          #!/bin/bash
+          # A-3 smaps_rollup sampler — runs as background process
+          # Samples every 2s, captures /proc/PID/smaps_rollup for OpenNext process
+          # Also captures full /proc/PID/smaps at RSS thresholds (6GB, 10GB, 13GB)
+          SMAPS_LOG=/tmp/smaps-samples.jsonl
+          SNAPSHOT_DIR=/tmp/smaps-snapshots
+          mkdir -p "$SNAPSHOT_DIR"
+          SNAPSHOT_TAKEN_6GB=0
+          SNAPSHOT_TAKEN_10GB=0
+          SNAPSHOT_TAKEN_13GB=0
+          
+          while true; do
+            TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+            # Find the OpenNext process (node + opennextjs-cloudflare in cmdline)
+            OPENNEXT_PID=""
+            for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+              if [ -r "/proc/$pid/cmdline" ]; then
+                CMD=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)
+                if echo "$CMD" | grep -q "opennextjs-cloudflare"; then
+                  OPENNEXT_PID=$pid
+                  break
+                fi
+              fi
+            done
+          
+            if [ -z "$OPENNEXT_PID" ]; then
+              echo "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}" >> "$SMAPS_LOG"
+              sleep 2
+              continue
+            fi
+          
+            # Read RSS for threshold check
+            RSS_KB=$(awk '/^VmRSS:/ {print $2}' /proc/$OPENNEXT_PID/status 2>/dev/null || echo "0")
+            RSS_GB=$(echo "scale=2; $RSS_KB / 1048576" | bc 2>/dev/null || echo "0")
+          
+            # Read smaps_rollup (summary, low overhead)
+            ROLLUP=""
+            if [ -r "/proc/$OPENNEXT_PID/smaps_rollup" ]; then
+              ROLLUP=$(cat /proc/$OPENNEXT_PID/smaps_rollup 2>/dev/null)
+            fi
+          
+            # Parse key fields from smaps_rollup
+            RSS_ROLLUP=$(echo "$ROLLUP" | awk '/^Rss:/ {print $2}')
+            PSS=$(echo "$ROLLUP" | awk '/^Pss:/ {print $2}')
+            PSS_ANON=$(echo "$ROLLUP" | awk '/^Pss_Anon:/ {print $2}')
+            PSS_FILE=$(echo "$ROLLUP" | awk '/^Pss_File:/ {print $2}')
+            PSS_SHMEM=$(echo "$ROLLUP" | awk '/^Pss_Shmem:/ {print $2}')
+            PRIVATE_ANON=$(echo "$ROLLUP" | awk '/^Private_Anon:/ {print $2}')
+            PRIVATE_DIRTY=$(echo "$ROLLUP" | awk '/^Private_Dirty:/ {print $2}')
+            PRIVATE_CLEAN=$(echo "$ROLLUP" | awk '/^Private_Clean:/ {print $2}')
+            SHARED_ANON=$(echo "$ROLLUP" | awk '/^Shared_Anon:/ {print $2}')
+            SHARED_DIRTY=$(echo "$ROLLUP" | awk '/^Shared_Dirty:/ {print $2}')
+            SHARED_CLEAN=$(echo "$ROLLUP" | awk '/^Shared_Clean:/ {print $2}')
+            SWAP_PSS=$(echo "$ROLLUP" | awk '/^SwapPss:/ {print $2}')
+            SWAP=$(echo "$ROLLUP" | awk '/^Swap:/ {print $2}')
+            ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
+          
+            # Write JSON line
+            echo "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-0},\"Pss\":${PSS:-0},\"Pss_Anon\":${PSS_ANON:-0},\"Pss_File\":${PSS_FILE:-0},\"Pss_Shmem\":${PSS_SHMEM:-0},\"Private_Anon\":${PRIVATE_ANON:-0},\"Private_Dirty\":${PRIVATE_DIRTY:-0},\"Private_Clean\":${PRIVATE_CLEAN:-0},\"Shared_Anon\":${SHARED_ANON:-0},\"Shared_Dirty\":${SHARED_DIRTY:-0},\"Shared_Clean\":${SHARED_CLEAN:-0},\"SwapPss\":${SWAP_PSS:-0},\"Swap\":${SWAP:-0},\"AnonHugePages\":${ANON_HUGE:-0}}}" >> "$SMAPS_LOG"
+          
+            # Threshold-based full smaps snapshot (large output, only at thresholds)
+            if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
+              SNAPSHOT_TAKEN_6GB=1
+              echo "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"path\":\"$SNAPSHOT_DIR/smaps-6gb.txt\"}" >> "$SMAPS_LOG"
+            fi
+            if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb.txt" 2>/dev/null
+              SNAPSHOT_TAKEN_10GB=1
+              echo "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"path\":\"$SNAPSHOT_DIR/smaps-10gb.txt\"}" >> "$SMAPS_LOG"
+            fi
+            if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb.txt" 2>/dev/null
+              SNAPSHOT_TAKEN_13GB=1
+              echo "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"path\":\"$SNAPSHOT_DIR/smaps-13gb.txt\"}" >> "$SMAPS_LOG"
+            fi
+          
+            sleep 2
+          done
+          
+          SMAPS
+          chmod +x /tmp/smaps-sampler.sh
+          echo "=== smaps sampler written to /tmp/smaps-sampler.sh ==="
           mkdir -p .ci-artifacts/oom-instrumentation
           echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
+          # === A-3: Start smaps_rollup sampler (2s, aligned with E and V8SAMPLE) ===
+          /tmp/smaps-sampler.sh > >(tee .ci-artifacts/oom-instrumentation/smaps-samples.log) 2>&1 &
+          SMAPS_PID=$!
+          cleanup_smaps() {
+            kill "$SMAPS_PID" 2>/dev/null || true
+            wait "$SMAPS_PID" 2>/dev/null || true
+          }
+          trap 'cleanup_monitor; cleanup_smaps' EXIT
           (
             while true; do
               TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
@@ -925,8 +1018,13 @@ jobs:
               echo "$line"
             done
           ) < "$BUILD_FIFO"
-          wait "$BUILD_CMD_PID"
-          BUILD_EXIT=$?
+          # Fix: under set -e, `wait` on a failing process kills the script
+          # before BUILD_EXIT=$? is assigned. Use if/else to capture exit code.
+          if wait "$BUILD_CMD_PID"; then
+            BUILD_EXIT=0
+          else
+            BUILD_EXIT=$?
+          fi
           rm -f "$BUILD_FIFO"
           echo "OpenNext build exit code: $BUILD_EXIT"
           echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext process exited (code=$BUILD_EXIT)" >> .ci-artifacts/oom-instrumentation/stage-markers.log
@@ -942,6 +1040,16 @@ jobs:
           name: oom-instrumentation-${{ github.sha }}
           path: |
             .ci-artifacts/oom-instrumentation/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload smaps memory analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smaps-analysis-${{ github.sha }}
+          path: |
+            /tmp/smaps-samples.jsonl
+            /tmp/smaps-snapshots/
           if-no-files-found: warn
           retention-days: 30
       - name: Upload V8 memory samples (backup)
