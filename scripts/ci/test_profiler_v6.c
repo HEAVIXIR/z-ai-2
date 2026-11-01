@@ -1151,25 +1151,46 @@ static void test_normal_realloc_tracked_direct(void) {
     CHECK(shrink_tracked == 4096, "shrink tracked size wrong (got %ld, expected 4096)",
           shrink_tracked);
 
-    // --- T12.6: In-place realloc (same pointer returned) ---
-    // [A-3.21 fixup2/P2] Force the allocator to return the same pointer
-    // for a grow operation. This tests the same-address realloc path:
-    // track_free(old) is called, then track_alloc(new) with the same ptr.
-    // The tracking table must handle this correctly.
+    // --- T12.6: In-place shrink (same pointer returned, size reduced) ---
+    // [A-3.21 fixup3] Allocate a fresh 8192-byte block, then shrink it
+    // in-place to 4096. Both sizes are >= MIN_TRACK_SIZE, so tracking
+    // applies throughout. The in-place shrink is VALID because the
+    // original 8192-byte allocation has enough capacity for 4096 bytes.
     //
-    // We grow from 4096 to 8192 (both >= MIN_TRACK_SIZE so tracking applies).
+    // This tests the same-address realloc path in normal_realloc_tracked():
+    //   track_free(ptr) removes old entry (size=8192)
+    //   track_alloc(ptr, 4096) adds new entry with same ptr but size=4096
+    // The tracking table must handle same-ptr reuse correctly.
+    unsigned char *p_inplace_base = (unsigned char *)t12_allocator(NULL, 8192);
+    CHECK(p_inplace_base != NULL, "t12_allocator(NULL, 8192) for in-place test returned NULL");
+    for (size_t i = 0; i < 8192; i++) p_inplace_base[i] = (unsigned char)(i & 0xFF);
+    __profiler_v6_test_direct_track_alloc(p_inplace_base, 8192, __builtin_return_address(0));
+    CHECK(__profiler_v6_test_is_tracked(p_inplace_base), "in-place base not tracked");
+    CHECK(__profiler_v6_test_get_tracked_size(p_inplace_base) == 8192,
+          "in-place base size wrong");
+
     g_t12_force_inplace = 1;
     void *p_inplace = __profiler_v6_test_normal_realloc_tracked(
-        p2_shrunk, 8192, t12_allocator, __builtin_return_address(0));
-    CHECK(p_inplace != NULL, "in-place realloc should succeed");
-    CHECK(p_inplace == p2_shrunk, "in-place realloc should return same pointer");
-    CHECK(__profiler_v6_test_is_tracked(p_inplace), "in-place ptr not tracked");
+        p_inplace_base, 4096, t12_allocator, __builtin_return_address(0));
+    CHECK(p_inplace != NULL, "in-place shrink should succeed");
+    CHECK(p_inplace == p_inplace_base, "in-place shrink should return same pointer");
+    CHECK(__profiler_v6_test_is_tracked(p_inplace), "in-place ptr not tracked after shrink");
     long inplace_tracked = __profiler_v6_test_get_tracked_size(p_inplace);
-    CHECK(inplace_tracked == 8192, "in-place tracked size wrong (got %ld, expected 8192)",
+    CHECK(inplace_tracked == 4096, "in-place tracked size wrong (got %ld, expected 4096)",
           inplace_tracked);
+    // Verify first 4096 bytes of data are preserved (shrink doesn't move data).
+    int inplace_data_ok = 1;
+    for (size_t i = 0; i < 4096; i++) {
+        if (((unsigned char*)p_inplace)[i] != (unsigned char)(i & 0xFF)) {
+            inplace_data_ok = 0; break;
+        }
+    }
+    CHECK(inplace_data_ok, "data not preserved after in-place shrink");
     g_t12_force_inplace = 0;
 
-    // Clean up: untrack and free via real_free.
+    // Clean up: untrack and free all remaining allocations.
+    // p_new and p_inplace are still tracked; p2_shrunk was freed by T12.5
+    // (the allocator moved it). p2_new was freed by T12.5's allocator.
     __profiler_v6_test_direct_track_free(p_new);
     __profiler_v6_test_direct_track_free(p_inplace);
     g_t12_real_free(p_new);
