@@ -1,0 +1,11 @@
+# SHA-256 hashes for STEP A-3.16 review artifacts
+# Reference commit (NOT pushed, stays local on feature branch):
+#   3f0a5085b36653d680b6b8f8bf0b964aee08f897
+# Parent: 7888199446d1340814dfd755b7e860d358fb152e
+# Branch: feature/prisma7-runtime-contract-proof (LOCAL ONLY)
+# Review branch: review/step-a-3.16-artifacts (this branch, from main 6fe1bd7)
+# Date: 2026-11-01 (Asia/Tehran)
+
+f50ebb42695eb43a6388e1e8ed1b1eee7560da66b9e4b68dd33235f4c7341d51  STEP-A-3.16-COMPLETE-NOTE.txt
+61f4dd78f72391c6560ac9aea11c0ec88e523d3c8b66a299ae1aa40509930c0a  STEP-A-3.16-3f0a508.patch
+7e19b29e01fbc4e25ab3151a4e10728a2d403625daac94579943d5fe9dc8fadc  STEP-A-3.16-execution-log.txt
