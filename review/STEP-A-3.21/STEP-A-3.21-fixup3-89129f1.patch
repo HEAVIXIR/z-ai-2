@@ -1,0 +1,645 @@
+commit 89129f185ece89b7ce97c39982df752d81bd3b1d
+Author:     Z (A-3.21 fixup3) <z@container>
+AuthorDate: Sun Nov 1 20:42:03 2026 +0000
+Commit:     Z (A-3.21 fixup3) <z@container>
+CommitDate: Sun Nov 1 20:42:03 2026 +0000
+
+    A-3.21 fixup3: T12.6 in-place shrink (valid, 8192→4096)
+    
+    Fixes Steward's finding: T12.6 simulated an invalid in-place GROW
+    (4096→8192) where the original block only had 4096 bytes capacity.
+    
+    FIX: Rewrote T12.6 as a valid in-place SHRINK:
+      1. Allocate fresh 8192-byte block (real capacity = 8192)
+      2. Track it (size=8192, in tracked range)
+      3. Enable g_t12_force_inplace
+      4. Shrink to 4096 via normal_realloc_tracked()
+      5. Verify: same pointer returned, tracked size=4096, data preserved
+      6. The shrink is VALID because 8192 >= 4096 (block has capacity)
+    
+    Both sizes (8192 and 4096) are >= MIN_TRACK_SIZE, so track_free
+    and track_alloc are both exercised — the same-address path in
+    normal_realloc_tracked() is genuinely tested.
+    
+    normal_realloc_tracked() (production shared function) is UNCHANGED.
+    
+    Results: 133 tests (+4 from expanded T12.6), exit 0.
+    TSan: exit 0, 0 data races.
+
+diff --git a/STEP-A-3.21-execution-log.txt b/STEP-A-3.21-execution-log.txt
+index 0966477..b731dac 100644
+--- a/STEP-A-3.21-execution-log.txt
++++ b/STEP-A-3.21-execution-log.txt
+@@ -1,8 +1,8 @@
+ ============================================================
+  STEP A-3.17 — Registry Lifetime Sync + Realloc Tracking Safety
+  repo:   /home/z/z-ai-2
+- work:   /tmp/tmp.g9Hho0Eshd
+- date:   2026-11-01T20:31:02Z
++ work:   /tmp/tmp.6huxc9ev5I
++ date:   2026-11-01T20:41:38Z
+ ============================================================
+ 
+ ===== ENVIRONMENT =====
+@@ -13,13 +13,13 @@ libc: ldd (Debian GLIBC 2.41-12+deb13u4) 2.41
+ source sha256: 2114ba3232d94b4478484b125e45b2383f624ec580f0d9dd921d35c4fe419673
+ 
+ ===== 1. BUILD: PROD profiler (no test hooks) =====
+-gcc -shared -fPIC -O2 -g -o /tmp/tmp.g9Hho0Eshd/prof_prod.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
+-OK: /tmp/tmp.g9Hho0Eshd/prof_prod.so (48000 bytes)
++gcc -shared -fPIC -O2 -g -o /tmp/tmp.6huxc9ev5I/prof_prod.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.6huxc9ev5I/prof_prod.so (48000 bytes)
+ OK: PROD has zero test-hook symbols (nm -D verified)
+ 
+ ===== 2. BUILD: TEST profiler (-DPROFILER_V6_TEST_HOOKS) =====
+-gcc -shared -fPIC -O2 -g -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.g9Hho0Eshd/prof_test.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
+-OK: /tmp/tmp.g9Hho0Eshd/prof_test.so (61608 bytes)
++gcc -shared -fPIC -O2 -g -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.6huxc9ev5I/prof_test.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.6huxc9ev5I/prof_test.so (61608 bytes)
+ TEST hook symbols exported:
+   0000000000003440 T __profiler_v6_test_bootstrap_alloc
+   0000000000003740 T __profiler_v6_test_bootstrap_free
+@@ -46,13 +46,13 @@ TEST hook symbols exported:
+   0000000000003580 T __profiler_v6_test_unknown_in_range_count
+ 
+ ===== 3. BUILD: plain test binary =====
+-gcc -O2 -g -pthread -o /tmp/tmp.g9Hho0Eshd/test_bin /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.g9Hho0Eshd/prof_test.so -ldl -Wall -Wextra -Werror
+-OK: /tmp/tmp.g9Hho0Eshd/test_bin (113248 bytes)
++gcc -O2 -g -pthread -o /tmp/tmp.6huxc9ev5I/test_bin /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.6huxc9ev5I/prof_test.so -ldl -Wall -Wextra -Werror
++OK: /tmp/tmp.6huxc9ev5I/test_bin (114528 bytes)
+ 
+ ===== 4. RUN: plain test suite under LD_PRELOAD=TEST profiler =====
+-Command: LD_PRELOAD=/tmp/tmp.g9Hho0Eshd/prof_test.so /tmp/tmp.g9Hho0Eshd/test_bin
++Command: LD_PRELOAD=/tmp/tmp.6huxc9ev5I/prof_test.so /tmp/tmp.6huxc9ev5I/test_bin
+ REQUIREMENT: exit code MUST be 0 (A-3.17/F4 fix)
+-{"type":"PROFILER6_INIT","pid":21944,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++{"type":"PROFILER6_INIT","pid":22617,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
+ ========================================
+  STEP A-3.21 P0 verification tests
+  Tests inherited from A-3.15 through A-3.21:
+@@ -209,35 +209,39 @@ PASS [test 121] retry_tracked == (long)new_sz
+ PASS [test 122] p2_shrunk != NULL
+ PASS [test 123] __profiler_v6_test_is_tracked(p2_shrunk)
+ PASS [test 124] shrink_tracked == 4096
+-PASS [test 125] p_inplace != NULL
+-PASS [test 126] p_inplace == p2_shrunk
+-PASS [test 127] __profiler_v6_test_is_tracked(p_inplace)
+-PASS [test 128] inplace_tracked == 8192
+-PASS [test 129] 1
++PASS [test 125] p_inplace_base != NULL
++PASS [test 126] __profiler_v6_test_is_tracked(p_inplace_base)
++PASS [test 127] __profiler_v6_test_get_tracked_size(p_inplace_base) == 8192
++PASS [test 128] p_inplace != NULL
++PASS [test 129] p_inplace == p_inplace_base
++PASS [test 130] __profiler_v6_test_is_tracked(p_inplace)
++PASS [test 131] inplace_tracked == 4096
++PASS [test 132] inplace_data_ok
++PASS [test 133] 1
+ 
+ ========================================
+- Results: 129 tests, 0 failures
++ Results: 133 tests, 0 failures
+ ========================================
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:04Z","pid":21944,"tracked_alloc_bytes":2657473344,"tracked_free_bytes":1655433733,"tracked_live_bytes":1002039611,"tracked_allocs":48011,"tracked_frees":29893,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":22448,"mallinfo_arena":2437120,"mallinfo_fordblks":2414672,"gap_untracked":-1002017163,"gap_pct":-4463725.8}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"4-8KB","caller":"0x55b3e9713698","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"4-8KB","caller":"0x55b3e971307b","total_alloc":65536000,"total_free":40878080,"live_bytes":24657920,"alloc_count":16000,"free_count":9980,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"4-8KB","caller":"0x7fba8c162ca8","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"8-16KB","caller":"0x55b3e9712c6c","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"8-16KB","caller":"0x55b3e971302a","total_alloc":4008782,"total_free":2471610,"live_bytes":1537172,"alloc_count":662,"free_count":404,"max_size":8187}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"8-16KB","caller":"0x55b3e971001e","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"8-16KB","caller":"0x7fba8c162ca8","total_alloc":24576,"total_free":24576,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"16-32KB","caller":"0x55b3e971304d","total_alloc":8017564,"total_free":4954668,"live_bytes":3062896,"alloc_count":662,"free_count":405,"max_size":16374}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"16-32KB","caller":"0x55b3e971302a","total_alloc":16298689,"total_free":9954712,"live_bytes":6343977,"alloc_count":1320,"free_count":806,"max_size":16379}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"16-32KB","caller":"0x55b3e9710442","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"16-32KB","caller":"0x7fba8c162ca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"32-64KB","caller":"0x55b3e971302a","total_alloc":64933643,"total_free":41527220,"live_bytes":23406423,"alloc_count":2637,"free_count":1682,"max_size":32765}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"32-64KB","caller":"0x55b3e971304d","total_alloc":32597378,"total_free":19843572,"live_bytes":12753806,"alloc_count":1320,"free_count":803,"max_size":32758}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"64-128KB","caller":"0x55b3e971304d","total_alloc":129867286,"total_free":83120364,"live_bytes":46746922,"alloc_count":2637,"free_count":1683,"max_size":65530}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"64-128KB","caller":"0x55b3e971302a","total_alloc":257382994,"total_free":159222727,"live_bytes":98160267,"alloc_count":5232,"free_count":3231,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"128-256KB","caller":"0x55b3e971302a","total_alloc":521049172,"total_free":323934800,"live_bytes":197114372,"alloc_count":6149,"free_count":3822,"max_size":104092}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"128-256KB","caller":"0x55b3e971304d","total_alloc":514765988,"total_free":319148516,"live_bytes":195617472,"alloc_count":5232,"free_count":3234,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"256-512KB","caller":"0x55b3e971304d","total_alloc":1042098344,"total_free":649459960,"live_bytes":392638384,"alloc_count":6149,"free_count":3832,"max_size":208184}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:04Z","pid":21944,"bucket":"512-1024KB","caller":"0x55b3e9712e13","total_alloc":819200,"total_free":819200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":819200}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:39Z","pid":22617,"tracked_alloc_bytes":2657477440,"tracked_free_bytes":1807844741,"tracked_live_bytes":849632699,"tracked_allocs":48012,"tracked_frees":32552,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":26560,"mallinfo_arena":2437120,"mallinfo_fordblks":2410560,"gap_untracked":-849606139,"gap_pct":-3198818.3}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"4-8KB","caller":"0x55e329694798","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"4-8KB","caller":"0x55e32969417b","total_alloc":65536000,"total_free":44589056,"live_bytes":20946944,"alloc_count":16000,"free_count":10886,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"4-8KB","caller":"0x7fdbe161fca8","total_alloc":8192,"total_free":4096,"live_bytes":4096,"alloc_count":2,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"8-16KB","caller":"0x55e329693d6c","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"8-16KB","caller":"0x55e32969412a","total_alloc":4008782,"total_free":2606912,"live_bytes":1401870,"alloc_count":662,"free_count":426,"max_size":8187}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"8-16KB","caller":"0x55e329690e5e","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"8-16KB","caller":"0x7fdbe161fca8","total_alloc":24576,"total_free":24576,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"16-32KB","caller":"0x55e32969414d","total_alloc":8017564,"total_free":5211674,"live_bytes":2805890,"alloc_count":662,"free_count":426,"max_size":16374}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"16-32KB","caller":"0x55e32969412a","total_alloc":16298689,"total_free":10836575,"live_bytes":5462114,"alloc_count":1320,"free_count":882,"max_size":16379}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"16-32KB","caller":"0x55e329691282","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"16-32KB","caller":"0x7fdbe161fca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"32-64KB","caller":"0x55e32969412a","total_alloc":64933643,"total_free":43375863,"live_bytes":21557780,"alloc_count":2637,"free_count":1765,"max_size":32765}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"32-64KB","caller":"0x55e32969414d","total_alloc":32597378,"total_free":21744282,"live_bytes":10853096,"alloc_count":1320,"free_count":883,"max_size":32758}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"64-128KB","caller":"0x55e32969414d","total_alloc":129867286,"total_free":86907480,"live_bytes":42959806,"alloc_count":2637,"free_count":1767,"max_size":65530}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"64-128KB","caller":"0x55e32969412a","total_alloc":257382994,"total_free":173406896,"live_bytes":83976098,"alloc_count":5232,"free_count":3530,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"128-256KB","caller":"0x55e32969412a","total_alloc":521049172,"total_free":357423615,"live_bytes":163625557,"alloc_count":6149,"free_count":4224,"max_size":104092}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"128-256KB","caller":"0x55e32969414d","total_alloc":514765988,"total_free":347511648,"live_bytes":167254340,"alloc_count":5232,"free_count":3536,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"256-512KB","caller":"0x55e32969414d","total_alloc":1042098344,"total_free":713313236,"live_bytes":328785108,"alloc_count":6149,"free_count":4216,"max_size":208184}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:39Z","pid":22617,"bucket":"512-1024KB","caller":"0x55e329693f13","total_alloc":819200,"total_free":819200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":819200}
+ PLAIN_EXIT=0
+ --- test result lines ---
+ === T1: Basic malloc/calloc/realloc/free ===
+@@ -376,30 +380,34 @@ PASS [test 121] retry_tracked == (long)new_sz
+ PASS [test 122] p2_shrunk != NULL
+ PASS [test 123] __profiler_v6_test_is_tracked(p2_shrunk)
+ PASS [test 124] shrink_tracked == 4096
+-PASS [test 125] p_inplace != NULL
+-PASS [test 126] p_inplace == p2_shrunk
+-PASS [test 127] __profiler_v6_test_is_tracked(p_inplace)
+-PASS [test 128] inplace_tracked == 8192
+-PASS [test 129] 1
+- Results: 129 tests, 0 failures
+-OK: 129 tests passed, exit code 0
++PASS [test 125] p_inplace_base != NULL
++PASS [test 126] __profiler_v6_test_is_tracked(p_inplace_base)
++PASS [test 127] __profiler_v6_test_get_tracked_size(p_inplace_base) == 8192
++PASS [test 128] p_inplace != NULL
++PASS [test 129] p_inplace == p_inplace_base
++PASS [test 130] __profiler_v6_test_is_tracked(p_inplace)
++PASS [test 131] inplace_tracked == 4096
++PASS [test 132] inplace_data_ok
++PASS [test 133] 1
++ Results: 133 tests, 0 failures
++OK: 133 tests passed, exit code 0
+ 
+ ===== 5. BUILD: TSan profiler .so + test binary =====
+ Step 5a: compile profiler WITH -fsanitize=thread (so __SANITIZE_THREAD__ is defined
+          and the profiler self-disables, letting TSan's malloc work).
+-gcc -shared -fPIC -O1 -g -fsanitize=thread -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.g9Hho0Eshd/prof_tsan.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
+-OK: /tmp/tmp.g9Hho0Eshd/prof_tsan.so built
++gcc -shared -fPIC -O1 -g -fsanitize=thread -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.6huxc9ev5I/prof_tsan.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.6huxc9ev5I/prof_tsan.so built
+ Step 5b: compile test binary linking against the TSan-instrumented profiler.
+-gcc -O1 -g -pthread -fsanitize=thread -o /tmp/tmp.g9Hho0Eshd/test_tsan /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.g9Hho0Eshd/prof_tsan.so -ldl -Wall -Wextra -Werror -U_FORTIFY_SOURCE
+-OK: /tmp/tmp.g9Hho0Eshd/test_tsan built
++gcc -O1 -g -pthread -fsanitize=thread -o /tmp/tmp.6huxc9ev5I/test_tsan /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.6huxc9ev5I/prof_tsan.so -ldl -Wall -Wextra -Werror -U_FORTIFY_SOURCE
++OK: /tmp/tmp.6huxc9ev5I/test_tsan built
+ 
+ ===== 6. RUN: TSan (full race detection, T8+T9 focus) =====
+-Command: TSAN_OPTIONS=halt_on_error=0 /tmp/tmp.g9Hho0Eshd/test_tsan (no LD_PRELOAD — profiler linked at compile time)
++Command: TSAN_OPTIONS=halt_on_error=0 /tmp/tmp.6huxc9ev5I/test_tsan (no LD_PRELOAD — profiler linked at compile time)
+ NOTE: The profiler .so was compiled with -fsanitize=thread, so __SANITIZE_THREAD__
+       is defined and the profiler self-disables. TSan's malloc interposition
+       works without conflict. This verifies the test harness concurrency (T8/T9).
+       The profiler's internal locking is verified by the plain suite (exit 0).
+-{"type":"PROFILER6_INIT","pid":22017,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
++{"type":"PROFILER6_INIT","pid":22690,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
+ ========================================
+  STEP A-3.21 P0 verification tests
+  Tests inherited from A-3.15 through A-3.21:
+@@ -522,19 +530,23 @@ PASS [test 77] retry_tracked == (long)new_sz
+ PASS [test 78] p2_shrunk != NULL
+ PASS [test 79] __profiler_v6_test_is_tracked(p2_shrunk)
+ PASS [test 80] shrink_tracked == 4096
+-PASS [test 81] p_inplace != NULL
+-PASS [test 82] p_inplace == p2_shrunk
+-PASS [test 83] __profiler_v6_test_is_tracked(p_inplace)
+-PASS [test 84] inplace_tracked == 8192
+-PASS [test 85] 1
++PASS [test 81] p_inplace_base != NULL
++PASS [test 82] __profiler_v6_test_is_tracked(p_inplace_base)
++PASS [test 83] __profiler_v6_test_get_tracked_size(p_inplace_base) == 8192
++PASS [test 84] p_inplace != NULL
++PASS [test 85] p_inplace == p_inplace_base
++PASS [test 86] __profiler_v6_test_is_tracked(p_inplace)
++PASS [test 87] inplace_tracked == 4096
++PASS [test 88] inplace_data_ok
++PASS [test 89] 1
+ 
+ ========================================
+- Results: 85 tests, 0 failures
++ Results: 89 tests, 0 failures
+ ========================================
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22017,"tracked_alloc_bytes":61440,"tracked_free_bytes":61440,"tracked_live_bytes":0,"tracked_allocs":6,"tracked_frees":6,"skipped_before_init":0,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":656,"mallinfo_arena":135168,"mallinfo_fordblks":134512,"gap_untracked":656,"gap_pct":100.0}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22017,"bucket":"4-8KB","caller":"0x7f9f42c70ca8","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22017,"bucket":"8-16KB","caller":"0x7f9f42c70ca8","total_alloc":24576,"total_free":24576,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22017,"bucket":"16-32KB","caller":"0x7f9f42c70ca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:51Z","pid":22690,"tracked_alloc_bytes":65536,"tracked_free_bytes":61440,"tracked_live_bytes":4096,"tracked_allocs":7,"tracked_frees":6,"skipped_before_init":0,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":4768,"mallinfo_arena":135168,"mallinfo_fordblks":130400,"gap_untracked":672,"gap_pct":14.1}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22690,"bucket":"4-8KB","caller":"0x7faa1b2b3ca8","total_alloc":8192,"total_free":4096,"live_bytes":4096,"alloc_count":2,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22690,"bucket":"8-16KB","caller":"0x7faa1b2b3ca8","total_alloc":24576,"total_free":24576,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22690,"bucket":"16-32KB","caller":"0x7faa1b2b3ca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
+ TSAN_EXIT=0
+ --- TSan findings ---
+ data race reports: 0
+@@ -542,10 +554,6 @@ TSan warnings:     0
+ size-too-big aborts (T5, expected TSan limitation): 0
+ --- TSan SUMMARY lines ---
+ --- tests that passed under TSan ---
+-PASS [test 66] tracked_new == (long)new_sz
+-PASS [test 67] data_ok
+-PASS [test 68] p2 != NULL
+-PASS [test 69] __profiler_v6_test_is_tracked(p2)
+ PASS [test 70] fail_r == NULL
+ PASS [test 71] __profiler_v6_test_is_tracked(p2)
+ PASS [test 72] tracked_after_fail == (long)sz
+@@ -557,11 +565,15 @@ PASS [test 77] retry_tracked == (long)new_sz
+ PASS [test 78] p2_shrunk != NULL
+ PASS [test 79] __profiler_v6_test_is_tracked(p2_shrunk)
+ PASS [test 80] shrink_tracked == 4096
+-PASS [test 81] p_inplace != NULL
+-PASS [test 82] p_inplace == p2_shrunk
+-PASS [test 83] __profiler_v6_test_is_tracked(p_inplace)
+-PASS [test 84] inplace_tracked == 8192
+-PASS [test 85] 1
++PASS [test 81] p_inplace_base != NULL
++PASS [test 82] __profiler_v6_test_is_tracked(p_inplace_base)
++PASS [test 83] __profiler_v6_test_get_tracked_size(p_inplace_base) == 8192
++PASS [test 84] p_inplace != NULL
++PASS [test 85] p_inplace == p_inplace_base
++PASS [test 86] __profiler_v6_test_is_tracked(p_inplace)
++PASS [test 87] inplace_tracked == 4096
++PASS [test 88] inplace_data_ok
++PASS [test 89] 1
+ 
+ --- A-3.19/3.20 verification: T8/T9/T10/T12 must NOT be skipped ---
+ T8 skipped:  0 (must be 0)
+@@ -572,170 +584,165 @@ T12 skipped: 0 (must be 0 — direct hook, runs under TSan)
+ 
+ ===== 7. RUN: Node.js smoke under PROD profiler =====
+ node: v24.22.1
+-{"type":"PROFILER6_INIT","pid":22104,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22104,"tracked_alloc_bytes":103591740,"tracked_free_bytes":42316646,"tracked_live_bytes":61354586,"tracked_allocs":8385,"tracked_frees":3809,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":60642288,"mallinfo_arena":79196160,"mallinfo_fordblks":18553872,"gap_untracked":-712298,"gap_pct":-1.2}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0cdf8ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0d146bac","total_alloc":192512,"total_free":184320,"live_bytes":8192,"alloc_count":47,"free_count":45,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x147babe","total_alloc":876544,"total_free":770048,"live_bytes":106496,"alloc_count":107,"free_count":94,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x7f7b0d146bac","total_alloc":887600,"total_free":669200,"live_bytes":218400,"alloc_count":128,"free_count":83,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":67760,"live_bytes":24640,"alloc_count":15,"free_count":11,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":6160,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x7f7b0d146bac","total_alloc":307032,"total_free":243712,"live_bytes":63320,"alloc_count":25,"free_count":19,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x147babe","total_alloc":108656,"total_free":100432,"live_bytes":8224,"alloc_count":9,"free_count":8,"max_size":13424}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":96102828,"total_free":37907245,"live_bytes":58195583,"alloc_count":7911,"free_count":3591,"max_size":16103}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x7f7b0d146bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x147babe","total_alloc":2936280,"total_free":2455968,"live_bytes":480312,"alloc_count":103,"free_count":86,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x7f7b0d146bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x7f7b0d146bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x7f7b0d146bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22104,"tracked_alloc_bytes":366104135,"tracked_free_bytes":210863894,"tracked_live_bytes":155240241,"tracked_allocs":20316,"tracked_frees":13634,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":127991776,"mallinfo_arena":150953984,"mallinfo_fordblks":22962208,"gap_untracked":-27248465,"gap_pct":-21.3}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0cdf8ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0d146bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":999424,"live_bytes":114688,"alloc_count":136,"free_count":122,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x7f7b0d146bac","total_alloc":917248,"total_free":698848,"live_bytes":218400,"alloc_count":133,"free_count":88,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":67760,"live_bytes":24640,"alloc_count":15,"free_count":11,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":6160,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x7f7b0d146bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90128658,"live_bytes":10538734,"alloc_count":8192,"free_count":7432,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x7f7b0d146bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111896,"total_free":2614640,"live_bytes":497256,"alloc_count":111,"free_count":93,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":257480135,"total_free":114340580,"live_bytes":143139555,"alloc_count":11605,"free_count":5787,"max_size":27989}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x7f7b0d146bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x7f7b0d146bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x7f7b0d146bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22104,"tracked_alloc_bytes":759127729,"tracked_free_bytes":452500205,"tracked_live_bytes":306627524,"tracked_allocs":31958,"tracked_frees":22238,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":240350160,"mallinfo_arena":246910976,"mallinfo_fordblks":6560816,"gap_untracked":-66277364,"gap_pct":-27.6}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0cdf8ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0d146bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":999424,"live_bytes":114688,"alloc_count":136,"free_count":122,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x7f7b0d146bac","total_alloc":992592,"total_free":698848,"live_bytes":293744,"alloc_count":150,"free_count":88,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":67760,"live_bytes":24640,"alloc_count":15,"free_count":11,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":6160,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x7f7b0d146bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90128658,"live_bytes":10538734,"alloc_count":8192,"free_count":7432,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x7f7b0d146bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111896,"total_free":2614640,"live_bytes":497256,"alloc_count":111,"free_count":93,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":346525895,"live_bytes":56135481,"alloc_count":16384,"free_count":14104,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x7f7b0d146bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":247767009,"total_free":9450996,"live_bytes":238316013,"alloc_count":6846,"free_count":287,"max_size":39614}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x7f7b0d146bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x7f7b0d146bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22104,"tracked_alloc_bytes":1272806827,"tracked_free_bytes":1004535170,"tracked_live_bytes":268271657,"tracked_allocs":43301,"tracked_frees":35843,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":144540528,"mallinfo_arena":277471232,"mallinfo_fordblks":132930704,"gap_untracked":-123731129,"gap_pct":-85.6}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0cdf8ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0d146bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":999424,"live_bytes":114688,"alloc_count":136,"free_count":122,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x7f7b0d146bac","total_alloc":992592,"total_free":698848,"live_bytes":293744,"alloc_count":150,"free_count":88,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":67760,"live_bytes":24640,"alloc_count":15,"free_count":11,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":6160,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x7f7b0d146bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90128658,"live_bytes":10538734,"alloc_count":8192,"free_count":7432,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x7f7b0d146bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111896,"total_free":2614640,"live_bytes":497256,"alloc_count":111,"free_count":93,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":346525895,"live_bytes":56135481,"alloc_count":16384,"free_count":14104,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x7f7b0d146bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":761446107,"total_free":561485961,"live_bytes":199960146,"alloc_count":18189,"free_count":13892,"max_size":50957}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x7f7b0d146bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x7f7b0d146bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_INIT","pid":22777,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:51Z","pid":22777,"tracked_alloc_bytes":103330743,"tracked_free_bytes":44763708,"tracked_live_bytes":58708792,"tracked_allocs":8371,"tracked_frees":4036,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":58471088,"mallinfo_arena":76181504,"mallinfo_fordblks":17710416,"gap_untracked":-237704,"gap_pct":-0.4}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ba6ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ef4bac","total_alloc":192512,"total_free":184320,"live_bytes":8192,"alloc_count":47,"free_count":45,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x147babe","total_alloc":876544,"total_free":851968,"live_bytes":24576,"alloc_count":107,"free_count":104,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x7f2f32ef4bac","total_alloc":916560,"total_free":706336,"live_bytes":210224,"alloc_count":132,"free_count":88,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":98560,"total_free":92400,"live_bytes":6160,"alloc_count":16,"free_count":15,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x7f2f32ef4bac","total_alloc":307032,"total_free":243712,"live_bytes":63320,"alloc_count":25,"free_count":19,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x147babe","total_alloc":108656,"total_free":100432,"live_bytes":8224,"alloc_count":9,"free_count":8,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":95813127,"total_free":40315825,"live_bytes":55497302,"alloc_count":7893,"free_count":3827,"max_size":16085}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x7f2f32ef4bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x147babe","total_alloc":2936024,"total_free":2788416,"live_bytes":147608,"alloc_count":103,"free_count":98,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x7f2f32ef4bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"128-256KB","caller":"0x7f2f32ef4bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"256-512KB","caller":"0x7f2f32ef4bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:51Z","pid":22777,"tracked_alloc_bytes":363120237,"tracked_free_bytes":213617900,"tracked_live_bytes":149502337,"tracked_allocs":20213,"tracked_frees":13794,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":124918528,"mallinfo_arena":140591104,"mallinfo_fordblks":15672576,"gap_untracked":-24583809,"gap_pct":-19.7}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ba6ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ef4bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x7f2f32ef4bac","total_alloc":950640,"total_free":727120,"live_bytes":223520,"alloc_count":138,"free_count":91,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":98560,"total_free":92400,"live_bytes":6160,"alloc_count":16,"free_count":15,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x7f2f32ef4bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90952484,"live_bytes":9714908,"alloc_count":8192,"free_count":7490,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x7f2f32ef4bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2964032,"live_bytes":147608,"alloc_count":111,"free_count":106,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":254463101,"total_free":115784504,"live_bytes":138678597,"alloc_count":11497,"free_count":5859,"max_size":27881}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x7f2f32ef4bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"128-256KB","caller":"0x7f2f32ef4bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"256-512KB","caller":"0x7f2f32ef4bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:51Z","pid":22777,"tracked_alloc_bytes":751573313,"tracked_free_bytes":462271976,"tracked_live_bytes":289301337,"tracked_allocs":31771,"tracked_frees":22641,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":232575408,"mallinfo_arena":238153728,"mallinfo_fordblks":5578320,"gap_untracked":-56725929,"gap_pct":-24.4}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ba6ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ef4bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x7f2f32ef4bac","total_alloc":1025984,"total_free":727120,"live_bytes":298864,"alloc_count":155,"free_count":91,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":98560,"total_free":92400,"live_bytes":6160,"alloc_count":16,"free_count":15,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x7f2f32ef4bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90952484,"live_bytes":9714908,"alloc_count":8192,"free_count":7490,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x7f2f32ef4bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2964032,"live_bytes":147608,"alloc_count":111,"free_count":106,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":354799397,"live_bytes":47861979,"alloc_count":16384,"free_count":14414,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x7f2f32ef4bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":240297729,"total_free":9639183,"live_bytes":230658546,"alloc_count":6657,"free_count":292,"max_size":39425}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"128-256KB","caller":"0x7f2f32ef4bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"256-512KB","caller":"0x7f2f32ef4bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:51Z","pid":22777,"tracked_alloc_bytes":1267189841,"tracked_free_bytes":1013044877,"tracked_live_bytes":254144964,"tracked_allocs":43195,"tracked_frees":36157,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":138834144,"mallinfo_arena":254132224,"mallinfo_fordblks":115298080,"gap_untracked":-115310820,"gap_pct":-83.1}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ba6ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ef4bac","total_alloc":196608,"total_free":188416,"live_bytes":8192,"alloc_count":48,"free_count":46,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x7f2f32ef4bac","total_alloc":1025984,"total_free":727120,"live_bytes":298864,"alloc_count":155,"free_count":91,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":98560,"total_free":92400,"live_bytes":6160,"alloc_count":16,"free_count":15,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x7f2f32ef4bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90952484,"live_bytes":9714908,"alloc_count":8192,"free_count":7490,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x7f2f32ef4bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2964032,"live_bytes":147608,"alloc_count":111,"free_count":106,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":354799397,"live_bytes":47861979,"alloc_count":16384,"free_count":14414,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x7f2f32ef4bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":755795985,"total_free":560412084,"live_bytes":195383901,"alloc_count":18078,"free_count":13808,"max_size":50846}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"128-256KB","caller":"0x7f2f32ef4bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:51Z","pid":22777,"bucket":"256-512KB","caller":"0x7f2f32ef4bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
+ {"type":"NODE_SMOKE_DONE","allocs":50000,"finalBufLen":4194304}
+-{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:31:15Z","pid":22104,"tracked_alloc_bytes":1672245288,"tracked_free_bytes":1504384030,"tracked_live_bytes":167861258,"tracked_allocs":51007,"tracked_frees":45677,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":112000,"mallinfo_arena":161234944,"mallinfo_fordblks":161122944,"gap_untracked":-167749258,"gap_pct":-149776.1}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0cdf8ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x7f7b0d146bac","total_alloc":208896,"total_free":192512,"live_bytes":16384,"alloc_count":51,"free_count":47,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":385024,"total_free":385024,"live_bytes":0,"alloc_count":94,"free_count":94,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"4-8KB","caller":"0x810bb7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x147babe","total_alloc":3489792,"total_free":3391488,"live_bytes":98304,"alloc_count":426,"free_count":414,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x7f7b0d146bac","total_alloc":1163392,"total_free":1081920,"live_bytes":81472,"alloc_count":186,"free_count":171,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":67760,"live_bytes":24640,"alloc_count":15,"free_count":11,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":6160,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":6160}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"8-16KB","caller":"0xcd0263","total_alloc":40960,"total_free":40960,"live_bytes":0,"alloc_count":5,"free_count":5,"max_size":8192}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x7f7b0d146bac","total_alloc":643160,"total_free":643160,"live_bytes":0,"alloc_count":46,"free_count":46,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":120976,"live_bytes":0,"alloc_count":10,"free_count":10,"max_size":13424}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90128658,"live_bytes":10538734,"alloc_count":8192,"free_count":7432,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x7f7b0d146bac","total_alloc":213504,"total_free":213504,"live_bytes":0,"alloc_count":7,"free_count":7,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3430184,"total_free":2879256,"live_bytes":550928,"alloc_count":130,"free_count":109,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":346525895,"live_bytes":56135481,"alloc_count":16384,"free_count":14104,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"32-64KB","caller":"0x810be7","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x7f7b0d146bac","total_alloc":667680,"total_free":667680,"live_bytes":0,"alloc_count":11,"free_count":11,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810be7","total_alloc":196608,"total_free":196608,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":65536}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":1156238040,"total_free":1055826821,"live_bytes":100411219,"alloc_count":25423,"free_count":23190,"max_size":58191}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x7f7b0d146bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"128-256KB","caller":"0x810be7","total_alloc":131072,"total_free":131072,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":131072}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x7f7b0d146bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"256-512KB","caller":"0x810be7","total_alloc":262144,"total_free":262144,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":262144}
+-{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:31:15Z","pid":22104,"bucket":"512-1024KB","caller":"0x810be7","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":524288}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T20:41:52Z","pid":22777,"tracked_alloc_bytes":1672269560,"tracked_free_bytes":1505617183,"tracked_live_bytes":166652377,"tracked_allocs":51010,"tracked_frees":45796,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":110992,"mallinfo_arena":121315328,"mallinfo_fordblks":121204336,"gap_untracked":-166541385,"gap_pct":-150048.1}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ba6ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x7f2f32ef4bac","total_alloc":208896,"total_free":204800,"live_bytes":4096,"alloc_count":51,"free_count":50,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":385024,"total_free":385024,"live_bytes":0,"alloc_count":94,"free_count":94,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"4-8KB","caller":"0x810bb7","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0x147babe","total_alloc":3489792,"total_free":2719744,"live_bytes":770048,"alloc_count":426,"free_count":332,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0x7f2f32ef4bac","total_alloc":1187920,"total_free":1132352,"live_bytes":55568,"alloc_count":189,"free_count":179,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":98560,"total_free":92400,"live_bytes":6160,"alloc_count":16,"free_count":15,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"8-16KB","caller":"0xcd0263","total_alloc":40960,"total_free":40960,"live_bytes":0,"alloc_count":5,"free_count":5,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"16-32KB","caller":"0x7f2f32ef4bac","total_alloc":643160,"total_free":643160,"live_bytes":0,"alloc_count":46,"free_count":46,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":120976,"live_bytes":0,"alloc_count":10,"free_count":10,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90952484,"live_bytes":9714908,"alloc_count":8192,"free_count":7490,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"32-64KB","caller":"0x7f2f32ef4bac","total_alloc":213504,"total_free":213504,"live_bytes":0,"alloc_count":7,"free_count":7,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3429928,"total_free":3246104,"live_bytes":183824,"alloc_count":130,"free_count":123,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":354799397,"live_bytes":47861979,"alloc_count":16384,"free_count":14414,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"32-64KB","caller":"0x810be7","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"64-128KB","caller":"0x7f2f32ef4bac","total_alloc":667680,"total_free":667680,"live_bytes":0,"alloc_count":11,"free_count":11,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"64-128KB","caller":"0x810be7","total_alloc":196608,"total_free":196608,"live_bytes":0,"alloc_count":3,"free_count":3,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":1156238040,"total_free":1048182246,"live_bytes":108055794,"alloc_count":25423,"free_count":22994,"max_size":58191}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"128-256KB","caller":"0x7f2f32ef4bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"128-256KB","caller":"0x810be7","total_alloc":131072,"total_free":131072,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"256-512KB","caller":"0x7f2f32ef4bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"256-512KB","caller":"0x810be7","total_alloc":262144,"total_free":262144,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":262144}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T20:41:52Z","pid":22777,"bucket":"512-1024KB","caller":"0x810be7","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":524288}
+ NODE_EXIT=0
+-{"type":"PROFILER6_INIT","pid":22017,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
+-{"type":"PROFILER6_INIT","pid":22104,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++{"type":"PROFILER6_INIT","pid":22690,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
++{"type":"PROFILER6_INIT","pid":22777,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
+ {"type":"NODE_SMOKE_DONE","allocs":50000,"finalBufLen":4194304}
+ 
+ ============================================================
+  SUMMARY
+ ============================================================
+-Plain test suite  : 129 tests, exit 0 (true)
++Plain test suite  : 133 tests, exit 0 (true)
+ TSan races        : 0 (must be 0)
+ TSan warnings     : 0
+ TSan size aborts  : 0 (must be 0 — T5 skipped under sanitizer)
+diff --git a/scripts/ci/test_profiler_v6.c b/scripts/ci/test_profiler_v6.c
+index e32f137..6bdd8eb 100644
+--- a/scripts/ci/test_profiler_v6.c
++++ b/scripts/ci/test_profiler_v6.c
+@@ -1151,25 +1151,46 @@ static void test_normal_realloc_tracked_direct(void) {
+     CHECK(shrink_tracked == 4096, "shrink tracked size wrong (got %ld, expected 4096)",
+           shrink_tracked);
+ 
+-    // --- T12.6: In-place realloc (same pointer returned) ---
+-    // [A-3.21 fixup2/P2] Force the allocator to return the same pointer
+-    // for a grow operation. This tests the same-address realloc path:
+-    // track_free(old) is called, then track_alloc(new) with the same ptr.
+-    // The tracking table must handle this correctly.
++    // --- T12.6: In-place shrink (same pointer returned, size reduced) ---
++    // [A-3.21 fixup3] Allocate a fresh 8192-byte block, then shrink it
++    // in-place to 4096. Both sizes are >= MIN_TRACK_SIZE, so tracking
++    // applies throughout. The in-place shrink is VALID because the
++    // original 8192-byte allocation has enough capacity for 4096 bytes.
+     //
+-    // We grow from 4096 to 8192 (both >= MIN_TRACK_SIZE so tracking applies).
++    // This tests the same-address realloc path in normal_realloc_tracked():
++    //   track_free(ptr) removes old entry (size=8192)
++    //   track_alloc(ptr, 4096) adds new entry with same ptr but size=4096
++    // The tracking table must handle same-ptr reuse correctly.
++    unsigned char *p_inplace_base = (unsigned char *)t12_allocator(NULL, 8192);
++    CHECK(p_inplace_base != NULL, "t12_allocator(NULL, 8192) for in-place test returned NULL");
++    for (size_t i = 0; i < 8192; i++) p_inplace_base[i] = (unsigned char)(i & 0xFF);
++    __profiler_v6_test_direct_track_alloc(p_inplace_base, 8192, __builtin_return_address(0));
++    CHECK(__profiler_v6_test_is_tracked(p_inplace_base), "in-place base not tracked");
++    CHECK(__profiler_v6_test_get_tracked_size(p_inplace_base) == 8192,
++          "in-place base size wrong");
++
+     g_t12_force_inplace = 1;
+     void *p_inplace = __profiler_v6_test_normal_realloc_tracked(
+-        p2_shrunk, 8192, t12_allocator, __builtin_return_address(0));
+-    CHECK(p_inplace != NULL, "in-place realloc should succeed");
+-    CHECK(p_inplace == p2_shrunk, "in-place realloc should return same pointer");
+-    CHECK(__profiler_v6_test_is_tracked(p_inplace), "in-place ptr not tracked");
++        p_inplace_base, 4096, t12_allocator, __builtin_return_address(0));
++    CHECK(p_inplace != NULL, "in-place shrink should succeed");
++    CHECK(p_inplace == p_inplace_base, "in-place shrink should return same pointer");
++    CHECK(__profiler_v6_test_is_tracked(p_inplace), "in-place ptr not tracked after shrink");
+     long inplace_tracked = __profiler_v6_test_get_tracked_size(p_inplace);
+-    CHECK(inplace_tracked == 8192, "in-place tracked size wrong (got %ld, expected 8192)",
++    CHECK(inplace_tracked == 4096, "in-place tracked size wrong (got %ld, expected 4096)",
+           inplace_tracked);
++    // Verify first 4096 bytes of data are preserved (shrink doesn't move data).
++    int inplace_data_ok = 1;
++    for (size_t i = 0; i < 4096; i++) {
++        if (((unsigned char*)p_inplace)[i] != (unsigned char)(i & 0xFF)) {
++            inplace_data_ok = 0; break;
++        }
++    }
++    CHECK(inplace_data_ok, "data not preserved after in-place shrink");
+     g_t12_force_inplace = 0;
+ 
+-    // Clean up: untrack and free via real_free.
++    // Clean up: untrack and free all remaining allocations.
++    // p_new and p_inplace are still tracked; p2_shrunk was freed by T12.5
++    // (the allocator moved it). p2_new was freed by T12.5's allocator.
+     __profiler_v6_test_direct_track_free(p_new);
+     __profiler_v6_test_direct_track_free(p_inplace);
+     g_t12_real_free(p_new);
