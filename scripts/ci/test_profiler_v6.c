@@ -1189,11 +1189,16 @@ static void test_normal_realloc_tracked_direct(void) {
     g_t12_force_inplace = 0;
 
     // Clean up: untrack and free all remaining allocations.
-    // p_new and p_inplace are still tracked; p2_shrunk was freed by T12.5
-    // (the allocator moved it). p2_new was freed by T12.5's allocator.
+    // Ownership table:
+    //   p_new      — alive, tracked → untrack + free
+    //   p2_new     — freed by T12.5's allocator (moved to p2_shrunk) → DO NOT free
+    //   p2_shrunk  — alive, tracked → untrack + free  [fixup4: was leaked!]
+    //   p_inplace  — same address as p_inplace_base → untrack + free once
     __profiler_v6_test_direct_track_free(p_new);
+    __profiler_v6_test_direct_track_free(p2_shrunk);
     __profiler_v6_test_direct_track_free(p_inplace);
     g_t12_real_free(p_new);
+    g_t12_real_free(p2_shrunk);
     g_t12_real_free(p_inplace);
 
     __profiler_v6_test_set_initialized(was_init);
