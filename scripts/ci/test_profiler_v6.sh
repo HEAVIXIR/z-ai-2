@@ -261,7 +261,7 @@ else
     log "RESULT: FAILURES DETECTED"
 fi
 
-cp "$LOG" "$REPO_DIR/STEP-A-3.20-execution-log.txt" 2>/dev/null || true
+cp "$LOG" "$REPO_DIR/STEP-A-3.21-execution-log.txt" 2>/dev/null || true
 
 log "============================================================"
 exit $FINAL_EXIT

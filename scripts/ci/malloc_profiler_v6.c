@@ -516,6 +516,52 @@ static void profiler_fini(void) {
 // malloc/calloc/realloc/free wrappers
 // ============================================================================
 
+// [A-3.21] SHARED internal function for normal realloc tracking logic.
+//
+// This function is called by BOTH:
+//   1. The production realloc() wrapper (for normal, non-bootstrap pointers)
+//   2. The test hook __profiler_v6_test_normal_realloc_tracked() (for TSan)
+//
+// This ensures T12 tests the SAME code path that production uses — not a
+// duplicate. The Steward's A-3.20 audit correctly identified that having
+// two separate implementations of the same logic is an engineering
+// anti-pattern that allows drift between test and production.
+//
+// Parameters:
+//   ptr       — the old pointer (may be NULL for malloc-like usage)
+//   size      — the requested new size
+//   allocator — function to call for the actual reallocation. In production,
+//               this is real_realloc. In tests, this may be an injected
+//               failing allocator.
+//   caller    — the return address of the caller (for call-site tracking)
+//
+// Returns:
+//   new_ptr on success (tracking updated: old removed, new added)
+//   NULL on failure (old pointer and its tracking remain valid — POSIX)
+//
+// The caller is responsible for setting g_in_hook around the call if needed.
+static void* normal_realloc_tracked(void *ptr, size_t size,
+                                     void* (*allocator)(void*, size_t),
+                                     void *caller)
+{
+    if (!allocator) return NULL;
+
+    // Call the allocator FIRST. On failure, tracking is preserved (POSIX).
+    void *new_ptr = allocator(ptr, size);
+
+    if (new_ptr) {
+        // Success: remove old tracking, add new.
+        // [F3] track_free ONLY on success — preserves old tracking on failure.
+        if (ptr) track_free(ptr);
+        if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
+            track_alloc(new_ptr, size, caller);
+        }
+    }
+    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
+
+    return new_ptr;
+}
+
 void *malloc(size_t size) {
     // [P0a] If sanitizer active, pass through without tracking.
     if (atomic_load(&g_profiler_disabled)) {
@@ -659,15 +705,11 @@ void *realloc(void *ptr, size_t size) {
         atomic_fetch_add(&g_bootstrap_unknown_in_range, 1);
     }
 
-    // [A-3.17/F3] Normal path: track_free only AFTER real_realloc succeeds.
+    // [A-3.21] Normal path: call the SHARED internal function.
+    // This is the SAME function that the test hook calls, ensuring T12
+    // tests production code, not a duplicate.
     g_in_hook = 1;
-    void *new_ptr = real_realloc(ptr, size);
-    if (new_ptr) {
-        if (ptr) track_free(ptr);
-        if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
-            track_alloc(new_ptr, size, caller);
-        }
-    }
+    void *new_ptr = normal_realloc_tracked(ptr, size, real_realloc, caller);
     g_in_hook = 0;
     long count = atomic_fetch_add(&g_call_count, 1) + 1;
     if (count % OUTPUT_INTERVAL == 0) {
@@ -918,16 +960,17 @@ void* __profiler_v6_test_get_real_realloc(void) {
     return real_realloc;
 }
 
-// [A-3.20] Exercise the normal realloc tracking logic directly.
+// [A-3.21] Exercise the SAME normal_realloc_tracked() function that the
+// production realloc() wrapper uses.
 //
-// This function replicates the F3-fixed normal realloc path:
-//   1. Call the provided allocator (which may fail)
-//   2. On success: track_free(old ptr), track_alloc(new ptr)
-//   3. On failure: leave old tracking intact (POSIX-compliant)
+// A-3.20 had a DUPLICATE of the tracking logic here. The Steward's audit
+// correctly identified this as an anti-pattern: tests should exercise the
+// SAME code as production, not a copy. A-3.21 fixes this by making the
+// test hook call the shared static function normal_realloc_tracked().
 //
-// The caller provides the allocator function so failure can be injected.
-// This does NOT go through the realloc() interposition wrapper, so it
-// works under TSan even when g_profiler_disabled is set.
+// This means T12 under TSan instruments the EXACT SAME code path that
+// the production realloc() wrapper uses in the Plain Suite. There is no
+// possibility of drift between test and production.
 //
 // Returns new_ptr on success, NULL on failure (old ptr remains valid).
 void* __profiler_v6_test_normal_realloc_tracked(
@@ -935,21 +978,7 @@ void* __profiler_v6_test_normal_realloc_tracked(
     void* (*allocator)(void*, size_t),
     void* caller)
 {
-    if (!allocator) return NULL;
-
-    // Call the allocator FIRST (may fail).
-    void* new_ptr = allocator(ptr, new_size);
-
-    if (new_ptr) {
-        // Success: remove old tracking, add new.
-        // [F3] track_free ONLY on success — preserves old tracking on failure.
-        if (ptr) track_free(ptr);
-        if (new_size >= MIN_TRACK_SIZE && new_size < MAX_TRACK_SIZE) {
-            track_alloc(new_ptr, new_size, caller);
-        }
-    }
-    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
-
-    return new_ptr;
+    // [A-3.21] Call the SHARED internal function — NOT a duplicate.
+    return normal_realloc_tracked(ptr, new_size, allocator, caller);
 }
 #endif
