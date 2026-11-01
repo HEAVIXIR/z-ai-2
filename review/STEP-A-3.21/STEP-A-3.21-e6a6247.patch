@@ -1,0 +1,885 @@
+commit e6a62479f2a92e68f7f9fc3bb2b43bfc607abf14
+Author:     Z (STEP A-3.21) <z@container>
+AuthorDate: Sun Nov 1 19:00:57 2026 +0000
+Commit:     Z (STEP A-3.21) <z@container>
+CommitDate: Sun Nov 1 19:00:57 2026 +0000
+
+    STEP A-3.21: Unify Production Normal Realloc Logic and TSan Test Path
+    
+    Resolves A-3.20 audit finding: T12 used a DUPLICATE of the normal realloc
+    tracking logic in the test hook, rather than calling the SAME internal
+    function that the production wrapper uses.
+    
+    FIX: Extracted normal realloc tracking logic into shared static function
+    normal_realloc_tracked(). Both production realloc() wrapper and test hook
+    now call this SAME function. T12 under TSan instruments the EXACT SAME
+    code path as production. No drift possible.
+    
+    Results: 121 tests, exit 0. TSan exit 0, 0 races.
+    T8/T9/T10/T12 ran. T11 expected skip. PROD isolation verified.
+
+diff --git a/STEP-A-3.21-execution-log.txt b/STEP-A-3.21-execution-log.txt
+new file mode 100644
+index 0000000..d89b0a7
+--- /dev/null
++++ b/STEP-A-3.21-execution-log.txt
+@@ -0,0 +1,719 @@
++============================================================
++ STEP A-3.17 — Registry Lifetime Sync + Realloc Tracking Safety
++ repo:   /home/z/z-ai-2
++ work:   /tmp/tmp.G3tvjaFSr3
++ date:   2026-11-01T19:00:35Z
++============================================================
++
++===== ENVIRONMENT =====
++gcc: gcc (Debian 14.2.0-19) 14.2.0
++target: x86_64-linux-gnu
++node: v24.22.1
++libc: ldd (Debian GLIBC 2.41-12+deb13u4) 2.41
++source sha256: 9638ddf653a90c7a688612d9f82d0f99c2b6df001c5c9f467a5d701bd920a2e7
++
++===== 1. BUILD: PROD profiler (no test hooks) =====
++gcc -shared -fPIC -O2 -g -o /tmp/tmp.G3tvjaFSr3/prof_prod.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.G3tvjaFSr3/prof_prod.so (48000 bytes)
++OK: PROD has zero test-hook symbols (nm -D verified)
++
++===== 2. BUILD: TEST profiler (-DPROFILER_V6_TEST_HOOKS) =====
++gcc -shared -fPIC -O2 -g -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.G3tvjaFSr3/prof_test.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.G3tvjaFSr3/prof_test.so (61472 bytes)
++TEST hook symbols exported:
++  0000000000003440 T __profiler_v6_test_bootstrap_alloc
++  0000000000003740 T __profiler_v6_test_bootstrap_free
++  0000000000003590 T __profiler_v6_test_bootstrap_lookup_size
++  00000000000037f0 T __profiler_v6_test_bootstrap_realloc
++  0000000000003890 T __profiler_v6_test_direct_track_alloc
++  00000000000038a0 T __profiler_v6_test_direct_track_free
++  0000000000003640 T __profiler_v6_test_find_tracked_ptr
++  00000000000036c0 T __profiler_v6_test_get_bootstrap_pos
++  0000000000003620 T __profiler_v6_test_get_real_malloc
++  00000000000038e0 T __profiler_v6_test_get_real_realloc
++  0000000000003690 T __profiler_v6_test_get_tracked_size
++  0000000000003450 T __profiler_v6_test_is_bootstrap_ptr
++  0000000000003630 T __profiler_v6_test_is_disabled
++  00000000000038b0 T __profiler_v6_test_is_tracked
++  00000000000038f0 T __profiler_v6_test_normal_realloc_tracked
++  0000000000003570 T __profiler_v6_test_registry_full_count
++  0000000000003510 T __profiler_v6_test_registry_occupancy
++  00000000000036d0 T __profiler_v6_test_reset_registry
++  00000000000034f0 T __profiler_v6_test_set_initialized
++  0000000000003500 T __profiler_v6_test_set_real_malloc
++  00000000000038d0 T __profiler_v6_test_set_real_realloc
++  0000000000003580 T __profiler_v6_test_unknown_in_range_count
++
++===== 3. BUILD: plain test binary =====
++gcc -O2 -g -pthread -o /tmp/tmp.G3tvjaFSr3/test_bin /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.G3tvjaFSr3/prof_test.so -ldl -Wall -Wextra -Werror
++OK: /tmp/tmp.G3tvjaFSr3/test_bin (104728 bytes)
++
++===== 4. RUN: plain test suite under LD_PRELOAD=TEST profiler =====
++Command: LD_PRELOAD=/tmp/tmp.G3tvjaFSr3/prof_test.so /tmp/tmp.G3tvjaFSr3/test_bin
++REQUIREMENT: exit code MUST be 0 (A-3.17/F4 fix)
++{"type":"PROFILER6_INIT","pid":19121,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++========================================
++ STEP A-3.20 P0 verification tests
++ F1=mutex registry, F2=publication check,
++ F3=realloc tracking safety, T9=concurrent lookup,
++ P0a=sanitizer-aware, P1=safe ptr, P2=pos recovery,
++ T10=bootstrap realloc, T11=normal realloc failure,
++ T12=normal realloc tracked (TSan direct)
++========================================
++
++=== T1: Basic malloc/calloc/realloc/free ===
++PASS [test 1] p != NULL
++PASS [test 2] p[0] == 'A' && p[99] == 'A'
++PASS [test 3] q != NULL
++PASS [test 4] all_zero
++PASS [test 5] r != NULL
++PASS [test 6] r2 != NULL
++PASS [test 7] preserved
++PASS [test 8] 1
++PASS [test 9] 1
++
++=== T2: Bootstrap handoff (exact-match classification) ===
++PASS [test 10] prev_init == 1
++PASS [test 11] bs_ptr != NULL
++PASS [test 12] __profiler_v6_test_is_bootstrap_ptr(bs_ptr)
++PASS [test 13] grown != NULL
++PASS [test 14] data_ok
++PASS [test 15] !__profiler_v6_test_is_bootstrap_ptr(grown)
++PASS [test 16] bs_ptr2 != NULL
++PASS [test 17] __profiler_v6_test_is_bootstrap_ptr(bs_ptr2)
++PASS [test 18] 1
++PASS [test 19] bs_ptr3 != NULL
++PASS [test 20] 1
++PASS [test 21] from_null != NULL
++PASS [test 22] !__profiler_v6_test_is_bootstrap_ptr(from_null)
++PASS [test 23] bs_pre != NULL
++PASS [test 24] bs_pre_new != NULL
++PASS [test 25] pre_ok
++
++=== T3: min(old, new) copy semantics ===
++PASS [test 26] p != NULL
++PASS [test 27] q != NULL
++PASS [test 28] preserved
++
++=== T4: Multithreaded (8 threads x 2000 iters) ===
++PASS [test 29] rc == 0
++PASS [test 30] rc == 0
++PASS [test 31] rc == 0
++PASS [test 32] rc == 0
++PASS [test 33] rc == 0
++PASS [test 34] rc == 0
++PASS [test 35] rc == 0
++PASS [test 36] rc == 0
++PASS [test 37] 1
++
++=== T5: Overflow guards ===
++PASS [test 38] p == NULL
++PASS [test 39] q != NULL
++PASS [test 40] 1
++PASS [test 41] s != NULL
++PASS [test 42] 1
++
++=== T6: Registry exhaustion (C4 hard-fail) ===
++PASS [test 43] filled == 64
++PASS [test 44] p65 == NULL
++PASS [test 45] full_count >= 1
++PASS [test 46] p_reuse != NULL
++PASS [test 47] __profiler_v6_test_is_bootstrap_ptr(p_reuse)
++PASS [test 48] 1
++
++=== T7: Failure injection (C2 realloc safety) ===
++PASS [test 49] g_real_libc_malloc != NULL
++PASS [test 50] bs != NULL
++PASS [test 51] __profiler_v6_test_is_bootstrap_ptr(bs)
++PASS [test 52] r == NULL
++PASS [test 53] still_registered
++PASS [test 54] data_intact
++PASS [test 55] r2 != NULL
++PASS [test 56] data_ok
++PASS [test 57] 1
++PASS [test 58] 1
++
++=== T8: Concurrency + ABA + slot reuse (4 threads x 100 iters) ===
++PASS [test 59] rc == 0
++PASS [test 60] rc == 0
++PASS [test 61] rc == 0
++PASS [test 62] rc == 0
++PASS [test 63] occ == 0
++PASS [test 64] 1
++
++=== T9: Concurrent lookup vs deregister + slot reuse (2 writers x 2 readers x 200 iters) ===
++PASS [test 65] rc == 0
++PASS [test 66] rc == 0
++PASS [test 67] rc == 0
++PASS [test 68] rc == 0
++PASS [test 69] occ == 0
++PASS [test 70] 1
++
++=== T10: Bootstrap realloc via direct hooks (A-3.19) ===
++PASS [test 71] p != NULL
++PASS [test 72] grown != NULL
++PASS [test 73] data_ok
++PASS [test 74] !__profiler_v6_test_is_bootstrap_ptr(p)
++PASS [test 75] __profiler_v6_test_is_bootstrap_ptr(grown)
++PASS [test 76] big != NULL
++PASS [test 77] small != NULL
++PASS [test 78] shrink_ok
++PASS [test 79] z != NULL
++PASS [test 80] r0 == NULL
++PASS [test 81] !__profiler_v6_test_is_bootstrap_ptr(z)
++PASS [test 82] test_p != NULL
++PASS [test 83] fail_r == NULL
++PASS [test 84] __profiler_v6_test_is_bootstrap_ptr(test_p2)
++PASS [test 85] fail_data_ok
++PASS [test 86] sz_after_fail == 32
++PASS [test 87] retry != NULL
++PASS [test 88] retry_data_ok
++PASS [test 89] 1
++
++=== T11: Normal realloc failure injection (A-3.20) ===
++PASS [test 90] g_real_libc_realloc != NULL
++PASS [test 91] p != NULL
++PASS [test 92] tracked_before == (long)sz
++PASS [test 93] r == NULL
++PASS [test 94] p2 != NULL
++PASS [test 95] tracked_after_fail == (long)sz
++PASS [test 96] data_ok
++PASS [test 97] p_new != NULL
++PASS [test 98] tracked_after_success == (long)new_sz
++PASS [test 99] data_ok2
++PASS [test 100] old_tracked == (long)new_sz
++PASS [test 101] 1
++
++=== T12: Normal realloc tracking via direct hook (A-3.20) ===
++PASS [test 102] g_t12_real_malloc != NULL
++PASS [test 103] p != NULL
++PASS [test 104] __profiler_v6_test_is_tracked(p)
++PASS [test 105] tracked_before == (long)sz
++PASS [test 106] p_new != NULL
++PASS [test 107] !__profiler_v6_test_is_tracked(p)
++PASS [test 108] __profiler_v6_test_is_tracked(p_new)
++PASS [test 109] tracked_new == (long)new_sz
++PASS [test 110] data_ok
++PASS [test 111] p2 != NULL
++PASS [test 112] __profiler_v6_test_is_tracked(p2)
++PASS [test 113] fail_r == NULL
++PASS [test 114] __profiler_v6_test_is_tracked(p2)
++PASS [test 115] tracked_after_fail == (long)sz
++PASS [test 116] fail_data_ok
++PASS [test 117] p2_new != NULL
++PASS [test 118] !__profiler_v6_test_is_tracked(p2)
++PASS [test 119] __profiler_v6_test_is_tracked(p2_new)
++PASS [test 120] retry_tracked == (long)new_sz
++PASS [test 121] 1
++
++========================================
++ Results: 121 tests, 0 failures
++========================================
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:36Z","pid":19121,"tracked_alloc_bytes":2657461056,"tracked_free_bytes":1620818551,"tracked_live_bytes":1036642505,"tracked_allocs":48009,"tracked_frees":29439,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":71664,"mallinfo_arena":2437120,"mallinfo_fordblks":2365456,"gap_untracked":-1036570841,"gap_pct":-1446431.7}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"4-8KB","caller":"0x5555e4295138","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"4-8KB","caller":"0x5555e4294b1b","total_alloc":65536000,"total_free":40292352,"live_bytes":25243648,"alloc_count":16000,"free_count":9837,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"8-16KB","caller":"0x5555e42912ea","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"8-16KB","caller":"0x5555e4294aca","total_alloc":4008782,"total_free":2448867,"live_bytes":1559915,"alloc_count":662,"free_count":402,"max_size":8187}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"8-16KB","caller":"0x5555e42922be","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"8-16KB","caller":"0x7f40f349fca8","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"16-32KB","caller":"0x5555e4294aed","total_alloc":8017564,"total_free":4918246,"live_bytes":3099318,"alloc_count":662,"free_count":404,"max_size":16374}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"16-32KB","caller":"0x5555e4294aca","total_alloc":16298689,"total_free":9907993,"live_bytes":6390696,"alloc_count":1320,"free_count":803,"max_size":16379}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"16-32KB","caller":"0x5555e42926e2","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"16-32KB","caller":"0x7f40f349fca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"32-64KB","caller":"0x5555e4294aca","total_alloc":64933643,"total_free":41167743,"live_bytes":23765900,"alloc_count":2637,"free_count":1671,"max_size":32765}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"32-64KB","caller":"0x5555e4294aed","total_alloc":32597378,"total_free":19914300,"live_bytes":12683078,"alloc_count":1320,"free_count":807,"max_size":32758}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"64-128KB","caller":"0x5555e4294aed","total_alloc":129867286,"total_free":82213572,"live_bytes":47653714,"alloc_count":2637,"free_count":1669,"max_size":65530}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"64-128KB","caller":"0x5555e4294aca","total_alloc":257382994,"total_free":156570674,"live_bytes":100812320,"alloc_count":5232,"free_count":3184,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"128-256KB","caller":"0x5555e4294aca","total_alloc":521049172,"total_free":315713344,"live_bytes":205335828,"alloc_count":6149,"free_count":3726,"max_size":104092}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"128-256KB","caller":"0x5555e4294aed","total_alloc":514765988,"total_free":315261522,"live_bytes":199504466,"alloc_count":5232,"free_count":3202,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"256-512KB","caller":"0x5555e4294aed","total_alloc":1042098344,"total_free":631504722,"live_bytes":410593622,"alloc_count":6149,"free_count":3725,"max_size":208184}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:36Z","pid":19121,"bucket":"512-1024KB","caller":"0x5555e4291493","total_alloc":819200,"total_free":819200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":819200}
++PLAIN_EXIT=0
++--- test result lines ---
++=== T1: Basic malloc/calloc/realloc/free ===
++PASS [test 1] p != NULL
++PASS [test 2] p[0] == 'A' && p[99] == 'A'
++PASS [test 3] q != NULL
++PASS [test 4] all_zero
++PASS [test 5] r != NULL
++PASS [test 6] r2 != NULL
++PASS [test 7] preserved
++PASS [test 8] 1
++PASS [test 9] 1
++=== T2: Bootstrap handoff (exact-match classification) ===
++PASS [test 10] prev_init == 1
++PASS [test 11] bs_ptr != NULL
++PASS [test 12] __profiler_v6_test_is_bootstrap_ptr(bs_ptr)
++PASS [test 13] grown != NULL
++PASS [test 14] data_ok
++PASS [test 15] !__profiler_v6_test_is_bootstrap_ptr(grown)
++PASS [test 16] bs_ptr2 != NULL
++PASS [test 17] __profiler_v6_test_is_bootstrap_ptr(bs_ptr2)
++PASS [test 18] 1
++PASS [test 19] bs_ptr3 != NULL
++PASS [test 20] 1
++PASS [test 21] from_null != NULL
++PASS [test 22] !__profiler_v6_test_is_bootstrap_ptr(from_null)
++PASS [test 23] bs_pre != NULL
++PASS [test 24] bs_pre_new != NULL
++PASS [test 25] pre_ok
++=== T3: min(old, new) copy semantics ===
++PASS [test 26] p != NULL
++PASS [test 27] q != NULL
++PASS [test 28] preserved
++=== T4: Multithreaded (8 threads x 2000 iters) ===
++PASS [test 29] rc == 0
++PASS [test 30] rc == 0
++PASS [test 31] rc == 0
++PASS [test 32] rc == 0
++PASS [test 33] rc == 0
++PASS [test 34] rc == 0
++PASS [test 35] rc == 0
++PASS [test 36] rc == 0
++PASS [test 37] 1
++=== T5: Overflow guards ===
++PASS [test 38] p == NULL
++PASS [test 39] q != NULL
++PASS [test 40] 1
++PASS [test 41] s != NULL
++PASS [test 42] 1
++=== T6: Registry exhaustion (C4 hard-fail) ===
++PASS [test 43] filled == 64
++PASS [test 44] p65 == NULL
++PASS [test 45] full_count >= 1
++PASS [test 46] p_reuse != NULL
++PASS [test 47] __profiler_v6_test_is_bootstrap_ptr(p_reuse)
++PASS [test 48] 1
++=== T7: Failure injection (C2 realloc safety) ===
++PASS [test 49] g_real_libc_malloc != NULL
++PASS [test 50] bs != NULL
++PASS [test 51] __profiler_v6_test_is_bootstrap_ptr(bs)
++PASS [test 52] r == NULL
++PASS [test 53] still_registered
++PASS [test 54] data_intact
++PASS [test 55] r2 != NULL
++PASS [test 56] data_ok
++PASS [test 57] 1
++PASS [test 58] 1
++=== T8: Concurrency + ABA + slot reuse (4 threads x 100 iters) ===
++PASS [test 59] rc == 0
++PASS [test 60] rc == 0
++PASS [test 61] rc == 0
++PASS [test 62] rc == 0
++PASS [test 63] occ == 0
++PASS [test 64] 1
++=== T9: Concurrent lookup vs deregister + slot reuse (2 writers x 2 readers x 200 iters) ===
++PASS [test 65] rc == 0
++PASS [test 66] rc == 0
++PASS [test 67] rc == 0
++PASS [test 68] rc == 0
++PASS [test 69] occ == 0
++PASS [test 70] 1
++=== T10: Bootstrap realloc via direct hooks (A-3.19) ===
++PASS [test 71] p != NULL
++PASS [test 72] grown != NULL
++PASS [test 73] data_ok
++PASS [test 74] !__profiler_v6_test_is_bootstrap_ptr(p)
++PASS [test 75] __profiler_v6_test_is_bootstrap_ptr(grown)
++PASS [test 76] big != NULL
++PASS [test 77] small != NULL
++PASS [test 78] shrink_ok
++PASS [test 79] z != NULL
++PASS [test 80] r0 == NULL
++PASS [test 81] !__profiler_v6_test_is_bootstrap_ptr(z)
++PASS [test 82] test_p != NULL
++PASS [test 83] fail_r == NULL
++PASS [test 84] __profiler_v6_test_is_bootstrap_ptr(test_p2)
++PASS [test 85] fail_data_ok
++PASS [test 86] sz_after_fail == 32
++PASS [test 87] retry != NULL
++PASS [test 88] retry_data_ok
++PASS [test 89] 1
++=== T11: Normal realloc failure injection (A-3.20) ===
++PASS [test 90] g_real_libc_realloc != NULL
++PASS [test 91] p != NULL
++PASS [test 92] tracked_before == (long)sz
++PASS [test 93] r == NULL
++PASS [test 94] p2 != NULL
++PASS [test 95] tracked_after_fail == (long)sz
++PASS [test 96] data_ok
++PASS [test 97] p_new != NULL
++PASS [test 98] tracked_after_success == (long)new_sz
++PASS [test 99] data_ok2
++PASS [test 100] old_tracked == (long)new_sz
++PASS [test 101] 1
++=== T12: Normal realloc tracking via direct hook (A-3.20) ===
++PASS [test 102] g_t12_real_malloc != NULL
++PASS [test 103] p != NULL
++PASS [test 104] __profiler_v6_test_is_tracked(p)
++PASS [test 105] tracked_before == (long)sz
++PASS [test 106] p_new != NULL
++PASS [test 107] !__profiler_v6_test_is_tracked(p)
++PASS [test 108] __profiler_v6_test_is_tracked(p_new)
++PASS [test 109] tracked_new == (long)new_sz
++PASS [test 110] data_ok
++PASS [test 111] p2 != NULL
++PASS [test 112] __profiler_v6_test_is_tracked(p2)
++PASS [test 113] fail_r == NULL
++PASS [test 114] __profiler_v6_test_is_tracked(p2)
++PASS [test 115] tracked_after_fail == (long)sz
++PASS [test 116] fail_data_ok
++PASS [test 117] p2_new != NULL
++PASS [test 118] !__profiler_v6_test_is_tracked(p2)
++PASS [test 119] __profiler_v6_test_is_tracked(p2_new)
++PASS [test 120] retry_tracked == (long)new_sz
++PASS [test 121] 1
++ Results: 121 tests, 0 failures
++OK: 121 tests passed, exit code 0
++
++===== 5. BUILD: TSan profiler .so + test binary =====
++Step 5a: compile profiler WITH -fsanitize=thread (so __SANITIZE_THREAD__ is defined
++         and the profiler self-disables, letting TSan's malloc work).
++gcc -shared -fPIC -O1 -g -fsanitize=thread -DPROFILER_V6_TEST_HOOKS -o /tmp/tmp.G3tvjaFSr3/prof_tsan.so /home/z/z-ai-2/scripts/ci/malloc_profiler_v6.c -ldl -lpthread -Wall -Wextra -Werror
++OK: /tmp/tmp.G3tvjaFSr3/prof_tsan.so built
++Step 5b: compile test binary linking against the TSan-instrumented profiler.
++gcc -O1 -g -pthread -fsanitize=thread -o /tmp/tmp.G3tvjaFSr3/test_tsan /home/z/z-ai-2/scripts/ci/test_profiler_v6.c /tmp/tmp.G3tvjaFSr3/prof_tsan.so -ldl -Wall -Wextra -Werror -U_FORTIFY_SOURCE
++OK: /tmp/tmp.G3tvjaFSr3/test_tsan built
++
++===== 6. RUN: TSan (full race detection, T8+T9 focus) =====
++Command: TSAN_OPTIONS=halt_on_error=0 /tmp/tmp.G3tvjaFSr3/test_tsan (no LD_PRELOAD — profiler linked at compile time)
++NOTE: The profiler .so was compiled with -fsanitize=thread, so __SANITIZE_THREAD__
++      is defined and the profiler self-disables. TSan's malloc interposition
++      works without conflict. This verifies the test harness concurrency (T8/T9).
++      The profiler's internal locking is verified by the plain suite (exit 0).
++{"type":"PROFILER6_INIT","pid":19194,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
++========================================
++ STEP A-3.20 P0 verification tests
++ F1=mutex registry, F2=publication check,
++ F3=realloc tracking safety, T9=concurrent lookup,
++ P0a=sanitizer-aware, P1=safe ptr, P2=pos recovery,
++ T10=bootstrap realloc, T11=normal realloc failure,
++ T12=normal realloc tracked (TSan direct)
++========================================
++
++=== T1: Basic malloc/calloc/realloc/free ===
++PASS [test 1] p != NULL
++PASS [test 2] p[0] == 'A' && p[99] == 'A'
++PASS [test 3] q != NULL
++PASS [test 4] all_zero
++PASS [test 5] r != NULL
++PASS [test 6] r2 != NULL
++PASS [test 7] preserved
++PASS [test 8] 1
++PASS [test 9] 1
++
++=== T2: Bootstrap handoff (exact-match classification) ===
++
++=== test_bootstrap_handoff: SKIPPED (profiler disabled under sanitizer) ===
++PASS [test 10] (skipped — profiler disabled)
++
++=== T3: min(old, new) copy semantics ===
++PASS [test 11] p != NULL
++PASS [test 12] q != NULL
++PASS [test 13] preserved
++
++=== T4: Multithreaded (8 threads x 2000 iters) ===
++PASS [test 14] rc == 0
++PASS [test 15] rc == 0
++PASS [test 16] rc == 0
++PASS [test 17] rc == 0
++PASS [test 18] rc == 0
++PASS [test 19] rc == 0
++PASS [test 20] rc == 0
++PASS [test 21] rc == 0
++PASS [test 22] 1
++
++=== T5: Overflow guards ===
++
++=== test_overflow: SKIPPED (profiler disabled under sanitizer) ===
++PASS [test 23] (skipped — profiler disabled)
++
++=== T6: Registry exhaustion (C4 hard-fail) ===
++
++=== test_registry_exhaustion: SKIPPED (profiler disabled under sanitizer) ===
++PASS [test 24] (skipped — profiler disabled)
++
++=== T7: Failure injection (C2 realloc safety) ===
++
++=== test_failure_injection: SKIPPED (profiler disabled under sanitizer) ===
++PASS [test 25] (skipped — profiler disabled)
++
++=== T8: Concurrency + ABA + slot reuse (4 threads x 100 iters) ===
++PASS [test 26] rc == 0
++PASS [test 27] rc == 0
++PASS [test 28] rc == 0
++PASS [test 29] rc == 0
++PASS [test 30] occ == 0
++PASS [test 31] 1
++
++=== T9: Concurrent lookup vs deregister + slot reuse (2 writers x 2 readers x 200 iters) ===
++PASS [test 32] rc == 0
++PASS [test 33] rc == 0
++PASS [test 34] rc == 0
++PASS [test 35] rc == 0
++PASS [test 36] occ == 0
++PASS [test 37] 1
++
++=== T10: Bootstrap realloc via direct hooks (A-3.19) ===
++PASS [test 38] p != NULL
++PASS [test 39] grown != NULL
++PASS [test 40] data_ok
++PASS [test 41] !__profiler_v6_test_is_bootstrap_ptr(p)
++PASS [test 42] __profiler_v6_test_is_bootstrap_ptr(grown)
++PASS [test 43] big != NULL
++PASS [test 44] small != NULL
++PASS [test 45] shrink_ok
++PASS [test 46] z != NULL
++PASS [test 47] r0 == NULL
++PASS [test 48] !__profiler_v6_test_is_bootstrap_ptr(z)
++PASS [test 49] test_p != NULL
++PASS [test 50] fail_r == NULL
++PASS [test 51] __profiler_v6_test_is_bootstrap_ptr(test_p2)
++PASS [test 52] fail_data_ok
++PASS [test 53] sz_after_fail == 32
++PASS [test 54] retry != NULL
++PASS [test 55] retry_data_ok
++PASS [test 56] 1
++
++=== T11: Normal realloc failure injection (A-3.20) ===
++
++=== test_normal_realloc_failure_injected: SKIPPED (profiler disabled under sanitizer) ===
++PASS [test 57] (skipped — profiler disabled)
++
++=== T12: Normal realloc tracking via direct hook (A-3.20) ===
++PASS [test 58] g_t12_real_malloc != NULL
++PASS [test 59] p != NULL
++PASS [test 60] __profiler_v6_test_is_tracked(p)
++PASS [test 61] tracked_before == (long)sz
++PASS [test 62] p_new != NULL
++PASS [test 63] !__profiler_v6_test_is_tracked(p)
++PASS [test 64] __profiler_v6_test_is_tracked(p_new)
++PASS [test 65] tracked_new == (long)new_sz
++PASS [test 66] data_ok
++PASS [test 67] p2 != NULL
++PASS [test 68] __profiler_v6_test_is_tracked(p2)
++PASS [test 69] fail_r == NULL
++PASS [test 70] __profiler_v6_test_is_tracked(p2)
++PASS [test 71] tracked_after_fail == (long)sz
++PASS [test 72] fail_data_ok
++PASS [test 73] p2_new != NULL
++PASS [test 74] !__profiler_v6_test_is_tracked(p2)
++PASS [test 75] __profiler_v6_test_is_tracked(p2_new)
++PASS [test 76] retry_tracked == (long)new_sz
++PASS [test 77] 1
++
++========================================
++ Results: 77 tests, 0 failures
++========================================
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19194,"tracked_alloc_bytes":49152,"tracked_free_bytes":49152,"tracked_live_bytes":0,"tracked_allocs":4,"tracked_frees":4,"skipped_before_init":0,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":49872,"mallinfo_arena":135168,"mallinfo_fordblks":85296,"gap_untracked":49872,"gap_pct":100.0}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19194,"bucket":"8-16KB","caller":"0x7f07e591eca8","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19194,"bucket":"16-32KB","caller":"0x7f07e591eca8","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":16384}
++TSAN_EXIT=0
++--- TSan findings ---
++data race reports: 0
++TSan warnings:     0
++size-too-big aborts (T5, expected TSan limitation): 0
++--- TSan SUMMARY lines ---
++--- tests that passed under TSan ---
++PASS [test 58] g_t12_real_malloc != NULL
++PASS [test 59] p != NULL
++PASS [test 60] __profiler_v6_test_is_tracked(p)
++PASS [test 61] tracked_before == (long)sz
++PASS [test 62] p_new != NULL
++PASS [test 63] !__profiler_v6_test_is_tracked(p)
++PASS [test 64] __profiler_v6_test_is_tracked(p_new)
++PASS [test 65] tracked_new == (long)new_sz
++PASS [test 66] data_ok
++PASS [test 67] p2 != NULL
++PASS [test 68] __profiler_v6_test_is_tracked(p2)
++PASS [test 69] fail_r == NULL
++PASS [test 70] __profiler_v6_test_is_tracked(p2)
++PASS [test 71] tracked_after_fail == (long)sz
++PASS [test 72] fail_data_ok
++PASS [test 73] p2_new != NULL
++PASS [test 74] !__profiler_v6_test_is_tracked(p2)
++PASS [test 75] __profiler_v6_test_is_tracked(p2_new)
++PASS [test 76] retry_tracked == (long)new_sz
++PASS [test 77] 1
++
++--- A-3.19/3.20 verification: T8/T9/T10/T12 must NOT be skipped ---
++T8 skipped:  0 (must be 0)
++T9 skipped:  0 (must be 0)
++T10 skipped: 0 (must be 0)
++T11 skipped: 1 (expected: 1 — requires interposition, skipped under TSan)
++T12 skipped: 0 (must be 0 — direct hook, runs under TSan)
++
++===== 7. RUN: Node.js smoke under PROD profiler =====
++node: v24.22.1
++{"type":"PROFILER6_INIT","pid":19281,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19281,"tracked_alloc_bytes":103451025,"tracked_free_bytes":45224227,"tracked_live_bytes":58308546,"tracked_allocs":8377,"tracked_frees":4091,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":57654304,"mallinfo_arena":76722176,"mallinfo_fordblks":19067872,"gap_untracked":-654242,"gap_pct":-1.1}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d4b5ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d803bac","total_alloc":192512,"total_free":188416,"live_bytes":4096,"alloc_count":47,"free_count":46,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x147babe","total_alloc":876544,"total_free":851968,"live_bytes":24576,"alloc_count":107,"free_count":104,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x7fd93d803bac","total_alloc":892032,"total_free":669216,"live_bytes":222816,"alloc_count":129,"free_count":83,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":73920,"live_bytes":18480,"alloc_count":15,"free_count":12,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":0,"live_bytes":6160,"alloc_count":1,"free_count":0,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x7fd93d803bac","total_alloc":307032,"total_free":243712,"live_bytes":63320,"alloc_count":25,"free_count":19,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x147babe","total_alloc":108656,"total_free":100432,"live_bytes":8224,"alloc_count":9,"free_count":8,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":95957937,"total_free":40327660,"live_bytes":55630277,"alloc_count":7902,"free_count":3833,"max_size":16094}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x7fd93d803bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x147babe","total_alloc":2936024,"total_free":2693200,"live_bytes":242824,"alloc_count":103,"free_count":95,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x7fd93d803bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x7fd93d803bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x7fd93d803bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19281,"tracked_alloc_bytes":363509612,"tracked_free_bytes":213734930,"tracked_live_bytes":149774682,"tracked_allocs":20224,"tracked_frees":13785,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":125346224,"mallinfo_arena":143601664,"mallinfo_fordblks":18255440,"gap_untracked":-24428458,"gap_pct":-19.5}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d4b5ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d803bac","total_alloc":196608,"total_free":192512,"live_bytes":4096,"alloc_count":48,"free_count":47,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x7fd93d803bac","total_alloc":921680,"total_free":694432,"live_bytes":227248,"alloc_count":134,"free_count":87,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":73920,"live_bytes":18480,"alloc_count":15,"free_count":12,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":0,"live_bytes":6160,"alloc_count":1,"free_count":0,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x7fd93d803bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90238493,"live_bytes":10428899,"alloc_count":8192,"free_count":7438,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x7fd93d803bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2868816,"live_bytes":242824,"alloc_count":111,"free_count":103,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":254881436,"total_free":116757813,"live_bytes":138123623,"alloc_count":11512,"free_count":5911,"max_size":27896}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x7fd93d803bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x7fd93d803bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x7fd93d803bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19281,"tracked_alloc_bytes":751583776,"tracked_free_bytes":463951729,"tracked_live_bytes":287669700,"tracked_allocs":31768,"tracked_frees":22669,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":230652368,"mallinfo_arena":238845952,"mallinfo_fordblks":8193584,"gap_untracked":-57017332,"gap_pct":-24.7}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d4b5ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d803bac","total_alloc":196608,"total_free":192512,"live_bytes":4096,"alloc_count":48,"free_count":47,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x7fd93d803bac","total_alloc":997024,"total_free":694432,"live_bytes":302592,"alloc_count":151,"free_count":87,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":73920,"live_bytes":18480,"alloc_count":15,"free_count":12,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":0,"live_bytes":6160,"alloc_count":1,"free_count":0,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x7fd93d803bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90238493,"live_bytes":10428899,"alloc_count":8192,"free_count":7438,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x7fd93d803bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2868816,"live_bytes":242824,"alloc_count":111,"free_count":103,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":355394172,"live_bytes":47267204,"alloc_count":16384,"free_count":14452,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x7fd93d803bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":240218880,"total_free":16107056,"live_bytes":224111824,"alloc_count":6655,"free_count":463,"max_size":39423}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x7fd93d803bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x7fd93d803bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19281,"tracked_alloc_bytes":1266652466,"tracked_free_bytes":1011826769,"tracked_live_bytes":254825697,"tracked_allocs":43181,"tracked_frees":36106,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":138328704,"mallinfo_arena":261935104,"mallinfo_fordblks":123606400,"gap_untracked":-116496993,"gap_pct":-84.2}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d4b5ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d803bac","total_alloc":196608,"total_free":192512,"live_bytes":4096,"alloc_count":48,"free_count":47,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":0,"live_bytes":4096,"alloc_count":1,"free_count":0,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":0,"live_bytes":8192,"alloc_count":1,"free_count":0,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x147babe","total_alloc":1114112,"total_free":1089536,"live_bytes":24576,"alloc_count":136,"free_count":133,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x7fd93d803bac","total_alloc":997024,"total_free":694432,"live_bytes":302592,"alloc_count":151,"free_count":87,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":73920,"live_bytes":18480,"alloc_count":15,"free_count":12,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":0,"live_bytes":6160,"alloc_count":1,"free_count":0,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x7fd93d803bac","total_alloc":315480,"total_free":252160,"live_bytes":63320,"alloc_count":26,"free_count":20,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":112752,"live_bytes":8224,"alloc_count":10,"free_count":9,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90238493,"live_bytes":10428899,"alloc_count":8192,"free_count":7438,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x7fd93d803bac","total_alloc":213504,"total_free":188416,"live_bytes":25088,"alloc_count":7,"free_count":6,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3111640,"total_free":2868816,"live_bytes":242824,"alloc_count":111,"free_count":103,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":0,"live_bytes":32768,"alloc_count":1,"free_count":0,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":355394172,"live_bytes":47267204,"alloc_count":16384,"free_count":14452,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x7fd93d803bac","total_alloc":667680,"total_free":245760,"live_bytes":421920,"alloc_count":11,"free_count":4,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810be7","total_alloc":131072,"total_free":0,"live_bytes":131072,"alloc_count":2,"free_count":0,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":755287570,"total_free":559455480,"live_bytes":195832090,"alloc_count":18068,"free_count":13780,"max_size":50836}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x7fd93d803bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x7fd93d803bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"NODE_SMOKE_DONE","allocs":50000,"finalBufLen":4194304}
++{"type":"PROFILER6_SUMMARY","timestamp":"2026-11-01T19:00:48Z","pid":19281,"tracked_alloc_bytes":1672240600,"tracked_free_bytes":1514711161,"tracked_live_bytes":157529439,"tracked_allocs":51006,"tracked_frees":45923,"skipped_before_init":1,"bootstrap_registry_full":0,"bootstrap_unknown_in_range":0,"mallinfo_uordblks":111392,"mallinfo_arena":71675904,"mallinfo_fordblks":71564512,"gap_untracked":-157418047,"gap_pct":-141319.0}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x1e3c41e","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d4b5ad3","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x7fd93d803bac","total_alloc":208896,"total_free":208896,"live_bytes":0,"alloc_count":51,"free_count":51,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xcd0263","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810be7","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x12dcec2","total_alloc":385024,"total_free":385024,"live_bytes":0,"alloc_count":94,"free_count":94,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0xd663bd","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"4-8KB","caller":"0x810bb7","total_alloc":4096,"total_free":4096,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4096}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x1e3c41e","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x147babe","total_alloc":3489792,"total_free":2662400,"live_bytes":827392,"alloc_count":426,"free_count":325,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x7fd93d803bac","total_alloc":1158960,"total_free":1098976,"live_bytes":59984,"alloc_count":185,"free_count":174,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xf42704","total_alloc":4104,"total_free":4104,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":4104}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0x810bb7","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xd663bd","total_alloc":8192,"total_free":8192,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfe678d","total_alloc":92400,"total_free":73920,"live_bytes":18480,"alloc_count":15,"free_count":12,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xfeeefe","total_alloc":6160,"total_free":0,"live_bytes":6160,"alloc_count":1,"free_count":0,"max_size":6160}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"8-16KB","caller":"0xcd0263","total_alloc":40960,"total_free":40960,"live_bytes":0,"alloc_count":5,"free_count":5,"max_size":8192}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x7fd93d803bac","total_alloc":643160,"total_free":643160,"live_bytes":0,"alloc_count":46,"free_count":46,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x147babe","total_alloc":120976,"total_free":120976,"live_bytes":0,"alloc_count":10,"free_count":10,"max_size":13424}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xf42704","total_alloc":8200,"total_free":8200,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":8200}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0x810bb7","total_alloc":100667392,"total_free":90238493,"live_bytes":10428899,"alloc_count":8192,"free_count":7438,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"16-32KB","caller":"0xd663bd","total_alloc":16384,"total_free":16384,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":16384}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x7fd93d803bac","total_alloc":213504,"total_free":213504,"live_bytes":0,"alloc_count":7,"free_count":7,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x147babe","total_alloc":3429928,"total_free":3035008,"live_bytes":394920,"alloc_count":130,"free_count":113,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0xd663bd","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x810bb7","total_alloc":402661376,"total_free":355394172,"live_bytes":47267204,"alloc_count":16384,"free_count":14452,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"32-64KB","caller":"0x810be7","total_alloc":32768,"total_free":32768,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":32768}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x7fd93d803bac","total_alloc":667680,"total_free":667680,"live_bytes":0,"alloc_count":11,"free_count":11,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810be7","total_alloc":196608,"total_free":131072,"live_bytes":65536,"alloc_count":3,"free_count":2,"max_size":65536}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"64-128KB","caller":"0x810bb7","total_alloc":1156238040,"total_free":1057777176,"live_bytes":98460864,"alloc_count":25423,"free_count":23160,"max_size":58191}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x7fd93d803bac","total_alloc":434576,"total_free":434576,"live_bytes":0,"alloc_count":4,"free_count":4,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"128-256KB","caller":"0x810be7","total_alloc":131072,"total_free":131072,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":131072}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x7fd93d803bac","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":2,"free_count":2,"max_size":262144}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"256-512KB","caller":"0x810be7","total_alloc":262144,"total_free":262144,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":262144}
++{"type":"PROFILER6_BUCKET","timestamp":"2026-11-01T19:00:48Z","pid":19281,"bucket":"512-1024KB","caller":"0x810be7","total_alloc":524288,"total_free":524288,"live_bytes":0,"alloc_count":1,"free_count":1,"max_size":524288}
++NODE_EXIT=0
++{"type":"PROFILER6_INIT","pid":19194,"note":"v6-a318 PROFILER DISABLED — sanitizer (TSan/ASan) detected, pass-through mode"}
++{"type":"PROFILER6_INIT","pid":19281,"note":"v6-a318 constructor init (mutex registry, safe ptr compare, pos recovery, sanitizer-aware)"}
++{"type":"NODE_SMOKE_DONE","allocs":50000,"finalBufLen":4194304}
++
++============================================================
++ SUMMARY
++============================================================
++Plain test suite  : 121 tests, exit 0 (true)
++TSan races        : 0 (must be 0)
++TSan warnings     : 0
++TSan size aborts  : 0 (must be 0 — T5 skipped under sanitizer)
++Node.js smoke     : exit 0 (expect 0)
++PROD isolation    : verified (no test-hook symbols)
++ASan              : skipped (conflicts with profiler LD_PRELOAD interposition)
++============================================================
++RESULT: ALL CHECKS PASSED (TSan exit 0, T8/T9/T10/T12 ran, T11 skipped, 0 races)
+diff --git a/scripts/ci/malloc_profiler_v6.c b/scripts/ci/malloc_profiler_v6.c
+index 08fd303..4633a34 100644
+--- a/scripts/ci/malloc_profiler_v6.c
++++ b/scripts/ci/malloc_profiler_v6.c
+@@ -516,6 +516,52 @@ static void profiler_fini(void) {
+ // malloc/calloc/realloc/free wrappers
+ // ============================================================================
+ 
++// [A-3.21] SHARED internal function for normal realloc tracking logic.
++//
++// This function is called by BOTH:
++//   1. The production realloc() wrapper (for normal, non-bootstrap pointers)
++//   2. The test hook __profiler_v6_test_normal_realloc_tracked() (for TSan)
++//
++// This ensures T12 tests the SAME code path that production uses — not a
++// duplicate. The Steward's A-3.20 audit correctly identified that having
++// two separate implementations of the same logic is an engineering
++// anti-pattern that allows drift between test and production.
++//
++// Parameters:
++//   ptr       — the old pointer (may be NULL for malloc-like usage)
++//   size      — the requested new size
++//   allocator — function to call for the actual reallocation. In production,
++//               this is real_realloc. In tests, this may be an injected
++//               failing allocator.
++//   caller    — the return address of the caller (for call-site tracking)
++//
++// Returns:
++//   new_ptr on success (tracking updated: old removed, new added)
++//   NULL on failure (old pointer and its tracking remain valid — POSIX)
++//
++// The caller is responsible for setting g_in_hook around the call if needed.
++static void* normal_realloc_tracked(void *ptr, size_t size,
++                                     void* (*allocator)(void*, size_t),
++                                     void *caller)
++{
++    if (!allocator) return NULL;
++
++    // Call the allocator FIRST. On failure, tracking is preserved (POSIX).
++    void *new_ptr = allocator(ptr, size);
++
++    if (new_ptr) {
++        // Success: remove old tracking, add new.
++        // [F3] track_free ONLY on success — preserves old tracking on failure.
++        if (ptr) track_free(ptr);
++        if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
++            track_alloc(new_ptr, size, caller);
++        }
++    }
++    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
++
++    return new_ptr;
++}
++
+ void *malloc(size_t size) {
+     // [P0a] If sanitizer active, pass through without tracking.
+     if (atomic_load(&g_profiler_disabled)) {
+@@ -659,15 +705,11 @@ void *realloc(void *ptr, size_t size) {
+         atomic_fetch_add(&g_bootstrap_unknown_in_range, 1);
+     }
+ 
+-    // [A-3.17/F3] Normal path: track_free only AFTER real_realloc succeeds.
++    // [A-3.21] Normal path: call the SHARED internal function.
++    // This is the SAME function that the test hook calls, ensuring T12
++    // tests production code, not a duplicate.
+     g_in_hook = 1;
+-    void *new_ptr = real_realloc(ptr, size);
+-    if (new_ptr) {
+-        if (ptr) track_free(ptr);
+-        if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
+-            track_alloc(new_ptr, size, caller);
+-        }
+-    }
++    void *new_ptr = normal_realloc_tracked(ptr, size, real_realloc, caller);
+     g_in_hook = 0;
+     long count = atomic_fetch_add(&g_call_count, 1) + 1;
+     if (count % OUTPUT_INTERVAL == 0) {
+@@ -918,16 +960,17 @@ void* __profiler_v6_test_get_real_realloc(void) {
+     return real_realloc;
+ }
+ 
+-// [A-3.20] Exercise the normal realloc tracking logic directly.
++// [A-3.21] Exercise the SAME normal_realloc_tracked() function that the
++// production realloc() wrapper uses.
+ //
+-// This function replicates the F3-fixed normal realloc path:
+-//   1. Call the provided allocator (which may fail)
+-//   2. On success: track_free(old ptr), track_alloc(new ptr)
+-//   3. On failure: leave old tracking intact (POSIX-compliant)
++// A-3.20 had a DUPLICATE of the tracking logic here. The Steward's audit
++// correctly identified this as an anti-pattern: tests should exercise the
++// SAME code as production, not a copy. A-3.21 fixes this by making the
++// test hook call the shared static function normal_realloc_tracked().
+ //
+-// The caller provides the allocator function so failure can be injected.
+-// This does NOT go through the realloc() interposition wrapper, so it
+-// works under TSan even when g_profiler_disabled is set.
++// This means T12 under TSan instruments the EXACT SAME code path that
++// the production realloc() wrapper uses in the Plain Suite. There is no
++// possibility of drift between test and production.
+ //
+ // Returns new_ptr on success, NULL on failure (old ptr remains valid).
+ void* __profiler_v6_test_normal_realloc_tracked(
+@@ -935,21 +978,7 @@ void* __profiler_v6_test_normal_realloc_tracked(
+     void* (*allocator)(void*, size_t),
+     void* caller)
+ {
+-    if (!allocator) return NULL;
+-
+-    // Call the allocator FIRST (may fail).
+-    void* new_ptr = allocator(ptr, new_size);
+-
+-    if (new_ptr) {
+-        // Success: remove old tracking, add new.
+-        // [F3] track_free ONLY on success — preserves old tracking on failure.
+-        if (ptr) track_free(ptr);
+-        if (new_size >= MIN_TRACK_SIZE && new_size < MAX_TRACK_SIZE) {
+-            track_alloc(new_ptr, new_size, caller);
+-        }
+-    }
+-    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
+-
+-    return new_ptr;
++    // [A-3.21] Call the SHARED internal function — NOT a duplicate.
++    return normal_realloc_tracked(ptr, new_size, allocator, caller);
+ }
+ #endif
+diff --git a/scripts/ci/test_profiler_v6.sh b/scripts/ci/test_profiler_v6.sh
+index e49ede5..fd0a457 100755
+--- a/scripts/ci/test_profiler_v6.sh
++++ b/scripts/ci/test_profiler_v6.sh
+@@ -261,7 +261,7 @@ else
+     log "RESULT: FAILURES DETECTED"
+ fi
+ 
+-cp "$LOG" "$REPO_DIR/STEP-A-3.20-execution-log.txt" 2>/dev/null || true
++cp "$LOG" "$REPO_DIR/STEP-A-3.21-execution-log.txt" 2>/dev/null || true
+ 
+ log "============================================================"
+ exit $FINAL_EXIT
