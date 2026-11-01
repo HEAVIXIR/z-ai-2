@@ -172,16 +172,23 @@ log "--- tests that passed under TSan ---"
 grep -E "^PASS" "$LOG" | tail -20 | tee -a "$LOG"
 
 # [A-3.19] CRITICAL: Verify T8/T9/T10 actually RAN (not SKIPPED) under TSan
+# [A-3.20] Also verify T12 (normal realloc tracked direct) ran under TSan.
+#           T11 (normal realloc failure injection) is EXPECTED to skip under
+#           TSan because it requires profiler interposition (malloc/realloc).
 log ""
-log "--- A-3.19 verification: T8/T9/T10 must NOT be skipped ---"
+log "--- A-3.19/3.20 verification: T8/T9/T10/T12 must NOT be skipped ---"
 T8_SKIPPED=$(grep -c "T8.*SKIPPED\|T8_concurrency.*SKIPPED" "$LOG" 2>/dev/null; true); T8_SKIPPED=${T8_SKIPPED:-0}
 T9_SKIPPED=$(grep -c "T9.*SKIPPED\|T9_concurrent.*SKIPPED" "$LOG" 2>/dev/null; true); T9_SKIPPED=${T9_SKIPPED:-0}
-T10_SKIPPED=$(grep -c "T10.*SKIPPED\|test_normal_realloc.*SKIPPED" "$LOG" 2>/dev/null; true); T10_SKIPPED=${T10_SKIPPED:-0}
-log "T8 skipped: $T8_SKIPPED (must be 0)"
-log "T9 skipped: $T9_SKIPPED (must be 0)"
+T10_SKIPPED=$(grep -c "test_normal_realloc_failure: SKIPPED\|bootstrap_realloc_direct.*SKIPPED" "$LOG" 2>/dev/null; true); T10_SKIPPED=${T10_SKIPPED:-0}
+T11_SKIPPED=$(grep -c "test_normal_realloc_failure_injected: SKIPPED\|T11.*SKIPPED" "$LOG" 2>/dev/null; true); T11_SKIPPED=${T11_SKIPPED:-0}
+T12_SKIPPED=$(grep -c "test_normal_realloc_tracked.*SKIPPED\|T12.*SKIPPED" "$LOG" 2>/dev/null; true); T12_SKIPPED=${T12_SKIPPED:-0}
+log "T8 skipped:  $T8_SKIPPED (must be 0)"
+log "T9 skipped:  $T9_SKIPPED (must be 0)"
 log "T10 skipped: $T10_SKIPPED (must be 0)"
-if [[ "$T8_SKIPPED" -ne 0 || "$T9_SKIPPED" -ne 0 || "$T10_SKIPPED" -ne 0 ]]; then
-    log "FAIL: A-3.19 requirement violated — T8/T9/T10 must run under TSan"
+log "T11 skipped: $T11_SKIPPED (expected: 1 — requires interposition, skipped under TSan)"
+log "T12 skipped: $T12_SKIPPED (must be 0 — direct hook, runs under TSan)"
+if [[ "$T8_SKIPPED" -ne 0 || "$T9_SKIPPED" -ne 0 || "$T10_SKIPPED" -ne 0 || "$T12_SKIPPED" -ne 0 ]]; then
+    log "FAIL: A-3.19/3.20 requirement violated — T8/T9/T10/T12 must run under TSan"
     FINAL_EXIT=1
 fi
 
@@ -231,7 +238,8 @@ log "============================================================"
 # [A-3.19] Final acceptance per Steward directive:
 #   - Plain suite: exit 0
 #   - TSan: exit 0 with no data races
-#   - T8/T9/T10 must RUN under TSan (not skipped) — A-3.19 key requirement
+#   - T8/T9/T10/T12 must RUN under TSan (not skipped) — A-3.19/3.20 requirement
+#   - T11 is expected to skip under TSan (requires interposition)
 #   - Node smoke: exit 0
 # Note: FINAL_EXIT may already be set to 1 by the skip check above.
 FINAL_EXIT=${FINAL_EXIT:-0}
@@ -248,12 +256,12 @@ fi
 if [[ "$NODE_EXIT" -ne 0 && "$NODE_EXIT" -ne 99 ]]; then FINAL_EXIT=1; fi
 
 if [[ $FINAL_EXIT -eq 0 ]]; then
-    log "RESULT: ALL CHECKS PASSED (TSan exit 0, T8/T9/T10 ran, 0 races)"
+    log "RESULT: ALL CHECKS PASSED (TSan exit 0, T8/T9/T10/T12 ran, T11 skipped, 0 races)"
 else
     log "RESULT: FAILURES DETECTED"
 fi
 
-cp "$LOG" "$REPO_DIR/STEP-A-3.19-execution-log.txt" 2>/dev/null || true
+cp "$LOG" "$REPO_DIR/STEP-A-3.20-execution-log.txt" 2>/dev/null || true
 
 log "============================================================"
 exit $FINAL_EXIT

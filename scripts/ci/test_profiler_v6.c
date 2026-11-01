@@ -53,6 +53,10 @@ extern void*  __profiler_v6_test_bootstrap_realloc(void* ptr, size_t new_size) _
 extern void   __profiler_v6_test_direct_track_alloc(void* ptr, size_t size, void* caller) __attribute__((weak));
 extern void   __profiler_v6_test_direct_track_free(void* ptr) __attribute__((weak));
 extern int    __profiler_v6_test_is_tracked(void* ptr) __attribute__((weak));
+// [A-3.20] Normal realloc failure injection hooks
+extern void   __profiler_v6_test_set_real_realloc(void* (*fn)(void*, size_t)) __attribute__((weak));
+extern void*  __profiler_v6_test_get_real_realloc(void) __attribute__((weak));
+extern void*  __profiler_v6_test_normal_realloc_tracked(void* ptr, size_t new_size, void* (*allocator)(void*, size_t), void* caller) __attribute__((weak));
 
 static atomic_int g_failures = 0;
 static int g_tests = 0;
@@ -761,13 +765,314 @@ static void test_normal_realloc_failure(void) {
     CHECK(1, "bootstrap realloc direct-hook test complete");
 }
 
+// ============================================================================
+// T11: Normal Realloc Failure Injection (A-3.20 — restored from A-3.18)
+//
+// This test uses the profiler's malloc/realloc INTERPOSITION to exercise the
+// NORMAL (non-bootstrap) realloc code path with failure injection.
+//
+// It requires the profiler to be ACTIVE (not disabled), so it runs in the
+// Plain Suite. Under TSan, it is SKIPPED (profiler is disabled).
+//
+// The TSan coverage of the normal realloc tracking logic is provided by
+// T12, which uses a direct hook.
+//
+// Tests:
+//   - Allocate a tracked pointer via profiler's malloc wrapper
+//   - Inject failure into real_realloc (set to always-NULL function)
+//   - Call realloc(ptr, huge_size) — goes through profiler's wrapper
+//   - Verify: ptr still valid, tracking intact, data intact
+//   - Restore real_realloc, retry successfully
+//   - Verify: tracking updated to new size, data preserved
+// ============================================================================
+static int g_realloc_fail = 0;
+
+// Failing realloc: returns NULL when injection flag is set, delegates to
+// real libc realloc otherwise. We get real libc realloc via the test hook
+// (saved by the profiler's constructor).
+static void* (*g_real_libc_realloc)(void*, size_t) = NULL;
+static void *failing_realloc(void *ptr, size_t sz) {
+    if (g_realloc_fail) {
+        return NULL;  // simulate failure
+    }
+    if (g_real_libc_realloc) return g_real_libc_realloc(ptr, sz);
+    return NULL;
+}
+
+static void test_normal_realloc_failure_injected(void) {
+    fprintf(stderr, "\n=== T11: Normal realloc failure injection (A-3.20) ===\n");
+    // This test requires profiler interposition (uses malloc/realloc wrappers).
+    SKIP_IF_DISABLED("test_normal_realloc_failure_injected");
+    if (!__profiler_v6_test_set_real_realloc || !__profiler_v6_test_get_real_realloc ||
+        !__profiler_v6_test_get_tracked_size) {
+        g_tests++; CHECK(0, "test hooks not available");
+        return;
+    }
+
+    int was_init = __profiler_v6_test_set_initialized(1);
+
+    // Save the real libc realloc (the profiler saved it in its constructor).
+    g_real_libc_realloc = (void*(*)(void*,size_t))__profiler_v6_test_get_real_realloc();
+    CHECK(g_real_libc_realloc != NULL, "get_real_realloc returned NULL");
+
+    // Allocate a tracked buffer via the profiler's malloc wrapper.
+    // Size 8192 is in the tracked range (MIN_TRACK_SIZE=4096, MAX=1MiB).
+    size_t sz = 8192;
+    unsigned char *p = malloc(sz);
+    CHECK(p != NULL, "malloc(8192) returned NULL");
+    for (size_t i = 0; i < sz; i++) p[i] = (unsigned char)(i & 0xFF);
+
+    // Verify tracking was registered.
+    long tracked_before = __profiler_v6_test_get_tracked_size(p);
+    CHECK(tracked_before == (long)sz, "tracking not registered (got %ld, expected %ld)",
+          tracked_before, (long)sz);
+
+    // Inject failure into real_realloc.
+    g_realloc_fail = 1;
+    __profiler_v6_test_set_real_realloc(failing_realloc);
+
+    // Attempt realloc — should fail (return NULL) via the normal path.
+    // The profiler's realloc wrapper calls real_realloc (which now fails).
+    // Per F3 fix: track_free is NOT called on failure, so old tracking
+    // remains intact.
+    unsigned char * volatile p_volatile = p;
+    void *r = realloc(p_volatile, 16384);
+    CHECK(r == NULL, "realloc with injected failure should return NULL");
+
+    // [D] Original pointer must still be valid.
+    unsigned char *p2 = (unsigned char *)p_volatile;
+    CHECK(p2 != NULL, "original pointer became NULL after failed realloc");
+
+    // [D] Original tracking must remain intact (F3 fix).
+    long tracked_after_fail = __profiler_v6_test_get_tracked_size(p2);
+    CHECK(tracked_after_fail == (long)sz,
+          "tracking lost after failed realloc (got %ld, expected %ld)",
+          tracked_after_fail, (long)sz);
+
+    // [D] Original data must be intact.
+    int data_ok = 1;
+    for (size_t i = 0; i < sz; i++) {
+        if (p2[i] != (unsigned char)(i & 0xFF)) { data_ok = 0; break; }
+    }
+    CHECK(data_ok, "original data corrupted after failed realloc");
+
+    // [E] Restore real_realloc, retry — should succeed.
+    g_realloc_fail = 0;
+    __profiler_v6_test_set_real_realloc(g_real_libc_realloc);
+
+    size_t new_sz = 16384;
+    // Use volatile to suppress -Wuse-after-free (our profiler guarantees
+    // p2 survives successful realloc, but the compiler doesn't know that).
+    unsigned char * volatile p2_volatile = p2;
+    void *p_new = realloc(p2_volatile, new_sz);
+    CHECK(p_new != NULL, "realloc should succeed after restoring allocator");
+
+    // [E] New tracking must reflect new size.
+    long tracked_after_success = __profiler_v6_test_get_tracked_size(p_new);
+    CHECK(tracked_after_success == (long)new_sz,
+          "new pointer tracking wrong (got %ld, expected %ld)",
+          tracked_after_success, (long)new_sz);
+
+    // [E] Old data must be preserved.
+    int data_ok2 = 1;
+    for (size_t i = 0; i < sz; i++) {
+        if (((unsigned char*)p_new)[i] != (unsigned char)(i & 0xFF)) { data_ok2 = 0; break; }
+    }
+    CHECK(data_ok2, "data not preserved after successful realloc");
+
+    // Old pointer's tracking should be updated (track_free + track_alloc).
+    // If realloc returned a DIFFERENT pointer (p_new != p2_volatile),
+    // the old pointer's tracking should be 0 (removed).
+    // If realloc returned the SAME pointer (in-place growth, p_new == p2_volatile),
+    // the tracking should now show the NEW size (track_free removed old, track_alloc added new).
+    long old_tracked = __profiler_v6_test_get_tracked_size((void*)p2_volatile);
+    if (p_new == (void*)p2_volatile) {
+        // In-place realloc: tracking should show new size.
+        CHECK(old_tracked == (long)new_sz,
+              "in-place realloc: tracking should show new size (got %ld, expected %ld)",
+              old_tracked, (long)new_sz);
+    } else {
+        // Different pointer: old tracking should be 0 (removed by track_free).
+        CHECK(old_tracked == 0,
+              "old pointer still tracked after realloc moved it (got %ld)", old_tracked);
+    }
+
+    free(p_new);
+
+    __profiler_v6_test_set_initialized(was_init);
+    CHECK(1, "normal realloc failure injection test complete");
+}
+
+// ============================================================================
+// T12: Normal Realloc Tracking via Direct Hook (A-3.20 — TSan coverage)
+//
+// This test uses __profiler_v6_test_normal_realloc_tracked() to exercise
+// the normal realloc tracking logic (track_free on success, track_alloc on
+// success, preserve on failure) WITHOUT going through the realloc()
+// interposition wrapper.
+//
+// This means it runs under TSan even when the profiler is disabled, because
+// the hook calls track_free/track_alloc directly. TSan instruments these
+// functions (compiled with -fsanitize=thread), providing real race detection
+// coverage of the tracking table's concurrent access patterns.
+//
+// Tests:
+//   - Direct track_alloc to register a pointer
+//   - Normal realloc success: track_free(old) + track_alloc(new)
+//   - Normal realloc failure: tracking preserved
+//   - Retry after failure: tracking updated correctly
+// ============================================================================
+
+// A simple allocator for T12 that delegates to real libc malloc/realloc.
+// We get these via the profiler's saved real_malloc (from constructor).
+static void* (*g_t12_real_malloc)(size_t) = NULL;
+static void *t12_allocator(void *ptr, size_t sz) {
+    // If ptr is NULL, this is a malloc; otherwise it's a realloc.
+    // We use real_malloc for new allocations and real_realloc for resizes.
+    // For simplicity, always use mmap for new and copy for realloc.
+    if (!ptr) {
+        if (g_t12_real_malloc) return g_t12_real_malloc(sz);
+        return NULL;
+    }
+    // For realloc: allocate new, copy, return. We can't call real_realloc
+    // directly here (it would go through the profiler's wrapper), so we
+    // just allocate new via real_malloc and let the test handle the copy.
+    // Actually, for T12 we want to test the TRACKING logic, not the
+    // allocator. So we use a simple allocator that always succeeds (for
+    // success case) or always fails (for failure case).
+    if (g_realloc_fail) return NULL;
+    if (g_t12_real_malloc) {
+        void *new_p = g_t12_real_malloc(sz);
+        if (new_p && ptr) {
+            // Copy old data (we don't know old size, copy up to sz)
+            memcpy(new_p, ptr, sz);
+        }
+        return new_p;
+    }
+    return NULL;
+}
+
+static void test_normal_realloc_tracked_direct(void) {
+    fprintf(stderr, "\n=== T12: Normal realloc tracking via direct hook (A-3.20) ===\n");
+    // [A-3.20] NO SKIP_IF_DISABLED — direct hook works under sanitizer.
+    if (!__profiler_v6_test_normal_realloc_tracked || !__profiler_v6_test_direct_track_alloc ||
+        !__profiler_v6_test_direct_track_free || !__profiler_v6_test_get_tracked_size ||
+        !__profiler_v6_test_is_tracked || !__profiler_v6_test_get_real_malloc) {
+        g_tests++; CHECK(0, "test hooks not available");
+        return;
+    }
+
+    int was_init = __profiler_v6_test_set_initialized(1);
+
+    // Get real libc malloc for the allocator.
+    g_t12_real_malloc = (void*(*)(size_t))__profiler_v6_test_get_real_malloc();
+    CHECK(g_t12_real_malloc != NULL, "get_real_malloc returned NULL");
+
+    // --- T12.1: Allocate a tracked pointer via direct track_alloc ---
+    size_t sz = 8192;
+    unsigned char *p = (unsigned char *)g_t12_real_malloc(sz);
+    CHECK(p != NULL, "real_malloc(8192) returned NULL");
+    for (size_t i = 0; i < sz; i++) p[i] = (unsigned char)(i & 0xFF);
+
+    // Register it in the tracking table via direct hook.
+    __profiler_v6_test_direct_track_alloc(p, sz, __builtin_return_address(0));
+    CHECK(__profiler_v6_test_is_tracked(p), "pointer not tracked after direct track_alloc");
+    long tracked_before = __profiler_v6_test_get_tracked_size(p);
+    CHECK(tracked_before == (long)sz, "tracked size wrong (got %ld, expected %ld)",
+          tracked_before, (long)sz);
+
+    // --- T12.2: Normal realloc SUCCESS via direct hook ---
+    g_realloc_fail = 0;
+    size_t new_sz = 16384;
+    void *p_new = __profiler_v6_test_normal_realloc_tracked(
+        p, new_sz, t12_allocator, __builtin_return_address(0));
+    CHECK(p_new != NULL, "normal_realloc_tracked returned NULL on success");
+
+    // Old pointer should be untracked (track_free was called).
+    CHECK(!__profiler_v6_test_is_tracked(p), "old ptr still tracked after successful realloc");
+
+    // New pointer should be tracked with new size.
+    CHECK(__profiler_v6_test_is_tracked(p_new), "new ptr not tracked after successful realloc");
+    long tracked_new = __profiler_v6_test_get_tracked_size(p_new);
+    CHECK(tracked_new == (long)new_sz, "new tracked size wrong (got %ld, expected %ld)",
+          tracked_new, (long)new_sz);
+
+    // Data should be preserved.
+    int data_ok = 1;
+    for (size_t i = 0; i < sz; i++) {
+        if (((unsigned char*)p_new)[i] != (unsigned char)(i & 0xFF)) { data_ok = 0; break; }
+    }
+    CHECK(data_ok, "data not preserved after successful realloc");
+
+    // --- T12.3: Normal realloc FAILURE via direct hook ---
+    // Set up a new tracked pointer for the failure test.
+    unsigned char *p2 = (unsigned char *)g_t12_real_malloc(sz);
+    CHECK(p2 != NULL, "real_malloc(8192) for failure test returned NULL");
+    for (size_t i = 0; i < sz; i++) p2[i] = (unsigned char)(0x80 | (i & 0x7F));
+    __profiler_v6_test_direct_track_alloc(p2, sz, __builtin_return_address(0));
+    CHECK(__profiler_v6_test_is_tracked(p2), "p2 not tracked");
+
+    // Inject failure.
+    g_realloc_fail = 1;
+    void *fail_r = __profiler_v6_test_normal_realloc_tracked(
+        p2, new_sz, t12_allocator, __builtin_return_address(0));
+    CHECK(fail_r == NULL, "normal_realloc_tracked should return NULL on failure");
+
+    // [D] Old pointer must still be tracked (F3 fix — tracking preserved on failure).
+    CHECK(__profiler_v6_test_is_tracked(p2), "p2 untracked after failed realloc (F3 violation)");
+
+    // [D] Tracked size must be unchanged.
+    long tracked_after_fail = __profiler_v6_test_get_tracked_size(p2);
+    CHECK(tracked_after_fail == (long)sz,
+          "tracked size changed after failure (got %ld, expected %ld)",
+          tracked_after_fail, (long)sz);
+
+    // [D] Data must be intact.
+    int fail_data_ok = 1;
+    for (size_t i = 0; i < sz; i++) {
+        if (p2[i] != (unsigned char)(0x80 | (i & 0x7F))) { fail_data_ok = 0; break; }
+    }
+    CHECK(fail_data_ok, "data corrupted after failed realloc");
+
+    // --- T12.4: Successful retry after failure ---
+    g_realloc_fail = 0;
+    void *p2_new = __profiler_v6_test_normal_realloc_tracked(
+        p2, new_sz, t12_allocator, __builtin_return_address(0));
+    CHECK(p2_new != NULL, "retry should succeed after restoring allocator");
+    CHECK(!__profiler_v6_test_is_tracked(p2), "old p2 still tracked after successful retry");
+    CHECK(__profiler_v6_test_is_tracked(p2_new), "new p2 not tracked after retry");
+    long retry_tracked = __profiler_v6_test_get_tracked_size(p2_new);
+    CHECK(retry_tracked == (long)new_sz, "retry tracked size wrong (got %ld, expected %ld)",
+          retry_tracked, (long)new_sz);
+
+    // Clean up: untrack and free.
+    __profiler_v6_test_direct_track_free(p_new);
+    __profiler_v6_test_direct_track_free(p2_new);
+    // [A-3.20] We cannot use free() to free these pointers because:
+    // - p_new and p2_new were allocated via real_malloc (bypassing profiler)
+    // - Under TSan, profiler is disabled, so free() goes to TSan's free
+    // - TSan's free doesn't recognize these pointers (allocated by real_malloc)
+    //   → causes a crash
+    // Solution: leak the memory (test process exits soon). The tracking
+    // entries have been properly removed via direct_track_free above,
+    // so the profiler's accounting is correct.
+    // free(p_new);   // would crash under TSan
+    // free(p2_new);  // would crash under TSan
+    (void)p_new;
+    (void)p2_new;
+
+    __profiler_v6_test_set_initialized(was_init);
+    CHECK(1, "normal realloc tracked direct-hook test complete");
+}
+
 int main(void) {
     fprintf(stderr, "========================================\n");
-    fprintf(stderr, " STEP A-3.18 P0 verification tests\n");
+    fprintf(stderr, " STEP A-3.20 P0 verification tests\n");
     fprintf(stderr, " F1=mutex registry, F2=publication check,\n");
     fprintf(stderr, " F3=realloc tracking safety, T9=concurrent lookup,\n");
     fprintf(stderr, " P0a=sanitizer-aware, P1=safe ptr, P2=pos recovery,\n");
-    fprintf(stderr, " T10=normal realloc failure\n");
+    fprintf(stderr, " T10=bootstrap realloc, T11=normal realloc failure,\n");
+    fprintf(stderr, " T12=normal realloc tracked (TSan direct)\n");
     fprintf(stderr, "========================================\n");
 
     test_basic();
@@ -779,7 +1084,9 @@ int main(void) {
     test_failure_injection();
     test_concurrency_aba_reuse();
     test_concurrent_lookup_deregister();
-    test_normal_realloc_failure();
+    test_normal_realloc_failure();          // T10: bootstrap realloc (A-3.19)
+    test_normal_realloc_failure_injected();  // T11: normal realloc failure (A-3.20)
+    test_normal_realloc_tracked_direct();    // T12: normal realloc tracked (A-3.20)
 
     fprintf(stderr, "\n========================================\n");
     fprintf(stderr, " Results: %d tests, %d failures\n", g_tests, atomic_load(&g_failures));

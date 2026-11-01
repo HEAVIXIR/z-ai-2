@@ -886,4 +886,70 @@ void __profiler_v6_test_direct_track_free(void* ptr) {
 int __profiler_v6_test_is_tracked(void* ptr) {
     return __profiler_v6_test_find_tracked_ptr(ptr) >= 0 ? 1 : 0;
 }
+
+// ============================================================================
+// [A-3.20] Normal Realloc Failure Injection Hooks
+//
+// These hooks allow tests to:
+//   1. Save/restore real_realloc (for failure injection)
+//   2. Exercise the normal realloc code path DIRECTLY (for TSan coverage)
+//
+// The normal realloc path (in the realloc() wrapper) does:
+//   real_realloc(ptr, size) → on success: track_free(old), track_alloc(new)
+//                            → on failure: leave tracking intact
+//
+// __profiler_v6_test_normal_realloc_tracked() replicates this logic WITHOUT
+// going through the realloc() interposition wrapper. This means:
+//   - It works under TSan even when profiler is disabled
+//   - TSan instruments the track_free/track_alloc code paths
+//   - The caller provides the allocator function (so failure can be injected)
+// ============================================================================
+
+// [A-3.20] Save/restore real_realloc for failure injection.
+// (The save/restore is done by the test via get/set hooks; this static
+// variable is reserved for future use if we need atomic save+restore.)
+static void* (*g_saved_real_realloc)(void*, size_t) __attribute__((unused)) = NULL;
+
+void __profiler_v6_test_set_real_realloc(void* (*fn)(void*, size_t)) {
+    real_realloc = fn;
+}
+
+void* __profiler_v6_test_get_real_realloc(void) {
+    return real_realloc;
+}
+
+// [A-3.20] Exercise the normal realloc tracking logic directly.
+//
+// This function replicates the F3-fixed normal realloc path:
+//   1. Call the provided allocator (which may fail)
+//   2. On success: track_free(old ptr), track_alloc(new ptr)
+//   3. On failure: leave old tracking intact (POSIX-compliant)
+//
+// The caller provides the allocator function so failure can be injected.
+// This does NOT go through the realloc() interposition wrapper, so it
+// works under TSan even when g_profiler_disabled is set.
+//
+// Returns new_ptr on success, NULL on failure (old ptr remains valid).
+void* __profiler_v6_test_normal_realloc_tracked(
+    void* ptr, size_t new_size,
+    void* (*allocator)(void*, size_t),
+    void* caller)
+{
+    if (!allocator) return NULL;
+
+    // Call the allocator FIRST (may fail).
+    void* new_ptr = allocator(ptr, new_size);
+
+    if (new_ptr) {
+        // Success: remove old tracking, add new.
+        // [F3] track_free ONLY on success — preserves old tracking on failure.
+        if (ptr) track_free(ptr);
+        if (new_size >= MIN_TRACK_SIZE && new_size < MAX_TRACK_SIZE) {
+            track_alloc(new_ptr, new_size, caller);
+        }
+    }
+    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
+
+    return new_ptr;
+}
 #endif
