@@ -949,6 +949,9 @@ jobs:
               print(json.dumps({'type':'SMAPS_TOP_MAPPING','threshold_gb':threshold,'rss_kb':rss,'pathname':pn}))
           PARSES
           echo "=== smaps parser written to /tmp/parse_smaps.py ==="
+          # === A-3.10: Write /proc/PID/maps capture script ===
+          echo 'aW1wb3J0IHN5cywganNvbgpwaWQgPSBzeXMuYXJndlsxXQp0cnk6CiAgICB3aXRoIG9wZW4oZicvcHJvYy97cGlkfS9tYXBzJykgYXMgZjoKICAgICAgICBmb3IgbGluZSBpbiBmOgogICAgICAgICAgICBwYXJ0cyA9IGxpbmUuc3RyaXAoKS5zcGxpdChOb25lLCA1KQogICAgICAgICAgICBpZiBsZW4ocGFydHMpIDwgNTogY29udGludWUKICAgICAgICAgICAgYWRkcl9yYW5nZSA9IHBhcnRzWzBdCiAgICAgICAgICAgIHBlcm0gPSBwYXJ0c1sxXQogICAgICAgICAgICBwYXRobmFtZSA9IHBhcnRzWzVdIGlmIGxlbihwYXJ0cykgPiA1IGVsc2UgJycKICAgICAgICAgICAgc3RhcnRfcywgZW5kX3MgPSBhZGRyX3JhbmdlLnNwbGl0KCctJykKICAgICAgICAgICAgcHJpbnQoanNvbi5kdW1wcyh7J3R5cGUnOidNQVBTX0VOVFJZJywncGlkJzppbnQocGlkKSwnc3RhcnQnOicweCcrc3RhcnRfcywnZW5kJzonMHgnK2VuZF9zLCdwZXJtJzpwZXJtLCdwYXRobmFtZSc6cGF0aG5hbWVbOjEyMF19KSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoanNvbi5kdW1wcyh7J3R5cGUnOidNQVBTX0VSUk9SJywnZXJyb3InOnN0cihlKX0pKQo=' | base64 -d > /tmp/capture_maps.py
+          echo "=== maps capture script written ==="
           cat > /tmp/smaps-sampler.sh << 'SMAPS'
           #!/bin/bash
           # A-3 smaps_rollup sampler — runs as background process
@@ -1034,18 +1037,21 @@ jobs:
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
               extract_top_mappings 6 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_6GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"path\":\"$SNAPSHOT_DIR/smaps-6gb.txt\"}"
             fi
             if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb.txt" 2>/dev/null
               extract_top_mappings 10 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_10GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"path\":\"$SNAPSHOT_DIR/smaps-10gb.txt\"}"
             fi
             if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb.txt" 2>/dev/null
               extract_top_mappings 13 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_13GB=1
               smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"path\":\"$SNAPSHOT_DIR/smaps-13gb.txt\"}"
             fi
