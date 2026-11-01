@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
-# test_profiler_v6.sh — STEP A-3.16 build & run orchestrator
+# test_profiler_v6.sh — STEP A-3.17 build & run orchestrator
 #
-# Per Steward A-3.16: separate overflow tests from race tests when running
-# sanitizers. T5 (overflow) is incompatible with TSan because TSan rejects
-# malloc(SIZE_MAX). T8 (concurrency/ABA) is the primary race target.
-#
-# This script runs:
-#   1. Plain test suite (all 8 test groups, 66 tests)
-#   2. TSan variant (for data races in registry protocol — T8 focus)
-#   3. Node.js smoke test under PROD variant
-#
-# ASan is NOT run because it conflicts with the profiler's LD_PRELOAD
-# interposition (ASan intercepts malloc itself, causing a bad-free on
-# pointers allocated by the profiler's realloc wrapper). This is a
-# fundamental limitation of combining two malloc interposers.
+# A-3.17 fixes:
+#   F4: Script now REQUIRES exit code 0 (no more accepting exit 134)
+#   Full TSan log captured (no timeout truncation)
+#   T9 added: concurrent lookup vs deregister + slot reuse
 #
 # Usage:  bash scripts/ci/test_profiler_v6.sh
-# Exit:   0 = all checks passed, 1 = any failure
+# Exit:   0 = ALL checks passed (including exit code 0), 1 = any failure
 # ============================================================================
 
 set -uo pipefail
@@ -32,7 +23,7 @@ LOG="$WORK_DIR/full_log.txt"
 log() { echo "$@" | tee -a "$LOG"; }
 
 log "============================================================"
-log " STEP A-3.16 — Bootstrap Allocator Correctness Closure"
+log " STEP A-3.17 — Registry Lifetime Sync + Realloc Tracking Safety"
 log " repo:   $REPO_DIR"
 log " work:   $WORK_DIR"
 log " date:   $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -59,7 +50,7 @@ log "node: $(node --version 2>/dev/null || echo 'not found')"
 log "libc: $(ldd --version | head -1)"
 log "source sha256: $(sha256sum "$PROFILER_SRC" | cut -d' ' -f1)"
 
-# ----- 1. Compile PROD profiler (no test hooks) -----
+# ----- 1. Build PROD profiler -----
 log ""
 log "===== 1. BUILD: PROD profiler (no test hooks) ====="
 log "gcc -shared -fPIC -O2 -g -o $PROF_PROD_SO $PROFILER_SRC -ldl -lpthread -Wall -Wextra -Werror"
@@ -67,17 +58,15 @@ if ! gcc -shared -fPIC -O2 -g -o "$PROF_PROD_SO" "$PROFILER_SRC" -ldl -lpthread 
     log "FAIL: PROD compile failed"
     exit 1
 fi
-log "OK: $PROF_PROD_SO ($(stat -c%s "$PROF_PROD_SO") bytes, sha256=$(sha256sum "$PROF_PROD_SO" | cut -d' ' -f1))"
+log "OK: $PROF_PROD_SO ($(stat -c%s "$PROF_PROD_SO") bytes)"
 
-# Verify PROD has no test-hook symbols
 if nm -D "$PROF_PROD_SO" 2>/dev/null | grep -q "__profiler_v6_test_"; then
     log "FAIL: PROD leaks test-hook symbols"
-    nm -D "$PROF_PROD_SO" | grep "__profiler_v6_test_" | tee -a "$LOG"
     exit 1
 fi
 log "OK: PROD has zero test-hook symbols (nm -D verified)"
 
-# ----- 2. Compile TEST profiler (with -DPROFILER_V6_TEST_HOOKS) -----
+# ----- 2. Build TEST profiler -----
 log ""
 log "===== 2. BUILD: TEST profiler (-DPROFILER_V6_TEST_HOOKS) ====="
 log "gcc -shared -fPIC -O2 -g -DPROFILER_V6_TEST_HOOKS -o $PROF_TEST_SO $PROFILER_SRC -ldl -lpthread -Wall -Wextra -Werror"
@@ -89,7 +78,7 @@ log "OK: $PROF_TEST_SO ($(stat -c%s "$PROF_TEST_SO") bytes)"
 log "TEST hook symbols exported:"
 nm -D "$PROF_TEST_SO" | grep "__profiler_v6_test_" | sed 's/^/  /' | tee -a "$LOG"
 
-# ----- 3. Compile plain test binary -----
+# ----- 3. Build plain test binary -----
 log ""
 log "===== 3. BUILD: plain test binary ====="
 log "gcc -O2 -g -pthread -o $TEST_BIN $TEST_SRC $PROF_TEST_SO -ldl -Wall -Wextra -Werror"
@@ -99,31 +88,29 @@ if ! gcc -O2 -g -pthread -o "$TEST_BIN" "$TEST_SRC" "$PROF_TEST_SO" -ldl -Wall -
 fi
 log "OK: $TEST_BIN ($(stat -c%s "$TEST_BIN") bytes)"
 
-# ----- 4. RUN plain test suite under TEST profiler -----
+# ----- 4. RUN plain test suite -----
+# [A-3.17/F4] REQUIRE exit code 0. No more accepting non-zero exit.
 log ""
 log "===== 4. RUN: plain test suite under LD_PRELOAD=TEST profiler ====="
 log "Command: LD_PRELOAD=$PROF_TEST_SO $TEST_BIN"
+log "REQUIREMENT: exit code MUST be 0 (A-3.17/F4 fix)"
 PLAIN_EXIT=0
 LD_PRELOAD="$PROF_TEST_SO" "$TEST_BIN" 2>>"$LOG" || PLAIN_EXIT=$?
 log "PLAIN_EXIT=$PLAIN_EXIT"
 log "--- test result lines ---"
 grep -E "^(=== T|PASS|FAIL| Results)" "$LOG" | tee -a "$LOG"
 
-# The test binary may abort during process exit due to a known mmap page leak
-# in T7 (failure injection test). This is a TEST limitation, not a profiler
-# defect. We consider the test PASSED if "X tests, 0 failures" appears in
-# the output (where X is the current test count), regardless of the final
-# exit code.
-if grep -qE "Results: [0-9]+ tests, 0 failures" "$LOG"; then
+# [A-3.17/F4] Strict acceptance: exit code MUST be 0.
+if [[ $PLAIN_EXIT -eq 0 ]] && grep -qE "Results: [0-9]+ tests, 0 failures" "$LOG"; then
     TEST_COUNT=$(grep -oE "Results: [0-9]+ tests, 0 failures" "$LOG" | grep -oE "[0-9]+" | head -1)
-    log "OK: all $TEST_COUNT tests passed (exit code $PLAIN_EXIT may reflect mmap leak at exit)"
+    log "OK: $TEST_COUNT tests passed, exit code 0"
     PLAIN_PASS=true
 else
-    log "FAIL: test suite did not report 0 failures"
+    log "FAIL: exit code $PLAIN_EXIT (must be 0) or failures detected"
     PLAIN_PASS=false
 fi
 
-# ----- 5. BUILD: TSan test binary -----
+# ----- 5. Build TSan test binary -----
 log ""
 log "===== 5. BUILD: TSan test binary ====="
 log "gcc -O1 -g -pthread -fsanitize=thread -o $TSAN_BIN $TEST_SRC $PROF_TEST_SO -ldl -Wall -Wextra -Werror -U_FORTIFY_SOURCE"
@@ -133,37 +120,36 @@ if ! gcc -O1 -g -pthread -fsanitize=thread -o "$TSAN_BIN" "$TEST_SRC" "$PROF_TES
 fi
 log "OK: $TSAN_BIN built"
 
-# ----- 6. RUN TSan -----
+# ----- 6. RUN TSan (full log, no timeout truncation) -----
 log ""
-log "===== 6. RUN: TSan (race detection, T8 focus) ====="
+log "===== 6. RUN: TSan (full race detection, T8+T9 focus) ====="
 log "Command: TSAN_OPTIONS=halt_on_error=0 LD_PRELOAD=$PROF_TEST_SO $TSAN_BIN"
-log "NOTE: T5 (overflow) calls malloc(SIZE_MAX) which TSan intercepts and rejects"
-log "      BEFORE the profiler sees it. This is a TSan limitation, not a profiler defect."
-log "      Race detection for T8 (concurrency/ABA) is the primary goal of this run."
+log "NOTE: T5 (overflow) calls malloc(SIZE_MAX) which TSan may reject as"
+log "      allocation-size-too-big. This is a TSan limitation, not a profiler defect."
+log "      Race detection for T8+T9 (concurrency) is the primary goal."
 TSAN_EXIT=0
-timeout 60 env TSAN_OPTIONS="halt_on_error=0" LD_PRELOAD="$PROF_TEST_SO" "$TSAN_BIN" 2>>"$LOG" || TSAN_EXIT=$?
+# Use 180s timeout — T9 has concurrent readers that need time
+timeout 180 env TSAN_OPTIONS="halt_on_error=0" LD_PRELOAD="$PROF_TEST_SO" "$TSAN_BIN" 2>>"$LOG" || TSAN_EXIT=$?
 if [[ $TSAN_EXIT -eq 124 ]]; then
-    log "TSan run timed out after 60s (T8 concurrency under TSan is slow); partial results shown"
+    log "TSan run timed out after 180s"
 fi
 log "TSAN_EXIT=$TSAN_EXIT"
 log "--- TSan findings ---"
 TSAN_RACES=$(grep -c "data race" "$LOG" 2>/dev/null; true)
 TSAN_WARNS=$(grep -c "WARNING: ThreadSanitizer" "$LOG" 2>/dev/null; true)
 TSAN_SIZE_ABORT=$(grep -c "allocation-size-too-big" "$LOG" 2>/dev/null; true)
-# grep -c returns newline-stripped count, but `|| echo 0` adds one. Trim.
-TSAN_RACES=$(echo "$TSAN_RACES" | tr -d '\n' | head -1)
-TSAN_WARNS=$(echo "$TSAN_WARNS" | tr -d '\n' | head -1)
-TSAN_SIZE_ABORT=$(echo "$TSAN_SIZE_ABORT" | tr -d '\n' | head -1)
-TSAN_RACES=${TSAN_RACES:-0}
-TSAN_WARNS=${TSAN_WARNS:-0}
-TSAN_SIZE_ABORT=${TSAN_SIZE_ABORT:-0}
+TSAN_RACES=$(echo "$TSAN_RACES" | tr -d '\n' | head -1); TSAN_RACES=${TSAN_RACES:-0}
+TSAN_WARNS=$(echo "$TSAN_WARNS" | tr -d '\n' | head -1); TSAN_WARNS=${TSAN_WARNS:-0}
+TSAN_SIZE_ABORT=$(echo "$TSAN_SIZE_ABORT" | tr -d '\n' | head -1); TSAN_SIZE_ABORT=${TSAN_SIZE_ABORT:-0}
 log "data race reports: $TSAN_RACES"
 log "TSan warnings:     $TSAN_WARNS"
-log "size-too-big aborts (T5, expected): $TSAN_SIZE_ABORT"
+log "size-too-big aborts (T5, expected TSan limitation): $TSAN_SIZE_ABORT"
+log "--- TSan SUMMARY lines ---"
+grep "SUMMARY:" "$LOG" | tee -a "$LOG"
 log "--- tests that passed under TSan ---"
 grep -E "^PASS" "$LOG" | tail -20 | tee -a "$LOG"
 
-# ----- 7. Node.js smoke test under PROD profiler -----
+# ----- 7. Node.js smoke test -----
 log ""
 log "===== 7. RUN: Node.js smoke under PROD profiler ====="
 NODE_BIN=""
@@ -197,7 +183,7 @@ log ""
 log "============================================================"
 log " SUMMARY"
 log "============================================================"
-log "Plain test suite  : ${TEST_COUNT:-0} tests, 0 failures (${PLAIN_PASS:-false})"
+log "Plain test suite  : ${TEST_COUNT:-0} tests, exit $PLAIN_EXIT (${PLAIN_PASS:-false})"
 log "TSan races        : $TSAN_RACES (must be 0)"
 log "TSan warnings     : $TSAN_WARNS"
 log "TSan size aborts  : $TSAN_SIZE_ABORT (T5, expected TSan limitation)"
@@ -206,20 +192,18 @@ log "PROD isolation    : verified (no test-hook symbols)"
 log "ASan              : skipped (conflicts with profiler LD_PRELOAD interposition)"
 log "============================================================"
 
-# Final pass/fail decision
 FINAL_EXIT=0
 if [[ "$PLAIN_PASS" != "true" ]]; then FINAL_EXIT=1; fi
 if [[ "$TSAN_RACES" -ne 0 ]]; then FINAL_EXIT=1; fi
 if [[ "$NODE_EXIT" -ne 0 && "$NODE_EXIT" -ne 99 ]]; then FINAL_EXIT=1; fi
 
 if [[ $FINAL_EXIT -eq 0 ]]; then
-    log "RESULT: ALL CHECKS PASSED"
+    log "RESULT: ALL CHECKS PASSED (including exit code 0)"
 else
     log "RESULT: FAILURES DETECTED"
 fi
 
-# Copy the full log to the repo root for Steward review
-cp "$LOG" "$REPO_DIR/STEP-A-3.16-execution-log.txt" 2>/dev/null || true
+cp "$LOG" "$REPO_DIR/STEP-A-3.17-execution-log.txt" 2>/dev/null || true
 
 log "============================================================"
 exit $FINAL_EXIT

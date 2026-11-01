@@ -1,38 +1,48 @@
 // malloc_profiler_v6.c — Safe LD_PRELOAD profiler with constructor initialization
 // ============================================================================
-// STEP A-3.16 — Bootstrap Allocator Correctness Closure
+// STEP A-3.17 — Registry Lifetime Synchronization + Realloc Tracking Safety
 //
-// This version applies the four P0 fixes mandated by Steward STEP A-3.16:
+// This version fixes the four findings from Steward's independent review of
+// STEP A-3.16:
 //
-//   C1: REGISTRY PROTOCOL — slot acquisition now uses a three-phase protocol:
-//       RESERVE (CAS ptr 0 → RESERVE_SENTINEL) → INIT (write size) → PUBLISH
-//       (CAS RESERVE_SENTINEL → actual ptr) with release semantics. Readers
-//       use acquire-load and only read metadata after a non-sentinel ptr is
-//       observed. Deregister uses the same protocol in reverse to allow safe
-//       slot reuse without ABA.
+//   F1: REGISTRY RACE ON `size` FIELD
+//       The A-3.16 version used CAS on `ptr` with release/acquire ordering,
+//       but `size` was a plain (non-atomic) field. A reader that loaded `ptr`
+//       (acquire) before deregister's CAS could then race with the `size = 0`
+//       store in deregister — a genuine data race.
 //
-//   C2: REALLOC FAILURE SAFETY — the old pointer's registry entry is NOT
-//       deregistered until the new allocation has succeeded AND data has been
-//       copied. If real_malloc fails, the old pointer retains its metadata
-//       and remains valid per the POSIX realloc contract (return NULL, leave
-//       ptr intact).
+//       FIX: The entire bootstrap registry is now protected by a single
+//       pthread_mutex_t (g_bootstrap_registry_lock). All reads and writes
+//       of {ptr, size} happen under the lock, providing real mutual-exclusion
+//       lifetime synchronization. This is correct because the bootstrap
+//       allocator is NOT a hot path (used only during constructor + tests).
 //
-//   C3: POINTER CLASSIFICATION — is_bootstrap_ptr() now performs EXACT-MATCH
-//       against the registry rather than range-based address comparison.
-//       Unknown pointers (inside the buffer range but not a registered
-//       allocation) are NOT treated as bootstrap and fall through to the real
-//       allocator with a diagnostic counter. This eliminates the silent
-//       memory-leak risk of the previous range-based check.
+//   F2: PUBLICATION FAILURE RETURNED ALLOCATION WITHOUT METADATA
+//       In A-3.16, if bootstrap_publish_slot's CAS failed, bootstrap_alloc
+//       still returned `p` to the caller — an untracked allocation, exactly
+//       what C4 was supposed to prevent.
 //
-//   C4: REGISTRY EXHAUSTION — when the registry is full, bootstrap_alloc()
-//       now returns NULL instead of returning an unregistered allocation.
-//       This is a hard-fail policy: callers (dlsym, constructor) must handle
-//       NULL gracefully. The previous silent-data-loss behavior is removed.
-//       A diagnostic counter (g_bootstrap_registry_full) records the event.
+//       FIX: bootstrap_alloc now checks the result of registration and
+//       returns NULL on failure (hard-fail per C4). With the mutex approach,
+//       registration is infallible under the lock, but the check remains
+//       as defense-in-depth and to satisfy the Steward's requirement that
+//       "publication failure must propagate to the caller."
 //
-// Standalone file history: extracted from Base64 blob in commit 46233a6
-//   (.github/workflows/store-runtime-contract-proof.yml line 477), then
-//   evolved through STEP A-3.15 (commit 7888199) and STEP A-3.16 (this file).
+//   F3: NORMAL REALLOC TRACKING LOSS ON FAILURE
+//       In A-3.16's normal (non-bootstrap) realloc path, track_free(ptr) was
+//       called BEFORE real_realloc. If real_realloc failed, the old pointer's
+//       tracking was already removed, corrupting profiler statistics (though
+//       the pointer itself was valid per POSIX).
+//
+//       FIX: track_free is now called only AFTER real_realloc succeeds.
+//       On failure, the old pointer's tracking remains intact.
+//
+//   F4: (addressed in test script, not in this file)
+//       The test script accepted non-zero exit codes if "0 failures" appeared
+//       in output. Fixed in test_profiler_v6.sh to require exit code 0.
+//
+// Standalone file history: extracted from Base64 blob in commit 46233a6,
+//   evolved through A-3.15 (7888199), A-3.16 (3f0a508), A-3.17 (this file).
 // ============================================================================
 
 #define _GNU_SOURCE
@@ -45,6 +55,7 @@
 #include <stdatomic.h>
 #include <malloc.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #define MIN_TRACK_SIZE 4096
 #define MAX_TRACK_SIZE 1048576
@@ -62,168 +73,156 @@ static const char* BUCKET_NAMES[NUM_BUCKETS] = {
 // ============================================================================
 // Bootstrap allocator: used ONLY during constructor when dlsym calls calloc.
 //
-// [C1] REGISTRY PROTOCOL
-//   Each slot has a `ptr` field that goes through these states:
-//     EMPTY (0) → RESERVE_SENTINEL (CAS by acquirer) → actual ptr (CAS by
-//     acquirer after writing size) → ... → 0 (CAS by deregisterer)
-//   The RESERVE_SENTINEL state prevents ABA: a reader that observed ptr=P
-//   cannot be fooled into reading stale metadata if the slot is freed and
-//   reused, because the reuser must transition through RESERVE_SENTINEL
-//   first (which the reader will detect as "in transition" and skip).
+// [A-3.17/F1] The entire registry is protected by a single mutex. This
+// provides real lifetime synchronization: a reader holding the lock sees a
+// consistent {ptr, size} pair, and a writer (deregister/publish) cannot
+// modify either field while a reader holds the lock.
 //
-//   Readers use atomic_load_explicit(..., memory_order_acquire) on ptr and
-//   only proceed if the value is a real pointer (not 0, not RESERVE_SENTINEL).
-//   Writers use atomic_store_explicit(..., memory_order_release) when
-//   publishing the actual ptr, after writing size with a relaxed store
-//   (ordered by the release on ptr).
+// The mutex is statically initialized (PTHREAD_MUTEX_INITIALIZER) so no
+// constructor is needed for the lock itself. The bootstrap allocator is
+// NOT a hot path — it is used during the constructor (single-threaded) and
+// in tests. Mutex overhead is negligible for this usage pattern.
 // ============================================================================
 #define BOOTSTRAP_SIZE 65536
 static char g_bootstrap_buf[BOOTSTRAP_SIZE];
 static atomic_size_t g_bootstrap_pos = 0;
 
-// Sentinel value marking a slot as "reserved, metadata not yet published".
-// Must be non-NULL and non-zero. We use 1 since real pointers are always
-// aligned to at least 16 bytes.
-#define BOOTSTRAP_RESERVE_SENTINEL ((uintptr_t)1)
-
 #define MAX_BOOTSTRAP_ALLOCS 64
+
+// [A-3.17/F1] Single mutex protecting the entire registry.
+// All access to g_bootstrap_registry[] fields (ptr AND size) MUST hold this lock.
+static pthread_mutex_t g_bootstrap_registry_lock = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct {
-    atomic_uintptr_t ptr;   // 0 = empty, 1 = reserved, else = actual ptr
-    size_t            size; // aligned size; valid only when ptr is a real ptr
+    void*  ptr;   // NULL = empty slot; else pointer into g_bootstrap_buf
+    size_t size;   // aligned allocation size; valid only when ptr != NULL
 } bootstrap_entry;
 static bootstrap_entry g_bootstrap_registry[MAX_BOOTSTRAP_ALLOCS];
 
-// Diagnostic counters (non-atomic; only read in output_stats under g_in_hook)
-static atomic_long g_bootstrap_registry_full = 0;       // [C4] exhaustion events
-static atomic_long g_bootstrap_unknown_in_range = 0;     // [C3] classification fallbacks
+// Diagnostic counters
+static atomic_long g_bootstrap_registry_full = 0;
+static atomic_long g_bootstrap_unknown_in_range = 0;
 
-// [C1] Reserve a slot by CAS-ing ptr from 0 → RESERVE_SENTINEL.
-// Returns slot index or -1 if no empty slot is available.
-static int bootstrap_reserve_slot(void) {
+// [A-3.17/F1] All registry operations hold g_bootstrap_registry_lock.
+// This eliminates the data race on the `size` field that existed in A-3.16.
+
+// Register a bootstrap allocation under the lock. Returns 0 on success, -1 if
+// no empty slot is available. Caller MUST hold g_bootstrap_registry_lock.
+static int bootstrap_register_locked(void* ptr, size_t size) {
     for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        uintptr_t expected = 0;
-        if (atomic_compare_exchange_strong(&g_bootstrap_registry[i].ptr,
-                                           &expected,
-                                           BOOTSTRAP_RESERVE_SENTINEL)) {
-            return i;
+        if (g_bootstrap_registry[i].ptr == NULL) {
+            g_bootstrap_registry[i].ptr = ptr;
+            g_bootstrap_registry[i].size = size;
+            return 0;
         }
     }
-    return -1;
+    return -1;  // registry full
 }
 
-// [C1] Publish a reserved slot: write size (relaxed) then CAS ptr from
-// RESERVE_SENTINEL → actual ptr (release). If the CAS fails, another thread
-// forced a reset (should not happen in normal flow); we fall back to clearing.
-static void bootstrap_publish_slot(int idx, void* ptr, size_t size) {
-    g_bootstrap_registry[idx].size = size;
-    uintptr_t expected = BOOTSTRAP_RESERVE_SENTINEL;
-    if (!atomic_compare_exchange_strong(
-            &g_bootstrap_registry[idx].ptr, &expected, (uintptr_t)ptr)) {
-        // CAS failed: slot was reset by someone. Clear our size and walk away.
-        // The pointer is still valid (in the static buffer); we just could not
-        // register it. Callers must treat this as exhaustion.
-        g_bootstrap_registry[idx].size = 0;
-        atomic_store(&g_bootstrap_registry[idx].ptr, 0);
-    }
-    // On success, the release ordering on the CAS publishes `size` to readers.
-}
-
-// [C1] Look up the size of a bootstrap pointer. Uses acquire-load on ptr so
-// that the subsequent read of `size` sees the value published by the writer.
+// Look up the size of a bootstrap pointer. Thread-safe (acquires lock).
 // Returns 0 if the pointer is not a registered bootstrap allocation.
 static size_t bootstrap_lookup_size(void* ptr) {
     if (!ptr) return 0;
-    uintptr_t p = (uintptr_t)ptr;
+    size_t result = 0;
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
     for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        uintptr_t stored = atomic_load_explicit(&g_bootstrap_registry[i].ptr,
-                                                memory_order_acquire);
-        // Skip empty (0) and reserved (sentinel) slots.
-        if (stored == 0 || stored == BOOTSTRAP_RESERVE_SENTINEL) continue;
-        if (stored == p) {
-            return g_bootstrap_registry[i].size;
+        if (g_bootstrap_registry[i].ptr == ptr) {
+            result = g_bootstrap_registry[i].size;
+            break;
         }
     }
-    return 0;
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
+    return result;
 }
 
-// [C1] Deregister a bootstrap pointer. CAS ptr from actual → 0 so that the
-// slot becomes available for reuse. The CAS provides release ordering,
-// ensuring any reader that observed the old ptr has finished reading metadata
-// before the slot is reused.
+// Deregister a bootstrap pointer. Thread-safe (acquires lock).
+// Returns slot index on success, -1 if not found.
 static int bootstrap_deregister(void* ptr) {
     if (!ptr) return -1;
-    uintptr_t p = (uintptr_t)ptr;
+    int found = -1;
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
     for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        uintptr_t stored = atomic_load_explicit(&g_bootstrap_registry[i].ptr,
-                                                memory_order_acquire);
-        if (stored == p) {
-            // CAS to 0. If this fails, someone else already deregistered or
-            // the slot was reset; either way, the entry is gone for us.
-            uintptr_t expected = p;
-            if (atomic_compare_exchange_strong(
-                    &g_bootstrap_registry[i].ptr, &expected, 0)) {
-                g_bootstrap_registry[i].size = 0;
-                return i;
-            }
-            return -1;
+        if (g_bootstrap_registry[i].ptr == ptr) {
+            g_bootstrap_registry[i].ptr = NULL;
+            g_bootstrap_registry[i].size = 0;
+            found = i;
+            break;
         }
     }
-    return -1;
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
+    return found;
 }
 
-// [C3] Exact-match pointer classification. Returns 1 only if the pointer is a
-// registered bootstrap allocation (i.e., found in the registry). Returns 0
-// for unknown pointers, including those that happen to fall within the
-// buffer's address range but are not registered.
+// [C3/A-3.17] Exact-match pointer classification. Thread-safe.
+// Returns 1 only if the pointer is a registered bootstrap allocation.
+// Returns 0 for unknown pointers, including those in the buffer range
+// but not registered.
+//
+// Fast-path optimization: if the pointer is outside the bootstrap buffer's
+// address range, it cannot be in the registry (all registry entries point
+// into g_bootstrap_buf). Skip the lock in that case. For in-range pointers,
+// acquire the lock and do exact-match. This is safe: the range check is a
+// conservative filter — out-of-range → definitely not registered → skip.
 static int is_bootstrap_ptr(void* ptr) {
     if (!ptr) return 0;
-    uintptr_t p = (uintptr_t)ptr;
-    for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        uintptr_t stored = atomic_load_explicit(&g_bootstrap_registry[i].ptr,
-                                                memory_order_acquire);
-        if (stored == 0 || stored == BOOTSTRAP_RESERVE_SENTINEL) continue;
-        if (stored == p) return 1;
+    // Fast path: outside buffer range → definitely not bootstrap.
+    if ((char*)ptr < g_bootstrap_buf ||
+        (char*)ptr >= g_bootstrap_buf + BOOTSTRAP_SIZE) {
+        return 0;
     }
-    return 0;
+    // Slow path: in range → take lock and do exact match.
+    int found = 0;
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
+    for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
+        if (g_bootstrap_registry[i].ptr == ptr) { found = 1; break; }
+    }
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
+    return found;
 }
 
-// Range check helper (used only for diagnostics to detect unknown-in-range).
+// Range check helper (for diagnostics only).
 static int in_bootstrap_buffer_range(void* ptr) {
     return (char*)ptr >= g_bootstrap_buf &&
            (char*)ptr <  g_bootstrap_buf + BOOTSTRAP_SIZE;
 }
 
-// [C4] Fixed bootstrap allocator: returns NULL on registry exhaustion rather
-// than returning an unregistered allocation.
+// [A-3.17/F2] Fixed bootstrap allocator: returns NULL on registry exhaustion
+// OR on publication failure. The caller never receives an untracked allocation.
 static void* bootstrap_alloc(size_t size) {
     // Guard 1: size + 15 must not overflow size_t.
     if (size > (SIZE_MAX - 15)) return NULL;
     // Align to 16 bytes.
     size = (size + 15) & ~15;
-    if (size == 0) size = 16;            // give zero-size a minimal slot
+    if (size == 0) size = 16;
     // Guard 2: a single aligned allocation cannot exceed the buffer.
     if (size > BOOTSTRAP_SIZE) return NULL;
     // Atomically reserve position in the static buffer.
+    // The bump pointer (g_bootstrap_pos) is the only field that needs to be
+    // atomic — it's a monotonic counter, not metadata.
     size_t pos = atomic_fetch_add(&g_bootstrap_pos, size);
     // Guard 3: position must be within buffer.
     if (pos >= BOOTSTRAP_SIZE || pos > BOOTSTRAP_SIZE - size) {
-        // Buffer exhausted. (pos was advanced; subsequent calls also fail.)
-        return NULL;
+        return NULL;  // buffer exhausted
     }
     void* p = g_bootstrap_buf + pos;
-    // [C1] Register the allocation using the three-phase protocol:
-    // reserve slot → write size → publish ptr. This ensures concurrent
-    // readers never observe a ptr without its size.
-    int slot = bootstrap_reserve_slot();
-    if (slot < 0) {
-        // [C4] Registry exhausted. Hard-fail: return NULL so the caller
-        // (typically dlsym) does not receive an untracked allocation.
+
+    // [A-3.17/F1+F2] Register under the lock. If registration fails (registry
+    // full), return NULL — do NOT return the untracked allocation.
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
+    int rc = bootstrap_register_locked(p, size);
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
+
+    if (rc != 0) {
+        // [C4] Registry exhausted. Hard-fail: return NULL.
         atomic_fetch_add(&g_bootstrap_registry_full, 1);
         return NULL;
     }
-    bootstrap_publish_slot(slot, p, size);
     return p;
 }
+
+// ============================================================================
+// Tracked-allocation data structures (unchanged from A-3.16)
+// ============================================================================
 
 typedef struct {
     void* addr;
@@ -446,7 +445,7 @@ static void profiler_init(void) {
 
     char buf[256];
     int len = snprintf(buf, sizeof(buf),
-        "{\"type\":\"PROFILER6_INIT\",\"pid\":%d,\"note\":\"v6-a316 constructor init (reserve/init/publish registry, exact-match classify, hard-fail exhaustion)\"}\n",
+        "{\"type\":\"PROFILER6_INIT\",\"pid\":%d,\"note\":\"v6-a317 constructor init (mutex-protected registry, exact-match classify, hard-fail exhaustion, realloc tracking safety)\"}\n",
         getpid());
     if (len > 0) write(2, buf, len);
 }
@@ -517,10 +516,11 @@ void *calloc(size_t nmemb, size_t size) {
     return ptr;
 }
 
-// [C2] realloc with failure-safe metadata handling.
-// The old pointer's registry entry is only deregistered AFTER the new
-// allocation succeeds AND data is copied. If real_malloc fails, the old
-// pointer retains its metadata and remains valid per POSIX.
+// [A-3.17/F3] realloc with tracking safety on failure.
+// - Bootstrap path: old metadata deregistered only after new allocation
+//   succeeds AND data is copied (carried over from A-3.16 C2).
+// - Normal path: track_free(old) called only AFTER real_realloc succeeds.
+//   On failure, old pointer's tracking remains intact.
 void *realloc(void *ptr, size_t size) {
     // ---- Pre-init path ----
     if (!atomic_load(&g_initialized)) {
@@ -530,7 +530,6 @@ void *realloc(void *ptr, size_t size) {
         }
         // ptr is a bootstrap pointer, or real_realloc is unavailable.
         if (size == 0) {
-            // realloc(ptr, 0): free the bootstrap allocation, return NULL.
             if (ptr && is_bootstrap_ptr(ptr)) {
                 bootstrap_deregister(ptr);
             }
@@ -545,12 +544,10 @@ void *realloc(void *ptr, size_t size) {
         }
         void *new_p = bootstrap_alloc(size);
         if (!new_p) {
-            // [C2] Allocation failed. Old pointer's metadata is untouched
-            // (we only called bootstrap_lookup_size, which is read-only).
-            // Return NULL per POSIX; caller's ptr is still valid.
+            // [C2] Allocation failed. Old pointer's metadata is untouched.
             return NULL;
         }
-        if (new_p && ptr) {
+        if (ptr) {
             size_t copy_size = (old_size < size) ? old_size : size;
             if (copy_size > 0) {
                 memcpy(new_p, ptr, copy_size);
@@ -567,14 +564,13 @@ void *realloc(void *ptr, size_t size) {
     void *caller = __builtin_extract_return_addr(__builtin_return_address(0));
     if (g_in_hook) return real_realloc(ptr, size);
 
-    // [C3] Bootstrap pointer that survived past init: do NOT forward to
-    // real_realloc. Allocate fresh, copy, then deregister old — IN THAT ORDER.
+    // Bootstrap pointer that survived past init: do NOT forward to
+    // real_realloc. Allocate fresh, copy, then deregister old.
     if (ptr && is_bootstrap_ptr(ptr)) {
         g_in_hook = 1;
         size_t old_size = bootstrap_lookup_size(ptr);
         void *new_ptr = NULL;
         if (size == 0) {
-            // realloc(ptr, 0) = free. Deregister old, return NULL.
             bootstrap_deregister(ptr);
             g_in_hook = 0;
             return NULL;
@@ -582,11 +578,9 @@ void *realloc(void *ptr, size_t size) {
         new_ptr = real_malloc(size);
         if (!new_ptr) {
             // [C2] Allocation failed. Old pointer's metadata is UNTOUCHED.
-            // Per POSIX, return NULL and leave ptr valid.
             g_in_hook = 0;
             return NULL;
         }
-        // Copy data BEFORE deregistering old.
         size_t copy_size = (old_size < size) ? old_size : size;
         if (copy_size > 0) {
             memcpy(new_ptr, ptr, copy_size);
@@ -606,22 +600,24 @@ void *realloc(void *ptr, size_t size) {
         return new_ptr;
     }
 
-    // [C3] Unknown pointer in bootstrap buffer range (not a registered alloc).
-    // Record diagnostic and fall through to real allocator. This is the safe
-    // path: we do NOT assume the pointer is a valid bootstrap allocation.
+    // Unknown pointer in bootstrap buffer range: record and fall through.
     if (ptr && in_bootstrap_buffer_range(ptr) && !is_bootstrap_ptr(ptr)) {
         atomic_fetch_add(&g_bootstrap_unknown_in_range, 1);
-        // Fall through to real_realloc; if it crashes, that's the caller's
-        // bug (passing an interior/free pointer), not ours.
     }
 
-    // Normal (non-bootstrap) path.
+    // [A-3.17/F3] Normal (non-bootstrap) path.
+    // Call real_realloc FIRST. Only remove old tracking on success.
+    // On failure, ptr is still valid (POSIX) and its tracking is intact.
     g_in_hook = 1;
-    if (ptr) track_free(ptr);
     void *new_ptr = real_realloc(ptr, size);
-    if (new_ptr && size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
-        track_alloc(new_ptr, size, caller);
+    if (new_ptr) {
+        // Success: remove old tracking and add new.
+        if (ptr) track_free(ptr);
+        if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
+            track_alloc(new_ptr, size, caller);
+        }
     }
+    // On failure (new_ptr == NULL): ptr is unchanged, tracking preserved.
     g_in_hook = 0;
     long count = atomic_fetch_add(&g_call_count, 1) + 1;
     if (count % OUTPUT_INTERVAL == 0) {
@@ -643,7 +639,6 @@ void free(void *ptr) {
     }
 
     // ---- Post-init path ----
-    // [C3] Use exact-match classification.
     if (is_bootstrap_ptr(ptr)) {
         if (g_in_hook) return;
         g_in_hook = 1;
@@ -652,12 +647,10 @@ void free(void *ptr) {
         return;
     }
 
-    // [C3] Unknown pointer in bootstrap buffer range: record and fall through.
+    // Unknown pointer in bootstrap buffer range: record and return without
+    // freeing (leak, not crash).
     if (in_bootstrap_buffer_range(ptr)) {
         atomic_fetch_add(&g_bootstrap_unknown_in_range, 1);
-        // Do NOT call real_free on a pointer that might be interior to the
-        // static buffer. Return without freeing; this is a leak but not a
-        // crash. The diagnostic counter records the event.
         return;
     }
 
@@ -690,36 +683,49 @@ void __profiler_v6_test_set_real_malloc(void* (*fn)(size_t)) {
     real_malloc = fn;
 }
 
-// [C2 test support] Returns the current registry occupancy count (0..64).
-// Useful for tests that need to verify slot reuse.
+// Returns the current registry occupancy count (0..64). Thread-safe.
 int __profiler_v6_test_registry_occupancy(void) {
     int count = 0;
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
     for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        uintptr_t stored = atomic_load_explicit(&g_bootstrap_registry[i].ptr,
-                                                memory_order_acquire);
-        if (stored != 0 && stored != BOOTSTRAP_RESERVE_SENTINEL) count++;
+        if (g_bootstrap_registry[i].ptr != NULL) count++;
     }
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
     return count;
 }
 
-// [C4 test support] Returns the registry_full counter value.
 long __profiler_v6_test_registry_full_count(void) {
     return atomic_load(&g_bootstrap_registry_full);
 }
 
-// [C3 test support] Returns the unknown_in_range counter value.
 long __profiler_v6_test_unknown_in_range_count(void) {
     return atomic_load(&g_bootstrap_unknown_in_range);
 }
 
-// [C1 test support] Force-reset the registry to empty (for ABA/reuse tests).
-// DANGER: this invalidates all existing bootstrap pointers. Only call in
-// tests that have discarded all their bootstrap pointers first.
+// [A-3.17] Lookup size directly (exposes bootstrap_lookup_size for T9).
+// Thread-safe.
+size_t __profiler_v6_test_bootstrap_lookup_size(void* ptr) {
+    return bootstrap_lookup_size(ptr);
+}
+
+// [A-3.17/T7] Returns the real libc malloc pointer saved by the constructor.
+// This allows the test harness to get a WORKING allocator (bypassing the
+// profiler's interposition) for failure injection tests. The test binary
+// CANNOT use dlsym(RTLD_NEXT, "malloc") because that would return the
+// profiler's malloc symbol (LD_PRELOAD comes before libc in search order),
+// causing infinite recursion.
+void* __profiler_v6_test_get_real_malloc(void) {
+    return real_malloc;
+}
+
+// Force-reset the registry to empty (for ABA/reuse tests).
 void __profiler_v6_test_reset_registry(void) {
+    pthread_mutex_lock(&g_bootstrap_registry_lock);
     for (int i = 0; i < MAX_BOOTSTRAP_ALLOCS; i++) {
-        atomic_store(&g_bootstrap_registry[i].ptr, 0);
+        g_bootstrap_registry[i].ptr = NULL;
         g_bootstrap_registry[i].size = 0;
     }
+    pthread_mutex_unlock(&g_bootstrap_registry_lock);
     atomic_store(&g_bootstrap_pos, 0);
     atomic_store(&g_bootstrap_registry_full, 0);
     atomic_store(&g_bootstrap_unknown_in_range, 0);
