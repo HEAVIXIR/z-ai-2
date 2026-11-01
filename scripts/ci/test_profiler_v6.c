@@ -249,9 +249,18 @@ static void test_multithreaded(void) {
 
 // ============================================================================
 // T5: Overflow guards (separate from race tests)
+//
+// [A-3.18] SKIP under TSan/ASan. T5 calls calloc(huge, 3) and other
+// oversized allocations that TSan/ASan intercept and reject as
+// "allocation-size-too-big" BEFORE the profiler sees them. This causes
+// the sanitizer to abort the process (exit 66 or 139), preventing T6-T10
+// from running. Per Steward A-3.18 directive: "Separate the T5
+// oversized-allocation limitation from other test results." Skipping T5
+// under sanitizers achieves this separation cleanly.
 // ============================================================================
 static void test_overflow(void) {
     fprintf(stderr, "\n=== T5: Overflow guards ===\n");
+    SKIP_IF_DISABLED("test_overflow");
 
     volatile size_t huge = (size_t)-1 / 2;
     void *p = calloc(huge, 3);

@@ -208,35 +208,37 @@ log "============================================================"
 log "Plain test suite  : ${TEST_COUNT:-0} tests, exit $PLAIN_EXIT (${PLAIN_PASS:-false})"
 log "TSan races        : $TSAN_RACES (must be 0)"
 log "TSan warnings     : $TSAN_WARNS"
-log "TSan size aborts  : $TSAN_SIZE_ABORT (T5, expected TSan limitation)"
+log "TSan size aborts  : $TSAN_SIZE_ABORT (must be 0 — T5 skipped under sanitizer)"
 log "Node.js smoke     : exit $NODE_EXIT (expect 0)"
 log "PROD isolation    : verified (no test-hook symbols)"
 log "ASan              : skipped (conflicts with profiler LD_PRELOAD interposition)"
 log "============================================================"
 
+# [A-3.18] Final acceptance per Steward directive:
+#   - Plain suite: exit 0
+#   - TSan: exit 0 with no data races (T5 skipped under sanitizer, so no
+#     allocation-size-too-big aborts)
+#   - Node smoke: exit 0
 FINAL_EXIT=0
 if [[ "$PLAIN_PASS" != "true" ]]; then FINAL_EXIT=1; fi
 if [[ "$TSAN_RACES" -ne 0 ]]; then FINAL_EXIT=1; fi
-# TSAN_EXIT may be 66 (exit code for TSan's own error reporting when it
-# detects the intentional calloc-overflow in T5). This is NOT a data race
-# and NOT a profiler defect — it's a TSan limitation that rejects oversized
-# allocations. We accept TSAN_EXIT != 0 as long as:
-#   1. TSAN_RACES == 0 (no data races)
-#   2. TSAN_SIZE_ABORT >= 1 (the only error is the expected overflow)
-if [[ "$TSAN_RACES" -ne 0 ]]; then FINAL_EXIT=1; fi
-if [[ "$TSAN_EXIT" -ne 0 && "$TSAN_SIZE_ABORT" -lt 1 ]]; then
-    log "FAIL: TSan exited $TSAN_EXIT but no overflow abort found (unexpected)"
+if [[ "$TSAN_EXIT" -ne 0 ]]; then
+    log "FAIL: TSan exited $TSAN_EXIT (must be 0 now that T5 is skipped under sanitizer)"
+    FINAL_EXIT=1
+fi
+if [[ "$TSAN_SIZE_ABORT" -ne 0 ]]; then
+    log "FAIL: TSan reported $TSAN_SIZE_ABORT size-too-big aborts (must be 0 — T5 is skipped)"
     FINAL_EXIT=1
 fi
 if [[ "$NODE_EXIT" -ne 0 && "$NODE_EXIT" -ne 99 ]]; then FINAL_EXIT=1; fi
 
 if [[ $FINAL_EXIT -eq 0 ]]; then
-    log "RESULT: ALL CHECKS PASSED (including exit code 0)"
+    log "RESULT: ALL CHECKS PASSED (including TSan exit 0)"
 else
     log "RESULT: FAILURES DETECTED"
 fi
 
-cp "$LOG" "$REPO_DIR/STEP-A-3.17-execution-log.txt" 2>/dev/null || true
+cp "$LOG" "$REPO_DIR/STEP-A-3.18-execution-log.txt" 2>/dev/null || true
 
 log "============================================================"
 exit $FINAL_EXIT
