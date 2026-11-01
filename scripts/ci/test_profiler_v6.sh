@@ -171,6 +171,20 @@ grep "SUMMARY:" "$LOG" | tee -a "$LOG"
 log "--- tests that passed under TSan ---"
 grep -E "^PASS" "$LOG" | tail -20 | tee -a "$LOG"
 
+# [A-3.19] CRITICAL: Verify T8/T9/T10 actually RAN (not SKIPPED) under TSan
+log ""
+log "--- A-3.19 verification: T8/T9/T10 must NOT be skipped ---"
+T8_SKIPPED=$(grep -c "T8.*SKIPPED\|T8_concurrency.*SKIPPED" "$LOG" 2>/dev/null; true); T8_SKIPPED=${T8_SKIPPED:-0}
+T9_SKIPPED=$(grep -c "T9.*SKIPPED\|T9_concurrent.*SKIPPED" "$LOG" 2>/dev/null; true); T9_SKIPPED=${T9_SKIPPED:-0}
+T10_SKIPPED=$(grep -c "T10.*SKIPPED\|test_normal_realloc.*SKIPPED" "$LOG" 2>/dev/null; true); T10_SKIPPED=${T10_SKIPPED:-0}
+log "T8 skipped: $T8_SKIPPED (must be 0)"
+log "T9 skipped: $T9_SKIPPED (must be 0)"
+log "T10 skipped: $T10_SKIPPED (must be 0)"
+if [[ "$T8_SKIPPED" -ne 0 || "$T9_SKIPPED" -ne 0 || "$T10_SKIPPED" -ne 0 ]]; then
+    log "FAIL: A-3.19 requirement violated — T8/T9/T10 must run under TSan"
+    FINAL_EXIT=1
+fi
+
 # ----- 7. Node.js smoke test -----
 log ""
 log "===== 7. RUN: Node.js smoke under PROD profiler ====="
@@ -214,16 +228,17 @@ log "PROD isolation    : verified (no test-hook symbols)"
 log "ASan              : skipped (conflicts with profiler LD_PRELOAD interposition)"
 log "============================================================"
 
-# [A-3.18] Final acceptance per Steward directive:
+# [A-3.19] Final acceptance per Steward directive:
 #   - Plain suite: exit 0
-#   - TSan: exit 0 with no data races (T5 skipped under sanitizer, so no
-#     allocation-size-too-big aborts)
+#   - TSan: exit 0 with no data races
+#   - T8/T9/T10 must RUN under TSan (not skipped) — A-3.19 key requirement
 #   - Node smoke: exit 0
-FINAL_EXIT=0
+# Note: FINAL_EXIT may already be set to 1 by the skip check above.
+FINAL_EXIT=${FINAL_EXIT:-0}
 if [[ "$PLAIN_PASS" != "true" ]]; then FINAL_EXIT=1; fi
 if [[ "$TSAN_RACES" -ne 0 ]]; then FINAL_EXIT=1; fi
 if [[ "$TSAN_EXIT" -ne 0 ]]; then
-    log "FAIL: TSan exited $TSAN_EXIT (must be 0 now that T5 is skipped under sanitizer)"
+    log "FAIL: TSan exited $TSAN_EXIT (must be 0)"
     FINAL_EXIT=1
 fi
 if [[ "$TSAN_SIZE_ABORT" -ne 0 ]]; then
@@ -233,12 +248,12 @@ fi
 if [[ "$NODE_EXIT" -ne 0 && "$NODE_EXIT" -ne 99 ]]; then FINAL_EXIT=1; fi
 
 if [[ $FINAL_EXIT -eq 0 ]]; then
-    log "RESULT: ALL CHECKS PASSED (including TSan exit 0)"
+    log "RESULT: ALL CHECKS PASSED (TSan exit 0, T8/T9/T10 ran, 0 races)"
 else
     log "RESULT: FAILURES DETECTED"
 fi
 
-cp "$LOG" "$REPO_DIR/STEP-A-3.18-execution-log.txt" 2>/dev/null || true
+cp "$LOG" "$REPO_DIR/STEP-A-3.19-execution-log.txt" 2>/dev/null || true
 
 log "============================================================"
 exit $FINAL_EXIT

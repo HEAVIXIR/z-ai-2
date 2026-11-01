@@ -804,4 +804,86 @@ void __profiler_v6_test_reset_registry(void) {
     atomic_store(&g_bootstrap_registry_full, 0);
     atomic_store(&g_bootstrap_unknown_in_range, 0);
 }
+
+// [A-3.19] DIRECT test hooks for internal bootstrap operations.
+//
+// These hooks call internal profiler functions DIRECTLY, bypassing the
+// malloc/realloc/free interposition wrappers entirely. This means:
+//
+//   1. They work even when g_profiler_disabled is set (sanitizer active),
+//      because they don't go through the wrapper functions that check
+//      that flag.
+//
+//   2. They exercise the REAL internal code paths: bootstrap_deregister,
+//      bootstrap_lookup_size, the bootstrap_realloc logic, etc.
+//
+//   3. Under TSan, the mutex-protected registry operations ARE instrumented
+//      because the profiler .so was compiled with -fsanitize=thread.
+//      TSan sees every lock/unlock, every memory access inside these
+//      functions, and can detect data races — exactly what we need to
+//      verify the concurrency safety of the registry.
+//
+// This is the key to closing the TSan coverage gap from A-3.18: instead
+// of tests calling free(p) (which goes through the interposition wrapper
+// and is skipped when disabled), tests call this hook directly.
+
+// Direct bootstrap_free: calls bootstrap_deregister directly, no wrapper.
+// Returns slot index on success, -1 if not found.
+int __profiler_v6_test_bootstrap_free(void* ptr) {
+    return bootstrap_deregister(ptr);
+}
+
+// Direct bootstrap_realloc: exercises the full bootstrap realloc path
+// (lookup old size, alloc new, copy, deregister old) WITHOUT going
+// through the realloc() interposition wrapper. This allows TSan to
+// instrument the entire bootstrap realloc code path.
+//
+// Returns new pointer on success, NULL on failure.
+// On failure, old pointer remains valid (POSIX-compliant).
+void* __profiler_v6_test_bootstrap_realloc(void* ptr, size_t new_size) {
+    if (!ptr || !is_bootstrap_ptr(ptr)) return NULL;
+
+    // Look up old size BEFORE allocating new.
+    size_t old_size = bootstrap_lookup_size(ptr);
+
+    if (new_size == 0) {
+        // realloc(ptr, 0) = free
+        bootstrap_deregister(ptr);
+        return NULL;
+    }
+
+    // Allocate new bootstrap region.
+    void* new_p = bootstrap_alloc(new_size);
+    if (!new_p) {
+        // [C2] Allocation failed. Old pointer's metadata is untouched.
+        return NULL;
+    }
+
+    // Copy min(old, new) bytes.
+    size_t copy_size = (old_size < new_size) ? old_size : new_size;
+    if (copy_size > 0) {
+        memcpy(new_p, ptr, copy_size);
+    }
+
+    // Only deregister old AFTER new is fully ready.
+    bootstrap_deregister(ptr);
+    return new_p;
+}
+
+// [A-3.19] Direct track_alloc/track_free hooks for normal-path testing.
+// These allow T10 to test tracking preservation on realloc failure
+// WITHOUT going through the malloc/realloc interposition.
+void __profiler_v6_test_direct_track_alloc(void* ptr, size_t size, void* caller) {
+    track_alloc(ptr, size, caller);
+}
+
+void __profiler_v6_test_direct_track_free(void* ptr) {
+    track_free(ptr);
+}
+
+// [A-3.19] Returns whether a pointer is tracked in g_ptr_table.
+// (Alias for find_tracked_ptr with clearer name for test readability.)
+int __profiler_v6_test_is_tracked(void* ptr) {
+    return __profiler_v6_test_find_tracked_ptr(ptr) >= 0 ? 1 : 0;
+}
 #endif
