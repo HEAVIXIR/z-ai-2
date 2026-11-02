@@ -175,18 +175,53 @@ jobs:
           cp -a .next/server .ci-artifacts/node/server
           test -d .ci-artifacts/node/server
           echo "PASS: Node standalone evidence preserved at .ci-artifacts/node/server"
-      - name: Build Next.js with Worker runtime entrypoints
+      - name: Build Next.js with Worker runtime entrypoints (Prisma CLI isolated)
         env:
           HEAVIX_ENV: preview
+        shell: bash
         run: |
           set -euo pipefail
-          echo "=== Worker Next.js build resource baseline ==="
+          mkdir -p .ci-artifacts/worker-next
+          CLI_PATH="node_modules/prisma"
+          QUARANTINE_PATH="/tmp/heavix-prisma-cli-$GITHUB_RUN_ID"
+          ISOLATION_LOG=".ci-artifacts/worker-next/prisma-cli-isolation.log"
+          test -e "$CLI_PATH" || test -L "$CLI_PATH" || { echo "FAIL: root Prisma CLI path is missing; refusing an invalid isolation experiment"; exit 1; }
+          test ! -e "$QUARANTINE_PATH" || { echo "FAIL: Prisma quarantine path already exists"; exit 1; }
+          node -e 'console.log("PRISMA_CLI_RESOLVES_BEFORE=" + require.resolve("prisma"))'
+          node -e 'console.log("PRISMA_CLIENT_RESOLVES_BEFORE=" + require.resolve("@prisma/client"))'
+          mv "$CLI_PATH" "$QUARANTINE_PATH"
+          restore_prisma_cli() {
+            if [ -e "$QUARANTINE_PATH" ] || [ -L "$QUARANTINE_PATH" ]; then
+              mv "$QUARANTINE_PATH" "$CLI_PATH"
+              echo "PRISMA_CLI_RESTORED=1"
+            fi
+          }
+          trap restore_prisma_cli EXIT
+          if node -e 'require.resolve("prisma")' >/dev/null 2>&1; then
+            echo "FAIL: Prisma CLI remains resolvable after root package quarantine"
+            exit 1
+          fi
+          node -e 'console.log("PRISMA_CLI_RESOLVES_DURING_WORKER_BUILD=0"); console.log("PRISMA_CLIENT_RESOLVES_DURING_WORKER_BUILD=" + require.resolve("@prisma/client"))'
+          test -d node_modules/.prisma/client || test -d node_modules/@prisma/client || { echo "FAIL: generated Prisma client package missing"; exit 1; }
+          {
+            echo "experiment=STEP_17.86_prisma_cli_peer_isolation"
+            echo "cli_path=$CLI_PATH"
+            echo "quarantine_path=$QUARANTINE_PATH"
+            echo "cli_resolvable_during_worker_build=0"
+            echo "prisma_client_resolvable_during_worker_build=1"
+            echo "generated_client_directory_present=1"
+            echo "generated_clients_were_created_before_isolation=1"
+            date -u
+          } | tee "$ISOLATION_LOG"
+          echo "=== Worker Next.js build resource baseline (Prisma CLI unavailable to resolver) ==="
           date -u
           free -h
           grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
           /usr/bin/time -v ./node_modules/.bin/next build
           test -d .next/server
-          echo "PASS: Worker-mode Next.js output exists at .next/server"
+          echo "PASS: Worker-mode Next.js output exists at .next/server with Prisma CLI isolated"
+          restore_prisma_cli
+          trap - EXIT
       - name: Capture Worker Next.js trace and bundle composition before OpenNext
         if: always()
         shell: bash
@@ -447,13 +482,13 @@ jobs:
           test -s .ci-artifacts/worker-next/bundle-composition.json
           echo "=== Compact bundle composition report ==="
           wc -c .ci-artifacts/worker-next/bundle-composition.json
-      - name: Upload compact Worker composition report
+      - name: Upload Worker composition and Prisma isolation evidence
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: worker-next-composition-${{ github.sha }}
-          path: .ci-artifacts/worker-next/bundle-composition.json
+          path: .ci-artifacts/worker-next/
           if-no-files-found: error
           retention-days: 14
       - name: Bundle existing Worker build with OpenNext (skip Next.js build)
@@ -828,10 +863,32 @@ jobs:
               return line ? line.trim().split(/\s+/)[1] || null : null;
           }
           
+          function readProcIdentity() {
+              const stat = readProcText(String(process.pid) + '/stat');
+              const status = readProcText(String(process.pid) + '/status');
+              const cmdline = readProcText(String(process.pid) + '/cmdline');
+              let statTail = [];
+              if (stat) {
+                  const close = stat.lastIndexOf(')');
+                  if (close >= 0) statTail = stat.slice(close + 1).trim().split(/\s+/);
+              }
+              let exe = null;
+              try { exe = fs.readlinkSync('/proc/' + process.pid + '/exe'); } catch (e) {}
+              const nameLine = status ? status.split('\n').find(function (line) { return line.startsWith('Name:'); }) : null;
+              return {
+                  proc_cmdline: cmdline === null ? null : cmdline.split('\0').filter(Boolean),
+                  proc_exe: exe,
+                  proc_start_ticks: statTail[19] || null,
+                  proc_ppid: statTail[1] || null,
+                  proc_status_name: nameLine ? nameLine.trim().slice(5).trim() : null
+              };
+          }
+
           function sample() {
               sampleCount++;
               const ts = new Date().toISOString();
               const mu = process.memoryUsage();
+              const procIdentity = readProcIdentity();
               const hs = v8.getHeapStatistics();
               const spaces = v8.getHeapSpaceStatistics().map(function (s) {
                   return { name: s.space_name, size: s.space_size, used: s.space_used_size };
@@ -847,6 +904,7 @@ jobs:
                   execPath: process.execPath,
                   title: process.title,
                   argv: process.argv,
+                  proc_identity: procIdentity,
                   rss: mu.rss,
                   heapTotal: mu.heapTotal,
                   heapUsed: mu.heapUsed,
@@ -900,6 +958,7 @@ jobs:
               ppid: process.ppid,
               execPath: process.execPath,
               argv: process.argv,
+              proc_identity: readProcIdentity(),
               cgroup_status: cgroupStatus,
               cgroup_fs_base: cgroupFsBase,
               cgroup_mount: cgroupMountInfo,
@@ -1015,7 +1074,10 @@ jobs:
             OPENNEXT_PID=""
             OPENNEXT_EXEC=""
             OPENNEXT_ARGV1=""
-            for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+            OPENNEXT_START_TICKS=""
+            OPENNEXT_PPID=""
+            OPENNEXT_CMDLINE_B64=""
+            for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+
               if [ -r "/proc/$pid/cmdline" ] && [ -r "/proc/$pid/exe" ]; then
                 EXEC=$(readlink /proc/$pid/exe 2>/dev/null || echo "")
                 ARGV1=$(tr '\0' '\n' < /proc/$pid/cmdline 2>/dev/null | sed -n '2p')
@@ -1023,6 +1085,9 @@ jobs:
                   OPENNEXT_PID=$pid
                   OPENNEXT_EXEC="$EXEC"
                   OPENNEXT_ARGV1="$ARGV1"
+                  OPENNEXT_START_TICKS=$(awk '{sub(/^.*\) /,""); print $20}' "/proc/$pid/stat" 2>/dev/null || echo "")
+                  OPENNEXT_PPID=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || echo "")
+                  OPENNEXT_CMDLINE_B64=$(base64 -w0 "/proc/$pid/cmdline" 2>/dev/null || echo "")
                   break
                 fi
               fi
@@ -1063,6 +1128,7 @@ jobs:
             # Write JSON line
             smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
           
+            smaps_log "{\"type\":\"SMAPS_IDENTITY\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"ppid\":\"$OPENNEXT_PPID\",\"start_ticks\":\"$OPENNEXT_START_TICKS\",\"cmdline_b64\":\"$OPENNEXT_CMDLINE_B64\",\"exe\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\"}"
             # Threshold-based full smaps snapshot (large output, only at thresholds)
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
               cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
@@ -1133,7 +1199,7 @@ jobs:
           # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
           # Do NOT overwrite — first trap handles both
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
-          # STEP 17.84: controlled A/B on identical .next input.
+          # STEP 17.86: controlled OpenNext baseline/profiler on the isolated Worker trace.
           # The only intended difference is LD_PRELOAD; both runs retain the same
           # Node V8 hook, OpenNext arguments, environment, and generated input.
           mkdir -p .ci-artifacts/oom-instrumentation .ci-artifacts/opennext-baseline
@@ -1143,8 +1209,8 @@ jobs:
 
           # Record whether the runner sends a shutdown signal before the build can
           # write its own exit marker. EXIT still runs the existing monitor cleanup.
-          trap 'printf "%s signal=TERM pid=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 143' TERM
-          trap 'printf "%s signal=INT pid=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 130' INT
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=TERM pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 143' TERM
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=INT pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 130' INT
 
           run_opennext() {
             local mode="$1"
@@ -1154,7 +1220,7 @@ jobs:
             rm -f "$fifo"
             mkfifo "$fifo"
             printf '%s\n' "$mode" > /tmp/opennext-build-mode
-            echo "=== STEP 17.85: OpenNext mode=$mode ==="
+            echo "=== STEP 17.86: OpenNext mode=$mode ==="
             date -u
             free -h
             grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
@@ -1198,6 +1264,262 @@ jobs:
           printf 'NEXT_SERVER_SHA_AFTER_BASELINE=%s\n' "$NEXT_SERVER_SHA_AFTER" | tee -a .ci-artifacts/oom-instrumentation/input-fingerprint.txt
           if [ "$NEXT_SERVER_SHA_BEFORE" != "$NEXT_SERVER_SHA_AFTER" ]; then
             echo "FAIL: OpenNext baseline mutated .next/server; refusing non-identical A/B comparison"
+            exit 1
+          fi
+          if [ "$BASELINE_EXIT" -ne 0 ]; then
+            echo "PROFILER_SKIPPED=baseline_failed_exit_$BASELINE_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+            echo "FAIL: profiler is intentionally skipped because the baseline did not complete successfully"
+            exit 1
+          fi
+          if [ -d .open-next ]; then
+            bun run verify:store-runtime-artifacts -- worker .open-next > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log 2>&1 || echo "BASELINE_ARTIFACT_VERIFY_EXIT=$?" >> .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
+            cp -a .open-next/. .ci-artifacts/opennext-baseline/
+          else
+            echo "BASELINE_OUTPUT_MISSING=1" > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
+          fi
+          rm -rf .open-next
+
+          # Profiler comparison uses the same checked-in inputs and exact command.
+          run_opennext profiler
+          PROFILER_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-profiler.exit)
+          printf 'BASELINE_EXIT=%s\nPROFILER_EXIT=%s\n' "$BASELINE_EXIT" "$PROFILER_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+          if [ "$BASELINE_EXIT" -ne 0 ] || [ "$PROFILER_EXIT" -ne 0 ]; then
+            echo "FAIL: controlled OpenNext A/B requires both baseline and profiler exits to be 0"
+            exit 1
+          fi
+          bun run verify:store-runtime-artifacts -- worker .open-next
+      - name: Upload OOM instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oom-instrumentation-${{ github.sha }}
+          path: |
+            .ci-artifacts/oom-instrumentation/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload smaps memory analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smaps-analysis-${{ github.sha }}
+          path: |
+            /tmp/smaps-samples.jsonl
+            /tmp/smaps-snapshots/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload V8 memory samples (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-memory-samples-${{ github.sha }}
+          path: |
+            /tmp/v8-memory-samples.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload Node and Worker build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-runtime-artifacts-${{ github.sha }}
+          path: |
+            .ci-artifacts/node/server
+            .ci-artifacts/opennext-baseline
+            .next/server
+            .open-next
+          if-no-files-found: warn
+          retention-days: 14
+); do
+              if [ -r "/proc/$pid/cmdline" ] && [ -r "/proc/$pid/exe" ]; then
+                EXEC=$(readlink /proc/$pid/exe 2>/dev/null || echo "")
+                ARGV1=$(tr '\0' '\n' < /proc/$pid/cmdline 2>/dev/null | sed -n '2p')
+                if echo "$EXEC" | grep -q "node" && echo "$ARGV1" | grep -q "opennextjs-cloudflare"; then
+                  OPENNEXT_PID=$pid
+                  OPENNEXT_EXEC="$EXEC"
+                  OPENNEXT_ARGV1="$ARGV1"
+                  OPENNEXT_START_TICKS=$(awk '{sub(/^.*\) /,""); print $20}' "/proc/$pid/stat" 2>/dev/null || echo "")
+                  OPENNEXT_PPID=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || echo "")
+                  OPENNEXT_CMDLINE_B64=$(base64 -w0 "/proc/$pid/cmdline" 2>/dev/null || echo "")
+                  break
+                fi
+              fi
+            done
+          
+            if [ -z "$OPENNEXT_PID" ]; then
+              smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}"
+              sleep 2
+              continue
+            fi
+          
+            # Read RSS for threshold check
+            RSS_KB=$(awk '/^VmRSS:/ {print $2}' /proc/$OPENNEXT_PID/status 2>/dev/null || echo "0")
+            RSS_GB=$(echo "scale=2; $RSS_KB / 1048576" | bc 2>/dev/null || echo "0")
+          
+            # Read smaps_rollup (summary, low overhead)
+            ROLLUP=""
+            if [ -r "/proc/$OPENNEXT_PID/smaps_rollup" ]; then
+              ROLLUP=$(cat /proc/$OPENNEXT_PID/smaps_rollup 2>/dev/null)
+            fi
+          
+            # Parse key fields from smaps_rollup
+            RSS_ROLLUP=$(echo "$ROLLUP" | awk '/^Rss:/ {print $2}')
+            PSS=$(echo "$ROLLUP" | awk '/^Pss:/ {print $2}')
+            PSS_ANON=$(echo "$ROLLUP" | awk '/^Pss_Anon:/ {print $2}')
+            PSS_FILE=$(echo "$ROLLUP" | awk '/^Pss_File:/ {print $2}')
+            PSS_SHMEM=$(echo "$ROLLUP" | awk '/^Pss_Shmem:/ {print $2}')
+            PRIVATE_ANON=$(echo "$ROLLUP" | awk '/^Private_Anon:/ {print $2}')
+            PRIVATE_DIRTY=$(echo "$ROLLUP" | awk '/^Private_Dirty:/ {print $2}')
+            PRIVATE_CLEAN=$(echo "$ROLLUP" | awk '/^Private_Clean:/ {print $2}')
+            SHARED_ANON=$(echo "$ROLLUP" | awk '/^Shared_Anon:/ {print $2}')
+            SHARED_DIRTY=$(echo "$ROLLUP" | awk '/^Shared_Dirty:/ {print $2}')
+            SHARED_CLEAN=$(echo "$ROLLUP" | awk '/^Shared_Clean:/ {print $2}')
+            SWAP_PSS=$(echo "$ROLLUP" | awk '/^SwapPss:/ {print $2}')
+            SWAP=$(echo "$ROLLUP" | awk '/^Swap:/ {print $2}')
+            ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
+          
+            # Write JSON line
+            smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
+          
+            smaps_log "{\"type\":\"SMAPS_IDENTITY\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"ppid\":\"$OPENNEXT_PPID\",\"start_ticks\":\"$OPENNEXT_START_TICKS\",\"cmdline_b64\":\"$OPENNEXT_CMDLINE_B64\",\"exe\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\"}"
+            # Threshold-based full smaps snapshot (large output, only at thresholds)
+            if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
+              extract_top_mappings 6 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_6GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"path\":\"$SNAPSHOT_DIR/smaps-6gb.txt\"}"
+            fi
+            if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb.txt" 2>/dev/null
+              extract_top_mappings 10 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_10GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"path\":\"$SNAPSHOT_DIR/smaps-10gb.txt\"}"
+            fi
+            if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb.txt" 2>/dev/null
+              extract_top_mappings 13 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_13GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"path\":\"$SNAPSHOT_DIR/smaps-13gb.txt\"}"
+            fi
+          
+            sleep 2
+          done
+          
+          SMAPS
+          chmod +x /tmp/smaps-sampler.sh
+          echo "=== smaps sampler written to /tmp/smaps-sampler.sh ==="
+          mkdir -p .ci-artifacts/oom-instrumentation
+          echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
+          # === A-3: Start smaps_rollup sampler (2s, aligned with E and V8SAMPLE) ===
+          # NOTE: smaps_log() writes to stderr directly (captured in CI log)
+          # No tee redirect — stderr goes directly to GitHub Actions log
+          /tmp/smaps-sampler.sh 2>&1 &
+          SMAPS_PID=$!
+          cleanup_smaps() {
+            kill "$SMAPS_PID" 2>/dev/null || true
+            wait "$SMAPS_PID" 2>/dev/null || true
+          }
+          trap 'cleanup_monitor; cleanup_smaps' EXIT
+          (
+            while true; do
+              TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+              MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+              SWAP_FREE=$(awk '/SwapFree/ {print $2}' /proc/meminfo)
+              echo "===SAMPLE $TS mem_avail_kb=$MEM_AVAIL swap_free_kb=$SWAP_FREE ==="
+              for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+                if [ -r "/proc/$pid/status" ]; then
+                  RSS=$(awk '/^VmRSS:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                  if [ -n "$RSS" ] && [ "$RSS" -gt 30000 ] 2>/dev/null; then
+                    PPID_VAL=$(awk '/^PPid:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    PSS=$(awk '/^Pss:/ {print $2}' /proc/$pid/smaps_rollup 2>/dev/null || echo "N/A")
+                    CMDLINE=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | head -c 200)
+                    [ -z "$CMDLINE" ] && CMDLINE=$(awk '/^Name:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    echo "  pid=$pid ppid=$PPID_VAL rss_kb=$RSS pss_kb=$PSS cmd=$CMDLINE"
+                  fi
+                fi
+              done
+              sleep 2
+            done
+          ) > >(tee .ci-artifacts/oom-instrumentation/rss-2s-samples.log) 2>&1 &
+          MONITOR_PID=$!
+          cleanup_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+          # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
+          # Do NOT overwrite — first trap handles both
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+          # STEP 17.86: controlled OpenNext baseline/profiler on the isolated Worker trace.
+          # The only intended difference is LD_PRELOAD; both runs retain the same
+          # Node V8 hook, OpenNext arguments, environment, and generated input.
+          mkdir -p .ci-artifacts/oom-instrumentation .ci-artifacts/opennext-baseline
+          : > /tmp/v8-memory-samples.log
+          : > /tmp/smaps-samples.jsonl
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+
+          # Record whether the runner sends a shutdown signal before the build can
+          # write its own exit marker. EXIT still runs the existing monitor cleanup.
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=TERM pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 143' TERM
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=INT pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 130' INT
+
+          run_opennext() {
+            local mode="$1"
+            local fifo="/tmp/opennext-${mode}.fifo"
+            local output=".ci-artifacts/oom-instrumentation/opennext-${mode}.log"
+            local pid exit_code
+            rm -f "$fifo"
+            mkfifo "$fifo"
+            printf '%s\n' "$mode" > /tmp/opennext-build-mode
+            echo "=== STEP 17.86: OpenNext mode=$mode ==="
+            date -u
+            free -h
+            grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+            if [ "$mode" = "baseline" ]; then
+              env -u LD_PRELOAD HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            else
+              env HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            fi
+            pid=$!
+            (
+              while IFS= read -r line; do
+                printf '%s\n' "$line" | tee -a "$output"
+                case "$line" in
+                  *"Building Next.js app"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Building Next.js app" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Generating bundle"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Generating bundle" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling middleware"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling middleware" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling static assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling static assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling cache assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling cache assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Building server function: default"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: createServerBundle START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling the OpenNext server"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Worker saved"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer COMPLETE" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"OpenNext build complete"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: OpenNext build complete" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                esac
+              done
+            ) < "$fifo"
+            if wait "$pid"; then exit_code=0; else exit_code=$?; fi
+            rm -f "$fifo"
+            printf '%s\n' "$exit_code" > ".ci-artifacts/oom-instrumentation/opennext-${mode}.exit"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode OpenNext exit=$exit_code" | tee -a .ci-artifacts/oom-instrumentation/stage-markers.log
+            return 0
+          }
+
+          # Fingerprint the Worker input tree so both runs are provably comparable.
+          NEXT_SERVER_SHA_BEFORE=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_BEFORE=%s\n' "$NEXT_SERVER_SHA_BEFORE" | tee .ci-artifacts/oom-instrumentation/input-fingerprint.txt
+          # Baseline first; keep .next/server unchanged for the profiler run.
+          rm -rf .open-next
+          run_opennext baseline
+          BASELINE_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-baseline.exit)
+          NEXT_SERVER_SHA_AFTER=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_AFTER_BASELINE=%s\n' "$NEXT_SERVER_SHA_AFTER" | tee -a .ci-artifacts/oom-instrumentation/input-fingerprint.txt
+          if [ "$NEXT_SERVER_SHA_BEFORE" != "$NEXT_SERVER_SHA_AFTER" ]; then
+            echo "FAIL: OpenNext baseline mutated .next/server; refusing non-identical A/B comparison"
+            exit 1
+          fi
+          if [ "$BASELINE_EXIT" -ne 0 ]; then
+            echo "PROFILER_SKIPPED=baseline_failed_exit_$BASELINE_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+            echo "FAIL: profiler is intentionally skipped because the baseline did not complete successfully"
             exit 1
           fi
           if [ -d .open-next ]; then
