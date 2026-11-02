@@ -1221,6 +1221,386 @@ jobs:
           # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
           # Do NOT overwrite — first trap handles both
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
+          # STEP 17.90: process-tree attribution, cgroup membership and mapping classes.
+          # This sampler is independent of the Node event loop and records one-second snapshots.
+          cat > /tmp/process-tree-attribution.py <<'PY'
+          import json, os, re, signal, sys, time
+          from datetime import datetime, timezone
+
+          OUTPUT = ".ci-artifacts/oom-instrumentation/process-tree-attribution.jsonl"
+          INTERVAL = 1.0
+          STOP = False
+          THRESHOLDS = (6, 10, 13)
+          TAKEN = set()
+          PREVIOUS = set()
+          SAMPLE = 0
+
+          def utc():
+              return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+          def stop_handler(_signum, _frame):
+              global STOP
+              STOP = True
+
+          signal.signal(signal.SIGTERM, stop_handler)
+          signal.signal(signal.SIGINT, stop_handler)
+
+          def emit(handle, obj):
+              handle.write(json.dumps(obj, separators=(",", ":"), sort_keys=True) + "\n")
+              handle.flush()
+
+          def read_text(path):
+              try:
+                  with open(path, "r", encoding="utf-8", errors="replace") as f:
+                      return f.read()
+              except (OSError, PermissionError):
+                  return None
+
+          def unescape_mount(value):
+              return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), value)
+
+          def discover_cgroup2_mount():
+              data = read_text("/proc/self/mountinfo") or ""
+              candidates = []
+              for line in data.splitlines():
+                  halves = line.split(" - ", 1)
+                  if len(halves) != 2:
+                      continue
+                  left, right = halves
+                  r = right.split()
+                  l = left.split()
+                  if len(r) < 1 or len(l) < 5 or r[0] != "cgroup2":
+                      continue
+                  candidates.append({
+                      "root": unescape_mount(l[3]),
+                      "mountpoint": unescape_mount(l[4])
+                  })
+              return max(candidates, key=lambda x: len(x["root"]), default=None)
+
+          CGROUP_MOUNT = discover_cgroup2_mount()
+
+          def parse_stat(pid):
+              raw = read_text(f"/proc/{pid}/stat")
+              if not raw:
+                  return None
+              close = raw.rfind(")")
+              if close < 0:
+                  return None
+              tail = raw[close + 1:].strip().split()
+              if len(tail) <= 19:
+                  return None
+              try:
+                  return {
+                      "pid": int(pid),
+                      "state": tail[0],
+                      "ppid": int(tail[1]),
+                      "start_ticks": int(tail[19])
+                  }
+              except (ValueError, IndexError):
+                  return None
+
+          def parse_status(pid):
+              raw = read_text(f"/proc/{pid}/status") or ""
+              result = {}
+              wanted = {"VmRSS", "VmHWM", "VmSwap", "RssAnon", "RssFile", "RssShmem"}
+              for line in raw.splitlines():
+                  key, sep, value = line.partition(":")
+                  if sep and key in wanted:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              result[key + "_kb"] = int(bits[0])
+                          except ValueError:
+                              pass
+              return result
+
+          def parse_rollup(pid):
+              raw = read_text(f"/proc/{pid}/smaps_rollup")
+              if raw is None:
+                  return None
+              wanted = {"Rss", "Pss", "Pss_Anon", "Pss_File", "Pss_Shmem",
+                        "Anonymous", "Private_Dirty", "Private_Clean",
+                        "Shared_Dirty", "Shared_Clean", "Swap", "SwapPss"}
+              result = {}
+              for line in raw.splitlines():
+                  key, sep, value = line.partition(":")
+                  if sep and key in wanted:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              result[key + "_kb"] = int(bits[0])
+                          except ValueError:
+                              pass
+              return result
+
+          def parse_cgroup(pid):
+              raw = read_text(f"/proc/{pid}/cgroup") or ""
+              for line in raw.splitlines():
+                  if line.startswith("0::"):
+                      return line[3:]
+              return None
+
+          def cgroup_fs_path(cgroup_path):
+              if not CGROUP_MOUNT or cgroup_path is None:
+                  return None
+              root = os.path.normpath(CGROUP_MOUNT["root"])
+              mountpoint = os.path.normpath(CGROUP_MOUNT["mountpoint"])
+              target = os.path.normpath(cgroup_path)
+              if root == "/":
+                  relative = target.lstrip("/")
+              elif target == root:
+                  relative = ""
+              elif target.startswith(root.rstrip("/") + "/"):
+                  relative = target[len(root):].lstrip("/")
+              else:
+                  return None
+              candidate = os.path.normpath(os.path.join(mountpoint, relative))
+              try:
+                  if os.path.commonpath([mountpoint, candidate]) != mountpoint:
+                      return None
+              except ValueError:
+                  return None
+              return candidate
+
+          def read_cgroup_value(directory, name):
+              return read_text(os.path.join(directory, name))
+
+          def process_record(pid, stat_cache):
+              identity = stat_cache.get(pid)
+              if identity is None:
+                  identity = parse_stat(pid)
+                  if identity is None:
+                      return None
+                  stat_cache[pid] = identity
+              cmd_raw = read_text(f"/proc/{pid}/cmdline")
+              cmd = [x for x in (cmd_raw or "").split("\0") if x]
+              try:
+                  exe = os.readlink(f"/proc/{pid}/exe")
+              except OSError:
+                  exe = None
+              return {
+                  **identity,
+                  "exe": exe,
+                  "cmdline": cmd[:32],
+                  "status": parse_status(pid),
+                  "smaps_rollup": parse_rollup(pid),
+                  "cgroup_path": parse_cgroup(pid)
+              }
+
+          def read_mapping_classes(pid, threshold_gib):
+              raw = read_text(f"/proc/{pid}/smaps")
+              if raw is None:
+                  return {"type": "MAPPING_CLASSIFICATION_ERROR", "pid": pid,
+                          "threshold_gib": threshold_gib, "error": "smaps_unavailable"}
+              groups = {}
+              header = re.compile(r"^[0-9a-fA-F]+-[0-9a-fA-F]+\\s")
+              current = None
+              for line in raw.splitlines():
+                  if header.match(line):
+                      fields = line.split(None, 5)
+                      pathname = fields[5] if len(fields) > 5 else ""
+                      if pathname == "[heap]":
+                          category = "heap"
+                      elif pathname.startswith("[stack"):
+                          category = "stack"
+                      elif pathname.startswith("[anon:") or pathname.startswith("[anon_shmem:"):
+                          category = "named_anonymous"
+                      elif "memfd:" in pathname or pathname.startswith("/memfd:"):
+                          category = "memfd"
+                      elif pathname.startswith("/"):
+                          category = "file_backed"
+                      elif not pathname:
+                          category = "unnamed_anonymous"
+                      else:
+                          category = "other_named"
+                      current = groups.setdefault(category, {
+                          "mapping_count": 0, "rss_kb": 0, "pss_kb": 0,
+                          "anonymous_kb": 0, "private_dirty_kb": 0,
+                          "swap_kb": 0, "swap_pss_kb": 0
+                      })
+                      current["mapping_count"] += 1
+                      continue
+                  if current is None:
+                      continue
+                  key, sep, value = line.partition(":")
+                  if not sep:
+                      continue
+                  field = {
+                      "Rss": "rss_kb", "Pss": "pss_kb",
+                      "Anonymous": "anonymous_kb", "Private_Dirty": "private_dirty_kb",
+                      "Swap": "swap_kb", "SwapPss": "swap_pss_kb"
+                  }.get(key)
+                  if field:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              current[field] += int(bits[0])
+                          except ValueError:
+                              pass
+              return {
+                  "type": "MAPPING_CLASSIFICATION",
+                  "timestamp": utc(),
+                  "pid": pid,
+                  "threshold_gib": threshold_gib,
+                  "groups": groups,
+                  "interpretation_limit": "Mapping class does not prove allocator origin; unnamed anonymous may be malloc-backed or direct mmap(MAP_ANONYMOUS)."
+              }
+
+          def cgroup_tree_snapshot(root_path, stat_cache, proc_cache):
+              fs_root = cgroup_fs_path(root_path)
+              if not fs_root or not os.path.isdir(fs_root):
+                  return {"root_path": root_path, "resolved": False, "nodes": [], "members": []}
+              nodes, member_pids = [], set()
+              for current, dirs, _files in os.walk(fs_root):
+                  dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(current, d))]
+                  relative = os.path.relpath(current, fs_root)
+                  logical = root_path if relative == "." else os.path.normpath(os.path.join(root_path, relative))
+                  procs_raw = read_cgroup_value(current, "cgroup.procs") or ""
+                  pids = []
+                  for item in procs_raw.split():
+                      try:
+                          pid = int(item)
+                          pids.append(pid)
+                          member_pids.add(pid)
+                      except ValueError:
+                          continue
+                  nodes.append({
+                      "path": logical,
+                      "memory_current": read_cgroup_value(current, "memory.current"),
+                      "memory_peak": read_cgroup_value(current, "memory.peak"),
+                      "memory_max": read_cgroup_value(current, "memory.max"),
+                      "memory_events": read_cgroup_value(current, "memory.events"),
+                      "memory_stat": read_cgroup_value(current, "memory.stat"),
+                      "memory_pressure": read_cgroup_value(current, "memory.pressure"),
+                      "swap_current": read_cgroup_value(current, "memory.swap.current"),
+                      "direct_pids": pids
+                  })
+                  if len(nodes) >= 512:
+                      break
+              members = []
+              for pid in sorted(member_pids):
+                  record = process_cache_record(pid, stat_cache, proc_cache)
+                  if record:
+                      members.append(record)
+              return {
+                  "root_path": root_path,
+                  "resolved": True,
+                  "nodes": nodes,
+                  "members": members,
+                  "unique_member_count": len(member_pids),
+                  "pss_sum_kb": sum((m.get("smaps_rollup") or {}).get("Pss_kb", 0) for m in members),
+                  "rss_sum_kb": sum((m.get("smaps_rollup") or {}).get("Rss_kb", 0) for m in members),
+                  "accounting_note": "PSS sum is process attribution, not expected to equal cgroup memory.current; page cache, kernel/slab, and accounting scope differ."
+              }
+
+          def process_cache_record(pid, stat_cache, proc_cache):
+              if pid not in proc_cache:
+                  proc_cache[pid] = process_record(pid, stat_cache)
+              return proc_cache[pid]
+
+          def main():
+              global SAMPLE, PREVIOUS
+              os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
+              with open(OUTPUT, "a", encoding="utf-8") as out:
+                  emit(out, {
+                      "type": "PROCESS_TREE_SAMPLER_INIT",
+                      "timestamp": utc(),
+                      "sampler_pid": os.getpid(),
+                      "interval_seconds": INTERVAL,
+                      "proc_stat_fields": {"pid": 1, "ppid": 4, "start_ticks": 22},
+                      "cgroup2_mount": CGROUP_MOUNT,
+                      "coverage_limit": "One-second /proc snapshots can miss processes created and reaped between observations; start_ticks disambiguates PID reuse but cannot recover unobserved lifetimes.",
+                      "mapping_limit": "smaps mapping classes cannot distinguish malloc-backed anonymous mappings from direct mmap(MAP_ANONYMOUS)."
+                  })
+                  while not STOP:
+                      started = time.monotonic()
+                      SAMPLE += 1
+                      stat_cache = {}
+                      proc_cache = {}
+                      all_pids = []
+                      try:
+                          all_pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+                      except OSError:
+                          pass
+                      for pid in all_pids:
+                          stat_cache[pid] = parse_stat(pid)
+                      stat_cache = {pid: val for pid, val in stat_cache.items() if val is not None}
+                      parent_map = {}
+                      for pid, identity in stat_cache.items():
+                          parent_map.setdefault(identity["ppid"], []).append(pid)
+
+                      roots = []
+                      for pid in stat_cache:
+                          raw = read_text(f"/proc/{pid}/cmdline") or ""
+                          if "opennextjs-cloudflare" in raw and "build" in raw:
+                              rec = process_cache_record(pid, stat_cache, proc_cache)
+                              if rec:
+                                  roots.append(rec)
+                      roots.sort(key=lambda x: (x["start_ticks"], x["pid"]))
+                      root = roots[0] if roots else None
+
+                      tree_pids = set()
+                      if root:
+                          stack = [root["pid"]]
+                          while stack:
+                              parent = stack.pop()
+                              if parent in tree_pids:
+                                  continue
+                              tree_pids.add(parent)
+                              stack.extend(parent_map.get(parent, []))
+                      tree = [process_cache_record(pid, stat_cache, proc_cache)
+                              for pid in sorted(tree_pids)]
+                      tree = [x for x in tree if x]
+                      current_ids = {f'{x["pid"]}:{x["start_ticks"]}' for x in tree}
+                      appeared = sorted(current_ids - PREVIOUS)
+                      disappeared = sorted(PREVIOUS - current_ids)
+                      PREVIOUS = current_ids
+
+                      anchor_pid = root["pid"] if root else os.getpid()
+                      anchor_cgroup = parse_cgroup(anchor_pid)
+                      cgroup_data = cgroup_tree_snapshot(anchor_cgroup, stat_cache, proc_cache) if anchor_cgroup else None
+                      tree_pss = sum((x.get("smaps_rollup") or {}).get("Pss_kb", 0) for x in tree)
+                      tree_rss = sum((x.get("smaps_rollup") or {}).get("Rss_kb", 0) for x in tree)
+                      root_rss_kb = ((root or {}).get("status") or {}).get("VmRSS_kb", 0)
+                      emit(out, {
+                          "type": "PROCESS_TREE_SAMPLE",
+                          "timestamp": utc(),
+                          "sample": SAMPLE,
+                          "root_found": bool(root),
+                          "root_identity": {k: root.get(k) for k in ("pid", "ppid", "start_ticks", "exe", "cmdline")} if root else None,
+                          "root_rss_kb": root_rss_kb,
+                          "process_tree": tree,
+                          "process_tree_count": len(tree),
+                          "process_tree_rss_sum_kb": tree_rss,
+                          "process_tree_pss_sum_kb": tree_pss,
+                          "appeared_since_previous": appeared,
+                          "disappeared_since_previous": disappeared,
+                          "cgroup": cgroup_data,
+                          "sample_duration_ms": round((time.monotonic() - started) * 1000, 2),
+                          "coverage_note": "Appeared/disappeared are differences between observed snapshots, not a complete exec/exit event history."
+                      })
+
+                      if root:
+                          rss_gib = root_rss_kb / 1048576
+                          for threshold in THRESHOLDS:
+                              if rss_gib >= threshold and threshold not in TAKEN:
+                                  TAKEN.add(threshold)
+                                  emit(out, read_mapping_classes(root["pid"], threshold))
+
+                      elapsed = time.monotonic() - started
+                      time.sleep(max(0.05, INTERVAL - elapsed))
+                  emit(out, {"type": "PROCESS_TREE_SAMPLER_STOP", "timestamp": utc(), "samples": SAMPLE})
+
+          if __name__ == "__main__":
+              main()
+          PY
+          python3 /tmp/process-tree-attribution.py &
+          PROCESS_TREE_PID=$!
+          cleanup_process_tree() {
+            kill "$PROCESS_TREE_PID" 2>/dev/null || true
+            wait "$PROCESS_TREE_PID" 2>/dev/null || true
+          }
+          # Process-tree sampler is independent of V8 and runs for baseline + profiler.
           # STEP 17.86: controlled OpenNext baseline/profiler on the isolated Worker trace.
           # The only intended difference is LD_PRELOAD; both runs retain the same
           # Node V8 hook, OpenNext arguments, environment, and generated input.
