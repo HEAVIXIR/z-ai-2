@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import type { Opportunity } from '@/lib/generated/client/client';
+import type { Opportunity } from '@/lib/generated/node-client/client';
 
 /* ============================================================
    HEAVIX — Opportunity Engine (P2-27)

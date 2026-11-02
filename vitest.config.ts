@@ -9,6 +9,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@/lib/store-db": path.resolve(__dirname, "src/lib/store-db.node.ts"),
+      "@/lib/db": path.resolve(__dirname, "src/lib/db.node.ts"),
       "@": path.resolve(__dirname, "src"),
     },
   },

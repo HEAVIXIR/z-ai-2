@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/lib/store-db": [
+        "./src/lib/store-db.worker.ts"
+      ],
+      "@/*": [
+        "./src/*"
+      ],
+      "@/lib/db": [
+        "./src/lib/db.worker.ts"
+      ]
+    }
+  }
+}

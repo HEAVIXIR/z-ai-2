@@ -9,7 +9,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/lib/generated/node-client/client';
 
 const SQLITE_PATH = '/home/z/my-project/db/heavix-source.db';
 const prisma = new PrismaClient();

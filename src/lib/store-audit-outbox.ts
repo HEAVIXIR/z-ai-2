@@ -9,11 +9,22 @@
  * but before the outbox row is marked DELIVERED.
  */
 
-import type { PrismaClient } from '@/lib/generated/store-client/client';
 import { storeDb } from '@/lib/store-db';
 import type { LogAuditParams } from '@/lib/admin/audit';
 
-type StoreTransactionClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+/**
+ * The enqueue path only needs the transaction-scoped AuditOutbox.create
+ * operation. This structural contract is intentionally independent of either
+ * generated Prisma runtime and is checked by both Node/Worker call-site tests.
+ */
+export type AuditOutboxCreateTransaction = {
+  auditOutbox: {
+    create(args: {
+      data: { payloadJson: string; status: 'PENDING' };
+      select: { id: true };
+    }): PromiseLike<{ id: string }>;
+  };
+};
 type AuditWriter = (params: LogAuditParams, idempotencyKey: string) => Promise<void>;
 
 const DEFAULT_BATCH_SIZE = 50;
@@ -21,7 +32,7 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_STALE_LOCK_MS = 5 * 60 * 1000;
 
 export async function enqueueAuditOutbox(
-  tx: PrismaClient | StoreTransactionClient,
+  tx: AuditOutboxCreateTransaction,
   params: LogAuditParams,
 ): Promise<string> {
   const outboxRow = await tx.auditOutbox.create({

@@ -83,7 +83,7 @@ export async function POST(req: Request) {
 
     // STEP 12.95 RACE FIX: requestPayment INSIDE transaction.
     // Prevents orphaned authority at gateway when concurrent requests race.
-    const payment = await storeDb.$transaction(async (tx: any) => {
+    const payment = await storeDb.$transaction(async (tx) => {
       const existingPending = await tx.payment.findFirst({
         where: { orderId: order.id, method: "GATEWAY", status: "PENDING" },
       });

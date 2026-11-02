@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { SEOMetadata } from '@/lib/generated/client/client';
+import type { SEOMetadata } from '@/lib/generated/node-client/client';
 import { SITE_BASE_URL, SITE_NAME, absoluteUrl } from "@/lib/site-config";
 
 /* ============================================================

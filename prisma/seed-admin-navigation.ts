@@ -10,7 +10,7 @@
  * Usage: bunx tsx prisma/seed-admin-navigation.ts
  */
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 
 const prisma = createPrismaClient();

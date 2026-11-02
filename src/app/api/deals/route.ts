@@ -17,8 +17,7 @@
  *   POST /api/deals — create a deal from an accepted offer/quote/dealroom
  */
 import { NextResponse } from "next/server";
-import { Prisma } from '@/lib/generated/client/client';
-import { db } from "@/lib/db";
+import { db, Prisma } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";

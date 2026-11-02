@@ -60,14 +60,18 @@ const mockDb: Record<string, ReturnType<typeof makeModelMock>> = {
   user: makeModelMock(),
 };
 
-vi.mock("@/lib/db", () => ({
+vi.mock("@/lib/db", async () => {
+  const { Prisma } = await import("@/lib/generated/node-client/client");
+  return {
   db: new Proxy({}, {
     get(_t, prop) {
       if (prop === "$transaction") return mockDbTransaction;
       return mockDb[prop as string] ?? makeModelMock();
     },
   }),
-}));
+  Prisma,
+  };
+});
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/request-context", () => ({ getClientIp: () => "127.0.0.1" }));
 vi.mock("@/lib/auth", () => ({

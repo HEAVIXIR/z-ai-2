@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/lib/generated/node-client/client';
 import {
   validateLayout, getWidget, getDataSource,
   type PageLayout,

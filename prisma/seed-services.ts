@@ -6,7 +6,7 @@
    but does NOT overwrite active/featured (admin edits preserved).
    ============================================================ */
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();

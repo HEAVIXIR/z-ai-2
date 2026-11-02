@@ -23,7 +23,7 @@
    or:
      bun run test:ai-gateway
 */
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 
 const db = createPrismaClient();

@@ -22,7 +22,9 @@ const mockOrderCreate = vi.fn();
 const mockListingFindUnique = vi.fn();
 const mockTransaction = vi.fn();
 
-vi.mock("@/lib/db", () => ({
+vi.mock("@/lib/db", async () => {
+  const { Prisma } = await import("@/lib/generated/node-client/client");
+  return {
   db: {
     $transaction: mockTransaction,
     deal: {
@@ -37,7 +39,9 @@ vi.mock("@/lib/db", () => ({
       findUnique: mockListingFindUnique,
     },
   },
-}));
+  Prisma,
+  };
+});
 
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/request-context", () => ({ getClientIp: () => "127.0.0.1" }));
@@ -210,7 +214,7 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 4. P2002 on Order.dealId + order CONFIRMED → graceful success ──
   it("P2002 on dealId + order CONFIRMED → 200 (idempotent)", async () => {
-    const { Prisma } = await import("@prisma/client");
+    const { Prisma } = await import("@/lib/generated/node-client/client");
     const p2002Error = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`dealId`)",
       { code: "P2002", meta: { target: ["dealId"] } },
@@ -228,7 +232,7 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 4a. P2002 on dealId + order NOT CONFIRMED → must error ──
   it("P2002 on dealId + order status != CONFIRMED → 500 (not idempotent)", async () => {
-    const { Prisma } = await import("@prisma/client");
+    const { Prisma } = await import("@/lib/generated/node-client/client");
     const p2002Error = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`dealId`)",
       { code: "P2002", meta: { target: ["dealId"] } },
@@ -243,7 +247,7 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 4b. P2002 on orderNumber (NOT dealId) → must error, not idempotent ──
   it("P2002 on orderNumber → 500 error (NOT idempotent)", async () => {
-    const { Prisma } = await import("@prisma/client");
+    const { Prisma } = await import("@/lib/generated/node-client/client");
     const p2002Error = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`orderNumber`)",
       { code: "P2002", meta: { target: ["orderNumber"] } },
@@ -259,7 +263,7 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 4c. P2002 on dealId but order does NOT exist → must error ──
   it("P2002 on dealId but order missing → 500 error (not silent success)", async () => {
-    const { Prisma } = await import("@prisma/client");
+    const { Prisma } = await import("@/lib/generated/node-client/client");
     const p2002Error = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`dealId`)",
       { code: "P2002", meta: { target: ["dealId"] } },
@@ -275,7 +279,7 @@ describe("STEP 13.31 — P2-A: PATCH deal + order creation transactional + idemp
 
   // ── 4d. P2034 (serialization failure) → 409 retryable (NOT 500) ──
   it("P2034 serialization failure → 409 retryable (NOT 500 generic)", async () => {
-    const { Prisma } = await import("@prisma/client");
+    const { Prisma } = await import("@/lib/generated/node-client/client");
     const p2034Error = new Prisma.PrismaClientKnownRequestError(
       "Transaction could not be serialized",
       { code: "P2034", meta: {} },

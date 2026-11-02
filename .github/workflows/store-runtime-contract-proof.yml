@@ -1,0 +1,1830 @@
+name: Store Runtime Contract Proof
+
+on:
+  pull_request:
+    branches: [migration/prisma7-cloudflare-workers]
+  workflow_dispatch:
+
+jobs:
+  dual-runtime-typecheck:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Main and Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Verify Node and Worker runtime source graphs are disjoint
+        run: bun run verify:store-runtime-graph
+      - name: Typecheck complete application against Node Store client
+        run: bun run typecheck:store:node
+      - name: Typecheck complete application against Cloudflare Worker Store client
+        run: bun run typecheck:store:worker
+
+  store-behavioral:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Main and Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Create disposable Store test database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas to disposable PostgreSQL 17 databases
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
+      - name: Run Store and Outbox behavioral tests (fail closed; zero skips)
+        run: |
+          set -euo pipefail
+          REPORT_FILE=$(mktemp)
+          trap 'rm -f "$REPORT_FILE"' EXIT
+          VITEST_EXIT=0
+          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=default --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
+          test -s "$REPORT_FILE" || { echo "FAIL: Store/Outbox Vitest report missing"; exit 1; }
+          node - "$REPORT_FILE" "$VITEST_EXIT" <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const exitCode = Number(process.argv[3]);
+          const tests = (report.testResults || []).flatMap(file => file.assertionResults || []);
+          const skipped = tests.filter(test => ['pending', 'skipped', 'todo'].includes(test.status));
+          if (exitCode !== 0 || (report.numFailedTests || 0) > 0 || (report.numPendingTests || 0) > 0 || skipped.length > 0 || tests.length === 0) {
+            console.error(JSON.stringify({
+              exitCode,
+              numTotalTests: report.numTotalTests,
+              numPassedTests: report.numPassedTests,
+              numFailedTests: report.numFailedTests,
+              numPendingTests: report.numPendingTests,
+              skippedTests: skipped.map(test => test.fullName || test.title),
+              failedTests: tests.filter(test => test.status === 'failed').map(test => ({ name: test.fullName || test.title, messages: test.failureMessages || [] })),
+              observedTests: tests.length
+            }, null, 2));
+            process.exit(1);
+          }
+          console.log(`PASS: ${tests.length} Store/Outbox PostgreSQL behavioral tests passed; no skips or pending tests.`);
+          NODE
+
+  runtime-artifact-proof:
+    needs: [dual-runtime-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install locked project dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify runtime artifact evidence classification
+        # Guards runtime artifact evidence and schema-specific migration directory selection.
+        # Also guards statically scoped filesystem paths in server routes.
+        run: bunx vitest run tests/contract/store-runtime-artifact-verifier.test.ts tests/contract/robots-route-runtime-boundary.test.ts tests/contract/prisma-config-migrations-path.test.ts tests/contract/backup-route-static-path.test.ts
+      - name: Install OpenNext tooling with isolated dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package.json /tmp/heavix-package.json
+          trap 'cp /tmp/heavix-package.json package.json' EXIT
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
+          # STEP 17.89-FIX1: Re-run bun install to restore devDependencies that
+          # npm install --no-save may have pruned (e.g. @tailwindcss/postcss).
+          # This does NOT modify package.json (the EXIT trap restores it).
+          bun install --no-save
+      - name: Generate Main and both Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Create disposable Store build database
+        run: |
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_test;"
+      - name: Push schemas to disposable PostgreSQL 17 databases
+        run: |
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
+      - name: Seed build-time catalog fixtures
+        env:
+          # Disposable CI-only credentials; never used outside the ephemeral PostgreSQL service.
+          ADMIN_USERNAME: "+15555550100"
+          ADMIN_PASSWORD: "heavix-ci-only-not-a-real-secret"
+        run: |
+          bun run db:seed-rbac
+          bun run db:seed-brands-a
+          bun run db:seed-brands-b
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
+      - name: Build and preserve Node standalone artifact
+        run: |
+          set -euo pipefail
+          unset HEAVIX_ENV
+          echo "=== Node build resource baseline ==="
+          date -u
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          /usr/bin/time -v bun run build
+          bun run verify:store-runtime-artifacts -- node .next/server
+          mkdir -p .ci-artifacts/node
+          cp -a .next/server .ci-artifacts/node/server
+          test -d .ci-artifacts/node/server
+          echo "PASS: Node standalone evidence preserved at .ci-artifacts/node/server"
+      - name: Build Next.js with Worker runtime entrypoints (Prisma CLI present; resolver-safe checks)
+        env:
+          HEAVIX_ENV: preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-artifacts/worker-next
+          CLI_PATH="node_modules/prisma"
+          ISOLATION_LOG=".ci-artifacts/worker-next/prisma-cli-isolation.log"
+          test -d "$CLI_PATH" || { echo "FAIL: root Prisma CLI package directory is missing"; exit 1; }
+          test -f "$CLI_PATH/package.json" || { echo "FAIL: Prisma CLI package metadata is missing"; exit 1; }
+          test -f "$CLI_PATH/build/index.js" || { echo "FAIL: Prisma CLI binary entrypoint is missing"; exit 1; }
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const pkg = JSON.parse(fs.readFileSync("node_modules/prisma/package.json", "utf8"));
+          const clientPkg = JSON.parse(fs.readFileSync("node_modules/@prisma/client/package.json", "utf8"));
+          console.log("PRISMA_CLI_PACKAGE_VERSION=" + pkg.version);
+          console.log("PRISMA_CLI_BIN=" + JSON.stringify(pkg.bin ?? null));
+          console.log("PRISMA_CLI_EXPORTS=" + JSON.stringify(pkg.exports ?? null));
+          console.log("PRISMA_CLI_BUILD_TYPES_EXISTS=" + fs.existsSync("node_modules/prisma/build/types.js"));
+          console.log("PRISMA_CLI_BUILD_INDEX_EXISTS=" + fs.existsSync("node_modules/prisma/build/index.js"));
+          console.log("PRISMA_CLIENT_PACKAGE_VERSION=" + clientPkg.version);
+          console.log("PRISMA_CLIENT_RUNTIME_UTILS_PRESENT=" + fs.existsSync("node_modules/@prisma/client-runtime-utils"));
+          NODE
+          for generated_client in src/lib/generated/client src/lib/generated/node-client src/lib/generated/store-client src/lib/generated/store-node-client; do
+            test -d "$generated_client" || { echo "FAIL: generated Prisma client directory missing: $generated_client"; exit 1; }
+            echo "GENERATED_CLIENT_PRESENT=$generated_client"
+          done
+          {
+            echo "experiment=STEP_17.87_worker_build_with_prisma_cli_present"
+            echo "cli_package_directory_present=1"
+            echo "cli_binary_entrypoint_present=1"
+            echo "resolver_based_prisma_cli_checks=disabled"
+            echo "generated_clients_were_created_before_worker_build=1"
+            date -u
+          } | tee "$ISOLATION_LOG"
+          echo "=== Worker Next.js build resource baseline (Prisma CLI present) ==="
+          date -u
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          /usr/bin/time -v ./node_modules/.bin/next build
+          test -d .next/server
+          echo "PASS: Worker-mode Next.js output exists at .next/server with Prisma CLI present"
+      - name: Capture Worker Next.js trace and bundle composition before OpenNext
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-artifacts/worker-next
+          if [ -f .next/trace ]; then cp .next/trace .ci-artifacts/worker-next/next-trace; fi
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+
+          const root = ".next/server";
+          const suspects = new Set([
+            "@prisma/client", "prisma", "@prisma/studio-core", "@prisma/dev",
+            "@prisma/engines", "@mdxeditor/editor", "@codesandbox/sandpack-client",
+            "@electric-sql/pglite", "pglite-server", "typescript",
+          ]);
+          const packageRoles = {
+            "@prisma/client": "runtime-client",
+            "prisma": "cli-tooling",
+            "@prisma/studio-core": "studio-tooling",
+            "@prisma/dev": "studio-development-tooling",
+            "@prisma/engines": "engine-tooling",
+            "@mdxeditor/editor": "editor-dependency",
+            "@codesandbox/sandpack-client": "editor-transitive-dependency",
+            "@electric-sql/pglite": "standalone-database-tooling-candidate",
+            "pglite-server": "standalone-database-tooling-candidate",
+            "typescript": "compiler-tooling",
+          };
+          const sourceRoots = ["src", "app", "pages", "components", "hooks", "lib", "scripts", "prisma"];
+          const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
+          const files = [];
+          function walk(dir, visit) {
+            if (!fs.existsSync(dir)) return;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full, visit);
+              else if (entry.isFile()) visit(full);
+            }
+          }
+          walk(root, full => {
+            const stat = fs.statSync(full);
+            files.push({ path: full.split(path.sep).join("/"), bytes: stat.size });
+          });
+          function packageNameFromPath(resolved) {
+            const segments = resolved.split("/");
+            const i = segments.lastIndexOf("node_modules");
+            if (i < 0 || i + 1 >= segments.length) return null;
+            const first = segments[i + 1];
+            return first.startsWith("@") && segments[i + 2] ? first + "/" + segments[i + 2] : first;
+          }
+          function fileRole(packageName, filePath) {
+            const p = filePath.toLowerCase();
+            if (packageName === "prisma" || packageName === "@prisma/engines" || packageName === "typescript") return "tooling";
+            if (packageName === "@prisma/studio-core" || packageName === "@prisma/dev") return "studio";
+            if (packageName === "@mdxeditor/editor" || packageName === "@codesandbox/sandpack-client") return "editor";
+            if (packageName === "@electric-sql/pglite" || packageName === "pglite-server") return "standalone-db-tooling-candidate";
+            if (p.includes("/studio/") || p.includes("/studio-")) return "studio-subpath";
+            if (p.includes("/cli/") || p.includes("/bin/") || p.includes("/engines/")) return "tooling-subpath";
+            if (packageName === "@prisma/client") return "client-runtime";
+            return "package-file-unclassified";
+          }
+
+          const traces = [];
+          const packageStats = new Map();
+          const routePackageStats = [];
+          const traceDetails = [];
+          const fileRouteIndex = new Map();
+          let unresolvedNodeModulesReferences = 0;
+          let malformedTraceFiles = 0;
+
+          for (const traceFile of files.filter(item => item.path.endsWith(".nft.json"))) {
+            try {
+              const trace = JSON.parse(fs.readFileSync(traceFile.path, "utf8"));
+              const refs = Array.isArray(trace.files) ? trace.files.filter(value => typeof value === "string") : [];
+              const routePackages = new Map();
+              const suspectReferences = [];
+              traces.push({ route: traceFile.path, references: refs.length });
+              for (const ref of refs) {
+                const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(traceFile.path), ref.replaceAll(String.fromCharCode(92), "/")));
+                const packageName = packageNameFromPath(resolved);
+                if (!packageName) continue;
+                let stat;
+                try {
+                  stat = fs.statSync(resolved);
+                  if (!stat.isFile()) continue;
+                } catch {
+                  unresolvedNodeModulesReferences += 1;
+                  continue;
+                }
+                let globalEntry = packageStats.get(packageName);
+                if (!globalEntry) {
+                  globalEntry = { references: 0, files: new Set(), bytes: 0 };
+                  packageStats.set(packageName, globalEntry);
+                }
+                globalEntry.references += 1;
+                if (!globalEntry.files.has(resolved)) {
+                  globalEntry.files.add(resolved);
+                  globalEntry.bytes += stat.size;
+                }
+                let routeEntry = routePackages.get(packageName);
+                if (!routeEntry) {
+                  routeEntry = { references: 0, files: new Set(), bytes: 0 };
+                  routePackages.set(packageName, routeEntry);
+                }
+                routeEntry.references += 1;
+                if (!routeEntry.files.has(resolved)) {
+                  routeEntry.files.add(resolved);
+                  routeEntry.bytes += stat.size;
+                }
+                if (suspects.has(packageName)) {
+                  const record = {
+                    package: packageName,
+                    packageRole: packageRoles[packageName] || "unclassified",
+                    path: resolved,
+                    realPath: fs.realpathSync(resolved).split(path.sep).join("/"),
+                    bytes: stat.size,
+                    fileRole: fileRole(packageName, resolved),
+                  };
+                  suspectReferences.push(record);
+                  const key = packageName + "::" + resolved;
+                  let indexed = fileRouteIndex.get(key);
+                  if (!indexed) {
+                    indexed = { ...record, routes: new Set(), traceReferenceCount: 0 };
+                    fileRouteIndex.set(key, indexed);
+                  }
+                  indexed.routes.add(traceFile.path);
+                  indexed.traceReferenceCount += 1;
+                }
+              }
+              const packageList = [...routePackages.entries()].map(([name, stats]) => ({
+                name, references: stats.references, uniqueFiles: stats.files.size, uniqueBytes: stats.bytes,
+              })).sort((a, b) => b.uniqueBytes - a.uniqueBytes);
+              const suspectPackages = new Map();
+              for (const ref of suspectReferences) {
+                let item = suspectPackages.get(ref.package);
+                if (!item) {
+                  item = { name: ref.package, packageRole: ref.packageRole, references: 0, files: [] };
+                  suspectPackages.set(ref.package, item);
+                }
+                item.references += 1;
+                if (!item.files.some(existing => existing.path === ref.path)) item.files.push(ref);
+              }
+              const uniqueBytes = packageList.reduce((sum, item) => sum + item.uniqueBytes, 0);
+              const heavy = uniqueBytes >= 10 * 1024 * 1024;
+              routePackageStats.push({
+                route: traceFile.path, references: refs.length,
+                nodeModulesPackageCount: packageList.length, nodeModulesUniqueBytes: uniqueBytes,
+                heavy, largestPackages: packageList.slice(0, 12),
+              });
+              traceDetails.push({
+                route: traceFile.path,
+                entrypointCandidate: traceFile.path.replace(/\.nft\.json$/, ""),
+                references: refs.length, nodeModulesUniqueBytes: uniqueBytes, heavy,
+                suspectPackages: [...suspectPackages.values()].map(item => ({
+                  ...item,
+                  uniqueFiles: item.files.length,
+                  uniqueBytes: item.files.reduce((sum, ref) => sum + ref.bytes, 0),
+                  files: item.files.sort((a, b) => a.path.localeCompare(b.path)),
+                })).sort((a, b) => a.name.localeCompare(b.name)),
+              });
+            } catch (error) {
+              malformedTraceFiles += 1;
+              traces.push({ route: traceFile.path, parseError: String(error) });
+            }
+          }
+
+          // Static literal-specifier scan; findings are source references, not a full module-resolution graph.
+          const sourceImportMatches = [];
+          const importPattern = /(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\(|\bimport\s*)['"]([^'"]+)['"]/g;
+          for (const sourceRoot of sourceRoots) {
+            walk(sourceRoot, full => {
+              if (!sourceExtensions.has(path.extname(full))) return;
+              const lines = fs.readFileSync(full, "utf8").split(/\r?\n/);
+              for (let i = 0; i < lines.length; i += 1) {
+                importPattern.lastIndex = 0;
+                let match;
+                while ((match = importPattern.exec(lines[i])) !== null) {
+                  const specifier = match[1];
+                  const packageName = specifier.startsWith("@")
+                    ? specifier.split("/").slice(0, 2).join("/")
+                    : specifier.split("/")[0];
+                  if (!suspects.has(packageName)) continue;
+                  sourceImportMatches.push({
+                    source: full.split(path.sep).join("/"),
+                    line: i + 1,
+                    package: packageName,
+                    specifier,
+                    statement: lines[i].trim().slice(0, 500),
+                  });
+                }
+              }
+            });
+          }
+          sourceImportMatches.sort((a, b) => a.package.localeCompare(b.package) || a.source.localeCompare(b.source) || a.line - b.line);
+
+          const suspectPackageFiles = [...fileRouteIndex.values()].map(item => ({
+            ...item,
+            routes: [...item.routes].sort(),
+            routeCount: item.routes.size,
+            traceReferenceCount: item.traceReferenceCount,
+            occurrence: item.routes.size > 1 ? "shared-across-traces" : "exclusive-to-one-trace",
+          })).sort((a, b) => a.package.localeCompare(b.package) || a.path.localeCompare(b.path));
+          const sharedExclusive = [...suspects].map(name => {
+            const entries = suspectPackageFiles.filter(item => item.package === name);
+            return {
+              package: name,
+              packageRole: packageRoles[name] || "unclassified",
+              files: entries.length,
+              sharedFiles: entries.filter(item => item.routeCount > 1).length,
+              exclusiveFiles: entries.filter(item => item.routeCount === 1).length,
+              routesReferencingPackage: new Set(entries.flatMap(item => item.routes)).size,
+              uniqueBytes: entries.reduce((sum, item) => sum + item.bytes, 0),
+            };
+          }).sort((a, b) => b.uniqueBytes - a.uniqueBytes);
+          const packages = [...packageStats.entries()].map(([name, stats]) => ({
+            name, references: stats.references, uniqueFiles: stats.files.size, uniqueBytes: stats.bytes,
+          }));
+          const report = {
+            schemaVersion: 2,
+            generatedAt: new Date().toISOString(),
+            root,
+            methodology: {
+              heavyTraceThresholdBytes: 10 * 1024 * 1024,
+              heavyTraceDefinition: "per-trace unique bytes across resolved node_modules files >= 10 MiB",
+              pathSemantics: "workspace-relative normalized path plus filesystem realPath",
+              importerScan: "literal static import/from/re-export/require/dynamic-import specifiers; not a complete resolver or runtime call graph",
+              routeToImporterLimit: "trace entrypoint candidates and source import matches are reported separately; no causal edge is asserted without resolver-backed evidence",
+            },
+            totals: {
+              totalFiles: files.length,
+              totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+              traceFiles: traces.length,
+              traceReferenceCount: traces.reduce((sum, trace) => sum + (trace.references || 0), 0),
+              unresolvedNodeModulesReferences,
+              malformedTraceFiles,
+              heavyTraceCount: routePackageStats.filter(item => item.heavy).length,
+              sourceImportMatches: sourceImportMatches.length,
+            },
+            largestFiles: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 50),
+            largestRouteTraces: [...traces].sort((a, b) => (b.references || 0) - (a.references || 0)).slice(0, 50),
+            routePackageComposition: routePackageStats.sort((a, b) => b.nodeModulesUniqueBytes - a.nodeModulesUniqueBytes),
+            routeTraceDetails: traceDetails.sort((a, b) => a.route.localeCompare(b.route)),
+            suspectPackageFiles,
+            sharedExclusive,
+            sourceImportMatches,
+            mostReferencedPackages: [...packages].sort((a, b) => b.references - a.references).slice(0, 100),
+            largestPackages: [...packages].sort((a, b) => b.uniqueBytes - a.uniqueBytes).slice(0, 100),
+          };
+          fs.writeFileSync(".ci-artifacts/worker-next/bundle-composition.json", JSON.stringify(report, null, 2));
+          console.log(JSON.stringify({
+            ...report.totals,
+            sharedExclusive: report.sharedExclusive,
+            sourceImportMatches: report.sourceImportMatches,
+            largestRoutePackageCompositions: report.routePackageComposition.slice(0, 10),
+          }, null, 2));
+          NODE
+          test -s .ci-artifacts/worker-next/bundle-composition.json
+          echo "=== Compact bundle composition report ==="
+          wc -c .ci-artifacts/worker-next/bundle-composition.json
+      - name: Upload Worker composition and Prisma isolation evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-next-composition-${{ github.sha }}
+          path: .ci-artifacts/worker-next/
+          if-no-files-found: error
+          retention-days: 14
+      # Intentional redundancy:
+      # The SHA-scoped artifact below preserves the existing commit-level contract.
+      # This run/attempt-scoped checkpoint preserves retry-specific evidence.
+      # Keep both uploads; they serve different recovery purposes.
+      - name: Checkpoint Worker Next.js evidence (per attempt)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-worker-next-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .ci-artifacts/worker-next/
+            .ci-artifacts/node/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Bundle existing Worker build with OpenNext (skip Next.js build)
+        env:
+          HEAVIX_ENV: preview
+          NODE_OPTIONS: "--require /tmp/v8-memory-hook.js"
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== OpenNext bundling resource baseline ==="
+          date -u
+          free -h
+          df -h .
+          # === A-3.4: Compile mallinfo2 LD_PRELOAD library ===
+          echo 'I2RlZmluZSBfR05VX1NPVVJDRQojaW5jbHVkZSA8c3RkaW8uaD4KI2luY2x1ZGUgPHN0ZGxpYi5oPgojaW5jbHVkZSA8c3RyaW5nLmg+CiNpbmNsdWRlIDxtYWxsb2MuaD4KI2luY2x1ZGUgPHVuaXN0ZC5oPgojaW5jbHVkZSA8cHRocmVhZC5oPgojaW5jbHVkZSA8dGltZS5oPgojaW5jbHVkZSA8c3RkYXRvbWljLmg+CnN0YXRpYyBhdG9taWNfaW50IGdfcnVubmluZyA9IDA7CnN0YXRpYyBwdGhyZWFkX3QgZ190aHJlYWQ7CnN0YXRpYyB2b2lkICpzYW1wbGVfdGhyZWFkKHZvaWQgKmFyZykgewogICAgKHZvaWQpYXJnOwogICAgd2hpbGUgKGF0b21pY19sb2FkKCZnX3J1bm5pbmcpKSB7CiAgICAgICAgc3RydWN0IG1hbGxpbmZvMiBtaSA9IG1hbGxpbmZvMigpOwogICAgICAgIGNoYXIgdHNbMzJdOwogICAgICAgIHRpbWVfdCBub3cgPSB0aW1lKE5VTEwpOwogICAgICAgIHN0cnVjdCB0bSB0bV91dGM7CiAgICAgICAgZ210aW1lX3IoJm5vdywgJnRtX3V0Yyk7CiAgICAgICAgc3RyZnRpbWUodHMsIHNpemVvZih0cyksICIlWS0lbS0lZFQlSDolTTolU1oiLCAmdG1fdXRjKTsKICAgICAgICBmcHJpbnRmKHN0ZGVyciwKICAgICAgICAgICAgIntcInR5cGVcIjpcIk1BTExJTkZPXCIsXCJ0aW1lc3RhbXBcIjpcIiVzXCIsXCJwaWRcIjolZCwiCiAgICAgICAgICAgICJcImFyZW5hXCI6JWxkLFwib3JkYmxrc1wiOiVsZCxcInNtYmxrc1wiOiVsZCwiCiAgICAgICAgICAgICJcImhibGtzXCI6JWxkLFwiaGJsa2hkXCI6JWxkLCIKICAgICAgICAgICAgIlwidXNtYmxrc1wiOiVsZCxcImZzbWJsa3NcIjolbGQsIgogICAgICAgICAgICAiXCJ1b3JkYmxrc1wiOiVsZCxcImZvcmRibGtzXCI6JWxkLFwia2VlcGNvc3RcIjolbGR9XG4iLAogICAgICAgICAgICB0cywgZ2V0cGlkKCksCiAgICAgICAgICAgIChsb25nKW1pLmFyZW5hLCAobG9uZyltaS5vcmRibGtzLCAobG9uZyltaS5zbWJsa3MsCiAgICAgICAgICAgIChsb25nKW1pLmhibGtzLCAobG9uZyltaS5oYmxraGQsCiAgICAgICAgICAgIChsb25nKW1pLnVzbWJsa3MsIChsb25nKW1pLmZzbWJsa3MsCiAgICAgICAgICAgIChsb25nKW1pLnVvcmRibGtzLCAobG9uZyltaS5mb3JkYmxrcywgKGxvbmcpbWkua2VlcGNvc3QKICAgICAgICApOwogICAgICAgIGZmbHVzaChzdGRlcnIpOwogICAgICAgIHN0cnVjdCB0aW1lc3BlYyBzbGVlcF90cyA9IHsyLCAwfTsKICAgICAgICBuYW5vc2xlZXAoJnNsZWVwX3RzLCBOVUxMKTsKICAgIH0KICAgIHJldHVybiBOVUxMOwp9Cl9fYXR0cmlidXRlX18oKGNvbnN0cnVjdG9yKSkKc3RhdGljIHZvaWQgbWFsbGluZm9faW5pdCh2b2lkKSB7CiAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMSk7CiAgICBmcHJpbnRmKHN0ZGVyciwgIntcInR5cGVcIjpcIk1BTExJTkZPX0lOSVRcIixcInBpZFwiOiVkLFwibm90ZVwiOlwiTERfUFJFTE9BRCBtYWxsaW5mbzIgc2FtcGxlciBzdGFydGVkXCJ9XG4iLCBnZXRwaWQoKSk7CiAgICBmZmx1c2goc3RkZXJyKTsKICAgIGlmIChwdGhyZWFkX2NyZWF0ZSgmZ190aHJlYWQsIE5VTEwsIHNhbXBsZV90aHJlYWQsIE5VTEwpICE9IDApIHsKICAgICAgICBmcHJpbnRmKHN0ZGVyciwgIntcInR5cGVcIjpcIk1BTExJTkZPX0VSUk9SXCIsXCJlcnJvclwiOlwicHRocmVhZF9jcmVhdGUgZmFpbGVkXCJ9XG4iKTsKICAgICAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMCk7CiAgICB9IGVsc2UgewogICAgICAgIHB0aHJlYWRfZGV0YWNoKGdfdGhyZWFkKTsKICAgIH0KfQpfX2F0dHJpYnV0ZV9fKChkZXN0cnVjdG9yKSkKc3RhdGljIHZvaWQgbWFsbGluZm9fZmluaSh2b2lkKSB7CiAgICBhdG9taWNfc3RvcmUoJmdfcnVubmluZywgMCk7CiAgICBzdHJ1Y3QgbWFsbGluZm8yIG1pID0gbWFsbGluZm8yKCk7CiAgICBmcHJpbnRmKHN0ZGVyciwKICAgICAgICAie1widHlwZVwiOlwiTUFMTElORk9fRklOQUxcIixcInBpZFwiOiVkLCIKICAgICAgICAiXCJhcmVuYVwiOiVsZCxcInVvcmRibGtzXCI6JWxkLFwiZm9yZGJsa3NcIjolbGQsXCJoYmxraGRcIjolbGQsXCJrZWVwY29zdFwiOiVsZH1cbiIsCiAgICAgICAgZ2V0cGlkKCksCiAgICAgICAgKGxvbmcpbWkuYXJlbmEsIChsb25nKW1pLnVvcmRibGtzLCAobG9uZyltaS5mb3JkYmxrcywKICAgICAgICAobG9uZyltaS5oYmxraGQsIChsb25nKW1pLmtlZXBjb3N0CiAgICApOwogICAgZmZsdXNoKHN0ZGVycik7Cn0K' | base64 -d > /tmp/mallinfo_preload.c
+          gcc -shared -fPIC -o /tmp/mallinfo_preload.so /tmp/mallinfo_preload.c -lpthread 2>/dev/null || \
+          echo "WARNING: mallinfo_preload compilation failed"
+          echo "=== mallinfo2 preload library compiled ==="
+
+          # === A-3.9: Compile size-bucketed profiler v5 (4KiB-1MiB, reconciliation) ===
+          echo 'Ly8gbWFsbG9jX3Byb2ZpbGVyX3Y2LmMg4oCUIFNhZmUgTERfUFJFTE9BRCBwcm9maWxlciB3aXRoIGNvbnN0cnVjdG9yIGluaXRpYWxpemF0aW9uCi8vIEZpeGVzOiBkbHN5bSByZWN1cnNpb24sIFNJR0JVUyBjcmFzaCwgbmVnYXRpdmUgcmVjb25jaWxpYXRpb24gZ2FwCi8vCi8vIEtleSBjaGFuZ2VzIGZyb20gdjU6Ci8vIDEuIGluaXRfcmVhbCgpIG1vdmVkIHRvIF9fYXR0cmlidXRlX18oKGNvbnN0cnVjdG9yKSkg4oCUIHJ1bnMgYmVmb3JlIGFueSBtYWxsb2MKLy8gMi4gZ19pbml0aWFsaXplZCBmbGFnIOKAlCBpZiBmYWxzZSwgc2tpcCBhbGwgdHJhY2tpbmcgKHBhc3MtdGhyb3VnaCkKLy8gMy4gTm8gZGxzeW0gY2FsbHMgaW4gbWFsbG9jL2NhbGxvYy9yZWFsbG9jL2ZyZWUgaG90IHBhdGhzCi8vIDQuIENhbGxlciBhZGRyZXNzIGNhcHR1cmVkIGluIHdyYXBwZXIsIHBhc3NlZCB0byB0cmFja19hbGxvYygpCi8vIDUuIFJlZW50cmFuY3kgZ3VhcmQgcHJlc2VydmVkCgojZGVmaW5lIF9HTlVfU09VUkNFCiNpbmNsdWRlIDxzdGRpby5oPgojaW5jbHVkZSA8c3RkbGliLmg+CiNpbmNsdWRlIDxzdHJpbmcuaD4KI2luY2x1ZGUgPGRsZmNuLmg+CiNpbmNsdWRlIDx1bmlzdGQuaD4KI2luY2x1ZGUgPHRpbWUuaD4KI2luY2x1ZGUgPHN0ZGF0b21pYy5oPgojaW5jbHVkZSA8bWFsbG9jLmg+CiNpbmNsdWRlIDxzdGRpbnQuaD4KCiNkZWZpbmUgTUlOX1RSQUNLX1NJWkUgNDA5NgojZGVmaW5lIE1BWF9UUkFDS19TSVpFIDEwNDg1NzYKI2RlZmluZSBPVVRQVVRfSU5URVJWQUwgNTAwMDAKI2RlZmluZSBOVU1fQlVDS0VUUyA4CiNkZWZpbmUgTUFYX0NBTExFUlNfUEVSX0JVQ0tFVCAxNgojZGVmaW5lIEhBU0hfU0laRSA4MTkyCgpzdGF0aWMgY29uc3QgY2hhciogQlVDS0VUX05BTUVTW05VTV9CVUNLRVRTXSA9IHsKICAgICI0LThLQiIsICI4LTE2S0IiLCAiMTYtMzJLQiIsICIzMi02NEtCIiwKICAgICI2NC0xMjhLQiIsICIxMjgtMjU2S0IiLCAiMjU2LTUxMktCIiwgIjUxMi0xMDI0S0IiCn07CgoKLy8gQm9vdHN0cmFwIGFsbG9jYXRvcjogdXNlZCBPTkxZIGR1cmluZyBjb25zdHJ1Y3RvciB3aGVuIGRsc3ltIGNhbGxzIGNhbGxvYwovLyBUaGlzIGlzIGEgYm91bmRlZCBzdGF0aWMgYnVmZmVyIOKAlCBzYWZlIGJlY2F1c2UgZGxzeW0gbWFrZXMgdmVyeSBmZXcgYWxsb2NhdGlvbnMKI2RlZmluZSBCT09UU1RSQVBfU0laRSA2NTUzNgpzdGF0aWMgY2hhciBnX2Jvb3RzdHJhcF9idWZbQk9PVFNUUkFQX1NJWkVdOwpzdGF0aWMgYXRvbWljX3NpemVfdCBnX2Jvb3RzdHJhcF9wb3MgPSAwOwoKc3RhdGljIHZvaWQqIGJvb3RzdHJhcF9hbGxvYyhzaXplX3Qgc2l6ZSkgewogICAgLy8gQWxpZ24gdG8gMTYgYnl0ZXMKICAgIHNpemUgPSAoc2l6ZSArIDE1KSAmIH4xNTsKICAgIHNpemVfdCBwb3MgPSBhdG9taWNfZmV0Y2hfYWRkKCZnX2Jvb3RzdHJhcF9wb3MsIHNpemUpOwogICAgaWYgKHBvcyArIHNpemUgPiBCT09UU1RSQVBfU0laRSkgcmV0dXJuIE5VTEw7CiAgICByZXR1cm4gZ19ib290c3RyYXBfYnVmICsgcG9zOwp9CgpzdGF0aWMgaW50IGlzX2Jvb3RzdHJhcF9wdHIodm9pZCogcHRyKSB7CiAgICByZXR1cm4gKGNoYXIqKXB0ciA+PSBnX2Jvb3RzdHJhcF9idWYgJiYKICAgICAgICAgICAoY2hhciopcHRyIDwgZ19ib290c3RyYXBfYnVmICsgQk9PVFNUUkFQX1NJWkU7Cn0KCnR5cGVkZWYgc3RydWN0IHsKICAgIHZvaWQqIGFkZHI7CiAgICBhdG9taWNfbG9uZyB0b3RhbF9hbGxvYzsKICAgIGF0b21pY19sb25nIHRvdGFsX2ZyZWU7CiAgICBhdG9taWNfbG9uZyBsaXZlX2J5dGVzOwogICAgYXRvbWljX2xvbmcgYWxsb2NfY291bnQ7CiAgICBhdG9taWNfbG9uZyBmcmVlX2NvdW50OwogICAgYXRvbWljX2xvbmcgbWF4X3NpemU7CiAgICBpbnQgaW5fdXNlOwp9IGNhbGxlcl9lbnRyeTsKCnR5cGVkZWYgc3RydWN0IHsKICAgIGNhbGxlcl9lbnRyeSBjYWxsZXJzW01BWF9DQUxMRVJTX1BFUl9CVUNLRVRdOwogICAgYXRvbWljX2ludCBjYWxsZXJfY291bnQ7CiAgICBhdG9taWNfbG9uZyBvdmVyZmxvdzsKfSBidWNrZXRfZW50cnk7CgpzdGF0aWMgYnVja2V0X2VudHJ5IGdfYnVja2V0c1tOVU1fQlVDS0VUU107CgpzdGF0aWMgdm9pZCogKCpyZWFsX21hbGxvYykoc2l6ZV90KSA9IE5VTEw7CnN0YXRpYyB2b2lkKiAoKnJlYWxfY2FsbG9jKShzaXplX3QsIHNpemVfdCkgPSBOVUxMOwpzdGF0aWMgdm9pZCogKCpyZWFsX3JlYWxsb2MpKHZvaWQqLCBzaXplX3QpID0gTlVMTDsKc3RhdGljIHZvaWQgICgqcmVhbF9mcmVlKSh2b2lkKikgPSBOVUxMOwoKc3RhdGljIGF0b21pY19pbnQgZ19pbml0aWFsaXplZCA9IDA7CnN0YXRpYyBhdG9taWNfaW50IGdfaW5pdF9pbl9wcm9ncmVzcyA9IDA7CgpzdGF0aWMgYXRvbWljX2xvbmcgZ19jYWxsX2NvdW50ID0gMDsKc3RhdGljIGF0b21pY19sb25nIGdfdHJhY2tlZF9hbGxvY3MgPSAwOwpzdGF0aWMgYXRvbWljX2xvbmcgZ190cmFja2VkX2ZyZWVzID0gMDsKc3RhdGljIGF0b21pY19sb25nIGdfdHJhY2tlZF9hbGxvY19ieXRlcyA9IDA7CnN0YXRpYyBhdG9taWNfbG9uZyBnX3RyYWNrZWRfZnJlZV9ieXRlcyA9IDA7CnN0YXRpYyBhdG9taWNfbG9uZyBnX3NraXBwZWRfYmVmb3JlX2luaXQgPSAwOwpzdGF0aWMgX190aHJlYWQgaW50IGdfaW5faG9vayA9IDA7Cgp0eXBlZGVmIHN0cnVjdCB7CiAgICBhdG9taWNfdWludHB0cl90IHB0cjsKICAgIGF0b21pY19pbnQgYnVja2V0X2lkeDsKICAgIGF0b21pY19pbnQgY2FsbGVyX2lkeDsKICAgIGF0b21pY19sb25nIHNpemU7Cn0gcHRyX2VudHJ5OwpzdGF0aWMgcHRyX2VudHJ5IGdfcHRyX3RhYmxlW0hBU0hfU0laRV07CgpzdGF0aWMgaW5saW5lIGludCBoYXNoX3B0cih2b2lkKiBwKSB7CiAgICByZXR1cm4gKCh1bnNpZ25lZCBsb25nKXAgPj4gOCkgJiAoSEFTSF9TSVpFIC0gMSk7Cn0KCnN0YXRpYyBpbmxpbmUgaW50IHNpemVfdG9fYnVja2V0KHNpemVfdCBzaXplKSB7CiAgICBpZiAoc2l6ZSA8IE1JTl9UUkFDS19TSVpFKSByZXR1cm4gLTE7CiAgICBpZiAoc2l6ZSA+PSBNQVhfVFJBQ0tfU0laRSkgcmV0dXJuIC0xOwogICAgaW50IGJ1Y2tldCA9IDA7CiAgICBzaXplX3QgcyA9IE1JTl9UUkFDS19TSVpFOwogICAgd2hpbGUgKHMgPCBzaXplICYmIGJ1Y2tldCA8IE5VTV9CVUNLRVRTIC0gMSkgewogICAgICAgIHMgPDw9IDE7CiAgICAgICAgYnVja2V0Kys7CiAgICB9CiAgICByZXR1cm4gYnVja2V0Owp9CgpzdGF0aWMgaW50IGZpbmRfb3JfY3JlYXRlX2NhbGxlcihidWNrZXRfZW50cnkqIGJ1Y2tldCwgdm9pZCogYWRkcikgewogICAgZm9yIChpbnQgaSA9IDA7IGkgPCBhdG9taWNfbG9hZCgmYnVja2V0LT5jYWxsZXJfY291bnQpOyBpKyspIHsKICAgICAgICBpZiAoYnVja2V0LT5jYWxsZXJzW2ldLmFkZHIgPT0gYWRkcikgcmV0dXJuIGk7CiAgICB9CiAgICBpbnQgaWR4ID0gYXRvbWljX2ZldGNoX2FkZCgmYnVja2V0LT5jYWxsZXJfY291bnQsIDEpOwogICAgaWYgKGlkeCA+PSBNQVhfQ0FMTEVSU19QRVJfQlVDS0VUKSB7CiAgICAgICAgYXRvbWljX2ZldGNoX2FkZCgmYnVja2V0LT5vdmVyZmxvdywgMSk7CiAgICAgICAgcmV0dXJuIC0xOwogICAgfQogICAgYnVja2V0LT5jYWxsZXJzW2lkeF0uYWRkciA9IGFkZHI7CiAgICBhdG9taWNfc3RvcmUoJmJ1Y2tldC0+Y2FsbGVyc1tpZHhdLnRvdGFsX2FsbG9jLCAwKTsKICAgIGF0b21pY19zdG9yZSgmYnVja2V0LT5jYWxsZXJzW2lkeF0udG90YWxfZnJlZSwgMCk7CiAgICBhdG9taWNfc3RvcmUoJmJ1Y2tldC0+Y2FsbGVyc1tpZHhdLmxpdmVfYnl0ZXMsIDApOwogICAgYXRvbWljX3N0b3JlKCZidWNrZXQtPmNhbGxlcnNbaWR4XS5hbGxvY19jb3VudCwgMCk7CiAgICBhdG9taWNfc3RvcmUoJmJ1Y2tldC0+Y2FsbGVyc1tpZHhdLmZyZWVfY291bnQsIDApOwogICAgYXRvbWljX3N0b3JlKCZidWNrZXQtPmNhbGxlcnNbaWR4XS5tYXhfc2l6ZSwgMCk7CiAgICBidWNrZXQtPmNhbGxlcnNbaWR4XS5pbl91c2UgPSAxOwogICAgcmV0dXJuIGlkeDsKfQoKc3RhdGljIHZvaWQgdHJhY2tfYWxsb2Modm9pZCogcHRyLCBzaXplX3Qgc2l6ZSwgdm9pZCogY2FsbGVyKSB7CiAgICBpZiAoIXB0cikgcmV0dXJuOwogICAgaW50IGJ1Y2tldF9pZHggPSBzaXplX3RvX2J1Y2tldChzaXplKTsKICAgIGlmIChidWNrZXRfaWR4IDwgMCkgcmV0dXJuOwoKICAgIGF0b21pY19mZXRjaF9hZGQoJmdfdHJhY2tlZF9hbGxvY3MsIDEpOwogICAgYXRvbWljX2ZldGNoX2FkZCgmZ190cmFja2VkX2FsbG9jX2J5dGVzLCBzaXplKTsKCiAgICBidWNrZXRfZW50cnkqIGJ1Y2tldCA9ICZnX2J1Y2tldHNbYnVja2V0X2lkeF07CiAgICBpbnQgY2FsbGVyX2lkeCA9IGZpbmRfb3JfY3JlYXRlX2NhbGxlcihidWNrZXQsIGNhbGxlcik7CiAgICBpZiAoY2FsbGVyX2lkeCA8IDApIHJldHVybjsKCiAgICBhdG9taWNfZmV0Y2hfYWRkKCZidWNrZXQtPmNhbGxlcnNbY2FsbGVyX2lkeF0udG90YWxfYWxsb2MsIHNpemUpOwogICAgYXRvbWljX2ZldGNoX2FkZCgmYnVja2V0LT5jYWxsZXJzW2NhbGxlcl9pZHhdLmxpdmVfYnl0ZXMsIHNpemUpOwogICAgYXRvbWljX2ZldGNoX2FkZCgmYnVja2V0LT5jYWxsZXJzW2NhbGxlcl9pZHhdLmFsbG9jX2NvdW50LCAxKTsKCiAgICBsb25nIG9sZF9tYXggPSBhdG9taWNfbG9hZCgmYnVja2V0LT5jYWxsZXJzW2NhbGxlcl9pZHhdLm1heF9zaXplKTsKICAgIHdoaWxlIChzaXplID4gb2xkX21heCAmJgogICAgICAgICAgICFhdG9taWNfY29tcGFyZV9leGNoYW5nZV93ZWFrKCZidWNrZXQtPmNhbGxlcnNbY2FsbGVyX2lkeF0ubWF4X3NpemUsICZvbGRfbWF4LCBzaXplKSkge30KCiAgICBpbnQgaCA9IGhhc2hfcHRyKHB0cik7CiAgICBmb3IgKGludCBpID0gMDsgaSA8IDQ7IGkrKykgewogICAgICAgIGludCBzbG90ID0gKGggKyBpKSAmIChIQVNIX1NJWkUgLSAxKTsKICAgICAgICB1aW50cHRyX3QgZXhwZWN0ZWQgPSAwOwogICAgICAgIGlmIChhdG9taWNfY29tcGFyZV9leGNoYW5nZV9zdHJvbmcoJmdfcHRyX3RhYmxlW3Nsb3RdLnB0ciwgJmV4cGVjdGVkLCAodWludHB0cl90KXB0cikpIHsKICAgICAgICAgICAgYXRvbWljX3N0b3JlKCZnX3B0cl90YWJsZVtzbG90XS5idWNrZXRfaWR4LCBidWNrZXRfaWR4KTsKICAgICAgICAgICAgYXRvbWljX3N0b3JlKCZnX3B0cl90YWJsZVtzbG90XS5jYWxsZXJfaWR4LCBjYWxsZXJfaWR4KTsKICAgICAgICAgICAgYXRvbWljX3N0b3JlKCZnX3B0cl90YWJsZVtzbG90XS5zaXplLCBzaXplKTsKICAgICAgICAgICAgcmV0dXJuOwogICAgICAgIH0KICAgIH0KfQoKc3RhdGljIHZvaWQgdHJhY2tfZnJlZSh2b2lkKiBwdHIpIHsKICAgIGlmICghcHRyKSByZXR1cm47CiAgICBpbnQgaCA9IGhhc2hfcHRyKHB0cik7CiAgICBmb3IgKGludCBpID0gMDsgaSA8IDQ7IGkrKykgewogICAgICAgIGludCBzbG90ID0gKGggKyBpKSAmIChIQVNIX1NJWkUgLSAxKTsKICAgICAgICB1aW50cHRyX3Qgc3RvcmVkID0gYXRvbWljX2xvYWQoJmdfcHRyX3RhYmxlW3Nsb3RdLnB0cik7CiAgICAgICAgaWYgKHN0b3JlZCA9PSAodWludHB0cl90KXB0cikgewogICAgICAgICAgICBpbnQgYnVja2V0X2lkeCA9IGF0b21pY19sb2FkKCZnX3B0cl90YWJsZVtzbG90XS5idWNrZXRfaWR4KTsKICAgICAgICAgICAgaW50IGNhbGxlcl9pZHggPSBhdG9taWNfbG9hZCgmZ19wdHJfdGFibGVbc2xvdF0uY2FsbGVyX2lkeCk7CiAgICAgICAgICAgIGxvbmcgc2l6ZSA9IGF0b21pY19sb2FkKCZnX3B0cl90YWJsZVtzbG90XS5zaXplKTsKICAgICAgICAgICAgYXRvbWljX3N0b3JlKCZnX3B0cl90YWJsZVtzbG90XS5wdHIsIDApOwoKICAgICAgICAgICAgaWYgKGJ1Y2tldF9pZHggPj0gMCAmJiBidWNrZXRfaWR4IDwgTlVNX0JVQ0tFVFMgJiYKICAgICAgICAgICAgICAgIGNhbGxlcl9pZHggPj0gMCAmJiBjYWxsZXJfaWR4IDwgTUFYX0NBTExFUlNfUEVSX0JVQ0tFVCkgewogICAgICAgICAgICAgICAgYXRvbWljX2ZldGNoX2FkZCgmZ19idWNrZXRzW2J1Y2tldF9pZHhdLmNhbGxlcnNbY2FsbGVyX2lkeF0udG90YWxfZnJlZSwgc2l6ZSk7CiAgICAgICAgICAgICAgICBhdG9taWNfZmV0Y2hfc3ViKCZnX2J1Y2tldHNbYnVja2V0X2lkeF0uY2FsbGVyc1tjYWxsZXJfaWR4XS5saXZlX2J5dGVzLCBzaXplKTsKICAgICAgICAgICAgICAgIGF0b21pY19mZXRjaF9hZGQoJmdfYnVja2V0c1tidWNrZXRfaWR4XS5jYWxsZXJzW2NhbGxlcl9pZHhdLmZyZWVfY291bnQsIDEpOwogICAgICAgICAgICB9CiAgICAgICAgICAgIGF0b21pY19mZXRjaF9hZGQoJmdfdHJhY2tlZF9mcmVlcywgMSk7CiAgICAgICAgICAgIGF0b21pY19mZXRjaF9hZGQoJmdfdHJhY2tlZF9mcmVlX2J5dGVzLCBzaXplKTsKICAgICAgICAgICAgcmV0dXJuOwogICAgICAgIH0KICAgIH0KfQoKc3RhdGljIHZvaWQgb3V0cHV0X3N0YXRzKHZvaWQpIHsKICAgIGNoYXIgdGJ1ZlszMl07CiAgICB0aW1lX3Qgbm93ID0gdGltZShOVUxMKTsKICAgIHN0cnVjdCB0bSB0bV91dGM7CiAgICBnbXRpbWVfcigmbm93LCAmdG1fdXRjKTsKICAgIHN0cmZ0aW1lKHRidWYsIHNpemVvZih0YnVmKSwgIiVZLSVtLSVkVCVIOiVNOiVTWiIsICZ0bV91dGMpOwoKICAgIHN0cnVjdCBtYWxsaW5mbzIgbWkgPSBtYWxsaW5mbzIoKTsKCiAgICBsb25nIHByb2ZpbGVyX2xpdmUgPSBhdG9taWNfbG9hZCgmZ190cmFja2VkX2FsbG9jX2J5dGVzKSAtIGF0b21pY19sb2FkKCZnX3RyYWNrZWRfZnJlZV9ieXRlcyk7CiAgICBsb25nIG1hbGxpbmZvX2xpdmUgPSBtaS51b3JkYmxrczsKICAgIGxvbmcgZ2FwID0gbWFsbGluZm9fbGl2ZSAtIHByb2ZpbGVyX2xpdmU7CgogICAgY2hhciBzdW1bNTEyXTsKICAgIGludCBzbGVuID0gc25wcmludGYoc3VtLCBzaXplb2Yoc3VtKSwKICAgICAgICAie1widHlwZVwiOlwiUFJPRklMRVI2X1NVTU1BUllcIixcInRpbWVzdGFtcFwiOlwiJXNcIixcInBpZFwiOiVkLCIKICAgICAgICAiXCJ0cmFja2VkX2FsbG9jX2J5dGVzXCI6JWxkLFwidHJhY2tlZF9mcmVlX2J5dGVzXCI6JWxkLFwidHJhY2tlZF9saXZlX2J5dGVzXCI6JWxkLCIKICAgICAgICAiXCJ0cmFja2VkX2FsbG9jc1wiOiVsZCxcInRyYWNrZWRfZnJlZXNcIjolbGQsXCJza2lwcGVkX2JlZm9yZV9pbml0XCI6JWxkLCIKICAgICAgICAiXCJtYWxsaW5mb191b3JkYmxrc1wiOiVsZCxcIm1hbGxpbmZvX2FyZW5hXCI6JWxkLFwibWFsbGluZm9fZm9yZGJsa3NcIjolbGQsIgogICAgICAgICJcImdhcF91bnRyYWNrZWRcIjolbGQsXCJnYXBfcGN0XCI6JS4xZn1cbiIsCiAgICAgICAgdGJ1ZiwgZ2V0cGlkKCksCiAgICAgICAgYXRvbWljX2xvYWQoJmdfdHJhY2tlZF9hbGxvY19ieXRlcyksCiAgICAgICAgYXRvbWljX2xvYWQoJmdfdHJhY2tlZF9mcmVlX2J5dGVzKSwKICAgICAgICBwcm9maWxlcl9saXZlLAogICAgICAgIGF0b21pY19sb2FkKCZnX3RyYWNrZWRfYWxsb2NzKSwKICAgICAgICBhdG9taWNfbG9hZCgmZ190cmFja2VkX2ZyZWVzKSwKICAgICAgICBhdG9taWNfbG9hZCgmZ19za2lwcGVkX2JlZm9yZV9pbml0KSwKICAgICAgICBtYWxsaW5mb19saXZlLCBtaS5hcmVuYSwgbWkuZm9yZGJsa3MsCiAgICAgICAgZ2FwLAogICAgICAgIG1hbGxpbmZvX2xpdmUgPiAwID8gKGRvdWJsZSlnYXAgLyBtYWxsaW5mb19saXZlICogMTAwIDogMC4wKTsKICAgIGlmIChzbGVuID4gMCkgd3JpdGUoMiwgc3VtLCBzbGVuKTsKCiAgICBmb3IgKGludCBiID0gMDsgYiA8IE5VTV9CVUNLRVRTOyBiKyspIHsKICAgICAgICBidWNrZXRfZW50cnkqIGJ1Y2tldCA9ICZnX2J1Y2tldHNbYl07CiAgICAgICAgaW50IGNhbGxlcl9jb3VudCA9IGF0b21pY19sb2FkKCZidWNrZXQtPmNhbGxlcl9jb3VudCk7CiAgICAgICAgaWYgKGNhbGxlcl9jb3VudCA+IE1BWF9DQUxMRVJTX1BFUl9CVUNLRVQpIGNhbGxlcl9jb3VudCA9IE1BWF9DQUxMRVJTX1BFUl9CVUNLRVQ7CgogICAgICAgIGZvciAoaW50IGMgPSAwOyBjIDwgY2FsbGVyX2NvdW50OyBjKyspIHsKICAgICAgICAgICAgaWYgKCFidWNrZXQtPmNhbGxlcnNbY10uaW5fdXNlKSBjb250aW51ZTsKICAgICAgICAgICAgbG9uZyBsaXZlID0gYXRvbWljX2xvYWQoJmJ1Y2tldC0+Y2FsbGVyc1tjXS5saXZlX2J5dGVzKTsKICAgICAgICAgICAgaWYgKGxpdmUgPT0gMCAmJiBhdG9taWNfbG9hZCgmYnVja2V0LT5jYWxsZXJzW2NdLmFsbG9jX2NvdW50KSA9PSAwKSBjb250aW51ZTsKCiAgICAgICAgICAgIGNoYXIgYnVmWzUxMl07CiAgICAgICAgICAgIGludCBsZW4gPSBzbnByaW50ZihidWYsIHNpemVvZihidWYpLAogICAgICAgICAgICAgICAgIntcInR5cGVcIjpcIlBST0ZJTEVSNl9CVUNLRVRcIixcInRpbWVzdGFtcFwiOlwiJXNcIixcInBpZFwiOiVkLCIKICAgICAgICAgICAgICAgICJcImJ1Y2tldFwiOlwiJXNcIixcImNhbGxlclwiOlwiJXBcIiwiCiAgICAgICAgICAgICAgICAiXCJ0b3RhbF9hbGxvY1wiOiVsZCxcInRvdGFsX2ZyZWVcIjolbGQsXCJsaXZlX2J5dGVzXCI6JWxkLCIKICAgICAgICAgICAgICAgICJcImFsbG9jX2NvdW50XCI6JWxkLFwiZnJlZV9jb3VudFwiOiVsZCxcIm1heF9zaXplXCI6JWxkfVxuIiwKICAgICAgICAgICAgICAgIHRidWYsIGdldHBpZCgpLAogICAgICAgICAgICAgICAgQlVDS0VUX05BTUVTW2JdLAogICAgICAgICAgICAgICAgYnVja2V0LT5jYWxsZXJzW2NdLmFkZHIsCiAgICAgICAgICAgICAgICBhdG9taWNfbG9hZCgmYnVja2V0LT5jYWxsZXJzW2NdLnRvdGFsX2FsbG9jKSwKICAgICAgICAgICAgICAgIGF0b21pY19sb2FkKCZidWNrZXQtPmNhbGxlcnNbY10udG90YWxfZnJlZSksCiAgICAgICAgICAgICAgICBsaXZlLAogICAgICAgICAgICAgICAgYXRvbWljX2xvYWQoJmJ1Y2tldC0+Y2FsbGVyc1tjXS5hbGxvY19jb3VudCksCiAgICAgICAgICAgICAgICBhdG9taWNfbG9hZCgmYnVja2V0LT5jYWxsZXJzW2NdLmZyZWVfY291bnQpLAogICAgICAgICAgICAgICAgYXRvbWljX2xvYWQoJmJ1Y2tldC0+Y2FsbGVyc1tjXS5tYXhfc2l6ZSkpOwogICAgICAgICAgICBpZiAobGVuID4gMCkgd3JpdGUoMiwgYnVmLCBsZW4pOwogICAgICAgIH0KICAgIH0KfQoKLy8gQ29uc3RydWN0b3Ig4oCUIHJlc29sdmUgcmVhbCBmdW5jdGlvbnMgQkVGT1JFIGFueSBtYWxsb2MgY2FsbApfX2F0dHJpYnV0ZV9fKChjb25zdHJ1Y3RvcikpCnN0YXRpYyB2b2lkIHByb2ZpbGVyX2luaXQodm9pZCkgewogICAgLy8gUHJldmVudCByZS1lbnRyYW50IGluaXRpYWxpemF0aW9uCiAgICBpbnQgZXhwZWN0ZWQgPSAwOwogICAgaWYgKCFhdG9taWNfY29tcGFyZV9leGNoYW5nZV9zdHJvbmcoJmdfaW5pdF9pbl9wcm9ncmVzcywgJmV4cGVjdGVkLCAxKSkgewogICAgICAgIHJldHVybjsgLy8gQW5vdGhlciB0aHJlYWQgaXMgYWxyZWFkeSBpbml0aWFsaXppbmcKICAgIH0KCiAgICAvLyBSZXNvbHZlIHJlYWwgZnVuY3Rpb25zCiAgICByZWFsX21hbGxvYyA9IGRsc3ltKFJUTERfTkVYVCwgIm1hbGxvYyIpOwogICAgcmVhbF9jYWxsb2MgPSBkbHN5bShSVExEX05FWFQsICJjYWxsb2MiKTsKICAgIHJlYWxfcmVhbGxvYyA9IGRsc3ltKFJUTERfTkVYVCwgInJlYWxsb2MiKTsKICAgIHJlYWxfZnJlZSA9IGRsc3ltKFJUTERfTkVYVCwgImZyZWUiKTsKCiAgICAvLyBNYXJrIGFzIGluaXRpYWxpemVkIOKAlCBhbGwgZnV0dXJlIG1hbGxvYyBjYWxscyB3aWxsIHVzZSByZWFsXyogZGlyZWN0bHkKICAgIGF0b21pY19zdG9yZSgmZ19pbml0aWFsaXplZCwgMSk7CiAgICBhdG9taWNfc3RvcmUoJmdfaW5pdF9pbl9wcm9ncmVzcywgMCk7CgogICAgY2hhciBidWZbMTI4XTsKICAgIGludCBsZW4gPSBzbnByaW50ZihidWYsIHNpemVvZihidWYpLAogICAgICAgICJ7XCJ0eXBlXCI6XCJQUk9GSUxFUjZfSU5JVFwiLFwicGlkXCI6JWQsXCJub3RlXCI6XCJ2NiBjb25zdHJ1Y3RvciBpbml0IGNvbXBsZXRlICg0S2lCLTFNaUIsICVkIGJ1Y2tldHMpXCJ9XG4iLAogICAgICAgIGdldHBpZCgpLCBOVU1fQlVDS0VUUyk7CiAgICBpZiAobGVuID4gMCkgd3JpdGUoMiwgYnVmLCBsZW4pOwp9CgpfX2F0dHJpYnV0ZV9fKChkZXN0cnVjdG9yKSkKc3RhdGljIHZvaWQgcHJvZmlsZXJfZmluaSh2b2lkKSB7CiAgICBnX2luX2hvb2sgPSAxOwogICAgb3V0cHV0X3N0YXRzKCk7CiAgICBnX2luX2hvb2sgPSAwOwp9CgovLyA9PT0gbWFsbG9jL2NhbGxvYy9yZWFsbG9jL2ZyZWUgd3JhcHBlcnMgPT09Ci8vIElmIG5vdCB5ZXQgaW5pdGlhbGl6ZWQgKGNvbnN0cnVjdG9yIGhhc24ndCBydW4pLCBwYXNzIHRocm91Z2ggdG8gcmVhbF9tYWxsb2MKLy8gKHdoaWNoIG1heSBzdGlsbCBiZSBOVUxMIOKAlCBpbiB0aGF0IGNhc2UsIHVzZSBhIG1pbmltYWwgc3RhdGljIGFwcHJvYWNoKQovLyBJZiBpbml0aWFsaXplZCwgY2FwdHVyZSBjYWxsZXIgYWRkcmVzcyBhbmQgdHJhY2sKCnZvaWQgKm1hbGxvYyhzaXplX3Qgc2l6ZSkgewogICAgaWYgKCFhdG9taWNfbG9hZCgmZ19pbml0aWFsaXplZCkpIHsKICAgICAgICBhdG9taWNfZmV0Y2hfYWRkKCZnX3NraXBwZWRfYmVmb3JlX2luaXQsIDEpOwogICAgICAgIGlmIChyZWFsX21hbGxvYykgcmV0dXJuIHJlYWxfbWFsbG9jKHNpemUpOwogICAgICAgIC8vIEJvb3RzdHJhcDogdXNlIHN0YXRpYyBidWZmZXIKICAgICAgICByZXR1cm4gYm9vdHN0cmFwX2FsbG9jKHNpemUpOwogICAgfQoKICAgIHZvaWQgKmNhbGxlciA9IF9fYnVpbHRpbl9leHRyYWN0X3JldHVybl9hZGRyKF9fYnVpbHRpbl9yZXR1cm5fYWRkcmVzcygwKSk7CiAgICB2b2lkICpwdHIgPSByZWFsX21hbGxvYyhzaXplKTsKICAgIGlmIChnX2luX2hvb2spIHJldHVybiBwdHI7CiAgICBpZiAoc2l6ZSA+PSBNSU5fVFJBQ0tfU0laRSAmJiBzaXplIDwgTUFYX1RSQUNLX1NJWkUpIHsKICAgICAgICBnX2luX2hvb2sgPSAxOwogICAgICAgIHRyYWNrX2FsbG9jKHB0ciwgc2l6ZSwgY2FsbGVyKTsKICAgICAgICBnX2luX2hvb2sgPSAwOwogICAgfQogICAgbG9uZyBjb3VudCA9IGF0b21pY19mZXRjaF9hZGQoJmdfY2FsbF9jb3VudCwgMSkgKyAxOwogICAgaWYgKGNvdW50ICUgT1VUUFVUX0lOVEVSVkFMID09IDApIHsKICAgICAgICBnX2luX2hvb2sgPSAxOwogICAgICAgIG91dHB1dF9zdGF0cygpOwogICAgICAgIGdfaW5faG9vayA9IDA7CiAgICB9CiAgICByZXR1cm4gcHRyOwp9Cgp2b2lkICpjYWxsb2Moc2l6ZV90IG5tZW1iLCBzaXplX3Qgc2l6ZSkgewogICAgaWYgKCFhdG9taWNfbG9hZCgmZ19pbml0aWFsaXplZCkpIHsKICAgICAgICBhdG9taWNfZmV0Y2hfYWRkKCZnX3NraXBwZWRfYmVmb3JlX2luaXQsIDEpOwogICAgICAgIGlmIChyZWFsX2NhbGxvYykgcmV0dXJuIHJlYWxfY2FsbG9jKG5tZW1iLCBzaXplKTsKICAgICAgICAvLyBCb290c3RyYXA6IHVzZSBzdGF0aWMgYnVmZmVyIChkbHN5bSBjYWxscyBjYWxsb2MgZHVyaW5nIGluaXQpCiAgICAgICAgaWYgKG5tZW1iICE9IDAgJiYgc2l6ZSA+IChzaXplX3QpLTEgLyBubWVtYikgcmV0dXJuIE5VTEw7IC8vIG92ZXJmbG93CiAgICAgICAgc2l6ZV90IHRvdGFsID0gbm1lbWIgKiBzaXplOwogICAgICAgIHZvaWQgKnAgPSBib290c3RyYXBfYWxsb2ModG90YWwpOwogICAgICAgIGlmIChwKSBtZW1zZXQocCwgMCwgdG90YWwpOwogICAgICAgIHJldHVybiBwOwogICAgfQoKICAgIHZvaWQgKmNhbGxlciA9IF9fYnVpbHRpbl9leHRyYWN0X3JldHVybl9hZGRyKF9fYnVpbHRpbl9yZXR1cm5fYWRkcmVzcygwKSk7CiAgICB2b2lkICpwdHIgPSByZWFsX2NhbGxvYyhubWVtYiwgc2l6ZSk7CiAgICBpZiAoZ19pbl9ob29rKSByZXR1cm4gcHRyOwogICAgaWYgKG5tZW1iICE9IDAgJiYgc2l6ZSA+IChzaXplX3QpLTEgLyBubWVtYikgcmV0dXJuIE5VTEw7IC8vIG92ZXJmbG93CiAgICBzaXplX3QgdG90YWwgPSBubWVtYiAqIHNpemU7CiAgICBpZiAodG90YWwgPj0gTUlOX1RSQUNLX1NJWkUgJiYgdG90YWwgPCBNQVhfVFJBQ0tfU0laRSkgewogICAgICAgIGdfaW5faG9vayA9IDE7CiAgICAgICAgdHJhY2tfYWxsb2MocHRyLCB0b3RhbCwgY2FsbGVyKTsKICAgICAgICBnX2luX2hvb2sgPSAwOwogICAgfQogICAgbG9uZyBjb3VudCA9IGF0b21pY19mZXRjaF9hZGQoJmdfY2FsbF9jb3VudCwgMSkgKyAxOwogICAgaWYgKGNvdW50ICUgT1VUUFVUX0lOVEVSVkFMID09IDApIHsKICAgICAgICBnX2luX2hvb2sgPSAxOwogICAgICAgIG91dHB1dF9zdGF0cygpOwogICAgICAgIGdfaW5faG9vayA9IDA7CiAgICB9CiAgICByZXR1cm4gcHRyOwp9Cgp2b2lkICpyZWFsbG9jKHZvaWQgKnB0ciwgc2l6ZV90IHNpemUpIHsKICAgIGlmICghYXRvbWljX2xvYWQoJmdfaW5pdGlhbGl6ZWQpKSB7CiAgICAgICAgYXRvbWljX2ZldGNoX2FkZCgmZ19za2lwcGVkX2JlZm9yZV9pbml0LCAxKTsKICAgICAgICBpZiAocmVhbF9yZWFsbG9jICYmICFpc19ib290c3RyYXBfcHRyKHB0cikpIHJldHVybiByZWFsX3JlYWxsb2MocHRyLCBzaXplKTsKICAgICAgICAvLyBCb290c3RyYXAgb3Igbm8gcmVhbF9yZWFsbG9jOiBhbGxvY2F0ZSBuZXcsIGNvcHkgd2hhdCB3ZSBjYW4KICAgICAgICB2b2lkICpuZXdfcCA9IGJvb3RzdHJhcF9hbGxvYyhzaXplKTsKICAgICAgICBpZiAobmV3X3AgJiYgcHRyKSB7CiAgICAgICAgICAgIC8vIFdlIGRvbid0IGtub3cgb2xkIHNpemUg4oCUIGNvcHkgYXQgbW9zdCAnc2l6ZScgYnl0ZXMKICAgICAgICAgICAgLy8gVGhpcyBpcyBzYWZlIGJlY2F1c2UgYm9vdHN0cmFwIGFsbG9jYXRpb25zIGFyZSBpbiBhIHN0YXRpYyBidWZmZXIKICAgICAgICAgICAgbWVtY3B5KG5ld19wLCBwdHIsIHNpemUpOwogICAgICAgIH0KICAgICAgICByZXR1cm4gbmV3X3A7CiAgICB9CgogICAgdm9pZCAqY2FsbGVyID0gX19idWlsdGluX2V4dHJhY3RfcmV0dXJuX2FkZHIoX19idWlsdGluX3JldHVybl9hZGRyZXNzKDApKTsKICAgIGlmIChnX2luX2hvb2spIHJldHVybiByZWFsX3JlYWxsb2MocHRyLCBzaXplKTsKICAgIGdfaW5faG9vayA9IDE7CiAgICBpZiAocHRyKSB0cmFja19mcmVlKHB0cik7CiAgICB2b2lkICpuZXdfcHRyID0gcmVhbF9yZWFsbG9jKHB0ciwgc2l6ZSk7CiAgICBpZiAobmV3X3B0ciAmJiBzaXplID49IE1JTl9UUkFDS19TSVpFICYmIHNpemUgPCBNQVhfVFJBQ0tfU0laRSkgewogICAgICAgIHRyYWNrX2FsbG9jKG5ld19wdHIsIHNpemUsIGNhbGxlcik7CiAgICB9CiAgICBnX2luX2hvb2sgPSAwOwogICAgbG9uZyBjb3VudCA9IGF0b21pY19mZXRjaF9hZGQoJmdfY2FsbF9jb3VudCwgMSkgKyAxOwogICAgaWYgKGNvdW50ICUgT1VUUFVUX0lOVEVSVkFMID09IDApIHsKICAgICAgICBnX2luX2hvb2sgPSAxOwogICAgICAgIG91dHB1dF9zdGF0cygpOwogICAgICAgIGdfaW5faG9vayA9IDA7CiAgICB9CiAgICByZXR1cm4gbmV3X3B0cjsKfQoKdm9pZCBmcmVlKHZvaWQgKnB0cikgewogICAgaWYgKCFhdG9taWNfbG9hZCgmZ19pbml0aWFsaXplZCkpIHsKICAgICAgICBpZiAocmVhbF9mcmVlICYmICFpc19ib290c3RyYXBfcHRyKHB0cikpIHsgcmVhbF9mcmVlKHB0cik7IHJldHVybjsgfQogICAgICAgIC8vIEJvb3RzdHJhcCBwb2ludGVyIG9yIG5vIHJlYWxfZnJlZTogZG8gbm90aGluZyAoc3RhdGljIGJ1ZmZlciwgd2lsbCBiZSByZWNsYWltZWQpCiAgICAgICAgcmV0dXJuOwogICAgfQoKICAgIGlmIChnX2luX2hvb2spIHsgcmVhbF9mcmVlKHB0cik7IHJldHVybjsgfQogICAgZ19pbl9ob29rID0gMTsKICAgIHRyYWNrX2ZyZWUocHRyKTsKICAgIGdfaW5faG9vayA9IDA7CiAgICByZWFsX2ZyZWUocHRyKTsKfQo=' | base64 -d > /tmp/malloc_profiler_v6.c
+          gcc -shared -fPIC -o /tmp/malloc_profiler_v6.so /tmp/malloc_profiler_v6.c -ldl -lpthread 2>/dev/null || \
+          echo "WARNING: malloc_profiler_v5 compilation failed"
+          echo "=== malloc profiler v6 compiled ==="
+
+
+          # === A-1: Write V8 memory hook to /tmp (no committed file) ===
+          cat > /tmp/v8-memory-hook.js << 'HOOKJS'
+          // v8-memory-hook.js — V8 + native memory instrumentation (FINAL v7)
+          // Injected via NODE_OPTIONS=--require /tmp/v8-memory-hook.js
+          // Runs INSIDE the OpenNext Node.js process
+          //
+          // CORRECTIONS APPLIED (steward final review v7):
+          //   1. cgroup2 mount resolved via /proc/self/mountinfo (not assumed under /sys/fs/cgroup)
+          //   2. mountinfo paths decoded for octal escapes (\040=space, \011=tab, \134=backslash)
+          //      Uses codePointAt to handle surrogate pairs correctly (Unicode outside BMP)
+          //      Buffer-based UTF-8 decode for byte-accurate multi-byte handling
+          //   3. '-' separator found by value, not by fixed field index (optional fields vary)
+          //   4. Segment-boundary matching: /slice/run does NOT match /slice/runner/job1
+          //   5. Path canonicalization: path.resolve + path.relative containment check
+          //      Rejects '..', null bytes, paths outside mount, non-absolute paths
+          //   6. mountRoot ≠ root of real cgroup hierarchy — ancestor walk limited to visible subtree
+          //      This limitation is EXPLICIT in output (cgroup_visibility field)
+          //   7. If mount mapping unresolved → status = 'unavailable', ancestor walk SKIPPED
+          //   8. PID role from identity (argv/execPath/ppid), NOT from memory consumption
+          //   9. JSON line format; arrayBuffers ⊂ external (do NOT sum)
+          //  10. Category 4 = "Unattributed RSS / Residual" (difference indicator, NOT measurement)
+          //  11. 'represents' field uses path.posix.join (avoids // for mountRoot=/)
+          //  12. Multiple cgroup2 mounts: select MOST SPECIFIC (longest mountRoot), not first match
+          //      Collects all matching mounts, sorts by mountRoot length descending
+          //  13. Decoder cleaned: single function decodeMountinfoPath (no redundant loop)
+          
+          const v8 = require('v8');
+          const fs = require('fs');
+          const path = require('path');
+          
+          const INTERVAL_MS = 2000;
+          const LOG_FILE = '/tmp/v8-memory-samples.log';
+          let sampleCount = 0;
+          
+          // === Decode octal escapes in mountinfo paths (\040=space, \011=tab, \134=\)
+          // Uses codePointAt to handle surrogate pairs correctly (Unicode outside BMP).
+          // Buffer-based UTF-8 decode for byte-accurate multi-byte handling.
+          // NOTE: In practice, cgroup mount points are ASCII-only (kernel-created paths).
+          // This decoder handles the theoretical case of non-ASCII characters in escaped or literal form.
+          function decodeMountinfoPath(s) {
+              const bytes = [];
+              let i = 0;
+              while (i < s.length) {
+                  if (s[i] === '\\' && i + 3 < s.length + 1) {
+                      const octal = s.substring(i + 1, i + 4);
+                      if (/^[0-7]{3}$/.test(octal)) {
+                          bytes.push(parseInt(octal, 8));
+                          i += 4;
+                          continue;
+                      }
+                  }
+                  // Not an escape: convert this code point to UTF-8 bytes
+                  // Use codePointAt to handle surrogate pairs correctly
+                  const codePoint = s.codePointAt(i);
+                  const charStr = String.fromCodePoint(codePoint);
+                  const charBytes = Buffer.from(charStr, 'utf8');
+                  for (let j = 0; j < charBytes.length; j++) bytes.push(charBytes[j]);
+                  // Advance by the number of code units this character occupies (1 or 2 for surrogates)
+                  i += charStr.length;
+              }
+              return Buffer.from(bytes).toString('utf8');
+          }
+          
+          // === Path security: reject traversal and null bytes ===
+          function isSafePath(p) {
+              if (!p || typeof p !== 'string') return false;
+              if (p.indexOf('\0') !== -1) return false;
+              if (p.indexOf('..') !== -1) return false;
+              return true;
+          }
+          
+          // === Containment check using path.relative (canonical) ===
+          function isPathWithin(base, target) {
+              // Both must be absolute
+              if (!path.isAbsolute(base) || !path.isAbsolute(target)) return false;
+              const relative = path.relative(base, target);
+              return relative === '' ||
+                  (!path.isAbsolute(relative) &&
+                   relative !== '..' &&
+                   !relative.startsWith('..' + path.sep));
+          }
+          
+          // === Segment-boundary-safe prefix check ===
+          // '/slice/run' must NOT match '/slice/runner/job1'
+          function isUnderMount(mountRoot, cgroupPath) {
+              if (!isSafePath(mountRoot) || !isSafePath(cgroupPath)) return false;
+              if (!path.isAbsolute(mountRoot) || !path.isAbsolute(cgroupPath)) return false;
+              if (cgroupPath === mountRoot) return true;
+              if (mountRoot === '/') return true;
+              return cgroupPath.startsWith(mountRoot + '/');
+          }
+          
+          // === Parse /proc/self/mountinfo to find cgroup2 mounts ===
+          // Uses '-' separator by value (not fixed field index, since optional fields vary)
+          function resolveCgroup2Mounts() {
+              try {
+                  const mountinfo = fs.readFileSync('/proc/self/mountinfo', 'utf8').trim().split('\n');
+                  const mounts = [];
+                  for (const line of mountinfo) {
+                      if (!line) continue;
+                      const parts = line.split(/\s+/);
+                      // Find the '-' separator (field after optional fields)
+                      const sepIdx = parts.indexOf('-');
+                      if (sepIdx < 0 || sepIdx + 1 >= parts.length) continue;
+                      const fsType = parts[sepIdx + 1];
+                      if (fsType !== 'cgroup2') continue;
+                      // Field 4 (0-indexed 3) = mount root, Field 5 (0-indexed 4) = mount point
+                      // Decode octal escapes in paths
+                      const mountRoot = decodeMountinfoPath(parts[3]);
+                      const mountPoint = decodeMountinfoPath(parts[4]);
+                      if (!isSafePath(mountRoot) || !isSafePath(mountPoint)) continue;
+                      if (!path.isAbsolute(mountRoot) || !path.isAbsolute(mountPoint)) continue;
+                      mounts.push({ mountRoot: mountRoot, mountPoint: mountPoint });
+                  }
+                  return mounts;
+              } catch (e) {
+                  return null;
+              }
+          }
+          
+          // === Read a cgroup file at a given filesystem path ===
+          function readCgroupFile(fsPath, filename) {
+              if (!fsPath || !isSafePath(fsPath)) return null;
+              if (!path.isAbsolute(fsPath)) return null;
+              try {
+                  return fs.readFileSync(fsPath + '/' + filename, 'utf8').trim();
+              } catch (e) {
+                  return null;
+              }
+          }
+          
+          // === Resolve cgroup path with mount mapping ===
+          let cgroupStatus = 'unavailable (not yet resolved)';
+          let cgroupFsBase = null;
+          let cgroupRelPath = null;
+          let cgroupMountInfo = null;
+          let cgroupAncestors = [];
+          let cgroupVisibility = 'unknown';
+          let cgroupMountSelection = null;  // records which mount was selected and why
+          
+          (function resolveCgroup() {
+              const mounts = resolveCgroup2Mounts();
+              if (mounts === null) {
+                  cgroupStatus = 'unavailable (mountinfo unreadable)';
+                  return;
+              }
+              if (mounts.length === 0) {
+                  cgroupStatus = 'unavailable (no cgroup2 mount found)';
+                  return;
+              }
+          
+              // Read /proc/self/cgroup
+              let cgroupRawPath = null;
+              try {
+                  const selfCgroup = fs.readFileSync('/proc/self/cgroup', 'utf8').trim();
+                  const match = selfCgroup.match(/^0::(.+)$/m);
+                  if (match) {
+                      cgroupRawPath = match[1];
+                  } else {
+                      cgroupStatus = 'unavailable (no 0:: entry in /proc/self/cgroup)';
+                      return;
+                  }
+              } catch (e) {
+                  cgroupStatus = 'unavailable (/proc/self/cgroup unreadable)';
+                  return;
+              }
+          
+              if (!isSafePath(cgroupRawPath)) {
+                  cgroupStatus = 'unavailable (cgroup path failed safety check)';
+                  return;
+              }
+              if (!path.isAbsolute(cgroupRawPath)) {
+                  cgroupStatus = 'unavailable (cgroup path is not absolute)';
+                  return;
+              }
+          
+              // Collect ALL matching mounts (not just the first)
+              const matchingMounts = [];
+              for (const mount of mounts) {
+                  if (isUnderMount(mount.mountRoot, cgroupRawPath)) {
+                      matchingMounts.push(mount);
+                  }
+              }
+          
+              if (matchingMounts.length === 0) {
+                  cgroupStatus = 'unavailable (mount mapping unresolved: cgroup path ' +
+                                 cgroupRawPath + ' not under any cgroup2 mount root)';
+                  cgroupVisibility = 'none (mapping unresolved)';
+                  return;  // ancestor walk SKIPPED — would read wrong files
+              }
+          
+              // Sort by mountRoot length DESCENDING (most specific first)
+              // Longer mountRoot = more specific = higher priority
+              matchingMounts.sort(function (a, b) {
+                  return b.mountRoot.length - a.mountRoot.length;
+              });
+          
+              // Try each matching mount in priority order (most specific first)
+              // The first one that resolves to a valid filesystem path wins
+              let resolved = false;
+              const triedMounts = [];
+              for (const mount of matchingMounts) {
+                  // Compute relative path and filesystem base
+                  let relPath;
+                  if (mount.mountRoot === '/') {
+                      relPath = cgroupRawPath;
+                  } else if (cgroupRawPath === mount.mountRoot) {
+                      relPath = '/';
+                  } else {
+                      // cgroupRawPath starts with mountRoot + '/'
+                      relPath = cgroupRawPath.substring(mount.mountRoot.length);
+                  }
+          
+                  // Canonicalize the filesystem base path
+                  const fsBase = path.resolve(mount.mountPoint + relPath);
+          
+                  // Verify resolved path is within mountPoint (lexical containment check)
+                  // NOTE: Under current validation constraints (isSafePath rejects '..' and null;
+                  // isUnderMount checks segment boundary; relPath is a substring of cgroupRawPath),
+                  // this containment check is a DEFENSIVE SAFETY NET. It cannot fail for any input
+                  // that passes the preceding validations, because:
+                  //   - relPath has no '..' (it's a substring of cgroupRawPath which passed isSafePath)
+                  //   - mountPoint is absolute and has no '..'
+                  //   - path.resolve(mountPoint + relPath) always produces a path within mountPoint
+                  // The fallback branch (continue to next mount) is kept as defense-in-depth
+                  // against future changes that might relax validation constraints.
+                  // It is NOT practically reachable and cannot be tested with valid inputs.
+                  // LIMITATION: This is LEXICAL containment only. It does NOT resolve symlinks.
+                  // If mountPoint or any ancestor is a symlink, the resolved path may differ
+                  // from the lexical path. This limitation is acceptable for cgroup paths
+                  // (kernel-created, not symlinked) but must be noted.
+                  if (!isPathWithin(mount.mountPoint, fsBase)) {
+                      triedMounts.push({ mountRoot: mount.mountRoot, mountPoint: mount.mountPoint, result: 'containment_failed' });
+                      continue;
+                  }
+          
+                  cgroupFsBase = fsBase;
+                  cgroupRelPath = relPath;
+                  cgroupMountInfo = mount;
+                  resolved = true;
+          
+                  // Record this mount as successfully selected
+                  triedMounts.push({ mountRoot: mount.mountRoot, mountPoint: mount.mountPoint, result: 'selected' });
+          
+                  // Record mount selection decision with accurate reason
+                  // NOTE: failedCount will always be 0 under current validation constraints
+                  // (containment cannot fail for valid inputs — see comment above).
+                  // Defensive fallback for future changes to path validation or mapping.
+                  // Under current validation invariants, containment failure is unreachable.
+                  const failedCount = triedMounts.filter(function (t) { return t.result === 'containment_failed'; }).length;
+                  let reason;
+                  if (matchingMounts.length === 1) {
+                      reason = 'single matching mount passed containment';
+                  } else if (failedCount === 0) {
+                      reason = 'most specific matching mount passed containment (0 fallbacks needed)';
+                  } else {
+                      reason = 'fallback: ' + failedCount + ' more specific matching mount(s) failed containment; selected first passing mount';
+                      // This branch is defensive — practically unreachable under current constraints.
+                  }
+                  cgroupMountSelection = {
+                      selected: { mountRoot: mount.mountRoot, mountPoint: mount.mountPoint },
+                      reason: reason,
+                      selectedRank: triedMounts.length,  // 1-based rank among tried mounts (1 = most specific)
+                      allMatching: matchingMounts.map(function (m) {
+                          return { mountRoot: m.mountRoot, mountPoint: m.mountPoint };
+                      }),
+                      tried: triedMounts
+                  };
+          
+                  // Determine visibility: mountRoot = '/' means full hierarchy visible
+                  // Otherwise, ancestor walk is limited to subtree under mountRoot
+                  cgroupVisibility = (mount.mountRoot === '/')
+                      ? 'full hierarchy (mountRoot is /)'
+                      : 'limited to subtree under mountRoot ' + mount.mountRoot + ' (real hierarchy ancestors above mountRoot are NOT visible)';
+          
+                  break;
+              }
+          
+              if (!resolved) {
+                  cgroupStatus = 'unavailable (mount mapping unresolved: ' + matchingMounts.length +
+                                 ' matching mount(s) but none passed containment check)';
+                  cgroupVisibility = 'none (mapping unresolved)';
+                  cgroupMountSelection = {
+                      selected: null,
+                      reason: 'no matching mount passed containment check (' + triedMounts.length + ' tried, all failed)',
+                      allMatching: matchingMounts.map(function (m) {
+                          return { mountRoot: m.mountRoot, mountPoint: m.mountPoint };
+                      }),
+                      tried: triedMounts
+                  };
+                  return;  // ancestor walk SKIPPED
+              }
+          
+              cgroupStatus = cgroupRawPath;
+          
+              // Ancestor walk: only after valid mount mapping
+              // NOTE: walks from mountPoint (representing mountRoot) down to current cgroup
+              // Ancestors ABOVE mountRoot are NOT accessible through this mount
+              const segments = cgroupRelPath.split('/').filter(function (s) { return s.length > 0; });
+              let ancestorFsPath = cgroupMountInfo.mountPoint;
+          
+              // mountPoint represents mountRoot in the process namespace
+              cgroupAncestors.push({
+                  path: '/',
+                  fs_path: ancestorFsPath,
+                  represents: cgroupMountInfo.mountRoot,  // mountRoot itself
+                  memory_max: readCgroupFile(ancestorFsPath, 'memory.max'),
+                  swap_max: readCgroupFile(ancestorFsPath, 'memory.swap.max')
+              });
+          
+              for (let i = 0; i < segments.length; i++) {
+                  const segPath = path.resolve(ancestorFsPath, segments[i]);
+                  if (!isPathWithin(cgroupMountInfo.mountPoint, segPath)) break;
+                  // Use path.posix.join for 'represents' to avoid // for mountRoot=/
+                  const representsPath = path.posix.join(cgroupMountInfo.mountRoot, ...segments.slice(0, i + 1));
+                  cgroupAncestors.push({
+                      path: '/' + segments.slice(0, i + 1).join('/'),
+                      fs_path: segPath,
+                      represents: representsPath,
+                      memory_max: readCgroupFile(segPath, 'memory.max'),
+                      swap_max: readCgroupFile(segPath, 'memory.swap.max')
+                  });
+                  ancestorFsPath = segPath;
+              }
+          })();
+          
+          function readCgroupCurrent(name) {
+              if (!cgroupFsBase) return null;
+              return readCgroupFile(cgroupFsBase, name);
+          }
+
+          function readProcText(relativePath) {
+              try {
+                  return fs.readFileSync('/proc/' + relativePath, 'utf8').trim();
+              } catch (e) {
+                  return null;
+              }
+          }
+
+          function readProcMetric(relativePath, key) {
+              const contents = readProcText(relativePath);
+              if (contents === null) return null;
+              const line = contents.split('\n').find(function (entry) {
+                  return entry.startsWith(key + ' ');
+              });
+              return line ? line.trim().split(/\s+/)[1] || null : null;
+          }
+          
+          function readProcIdentity() {
+              const stat = readProcText(String(process.pid) + '/stat');
+              const status = readProcText(String(process.pid) + '/status');
+              const cmdline = readProcText(String(process.pid) + '/cmdline');
+              let statTail = [];
+              if (stat) {
+                  const close = stat.lastIndexOf(')');
+                  if (close >= 0) statTail = stat.slice(close + 1).trim().split(/\s+/);
+              }
+              let exe = null;
+              try { exe = fs.readlinkSync('/proc/' + process.pid + '/exe'); } catch (e) {}
+              const nameLine = status ? status.split('\n').find(function (line) { return line.startsWith('Name:'); }) : null;
+              return {
+                  proc_cmdline: cmdline === null ? null : cmdline.split('\0').filter(Boolean),
+                  proc_exe: exe,
+                  proc_start_ticks: statTail[19] || null,
+                  proc_ppid: statTail[1] || null,
+                  proc_status_name: nameLine ? nameLine.trim().slice(5).trim() : null
+              };
+          }
+
+          function sample() {
+              sampleCount++;
+              const ts = new Date().toISOString();
+              const mu = process.memoryUsage();
+              const procIdentity = readProcIdentity();
+              const hs = v8.getHeapStatistics();
+              const spaces = v8.getHeapSpaceStatistics().map(function (s) {
+                  return { name: s.space_name, size: s.space_size, used: s.space_used_size };
+              });
+          
+              const obj = {
+                  type: 'V8SAMPLE',
+                  run_mode: process.env.HEAVIX_BUILD_MODE || 'unlabelled',
+                  timestamp: ts,
+                  sample: sampleCount,
+                  pid: process.pid,
+                  ppid: process.ppid,
+                  execPath: process.execPath,
+                  title: process.title,
+                  argv: process.argv,
+                  proc_identity: procIdentity,
+                  rss: mu.rss,
+                  heapTotal: mu.heapTotal,
+                  heapUsed: mu.heapUsed,
+                  external: mu.external,
+                  arrayBuffers: mu.arrayBuffers,
+                  heap_size_limit: hs.heap_size_limit,
+                  total_heap_size: hs.total_heap_size,
+                  used_heap_size: hs.used_heap_size,
+                  total_physical_size: hs.total_physical_size,
+                  total_available_size: hs.total_available_size,
+                  malloced_memory: hs.malloced_memory,
+                  peak_malloced_memory: hs.peak_malloced_memory,
+                  external_memory: hs.external_memory,
+                  native_contexts: hs.number_of_native_contexts,
+                  detached_contexts: hs.number_of_detached_contexts,
+                  spaces: spaces,
+                  cgroup_status: cgroupStatus,
+                  cgroup_fs_base: cgroupFsBase,
+                  cgroup_mount: cgroupMountInfo,
+                  cgroup_mount_selection: cgroupMountSelection,
+                  cgroup_visibility: cgroupVisibility,
+                  cgroup_memory_current: readCgroupCurrent('memory.current'),
+                  cgroup_memory_peak: readCgroupCurrent('memory.peak'),
+                  cgroup_memory_max: readCgroupCurrent('memory.max'),
+                  cgroup_memory_events: readCgroupCurrent('memory.events'),
+                  cgroup_memory_events_local: readCgroupCurrent('memory.events.local'),
+                  cgroup_memory_stat: readCgroupCurrent('memory.stat'),
+                  cgroup_memory_pressure: readCgroupCurrent('memory.pressure'),
+                  cgroup_swap_current: readCgroupCurrent('memory.swap.current'),
+                  cgroup_swap_max: readCgroupCurrent('memory.swap.max'),
+                  cgroup_swap_events: readCgroupCurrent('memory.swap.events'),
+                  host_oom_kill_count: readProcMetric('vmstat', 'oom_kill'),
+                  host_memory_pressure: readProcText('pressure/memory'),
+                  cgroup_ancestors: cgroupAncestors
+              };
+          
+              const line = JSON.stringify(obj);
+              process.stderr.write(line + '\n');
+              try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (e) {}
+          }
+          
+          sample();
+          const interval = setInterval(sample, INTERVAL_MS);
+          interval.unref();
+          
+          process.stderr.write(JSON.stringify({
+              type: 'V8HOOK_INIT',
+              run_mode: process.env.HEAVIX_BUILD_MODE || 'unlabelled',
+              timestamp: new Date().toISOString(),
+              pid: process.pid,
+              ppid: process.ppid,
+              execPath: process.execPath,
+              argv: process.argv,
+              proc_identity: readProcIdentity(),
+              cgroup_status: cgroupStatus,
+              cgroup_fs_base: cgroupFsBase,
+              cgroup_mount: cgroupMountInfo,
+              cgroup_mount_selection: cgroupMountSelection,
+              cgroup_visibility: cgroupVisibility,
+              cgroup_ancestors: cgroupAncestors,
+              note: 'arrayBuffers ⊂ external (do NOT sum). Role from identity (argv/execPath/ppid), NOT RSS. Category 4 = Unattributed RSS/Residual, NOT measurement. cgroup2 mount resolved via /proc/self/mountinfo with octal-escape decoding (codePointAt for Unicode), segment-boundary matching, path.resolve canonicalization and path.relative containment. Most specific mountRoot selected (longest path) among matching mounts. Ancestor walk only after valid mount mapping; limited to subtree under mountRoot. Effective limit NOT declared.'
+          }) + '\n');
+          
+          HOOKJS
+          # === A-3: Write smaps_rollup sampler to /tmp ===
+          # Captures per-process Anonymous/File-backed/Private/Shared/Swap
+          # === A-3.3: Write smaps parser script to /tmp ===
+          cat > /tmp/parse_smaps.py << 'PARSES'
+          import sys, json
+          threshold = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+          pid = sys.argv[2] if len(sys.argv) > 2 else ''
+          smaps_path = f'/proc/{pid}/smaps'
+          groups = {}
+          top_mappings = []
+          try:
+              with open(smaps_path) as f:
+                  cp = ''
+                  cr, cpss, ca, cpd = 0, 0, 0, 0
+                  for line in f:
+                      line = line.strip()
+                      if line and line[0] in '0123456789abcdef' and '-' in line[:20]:
+                          if cr > 0:
+                              pn = cp
+                              if pn == '[heap]': cat = 'heap'
+                              elif pn == '[stack]': cat = 'stack'
+                              elif pn.startswith('[anon:'): cat = 'anon_named'
+                              elif pn == '': cat = 'anonymous'
+                              elif '.so' in pn: cat = 'shared_lib'
+                              elif 'node_modules' in pn: cat = 'node_modules'
+                              elif '.wasm' in pn: cat = 'wasm'
+                              elif pn.endswith('.node'): cat = 'native_addon'
+                              else: cat = 'file'
+                              if cat not in groups: groups[cat] = {'count':0,'rss':0,'pss':0,'anon':0,'pd':0}
+                              groups[cat]['count'] += 1
+                              groups[cat]['rss'] += cr
+                              groups[cat]['pss'] += cpss
+                              groups[cat]['anon'] += ca
+                              groups[cat]['pd'] += cpd
+                              top_mappings.append((cr, pn[:80]))
+                          parts = line.split()
+                          cp = ' '.join(parts[5:]) if len(parts) > 5 else ''
+                          cr, cpss, ca, cpd = 0, 0, 0, 0
+                      elif line.startswith('Rss:'): cr = int(line.split()[1])
+                      elif line.startswith('Pss:'): cpss = int(line.split()[1])
+                      elif line.startswith('Anonymous:'): ca = int(line.split()[1])
+                      elif line.startswith('Private_Dirty:'): cpd = int(line.split()[1])
+                  if cr > 0:
+                      pn = cp
+                      if pn == '[heap]': cat = 'heap'
+                      elif pn == '[stack]': cat = 'stack'
+                      elif pn.startswith('[anon:'): cat = 'anon_named'
+                      elif pn == '': cat = 'anonymous'
+                      elif '.so' in pn: cat = 'shared_lib'
+                      elif 'node_modules' in pn: cat = 'node_modules'
+                      elif '.wasm' in pn: cat = 'wasm'
+                      elif pn.endswith('.node'): cat = 'native_addon'
+                      else: cat = 'file'
+                      if cat not in groups: groups[cat] = {'count':0,'rss':0,'pss':0,'anon':0,'pd':0}
+                      groups[cat]['count'] += 1
+                      groups[cat]['rss'] += cr
+                      groups[cat]['pss'] += cpss
+                      groups[cat]['anon'] += ca
+                      groups[cat]['pd'] += cpd
+                      top_mappings.append((cr, pn[:80]))
+          except Exception as e:
+              print(json.dumps({'type':'SMAPS_ERROR','threshold_gb':threshold,'error':str(e)}))
+          for cat, info in sorted(groups.items(), key=lambda x: -x[1]['rss']):
+              print(json.dumps({'type':'SMAPS_GROUP','threshold_gb':threshold,'category':cat,'mapping_count':info['count'],'rss_kb':info['rss'],'pss_kb':info['pss'],'anonymous_kb':info['anon'],'private_dirty_kb':info['pd']}))
+          for rss, pn in sorted(top_mappings, key=lambda x: -x[0])[:10]:
+              print(json.dumps({'type':'SMAPS_TOP_MAPPING','threshold_gb':threshold,'rss_kb':rss,'pathname':pn}))
+          PARSES
+          echo "=== smaps parser written to /tmp/parse_smaps.py ==="
+          # === A-3.10: Write /proc/PID/maps capture script ===
+          echo 'aW1wb3J0IHN5cywganNvbgpwaWQgPSBzeXMuYXJndlsxXQp0cnk6CiAgICB3aXRoIG9wZW4oZicvcHJvYy97cGlkfS9tYXBzJykgYXMgZjoKICAgICAgICBmb3IgbGluZSBpbiBmOgogICAgICAgICAgICBwYXJ0cyA9IGxpbmUuc3RyaXAoKS5zcGxpdChOb25lLCA1KQogICAgICAgICAgICBpZiBsZW4ocGFydHMpIDwgNTogY29udGludWUKICAgICAgICAgICAgYWRkcl9yYW5nZSA9IHBhcnRzWzBdCiAgICAgICAgICAgIHBlcm0gPSBwYXJ0c1sxXQogICAgICAgICAgICBwYXRobmFtZSA9IHBhcnRzWzVdIGlmIGxlbihwYXJ0cykgPiA1IGVsc2UgJycKICAgICAgICAgICAgc3RhcnRfcywgZW5kX3MgPSBhZGRyX3JhbmdlLnNwbGl0KCctJykKICAgICAgICAgICAgcHJpbnQoanNvbi5kdW1wcyh7J3R5cGUnOidNQVBTX0VOVFJZJywncGlkJzppbnQocGlkKSwnc3RhcnQnOicweCcrc3RhcnRfcywnZW5kJzonMHgnK2VuZF9zLCdwZXJtJzpwZXJtLCdwYXRobmFtZSc6cGF0aG5hbWVbOjEyMF19KSkKZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgcHJpbnQoanNvbi5kdW1wcyh7J3R5cGUnOidNQVBTX0VSUk9SJywnZXJyb3InOnN0cihlKX0pKQo=' | base64 -d > /tmp/capture_maps.py
+          echo "=== maps capture script written ==="
+          cat > /tmp/smaps-sampler.sh << 'SMAPS'
+          #!/bin/bash
+          # STEP 17.89: Native Memory Attribution sampler
+          # 1s sampling of smaps_rollup + /proc/PID/status
+          # Full smaps/maps/status capture at 6GB, 10GB, 13GB RSS thresholds
+          # Lightweight V8 stats (no heap snapshot)
+          SMAPS_LOG=/tmp/smaps-samples.jsonl
+          SNAPSHOT_DIR=/tmp/smaps-snapshots
+          mkdir -p "$SNAPSHOT_DIR"
+          SNAPSHOT_TAKEN_6GB=0
+          SNAPSHOT_TAKEN_10GB=0
+          SNAPSHOT_TAKEN_13GB=0
+          # Helper: write to both file and stderr (stderr is captured in CI log)
+          smaps_log() {
+            echo "$1" >> "$SMAPS_LOG"
+            echo "$1" >&2
+          }
+          # A-3.2: Extract top 30 mappings from smaps snapshot and write to stderr
+          extract_top_mappings() {
+            local threshold=$1
+            local pid=$2
+            if [ ! -r "/proc/$pid/smaps" ]; then return; fi
+            python3 /tmp/parse_smaps.py "$threshold" "$pid" 2>&1 | while IFS= read -r json_line; do
+              smaps_log "$json_line"
+            done
+          }
+          
+          while true; do
+            TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+            RUN_MODE=$(cat /tmp/opennext-build-mode 2>/dev/null || echo "unlabelled")
+            # Find the OpenNext process (node + opennextjs-cloudflare in cmdline)
+            OPENNEXT_PID=""
+            OPENNEXT_EXEC=""
+            OPENNEXT_ARGV1=""
+            OPENNEXT_START_TICKS=""
+            OPENNEXT_PPID=""
+            OPENNEXT_CMDLINE_B64=""
+            for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+              if [ -r "/proc/$pid/cmdline" ] && [ -r "/proc/$pid/exe" ]; then
+                EXEC=$(readlink /proc/$pid/exe 2>/dev/null || echo "")
+                ARGV1=$(tr '\0' '\n' < /proc/$pid/cmdline 2>/dev/null | sed -n '2p')
+                if echo "$EXEC" | grep -q "node" && echo "$ARGV1" | grep -q "opennextjs-cloudflare"; then
+                  OPENNEXT_PID=$pid
+                  OPENNEXT_EXEC="$EXEC"
+                  OPENNEXT_ARGV1="$ARGV1"
+                  OPENNEXT_START_TICKS=$(awk '{sub(/^.*\) /,""); print $20}' "/proc/$pid/stat" 2>/dev/null || echo "")
+                  OPENNEXT_PPID=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null || echo "")
+                  OPENNEXT_CMDLINE_B64=$(base64 -w0 "/proc/$pid/cmdline" 2>/dev/null || echo "")
+                  break
+                fi
+              fi
+            done
+          
+            if [ -z "$OPENNEXT_PID" ]; then
+              smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}"
+              sleep 1
+              continue
+            fi
+          
+            # STEP 17.89: Read /proc/PID/status for full Vm* fields
+            STATUS_FILE="/proc/$OPENNEXT_PID/status"
+            VmRSS=$(awk '/^VmRSS:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmHWM=$(awk '/^VmHWM:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmSize=$(awk '/^VmSize:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmData=$(awk '/^VmData:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmStk=$(awk '/^VmStk:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmSwap=$(awk '/^VmSwap:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssAnon=$(awk '/^RssAnon:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssFile=$(awk '/^RssFile:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssShmem=$(awk '/^RssShmem:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RSS_KB=$VmRSS
+            RSS_GB=$(echo "scale=2; $RSS_KB / 1048576" | bc 2>/dev/null || echo "0")
+          
+            # Read smaps_rollup (summary, low overhead)
+            ROLLUP=""
+            if [ -r "/proc/$OPENNEXT_PID/smaps_rollup" ]; then
+              ROLLUP=$(cat "/proc/$OPENNEXT_PID/smaps_rollup" 2>/dev/null)
+            fi
+          
+            # Parse key fields from smaps_rollup
+            RSS_ROLLUP=$(echo "$ROLLUP" | awk '/^Rss:/ {print $2}')
+            PSS=$(echo "$ROLLUP" | awk '/^Pss:/ {print $2}')
+            PSS_ANON=$(echo "$ROLLUP" | awk '/^Pss_Anon:/ {print $2}')
+            PSS_FILE=$(echo "$ROLLUP" | awk '/^Pss_File:/ {print $2}')
+            PSS_SHMEM=$(echo "$ROLLUP" | awk '/^Pss_Shmem:/ {print $2}')
+            PRIVATE_ANON=$(echo "$ROLLUP" | awk '/^Private_Anon:/ {print $2}')
+            PRIVATE_DIRTY=$(echo "$ROLLUP" | awk '/^Private_Dirty:/ {print $2}')
+            PRIVATE_CLEAN=$(echo "$ROLLUP" | awk '/^Private_Clean:/ {print $2}')
+            SHARED_ANON=$(echo "$ROLLUP" | awk '/^Shared_Anon:/ {print $2}')
+            SHARED_DIRTY=$(echo "$ROLLUP" | awk '/^Shared_Dirty:/ {print $2}')
+            SHARED_CLEAN=$(echo "$ROLLUP" | awk '/^Shared_Clean:/ {print $2}')
+            SWAP_PSS=$(echo "$ROLLUP" | awk '/^SwapPss:/ {print $2}')
+            SWAP=$(echo "$ROLLUP" | awk '/^Swap:/ {print $2}')
+            ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
+          
+            # Write JSON line with STEP 17.89 enhanced fields
+            smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}},\"status\":{\"VmRSS\":${VmRSS:-0},\"VmHWM\":${VmHWM:-0},\"VmSize\":${VmSize:-0},\"VmData\":${VmData:-0},\"VmStk\":${VmStk:-0},\"VmSwap\":${VmSwap:-0},\"RssAnon\":${RssAnon:-0},\"RssFile\":${RssFile:-0},\"RssShmem\":${RssShmem:-0}}}"
+          
+            smaps_log "{\"type\":\"SMAPS_IDENTITY\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"ppid\":\"$OPENNEXT_PPID\",\"start_ticks\":\"$OPENNEXT_START_TICKS\",\"cmdline_b64\":\"$OPENNEXT_CMDLINE_B64\",\"exe\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\"}"
+            # Threshold-based full capture: smaps + maps + status
+            if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-6gb-${TS_SNAP}.txt" 2>/dev/null
+              extract_top_mappings 6 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_6GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"files\":[\"smaps-6gb-${TS_SNAP}.txt\",\"maps-6gb-${TS_SNAP}.txt\",\"status-6gb-${TS_SNAP}.txt\",\"smaps_rollup-6gb-${TS_SNAP}.txt\"]}"
+            fi
+            if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-10gb-${TS_SNAP}.txt" 2>/dev/null
+              extract_top_mappings 10 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_10GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"files\":[\"smaps-10gb-${TS_SNAP}.txt\",\"maps-10gb-${TS_SNAP}.txt\",\"status-10gb-${TS_SNAP}.txt\",\"smaps_rollup-10gb-${TS_SNAP}.txt\"]}"
+            fi
+            if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-13gb-${TS_SNAP}.txt" 2>/dev/null
+              extract_top_mappings 13 "$OPENNEXT_PID"
+              python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
+              SNAPSHOT_TAKEN_13GB=1
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"files\":[\"smaps-13gb-${TS_SNAP}.txt\",\"maps-13gb-${TS_SNAP}.txt\",\"status-13gb-${TS_SNAP}.txt\",\"smaps_rollup-13gb-${TS_SNAP}.txt\"]}"
+            fi
+          
+            sleep 1
+          done
+          
+          SMAPS
+          chmod +x /tmp/smaps-sampler.sh
+          echo "=== smaps sampler written to /tmp/smaps-sampler.sh ==="
+          mkdir -p .ci-artifacts/oom-instrumentation
+          echo "=== Starting enhanced 2s process/RAM telemetry with PSS ==="
+          # === A-3: Start smaps_rollup sampler (2s, aligned with E and V8SAMPLE) ===
+          # NOTE: smaps_log() writes to stderr directly (captured in CI log)
+          # No tee redirect — stderr goes directly to GitHub Actions log
+          /tmp/smaps-sampler.sh 2>&1 &
+          SMAPS_PID=$!
+          cleanup_smaps() {
+            kill "$SMAPS_PID" 2>/dev/null || true
+            wait "$SMAPS_PID" 2>/dev/null || true
+          }
+          trap 'cleanup_monitor; cleanup_smaps; cleanup_process_tree' EXIT
+          (
+            while true; do
+              TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+              MEM_AVAIL=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+              SWAP_FREE=$(awk '/SwapFree/ {print $2}' /proc/meminfo)
+              echo "===SAMPLE $TS mem_avail_kb=$MEM_AVAIL swap_free_kb=$SWAP_FREE ==="
+              for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+                if [ -r "/proc/$pid/status" ]; then
+                  RSS=$(awk '/^VmRSS:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                  if [ -n "$RSS" ] && [ "$RSS" -gt 30000 ] 2>/dev/null; then
+                    PPID_VAL=$(awk '/^PPid:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    PSS=$(awk '/^Pss:/ {print $2}' /proc/$pid/smaps_rollup 2>/dev/null || echo "N/A")
+                    CMDLINE=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null | head -c 200)
+                    [ -z "$CMDLINE" ] && CMDLINE=$(awk '/^Name:/ {print $2}' /proc/$pid/status 2>/dev/null)
+                    echo "  pid=$pid ppid=$PPID_VAL rss_kb=$RSS pss_kb=$PSS cmd=$CMDLINE"
+                  fi
+                fi
+              done
+              sleep 2
+            done
+          ) > >(tee .ci-artifacts/oom-instrumentation/rss-2s-samples.log) 2>&1 &
+          MONITOR_PID=$!
+          cleanup_monitor() {
+            kill "$MONITOR_PID" 2>/dev/null || true
+            wait "$MONITOR_PID" 2>/dev/null || true
+          }
+          # NOTE: EXIT trap also stops the independent process-tree sampler.
+          # Do NOT overwrite — the existing trap owns all sampler cleanup.
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+          # STEP 17.90: process-tree attribution, cgroup membership and mapping classes.
+          # This sampler is independent of the Node event loop and records one-second snapshots.
+          cat > /tmp/process-tree-attribution.py <<'PY'
+          import json, os, re, signal, sys, time
+          from datetime import datetime, timezone
+
+          OUTPUT = ".ci-artifacts/oom-instrumentation/process-tree-attribution.jsonl"
+          INTERVAL = 1.0
+          STOP = False
+          THRESHOLDS = (6, 10, 13)
+          TAKEN = set()
+          PREVIOUS = set()
+          SAMPLE = 0
+
+          def utc():
+              return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+          def stop_handler(_signum, _frame):
+              global STOP
+              STOP = True
+
+          signal.signal(signal.SIGTERM, stop_handler)
+          signal.signal(signal.SIGINT, stop_handler)
+
+          def emit(handle, obj):
+              handle.write(json.dumps(obj, separators=(",", ":"), sort_keys=True) + "\n")
+              handle.flush()
+
+          def read_text(path):
+              try:
+                  with open(path, "r", encoding="utf-8", errors="replace") as f:
+                      return f.read()
+              except (OSError, PermissionError):
+                  return None
+
+          def unescape_mount(value):
+              return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), value)
+
+          def discover_cgroup2_mount():
+              data = read_text("/proc/self/mountinfo") or ""
+              candidates = []
+              for line in data.splitlines():
+                  halves = line.split(" - ", 1)
+                  if len(halves) != 2:
+                      continue
+                  left, right = halves
+                  r = right.split()
+                  l = left.split()
+                  if len(r) < 1 or len(l) < 5 or r[0] != "cgroup2":
+                      continue
+                  candidates.append({
+                      "root": unescape_mount(l[3]),
+                      "mountpoint": unescape_mount(l[4])
+                  })
+              return max(candidates, key=lambda x: len(x["root"]), default=None)
+
+          CGROUP_MOUNT = discover_cgroup2_mount()
+
+          def parse_stat(pid):
+              raw = read_text(f"/proc/{pid}/stat")
+              if not raw:
+                  return None
+              close = raw.rfind(")")
+              if close < 0:
+                  return None
+              tail = raw[close + 1:].strip().split()
+              if len(tail) <= 19:
+                  return None
+              try:
+                  return {
+                      "pid": int(pid),
+                      "state": tail[0],
+                      "ppid": int(tail[1]),
+                      "start_ticks": int(tail[19])
+                  }
+              except (ValueError, IndexError):
+                  return None
+
+          def parse_status(pid):
+              raw = read_text(f"/proc/{pid}/status") or ""
+              result = {}
+              wanted = {"VmRSS", "VmHWM", "VmSwap", "RssAnon", "RssFile", "RssShmem"}
+              for line in raw.splitlines():
+                  key, sep, value = line.partition(":")
+                  if sep and key in wanted:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              result[key + "_kb"] = int(bits[0])
+                          except ValueError:
+                              pass
+              return result
+
+          def parse_rollup(pid):
+              raw = read_text(f"/proc/{pid}/smaps_rollup")
+              if raw is None:
+                  return None
+              wanted = {"Rss", "Pss", "Pss_Anon", "Pss_File", "Pss_Shmem",
+                        "Anonymous", "Private_Dirty", "Private_Clean",
+                        "Shared_Dirty", "Shared_Clean", "Swap", "SwapPss"}
+              result = {}
+              for line in raw.splitlines():
+                  key, sep, value = line.partition(":")
+                  if sep and key in wanted:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              result[key + "_kb"] = int(bits[0])
+                          except ValueError:
+                              pass
+              return result
+
+          def parse_cgroup(pid):
+              raw = read_text(f"/proc/{pid}/cgroup") or ""
+              for line in raw.splitlines():
+                  if line.startswith("0::"):
+                      return line[3:]
+              return None
+
+          def cgroup_fs_path(cgroup_path):
+              if not CGROUP_MOUNT or cgroup_path is None:
+                  return None
+              root = os.path.normpath(CGROUP_MOUNT["root"])
+              mountpoint = os.path.normpath(CGROUP_MOUNT["mountpoint"])
+              target = os.path.normpath(cgroup_path)
+              if root == "/":
+                  relative = target.lstrip("/")
+              elif target == root:
+                  relative = ""
+              elif target.startswith(root.rstrip("/") + "/"):
+                  relative = target[len(root):].lstrip("/")
+              else:
+                  return None
+              candidate = os.path.normpath(os.path.join(mountpoint, relative))
+              try:
+                  if os.path.commonpath([mountpoint, candidate]) != mountpoint:
+                      return None
+              except ValueError:
+                  return None
+              return candidate
+
+          def read_cgroup_value(directory, name):
+              return read_text(os.path.join(directory, name))
+
+          def process_record(pid, stat_cache):
+              identity = stat_cache.get(pid)
+              if identity is None:
+                  identity = parse_stat(pid)
+                  if identity is None:
+                      return None
+                  stat_cache[pid] = identity
+              cmd_raw = read_text(f"/proc/{pid}/cmdline")
+              cmd = [x for x in (cmd_raw or "").split("\0") if x]
+              try:
+                  exe = os.readlink(f"/proc/{pid}/exe")
+              except OSError:
+                  exe = None
+              return {
+                  **identity,
+                  "exe": exe,
+                  "cmdline": cmd[:32],
+                  "status": parse_status(pid),
+                  "smaps_rollup": parse_rollup(pid),
+                  "cgroup_path": parse_cgroup(pid)
+              }
+
+          def read_mapping_classes(pid, threshold_gib):
+              raw = read_text(f"/proc/{pid}/smaps")
+              if raw is None:
+                  return {"type": "MAPPING_CLASSIFICATION_ERROR", "pid": pid,
+                          "threshold_gib": threshold_gib, "error": "smaps_unavailable"}
+              groups = {}
+              header = re.compile(r"^[0-9a-fA-F]+-[0-9a-fA-F]+\s")
+              current = None
+              for line in raw.splitlines():
+                  if header.match(line):
+                      fields = line.split(None, 5)
+                      pathname = fields[5] if len(fields) > 5 else ""
+                      if pathname == "[heap]":
+                          category = "heap"
+                      elif pathname.startswith("[stack"):
+                          category = "stack"
+                      elif pathname.startswith("[anon:") or pathname.startswith("[anon_shmem:"):
+                          category = "named_anonymous"
+                      elif "memfd:" in pathname or pathname.startswith("/memfd:"):
+                          category = "memfd"
+                      elif pathname.startswith("/"):
+                          category = "file_backed"
+                      elif not pathname:
+                          category = "unnamed_anonymous"
+                      else:
+                          category = "other_named"
+                      current = groups.setdefault(category, {
+                          "mapping_count": 0, "rss_kb": 0, "pss_kb": 0,
+                          "anonymous_kb": 0, "private_dirty_kb": 0,
+                          "swap_kb": 0, "swap_pss_kb": 0
+                      })
+                      current["mapping_count"] += 1
+                      continue
+                  if current is None:
+                      continue
+                  key, sep, value = line.partition(":")
+                  if not sep:
+                      continue
+                  field = {
+                      "Rss": "rss_kb", "Pss": "pss_kb",
+                      "Anonymous": "anonymous_kb", "Private_Dirty": "private_dirty_kb",
+                      "Swap": "swap_kb", "SwapPss": "swap_pss_kb"
+                  }.get(key)
+                  if field:
+                      bits = value.strip().split()
+                      if bits:
+                          try:
+                              current[field] += int(bits[0])
+                          except ValueError:
+                              pass
+              return {
+                  "type": "MAPPING_CLASSIFICATION",
+                  "timestamp": utc(),
+                  "pid": pid,
+                  "threshold_gib": threshold_gib,
+                  "groups": groups,
+                  "interpretation_limit": "Mapping class does not prove allocator origin; unnamed anonymous may be malloc-backed or direct mmap(MAP_ANONYMOUS)."
+              }
+
+          def cgroup_tree_snapshot(root_path, stat_cache, proc_cache):
+              fs_root = cgroup_fs_path(root_path)
+              if not fs_root or not os.path.isdir(fs_root):
+                  return {"root_path": root_path, "resolved": False, "nodes": [], "members": []}
+              nodes, member_pids = [], set()
+              for current, dirs, _files in os.walk(fs_root):
+                  dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(current, d))]
+                  relative = os.path.relpath(current, fs_root)
+                  logical = root_path if relative == "." else os.path.normpath(os.path.join(root_path, relative))
+                  procs_raw = read_cgroup_value(current, "cgroup.procs") or ""
+                  pids = []
+                  for item in procs_raw.split():
+                      try:
+                          pid = int(item)
+                          pids.append(pid)
+                          member_pids.add(pid)
+                      except ValueError:
+                          continue
+                  nodes.append({
+                      "path": logical,
+                      "memory_current": read_cgroup_value(current, "memory.current"),
+                      "memory_peak": read_cgroup_value(current, "memory.peak"),
+                      "memory_max": read_cgroup_value(current, "memory.max"),
+                      "memory_events": read_cgroup_value(current, "memory.events"),
+                      "memory_stat": read_cgroup_value(current, "memory.stat"),
+                      "memory_pressure": read_cgroup_value(current, "memory.pressure"),
+                      "swap_current": read_cgroup_value(current, "memory.swap.current"),
+                      "direct_pids": pids
+                  })
+                  if len(nodes) >= 512:
+                      break
+              members = []
+              for pid in sorted(member_pids):
+                  record = process_cache_record(pid, stat_cache, proc_cache)
+                  if record:
+                      members.append(record)
+              return {
+                  "root_path": root_path,
+                  "resolved": True,
+                  "nodes": nodes,
+                  "members": members,
+                  "unique_member_count": len(member_pids),
+                  "pss_sum_kb": sum((m.get("smaps_rollup") or {}).get("Pss_kb", 0) for m in members),
+                  "rss_sum_kb": sum((m.get("smaps_rollup") or {}).get("Rss_kb", 0) for m in members),
+                  "accounting_note": "PSS sum is process attribution, not expected to equal cgroup memory.current; page cache, kernel/slab, and accounting scope differ."
+              }
+
+          def process_cache_record(pid, stat_cache, proc_cache):
+              if pid not in proc_cache:
+                  proc_cache[pid] = process_record(pid, stat_cache)
+              return proc_cache[pid]
+
+          def main():
+              global SAMPLE, PREVIOUS
+              os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
+              with open(OUTPUT, "a", encoding="utf-8") as out:
+                  emit(out, {
+                      "type": "PROCESS_TREE_SAMPLER_INIT",
+                      "timestamp": utc(),
+                      "sampler_pid": os.getpid(),
+                      "interval_seconds": INTERVAL,
+                      "proc_stat_fields": {"pid": 1, "ppid": 4, "start_ticks": 22},
+                      "cgroup2_mount": CGROUP_MOUNT,
+                      "coverage_limit": "One-second /proc snapshots can miss processes created and reaped between observations; start_ticks disambiguates PID reuse but cannot recover unobserved lifetimes.",
+                      "mapping_limit": "smaps mapping classes cannot distinguish malloc-backed anonymous mappings from direct mmap(MAP_ANONYMOUS)."
+                  })
+                  while not STOP:
+                      started = time.monotonic()
+                      SAMPLE += 1
+                      stat_cache = {}
+                      proc_cache = {}
+                      all_pids = []
+                      try:
+                          all_pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+                      except OSError:
+                          pass
+                      for pid in all_pids:
+                          stat_cache[pid] = parse_stat(pid)
+                      stat_cache = {pid: val for pid, val in stat_cache.items() if val is not None}
+                      parent_map = {}
+                      for pid, identity in stat_cache.items():
+                          parent_map.setdefault(identity["ppid"], []).append(pid)
+
+                      roots = []
+                      for pid in stat_cache:
+                          raw = read_text(f"/proc/{pid}/cmdline") or ""
+                          if "opennextjs-cloudflare" in raw and "build" in raw:
+                              rec = process_cache_record(pid, stat_cache, proc_cache)
+                              if rec:
+                                  roots.append(rec)
+                      roots.sort(key=lambda x: (x["start_ticks"], x["pid"]))
+                      root = roots[0] if roots else None
+
+                      tree_pids = set()
+                      if root:
+                          stack = [root["pid"]]
+                          while stack:
+                              parent = stack.pop()
+                              if parent in tree_pids:
+                                  continue
+                              tree_pids.add(parent)
+                              stack.extend(parent_map.get(parent, []))
+                      tree = [process_cache_record(pid, stat_cache, proc_cache)
+                              for pid in sorted(tree_pids)]
+                      tree = [x for x in tree if x]
+                      current_ids = {f'{x["pid"]}:{x["start_ticks"]}' for x in tree}
+                      appeared = sorted(current_ids - PREVIOUS)
+                      disappeared = sorted(PREVIOUS - current_ids)
+                      PREVIOUS = current_ids
+
+                      anchor_pid = root["pid"] if root else os.getpid()
+                      anchor_cgroup = parse_cgroup(anchor_pid)
+                      cgroup_data = cgroup_tree_snapshot(anchor_cgroup, stat_cache, proc_cache) if anchor_cgroup else None
+                      tree_pss = sum((x.get("smaps_rollup") or {}).get("Pss_kb", 0) for x in tree)
+                      tree_rss = sum((x.get("smaps_rollup") or {}).get("Rss_kb", 0) for x in tree)
+                      root_rss_kb = ((root or {}).get("status") or {}).get("VmRSS_kb", 0)
+                      emit(out, {
+                          "type": "PROCESS_TREE_SAMPLE",
+                          "timestamp": utc(),
+                          "sample": SAMPLE,
+                          "root_found": bool(root),
+                          "root_identity": {k: root.get(k) for k in ("pid", "ppid", "start_ticks", "exe", "cmdline")} if root else None,
+                          "root_rss_kb": root_rss_kb,
+                          "process_tree": tree,
+                          "process_tree_count": len(tree),
+                          "process_tree_rss_sum_kb": tree_rss,
+                          "process_tree_pss_sum_kb": tree_pss,
+                          "appeared_since_previous": appeared,
+                          "disappeared_since_previous": disappeared,
+                          "cgroup": cgroup_data,
+                          "sample_duration_ms": round((time.monotonic() - started) * 1000, 2),
+                          "coverage_note": "Appeared/disappeared are differences between observed snapshots, not a complete exec/exit event history."
+                      })
+
+                      if root:
+                          rss_gib = root_rss_kb / 1048576
+                          for threshold in THRESHOLDS:
+                              if rss_gib >= threshold and threshold not in TAKEN:
+                                  TAKEN.add(threshold)
+                                  emit(out, read_mapping_classes(root["pid"], threshold))
+
+                      elapsed = time.monotonic() - started
+                      time.sleep(max(0.05, INTERVAL - elapsed))
+                  emit(out, {"type": "PROCESS_TREE_SAMPLER_STOP", "timestamp": utc(), "samples": SAMPLE})
+
+          if __name__ == "__main__":
+              main()
+          PY
+          python3 /tmp/process-tree-attribution.py &
+          PROCESS_TREE_PID=$!
+          cleanup_process_tree() {
+            kill "$PROCESS_TREE_PID" 2>/dev/null || true
+            wait "$PROCESS_TREE_PID" 2>/dev/null || true
+          }
+          # Process-tree sampler is independent of V8 and runs for baseline + profiler.
+          # STEP 17.86: controlled OpenNext baseline/profiler on the isolated Worker trace.
+          # The only intended difference is LD_PRELOAD; both runs retain the same
+          # Node V8 hook, OpenNext arguments, environment, and generated input.
+          mkdir -p .ci-artifacts/oom-instrumentation .ci-artifacts/opennext-baseline
+          : > /tmp/v8-memory-samples.log
+          : > /tmp/smaps-samples.jsonl
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+
+          # Record whether the runner sends a shutdown signal before the build can
+          # write its own exit marker. EXIT still runs the existing monitor cleanup.
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=TERM pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 143' TERM
+          trap 'SIGNAL_LINE="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) signal=INT pid=$$"; printf "%s\n" "$SIGNAL_LINE" | tee -a .ci-artifacts/oom-instrumentation/runner-signals.log >&2; exit 130' INT
+
+          run_opennext() {
+            local mode="$1"
+            local fifo="/tmp/opennext-${mode}.fifo"
+            local output=".ci-artifacts/oom-instrumentation/opennext-${mode}.log"
+            local pid exit_code
+            rm -f "$fifo"
+            mkfifo "$fifo"
+            printf '%s\n' "$mode" > /tmp/opennext-build-mode
+            echo "=== STEP 17.86: OpenNext mode=$mode ==="
+            date -u
+            free -h
+            grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+            if [ "$mode" = "baseline" ]; then
+              env -u LD_PRELOAD HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            else
+              env HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            fi
+            pid=$!
+            (
+              while IFS= read -r line; do
+                printf '%s\n' "$line" | tee -a "$output"
+                case "$line" in
+                  *"Building Next.js app"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Building Next.js app" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Generating bundle"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Generating bundle" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling middleware"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling middleware" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling static assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling static assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling cache assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling cache assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Building server function: default"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: createServerBundle START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling the OpenNext server"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Worker saved"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer COMPLETE" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"OpenNext build complete"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: OpenNext build complete" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                esac
+              done
+            ) < "$fifo"
+            if wait "$pid"; then exit_code=0; else exit_code=$?; fi
+            rm -f "$fifo"
+            printf '%s\n' "$exit_code" > ".ci-artifacts/oom-instrumentation/opennext-${mode}.exit"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode OpenNext exit=$exit_code" | tee -a .ci-artifacts/oom-instrumentation/stage-markers.log
+            return 0
+          }
+
+          # Fingerprint the Worker input tree so both runs are provably comparable.
+          NEXT_SERVER_SHA_BEFORE=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_BEFORE=%s\n' "$NEXT_SERVER_SHA_BEFORE" | tee .ci-artifacts/oom-instrumentation/input-fingerprint.txt
+          # Baseline first; keep .next/server unchanged for the profiler run.
+          rm -rf .open-next
+          run_opennext baseline
+          BASELINE_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-baseline.exit)
+          NEXT_SERVER_SHA_AFTER=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_AFTER_BASELINE=%s\n' "$NEXT_SERVER_SHA_AFTER" | tee -a .ci-artifacts/oom-instrumentation/input-fingerprint.txt
+          if [ "$NEXT_SERVER_SHA_BEFORE" != "$NEXT_SERVER_SHA_AFTER" ]; then
+            echo "FAIL: OpenNext baseline mutated .next/server; refusing non-identical A/B comparison"
+            exit 1
+          fi
+          if [ "$BASELINE_EXIT" -ne 0 ]; then
+            echo "PROFILER_SKIPPED=baseline_failed_exit_$BASELINE_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+            echo "FAIL: profiler is intentionally skipped because the baseline did not complete successfully"
+            exit 1
+          fi
+          if [ -d .open-next ]; then
+            bun run verify:store-runtime-artifacts -- worker .open-next > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log 2>&1 || echo "BASELINE_ARTIFACT_VERIFY_EXIT=$?" >> .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
+            cp -a .open-next/. .ci-artifacts/opennext-baseline/
+          else
+            echo "BASELINE_OUTPUT_MISSING=1" > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
+          fi
+          rm -rf .open-next
+
+          # Profiler comparison uses the same checked-in inputs and exact command.
+          run_opennext profiler
+          PROFILER_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-profiler.exit)
+          printf 'BASELINE_EXIT=%s\nPROFILER_EXIT=%s\n' "$BASELINE_EXIT" "$PROFILER_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+          if [ "$BASELINE_EXIT" -ne 0 ] || [ "$PROFILER_EXIT" -ne 0 ]; then
+            echo "FAIL: controlled OpenNext A/B requires both baseline and profiler exits to be 0"
+            exit 1
+          fi
+          bun run verify:store-runtime-artifacts -- worker .open-next
+      - name: Upload OOM instrumentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oom-instrumentation-${{ github.sha }}
+          path: |
+            .ci-artifacts/oom-instrumentation/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload smaps memory analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smaps-analysis-${{ github.sha }}
+          path: |
+            /tmp/smaps-samples.jsonl
+            /tmp/smaps-snapshots/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload V8 memory samples (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-memory-samples-${{ github.sha }}
+          path: |
+            /tmp/v8-memory-samples.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload Node and Worker build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-runtime-artifacts-${{ github.sha }}
+          path: |
+            .ci-artifacts/node/server
+            .ci-artifacts/opennext-baseline
+            .next/server
+            .open-next
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Evidence-only finalization: this does not alter profiler execution or OpenNext inputs.
+      # Directory inventory is a coarse presence signal; SHA256SUMS.txt is the file-level
+      # integrity authority. If they disagree, the checksum manifest is authoritative.
+      # C3 is necessarily post-OpenNext: host loss during OpenNext preserves C2 but cannot
+      # preserve OpenNext runtime samples that were never checkpointed.
+      - name: Final evidence inventory and checksums
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p .ci-artifacts/final .ci-artifacts/runtime-samples
+          COPY_ERRORS=".ci-artifacts/final/runtime-sample-copy-errors.txt"
+          : > "$COPY_ERRORS"
+          for file in /tmp/smaps-samples.jsonl /tmp/v8-memory-samples.log; do
+            if [ -f "$file" ]; then
+              cp -f "$file" .ci-artifacts/runtime-samples/ || echo "COPY_FAILED $file" >> "$COPY_ERRORS"
+            else
+              echo "SOURCE_MISSING $file" >> "$COPY_ERRORS"
+            fi
+          done
+          if [ -d /tmp/smaps-snapshots ]; then
+            mkdir -p .ci-artifacts/runtime-samples/smaps-snapshots
+            cp -a /tmp/smaps-snapshots/. .ci-artifacts/runtime-samples/smaps-snapshots/ || echo "COPY_FAILED /tmp/smaps-snapshots/" >> "$COPY_ERRORS"
+          else
+            echo "SOURCE_MISSING /tmp/smaps-snapshots/" >> "$COPY_ERRORS"
+          fi
+
+          INVENTORY=".ci-artifacts/final/evidence-inventory.txt"
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "integrity_authority=SHA256SUMS.txt (file-level); directory inventory is informational"
+            echo "host_loss_during_opennext=C2 checkpoint may survive; C3 runtime samples are unavailable if finalization never runs"
+            echo
+            for path in \
+              .ci-artifacts/node/server \
+              .ci-artifacts/worker-next \
+              .ci-artifacts/oom-instrumentation \
+              .ci-artifacts/opennext-baseline \
+              .ci-artifacts/runtime-samples \
+              .next/server \
+              .open-next
+            do
+              if [ -d "$path" ]; then
+                if find "$path" -type f -print -quit 2>/dev/null | grep -q .; then
+                  echo "PRESENT_WITH_FILES $path"
+                else
+                  echo "PRESENT_EMPTY $path"
+                fi
+              else
+                echo "MISSING $path"
+              fi
+            done
+            echo
+            echo "runtime_sample_copy_errors:"
+            cat "$COPY_ERRORS"
+          } > "$INVENTORY"
+
+          SUMS=".ci-artifacts/final/SHA256SUMS.txt"
+          : > "$SUMS"
+          if ! find .ci-artifacts -type f ! -path '.ci-artifacts/final/*' -print0 |
+            sort -z | xargs -0 -r sha256sum > "$SUMS"; then
+            echo "CHECKSUM_GENERATION_FAILED" >> "$COPY_ERRORS"
+          fi
+          if ! sha256sum "$INVENTORY" >> "$SUMS"; then
+            echo "INVENTORY_CHECKSUM_FAILED" >> "$COPY_ERRORS"
+          fi
+          cat "$INVENTORY"
+          cat "$SUMS"
+
+      - name: Upload final evidence inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .ci-artifacts/final/
+            .ci-artifacts/runtime-samples/
+          if-no-files-found: warn
+          retention-days: 30

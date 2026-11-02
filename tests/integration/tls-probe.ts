@@ -19,7 +19,7 @@
  *   PROBE_EXIT_CODE=<n>         — the process exit code
  *
  * ──────────────────────────────────────────────────────────────────────── */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/lib/generated/node-client/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 async function main(): Promise<void> {

@@ -36,7 +36,7 @@
    or:
      bun run run:ai-agents
 */
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/lib/generated/node-client/client'
 import { createPrismaClient } from './prismaClient';
 import {
   runAgent,

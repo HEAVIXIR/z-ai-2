@@ -13,8 +13,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { Prisma } from '@/lib/generated/client/client';
-import { db } from '@/lib/db';
+import { db, Prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';

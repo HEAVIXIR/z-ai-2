@@ -456,7 +456,7 @@ jobs:
         run: |
           set -euo pipefail
           export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=verify-full&sslrootcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
-          bun -e 'import { PrismaClient } from "@prisma/client"; import { PrismaPg } from "@prisma/adapter-pg"; const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL }); const db = new PrismaClient({ adapter }); await db.user.create({ data: { firstName: "CI", lastName: "Preflight", email: "phase-c-preflight@example.invalid", mobile: "+19999999999", passwordHash: "not-a-real-password", role: "BUYER", status: "ACTIVE" } }); await db.$disconnect();'
+          bun -e 'import { PrismaClient } from "./src/lib/generated/node-client/client"; import { PrismaPg } from "@prisma/adapter-pg"; const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL }); const db = new PrismaClient({ adapter }); await db.user.create({ data: { firstName: "CI", lastName: "Preflight", email: "phase-c-preflight@example.invalid", mobile: "+19999999999", passwordHash: "not-a-real-password", role: "BUYER", status: "ACTIVE" } }); await db.$disconnect();'
       - name: Grant least-privilege access for TLS preflight
         run: |
           set -euo pipefail
@@ -597,10 +597,27 @@ jobs:
     name: OpenNext Cloudflare build proof (no deploy)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       HEAVIX_ENV: preview
       NODE_ENV: production
       NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+      STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -608,12 +625,28 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked project dependencies
         run: bun install --frozen-lockfile
+      - name: Generate Main and Store Prisma 7 clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Prepare disposable PostgreSQL 17 build databases
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE heavix_store_test;"
+          # db push is restricted to these empty, disposable CI databases; it is not migration or release evidence.
+          bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+          bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Run the Workers Builds OpenNext build command without deploy
         shell: bash
         run: |
           set -euo pipefail
+          cp package.json /tmp/heavix-package.json
+          trap 'cp /tmp/heavix-package.json package.json' EXIT
+          # The isolated npm overlay is ephemeral; the committed Bun dependency graph stays authoritative.
           node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
-          bun add --no-save --ignore-scripts @opennextjs/cloudflare@1.20.13 wrangler@4.154.0
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
           bunx opennextjs-cloudflare build
 
   # Report-only compatibility probe: does not deploy or touch production resources.

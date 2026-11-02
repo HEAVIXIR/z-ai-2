@@ -54,14 +54,18 @@ const mockDb: Record<string, ReturnType<typeof makeModelMock>> = {
   user: makeModelMock(),
 };
 
-vi.mock("@/lib/db", () => ({
+vi.mock("@/lib/db", async () => {
+  const { Prisma } = await import("@/lib/generated/node-client/client");
+  return {
   db: new Proxy({}, {
     get(_t, prop) {
       if (prop === "$transaction") return mockDbTransaction;
       return mockDb[prop as string] ?? makeModelMock();
     },
   }),
-}));
+  Prisma,
+  };
+});
 
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/request-context", () => ({ getClientIp: () => "127.0.0.1" }));
@@ -199,7 +203,7 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
       order: null,
     });
     // $transaction throws a non-P2002 error (with secret)
-    mockDb.deal.$transaction.mockRejectedValue(makeErrorWithSecret());
+    mockDbTransaction.mockRejectedValue(makeErrorWithSecret());
     const { PATCH } = await import("@/app/api/deals/[id]/route");
     const res = await PATCH(
       new Request("http://localhost/api/deals/deal-1", {

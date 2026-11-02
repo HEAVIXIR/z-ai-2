@@ -17,7 +17,7 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient, Prisma } from '../src/lib/generated/node-client/client';
 
 const SQLITE_PATH = process.env.SQLITE_SOURCE_URL
   ? process.env.SQLITE_SOURCE_URL.replace(/^file:/, '')
