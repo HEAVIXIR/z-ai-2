@@ -810,6 +810,23 @@ jobs:
               if (!cgroupFsBase) return null;
               return readCgroupFile(cgroupFsBase, name);
           }
+
+          function readProcText(relativePath) {
+              try {
+                  return fs.readFileSync('/proc/' + relativePath, 'utf8').trim();
+              } catch (e) {
+                  return null;
+              }
+          }
+
+          function readProcMetric(relativePath, key) {
+              const contents = readProcText(relativePath);
+              if (contents === null) return null;
+              const line = contents.split('\n').find(function (entry) {
+                  return entry.startsWith(key + ' ');
+              });
+              return line ? line.trim().split(/\s+/)[1] || null : null;
+          }
           
           function sample() {
               sampleCount++;
@@ -852,7 +869,17 @@ jobs:
                   cgroup_mount_selection: cgroupMountSelection,
                   cgroup_visibility: cgroupVisibility,
                   cgroup_memory_current: readCgroupCurrent('memory.current'),
+                  cgroup_memory_peak: readCgroupCurrent('memory.peak'),
+                  cgroup_memory_max: readCgroupCurrent('memory.max'),
+                  cgroup_memory_events: readCgroupCurrent('memory.events'),
+                  cgroup_memory_events_local: readCgroupCurrent('memory.events.local'),
+                  cgroup_memory_stat: readCgroupCurrent('memory.stat'),
+                  cgroup_memory_pressure: readCgroupCurrent('memory.pressure'),
                   cgroup_swap_current: readCgroupCurrent('memory.swap.current'),
+                  cgroup_swap_max: readCgroupCurrent('memory.swap.max'),
+                  cgroup_swap_events: readCgroupCurrent('memory.swap.events'),
+                  host_oom_kill_count: readProcMetric('vmstat', 'oom_kill'),
+                  host_memory_pressure: readProcText('pressure/memory'),
                   cgroup_ancestors: cgroupAncestors
               };
           
@@ -1114,6 +1141,11 @@ jobs:
           : > /tmp/smaps-samples.jsonl
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
 
+          # Record whether the runner sends a shutdown signal before the build can
+          # write its own exit marker. EXIT still runs the existing monitor cleanup.
+          trap 'printf "%s signal=TERM pid=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 143' TERM
+          trap 'printf "%s signal=INT pid=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 130' INT
+
           run_opennext() {
             local mode="$1"
             local fifo="/tmp/opennext-${mode}.fifo"
@@ -1127,9 +1159,9 @@ jobs:
             free -h
             grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
             if [ "$mode" = "baseline" ]; then
-              env -u LD_PRELOAD HEAVIX_BUILD_MODE="$mode" /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+              env -u LD_PRELOAD HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
             else
-              env HEAVIX_BUILD_MODE="$mode" LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+              env HEAVIX_BUILD_MODE="$mode" NODE_OPTIONS="$NODE_OPTIONS" LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v ./node_modules/.bin/opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
             fi
             pid=$!
             (
