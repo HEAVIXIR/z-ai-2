@@ -1143,8 +1143,8 @@ jobs:
 
           # Record whether the runner sends a shutdown signal before the build can
           # write its own exit marker. EXIT still runs the existing monitor cleanup.
-          trap 'printf "%s signal=TERM pid=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 143' TERM
-          trap 'printf "%s signal=INT pid=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 130' INT
+          trap 'printf "%s signal=TERM pid=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 143' TERM
+          trap 'printf "%s signal=INT pid=%s\n" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$" >> .ci-artifacts/oom-instrumentation/runner-signals.log; exit 130' INT
 
           run_opennext() {
             local mode="$1"
@@ -1154,7 +1154,7 @@ jobs:
             rm -f "$fifo"
             mkfifo "$fifo"
             printf '%s\n' "$mode" > /tmp/opennext-build-mode
-            echo "=== STEP 17.84: OpenNext mode=$mode ==="
+            echo "=== STEP 17.85: OpenNext mode=$mode ==="
             date -u
             free -h
             grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
