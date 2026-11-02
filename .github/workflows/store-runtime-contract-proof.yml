@@ -822,6 +822,7 @@ jobs:
           
               const obj = {
                   type: 'V8SAMPLE',
+                  run_mode: process.env.HEAVIX_BUILD_MODE || 'unlabelled',
                   timestamp: ts,
                   sample: sampleCount,
                   pid: process.pid,
@@ -866,6 +867,7 @@ jobs:
           
           process.stderr.write(JSON.stringify({
               type: 'V8HOOK_INIT',
+              run_mode: process.env.HEAVIX_BUILD_MODE || 'unlabelled',
               timestamp: new Date().toISOString(),
               pid: process.pid,
               ppid: process.ppid,
@@ -981,6 +983,7 @@ jobs:
           
           while true; do
             TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+            RUN_MODE=$(cat /tmp/opennext-build-mode 2>/dev/null || echo "unlabelled")
             # Find the OpenNext process (node + opennextjs-cloudflare in cmdline)
             OPENNEXT_PID=""
             OPENNEXT_EXEC=""
@@ -1031,7 +1034,7 @@ jobs:
             ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
           
             # Write JSON line
-            smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
+            smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
           
             # Threshold-based full smaps snapshot (large output, only at thresholds)
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
@@ -1103,48 +1106,76 @@ jobs:
           # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
           # Do NOT overwrite — first trap handles both
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
-          # === A-2: Fix BUILD_EXIT — use FIFO to capture real exit code ===
-          # Process substitution (< <(...)) does NOT propagate exit code to $?
-          # Use a named pipe (FIFO) so we can capture the real build exit code
-          # NOTE: FIFO must be created BEFORE the subshell that reads from it,
-          # because redirections are evaluated when the subshell starts.
-          BUILD_FIFO=/tmp/opennext-build.fifo
-          rm -f "$BUILD_FIFO"
-          mkfifo "$BUILD_FIFO"
-          LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$BUILD_FIFO" 2>&1 &
-          BUILD_CMD_PID=$!
-          (
-            while IFS= read -r line; do
-              case "$line" in
-                *"Building Next.js app"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Building Next.js app" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Generating bundle"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Generating bundle" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Bundling middleware"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling middleware" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Bundling static assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling static assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Bundling cache assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: Bundling cache assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Building server function: default"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: createServerBundle START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Bundling the OpenNext server"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: bundleServer (esbuild bundle:true) START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"Worker saved"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: bundleServer COMPLETE" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-                *"OpenNext build complete"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext build complete" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
-              esac
-              echo "$line"
-            done
-          ) < "$BUILD_FIFO"
-          # Fix: under set -e, `wait` on a failing process kills the script
-          # before BUILD_EXIT=$? is assigned. Use if/else to capture exit code.
-          if wait "$BUILD_CMD_PID"; then
-            BUILD_EXIT=0
+          # STEP 17.84: controlled A/B on identical .next input.
+          # The only intended difference is LD_PRELOAD; both runs retain the same
+          # Node V8 hook, OpenNext arguments, environment, and generated input.
+          mkdir -p .ci-artifacts/oom-instrumentation .ci-artifacts/opennext-baseline
+          : > /tmp/v8-memory-samples.log
+          : > /tmp/smaps-samples.jsonl
+          touch .ci-artifacts/oom-instrumentation/stage-markers.log
+
+          run_opennext() {
+            local mode="$1"
+            local fifo="/tmp/opennext-${mode}.fifo"
+            local output=".ci-artifacts/oom-instrumentation/opennext-${mode}.log"
+            local pid exit_code
+            rm -f "$fifo"
+            mkfifo "$fifo"
+            printf '%s\n' "$mode" > /tmp/opennext-build-mode
+            echo "=== STEP 17.84: OpenNext mode=$mode ==="
+            date -u
+            free -h
+            grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+            if [ "$mode" = "baseline" ]; then
+              env -u LD_PRELOAD HEAVIX_BUILD_MODE="$mode" /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            else
+              env HEAVIX_BUILD_MODE="$mode" LD_PRELOAD=/tmp/mallinfo_preload.so:/tmp/malloc_profiler_v6.so /usr/bin/time -v npm exec --no -- opennextjs-cloudflare build --skipNextBuild --noMinify > "$fifo" 2>&1 &
+            fi
+            pid=$!
+            (
+              while IFS= read -r line; do
+                printf '%s\n' "$line" | tee -a "$output"
+                case "$line" in
+                  *"Building Next.js app"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Building Next.js app" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Generating bundle"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Generating bundle" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling middleware"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling middleware" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling static assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling static assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling cache assets"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: Bundling cache assets" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Building server function: default"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: createServerBundle START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Bundling the OpenNext server"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer START" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"Worker saved"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: bundleServer COMPLETE" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                  *"OpenNext build complete"*) echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode STAGE: OpenNext build complete" >> .ci-artifacts/oom-instrumentation/stage-markers.log ;;
+                esac
+              done
+            ) < "$fifo"
+            if wait "$pid"; then exit_code=0; else exit_code=$?; fi
+            rm -f "$fifo"
+            printf '%s\n' "$exit_code" > ".ci-artifacts/oom-instrumentation/opennext-${mode}.exit"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) mode=$mode OpenNext exit=$exit_code" | tee -a .ci-artifacts/oom-instrumentation/stage-markers.log
+            return 0
+          }
+
+          # Baseline first; keep .next/server unchanged for the profiler run.
+          rm -rf .open-next
+          run_opennext baseline
+          BASELINE_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-baseline.exit)
+          if [ -d .open-next ]; then
+            bun run verify:store-runtime-artifacts -- worker .open-next > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log 2>&1 || echo "BASELINE_ARTIFACT_VERIFY_EXIT=$?" >> .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
+            cp -a .open-next/. .ci-artifacts/opennext-baseline/
           else
-            BUILD_EXIT=$?
+            echo "BASELINE_OUTPUT_MISSING=1" > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
           fi
-          rm -f "$BUILD_FIFO"
-          echo "OpenNext build exit code: $BUILD_EXIT"
-          echo "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) STAGE: OpenNext process exited (code=$BUILD_EXIT)" >> .ci-artifacts/oom-instrumentation/stage-markers.log
-          if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "=== Build failed (exit $BUILD_EXIT) — instrumentation preserved ==="
-            exit $BUILD_EXIT
-          else
-            bun run verify:store-runtime-artifacts -- worker .open-next
+          rm -rf .open-next
+
+          # Profiler comparison uses the same checked-in inputs and exact command.
+          run_opennext profiler
+          PROFILER_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-profiler.exit)
+          printf 'BASELINE_EXIT=%s\nPROFILER_EXIT=%s\n' "$BASELINE_EXIT" "$PROFILER_EXIT" | tee .ci-artifacts/oom-instrumentation/ab-summary.txt
+          if [ "$BASELINE_EXIT" -ne 0 ] || [ "$PROFILER_EXIT" -ne 0 ]; then
+            echo "FAIL: controlled OpenNext A/B requires both baseline and profiler exits to be 0"
+            exit 1
           fi
+          bun run verify:store-runtime-artifacts -- worker .open-next
       - name: Upload OOM instrumentation evidence
         if: always()
         uses: actions/upload-artifact@v4
