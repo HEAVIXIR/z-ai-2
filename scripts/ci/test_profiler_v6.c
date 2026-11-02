@@ -54,6 +54,7 @@ extern void*  __profiler_v6_test_bootstrap_realloc(void* ptr, size_t new_size) _
 extern void   __profiler_v6_test_direct_track_alloc(void* ptr, size_t size, void* caller) __attribute__((weak));
 extern void   __profiler_v6_test_direct_track_free(void* ptr) __attribute__((weak));
 extern int    __profiler_v6_test_is_tracked(void* ptr) __attribute__((weak));
+extern int    __profiler_v6_test_is_tracked_addr(uintptr_t addr) __attribute__((weak));
 // [A-3.20] Normal realloc failure injection hooks
 extern void   __profiler_v6_test_set_real_realloc(void* (*fn)(void*, size_t)) __attribute__((weak));
 extern void*  __profiler_v6_test_get_real_realloc(void) __attribute__((weak));
@@ -1078,12 +1079,16 @@ static void test_normal_realloc_tracked_direct(void) {
     // [A-3.21 fixup] t12_allocator now correctly copies min(old, new) and frees old.
     g_realloc_fail = 0;
     size_t new_sz = 16384;
+    // [fixup5/P1] Capture old address as uintptr_t BEFORE realloc.
+    // After realloc succeeds, the old pointer's lifetime may have ended.
+    uintptr_t old_p_addr = (uintptr_t)p;
     void *p_new = __profiler_v6_test_normal_realloc_tracked(
         p, new_sz, t12_allocator, __builtin_return_address(0));
     CHECK(p_new != NULL, "normal_realloc_tracked returned NULL on success");
 
-    // Old pointer should be untracked (track_free was called).
-    CHECK(!__profiler_v6_test_is_tracked(p), "old ptr still tracked after successful realloc");
+    // [fixup5/P1] Use saved uintptr_t, NOT the original pointer, to check
+    // that the old entry was removed from the tracking table.
+    CHECK(!__profiler_v6_test_is_tracked_addr(old_p_addr), "old ptr still tracked after successful realloc");
 
     // New pointer should be tracked with new size.
     CHECK(__profiler_v6_test_is_tracked(p_new), "new ptr not tracked after successful realloc");
@@ -1130,10 +1135,13 @@ static void test_normal_realloc_tracked_direct(void) {
 
     // --- T12.4: Successful retry after failure ---
     g_realloc_fail = 0;
+    // [fixup5/P1] Capture old address BEFORE realloc.
+    uintptr_t old_p2_addr = (uintptr_t)p2;
     void *p2_new = __profiler_v6_test_normal_realloc_tracked(
         p2, new_sz, t12_allocator, __builtin_return_address(0));
     CHECK(p2_new != NULL, "retry should succeed after restoring allocator");
-    CHECK(!__profiler_v6_test_is_tracked(p2), "old p2 still tracked after successful retry");
+    // [fixup5/P1] Use saved uintptr_t, NOT the original pointer.
+    CHECK(!__profiler_v6_test_is_tracked_addr(old_p2_addr), "old p2 still tracked after successful retry");
     CHECK(__profiler_v6_test_is_tracked(p2_new), "new p2 not tracked after retry");
     long retry_tracked = __profiler_v6_test_get_tracked_size(p2_new);
     CHECK(retry_tracked == (long)new_sz, "retry tracked size wrong (got %ld, expected %ld)",
@@ -1143,9 +1151,13 @@ static void test_normal_realloc_tracked_direct(void) {
     // t12_allocator (without force_inplace) always allocates a new block
     // and frees the old one. This tests the "move" case of realloc shrink.
     g_t12_force_inplace = 0;
+    // [fixup5/P1] Capture old address BEFORE realloc.
+    uintptr_t old_p2_new_addr = (uintptr_t)p2_new;
     void *p2_shrunk = __profiler_v6_test_normal_realloc_tracked(
         p2_new, 4096, t12_allocator, __builtin_return_address(0));
     CHECK(p2_shrunk != NULL, "realloc shrink (move) should succeed");
+    // [fixup5/P1] Verify old was untracked using saved addr.
+    CHECK(!__profiler_v6_test_is_tracked_addr(old_p2_new_addr), "old p2_new still tracked after shrink move");
     CHECK(__profiler_v6_test_is_tracked(p2_shrunk), "shrunk ptr not tracked");
     long shrink_tracked = __profiler_v6_test_get_tracked_size(p2_shrunk);
     CHECK(shrink_tracked == 4096, "shrink tracked size wrong (got %ld, expected 4096)",
@@ -1170,11 +1182,14 @@ static void test_normal_realloc_tracked_direct(void) {
           "in-place base size wrong");
 
     g_t12_force_inplace = 1;
+    // [fixup5/P1] Capture old address BEFORE realloc.
+    uintptr_t old_inplace_addr = (uintptr_t)p_inplace_base;
     void *p_inplace = __profiler_v6_test_normal_realloc_tracked(
         p_inplace_base, 4096, t12_allocator, __builtin_return_address(0));
     CHECK(p_inplace != NULL, "in-place shrink should succeed");
-    CHECK(p_inplace == p_inplace_base, "in-place shrink should return same pointer");
-    CHECK(__profiler_v6_test_is_tracked(p_inplace), "in-place ptr not tracked after shrink");
+    // In-place mode: allocator returns the same address.
+    CHECK((uintptr_t)p_inplace == old_inplace_addr, "in-place shrink should return same address");
+    CHECK(__profiler_v6_test_is_tracked_addr((uintptr_t)p_inplace), "in-place ptr not tracked after shrink");
     long inplace_tracked = __profiler_v6_test_get_tracked_size(p_inplace);
     CHECK(inplace_tracked == 4096, "in-place tracked size wrong (got %ld, expected 4096)",
           inplace_tracked);

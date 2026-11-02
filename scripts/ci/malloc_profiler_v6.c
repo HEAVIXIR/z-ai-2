@@ -365,13 +365,24 @@ static void track_alloc(void* ptr, size_t size, void* caller) {
     }
 }
 
-static void track_free(void* ptr) {
-    if (!ptr) return;
-    int h = hash_ptr(ptr);
+// [A-3.21 fixup5/P1] Track-free by integer address.
+// This function takes a uintptr_t instead of a void*. This is critical
+// for the realloc path: after allocator(ptr, size) succeeds, the old
+// pointer's lifetime has ended (the object was freed or moved). Per the
+// C standard, the VALUE of a pointer to an object whose lifetime has
+// ended is indeterminate — using it for hashing or comparison is UB.
+//
+// By converting to uintptr_t BEFORE the allocator call, we capture the
+// integer representation of the address. This integer is NOT a pointer
+// and does not become indeterminate when the object is freed. It can
+// safely be used for hashing and comparison after the allocator returns.
+static void track_free_by_addr(uintptr_t addr) {
+    if (addr == 0) return;
+    int h = ((unsigned long)addr >> 8) & (HASH_SIZE - 1);
     for (int i = 0; i < 4; i++) {
         int slot = (h + i) & (HASH_SIZE - 1);
         uintptr_t stored = atomic_load(&g_ptr_table[slot].ptr);
-        if (stored == (uintptr_t)ptr) {
+        if (stored == addr) {
             int bucket_idx = atomic_load(&g_ptr_table[slot].bucket_idx);
             int caller_idx = atomic_load(&g_ptr_table[slot].caller_idx);
             long size = atomic_load(&g_ptr_table[slot].size);
@@ -388,6 +399,14 @@ static void track_free(void* ptr) {
             return;
         }
     }
+}
+
+static void track_free(void* ptr) {
+    if (!ptr) return;
+    // [A-3.21 fixup5/P1] Delegate to track_free_by_addr with the uintptr_t
+    // value. This avoids any use of the pointer value itself after the
+    // pointed-to object may have been freed (see normal_realloc_tracked).
+    track_free_by_addr((uintptr_t)ptr);
 }
 
 static void output_stats(void) {
@@ -546,13 +565,27 @@ static void* normal_realloc_tracked(void *ptr, size_t size,
 {
     if (!allocator) return NULL;
 
+    // [A-3.21 fixup5/P1] Capture the old pointer's address as a uintptr_t
+    // BEFORE calling the allocator. After allocator() returns, the old
+    // pointer's lifetime may have ended (realloc moved the data to a new
+    // block and freed the old one). Per C standard, the VALUE of a pointer
+    // to an object whose lifetime has ended is indeterminate — using it
+    // for hashing or comparison is undefined behavior.
+    //
+    // By converting to uintptr_t here, we capture the integer representation
+    // of the address. This integer is NOT a pointer and does not become
+    // indeterminate when the object is freed. We use it for track_free
+    // after the allocator returns.
+    uintptr_t old_addr = (ptr) ? (uintptr_t)ptr : 0;
+
     // Call the allocator FIRST. On failure, tracking is preserved (POSIX).
     void *new_ptr = allocator(ptr, size);
 
     if (new_ptr) {
         // Success: remove old tracking, add new.
         // [F3] track_free ONLY on success — preserves old tracking on failure.
-        if (ptr) track_free(ptr);
+        // [fixup5/P1] Use the saved uintptr_t, NOT the original pointer.
+        if (old_addr) track_free_by_addr(old_addr);
         if (size >= MIN_TRACK_SIZE && size < MAX_TRACK_SIZE) {
             track_alloc(new_ptr, size, caller);
         }
@@ -927,6 +960,19 @@ void __profiler_v6_test_direct_track_alloc(void* ptr, size_t size, void* caller)
 
 void __profiler_v6_test_direct_track_free(void* ptr) {
     track_free(ptr);
+}
+
+// [A-3.21 fixup5] Returns whether an address (as uintptr_t) is tracked.
+// This avoids using a void* pointer whose lifetime may have ended.
+int __profiler_v6_test_is_tracked_addr(uintptr_t addr) {
+    if (addr == 0) return 0;
+    int h = ((unsigned long)addr >> 8) & (HASH_SIZE - 1);
+    for (int i = 0; i < 4; i++) {
+        int slot = (h + i) & (HASH_SIZE - 1);
+        uintptr_t stored = atomic_load(&g_ptr_table[slot].ptr);
+        if (stored == addr) return 1;
+    }
+    return 0;
 }
 
 // [A-3.19] Returns whether a pointer is tracked in g_ptr_table.
