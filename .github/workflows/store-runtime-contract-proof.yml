@@ -1155,10 +1155,19 @@ jobs:
             return 0
           }
 
+          # Fingerprint the Worker input tree so both runs are provably comparable.
+          NEXT_SERVER_SHA_BEFORE=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_BEFORE=%s\n' "$NEXT_SERVER_SHA_BEFORE" | tee .ci-artifacts/oom-instrumentation/input-fingerprint.txt
           # Baseline first; keep .next/server unchanged for the profiler run.
           rm -rf .open-next
           run_opennext baseline
           BASELINE_EXIT=$(cat .ci-artifacts/oom-instrumentation/opennext-baseline.exit)
+          NEXT_SERVER_SHA_AFTER=$(find .next/server -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          printf 'NEXT_SERVER_SHA_AFTER_BASELINE=%s\n' "$NEXT_SERVER_SHA_AFTER" | tee -a .ci-artifacts/oom-instrumentation/input-fingerprint.txt
+          if [ "$NEXT_SERVER_SHA_BEFORE" != "$NEXT_SERVER_SHA_AFTER" ]; then
+            echo "FAIL: OpenNext baseline mutated .next/server; refusing non-identical A/B comparison"
+            exit 1
+          fi
           if [ -d .open-next ]; then
             bun run verify:store-runtime-artifacts -- worker .open-next > .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log 2>&1 || echo "BASELINE_ARTIFACT_VERIFY_EXIT=$?" >> .ci-artifacts/oom-instrumentation/baseline-artifact-verification.log
             cp -a .open-next/. .ci-artifacts/opennext-baseline/
@@ -1211,6 +1220,7 @@ jobs:
           name: store-runtime-artifacts-${{ github.sha }}
           path: |
             .ci-artifacts/node/server
+            .ci-artifacts/opennext-baseline
             .next/server
             .open-next
           if-no-files-found: warn
