@@ -1038,9 +1038,10 @@ jobs:
           echo "=== maps capture script written ==="
           cat > /tmp/smaps-sampler.sh << 'SMAPS'
           #!/bin/bash
-          # A-3 smaps_rollup sampler — runs as background process
-          # Samples every 2s, captures /proc/PID/smaps_rollup for OpenNext process
-          # Also captures full /proc/PID/smaps at RSS thresholds (6GB, 10GB, 13GB)
+          # STEP 17.89: Native Memory Attribution sampler
+          # 1s sampling of smaps_rollup + /proc/PID/status
+          # Full smaps/maps/status capture at 6GB, 10GB, 13GB RSS thresholds
+          # Lightweight V8 stats (no heap snapshot)
           SMAPS_LOG=/tmp/smaps-samples.jsonl
           SNAPSHOT_DIR=/tmp/smaps-snapshots
           mkdir -p "$SNAPSHOT_DIR"
@@ -1053,7 +1054,6 @@ jobs:
             echo "$1" >&2
           }
           # A-3.2: Extract top 30 mappings from smaps snapshot and write to stderr
-          # Parses /proc/PID/smaps format: mapping header line + Size/Rss/Pss fields
           extract_top_mappings() {
             local threshold=$1
             local pid=$2
@@ -1091,18 +1091,28 @@ jobs:
           
             if [ -z "$OPENNEXT_PID" ]; then
               smaps_log "{\"type\":\"SMAPS\",\"timestamp\":\"$TS\",\"error\":\"opennext_pid_not_found\"}"
-              sleep 2
+              sleep 1
               continue
             fi
           
-            # Read RSS for threshold check
-            RSS_KB=$(awk '/^VmRSS:/ {print $2}' /proc/$OPENNEXT_PID/status 2>/dev/null || echo "0")
+            # STEP 17.89: Read /proc/PID/status for full Vm* fields
+            STATUS_FILE="/proc/$OPENNEXT_PID/status"
+            VmRSS=$(awk '/^VmRSS:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmHWM=$(awk '/^VmHWM:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmSize=$(awk '/^VmSize:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmData=$(awk '/^VmData:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmStk=$(awk '/^VmStk:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            VmSwap=$(awk '/^VmSwap:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssAnon=$(awk '/^RssAnon:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssFile=$(awk '/^RssFile:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RssShmem=$(awk '/^RssShmem:/ {print $2}' "$STATUS_FILE" 2>/dev/null || echo "0")
+            RSS_KB=$VmRSS
             RSS_GB=$(echo "scale=2; $RSS_KB / 1048576" | bc 2>/dev/null || echo "0")
           
             # Read smaps_rollup (summary, low overhead)
             ROLLUP=""
             if [ -r "/proc/$OPENNEXT_PID/smaps_rollup" ]; then
-              ROLLUP=$(cat /proc/$OPENNEXT_PID/smaps_rollup 2>/dev/null)
+              ROLLUP=$(cat "/proc/$OPENNEXT_PID/smaps_rollup" 2>/dev/null)
             fi
           
             # Parse key fields from smaps_rollup
@@ -1121,34 +1131,46 @@ jobs:
             SWAP=$(echo "$ROLLUP" | awk '/^Swap:/ {print $2}')
             ANON_HUGE=$(echo "$ROLLUP" | awk '/^AnonHugePages:/ {print $2}')
           
-            # Write JSON line
-            smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}}}"
+            # Write JSON line with STEP 17.89 enhanced fields
+            smaps_log "{\"type\":\"SMAPS\",\"run_mode\":\"$RUN_MODE\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"execPath\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\",\"rss_kb\":$RSS_KB,\"rss_gb\":$RSS_GB,\"rollup\":{\"Rss\":${RSS_ROLLUP:-null},\"Pss\":${PSS:-null},\"Pss_Anon\":${PSS_ANON:-null},\"Pss_File\":${PSS_FILE:-null},\"Pss_Shmem\":${PSS_SHMEM:-null},\"Private_Anon\":${PRIVATE_ANON:-null},\"Private_Dirty\":${PRIVATE_DIRTY:-null},\"Private_Clean\":${PRIVATE_CLEAN:-null},\"Shared_Anon\":${SHARED_ANON:-null},\"Shared_Dirty\":${SHARED_DIRTY:-null},\"Shared_Clean\":${SHARED_CLEAN:-null},\"SwapPss\":${SWAP_PSS:-null},\"Swap\":${SWAP:-null},\"AnonHugePages\":${ANON_HUGE:-null}},\"status\":{\"VmRSS\":${VmRSS:-0},\"VmHWM\":${VmHWM:-0},\"VmSize\":${VmSize:-0},\"VmData\":${VmData:-0},\"VmStk\":${VmStk:-0},\"VmSwap\":${VmSwap:-0},\"RssAnon\":${RssAnon:-0},\"RssFile\":${RssFile:-0},\"RssShmem\":${RssShmem:-0}}}"
           
             smaps_log "{\"type\":\"SMAPS_IDENTITY\",\"timestamp\":\"$TS\",\"pid\":$OPENNEXT_PID,\"ppid\":\"$OPENNEXT_PPID\",\"start_ticks\":\"$OPENNEXT_START_TICKS\",\"cmdline_b64\":\"$OPENNEXT_CMDLINE_B64\",\"exe\":\"$OPENNEXT_EXEC\",\"argv1\":\"$OPENNEXT_ARGV1\"}"
-            # Threshold-based full smaps snapshot (large output, only at thresholds)
+            # Threshold-based full capture: smaps + maps + status
             if [ "$(echo "$RSS_GB >= 6.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_6GB" -eq 0 ]; then
-              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb.txt" 2>/dev/null
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-6gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-6gb-${TS_SNAP}.txt" 2>/dev/null
               extract_top_mappings 6 "$OPENNEXT_PID"
               python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_6GB=1
-              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"path\":\"$SNAPSHOT_DIR/smaps-6gb.txt\"}"
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":6,\"files\":[\"smaps-6gb-${TS_SNAP}.txt\",\"maps-6gb-${TS_SNAP}.txt\",\"status-6gb-${TS_SNAP}.txt\",\"smaps_rollup-6gb-${TS_SNAP}.txt\"]}"
             fi
             if [ "$(echo "$RSS_GB >= 10.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_10GB" -eq 0 ]; then
-              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb.txt" 2>/dev/null
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-10gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-10gb-${TS_SNAP}.txt" 2>/dev/null
               extract_top_mappings 10 "$OPENNEXT_PID"
               python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_10GB=1
-              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"path\":\"$SNAPSHOT_DIR/smaps-10gb.txt\"}"
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":10,\"files\":[\"smaps-10gb-${TS_SNAP}.txt\",\"maps-10gb-${TS_SNAP}.txt\",\"status-10gb-${TS_SNAP}.txt\",\"smaps_rollup-10gb-${TS_SNAP}.txt\"]}"
             fi
             if [ "$(echo "$RSS_GB >= 13.0" | bc 2>/dev/null)" = "1" ] && [ "$SNAPSHOT_TAKEN_13GB" -eq 0 ]; then
-              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb.txt" 2>/dev/null
+              TS_SNAP=$(date -u +"%Y%m%dT%H%M%S")
+              cat /proc/$OPENNEXT_PID/smaps > "$SNAPSHOT_DIR/smaps-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/maps > "$SNAPSHOT_DIR/maps-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/status > "$SNAPSHOT_DIR/status-13gb-${TS_SNAP}.txt" 2>/dev/null
+              cat /proc/$OPENNEXT_PID/smaps_rollup > "$SNAPSHOT_DIR/smaps_rollup-13gb-${TS_SNAP}.txt" 2>/dev/null
               extract_top_mappings 13 "$OPENNEXT_PID"
               python3 /tmp/capture_maps.py "$OPENNEXT_PID" 2>&1 | while IFS= read -r map_line; do smaps_log "$map_line"; done
               SNAPSHOT_TAKEN_13GB=1
-              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"path\":\"$SNAPSHOT_DIR/smaps-13gb.txt\"}"
+              smaps_log "{\"type\":\"SMAPS_SNAPSHOT\",\"timestamp\":\"$TS\",\"threshold_gb\":13,\"files\":[\"smaps-13gb-${TS_SNAP}.txt\",\"maps-13gb-${TS_SNAP}.txt\",\"status-13gb-${TS_SNAP}.txt\",\"smaps_rollup-13gb-${TS_SNAP}.txt\"]}"
             fi
           
-            sleep 2
+            sleep 1
           done
           
           SMAPS
