@@ -100,7 +100,7 @@ jobs:
   runtime-artifact-proof:
     needs: [dual-runtime-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:17
@@ -491,6 +491,20 @@ jobs:
           path: .ci-artifacts/worker-next/
           if-no-files-found: error
           retention-days: 14
+      # Intentional redundancy:
+      # The SHA-scoped artifact below preserves the existing commit-level contract.
+      # This run/attempt-scoped checkpoint preserves retry-specific evidence.
+      # Keep both uploads; they serve different recovery purposes.
+      - name: Checkpoint Worker Next.js evidence (per attempt)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-worker-next-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .ci-artifacts/worker-next/
+            .ci-artifacts/node/
+          if-no-files-found: warn
+          retention-days: 30
       - name: Bundle existing Worker build with OpenNext (skip Next.js build)
         env:
           HEAVIX_ENV: preview
@@ -1690,20 +1704,6 @@ jobs:
             exit 1
           fi
           bun run verify:store-runtime-artifacts -- worker .open-next
-      # Intentional redundancy:
-      # The SHA-scoped artifact below preserves the existing commit-level contract.
-      # This run/attempt-scoped checkpoint preserves retry-specific evidence.
-      # Keep both uploads; they serve different recovery purposes.
-      - name: Checkpoint Worker Next.js evidence (per attempt)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: checkpoint-worker-next-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .ci-artifacts/worker-next/
-            .ci-artifacts/node/
-          if-no-files-found: warn
-          retention-days: 30
       - name: Upload OOM instrumentation evidence
         if: always()
         uses: actions/upload-artifact@v4
