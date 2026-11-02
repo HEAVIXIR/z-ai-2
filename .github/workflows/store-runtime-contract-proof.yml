@@ -175,7 +175,7 @@ jobs:
           cp -a .next/server .ci-artifacts/node/server
           test -d .ci-artifacts/node/server
           echo "PASS: Node standalone evidence preserved at .ci-artifacts/node/server"
-      - name: Build Next.js with Worker runtime entrypoints (Prisma CLI isolated)
+      - name: Build Next.js with Worker runtime entrypoints (Prisma CLI present; resolver-safe checks)
         env:
           HEAVIX_ENV: preview
         shell: bash
@@ -183,48 +183,41 @@ jobs:
           set -euo pipefail
           mkdir -p .ci-artifacts/worker-next
           CLI_PATH="node_modules/prisma"
-          QUARANTINE_PATH="/tmp/heavix-prisma-cli-$GITHUB_RUN_ID"
           ISOLATION_LOG=".ci-artifacts/worker-next/prisma-cli-isolation.log"
-          test -e "$CLI_PATH" || test -L "$CLI_PATH" || { echo "FAIL: root Prisma CLI path is missing; refusing an invalid isolation experiment"; exit 1; }
-          test ! -e "$QUARANTINE_PATH" || { echo "FAIL: Prisma quarantine path already exists"; exit 1; }
-          node -e 'console.log("PRISMA_CLI_RESOLVES_BEFORE=" + require.resolve("prisma"))'
-          node -e 'console.log("PRISMA_CLIENT_RESOLVES_BEFORE=" + require.resolve("@prisma/client"))'
-          restore_prisma_cli() {
-            if [ -e "$QUARANTINE_PATH" ] || [ -L "$QUARANTINE_PATH" ]; then
-              mv "$QUARANTINE_PATH" "$CLI_PATH"
-              echo "PRISMA_CLI_RESTORED=1"
-            fi
-          }
-          trap restore_prisma_cli EXIT
-          mv "$CLI_PATH" "$QUARANTINE_PATH"
-          if node -e 'require.resolve("prisma")' >/dev/null 2>&1; then
-            echo "FAIL: Prisma CLI remains resolvable after root package quarantine"
-            exit 1
-          fi
-          node -e 'console.log("PRISMA_CLI_RESOLVES_DURING_WORKER_BUILD=0"); console.log("PRISMA_CLIENT_RESOLVES_DURING_WORKER_BUILD=" + require.resolve("@prisma/client"))'
+          test -d "$CLI_PATH" || { echo "FAIL: root Prisma CLI package directory is missing"; exit 1; }
+          test -f "$CLI_PATH/package.json" || { echo "FAIL: Prisma CLI package metadata is missing"; exit 1; }
+          test -f "$CLI_PATH/build/index.js" || { echo "FAIL: Prisma CLI binary entrypoint is missing"; exit 1; }
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const pkg = JSON.parse(fs.readFileSync("node_modules/prisma/package.json", "utf8"));
+          const clientPkg = JSON.parse(fs.readFileSync("node_modules/@prisma/client/package.json", "utf8"));
+          console.log("PRISMA_CLI_PACKAGE_VERSION=" + pkg.version);
+          console.log("PRISMA_CLI_BIN=" + JSON.stringify(pkg.bin ?? null));
+          console.log("PRISMA_CLI_EXPORTS=" + JSON.stringify(pkg.exports ?? null));
+          console.log("PRISMA_CLI_BUILD_TYPES_EXISTS=" + fs.existsSync("node_modules/prisma/build/types.js"));
+          console.log("PRISMA_CLI_BUILD_INDEX_EXISTS=" + fs.existsSync("node_modules/prisma/build/index.js"));
+          console.log("PRISMA_CLIENT_PACKAGE_VERSION=" + clientPkg.version);
+          console.log("PRISMA_CLIENT_RUNTIME_UTILS_PRESENT=" + fs.existsSync("node_modules/@prisma/client-runtime-utils"));
+          NODE
           for generated_client in src/lib/generated/client src/lib/generated/node-client src/lib/generated/store-client src/lib/generated/store-node-client; do
             test -d "$generated_client" || { echo "FAIL: generated Prisma client directory missing: $generated_client"; exit 1; }
             echo "GENERATED_CLIENT_PRESENT=$generated_client"
           done
           {
-            echo "experiment=STEP_17.86_prisma_cli_peer_isolation"
-            echo "cli_path=$CLI_PATH"
-            echo "quarantine_path=$QUARANTINE_PATH"
-            echo "cli_resolvable_during_worker_build=0"
-            echo "prisma_client_resolvable_during_worker_build=1"
-            echo "generated_client_directory_present=1"
-            echo "generated_clients_were_created_before_isolation=1"
+            echo "experiment=STEP_17.87_worker_build_with_prisma_cli_present"
+            echo "cli_package_directory_present=1"
+            echo "cli_binary_entrypoint_present=1"
+            echo "resolver_based_prisma_cli_checks=disabled"
+            echo "generated_clients_were_created_before_worker_build=1"
             date -u
           } | tee "$ISOLATION_LOG"
-          echo "=== Worker Next.js build resource baseline (Prisma CLI unavailable to resolver) ==="
+          echo "=== Worker Next.js build resource baseline (Prisma CLI present) ==="
           date -u
           free -h
           grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
           /usr/bin/time -v ./node_modules/.bin/next build
           test -d .next/server
-          echo "PASS: Worker-mode Next.js output exists at .next/server with Prisma CLI isolated"
-          restore_prisma_cli
-          trap - EXIT
+          echo "PASS: Worker-mode Next.js output exists at .next/server with Prisma CLI present"
       - name: Capture Worker Next.js trace and bundle composition before OpenNext
         if: always()
         shell: bash
