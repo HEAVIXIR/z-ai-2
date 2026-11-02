@@ -189,7 +189,6 @@ jobs:
           test ! -e "$QUARANTINE_PATH" || { echo "FAIL: Prisma quarantine path already exists"; exit 1; }
           node -e 'console.log("PRISMA_CLI_RESOLVES_BEFORE=" + require.resolve("prisma"))'
           node -e 'console.log("PRISMA_CLIENT_RESOLVES_BEFORE=" + require.resolve("@prisma/client"))'
-          mv "$CLI_PATH" "$QUARANTINE_PATH"
           restore_prisma_cli() {
             if [ -e "$QUARANTINE_PATH" ] || [ -L "$QUARANTINE_PATH" ]; then
               mv "$QUARANTINE_PATH" "$CLI_PATH"
@@ -197,12 +196,16 @@ jobs:
             fi
           }
           trap restore_prisma_cli EXIT
+          mv "$CLI_PATH" "$QUARANTINE_PATH"
           if node -e 'require.resolve("prisma")' >/dev/null 2>&1; then
             echo "FAIL: Prisma CLI remains resolvable after root package quarantine"
             exit 1
           fi
           node -e 'console.log("PRISMA_CLI_RESOLVES_DURING_WORKER_BUILD=0"); console.log("PRISMA_CLIENT_RESOLVES_DURING_WORKER_BUILD=" + require.resolve("@prisma/client"))'
-          test -d node_modules/.prisma/client || test -d node_modules/@prisma/client || { echo "FAIL: generated Prisma client package missing"; exit 1; }
+          for generated_client in src/lib/generated/client src/lib/generated/node-client src/lib/generated/store-client src/lib/generated/store-node-client; do
+            test -d "$generated_client" || { echo "FAIL: generated Prisma client directory missing: $generated_client"; exit 1; }
+            echo "GENERATED_CLIENT_PRESENT=$generated_client"
+          done
           {
             echo "experiment=STEP_17.86_prisma_cli_peer_isolation"
             echo "cli_path=$CLI_PATH"
