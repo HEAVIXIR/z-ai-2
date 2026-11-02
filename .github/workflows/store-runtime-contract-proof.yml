@@ -1690,6 +1690,20 @@ jobs:
             exit 1
           fi
           bun run verify:store-runtime-artifacts -- worker .open-next
+      # Intentional redundancy:
+      # The SHA-scoped artifact below preserves the existing commit-level contract.
+      # This run/attempt-scoped checkpoint preserves retry-specific evidence.
+      # Keep both uploads; they serve different recovery purposes.
+      - name: Checkpoint Worker Next.js evidence (per attempt)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-worker-next-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .ci-artifacts/worker-next/
+            .ci-artifacts/node/
+          if-no-files-found: warn
+          retention-days: 30
       - name: Upload OOM instrumentation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -1730,3 +1744,87 @@ jobs:
             .open-next
           if-no-files-found: warn
           retention-days: 14
+
+      # Evidence-only finalization: this does not alter profiler execution or OpenNext inputs.
+      # Directory inventory is a coarse presence signal; SHA256SUMS.txt is the file-level
+      # integrity authority. If they disagree, the checksum manifest is authoritative.
+      # C3 is necessarily post-OpenNext: host loss during OpenNext preserves C2 but cannot
+      # preserve OpenNext runtime samples that were never checkpointed.
+      - name: Final evidence inventory and checksums
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p .ci-artifacts/final .ci-artifacts/runtime-samples
+          COPY_ERRORS=".ci-artifacts/final/runtime-sample-copy-errors.txt"
+          : > "$COPY_ERRORS"
+          for file in /tmp/smaps-samples.jsonl /tmp/v8-memory-samples.log; do
+            if [ -f "$file" ]; then
+              cp -f "$file" .ci-artifacts/runtime-samples/ || echo "COPY_FAILED $file" >> "$COPY_ERRORS"
+            else
+              echo "SOURCE_MISSING $file" >> "$COPY_ERRORS"
+            fi
+          done
+          if [ -d /tmp/smaps-snapshots ]; then
+            mkdir -p .ci-artifacts/runtime-samples/smaps-snapshots
+            cp -a /tmp/smaps-snapshots/. .ci-artifacts/runtime-samples/smaps-snapshots/ || echo "COPY_FAILED /tmp/smaps-snapshots/" >> "$COPY_ERRORS"
+          else
+            echo "SOURCE_MISSING /tmp/smaps-snapshots/" >> "$COPY_ERRORS"
+          fi
+
+          INVENTORY=".ci-artifacts/final/evidence-inventory.txt"
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "integrity_authority=SHA256SUMS.txt (file-level); directory inventory is informational"
+            echo "host_loss_during_opennext=C2 checkpoint may survive; C3 runtime samples are unavailable if finalization never runs"
+            echo
+            for path in \
+              .ci-artifacts/node/server \
+              .ci-artifacts/worker-next \
+              .ci-artifacts/oom-instrumentation \
+              .ci-artifacts/opennext-baseline \
+              .ci-artifacts/runtime-samples \
+              .next/server \
+              .open-next
+            do
+              if [ -d "$path" ]; then
+                if find "$path" -type f -print -quit 2>/dev/null | grep -q .; then
+                  echo "PRESENT_WITH_FILES $path"
+                else
+                  echo "PRESENT_EMPTY $path"
+                fi
+              else
+                echo "MISSING $path"
+              fi
+            done
+            echo
+            echo "runtime_sample_copy_errors:"
+            cat "$COPY_ERRORS"
+          } > "$INVENTORY"
+
+          SUMS=".ci-artifacts/final/SHA256SUMS.txt"
+          : > "$SUMS"
+          if ! find .ci-artifacts -type f ! -path '.ci-artifacts/final/*' -print0 |
+            sort -z | xargs -0 -r sha256sum > "$SUMS"; then
+            echo "CHECKSUM_GENERATION_FAILED" >> "$COPY_ERRORS"
+          fi
+          if ! sha256sum "$INVENTORY" >> "$SUMS"; then
+            echo "INVENTORY_CHECKSUM_FAILED" >> "$COPY_ERRORS"
+          fi
+          cat "$INVENTORY"
+          cat "$SUMS"
+
+      - name: Upload final evidence inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .ci-artifacts/final/
+            .ci-artifacts/runtime-samples/
+          if-no-files-found: warn
+          retention-days: 30
