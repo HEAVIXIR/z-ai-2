@@ -1218,8 +1218,8 @@ jobs:
             kill "$MONITOR_PID" 2>/dev/null || true
             wait "$MONITOR_PID" 2>/dev/null || true
           }
-          # NOTE: trap already set above to cleanup_monitor AND cleanup_smaps
-          # Do NOT overwrite — first trap handles both
+          # NOTE: EXIT trap also stops the independent process-tree sampler.
+          # Do NOT overwrite — the existing trap owns all sampler cleanup.
           touch .ci-artifacts/oom-instrumentation/stage-markers.log
           # STEP 17.90: process-tree attribution, cgroup membership and mapping classes.
           # This sampler is independent of the Node event loop and records one-second snapshots.
