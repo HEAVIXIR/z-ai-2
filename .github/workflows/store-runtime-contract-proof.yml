@@ -138,6 +138,10 @@ jobs:
           trap 'cp /tmp/heavix-package.json package.json' EXIT
           node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json","utf8")); if(p.overrides) delete p.overrides.minimatch; fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
           npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund @opennextjs/cloudflare@1.20.14 wrangler@4.156.0
+          # STEP 17.89-FIX1: Re-run bun install to restore devDependencies that
+          # npm install --no-save may have pruned (e.g. @tailwindcss/postcss).
+          # This does NOT modify package.json (the EXIT trap restores it).
+          bun install --no-save
       - name: Generate Main and both Store Prisma clients
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
