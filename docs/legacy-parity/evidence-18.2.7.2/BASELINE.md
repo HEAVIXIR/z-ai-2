@@ -41,3 +41,33 @@
 - No connection strings with credentials found
 - No private keys found (only false positive in Prisma generated binary, removed)
 - Prisma generated client files excluded from comparison
+
+## Discrepancy Explanation: 845 vs 792
+
+| Count | Source | Explanation |
+|-------|--------|-------------|
+| 845 | `dellk00k/z` MANIFEST-SHA256.txt | All extracted files including Prisma generated client (53 files) |
+| 792 | FILE-MATRIX.csv | Files compared after excluding generated/ directory |
+| 53 | Difference | Prisma generated client files (build artifacts, excluded from comparison) |
+
+The 53 generated files were in `src/src/lib/generated/store-client/` and include:
+- `libquery_engine-debian-openssl-3.0.x.so.node` (binary)
+- `edge.js`, `wasm.js`, `index.js`, `index-browser.js` (runtime)
+- Type definition files (`.d.ts`)
+
+These are build artifacts produced by `prisma generate` and should never be
+transferred between repositories. They were correctly excluded from the
+file comparison.
+
+## Manifest Self-Reference Fix
+
+The initial `legacy-files/MANIFEST-SHA256.txt` included its own SHA-256 hash
+(empty file at generation time). This was corrected: the regenerated manifest
+excludes itself from the hash list.
+
+## Manifest Verification
+
+The `legacy-files/MANIFEST-SHA256.txt` now contains 28 entries:
+- 27 legacy files (17 adapt + 7 review + 3 reject)
+- 1 README.md
+- 0 self-references (manifest file itself excluded)

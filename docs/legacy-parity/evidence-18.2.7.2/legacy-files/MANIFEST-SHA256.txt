@@ -1,4 +1,3 @@
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/legacy-parity/evidence-18.2.7.2/legacy-files/MANIFEST-SHA256.txt
 5296a683929d89a47e41a9cbd292b054a15e69e0570c98006be82dcbc3a98536  docs/legacy-parity/evidence-18.2.7.2/legacy-files/adapt/PriceIntelligence.tsx
 a5c743624d9664f5a8c470d4ffea71056efa98524d61451a88b9abd80b01e36e  docs/legacy-parity/evidence-18.2.7.2/legacy-files/adapt/make-logos-dark.cjs
 4852267f2fe3e68e9841bef0974dba337cd3b876a8e882e3e1be1b6e6144d475  docs/legacy-parity/evidence-18.2.7.2/legacy-files/adapt/security-check.ts
@@ -19,6 +18,7 @@ d376670731120883a61aee9ae440c307041ae96dae48b8a6f45680d5aa8b14a6  docs/legacy-pa
 272a6c503ec07d2596080aef03ce62b5c39d7cd3877d409046b700b1fe260cc3  docs/legacy-parity/evidence-18.2.7.2/legacy-files/reject/migration.sql
 2c668c93dd0edd11e012141a155d33404d6ad3f625f45ff4d24f4b66e2509b6c  docs/legacy-parity/evidence-18.2.7.2/legacy-files/reject/store-schema.prisma
 fbbed21528a22151d50ad58eb144b69d115dbb6ad4398261e9b34989ecb1d773  docs/legacy-parity/evidence-18.2.7.2/legacy-files/reject/start-dev.sh
+22caac071eda26906263e6b479c218b02ba46c97b03db242eb802011223ec95e  docs/legacy-parity/evidence-18.2.7.2/legacy-files/README.md
 feb734b3c1486ebfd27da47f5280a33d26bfde6d75e5f792ab22bfc40665e025  docs/legacy-parity/evidence-18.2.7.2/legacy-files/review/phase8a-audit.ts
 203841e84fde91c03063ea5eb267dfa428957fe42d542d2cde83c1d6c6a90ef0  docs/legacy-parity/evidence-18.2.7.2/legacy-files/review/phase7a-audit.ts
 8ac48d883abb3fcf8a005d346c3fb9cddb9e2c2da6a45db432f00086db4ef673  docs/legacy-parity/evidence-18.2.7.2/legacy-files/review/phase10a-audit.ts
