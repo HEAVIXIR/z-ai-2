@@ -1,6 +1,6 @@
 # Candidate Review — Files Only in Old Repo
 
-Total candidates: 27
+Total candidates: 29
 
 The canonical decisions are in `DECISION-MATRIX.csv`. This document must match it.
 
@@ -74,7 +74,7 @@ The canonical decisions are in `DECISION-MATRIX.csv`. This document must match i
 ## Summary
 
 - ADAPT: 23
-- REJECT: 4
+- REJECT: 6
 - REVIEW: 0
 
 All 7 phase audit scripts promoted from REVIEW to ADAPT after individual content

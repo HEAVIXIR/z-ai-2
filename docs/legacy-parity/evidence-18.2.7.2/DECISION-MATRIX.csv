@@ -26,3 +26,5 @@ src/components/compare/ComparePageClient.tsx,source,ADAPT,Compare UI - API contr
 src/components/listings/PriceIntelligence.tsx,source,ADAPT,Price intelligence UI - field mismatch (sampleSize vs similarCount),rewrite-with-current-api
 src/lib/ai-gateway-service.ts,source,ADAPT,AI Gateway - bypasses policy/audit/auth,redesign-with-current-architecture
 src/lib/price-intelligence.ts,source,ADAPT,Price intelligence - uses obsolete PriceRecord,extract-algorithms-adapt-to-PriceObservation
+public/robots.txt,public,REJECT,Trivial robots.txt — should be created fresh in main if needed,no-action
+.zscripts/dev.pid,.zscripts,REJECT,Dev server PID file — runtime artifact, no value,no-action
