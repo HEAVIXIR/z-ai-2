@@ -552,6 +552,17 @@ exports.Prisma.ServiceRequestScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.AuditOutboxScalarFieldEnum = {
+  id: 'id',
+  payloadJson: 'payloadJson',
+  status: 'status',
+  attempts: 'attempts',
+  lastError: 'lastError',
+  lockedAt: 'lockedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -601,7 +612,8 @@ exports.Prisma.ModelName = {
   RentalListing: 'RentalListing',
   RentalBooking: 'RentalBooking',
   ServiceProvider: 'ServiceProvider',
-  ServiceRequest: 'ServiceRequest'
+  ServiceRequest: 'ServiceRequest',
+  AuditOutbox: 'AuditOutbox'
 };
 
 /**

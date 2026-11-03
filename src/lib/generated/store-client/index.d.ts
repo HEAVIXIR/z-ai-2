@@ -178,6 +178,11 @@ export type ServiceProvider = $Result.DefaultSelection<Prisma.$ServiceProviderPa
  * 
  */
 export type ServiceRequest = $Result.DefaultSelection<Prisma.$ServiceRequestPayload>
+/**
+ * Model AuditOutbox
+ * 
+ */
+export type AuditOutbox = $Result.DefaultSelection<Prisma.$AuditOutboxPayload>
 
 /**
  * ##  Prisma Client ʲˢ
@@ -626,6 +631,16 @@ export class PrismaClient<
     * ```
     */
   get serviceRequest(): Prisma.ServiceRequestDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.auditOutbox`: Exposes CRUD operations for the **AuditOutbox** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more AuditOutboxes
+    * const auditOutboxes = await prisma.auditOutbox.findMany()
+    * ```
+    */
+  get auditOutbox(): Prisma.AuditOutboxDelegate<ExtArgs, ClientOptions>;
 }
 
 export namespace Prisma {
@@ -1099,7 +1114,8 @@ export namespace Prisma {
     RentalListing: 'RentalListing',
     RentalBooking: 'RentalBooking',
     ServiceProvider: 'ServiceProvider',
-    ServiceRequest: 'ServiceRequest'
+    ServiceRequest: 'ServiceRequest',
+    AuditOutbox: 'AuditOutbox'
   };
 
   export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -1118,7 +1134,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "adminUser" | "customer" | "mechanic" | "carModel" | "category" | "brand" | "part" | "order" | "orderItem" | "payment" | "shipment" | "currencyRate" | "currencySetting" | "setting" | "review" | "wishlist" | "coupon" | "walletTransaction" | "notification" | "supplier" | "stockMovement" | "warehouse" | "inventoryBalance" | "return" | "returnItem" | "procurementRequest" | "purchaseOrder" | "purchaseOrderItem" | "shipmentTracking" | "rentalListing" | "rentalBooking" | "serviceProvider" | "serviceRequest"
+      modelProps: "adminUser" | "customer" | "mechanic" | "carModel" | "category" | "brand" | "part" | "order" | "orderItem" | "payment" | "shipment" | "currencyRate" | "currencySetting" | "setting" | "review" | "wishlist" | "coupon" | "walletTransaction" | "notification" | "supplier" | "stockMovement" | "warehouse" | "inventoryBalance" | "return" | "returnItem" | "procurementRequest" | "purchaseOrder" | "purchaseOrderItem" | "shipmentTracking" | "rentalListing" | "rentalBooking" | "serviceProvider" | "serviceRequest" | "auditOutbox"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -3564,6 +3580,80 @@ export namespace Prisma {
           }
         }
       }
+      AuditOutbox: {
+        payload: Prisma.$AuditOutboxPayload<ExtArgs>
+        fields: Prisma.AuditOutboxFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.AuditOutboxFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.AuditOutboxFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          findFirst: {
+            args: Prisma.AuditOutboxFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.AuditOutboxFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          findMany: {
+            args: Prisma.AuditOutboxFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>[]
+          }
+          create: {
+            args: Prisma.AuditOutboxCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          createMany: {
+            args: Prisma.AuditOutboxCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.AuditOutboxCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>[]
+          }
+          delete: {
+            args: Prisma.AuditOutboxDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          update: {
+            args: Prisma.AuditOutboxUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          deleteMany: {
+            args: Prisma.AuditOutboxDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.AuditOutboxUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.AuditOutboxUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>[]
+          }
+          upsert: {
+            args: Prisma.AuditOutboxUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$AuditOutboxPayload>
+          }
+          aggregate: {
+            args: Prisma.AuditOutboxAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateAuditOutbox>
+          }
+          groupBy: {
+            args: Prisma.AuditOutboxGroupByArgs<ExtArgs>
+            result: $Utils.Optional<AuditOutboxGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.AuditOutboxCountArgs<ExtArgs>
+            result: $Utils.Optional<AuditOutboxCountAggregateOutputType> | number
+          }
+        }
+      }
     }
   } & {
     other: {
@@ -3693,6 +3783,7 @@ export namespace Prisma {
     rentalBooking?: RentalBookingOmit
     serviceProvider?: ServiceProviderOmit
     serviceRequest?: ServiceRequestOmit
+    auditOutbox?: AuditOutboxOmit
   }
 
   /* Types for Logging */
@@ -43431,6 +43522,1074 @@ export namespace Prisma {
 
 
   /**
+   * Model AuditOutbox
+   */
+
+  export type AggregateAuditOutbox = {
+    _count: AuditOutboxCountAggregateOutputType | null
+    _avg: AuditOutboxAvgAggregateOutputType | null
+    _sum: AuditOutboxSumAggregateOutputType | null
+    _min: AuditOutboxMinAggregateOutputType | null
+    _max: AuditOutboxMaxAggregateOutputType | null
+  }
+
+  export type AuditOutboxAvgAggregateOutputType = {
+    attempts: number | null
+  }
+
+  export type AuditOutboxSumAggregateOutputType = {
+    attempts: number | null
+  }
+
+  export type AuditOutboxMinAggregateOutputType = {
+    id: string | null
+    payloadJson: string | null
+    status: string | null
+    attempts: number | null
+    lastError: string | null
+    lockedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type AuditOutboxMaxAggregateOutputType = {
+    id: string | null
+    payloadJson: string | null
+    status: string | null
+    attempts: number | null
+    lastError: string | null
+    lockedAt: Date | null
+    createdAt: Date | null
+    updatedAt: Date | null
+  }
+
+  export type AuditOutboxCountAggregateOutputType = {
+    id: number
+    payloadJson: number
+    status: number
+    attempts: number
+    lastError: number
+    lockedAt: number
+    createdAt: number
+    updatedAt: number
+    _all: number
+  }
+
+
+  export type AuditOutboxAvgAggregateInputType = {
+    attempts?: true
+  }
+
+  export type AuditOutboxSumAggregateInputType = {
+    attempts?: true
+  }
+
+  export type AuditOutboxMinAggregateInputType = {
+    id?: true
+    payloadJson?: true
+    status?: true
+    attempts?: true
+    lastError?: true
+    lockedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type AuditOutboxMaxAggregateInputType = {
+    id?: true
+    payloadJson?: true
+    status?: true
+    attempts?: true
+    lastError?: true
+    lockedAt?: true
+    createdAt?: true
+    updatedAt?: true
+  }
+
+  export type AuditOutboxCountAggregateInputType = {
+    id?: true
+    payloadJson?: true
+    status?: true
+    attempts?: true
+    lastError?: true
+    lockedAt?: true
+    createdAt?: true
+    updatedAt?: true
+    _all?: true
+  }
+
+  export type AuditOutboxAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which AuditOutbox to aggregate.
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of AuditOutboxes to fetch.
+     */
+    orderBy?: AuditOutboxOrderByWithRelationInput | AuditOutboxOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: AuditOutboxWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` AuditOutboxes from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` AuditOutboxes.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned AuditOutboxes
+    **/
+    _count?: true | AuditOutboxCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: AuditOutboxAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: AuditOutboxSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: AuditOutboxMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: AuditOutboxMaxAggregateInputType
+  }
+
+  export type GetAuditOutboxAggregateType<T extends AuditOutboxAggregateArgs> = {
+        [P in keyof T & keyof AggregateAuditOutbox]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateAuditOutbox[P]>
+      : GetScalarType<T[P], AggregateAuditOutbox[P]>
+  }
+
+
+
+
+  export type AuditOutboxGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: AuditOutboxWhereInput
+    orderBy?: AuditOutboxOrderByWithAggregationInput | AuditOutboxOrderByWithAggregationInput[]
+    by: AuditOutboxScalarFieldEnum[] | AuditOutboxScalarFieldEnum
+    having?: AuditOutboxScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: AuditOutboxCountAggregateInputType | true
+    _avg?: AuditOutboxAvgAggregateInputType
+    _sum?: AuditOutboxSumAggregateInputType
+    _min?: AuditOutboxMinAggregateInputType
+    _max?: AuditOutboxMaxAggregateInputType
+  }
+
+  export type AuditOutboxGroupByOutputType = {
+    id: string
+    payloadJson: string
+    status: string
+    attempts: number
+    lastError: string | null
+    lockedAt: Date | null
+    createdAt: Date
+    updatedAt: Date
+    _count: AuditOutboxCountAggregateOutputType | null
+    _avg: AuditOutboxAvgAggregateOutputType | null
+    _sum: AuditOutboxSumAggregateOutputType | null
+    _min: AuditOutboxMinAggregateOutputType | null
+    _max: AuditOutboxMaxAggregateOutputType | null
+  }
+
+  type GetAuditOutboxGroupByPayload<T extends AuditOutboxGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<AuditOutboxGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof AuditOutboxGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], AuditOutboxGroupByOutputType[P]>
+            : GetScalarType<T[P], AuditOutboxGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type AuditOutboxSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    payloadJson?: boolean
+    status?: boolean
+    attempts?: boolean
+    lastError?: boolean
+    lockedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }, ExtArgs["result"]["auditOutbox"]>
+
+  export type AuditOutboxSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    payloadJson?: boolean
+    status?: boolean
+    attempts?: boolean
+    lastError?: boolean
+    lockedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }, ExtArgs["result"]["auditOutbox"]>
+
+  export type AuditOutboxSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    payloadJson?: boolean
+    status?: boolean
+    attempts?: boolean
+    lastError?: boolean
+    lockedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }, ExtArgs["result"]["auditOutbox"]>
+
+  export type AuditOutboxSelectScalar = {
+    id?: boolean
+    payloadJson?: boolean
+    status?: boolean
+    attempts?: boolean
+    lastError?: boolean
+    lockedAt?: boolean
+    createdAt?: boolean
+    updatedAt?: boolean
+  }
+
+  export type AuditOutboxOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "payloadJson" | "status" | "attempts" | "lastError" | "lockedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["auditOutbox"]>
+
+  export type $AuditOutboxPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "AuditOutbox"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: string
+      payloadJson: string
+      status: string
+      attempts: number
+      lastError: string | null
+      lockedAt: Date | null
+      createdAt: Date
+      updatedAt: Date
+    }, ExtArgs["result"]["auditOutbox"]>
+    composites: {}
+  }
+
+  type AuditOutboxGetPayload<S extends boolean | null | undefined | AuditOutboxDefaultArgs> = $Result.GetResult<Prisma.$AuditOutboxPayload, S>
+
+  type AuditOutboxCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<AuditOutboxFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: AuditOutboxCountAggregateInputType | true
+    }
+
+  export interface AuditOutboxDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['AuditOutbox'], meta: { name: 'AuditOutbox' } }
+    /**
+     * Find zero or one AuditOutbox that matches the filter.
+     * @param {AuditOutboxFindUniqueArgs} args - Arguments to find a AuditOutbox
+     * @example
+     * // Get one AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends AuditOutboxFindUniqueArgs>(args: SelectSubset<T, AuditOutboxFindUniqueArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one AuditOutbox that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {AuditOutboxFindUniqueOrThrowArgs} args - Arguments to find a AuditOutbox
+     * @example
+     * // Get one AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends AuditOutboxFindUniqueOrThrowArgs>(args: SelectSubset<T, AuditOutboxFindUniqueOrThrowArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first AuditOutbox that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxFindFirstArgs} args - Arguments to find a AuditOutbox
+     * @example
+     * // Get one AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends AuditOutboxFindFirstArgs>(args?: SelectSubset<T, AuditOutboxFindFirstArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first AuditOutbox that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxFindFirstOrThrowArgs} args - Arguments to find a AuditOutbox
+     * @example
+     * // Get one AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends AuditOutboxFindFirstOrThrowArgs>(args?: SelectSubset<T, AuditOutboxFindFirstOrThrowArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more AuditOutboxes that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all AuditOutboxes
+     * const auditOutboxes = await prisma.auditOutbox.findMany()
+     * 
+     * // Get first 10 AuditOutboxes
+     * const auditOutboxes = await prisma.auditOutbox.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const auditOutboxWithIdOnly = await prisma.auditOutbox.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends AuditOutboxFindManyArgs>(args?: SelectSubset<T, AuditOutboxFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a AuditOutbox.
+     * @param {AuditOutboxCreateArgs} args - Arguments to create a AuditOutbox.
+     * @example
+     * // Create one AuditOutbox
+     * const AuditOutbox = await prisma.auditOutbox.create({
+     *   data: {
+     *     // ... data to create a AuditOutbox
+     *   }
+     * })
+     * 
+     */
+    create<T extends AuditOutboxCreateArgs>(args: SelectSubset<T, AuditOutboxCreateArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many AuditOutboxes.
+     * @param {AuditOutboxCreateManyArgs} args - Arguments to create many AuditOutboxes.
+     * @example
+     * // Create many AuditOutboxes
+     * const auditOutbox = await prisma.auditOutbox.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends AuditOutboxCreateManyArgs>(args?: SelectSubset<T, AuditOutboxCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many AuditOutboxes and returns the data saved in the database.
+     * @param {AuditOutboxCreateManyAndReturnArgs} args - Arguments to create many AuditOutboxes.
+     * @example
+     * // Create many AuditOutboxes
+     * const auditOutbox = await prisma.auditOutbox.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many AuditOutboxes and only return the `id`
+     * const auditOutboxWithIdOnly = await prisma.auditOutbox.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends AuditOutboxCreateManyAndReturnArgs>(args?: SelectSubset<T, AuditOutboxCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a AuditOutbox.
+     * @param {AuditOutboxDeleteArgs} args - Arguments to delete one AuditOutbox.
+     * @example
+     * // Delete one AuditOutbox
+     * const AuditOutbox = await prisma.auditOutbox.delete({
+     *   where: {
+     *     // ... filter to delete one AuditOutbox
+     *   }
+     * })
+     * 
+     */
+    delete<T extends AuditOutboxDeleteArgs>(args: SelectSubset<T, AuditOutboxDeleteArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one AuditOutbox.
+     * @param {AuditOutboxUpdateArgs} args - Arguments to update one AuditOutbox.
+     * @example
+     * // Update one AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends AuditOutboxUpdateArgs>(args: SelectSubset<T, AuditOutboxUpdateArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more AuditOutboxes.
+     * @param {AuditOutboxDeleteManyArgs} args - Arguments to filter AuditOutboxes to delete.
+     * @example
+     * // Delete a few AuditOutboxes
+     * const { count } = await prisma.auditOutbox.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends AuditOutboxDeleteManyArgs>(args?: SelectSubset<T, AuditOutboxDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more AuditOutboxes.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many AuditOutboxes
+     * const auditOutbox = await prisma.auditOutbox.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends AuditOutboxUpdateManyArgs>(args: SelectSubset<T, AuditOutboxUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more AuditOutboxes and returns the data updated in the database.
+     * @param {AuditOutboxUpdateManyAndReturnArgs} args - Arguments to update many AuditOutboxes.
+     * @example
+     * // Update many AuditOutboxes
+     * const auditOutbox = await prisma.auditOutbox.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more AuditOutboxes and only return the `id`
+     * const auditOutboxWithIdOnly = await prisma.auditOutbox.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends AuditOutboxUpdateManyAndReturnArgs>(args: SelectSubset<T, AuditOutboxUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one AuditOutbox.
+     * @param {AuditOutboxUpsertArgs} args - Arguments to update or create a AuditOutbox.
+     * @example
+     * // Update or create a AuditOutbox
+     * const auditOutbox = await prisma.auditOutbox.upsert({
+     *   create: {
+     *     // ... data to create a AuditOutbox
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the AuditOutbox we want to update
+     *   }
+     * })
+     */
+    upsert<T extends AuditOutboxUpsertArgs>(args: SelectSubset<T, AuditOutboxUpsertArgs<ExtArgs>>): Prisma__AuditOutboxClient<$Result.GetResult<Prisma.$AuditOutboxPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of AuditOutboxes.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxCountArgs} args - Arguments to filter AuditOutboxes to count.
+     * @example
+     * // Count the number of AuditOutboxes
+     * const count = await prisma.auditOutbox.count({
+     *   where: {
+     *     // ... the filter for the AuditOutboxes we want to count
+     *   }
+     * })
+    **/
+    count<T extends AuditOutboxCountArgs>(
+      args?: Subset<T, AuditOutboxCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], AuditOutboxCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a AuditOutbox.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends AuditOutboxAggregateArgs>(args: Subset<T, AuditOutboxAggregateArgs>): Prisma.PrismaPromise<GetAuditOutboxAggregateType<T>>
+
+    /**
+     * Group by AuditOutbox.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {AuditOutboxGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends AuditOutboxGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: AuditOutboxGroupByArgs['orderBy'] }
+        : { orderBy?: AuditOutboxGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, AuditOutboxGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetAuditOutboxGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the AuditOutbox model
+   */
+  readonly fields: AuditOutboxFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for AuditOutbox.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__AuditOutboxClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the AuditOutbox model
+   */
+  interface AuditOutboxFieldRefs {
+    readonly id: FieldRef<"AuditOutbox", 'String'>
+    readonly payloadJson: FieldRef<"AuditOutbox", 'String'>
+    readonly status: FieldRef<"AuditOutbox", 'String'>
+    readonly attempts: FieldRef<"AuditOutbox", 'Int'>
+    readonly lastError: FieldRef<"AuditOutbox", 'String'>
+    readonly lockedAt: FieldRef<"AuditOutbox", 'DateTime'>
+    readonly createdAt: FieldRef<"AuditOutbox", 'DateTime'>
+    readonly updatedAt: FieldRef<"AuditOutbox", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * AuditOutbox findUnique
+   */
+  export type AuditOutboxFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter, which AuditOutbox to fetch.
+     */
+    where: AuditOutboxWhereUniqueInput
+  }
+
+  /**
+   * AuditOutbox findUniqueOrThrow
+   */
+  export type AuditOutboxFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter, which AuditOutbox to fetch.
+     */
+    where: AuditOutboxWhereUniqueInput
+  }
+
+  /**
+   * AuditOutbox findFirst
+   */
+  export type AuditOutboxFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter, which AuditOutbox to fetch.
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of AuditOutboxes to fetch.
+     */
+    orderBy?: AuditOutboxOrderByWithRelationInput | AuditOutboxOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for AuditOutboxes.
+     */
+    cursor?: AuditOutboxWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` AuditOutboxes from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` AuditOutboxes.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of AuditOutboxes.
+     */
+    distinct?: AuditOutboxScalarFieldEnum | AuditOutboxScalarFieldEnum[]
+  }
+
+  /**
+   * AuditOutbox findFirstOrThrow
+   */
+  export type AuditOutboxFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter, which AuditOutbox to fetch.
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of AuditOutboxes to fetch.
+     */
+    orderBy?: AuditOutboxOrderByWithRelationInput | AuditOutboxOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for AuditOutboxes.
+     */
+    cursor?: AuditOutboxWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` AuditOutboxes from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` AuditOutboxes.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of AuditOutboxes.
+     */
+    distinct?: AuditOutboxScalarFieldEnum | AuditOutboxScalarFieldEnum[]
+  }
+
+  /**
+   * AuditOutbox findMany
+   */
+  export type AuditOutboxFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter, which AuditOutboxes to fetch.
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of AuditOutboxes to fetch.
+     */
+    orderBy?: AuditOutboxOrderByWithRelationInput | AuditOutboxOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing AuditOutboxes.
+     */
+    cursor?: AuditOutboxWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` AuditOutboxes from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` AuditOutboxes.
+     */
+    skip?: number
+    distinct?: AuditOutboxScalarFieldEnum | AuditOutboxScalarFieldEnum[]
+  }
+
+  /**
+   * AuditOutbox create
+   */
+  export type AuditOutboxCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * The data needed to create a AuditOutbox.
+     */
+    data: XOR<AuditOutboxCreateInput, AuditOutboxUncheckedCreateInput>
+  }
+
+  /**
+   * AuditOutbox createMany
+   */
+  export type AuditOutboxCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many AuditOutboxes.
+     */
+    data: AuditOutboxCreateManyInput | AuditOutboxCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * AuditOutbox createManyAndReturn
+   */
+  export type AuditOutboxCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * The data used to create many AuditOutboxes.
+     */
+    data: AuditOutboxCreateManyInput | AuditOutboxCreateManyInput[]
+    skipDuplicates?: boolean
+  }
+
+  /**
+   * AuditOutbox update
+   */
+  export type AuditOutboxUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * The data needed to update a AuditOutbox.
+     */
+    data: XOR<AuditOutboxUpdateInput, AuditOutboxUncheckedUpdateInput>
+    /**
+     * Choose, which AuditOutbox to update.
+     */
+    where: AuditOutboxWhereUniqueInput
+  }
+
+  /**
+   * AuditOutbox updateMany
+   */
+  export type AuditOutboxUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update AuditOutboxes.
+     */
+    data: XOR<AuditOutboxUpdateManyMutationInput, AuditOutboxUncheckedUpdateManyInput>
+    /**
+     * Filter which AuditOutboxes to update
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * Limit how many AuditOutboxes to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * AuditOutbox updateManyAndReturn
+   */
+  export type AuditOutboxUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * The data used to update AuditOutboxes.
+     */
+    data: XOR<AuditOutboxUpdateManyMutationInput, AuditOutboxUncheckedUpdateManyInput>
+    /**
+     * Filter which AuditOutboxes to update
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * Limit how many AuditOutboxes to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * AuditOutbox upsert
+   */
+  export type AuditOutboxUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * The filter to search for the AuditOutbox to update in case it exists.
+     */
+    where: AuditOutboxWhereUniqueInput
+    /**
+     * In case the AuditOutbox found by the `where` argument doesn't exist, create a new AuditOutbox with this data.
+     */
+    create: XOR<AuditOutboxCreateInput, AuditOutboxUncheckedCreateInput>
+    /**
+     * In case the AuditOutbox was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<AuditOutboxUpdateInput, AuditOutboxUncheckedUpdateInput>
+  }
+
+  /**
+   * AuditOutbox delete
+   */
+  export type AuditOutboxDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+    /**
+     * Filter which AuditOutbox to delete.
+     */
+    where: AuditOutboxWhereUniqueInput
+  }
+
+  /**
+   * AuditOutbox deleteMany
+   */
+  export type AuditOutboxDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which AuditOutboxes to delete
+     */
+    where?: AuditOutboxWhereInput
+    /**
+     * Limit how many AuditOutboxes to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * AuditOutbox without action
+   */
+  export type AuditOutboxDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the AuditOutbox
+     */
+    select?: AuditOutboxSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the AuditOutbox
+     */
+    omit?: AuditOutboxOmit<ExtArgs> | null
+  }
+
+
+  /**
    * Enums
    */
 
@@ -43972,6 +45131,20 @@ export namespace Prisma {
   };
 
   export type ServiceRequestScalarFieldEnum = (typeof ServiceRequestScalarFieldEnum)[keyof typeof ServiceRequestScalarFieldEnum]
+
+
+  export const AuditOutboxScalarFieldEnum: {
+    id: 'id',
+    payloadJson: 'payloadJson',
+    status: 'status',
+    attempts: 'attempts',
+    lastError: 'lastError',
+    lockedAt: 'lockedAt',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+  };
+
+  export type AuditOutboxScalarFieldEnum = (typeof AuditOutboxScalarFieldEnum)[keyof typeof AuditOutboxScalarFieldEnum]
 
 
   export const SortOrder: {
@@ -46874,6 +48047,75 @@ export namespace Prisma {
     notes?: StringNullableWithAggregatesFilter<"ServiceRequest"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"ServiceRequest"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"ServiceRequest"> | Date | string
+  }
+
+  export type AuditOutboxWhereInput = {
+    AND?: AuditOutboxWhereInput | AuditOutboxWhereInput[]
+    OR?: AuditOutboxWhereInput[]
+    NOT?: AuditOutboxWhereInput | AuditOutboxWhereInput[]
+    id?: StringFilter<"AuditOutbox"> | string
+    payloadJson?: StringFilter<"AuditOutbox"> | string
+    status?: StringFilter<"AuditOutbox"> | string
+    attempts?: IntFilter<"AuditOutbox"> | number
+    lastError?: StringNullableFilter<"AuditOutbox"> | string | null
+    lockedAt?: DateTimeNullableFilter<"AuditOutbox"> | Date | string | null
+    createdAt?: DateTimeFilter<"AuditOutbox"> | Date | string
+    updatedAt?: DateTimeFilter<"AuditOutbox"> | Date | string
+  }
+
+  export type AuditOutboxOrderByWithRelationInput = {
+    id?: SortOrder
+    payloadJson?: SortOrder
+    status?: SortOrder
+    attempts?: SortOrder
+    lastError?: SortOrderInput | SortOrder
+    lockedAt?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type AuditOutboxWhereUniqueInput = Prisma.AtLeast<{
+    id?: string
+    AND?: AuditOutboxWhereInput | AuditOutboxWhereInput[]
+    OR?: AuditOutboxWhereInput[]
+    NOT?: AuditOutboxWhereInput | AuditOutboxWhereInput[]
+    payloadJson?: StringFilter<"AuditOutbox"> | string
+    status?: StringFilter<"AuditOutbox"> | string
+    attempts?: IntFilter<"AuditOutbox"> | number
+    lastError?: StringNullableFilter<"AuditOutbox"> | string | null
+    lockedAt?: DateTimeNullableFilter<"AuditOutbox"> | Date | string | null
+    createdAt?: DateTimeFilter<"AuditOutbox"> | Date | string
+    updatedAt?: DateTimeFilter<"AuditOutbox"> | Date | string
+  }, "id">
+
+  export type AuditOutboxOrderByWithAggregationInput = {
+    id?: SortOrder
+    payloadJson?: SortOrder
+    status?: SortOrder
+    attempts?: SortOrder
+    lastError?: SortOrderInput | SortOrder
+    lockedAt?: SortOrderInput | SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+    _count?: AuditOutboxCountOrderByAggregateInput
+    _avg?: AuditOutboxAvgOrderByAggregateInput
+    _max?: AuditOutboxMaxOrderByAggregateInput
+    _min?: AuditOutboxMinOrderByAggregateInput
+    _sum?: AuditOutboxSumOrderByAggregateInput
+  }
+
+  export type AuditOutboxScalarWhereWithAggregatesInput = {
+    AND?: AuditOutboxScalarWhereWithAggregatesInput | AuditOutboxScalarWhereWithAggregatesInput[]
+    OR?: AuditOutboxScalarWhereWithAggregatesInput[]
+    NOT?: AuditOutboxScalarWhereWithAggregatesInput | AuditOutboxScalarWhereWithAggregatesInput[]
+    id?: StringWithAggregatesFilter<"AuditOutbox"> | string
+    payloadJson?: StringWithAggregatesFilter<"AuditOutbox"> | string
+    status?: StringWithAggregatesFilter<"AuditOutbox"> | string
+    attempts?: IntWithAggregatesFilter<"AuditOutbox"> | number
+    lastError?: StringNullableWithAggregatesFilter<"AuditOutbox"> | string | null
+    lockedAt?: DateTimeNullableWithAggregatesFilter<"AuditOutbox"> | Date | string | null
+    createdAt?: DateTimeWithAggregatesFilter<"AuditOutbox"> | Date | string
+    updatedAt?: DateTimeWithAggregatesFilter<"AuditOutbox"> | Date | string
   }
 
   export type AdminUserCreateInput = {
@@ -50003,6 +51245,83 @@ export namespace Prisma {
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
+  export type AuditOutboxCreateInput = {
+    id?: string
+    payloadJson: string
+    status?: string
+    attempts?: number
+    lastError?: string | null
+    lockedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type AuditOutboxUncheckedCreateInput = {
+    id?: string
+    payloadJson: string
+    status?: string
+    attempts?: number
+    lastError?: string | null
+    lockedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type AuditOutboxUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    payloadJson?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    attempts?: IntFieldUpdateOperationsInput | number
+    lastError?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AuditOutboxUncheckedUpdateInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    payloadJson?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    attempts?: IntFieldUpdateOperationsInput | number
+    lastError?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AuditOutboxCreateManyInput = {
+    id?: string
+    payloadJson: string
+    status?: string
+    attempts?: number
+    lastError?: string | null
+    lockedAt?: Date | string | null
+    createdAt?: Date | string
+    updatedAt?: Date | string
+  }
+
+  export type AuditOutboxUpdateManyMutationInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    payloadJson?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    attempts?: IntFieldUpdateOperationsInput | number
+    lastError?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type AuditOutboxUncheckedUpdateManyInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    payloadJson?: StringFieldUpdateOperationsInput | string
+    status?: StringFieldUpdateOperationsInput | string
+    attempts?: IntFieldUpdateOperationsInput | number
+    lastError?: NullableStringFieldUpdateOperationsInput | string | null
+    lockedAt?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type StringFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[] | ListStringFieldRefInput<$PrismaModel>
@@ -52105,6 +53424,47 @@ export namespace Prisma {
 
   export type ServiceRequestSumOrderByAggregateInput = {
     price?: SortOrder
+  }
+
+  export type AuditOutboxCountOrderByAggregateInput = {
+    id?: SortOrder
+    payloadJson?: SortOrder
+    status?: SortOrder
+    attempts?: SortOrder
+    lastError?: SortOrder
+    lockedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type AuditOutboxAvgOrderByAggregateInput = {
+    attempts?: SortOrder
+  }
+
+  export type AuditOutboxMaxOrderByAggregateInput = {
+    id?: SortOrder
+    payloadJson?: SortOrder
+    status?: SortOrder
+    attempts?: SortOrder
+    lastError?: SortOrder
+    lockedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type AuditOutboxMinOrderByAggregateInput = {
+    id?: SortOrder
+    payloadJson?: SortOrder
+    status?: SortOrder
+    attempts?: SortOrder
+    lastError?: SortOrder
+    lockedAt?: SortOrder
+    createdAt?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type AuditOutboxSumOrderByAggregateInput = {
+    attempts?: SortOrder
   }
 
   export type PaymentCreateNestedManyWithoutReviewedByInput = {
