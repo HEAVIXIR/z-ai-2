@@ -7,22 +7,68 @@ import { z } from "zod";
    No fallback defaults that could silently approve content.
    ============================================================ */
 
+/* ------------------------------------------------------------
+   NORMALIZATION POLICY (STEP 18.2.7.3.4 — Review Point 1)
+   ------------------------------------------------------------
+   All string fields are `.trim()`-ed BEFORE length / presence
+   validation. Consequences:
+
+   • Required strings (e.g. listing `title`) MUST be non-empty
+     AFTER trimming — a whitespace-only value like "   " is rejected.
+   • Optional strings are trimmed when present, so a value of
+     "   " is normalized to "" rather than stored as padding.
+
+   This prevents an LLM from returning a structurally-valid but
+   semantically-empty string (e.g. `"title": "   "`) that would
+   otherwise pass `min(1)` because the raw length is ≥ 1.
+   ------------------------------------------------------------ */
+
 // Strict schemas — no .passthrough(). Unknown fields are rejected.
 export const listingBuilderSchema = z.object({
-  title: z.string().min(1).max(200),
-  brand: z.string().max(100).optional(),
-  model: z.string().max(100).optional(),
+  title: z.string().trim().min(1).max(200),
+  brand: z.string().trim().max(100).optional(),
+  model: z.string().trim().max(100).optional(),
   year: z.number().int().min(1900).max(2100).optional(),
   hours: z.number().min(0).max(100000).optional(),
-  condition: z.string().max(50).optional(),
+  condition: z.string().trim().max(50).optional(),
   price: z.number().min(0).optional(),
-  description: z.string().max(5000).optional(),
+  description: z.string().trim().max(5000).optional(),
 }).strict();
 
 export const moderationSchema = z.object({
   appropriate: z.boolean(),
-  reason: z.string().max(500).optional(),
+  reason: z.string().trim().max(500).optional(),
 }).strict();
+
+/* ============================================================
+   JSON EXTRACTION CONTRACT (STEP 18.2.7.3.4 — Review Point 2)
+   ------------------------------------------------------------
+   LLM responses in the wild commonly contain surrounding prose
+   ("Here is the result: {…} Let me know if you need more.").
+   To balance robustness against the security requirement that
+   NO unvalidated JSON can influence a moderation decision, the
+   extractor enforces the following EXPLICIT contract:
+
+   ACCEPTED (tolerated):
+   • Leading text before the first `{`           — preamble.
+   • Trailing text after the closing `}` that does
+     NOT contain another `{`                       — postamble.
+   • Markdown code fences (```json … ```).
+
+   REJECTED (fail-closed):
+   • A second `{` anywhere after the first balanced
+     object (i.e. a second JSON object)             — ambiguity
+     is treated as an attack, not a feature.
+   • Unbalanced / mismatched braces.
+   • No `{` at all (empty or prose-only response).
+   • JSON that parses but fails the Zod schema.
+
+   Rationale: the security-critical surface (second JSON object
+   injection) is firmly rejected; the merely noisy surface
+   (preamble / postamble) is tolerated because real LLMs produce
+   it routinely and forcing JSON-only would raise the false-
+   failure rate without improving security.
+   ============================================================ */
 
 /**
  * Deterministic JSON extraction from LLM output.
@@ -31,7 +77,7 @@ export const moderationSchema = z.object({
  * trailing text, this function:
  * 1. Strips markdown code fences (```json ... ```).
  * 2. Finds the FIRST balanced JSON object using brace counting.
- * 3. Rejects if there is leftover JSON content after the first object.
+ * 3. Rejects if there is another `{` after the first object.
  * 4. Parses with JSON.parse.
  * 5. Validates against the Zod schema.
  *
@@ -95,7 +141,9 @@ export function validateLLMJson<T>(
 
   const jsonStr = cleaned.substring(startIndex, endIndex + 1);
 
-  // Step 3: Reject if there is another JSON object after the first one
+  // Step 3: Reject if there is another JSON object (`{`) after the first.
+  // Per the extraction contract above, trailing PROSE is tolerated, but a
+  // second `{` is treated as an ambiguous / injection attempt → fail-closed.
   const afterJson = cleaned.substring(endIndex + 1).trim();
   if (afterJson.includes("{")) {
     return { success: false, error: "Multiple JSON objects in LLM response" };
