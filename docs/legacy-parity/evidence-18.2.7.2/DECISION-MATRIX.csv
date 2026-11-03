@@ -17,7 +17,7 @@ scripts/seed-kill-switch.ts,scripts,ADAPT,Seed script - modifies feature flags,r
 scripts/seed-plans.ts,scripts,ADAPT,Seed script - modifies subscription plans,rewrite-with-data-protection
 scripts/seed-store-comprehensive.ts,scripts,ADAPT,Seed script - modifies prices and inventory,rewrite-with-data-protection
 scripts/rebuild-taxonomy.ts,scripts,ADAPT,Taxonomy rebuild - deleteMany is dangerous,rewrite-with-safe-approach
-scripts/clear-logo.ts,scripts,ADAPT,Logo clearing utility,evaluate-when-assets-available
+scripts/clear-logo.ts,scripts,REJECT,Modifies operational SiteSettings (logoUrl/footerLogoUrl) — not an image tool,no-action
 scripts/make-logos-dark.cjs,scripts,ADAPT,Logo dark variant generator,evaluate-when-assets-available
 scripts/orange-ix.cjs,scripts,ADAPT,Logo orange tint tool,evaluate-when-assets-available
 scripts/process-logos-v2.cjs,scripts,ADAPT,Logo processor v2,evaluate-when-assets-available
