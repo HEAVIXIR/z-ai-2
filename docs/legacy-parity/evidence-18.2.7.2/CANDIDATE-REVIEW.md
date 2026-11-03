@@ -34,5 +34,6 @@ Total candidates: 27
 
 ## Summary
 
-- ADAPT: 24
+- ADAPT: 17
+- REVIEW: 7
 - REJECT: 3
