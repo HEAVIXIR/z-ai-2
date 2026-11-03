@@ -4,6 +4,43 @@ Total candidates: 27
 
 The canonical decisions are in `DECISION-MATRIX.csv`. This document must match it.
 
+## Decision Definitions
+
+| Decision | Meaning | Action |
+|----------|---------|--------|
+| **REJECT** | File will NOT be transferred to main | No action. File retained in `reject/` for reference only. |
+| **ADAPT** | File contains valuable logic but CANNOT be transferred as-is | Full engineering rewrite required. The old file is a design reference, NOT a code source. Adapted code must use current PostgreSQL schema, dual Prisma clients, current RBAC/Audit contracts, and current API contracts. No code from the old file may be copied directly. |
+
+### ADAPT Requirements for High-Risk Files
+
+**`ai-gateway-service.ts`** — The old implementation bypasses authentication, policy enforcement, budget control, and audit. The adapted version must:
+- Use the current AI Gateway route at `src/app/api/ai-gateway/route.ts`
+- Enforce authentication via `requireAdmin` or `requirePermission`
+- Route all AI calls through `ai-policy.ts` for budget/rate-limit/policy checks
+- Log every call via `auditMutation` or `logAudit`
+- Validate inputs and outputs
+- NOT be transferred as a standalone library file
+
+**`price-intelligence.ts`** — The old implementation depends on the obsolete `PriceRecord` model. The adapted version must:
+- Use `PriceObservation`, `PriceEstimate`, and `PriceOverride` models (current schema)
+- Integrate with the existing `src/lib/price-engine.ts`
+- NOT create a parallel pricing engine
+- Only extract unique algorithms (e.g., confidence scoring, freshness weighting) if they add value beyond what `price-engine.ts` already provides
+
+**All 7 audit scripts (`phase5a` through `phase11a`)** — The old scripts use `@ts-nocheck` and suppress database errors with `catch(() => 0)`. The adapted versions must:
+- Remove `@ts-nocheck` — full TypeScript type safety
+- Remove error suppression — report errors explicitly
+- Use current Prisma models (PostgreSQL, not SQLite)
+- Report `PASS` / `FAIL` / `ERROR` / `NOT_APPLICABLE` per check
+- NOT contain hardcoded assertions that may not reflect current system state
+
+**All 6 seed scripts** — The old scripts modify operational data (prices, inventory, feature flags, site settings). The adapted versions must:
+- Check for existing data before inserting (upsert, not blind create)
+- NOT use `deleteMany({})` to clear tables
+- Respect dual-schema separation (main vs store)
+- Require explicit confirmation before execution
+- Be safe to run on a non-empty database
+
 | # | Path | Size | Assessment | Decision |
 |---|------|------|------------|----------|
 | 1 | prisma/migrations/0_init/migration.sql | 43031 | SQLite migration — incompatible with PostgreSQL | REJECT |
