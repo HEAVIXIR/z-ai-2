@@ -12,6 +12,65 @@ import {
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import ZAI from "z-ai-web-dev-sdk";
+import { z } from "zod";
+
+/* ============================================================
+   Output validation schemas — fail-closed for structured outputs.
+   When the LLM returns malformed JSON or missing fields, the result
+   is NOT treated as valid — the call fails with a validation error
+   instead of silently falling back to a default that could approve
+   content (Issue #179).
+   ============================================================ */
+
+const listingBuilderSchema = z.object({
+  title: z.string().min(1).max(200),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().optional(),
+  hours: z.number().optional(),
+  condition: z.string().optional(),
+  price: z.number().optional(),
+  description: z.string().optional(),
+}).passthrough();
+
+const moderationSchema = z.object({
+  appropriate: z.boolean(),
+  reason: z.string().optional(),
+}).passthrough();
+
+/**
+ * Safely extract and validate JSON from LLM output.
+ * Returns { success: true, data } on valid JSON matching schema,
+ * or { success: false, error } on failure.
+ * Fail-closed: never returns a default that could approve content.
+ */
+function validateLLMJson<T>(
+  content: string,
+  schema: z.ZodType<T>,
+): { success: true; data: T } | { success: false; error: string } {
+  // Try to extract JSON from the response
+  const match = content.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return { success: false, error: "No JSON object found in LLM response" };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return { success: false, error: "Invalid JSON in LLM response" };
+  }
+
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      success: false,
+      error: `Schema validation failed: ${result.error.issues.map(i => i.path.join('.') + ': ' + i.message).join('; ')}`,
+    };
+  }
+
+  return { success: true, data: result.data };
+}
 
 /* ============================================================
    POST /api/ai-gateway
@@ -189,8 +248,15 @@ export async function POST(req: NextRequest) {
           signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
-        const m = content.match(/\{[\s\S]*\}/);
-        result = m ? JSON.parse(m[0]) : { title: desc.substring(0, 80) };
+        // Issue #179: Fail-closed validation — if JSON is missing or
+        // doesn't match schema, the call fails with a validation error.
+        // Previously fell back to { title: desc.substring(0, 80) },
+        // silently accepting unvalidated LLM output.
+        const validated = validateLLMJson(content, listingBuilderSchema);
+        if (!validated.success) {
+          throw new Error(`LISTING_BUILDER output validation failed: ${validated.error}`);
+        }
+        result = validated.data;
         break;
       }
 
@@ -230,8 +296,15 @@ export async function POST(req: NextRequest) {
           signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
-        const m = content.match(/\{[\s\S]*\}/);
-        result = m ? JSON.parse(m[0]) : { appropriate: true };
+        // Issue #179: Fail-closed validation — if JSON is missing or
+        // doesn't match schema, the call FAILS. Previously fell back to
+        // { appropriate: true }, which silently approved content when
+        // the LLM returned malformed output — a P1 security gap.
+        const validated = validateLLMJson(content, moderationSchema);
+        if (!validated.success) {
+          throw new Error(`MODERATION output validation failed: ${validated.error}`);
+        }
+        result = validated.data;
         break;
       }
 
