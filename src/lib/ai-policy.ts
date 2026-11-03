@@ -1,4 +1,3 @@
-// @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { db } from "@/lib/db";
 import { isAdmin, hasRole } from "@/lib/authorization";
 
@@ -75,13 +74,28 @@ export async function getTaskPolicy(taskType: string) {
    2. Auth check — actor's role must be in allowedRoles
    ──────────────────────────────────────────────────────────── */
 
-/** True if the user has at least one of the given role keys. */
+/**
+ * True if the user has at least one of the given role keys.
+ *
+ * STEP 18.2.7.3.6 (Finding A-1): previously this function returned
+ * `undefined` (not `false`) when `hasRole` returned false — because
+ * there was no `return false` after the `if`. The return type was
+ * `Promise<boolean>` but the actual value could be `undefined`,
+ * masked by `@ts-nocheck`. tsc caught this as TS2366 once the
+ * directive was removed.
+ *
+ * Runtime impact was limited: `checkAIAuth` used `ok ? {ok:true} :
+ * {ok:false,...}`, which treated `undefined` as falsy → correct deny
+ * behavior. But the type hole is now closed with an explicit
+ * `return false`.
+ */
 async function userHasAnyRole(
   userId: string,
   roles: string[],
 ): Promise<boolean> {
   // Try the new RBAC UserRole table first.
   if (await hasRole(userId, roles)) return true;
+  return false;
 }
 
 /**
