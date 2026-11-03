@@ -29,12 +29,16 @@ HEAVIXIR/z (main branch, commit 217f98e)
             ↓
        Compared with HEAVIXIR/z-ai-2 main (commit 6fe1bd7)
             ↓
-       Results in FILE-MATRIX.csv (792 files, excl generated)
+       Results in FILE-MATRIX.csv (792 files, 5 categories only)
 ```
 
 ## Integrity Verification
 
 - All 5 ZIP SHA-256 hashes verified against GitHub raw download
-- Extracted file count matches (845 = 819 content + 26 manifest/docs)
+- Extracted file count verified: 845 entries = 844 content files from 10 ZIPs + 1 MANIFEST-SHA256.txt self-reference
+  Breakdown by category: src=690, prisma=39, public=38, scripts=25, tests=20, docs=18, .zscripts=10, examples=2, mini-services=1, download=1, MANIFEST=1
+  Note: No Prisma generated client files in manifest (removed during extraction)
+- FILE-MATRIX.csv has 792 entries = only 5 categories compared (src=690, prisma=39, scripts=25, tests=20, docs=18)
+  Difference of 53 = public(38) + .zscripts(10) + examples(2) + mini-services(1) + download(1) + MANIFEST self-reference(1)
 - No files modified between download and comparison
 - No secrets or sensitive data identified in extracted content

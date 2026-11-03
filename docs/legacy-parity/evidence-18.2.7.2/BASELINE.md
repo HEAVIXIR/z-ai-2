@@ -40,24 +40,30 @@
 - No .env files found in any archive
 - No connection strings with credentials found
 - No private keys found (only false positive in Prisma generated binary, removed)
-- Prisma generated client files excluded from comparison
+- Prisma generated client files removed during extraction (not in manifest)
 
 ## Discrepancy Explanation: 845 vs 792
 
 | Count | Source | Explanation |
 |-------|--------|-------------|
-| 845 | `dellk00k/z` MANIFEST-SHA256.txt | All extracted files including Prisma generated client (53 files) |
-| 792 | FILE-MATRIX.csv | Files compared after excluding generated/ directory |
-| 53 | Difference | Prisma generated client files (build artifacts, excluded from comparison) |
+| 845 | `dellk00k/z` MANIFEST-SHA256.txt | All extracted files from 10 ZIPs + MANIFEST self-reference |
+| 792 | FILE-MATRIX.csv | Only 5 categories compared (src, scripts, prisma, tests, docs) |
+| 53 | Difference | Files from other ZIPs + MANIFEST self-reference (NOT generated files) |
 
-The 53 generated files were in `src/src/lib/generated/store-client/` and include:
-- `libquery_engine-debian-openssl-3.0.x.so.node` (binary)
-- `edge.js`, `wasm.js`, `index.js`, `index-browser.js` (runtime)
-- Type definition files (`.d.ts`)
+The 53 excluded files are:
+- public.zip contents: 38 files (not compared in FILE-MATRIX)
+- .zscripts.zip contents: 10 files (not compared)
+- examples.zip contents: 2 files (not compared)
+- mini-services.zip contents: 1 file (not compared)
+- download.zip contents: 1 file (not compared)
+- MANIFEST-SHA256.txt: 1 file (self-reference in dellk00k/z manifest)
 
-These are build artifacts produced by `prisma generate` and should never be
-transferred between repositories. They were correctly excluded from the
-file comparison.
+Note: Prisma generated client files were removed during extraction in
+the dellk00k/z branch and are NOT present in the 845-entry manifest.
+The earlier explanation attributing the difference to "53 generated files"
+was incorrect and is superseded by this verified breakdown.
+
+Verification: 690 (src) + 39 (prisma) + 25 (scripts) + 20 (tests) + 18 (docs) = 792
 
 ## Manifest Self-Reference Fix
 
@@ -68,6 +74,6 @@ excludes itself from the hash list.
 ## Manifest Verification
 
 The `legacy-files/MANIFEST-SHA256.txt` now contains 28 entries:
-- 27 legacy files (17 adapt + 7 review + 3 reject)
+- 27 legacy files (23 adapt + 4 reject)
 - 1 README.md
 - 0 self-references (manifest file itself excluded)

@@ -47,7 +47,7 @@ Key categories of changes:
 2. `adapt/price-intelligence.ts` — Price intelligence with PriceObservation
 3. `adapt/ComparePageClient.tsx` — Compare UI
 4. `adapt/PriceIntelligence.tsx` — Price intelligence UI
-5. `review/` audit scripts (7) — now ADAPT, rewrite with current schema
+5. `adapt/` audit scripts (7) — rewrite with current schema
 6. `adapt/security-check.ts` — Security audit
 7. `adapt/seed-*.ts` — 6 seed scripts
 8. `adapt/*-logo*.cjs` — 4 image tools (clear-logo.ts excluded — REJECT)
