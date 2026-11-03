@@ -1,89 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { z } from "zod";
-
-// Replicate the schemas and function from the route for testing.
-// In production these would be exported from a shared module.
-const listingBuilderSchema = z.object({
-  title: z.string().min(1).max(200),
-  brand: z.string().max(100).optional(),
-  model: z.string().max(100).optional(),
-  year: z.number().int().min(1900).max(2100).optional(),
-  hours: z.number().min(0).max(100000).optional(),
-  condition: z.string().max(50).optional(),
-  price: z.number().min(0).optional(),
-  description: z.string().max(5000).optional(),
-}).strict();
-
-const moderationSchema = z.object({
-  appropriate: z.boolean(),
-  reason: z.string().max(500).optional(),
-}).strict();
-
-function validateLLMJson<T>(
-  content: string,
-  schema: z.ZodType<T>,
-): { success: true; data: T } | { success: false; error: string } {
-  if (!content || !content.trim()) {
-    return { success: false, error: "Empty LLM response" };
-  }
-
-  let cleaned = content.trim();
-  const fenceMatch = cleaned.match(/^```(?:json)?\s*([\s\S]*?)```$/);
-  if (fenceMatch) {
-    cleaned = fenceMatch[1].trim();
-  }
-
-  const startIndex = cleaned.indexOf("{");
-  if (startIndex === -1) {
-    return { success: false, error: "No JSON object found in LLM response" };
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  let endIndex = -1;
-
-  for (let i = startIndex; i < cleaned.length; i++) {
-    const ch = cleaned[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\" && inString) { escape = true; continue; }
-    if (ch === '"' && !escape) { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") depth++;
-    if (ch === "}") {
-      depth--;
-      if (depth === 0) { endIndex = i; break; }
-    }
-  }
-
-  if (endIndex === -1) {
-    return { success: false, error: "Unbalanced braces in LLM JSON response" };
-  }
-
-  const jsonStr = cleaned.substring(startIndex, endIndex + 1);
-
-  const afterJson = cleaned.substring(endIndex + 1).trim();
-  if (afterJson.includes("{")) {
-    return { success: false, error: "Multiple JSON objects in LLM response" };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    return { success: false, error: "Invalid JSON in LLM response" };
-  }
-
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
-    return {
-      success: false,
-      error: `Schema validation failed: ${result.error.issues.map(i => i.path.join('.') + ': ' + i.message).join('; ')}`,
-    };
-  }
-
-  return { success: true, data: result.data };
-}
+import {
+  validateLLMJson,
+  listingBuilderSchema,
+  moderationSchema,
+} from "@/lib/ai-gateway-validation";
 
 // ============================================================
 // MODERATION TESTS
@@ -127,7 +47,6 @@ describe("MODERATION output validation", () => {
       moderationSchema,
     );
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toContain("appropriate");
   });
 
   it("wrong type for 'appropriate' — string instead of boolean", () => {
@@ -157,7 +76,6 @@ describe("MODERATION output validation", () => {
   it("empty LLM response", () => {
     const result = validateLLMJson("", moderationSchema);
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toContain("Empty");
   });
 
   it("whitespace-only LLM response", () => {
@@ -189,7 +107,6 @@ describe("LISTING_BUILDER output validation", () => {
       listingBuilderSchema,
     );
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toContain("title");
   });
 
   it("invalid year type — string instead of number", () => {
@@ -249,7 +166,6 @@ describe("JSON extraction edge cases", () => {
       moderationSchema,
     );
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toContain("Multiple");
   });
 
   it("markdown fenced JSON — extracted correctly", () => {
@@ -288,7 +204,6 @@ describe("JSON extraction edge cases", () => {
       moderationSchema,
     );
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toContain("Unbalanced");
   });
 
   it("text before JSON — extracted correctly", () => {
@@ -305,5 +220,18 @@ describe("JSON extraction edge cases", () => {
       moderationSchema,
     );
     expect(result.success).toBe(true);
+  });
+
+  it("error message does not expose internal field names", () => {
+    const result = validateLLMJson(
+      '{"wrongfield":"test"}',
+      moderationSchema,
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Should be generic, not "appropriate: Required"
+      expect(result.error).not.toContain("appropriate");
+      expect(result.error).toContain("schema validation failed");
+    }
   });
 });
