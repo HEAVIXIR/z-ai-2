@@ -18,9 +18,15 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
      • hasPermission returns true/false.
      • requirePermission throws ForbiddenError when missing.
      • isAdmin returns true when UserRole has ADMIN role.
-     • isAdmin falls back to legacy User.role column ("ADMIN",
-       "SUPERADMIN") for unmigrated users.
+     • isAdmin does NOT fall back to the legacy User.role column
+       (STEP 02 removed that fallback — see tests at lines 182, 188,
+       241 which assert the hardened, no-fallback behavior).
      • hasRole works with single key and array of keys.
+
+   STEP 18.2.7.3.5 (Finding R-2): the previous header claimed
+   isAdmin "falls back to legacy User.role" — that was stale. The
+   actual implementation (authorization/index.ts STEP 02) and the
+   tests below both confirm NO legacy fallback exists.
    ============================================================ */
 
 /* ── Mock the db module ────────────────────────────────────────
