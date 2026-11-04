@@ -179,3 +179,7 @@ All six `oven-sh/setup-bun@v2` steps in this branch's CI workflow are now explic
 The `docker-build-proof` job on PR #183 failed because the Dockerfile still used `oven/bun:1.3.14-slim` in its builder/runtime stages. The build log showed `bun install --frozen-lockfile` failing with `Unknown lockfile version` against the Bun 1.4.4-generated lockfile. This is the same toolchain mismatch previously observed in the GitHub-hosted CI runner.
 
 Both Docker stages now use `oven/bun:1.4.4` / `oven/bun:1.4.4-slim`. Docker Hub's official `oven/bun` tag listing confirms the `1.4.4-slim` tag exists. A contract test checks both Docker tags and rejects the old 1.3.14 tag. This aligns CI, Docker, and lockfile refresh to Bun 1.4.4.
+
+## Next patcher version allowlist clarified
+
+The first PR #183 Cloudflare attempt failed closed because its lock resolves Next.js `16.4.3`, while the PR #191 branch resolves `16.4.5`. Inspection of both exact Next.js vendored NFT bundles confirms each contains exactly one `fileIOConcurrency:w=1024` token. The patcher now explicitly allowlists only `16.4.3` and `16.4.5`, then still requires exactly one matching token before changing it to 16. Unsupported versions or bundle drift remain blocked. This avoids an unnecessary Next upgrade solely to satisfy the patcher guard.

@@ -3,13 +3,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const expectedNextVersion = "16.4.5";
+const expectedNextVersions = new Set(["16.4.3", "16.4.5"]);
 const targetConcurrency = 16;
 const nftPath = require.resolve("next/dist/compiled/@vercel/nft");
 const nextPackagePath = path.resolve(path.dirname(nftPath), "../../../../package.json");
 const nextVersion = JSON.parse(fs.readFileSync(nextPackagePath, "utf8")).version;
 
-if (nextVersion !== expectedNextVersion) {
+if (!expectedNextVersions.has(nextVersion)) {
   throw new Error(
     `HEAVIX_NFT_PATCH_BLOCKED: expected Next.js ${expectedNextVersion}, found ${nextVersion}`
   );

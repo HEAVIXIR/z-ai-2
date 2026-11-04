@@ -55,6 +55,7 @@ describe("Cloudflare Next file-descriptor guard", () => {
     expect(patcher).toContain("next/dist/compiled/@vercel/nft");
     expect(patcher).toContain("fileIOConcurrency:w=1024");
     expect(patcher).toContain("fileIOConcurrency:w=16");
+    expect(patcher).toContain("16.4.3");
     expect(patcher).toContain("16.4.5");
     const diagnostic = read("scripts/cloudflare-next-build-diagnostics.mjs");
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
