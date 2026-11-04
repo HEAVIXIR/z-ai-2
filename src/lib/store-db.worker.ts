@@ -1,33 +1,31 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaClient } from "@/lib/generated/store-worker-client/client";
 import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import {
+  createRequestScopedClientResolver,
+  createRequestScopedPrismaProxy,
+} from "@/lib/prisma-worker-proxy";
 
-const SCHEMA_VERSION = "p3-cloudflare-store-prisma6-ppg";
-
-type StorePrismaGlobal = typeof globalThis & {
-  storeDbWorker?: PrismaClient;
-  storeDbWorkerSchemaVersion?: string;
+type WorkerEnv = {
+  STORE_DATABASE_URL?: string;
 };
 
-const globalForStore = globalThis as StorePrismaGlobal;
+const getRequestStoreClient = createRequestScopedClientResolver(
+  () => getCloudflareContext().ctx as object,
+  () => {
+    const { env } = getCloudflareContext();
+    const connectionString = (env as WorkerEnv).STORE_DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("Missing Cloudflare Worker secret: STORE_DATABASE_URL");
+    }
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
-}
+    return new PrismaClient({
+      adapter: new PrismaPostgresAdapter({ connectionString }),
+      log: ["error", "warn"],
+    });
+  },
+);
 
-function createWorkerStorePrismaClient(): PrismaClient {
-  const adapter = new PrismaPostgresAdapter({
-    connectionString: requiredEnv("STORE_DATABASE_URL"),
-  });
-  return new PrismaClient({ adapter, log: ["error", "warn"] });
-}
-
-if (globalForStore.storeDbWorkerSchemaVersion !== SCHEMA_VERSION) {
-  globalForStore.storeDbWorker = undefined;
-  globalForStore.storeDbWorkerSchemaVersion = SCHEMA_VERSION;
-}
-
-globalForStore.storeDbWorker ??= createWorkerStorePrismaClient();
-
-export const storeDb: PrismaClient = globalForStore.storeDbWorker;
+export const storeDb = createRequestScopedPrismaProxy(
+  getRequestStoreClient,
+) as PrismaClient;

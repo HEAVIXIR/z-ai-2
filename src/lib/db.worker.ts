@@ -1,35 +1,33 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaClient, Prisma } from "@/lib/generated/worker-client/client";
 import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import {
+  createRequestScopedClientResolver,
+  createRequestScopedPrismaProxy,
+} from "@/lib/prisma-worker-proxy";
 
-const SCHEMA_VERSION = "p3-cloudflare-prisma6-ppg";
-
-type PrismaGlobal = typeof globalThis & {
-  prismaWorker?: PrismaClient;
-  prismaWorkerSchemaVersion?: string;
+type WorkerEnv = {
+  DATABASE_URL?: string;
 };
 
-const globalForPrisma = globalThis as PrismaGlobal;
+// ExecutionContext is unique to the current request. Never put the Prisma
+// client itself on globalThis: its I/O context cannot cross Worker requests.
+const getRequestClient = createRequestScopedClientResolver(
+  () => getCloudflareContext().ctx as object,
+  () => {
+    const { env } = getCloudflareContext();
+    const connectionString = (env as WorkerEnv).DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("Missing Cloudflare Worker secret: DATABASE_URL");
+    }
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
-}
+    return new PrismaClient({
+      adapter: new PrismaPostgresAdapter({ connectionString }),
+      log: ["error", "warn"],
+    });
+  },
+);
 
-function createWorkerPrismaClient(): PrismaClient {
-  const adapter = new PrismaPostgresAdapter({
-    connectionString: requiredEnv("DATABASE_URL"),
-  });
-  return new PrismaClient({ adapter, log: ["error", "warn"] });
-}
-
-if (globalForPrisma.prismaWorkerSchemaVersion !== SCHEMA_VERSION) {
-  globalForPrisma.prismaWorker = undefined;
-  globalForPrisma.prismaWorkerSchemaVersion = SCHEMA_VERSION;
-}
-
-globalForPrisma.prismaWorker ??= createWorkerPrismaClient();
-
-export const db: PrismaClient = globalForPrisma.prismaWorker;
+export const db = createRequestScopedPrismaProxy(getRequestClient) as PrismaClient;
 export { Prisma };
 export type { Article } from "@/lib/generated/worker-client/client";
