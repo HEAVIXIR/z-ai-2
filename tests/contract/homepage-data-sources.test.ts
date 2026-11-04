@@ -23,9 +23,26 @@ describe("public homepage renderer contracts", () => {
     }
   });
 
-  it("uses the public featured-listings endpoint without an admin permission gate", () => {
+  it("includes all required public content sections", () => {
+    expect(homepageDataSources).toEqual(expect.arrayContaining([
+      "listing.featured",
+      "listing.latest",
+      "taxonomy.categories",
+      "brand.popular",
+      "service.all",
+      "article.latest",
+    ]));
+  });
+
+  it("uses the supported featured-first public listing query", () => {
     const source = getDataSource("listing.featured");
-    expect(source?.apiPath).toBe("/api/listings?featured=true&limit=8");
+    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit=8");
+    expect(source?.permissions).toEqual([]);
+  });
+
+  it("uses the newest-first public listing query", () => {
+    const source = getDataSource("listing.latest");
+    expect(source?.apiPath).toBe("/api/listings?limit=12&sort=newest");
     expect(source?.permissions).toEqual([]);
   });
 
@@ -36,7 +53,32 @@ describe("public homepage renderer contracts", () => {
     expect(getWidget("category-grid")?.defaultDataSource).toBe("taxonomy.categories");
   });
 
-  it("does not put the admin-only site statistics endpoint on the public homepage", () => {
+  it("uses public-only, active and featured brands", () => {
+    const source = getDataSource("brand.popular");
+    expect(source?.apiPath).toBe("/api/taxonomy/brands?status=ACTIVE&featured=true&limit=24&sort=featured");
+    expect(source?.permissions).toEqual([]);
+    expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular");
+    expect(getWidget("brand-grid")?.permissions).toEqual([]);
+  });
+
+  it("uses public active services and articles without admin permission gates", () => {
+    expect(getDataSource("service.all")?.apiPath).toBe("/api/services?featured=1&limit=12");
+    expect(getDataSource("service.all")?.permissions).toEqual([]);
+    expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit=6");
+    expect(getDataSource("article.latest")?.permissions).toEqual([]);
+    expect(getWidget("service-grid")?.defaultDataSource).toBe("service.all");
+    expect(getWidget("service-grid")?.permissions).toEqual([]);
+    expect(getWidget("article-list")?.permissions).toEqual([]);
+  });
+
+  it("keeps admin-only resources protected", () => {
+    expect(getDataSource("product.latest")?.permissions).toEqual(["product.read"]);
+    expect(getDataSource("stats.site")?.permissions).toEqual(["admin.dashboard.read"]);
+    expect(getWidget("stats")?.permissions).toEqual(["admin.dashboard.read"]);
+  });
+
+  it("does not put admin-only site statistics on the public homepage", () => {
+    expect(homepageDataSources).not.toContain("stats.site");
     expect(homepageDataSources).not.toContain("site-stats");
     expect(defaultLayoutSource).not.toContain('key: "stats"');
   });
