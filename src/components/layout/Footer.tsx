@@ -68,7 +68,7 @@ type FooterSettings = {
   copyright?: string | null;
   newsletterEnabled?: boolean;
   footerLogoUrl?: string | null;
-  footerLogoHeight?: number;
+  footerLogoHeight?: number | null;
   footerLogoPosition?: string | null;
   footerHeavixLogoUrl?: string | null;
   footerMekanixLogoUrl?: string | null;
