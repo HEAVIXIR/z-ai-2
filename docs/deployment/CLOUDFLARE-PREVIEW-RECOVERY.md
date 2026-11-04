@@ -191,3 +191,15 @@ The Cloudflare-only OpenNext build command now attempts to raise the shell soft 
 The Cloudflare Build shell reports `RLIMIT_NOFILE` soft=1024 and hard=1024; attempting to raise the soft limit to 4096 does not change the hard ceiling. The subsequent build still reached 14/14 static pages with one Next worker, then failed on a single `copyFile` with `EMFILE`.
 
 The next diagnostic keeps Next's Cloudflare-only worker count at 1, caps Webpack module parallelism at 4, and sets `UV_THREADPOOL_SIZE=1` before starting the Next process. The OpenNext build command continues to log the soft/hard file-descriptor limits. If this still fails, the Cloudflare Build hard limit is a platform constraint; do not suppress the error or remove the standalone output required by OpenNext.
+
+## Cloudflare standalone output tracing scope
+
+Build `99876ca1-9d35-4a7c-8703-b9c286c6e73d` passed Webpack compilation (74s), Worker TypeScript (59s), and static generation (14/14 pages with one worker), but still exhausted the hard 1024 file-descriptor limit while opening `.next/server/pages-manifest.json`. Reducing Next/webpack/libuv concurrency alone was insufficient.
+
+The Cloudflare-only configuration now narrows standalone output tracing:
+- Excludes Worker-client TypeScript sources already compiled into Next server chunks.
+- Excludes the unused Store Node client and build-only Prisma CLI/engine files.
+- Excludes repository-only docs, tests, scripts, VCS metadata, and build caches from runtime tracing.
+- Explicitly includes the Main and Store Worker `query_compiler_bg.wasm` assets.
+
+The OpenNext command retains the nofile soft/hard diagnostic and restores the default-size libuv thread pool (4). This is a targeted trace reduction experiment; a successful Next standalone build and OpenNext Worker bundle are required before acceptance. Node/Vercel tracing remains unchanged.

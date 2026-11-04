@@ -116,6 +116,29 @@ const nextConfig: NextConfig = {
           // Keep Next's static generation to one worker in this adapter-only path.
           cpus: 1,
         },
+        outputFileTracingExcludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/**/*.ts",
+            "./src/lib/generated/store-worker-client/**/*.ts",
+            "./src/lib/generated/store-client/**/*",
+            "./node_modules/@prisma/engines/**/*",
+            "./node_modules/prisma/**/*",
+            "./docs/**/*",
+            "./tests/**/*",
+            "./scripts/**/*",
+            "./.git/**/*",
+            "./.github/**/*",
+            "./coverage/**/*",
+            "./.next/cache/**/*",
+            "./.turbo/**/*",
+          ],
+        },
+        outputFileTracingIncludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
+            "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+          ],
+        },
         turbopack: {
           resolveAlias: {
             "@/lib/db": "./src/lib/db.worker.ts",
