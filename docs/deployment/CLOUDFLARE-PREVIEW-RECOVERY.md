@@ -26,6 +26,10 @@ The Cloudflare build configuration also currently has:
 
 Those deployment guards are intentionally preserved.
 
+## Second build blocker found and corrected
+
+After adding the OpenNext config, the next build advanced into Next.js but failed with `Cannot find module '@tailwindcss/postcss'`. The Workers Build environment sets `NODE_ENV=production`; its subsequent `npm install` therefore pruned development dependencies that Next.js requires at build time. The non-production `previews_base_config.build_command` was updated to pass `--include=dev` to npm. The production build command and production deployment settings were not changed.
+
 ## Configuration
 
 The Page Builder also resolves the origin for its server-side data-source fetches from `NEXT_PUBLIC_BASE_URL`, then Vercel's `VERCEL_URL`, then `NEXT_PUBLIC_SITE_URL`. This is required because Cloudflare Workers does not provide `VERCEL_URL`; without the Cloudflare preview URL fallback, homepage listing/category widgets attempted to fetch from `http://localhost:3000` and silently rendered empty. A pure unit test covers all resolution paths.
