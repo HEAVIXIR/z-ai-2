@@ -100,6 +100,8 @@ const securityHeaders = [
     : []),
 ];
 
+const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
@@ -108,6 +110,30 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: false,
+  ...(isCloudflareBuild
+    ? {
+        experimental: {
+          // Cloudflare Builds have a hard 1024-FD ceiling; constrain static generation.
+          cpus: 1,
+        },
+        outputFileTracingExcludes: {
+          "/*": [
+            "./docs/**/*",
+            "./tests/**/*",
+            "./scripts/**/*",
+            "./.git/**/*",
+            "./.github/**/*",
+            "./coverage/**/*",
+            "./.next/cache/**/*",
+            "./.turbo/**/*",
+          ],
+        },
+        webpack(config) {
+          config.parallelism = 4;
+          return config;
+        },
+      }
+    : {}),
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",

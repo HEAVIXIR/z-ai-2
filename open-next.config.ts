@@ -2,10 +2,9 @@ import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 
 /**
  * HEAVIX OpenNext adapter configuration.
- *
- * This enables an isolated Cloudflare build experiment only. It does not
- * authorize deployment or production traffic. Cache, queue, and storage
- * adapters remain intentionally unconfigured until their runtime contracts
- * and non-production bindings are verified.
+ * This is an isolated Cloudflare build experiment, not deployment approval.
  */
-export default defineCloudflareConfig();
+export default {
+  ...defineCloudflareConfig(),
+  buildCommand: 'ulimit -n 4096 2>/dev/null || true; echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"; node scripts/patch-next-nft-concurrency.cjs && UV_THREADPOOL_SIZE=4 node scripts/cloudflare-next-build-diagnostics.mjs',
+};
