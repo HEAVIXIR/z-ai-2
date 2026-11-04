@@ -1,0 +1,29 @@
+name: Generate Prisma PPG Bun lockfile artifact
+
+on:
+  push:
+    branches:
+      - infra/prisma-ppg-workers-proof
+    paths:
+      - package.json
+      - bun.lock
+      - .github/workflows/prisma-ppg-lockfile-artifact.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Resolve exact dependency graph and update bun.lock
+        run: bun install --ignore-scripts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prisma-ppg-bun-lock
+          path: bun.lock
+          if-no-files-found: error
