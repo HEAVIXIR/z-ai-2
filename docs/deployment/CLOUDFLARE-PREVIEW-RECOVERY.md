@@ -45,6 +45,18 @@ The Page Builder also resolves the origin for its server-side data-source fetche
   static asset binding, using the existing Worker name and compatibility date.
 - `.open-next/` and `.wrangler/` are generated artifacts and are ignored by Git.
 
+## Database/runtime evidence still BLOCKED
+
+The successful build log also records four Prisma calls during static page generation that could not resolve `DATABASE_URL`:
+- `category.findMany()`
+- `brand.findMany()`
+- `listing.findMany()`
+- `article.findMany()`
+
+Those failures did not fail the adapter build because the relevant build-time paths handled the errors. They are not proof that the deployed Worker can query data.
+
+The preview build environment currently contains no `DATABASE_URL` or `STORE_DATABASE_URL` values. The existing `heavix-preview` Worker has secret bindings with those names, but Cloudflare redacts their values; their target databases cannot be independently verified from this connection. Therefore the preview deployment remains blocked until both endpoints are proven to be isolated non-production databases and read-only connectivity checks pass. No secret values are copied into Git or this document.
+
 ## Acceptance gates
 
 1. Cloudflare Workers Build completes the OpenNext build step.
