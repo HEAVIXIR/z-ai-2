@@ -95,5 +95,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(lock).toContain('"minimatch": ["minimatch@3.1.5"');
     expect(lock).toContain('"@node-minify/core/glob/minimatch": ["minimatch@11.0.4"');
     expect(lock).toContain('"glob/minimatch": ["minimatch@11.0.4"');
+    expect(lock).toContain('"brace-expansion": ["brace-expansion@1.1.21"');
+    expect(lock).toContain('"@node-minify/core/glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
+    expect(lock).toContain('"glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
   });
 });
