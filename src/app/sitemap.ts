@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — sitemap.ts (P2-28)
@@ -73,6 +73,8 @@ async function getSEOOverridesByType(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  if (IS_PREVIEW_DEPLOYMENT) return [];
+
   const base = SITE_BASE_URL;
 
   // Fetch all public entities in parallel.

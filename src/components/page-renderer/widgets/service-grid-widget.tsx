@@ -33,7 +33,7 @@ export default function ServiceGridWidget({
           {items.slice(0, limit).filter((service) => service?.nameFa).map((service, index) => (
             <article
               key={service.id || service.key || index}
-              className="flex min-h-28 items-start gap-3 rounded-xl border bg-white p-4"
+              className="flex min-h-28 items-start gap-3 rounded-xl border border-white/10 bg-[#141414] p-4 text-white"
             >
               {service.imageUrl ? (
                 <img

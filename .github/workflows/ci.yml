@@ -51,6 +51,8 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck Worker-specific Prisma clients
+        run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
           sudo apt-get install -y postgresql-client

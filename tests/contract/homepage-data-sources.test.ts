@@ -36,7 +36,7 @@ describe("public homepage renderer contracts", () => {
 
   it("uses the supported featured-first public listing query", () => {
     const source = getDataSource("listing.featured");
-    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit={limit}");
+    expect(source?.apiPath).toBe("/api/listings?featuredOnly=true&sort=featured&limit={limit}");
     expect(source?.permissions).toEqual([]);
   });
 
@@ -82,4 +82,16 @@ describe("public homepage renderer contracts", () => {
     expect(homepageDataSources).not.toContain("site-stats");
     expect(defaultLayoutSource).not.toContain('key: "stats"');
   });
+  it("does not render an empty trust-badges section without verified badge data", () => {
+    expect(defaultLayoutSource).not.toContain('key: "trust-badges"');
+  });
+
+  it("keeps category GET read-only and invalidates homepage cache only after writes", () => {
+    const source = readFileSync(path.join(root, "src/app/api/taxonomy/categories/route.ts"), "utf8");
+    const getBody = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function POST"));
+    const postBody = source.slice(source.indexOf("export async function POST"));
+    expect(getBody).not.toContain("revalidateTag(");
+    expect(postBody).toContain("revalidateTag(HOMEPAGE_CACHE_TAGS.categories");
+  });
+
 });

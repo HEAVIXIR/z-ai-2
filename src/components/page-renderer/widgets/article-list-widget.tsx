@@ -26,7 +26,7 @@ export default function ArticleListWidget({
             <Link
               key={item.id || item.slug || i}
               href={`/knowledge/${encodeURIComponent(String(item.slug || item.id))}`}
-              className="overflow-hidden rounded-lg border bg-white transition hover:shadow-sm"
+              className="overflow-hidden rounded-lg border border-white/10 bg-[#141414] text-white transition hover:border-[#F58220]/40 hover:shadow-sm"
             >
               {item.coverImage && (
                 <img
@@ -40,7 +40,7 @@ export default function ArticleListWidget({
               <div className="p-3">
                 <h3 className="line-clamp-2 text-sm font-medium">{item.title}</h3>
                 {typeof item.excerpt === 'string' && (
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.excerpt}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/60">{item.excerpt}</p>
                 )}
               </div>
             </Link>

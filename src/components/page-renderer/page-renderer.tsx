@@ -10,7 +10,8 @@
  * V2.3: Enforces data source permissions server-side.
  */
 
-import { db } from '@/lib/db';
+import { headers } from "next/headers";
+import { db } from "@/lib/db";
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
 import { extractWidgetData } from '@/lib/admin/page-builder/widget-data-response';
 import { can } from '@/lib/authorization';
@@ -45,7 +46,7 @@ const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<strin
 };
 
 // ── Fetch data for a widget from its data source ──────────
-async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
+async function fetchWidgetData(widget: PageWidgetInstance, baseUrl: string): Promise<unknown> {
   const widgetDef = getWidget(widget.key);
   if (!widgetDef?.hasDataSource) return null;
 
@@ -62,8 +63,7 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
   const timeout = setTimeout(() => controller.abort(), 8_000);
 
   try {
-    const base = resolveWidgetDataBaseUrl(process.env);
-    const url = new URL(apiPath, base);
+    const url = new URL(apiPath, baseUrl);
     const res = await fetch(url, {
       next: { revalidate: ds.cacheTtl || 60 },
       signal: controller.signal,
@@ -119,6 +119,8 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
   }
 
   const pageLayout = layout as PageLayout;
+  const requestHeaders = await headers();
+  const widgetDataBaseUrl = resolveWidgetDataBaseUrl(process.env, requestHeaders);
 
   // 2. Render each section → row → widget
   return (
@@ -140,6 +142,7 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
                     key={wi}
                     widget={widget}
                     userId={userId}
+                    baseUrl={widgetDataBaseUrl}
                   />
                 ))}
               </div>
@@ -152,7 +155,7 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
 }
 
 // ── Single widget renderer ─────────────────────────────────
-async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; userId?: string | null }) {
+async function WidgetRenderer({ widget, userId, baseUrl }: { widget: PageWidgetInstance; userId?: string | null; baseUrl: string }) {
   const widgetDef = getWidget(widget.key);
   if (!widgetDef) return null; // unknown widget — silently skip (already validated)
 
@@ -190,7 +193,7 @@ async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; 
         }
       }
     }
-    data = await fetchWidgetData(widget);
+    data = await fetchWidgetData(widget, baseUrl);
   }
 
   // 3. Render using the registered component

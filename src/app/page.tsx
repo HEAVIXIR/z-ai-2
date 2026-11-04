@@ -89,7 +89,7 @@ const DEFAULT_HOME_LAYOUT = {
       rows: [{
         widgets: [{
           key: "brand-grid",
-          props: { title: "برندهای معتبر", limit: 12, columns: "4" },
+          props: { title: "برندهای منتخب", limit: 12, columns: "4" },
           dataSource: "brand.popular",
         }],
       }],
@@ -115,14 +115,6 @@ const DEFAULT_HOME_LAYOUT = {
     {
       rows: [{
         widgets: [{
-          key: "trust-badges",
-          props: { title: "چرا هویکس؟" },
-        }],
-      }],
-    },
-    {
-      rows: [{
-        widgets: [{
           key: "cta",
           props: {
             title: "ماشین‌آلات خود را هوشمندانه معامله کنید",
@@ -136,11 +128,10 @@ const DEFAULT_HOME_LAYOUT = {
 };
 
 export default async function HomePage() {
-  // Try to load a published homepage AdminPage.
+  // Try to load a published homepage AdminPage and public site settings.
   let layout: unknown = DEFAULT_HOME_LAYOUT;
-
-  try {
-    const publishedPage = await db.adminPage.findFirst({
+  const [publishedPage, settings] = await Promise.all([
+    db.adminPage.findFirst({
       where: { pageType: "HOME", status: "PUBLISHED" },
       include: {
         versions: {
@@ -149,8 +140,11 @@ export default async function HomePage() {
           take: 1,
         },
       },
-    });
+    }).catch(() => null),
+    db.siteSettings.findUnique({ where: { id: "main" } }).catch(() => null),
+  ]);
 
+  try {
     if (publishedPage?.publishedVersionId) {
       const publishedVersion = await db.adminPageVersion.findUnique({
         where: { id: publishedPage.publishedVersionId },
@@ -160,16 +154,39 @@ export default async function HomePage() {
       }
     }
   } catch {
-    // DB unavailable — use default layout (PageRenderer handles gracefully).
+    // A missing/invalid published layout must not prevent the public homepage.
   }
+
+  const headerSettings = settings ? {
+    logoUrl: settings.logoUrl,
+    logoAnimationDurationMs: settings.logoAnimationDurationMs,
+    logoHeight: settings.logoHeight,
+    showPersianName: settings.showPersianName,
+    logoPosition: settings.logoPosition,
+  } : {};
+  const footerSettings = settings ? {
+    about: settings.about,
+    phone: settings.phone,
+    email: settings.email,
+    address: settings.address,
+    workingHours: settings.workingHours,
+    copyright: settings.copyright,
+    newsletterEnabled: settings.newsletterEnabled,
+    footerLogoUrl: settings.footerLogoUrl,
+    footerLogoHeight: settings.footerLogoHeight,
+    footerLogoPosition: settings.footerLogoPosition,
+    footerHeavixLogoUrl: settings.footerHeavixLogoUrl,
+    footerMekanixLogoUrl: settings.footerMekanixLogoUrl,
+    footerAriaLogoUrl: settings.footerAriaLogoUrl,
+  } : null;
 
   return (
     <>
-      <Header />
+      <Header siteSettings={headerSettings} />
       <main>
         <PageRenderer layout={layout} userId={null} />
       </main>
-      <Footer />
+      <Footer settings={footerSettings} />
     </>
   );
 }

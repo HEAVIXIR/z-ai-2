@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — robots.ts (P2-28)
@@ -27,7 +27,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin/", "/api/", "/dashboard/", "/seller/", "/login", "/register"],
       },
     ],
-    sitemap: absoluteUrl("/sitemap.xml"),
+    ...(IS_PREVIEW_DEPLOYMENT ? {} : { sitemap: absoluteUrl("/sitemap.xml") }),
     host: SITE_BASE_URL,
   };
 }

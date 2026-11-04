@@ -3,9 +3,12 @@ import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 /**
  * HEAVIX OpenNext adapter configuration.
  *
- * This enables an isolated Cloudflare build experiment only. It does not
- * authorize deployment or production traffic. Cache, queue, and storage
- * adapters remain intentionally unconfigured until their runtime contracts
- * and non-production bindings are verified.
+ * The Cloudflare-only build path uses Webpack for the generated Prisma Worker
+ * clients, whose query compiler is imported as an async WebAssembly module.
+ * This does not alter the Node/Vercel build path. No cache, queue, or storage
+ * override is enabled until its runtime contract is separately verified.
  */
-export default defineCloudflareConfig();
+export default {
+  ...defineCloudflareConfig(),
+  buildCommand: "bunx next build --webpack",
+};

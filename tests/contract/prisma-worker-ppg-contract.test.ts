@@ -41,6 +41,9 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.HEAVIX_ENV?.toLowerCase() === "preview"');
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
+    expect(next).toContain("asyncWebAssembly: true");
+    const openNext = read("open-next.config.ts");
+    expect(openNext).toContain('buildCommand: "bunx next build --webpack"');
   });
 
   it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {
@@ -98,5 +101,11 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(lock).toContain('"brace-expansion": ["brace-expansion@1.1.21"');
     expect(lock).toContain('"@node-minify/core/glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
     expect(lock).toContain('"glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
+  });
+
+  it("runs the Worker-specific TypeScript check in blocking CI", () => {
+    const pkg = JSON.parse(read("package.json"));
+    expect(pkg.scripts["typecheck:worker"]).toBe("tsc --noEmit -p tsconfig.worker.json");
+    expect(read(".github/workflows/ci.yml")).toContain("run: bun run typecheck:worker");
   });
 });
