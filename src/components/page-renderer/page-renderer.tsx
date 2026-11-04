@@ -12,6 +12,7 @@
 
 import { db } from '@/lib/db';
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
+import { extractWidgetData } from '@/lib/admin/page-builder/widget-data-response';
 import { can } from '@/lib/authorization';
 import { resolveWidgetDataBaseUrl } from '@/lib/admin/page-builder/widget-data-url';
 import HeroWidget from './widgets/hero-widget';
@@ -23,6 +24,8 @@ import RichTextWidget from './widgets/rich-text-widget';
 import ImageWidget from './widgets/image-widget';
 import StatsWidget from './widgets/stats-widget';
 import ArticleListWidget from './widgets/article-list-widget';
+import BrandGridWidget from './widgets/brand-grid-widget';
+import ServiceGridWidget from './widgets/service-grid-widget';
 import TrustBadgesWidget from './widgets/trust-badges-widget';
 
 // Widget key → React component mapper
@@ -36,6 +39,8 @@ const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<strin
   image: ImageWidget,
   stats: StatsWidget,
   'article-list': ArticleListWidget,
+  'brand-grid': BrandGridWidget,
+  'service-grid': ServiceGridWidget,
   'trust-badges': TrustBadgesWidget,
 };
 
@@ -50,22 +55,52 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
   const ds = getDataSource(dataSourceKey);
   if (!ds) return null;
 
-  // Build API path, replacing {param} placeholders from widget props
+  // Build API path, replacing {param} placeholders from widget props.
   let apiPath = ds.apiPath;
   for (const [k, v] of Object.entries(widget.props || {})) {
     apiPath = apiPath.replace(`{${k}}`, String(v));
   }
 
-  // Fetch data (server-side fetch)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
   try {
     const base = resolveWidgetDataBaseUrl(process.env);
-    const res = await fetch(new URL(apiPath, base), { next: { revalidate: ds.cacheTtl || 60 } });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.data?.items ?? json?.items ?? json?.categories ?? json?.data ?? null;
+    const url = new URL(apiPath, base);
+    const res = await fetch(url, {
+      next: { revalidate: ds.cacheTtl || 60 },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      // Do not log headers or response bodies; API errors may contain sensitive details.
+      console.error('[PageRenderer] Widget data source returned non-2xx', {
+        dataSourceKey,
+        apiPath,
+        status: res.status,
+        statusText: res.statusText,
+      });
+      return null;
+    }
+
+    const payload: unknown = await res.json();
+    const data = extractWidgetData(payload);
+    if (data === null) {
+      console.warn('[PageRenderer] Widget data source returned an unsupported response envelope', {
+        dataSourceKey,
+        apiPath,
+      });
+    }
+    return data;
   } catch (error) {
-    console.error("[PageRenderer] Widget data fetch failed", { dataSourceKey, apiPath, error });
+    console.error('[PageRenderer] Widget data fetch failed', {
+      dataSourceKey,
+      apiPath,
+      error,
+    });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
