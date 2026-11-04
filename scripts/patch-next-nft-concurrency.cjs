@@ -16,21 +16,35 @@ if (nextVersion !== expectedNextVersion) {
 }
 
 const source = fs.readFileSync(nftPath, "utf8");
-const needle = "fileIOConcurrency:w=1024";
-const replacement = "fileIOConcurrency:w=16";
-const occurrences = source.split(needle).length - 1;
+const concurrencyNeedle = "fileIOConcurrency:w=1024";
+const concurrencyReplacement = "fileIOConcurrency:w=16";
+const readFileNeedle = "if(t.readFile)s.readFile=t.readFile;";
+const readFileReplacement = "if(t.readFile)s.readFile=(p)=>s.cachedFileSystem.executeFileIO(p,()=>t.readFile(p));";
 
-if (occurrences === 1) {
-  fs.writeFileSync(nftPath, source.replace(needle, replacement));
+const concurrencyOccurrences = source.split(concurrencyNeedle).length - 1;
+const readFileOccurrences = source.split(readFileNeedle).length - 1;
+const concurrencyPatched = source.includes(concurrencyReplacement);
+const readFilePatched = source.includes(readFileReplacement);
+
+if (concurrencyOccurrences === 1 && readFileOccurrences === 1) {
+  const updated = source
+    .replace(concurrencyNeedle, concurrencyReplacement)
+    .replace(readFileNeedle, readFileReplacement);
+  fs.writeFileSync(nftPath, updated);
   process.stdout.write(
-    `HEAVIX_NFT_PATCH_APPLIED next=${nextVersion} fileIOConcurrency=1024->${targetConcurrency}\n`
+    `HEAVIX_NFT_PATCH_APPLIED next=${nextVersion} fileIOConcurrency=1024->${targetConcurrency} customReadFile=semaphore${"\\n"}`
   );
-} else if (occurrences === 0 && source.includes(replacement)) {
+} else if (
+  concurrencyOccurrences === 0 &&
+  readFileOccurrences === 0 &&
+  concurrencyPatched &&
+  readFilePatched
+) {
   process.stdout.write(
-    `HEAVIX_NFT_PATCH_ALREADY_APPLIED next=${nextVersion} fileIOConcurrency=${targetConcurrency}\n`
+    `HEAVIX_NFT_PATCH_ALREADY_APPLIED next=${nextVersion} fileIOConcurrency=${targetConcurrency} customReadFile=semaphore${"\\n"}`
   );
 } else {
   throw new Error(
-    `HEAVIX_NFT_PATCH_BLOCKED: expected one ${needle} in ${nftPath}, found ${occurrences}`
+    `HEAVIX_NFT_PATCH_BLOCKED: expected exactly one unpatched concurrency token and custom readFile hook in ${nftPath}; found concurrency=${concurrencyOccurrences}, readFile=${readFileOccurrences}, patchedConcurrency=${concurrencyPatched}, patchedReadFile=${readFilePatched}`
   );
 }

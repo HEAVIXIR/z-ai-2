@@ -263,3 +263,17 @@ The merge commit records base history only. PR #183 and PR #191 remain Draft/unm
 ## Docker/CI Bun pin synchronization
 
 PR #183's Docker proof found one remaining toolchain mismatch: the Docker builder/runtime images were still `oven/bun:1.3.14`, so `bun install --frozen-lockfile` rejected the Bun 1.4.4 lockfile. Both Docker stages are now pinned to the published `oven/bun:1.4.4` and `oven/bun:1.4.4-slim` tags. This PR branch already carries those exact Docker tags and pins all CI Bun setup steps to 1.4.4. The synchronized dependency contract test now checks the Docker tags as well.
+
+## Root-cause refinement — Next's custom NFT readFile bypassed the semaphore
+
+The second descriptor run on exact PR #191 head `a9ff26ce` applied `fileIOConcurrency=16`, yet the Next main process still peaked at 1,010 FDs and failed opening `.next/trace-build` / `.next/routes-manifest.json`. The 16-worker cap alone did not constrain the dominant operation.
+
+Inspection of the exact vendored Next 16.4.5 NFT implementation and its caller established why: `collect-build-traces.ts` supplies a custom `readFile` callback to `nodeFileTrace`. In the NFT constructor, `if(t.readFile)s.readFile=t.readFile` replaces the cached filesystem reader directly. That bypasses `CachedFileSystem.executeFileIO()`, the semaphore controlled by `fileIOConcurrency`. The previous patch changed the default semaphore size but left the custom read path unbounded.
+
+The next guarded Cloudflare-only patch now makes two exact changes in the same vendored NFT bundle:
+1. Keep `fileIOConcurrency` at 16.
+2. Wrap the custom `readFile` callback with `s.cachedFileSystem.executeFileIO(p,()=>t.readFile(p))`, so the caller-provided filesystem read uses the same semaphore.
+
+The patcher requires Next.js exactly 16.4.5, exactly one original concurrency token and exactly one original custom-read hook, and verifies both replacements for idempotency. Any version or source-shape drift fails closed. The regression contract checks both tokens. This is a source-derived correction to the actual unbounded path, not another speculative numeric reduction.
+
+The exact-head Build `19d8e78e-7ce3-49da-9117-7d2565ec845b` is the evidence for the 16-only failure: webpack 66s, TypeScript 58s, 14/14 static pages passed, then `EMFILE` at `.next/trace-build` and `.next/routes-manifest.json`; sampled peak was 1,010. The next build must prove a lower peak and complete trace collection, standalone output, and OpenNext bundling.
