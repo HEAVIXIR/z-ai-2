@@ -183,3 +183,11 @@ Both Docker stages now use `oven/bun:1.4.4` / `oven/bun:1.4.4-slim`. Docker Hub'
 ## Next patcher version allowlist clarified
 
 The first PR #183 Cloudflare attempt failed closed because its lock resolves Next.js `16.4.3`, while the PR #191 branch resolves `16.4.5`. Inspection of both exact Next.js vendored NFT bundles confirms each contains exactly one `fileIOConcurrency:w=1024` token. The patcher now explicitly allowlists only `16.4.3` and `16.4.5`, then still requires exactly one matching token before changing it to 16. Unsupported versions or bundle drift remain blocked. This avoids an unnecessary Next upgrade solely to satisfy the patcher guard.
+
+## Next NFT custom readFile semaphore fix — verified source parity
+
+The failed Next 16.4.3 build on this branch applied `fileIOConcurrency=16` but still peaked at 960 descriptors and failed during the App Router global-error copy. The matching Next 16.4.5 run on the PR #191 branch exposed the same bypass: Next supplies a custom `readFile` callback to `nodeFileTrace`, and NFT directly assigns it (`if(t.readFile)s.readFile=t.readFile`), bypassing the `CachedFileSystem.executeFileIO()` semaphore.
+
+The vendored NFT bundles for both Next 16.4.3 and 16.4.5 were inspected directly. Both contain exactly one `fileIOConcurrency:w=1024` token and exactly one identical custom-read hook. This branch's guarded patcher now wraps that callback through the existing semaphore while retaining the 16-operation cap. The patch remains exact-version allowlisted for 16.4.3/16.4.5, checks unique original tokens, verifies idempotent replacements, and fails closed on source drift.
+
+The next Cloudflare Build must prove that the descriptor peak is materially lower and that trace collection, standalone output, and OpenNext bundling complete. This remains a build-only change; Preview and Production deployment guards remain fail-closed.
