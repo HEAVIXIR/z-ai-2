@@ -20,7 +20,7 @@ export const DATA_SOURCES: DataSourceDef[] = [
   { key: 'listing.featured', label: 'آگهی‌های منتخب', apiPath: '/api/listings?sort=featured&limit={limit}', cacheTtl: 120, permissions: [] },
   { key: 'taxonomy.categories', label: 'دسته‌بندی‌های عمومی', apiPath: '/api/taxonomy/categories?root=true&layer=CATALOG', cacheTtl: 300, permissions: [] },
   { key: 'product.latest', label: 'آخرین محصولات', apiPath: '/api/admin/resources/products?pageSize=12', cacheTtl: 120, permissions: ['product.read'] },
-  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&featured=true&limit={limit}&sort=featured', cacheTtl: 300, permissions: [] },
+  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&active=true&featured=true&limit={limit}&sort=featured', cacheTtl: 300, permissions: [] },
   { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit={limit}', cacheTtl: 120, permissions: [] },
   { key: 'service.all', label: 'خدمات', apiPath: '/api/services?featured=1&limit={limit}', cacheTtl: 600, permissions: [] },
   { key: 'stats.site', label: 'آمار سایت', apiPath: '/api/admin/site-stats', cacheTtl: 300, permissions: ['admin.dashboard.read'] },
