@@ -1,7 +1,7 @@
-import { PrismaClient, Prisma } from "@/lib/generated/worker-client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient, Prisma } from "@/lib/generated/worker-client/client";
+import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
 
-const SCHEMA_VERSION = "p3-cloudflare-prisma6-driver-adapter";
+const SCHEMA_VERSION = "p3-cloudflare-prisma6-ppg";
 
 type PrismaGlobal = typeof globalThis & {
   prismaWorker?: PrismaClient;
@@ -17,11 +17,8 @@ function requiredEnv(name: string): string {
 }
 
 function createWorkerPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({
+  const adapter = new PrismaPostgresAdapter({
     connectionString: requiredEnv("DATABASE_URL"),
-    max: 1,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 5_000,
   });
   return new PrismaClient({ adapter, log: ["error", "warn"] });
 }
@@ -35,4 +32,4 @@ globalForPrisma.prismaWorker ??= createWorkerPrismaClient();
 
 export const db: PrismaClient = globalForPrisma.prismaWorker;
 export { Prisma };
-export type { Article } from "@/lib/generated/worker-client";
+export type { Article } from "@/lib/generated/worker-client/client";

@@ -1,7 +1,7 @@
-import { PrismaClient } from "@/lib/generated/store-worker-client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/lib/generated/store-worker-client/client";
+import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
 
-const SCHEMA_VERSION = "p3-cloudflare-store-prisma6-driver-adapter";
+const SCHEMA_VERSION = "p3-cloudflare-store-prisma6-ppg";
 
 type StorePrismaGlobal = typeof globalThis & {
   storeDbWorker?: PrismaClient;
@@ -17,11 +17,8 @@ function requiredEnv(name: string): string {
 }
 
 function createWorkerStorePrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({
+  const adapter = new PrismaPostgresAdapter({
     connectionString: requiredEnv("STORE_DATABASE_URL"),
-    max: 1,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 5_000,
   });
   return new PrismaClient({ adapter, log: ["error", "warn"] });
 }
