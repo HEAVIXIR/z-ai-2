@@ -499,9 +499,24 @@ describe('Page Builder — Widget + Data Source Registry', () => {
     expect(ds!.apiPath).not.toContain('SELECT');
   });
 
-  it('data sources should have permissions', () => {
-    const ds = getDataSource('listing.latest');
-    expect(ds!.permissions).toContain('listing.read');
+  it('public data sources should not require authenticated permissions', () => {
+    for (const key of [
+      'listing.latest',
+      'listing.featured',
+      'taxonomy.categories',
+      'brand.popular',
+      'article.latest',
+      'service.all',
+    ]) {
+      const ds = getDataSource(key);
+      expect(ds, `missing data source: ${key}`).toBeDefined();
+      expect(ds!.permissions, `${key} must remain public`).toEqual([]);
+    }
+  });
+
+  it('admin-only data sources must retain explicit permissions', () => {
+    expect(getDataSource('product.latest')!.permissions).toContain('product.read');
+    expect(getDataSource('stats.site')!.permissions).toContain('admin.dashboard.read');
   });
 
   it('widgets with data source should have defaultDataSource', () => {
