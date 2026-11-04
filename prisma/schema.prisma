@@ -6,9 +6,10 @@ generator client {
 }
 
 generator workerClient {
-  provider   = "prisma-client-js"
+  provider   = "prisma-client"
   output     = "../src/lib/generated/worker-client"
   engineType = "client"
+  runtime    = "workerd"
 }
 
 datasource db {
