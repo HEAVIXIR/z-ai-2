@@ -82,4 +82,12 @@ describe("public homepage renderer contracts", () => {
     expect(homepageDataSources).not.toContain("site-stats");
     expect(defaultLayoutSource).not.toContain('key: "stats"');
   });
+  it("keeps category GET read-only and invalidates homepage cache only after writes", () => {
+    const source = readFileSync(path.join(root, "src/app/api/taxonomy/categories/route.ts"), "utf8");
+    const getBody = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function POST"));
+    const postBody = source.slice(source.indexOf("export async function POST"));
+    expect(getBody).not.toContain("revalidateTag(");
+    expect(postBody).toContain("revalidateTag(HOMEPAGE_CACHE_TAGS.categories");
+  });
+
 });
