@@ -82,3 +82,8 @@ The preview build environment currently contains no `DATABASE_URL` or `STORE_DAT
 
 A successful adapter build is **not** proof of runtime compatibility and is not
 a production release approval.
+
+
+## Pinned Cloudflare build toolchain
+
+The Cloudflare adapter and Wrangler CLI are pinned in `package.json` to the exact versions used by the successful OpenNext build command: `@opennextjs/cloudflare@1.20.14` and `wrangler@4.156.0`. The `build:cloudflare` script runs that local, lockfile-resolved adapter directly with `--noMinify`; it does not dynamically install a second toolchain during the build. Bun is pinned to `1.4.4` in `packageManager` and in the Cloudflare Build environment.

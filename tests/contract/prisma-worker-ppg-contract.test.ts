@@ -80,5 +80,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(pkg.dependencies["@prisma/adapter-pg"]).toBe("6.19.3");
     expect(pkg.dependencies["@prisma/adapter-ppg"]).toBe("7.10.1");
     expect(pkg.dependencies["@prisma/ppg"]).toBe("1.0.1");
+    expect(pkg.devDependencies["@opennextjs/cloudflare"]).toBe("1.20.14");
+    expect(pkg.devDependencies.wrangler).toBe("4.156.0");
+    expect(pkg.scripts["build:cloudflare"]).toContain("--noMinify");
   });
 });
