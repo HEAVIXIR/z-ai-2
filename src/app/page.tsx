@@ -19,7 +19,6 @@ export const dynamic = "force-dynamic";
 const DEFAULT_HOME_LAYOUT = {
   sections: [
     {
-      title: "Hero",
       rows: [{
         widgets: [{
           key: "hero",
@@ -49,7 +48,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Search",
       rows: [{
         widgets: [{
           key: "search-box",
@@ -61,31 +59,76 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Featured Listings",
       rows: [{
         widgets: [{
           key: "listing-grid",
-          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4" },
+          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4", showPrice: true, showLocation: true },
           dataSource: "listing.featured",
         }],
       }],
     },
     {
-      title: "Categories",
+      rows: [{
+        widgets: [{
+          key: "listing-grid",
+          props: { title: "آخرین آگهی‌ها", limit: 8, columns: "4", showPrice: true, showLocation: true },
+          dataSource: "listing.latest",
+        }],
+      }],
+    },
+    {
       rows: [{
         widgets: [{
           key: "category-grid",
-          props: { title: "دسته‌بندی‌ها", limit: 12, columns: "4" },
+          props: { title: "دسته‌بندی ماشین‌آلات", limit: 12, columns: "4" },
           dataSource: "taxonomy.categories",
         }],
       }],
     },
     {
-      title: "Trust",
+      rows: [{
+        widgets: [{
+          key: "brand-grid",
+          props: { title: "برندهای معتبر", limit: 12, columns: "4" },
+          dataSource: "brand.popular",
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "service-grid",
+          props: { title: "خدمات تخصصی هویکس", limit: 8, columns: "4" },
+          dataSource: "service.all",
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "article-list",
+          props: { title: "دانش و راهنمای بازار", limit: 6 },
+          dataSource: "article.latest",
+        }],
+      }],
+    },
+    {
       rows: [{
         widgets: [{
           key: "trust-badges",
           props: { title: "چرا هویکس؟" },
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "cta",
+          props: {
+            title: "ماشین‌آلات خود را هوشمندانه معامله کنید",
+            buttonText: "ثبت آگهی رایگان",
+            buttonLink: "/listings/new",
+          },
         }],
       }],
     },
