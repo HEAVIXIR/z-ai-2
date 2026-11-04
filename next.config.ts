@@ -103,9 +103,14 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
-    // F-013: build MUST fail on type errors. Was previously `true` which masked
-    // security-relevant type mismatches at build time.
+    // F-013: build MUST fail on type errors.
     ignoreBuildErrors: false,
+    // Cloudflare Workers Builds set HEAVIX_ENV=preview; select workerd clients
+    // only for that build target. Vercel/Node builds retain Node clients.
+    tsconfigPath:
+      process.env.HEAVIX_ENV?.toLowerCase() === "preview"
+        ? "tsconfig.worker.json"
+        : "tsconfig.json",
   },
   reactStrictMode: false,
   allowedDevOrigins: [

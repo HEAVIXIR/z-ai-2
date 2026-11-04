@@ -8,6 +8,14 @@ generator client {
   output   = "../../src/lib/generated/store-client"
 }
 
+// Cloudflare Workers-only Store client; the default client above remains Node-only.
+generator workerClient {
+  provider   = "prisma-client"
+  output     = "../../src/lib/generated/store-worker-client"
+  runtime    = "workerd"
+  engineType = "client"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("STORE_DATABASE_URL")
