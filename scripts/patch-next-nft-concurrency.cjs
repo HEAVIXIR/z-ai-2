@@ -17,7 +17,7 @@ if (nextVersion !== expectedNextVersion) {
 
 const source = fs.readFileSync(nftPath, "utf8");
 const needle = "fileIOConcurrency:w=1024";
-const replacement = `fileIOConcurrency:w=${targetConcurrency}`;
+const replacement = "fileIOConcurrency:w=64";
 const occurrences = source.split(needle).length - 1;
 
 if (occurrences === 1) {
