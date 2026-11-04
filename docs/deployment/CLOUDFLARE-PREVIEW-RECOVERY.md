@@ -227,3 +227,18 @@ The next build now invokes the same Next.js CLI through a thin Node diagnostic w
 PR #183's updated base branch has now completed the scoped dependency repair and Bun 1.4.4 lock refresh at `b1a99f07e8bf1fe048511a1dc71e32704512f06a`. This PR branch carries the same exact OpenNext/Wrangler pins and version-scoped overrides, and its lockfile contains the equivalent modern nested `minimatch@11.0.4` / `brace-expansion@5.0.12` resolutions alongside the additional Prisma Worker dependencies.
 
 The base synchronization also brings in the dedicated `tests/contract/cloudflare-modern-glob-overrides.test.ts` regression guard. The Worker adapter refresh workflow remains scoped to this PR's branch. This merge commit synchronizes source history; it is not a merge of either pull request into `main`.
+
+## Root cause confirmed — Next's vendored Node File Trace concurrency
+
+The descriptor sampler on Cloudflare Build `dc37cdba-e3c6-4f32-8601-d956a2dab6fd` measured the main Next process at 208 open descriptors before static generation, 277 during generation, 732 immediately after all 14 static pages, and exactly 1,024 while Next entered `Collecting build traces`. The fatal open was a server App Router `route.js`; child processes peaked at only 29 descriptors.
+
+Inspection of the exact Next.js 16.4.5 source shows `collect-build-traces.ts` imports `nodeFileTrace` from `next/dist/compiled/@vercel/nft`. The vendored `@vercel/nft` implementation defaults `fileIOConcurrency` to **1024**, and passes that value to its cached filesystem semaphore. This matches the observed hard limit exactly. The earlier `outputFileTracingExcludes` rules are applied after this trace operation and therefore cannot prevent this failure.
+
+A Cloudflare-build-only, version-guarded patcher now changes the vendored default from 1024 to 64 before the Next CLI starts. It:
+- Requires Next.js exactly `16.4.5`.
+- Resolves the exact vendored module used by Next's build trace.
+- Requires exactly one occurrence of `fileIOConcurrency:w=1024`.
+- Replaces it with `fileIOConcurrency:w=64`; if the expected source shape differs, it fails closed rather than silently building with the unsafe default.
+- Leaves the installed package manifest/lockfile and all non-Cloudflare build paths unchanged.
+
+The FD diagnostic wrapper remains enabled to verify the observed peak falls below the 1024 hard limit. A successful Next standalone build, OpenNext Worker bundle, and later real `workerd` tests are still required; this patch is not deployment approval.

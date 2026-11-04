@@ -127,5 +127,11 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(diagnostic).toContain("/proc");
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
     expect(diagnostic).toContain("next/dist/bin/next");
+    const patcher = read("scripts/patch-next-nft-concurrency.cjs");
+    expect(openNext).toContain("patch-next-nft-concurrency.cjs");
+    expect(patcher).toContain("next/dist/compiled/@vercel/nft");
+    expect(patcher).toContain("fileIOConcurrency:w=1024");
+    expect(patcher).toContain("fileIOConcurrency:w=64");
+    expect(patcher).toContain("16.4.5");
   });
 });
