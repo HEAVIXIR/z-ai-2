@@ -185,3 +185,9 @@ The Cloudflare-only Next configuration now caps `experimental.cpus` at 1 to redu
 Build `b474f8df-4ac9-4dca-853f-12ec1549af16` showed that `experimental.cpus: 1` is effective for static generation (14/14 pages completed with one worker) but does not prevent the final Next standalone-output copy from exhausting file descriptors. The build failed copying `.next/server/app/_global-error.html` to `.next/server/pages/500.html` with `EMFILE`.
 
 The Cloudflare-only OpenNext build command now attempts to raise the shell soft `RLIMIT_NOFILE` to 4096 and prints both soft and hard limits before invoking `next build --webpack`. This is diagnostic and fail-open only for the limit-setting operation; the build itself still fails normally if the platform limit cannot support Next's file-copy phase. Do not remove standalone output or suppress this error: OpenNext's Cloudflare adapter expects a standalone Next build.
+
+## Cloudflare build file-operation concurrency
+
+The Cloudflare Build shell reports `RLIMIT_NOFILE` soft=1024 and hard=1024; attempting to raise the soft limit to 4096 does not change the hard ceiling. The subsequent build still reached 14/14 static pages with one Next worker, then failed on a single `copyFile` with `EMFILE`.
+
+The next diagnostic keeps Next's Cloudflare-only worker count at 1, caps Webpack module parallelism at 4, and sets `UV_THREADPOOL_SIZE=1` before starting the Next process. The OpenNext build command continues to log the soft/hard file-descriptor limits. If this still fails, the Cloudflare Build hard limit is a platform constraint; do not suppress the error or remove the standalone output required by OpenNext.

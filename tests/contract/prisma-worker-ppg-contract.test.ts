@@ -42,10 +42,12 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
     expect(next).toContain("asyncWebAssembly: true");
+    expect(next).toContain("config.parallelism = 4");
     expect(next).toContain("cpus: 1");
     const openNext = read("open-next.config.ts");
     expect(openNext).toContain("ulimit -n 4096");
     expect(openNext).toContain("HEAVIX_NOFILE_SOFT");
+    expect(openNext).toContain("UV_THREADPOOL_SIZE=1");
   });
 
   it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {

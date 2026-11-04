@@ -123,6 +123,7 @@ const nextConfig: NextConfig = {
           },
         },
         webpack(config) {
+          config.parallelism = 4;
           config.experiments = {
             ...config.experiments,
             asyncWebAssembly: true,
