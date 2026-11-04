@@ -89,5 +89,9 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(pkg.overrides["minimatch@^10.2.2"]).toBe("11.0.4");
     expect(pkg.overrides["minimatch@^11.0.2"]).toBe("11.0.4");
     expect(pkg.overrides.glob).toBeUndefined();
+    const lock = read("bun.lock");
+    expect(lock).toContain('"minimatch": ["minimatch@3.1.5"');
+    expect(lock).toContain('"@node-minify/core/glob/minimatch": ["minimatch@11.0.4"');
+    expect(lock).toContain('"glob/minimatch": ["minimatch@11.0.4"');
   });
 });
