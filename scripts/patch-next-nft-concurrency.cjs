@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const expectedNextVersion = "16.4.5";
-const targetConcurrency = 64;
+const targetConcurrency = 16;
 const nftPath = require.resolve("next/dist/compiled/@vercel/nft");
 const nextPackagePath = path.resolve(path.dirname(nftPath), "../../../../package.json");
 const nextVersion = JSON.parse(fs.readFileSync(nextPackagePath, "utf8")).version;
@@ -17,7 +17,7 @@ if (nextVersion !== expectedNextVersion) {
 
 const source = fs.readFileSync(nftPath, "utf8");
 const needle = "fileIOConcurrency:w=1024";
-const replacement = "fileIOConcurrency:w=64";
+const replacement = "fileIOConcurrency:w=16";
 const occurrences = source.split(needle).length - 1;
 
 if (occurrences === 1) {

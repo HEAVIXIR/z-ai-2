@@ -242,3 +242,14 @@ A Cloudflare-build-only, version-guarded patcher now changes the vendored defaul
 - Leaves the installed package manifest/lockfile and all non-Cloudflare build paths unchanged.
 
 The FD diagnostic wrapper remains enabled to verify the observed peak falls below the 1024 hard limit. A successful Next standalone build, OpenNext Worker bundle, and later real `workerd` tests are still required; this patch is not deployment approval.
+
+## NFT trace concurrency retest — 64 is insufficient
+
+Cloudflare Build `6b681988-3ed3-4c94-a6a6-875e291e3c43` proved the `fileIOConcurrency=64` patch was applied and allowed:
+- Webpack compilation to pass (62s).
+- Worker TypeScript to pass (46s).
+- All 14 static pages to generate successfully.
+
+However, the descriptor sampler measured a main-process peak of 954 (down from 1,024) and the build still failed during the final standalone `copyfile` operation. The 64-operation cap therefore reduces but does not eliminate descriptor pressure under the 1,024 hard limit.
+
+The guarded patch target is now reduced from 64 to **16**. The same exact-version and exact-token checks remain in force; FD sampling remains enabled. The next build must prove a materially lower peak and complete standalone/OpenNext output before this is accepted.
