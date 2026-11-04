@@ -25,7 +25,7 @@ import {
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
 import { logAudit } from "@/lib/audit";
-import { SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
 
 /* STEP 13.00: SITE_BASE_URL / SITE_NAME now imported from the single
    source of truth (@/lib/site-config). The previous local fallback
@@ -197,6 +197,11 @@ function xmlEscape(s: string): string {
  *   sitemapChangeFreq) — entities with robotsIndex=false are omitted.
  */
 export async function generateSitemap(): Promise<string> {
+  if (IS_PREVIEW_DEPLOYMENT) {
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+  }
+
   const entries: SitemapUrlEntry[] = [];
 
   // Static pages
@@ -321,8 +326,7 @@ export async function generateSitemap(): Promise<string> {
  * /api/robots-txt or any other future consumer) can serve it.
  */
 export function getRobotsTxt(): string {
-  const sitemapUrl = absoluteUrl("/sitemap.xml");
-  return [
+  const lines = [
     "User-agent: *",
     "Allow: /",
     "Disallow: /admin/",
@@ -333,9 +337,12 @@ export function getRobotsTxt(): string {
     "Disallow: /register",
     "",
     `Host: ${SITE_BASE_URL}`,
-    `Sitemap: ${sitemapUrl}`,
-    "",
-  ].join("\n");
+  ];
+  if (!IS_PREVIEW_DEPLOYMENT) {
+    lines.push(`Sitemap: ${absoluteUrl("/sitemap.xml")}`);
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 /* ── helpers ──────────────────────────────────────────────── */
