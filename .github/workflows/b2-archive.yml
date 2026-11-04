@@ -120,8 +120,6 @@ jobs:
 
       - name: Build integrity manifest
         shell: bash
-        env:
-          LEGACY_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/heavix-archive"
