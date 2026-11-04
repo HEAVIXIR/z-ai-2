@@ -1,8 +1,4 @@
-type WidgetDataUrlEnvironment = {
-  NEXT_PUBLIC_BASE_URL?: string;
-  VERCEL_URL?: string;
-  NEXT_PUBLIC_SITE_URL?: string;
-};
+type WidgetDataUrlEnvironment = Record<string, string | undefined>;
 
 function toHttpOrigin(value: string | undefined): string | null {
   if (!value?.trim()) return null;
