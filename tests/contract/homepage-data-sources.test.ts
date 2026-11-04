@@ -36,7 +36,7 @@ describe("public homepage renderer contracts", () => {
 
   it("uses the supported featured-first public listing query", () => {
     const source = getDataSource("listing.featured");
-    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit={limit}");
+    expect(source?.apiPath).toBe("/api/listings?featuredOnly=true&sort=featured&limit={limit}");
     expect(source?.permissions).toEqual([]);
   });
 
