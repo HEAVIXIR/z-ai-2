@@ -93,8 +93,13 @@ The non-production Cloudflare Workers Build trigger now runs `bun run build:clou
 
 ## Scoped glob/minimatch compatibility and security override
 
-The pinned OpenNext toolchain currently brings `glob@10.3.3` through `@node-minify/core@9.0.2` and `glob@13.0.6` through `@opennextjs/cloudflare@1.20.14`. The repository's root `minimatch@^3.1.5` override forces an incompatible API into those packages, producing the observed `GLOBSTAR` named-export build failure. Do not remove the root override to hide that failure.
+The Cloudflare build log proved the failure path: `@node-minify/core@9.0.2` loads `glob@10.3.3`, whose declared `minimatch` range is `^9.0.1`. A root-wide `minimatch@^3.1.5` override forced the old API into this package; `glob/dist/mjs/pattern.js` then failed to import the named export `GLOBSTAR`. The second toolchain path, `@opennextjs/cloudflare@1.20.14`, brings `glob@13.0.6` with a `minimatch@^10.2.2` dependency.
 
-Instead, the root package manifest scopes overrides to those two parents only: their `glob` child is pinned to `14.0.3`, and that glob's `minimatch` child to `11.0.4`. This keeps the legacy root minimatch resolution intact while using the fixed glob/minimatch line for OpenNext build tooling. The compatibility is provisional until the full OpenNext build and CI pass on the resulting lockfile.
+Do not fix this by deleting security overrides or by globally replacing every `glob` package with a different major. The package manifest now uses Bun version-scoped overrides:
+- `minimatch@^3.1.2` and `minimatch@^3.1.5` stay pinned to `3.1.5` for legacy consumers.
+- `minimatch@^9.0.1`, `minimatch@^10.2.2`, and `minimatch@^11.0.2` resolve to `11.0.4`, which provides the modern named API and is newer than the GHSA-g3hv-75wg-m249 fixed release `11.0.1`.
+- No global `glob` override remains; each consumer keeps its declared compatible glob major.
 
-References: [Bun nested overrides](https://bun.com/docs/pm/overrides), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), [glob 14.0.3](https://www.npmjs.com/package/glob/v/14.0.3).
+Bun `1.4.4` is pinned because version-scoped overrides require the lockfile v3 format. The branch's lock-refresh workflow regenerates `bun.lock` after this manifest change. Acceptance requires confirming the lockfile contains the intended distinct resolutions, then passing GitHub CI and a fresh Cloudflare Workers Build. Until then, this is a targeted dependency correction under verification, not a completed build fix.
+
+References: [Bun version-scoped overrides](https://bun.com/docs/pm/overrides), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).

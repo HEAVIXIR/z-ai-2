@@ -161,7 +161,6 @@
     "flatted": "^3.4.4",
     "js-cookie": "^3.0.8",
     "js-yaml": "^4.3.2",
-    "minimatch": "^3.1.5",
     "nanoid": "^3.3.20",
     "picomatch": "^4.0.7",
     "postcss": "^8.5.23",
@@ -171,7 +170,11 @@
     "micromatch": {
       "picomatch": "^2.3.2"
     },
-    "glob": "14.0.3"
+    "minimatch@^3.1.2": "3.1.5",
+    "minimatch@^3.1.5": "3.1.5",
+    "minimatch@^9.0.1": "11.0.4",
+    "minimatch@^10.2.2": "11.0.4",
+    "minimatch@^11.0.2": "11.0.4"
   },
   "trustedDependencies": [
     "@parcel/watcher",
