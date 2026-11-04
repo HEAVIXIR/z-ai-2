@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "heavix-preview",
   "main": ".open-next/worker.js",
-  // Keep the established preview runtime date pinned pending a separate compatibility review.
+  // Keep the established preview runtime date pinned. The second flag exposes Worker bindings/secrets to process.env for the Prisma 6 driver-adapter client.
   "compatibility_date": "2026-10-28",
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
   "assets": {
