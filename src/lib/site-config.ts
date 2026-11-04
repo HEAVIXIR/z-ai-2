@@ -54,7 +54,7 @@ export const SITE_BASE_URL: string = RAW_SITE_URL;
  * Cloudflare sets HEAVIX_ENV=preview; Vercel supplies VERCEL_ENV=preview.
  */
 export const IS_PREVIEW_DEPLOYMENT =
-  process.env.NODE_ENV !== "production" ||
+  process.env.NODE_ENV === "development" ||
   process.env.HEAVIX_ENV?.toLowerCase() === "preview" ||
   process.env.VERCEL_ENV?.toLowerCase() === "preview";
 

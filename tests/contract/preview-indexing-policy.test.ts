@@ -10,6 +10,7 @@ describe("preview indexing safety", () => {
     const config = read("src/lib/site-config.ts");
     expect(config).toMatch(/HEAVIX_ENV\?\.toLowerCase\(\) === "preview"/);
     expect(config).toMatch(/VERCEL_ENV\?\.toLowerCase\(\) === "preview"/);
+    expect(config).toMatch(/NODE_ENV === "development"/);
   });
 
   it("sets a global noindex response header for preview deployments", () => {
