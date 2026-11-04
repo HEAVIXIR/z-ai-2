@@ -118,3 +118,14 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(read(".github/workflows/ci.yml")).toContain("run: bun run typecheck:worker");
   });
 });
+
+describe("Cloudflare Next build descriptor diagnostics", () => {
+  it("samples the Next build process tree without changing build semantics", () => {
+    const openNext = read("open-next.config.ts");
+    const diagnostic = read("scripts/cloudflare-next-build-diagnostics.mjs");
+    expect(openNext).toContain("cloudflare-next-build-diagnostics.mjs");
+    expect(diagnostic).toContain("/proc");
+    expect(diagnostic).toContain("HEAVIX_FD_PEAK");
+    expect(diagnostic).toContain("next/dist/bin/next");
+  });
+});
