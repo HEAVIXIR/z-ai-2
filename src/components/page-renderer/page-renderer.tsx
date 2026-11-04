@@ -14,7 +14,7 @@ import { db } from '@/lib/db';
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
 import { extractWidgetData } from '@/lib/admin/page-builder/widget-data-response';
 import { can } from '@/lib/authorization';
-import { resolveWidgetDataBaseUrl } from '@/lib/admin/page-builder/widget-data-url';
+import { resolveWidgetDataBaseUrl, resolveWidgetDataPath } from '@/lib/admin/page-builder/widget-data-url';
 import HeroWidget from './widgets/hero-widget';
 import ListingGridWidget from './widgets/listing-grid-widget';
 import CategoryGridWidget from './widgets/category-grid-widget';
@@ -55,11 +55,8 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
   const ds = getDataSource(dataSourceKey);
   if (!ds) return null;
 
-  // Build API path, replacing {param} placeholders from widget props.
-  let apiPath = ds.apiPath;
-  for (const [k, v] of Object.entries(widget.props || {})) {
-    apiPath = apiPath.replace(`{${k}}`, String(v));
-  }
+  // Resolve registry placeholders with bounded limits and encoded values.
+  const apiPath = resolveWidgetDataPath(ds.apiPath, widget.props || {});
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
