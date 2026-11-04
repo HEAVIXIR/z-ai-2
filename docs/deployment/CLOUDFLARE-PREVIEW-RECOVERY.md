@@ -89,3 +89,12 @@ a production release approval.
 The Cloudflare adapter and Wrangler CLI are pinned in `package.json` to the exact versions used by the successful OpenNext build command: `@opennextjs/cloudflare@1.20.14` and `wrangler@4.156.0`. The `build:cloudflare` script runs that local, lockfile-resolved adapter directly with `--noMinify`; it does not dynamically install a second toolchain during the build. Bun is pinned to `1.4.4` in `packageManager` and in the Cloudflare Build environment.
 
 The non-production Cloudflare Workers Build trigger now runs `bun run build:cloudflare` directly from the pinned Bun lockfile. It no longer performs a second, non-lockfile `npm install` during the build. The trigger's deploy command remains the explicit no-op safety marker, so a successful build still cannot publish a Worker.
+
+
+## Scoped glob/minimatch compatibility and security override
+
+The pinned OpenNext toolchain currently brings `glob@10.3.3` through `@node-minify/core@9.0.2` and `glob@13.0.6` through `@opennextjs/cloudflare@1.20.14`. The repository's root `minimatch@^3.1.5` override forces an incompatible API into those packages, producing the observed `GLOBSTAR` named-export build failure. Do not remove the root override to hide that failure.
+
+Instead, the root package manifest scopes overrides to those two parents only: their `glob` child is pinned to `14.0.3`, and that glob's `minimatch` child to `11.0.4`. This keeps the legacy root minimatch resolution intact while using the fixed glob/minimatch line for OpenNext build tooling. The compatibility is provisional until the full OpenNext build and CI pass on the resulting lockfile.
+
+References: [Bun nested overrides](https://bun.com/docs/pm/overrides), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), [glob 14.0.3](https://www.npmjs.com/package/glob/v/14.0.3).
