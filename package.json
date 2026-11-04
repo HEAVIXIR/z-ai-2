@@ -171,18 +171,7 @@
     "micromatch": {
       "picomatch": "^2.3.2"
     },
-    "@node-minify/core": {
-      "glob": {
-        ".": "14.0.3",
-        "minimatch": "11.0.4"
-      }
-    },
-    "@opennextjs/cloudflare": {
-      "glob": {
-        ".": "14.0.3",
-        "minimatch": "11.0.4"
-      }
-    }
+    "glob": "14.0.3"
   },
   "trustedDependencies": [
     "@parcel/watcher",

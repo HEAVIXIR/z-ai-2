@@ -84,9 +84,6 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(pkg.devDependencies.wrangler).toBe("4.156.0");
     expect(pkg.scripts["build:cloudflare"]).toContain("--noMinify");
     expect(pkg.overrides.minimatch).toBe("^3.1.5");
-    expect(pkg.overrides["@node-minify/core"].glob["."]).toBe("14.0.3");
-    expect(pkg.overrides["@node-minify/core"].glob.minimatch).toBe("11.0.4");
-    expect(pkg.overrides["@opennextjs/cloudflare"].glob["."]).toBe("14.0.3");
-    expect(pkg.overrides["@opennextjs/cloudflare"].glob.minimatch).toBe("11.0.4");
+    expect(pkg.overrides.glob).toBe("14.0.3");
   });
 });
