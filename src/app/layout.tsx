@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import MobileNav from "@/components/layout/MobileNav";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 const VAZIRMATN_URL =
   "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
@@ -41,7 +41,9 @@ export const metadata: Metadata = {
     locale: "fa_IR",
     siteName: "هویکس",
   },
-  robots: { index: true, follow: true },
+  robots: IS_PREVIEW_DEPLOYMENT
+    ? { index: false, follow: false, noarchive: true }
+    : { index: true, follow: true },
 };
 
 export default function RootLayout({
