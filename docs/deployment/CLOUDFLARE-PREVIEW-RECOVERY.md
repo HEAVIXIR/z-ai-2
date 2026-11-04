@@ -45,6 +45,18 @@ The Page Builder also resolves the origin for its server-side data-source fetche
   static asset binding, using the existing Worker name and compatibility date.
 - `.open-next/` and `.wrangler/` are generated artifacts and are ignored by Git.
 
+## Production deployment guard
+
+The Cloudflare Workers Build configuration previously had `auto_build_enabled=true` on `main` and a production deploy command of `bunx opennextjs-cloudflare deploy`. That conflicted with HEAVIX's Docker-first production decision and could publish the experimental Worker on a future main-branch update.
+
+The production deploy command is now fail-closed:
+
+```bash
+echo HEAVIX_WORKERS_PRODUCTION_DEPLOY_BLOCKED_PENDING_ARCHITECTURE_AND_DATABASE_ISOLATION_PROOF
+```
+
+The production build command and automatic build setting remain unchanged; only deployment is blocked. `previews_enabled` remains false and the preview deploy command remains blocked. This is a control-plane safety change only; no Worker version was deployed.
+
 ## Database/runtime evidence still BLOCKED
 
 The successful build log also records four Prisma calls during static page generation that could not resolve `DATABASE_URL`:
