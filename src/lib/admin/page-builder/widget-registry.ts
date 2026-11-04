@@ -17,7 +17,7 @@ export interface DataSourceDef {
 
 export const DATA_SOURCES: DataSourceDef[] = [
   { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit=12&sort=newest', cacheTtl: 60, permissions: [] },
-  { key: 'listing.featured', label: 'آگهی‌های ویژه', apiPath: '/api/listings?featured=true&limit=8', cacheTtl: 120, permissions: [] },
+  { key: 'listing.featured', label: 'آگهی‌های منتخب', apiPath: '/api/listings?sort=featured&limit=8', cacheTtl: 120, permissions: [] },
   { key: 'taxonomy.categories', label: 'دسته‌بندی‌های عمومی', apiPath: '/api/taxonomy/categories?root=true&layer=CATALOG', cacheTtl: 300, permissions: [] },
   { key: 'product.latest', label: 'آخرین محصولات', apiPath: '/api/admin/resources/products?pageSize=12', cacheTtl: 120, permissions: ['product.read'] },
   { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&featured=true&limit=24&sort=featured', cacheTtl: 300, permissions: [] },
