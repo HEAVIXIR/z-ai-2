@@ -35,7 +35,7 @@ export default function BrandGridWidget({
             <Link
               key={brand.id || brand.slug || index}
               href={`/brands/${encodeURIComponent(brand.slug)}`}
-              className="flex min-h-24 items-center gap-3 rounded-xl border bg-white p-3 transition hover:border-[#F58220]/50 hover:shadow-sm"
+              className="flex min-h-24 items-center gap-3 rounded-xl border border-white/10 bg-[#141414] p-3 text-white transition hover:border-[#F58220]/50 hover:shadow-sm"
             >
               {brand.logoUrl ? (
                 <img
