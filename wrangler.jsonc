@@ -4,7 +4,7 @@
   "main": ".open-next/worker.js",
   // Keep the established preview runtime date pinned pending a separate compatibility review.
   "compatibility_date": "2026-10-28",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
