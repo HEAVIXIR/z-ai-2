@@ -96,3 +96,7 @@ public/uploads/articles/test-article-*.png
 # Cloudflare OpenNext generated output (never commit build artifacts)
 .open-next/
 .wrangler/
+
+# Generated Prisma workerd clients
+/src/lib/generated/worker-client/
+/src/lib/generated/store-worker-client/
