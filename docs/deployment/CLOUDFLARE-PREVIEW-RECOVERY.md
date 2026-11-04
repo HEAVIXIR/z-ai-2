@@ -144,3 +144,13 @@ secret values are copied into Git or this document.
 
 A successful adapter build is **not** proof of runtime compatibility and is not
 a production release approval.
+
+## Version-scoped glob dependency repair (PR #183)
+
+The Cloudflare build exposed two incompatible global overrides:
+- `minimatch@^3.1.5` forced the v3 API into modern `glob@10/13` consumers that require the v9/v10 API (`GLOBSTAR` export).
+- `brace-expansion@^1.1.21` forced the v1 API into modern `minimatch@11` consumers that require `brace-expansion@^5.0.12` (`expand` export).
+
+This branch now uses version-scoped overrides matching the dependency-declared ranges: legacy minimatch v3 and brace-expansion v1 remain pinned to patched versions; modern minimatch consumers resolve to 11.0.4 and modern brace-expansion consumers to 5.0.12. No global `glob` override is introduced.
+
+A dedicated Bun 1.4.4 lock-refresh workflow regenerates `bun.lock` after this package manifest change. The lockfile must be refreshed and exact-head CI rerun before this branch is considered dependency-clean. This repair does not imply a successful Cloudflare build or authorize deployment.
