@@ -111,6 +111,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   ...(isCloudflareBuild
     ? {
+        experimental: {
+          // Cloudflare Workers Builds have a constrained file-descriptor limit.
+          // Keep Next's static generation to one worker in this adapter-only path.
+          cpus: 1,
+        },
         turbopack: {
           resolveAlias: {
             "@/lib/db": "./src/lib/db.worker.ts",

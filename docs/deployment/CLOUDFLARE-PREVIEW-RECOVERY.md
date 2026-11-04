@@ -173,3 +173,9 @@ A controlled Cloudflare Build against commit `79917afc...` reached Next.js 16.4.
 The Cloudflare-only Next configuration enables `asyncWebAssembly` and the OpenNext `buildCommand` uses `bunx next build --webpack`. This does not alter the Node/Vercel build path. Acceptance remains blocked until a fresh Cloudflare Workers Build passes, including OpenNext bundling, and the Worker-specific typecheck passes.
 
 The blocking GitHub CI workflow now runs `bun run typecheck:worker` after generating both Prisma clients. Static source-contract assertions are supplementary and do not replace the compiler or real `workerd` tests.
+
+## Cloudflare build file-descriptor limit
+
+Cloudflare Build `974c0be4-8dac-4912-b413-b11bf16534a8` on commit `77b8e415...` passed Next.js 16.4.5 Webpack compilation (75s), Worker TypeScript (55s), and generation of all 14 static pages. It then failed while opening `.next/server/pages-manifest.json` with `EMFILE: too many open files`. The Next log showed seven static-generation workers.
+
+The Cloudflare-only Next configuration now caps `experimental.cpus` at 1 to reduce concurrent worker file descriptors. The Node/Vercel path is unchanged. The next Workers Build must verify manifest generation, OpenNext bundling, and the final artifact before this change is accepted.

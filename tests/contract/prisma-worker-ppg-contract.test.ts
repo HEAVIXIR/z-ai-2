@@ -42,6 +42,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
     expect(next).toContain("asyncWebAssembly: true");
+    expect(next).toContain("cpus: 1");
     const openNext = read("open-next.config.ts");
     expect(openNext).toContain('buildCommand: "bunx next build --webpack"');
   });
