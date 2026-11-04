@@ -19,6 +19,11 @@ describe("public footer navigation targets", () => {
   it("does not display unverified certification placeholders as trust badges", () => {
     expect(footer).not.toMatch(/اینماد|ساماندهی/);
   });
+  it("uses factual fallback copy and the current Persian calendar year", () => {
+    expect(footer).toContain("بازار تخصصی ماشین‌آلات سنگین ایران");
+    expect(footer).not.toContain("بزرگ‌ترین مارکت‌پلیس");
+    expect(footer).toContain("© ۱۴۰۵ HEAVIX");
+  });
 
   it("retains the real contact anchor", () => {
     expect(footer).toMatch(/id="contact"/);

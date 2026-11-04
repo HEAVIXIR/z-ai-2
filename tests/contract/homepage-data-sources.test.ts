@@ -82,6 +82,10 @@ describe("public homepage renderer contracts", () => {
     expect(homepageDataSources).not.toContain("site-stats");
     expect(defaultLayoutSource).not.toContain('key: "stats"');
   });
+  it("does not render an empty trust-badges section without verified badge data", () => {
+    expect(defaultLayoutSource).not.toContain('key: "trust-badges"');
+  });
+
   it("keeps category GET read-only and invalidates homepage cache only after writes", () => {
     const source = readFileSync(path.join(root, "src/app/api/taxonomy/categories/route.ts"), "utf8");
     const getBody = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function POST"));

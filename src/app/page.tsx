@@ -89,7 +89,7 @@ const DEFAULT_HOME_LAYOUT = {
       rows: [{
         widgets: [{
           key: "brand-grid",
-          props: { title: "برندهای معتبر", limit: 12, columns: "4" },
+          props: { title: "برندهای منتخب", limit: 12, columns: "4" },
           dataSource: "brand.popular",
         }],
       }],
@@ -109,14 +109,6 @@ const DEFAULT_HOME_LAYOUT = {
           key: "article-list",
           props: { title: "دانش و راهنمای بازار", limit: 6 },
           dataSource: "article.latest",
-        }],
-      }],
-    },
-    {
-      rows: [{
-        widgets: [{
-          key: "trust-badges",
-          props: { title: "چرا هویکس؟" },
         }],
       }],
     },
