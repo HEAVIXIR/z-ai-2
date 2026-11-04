@@ -277,3 +277,12 @@ The next guarded Cloudflare-only patch now makes two exact changes in the same v
 The patcher requires Next.js exactly 16.4.5, exactly one original concurrency token and exactly one original custom-read hook, and verifies both replacements for idempotency. Any version or source-shape drift fails closed. The regression contract checks both tokens. This is a source-derived correction to the actual unbounded path, not another speculative numeric reduction.
 
 The exact-head Build `19d8e78e-7ce3-49da-9117-7d2565ec845b` is the evidence for the 16-only failure: webpack 66s, TypeScript 58s, 14/14 static pages passed, then `EMFILE` at `.next/trace-build` and `.next/routes-manifest.json`; sampled peak was 1,010. The next build must prove a lower peak and complete trace collection, standalone output, and OpenNext bundling.
+
+
+## Next patcher version allowlist clarified
+
+The first PR #183 Cloudflare attempt failed closed because its lock resolves Next.js `16.4.3`, while the PR #191 branch resolves `16.4.5`. Inspection of both exact Next.js vendored NFT bundles confirms each contains exactly one `fileIOConcurrency:w=1024` token and the same custom `readFile` hook. The shared patcher now explicitly allowlists only `16.4.3` and `16.4.5`, then requires exactly one matching concurrency token and one custom-read hook before patching. Unsupported versions or bundle drift remain blocked. This avoids an unnecessary Next upgrade solely to satisfy the patcher guard.
+
+## Base synchronization note
+
+PR #191 now carries the latest PR #183 build-recovery base history through `f78800aa52c2a929a8625a48ae0b3c686ca4f695`, including the shared Next NFT patcher allowlist. This merge is branch synchronization only; neither PR was merged into `main`.
