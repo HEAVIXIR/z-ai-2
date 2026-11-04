@@ -44,7 +44,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain("asyncWebAssembly: true");
     expect(next).toContain("cpus: 1");
     const openNext = read("open-next.config.ts");
-    expect(openNext).toContain('buildCommand: "bunx next build --webpack"');
+    expect(openNext).toContain("ulimit -n 4096");
+    expect(openNext).toContain("HEAVIX_NOFILE_SOFT");
   });
 
   it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {

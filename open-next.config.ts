@@ -10,5 +10,5 @@ import { defineCloudflareConfig } from "@opennextjs/cloudflare";
  */
 export default {
   ...defineCloudflareConfig(),
-  buildCommand: "bunx next build --webpack",
+  buildCommand: 'ulimit -n 4096 2>/dev/null || true; echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"; bunx next build --webpack',
 };
