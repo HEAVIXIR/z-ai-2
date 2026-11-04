@@ -31,3 +31,32 @@ describe("Cloudflare modern glob dependency overrides", () => {
     expect(lock).toContain('"glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
   });
 });
+
+describe("CI Bun and lockfile compatibility", () => {
+  it("pins every CI Bun setup to the lockfile writer version", () => {
+    const ci = read(".github/workflows/ci.yml");
+    const setupCount = (ci.match(/uses: oven-sh\/setup-bun@v2/g) || []).length;
+    const pinCount = (ci.match(/bun-version: "1.4.4"/g) || []).length;
+    expect(setupCount).toBeGreaterThan(0);
+    expect(pinCount).toBe(setupCount);
+    expect(ci).not.toContain('bun-version: "1.3.14"');
+  });
+});
+
+describe("Cloudflare Next file-descriptor guard", () => {
+  it("applies the constrained build settings only to Cloudflare", () => {
+    const next = read("next.config.ts");
+    expect(next).toContain('process.env.HEAVIX_BUILD_TARGET === "cloudflare"');
+    expect(next).toContain("cpus: 1");
+    expect(next).toContain("config.parallelism = 4");
+    const openNext = read("open-next.config.ts");
+    expect(openNext).toContain("patch-next-nft-concurrency.cjs");
+    const patcher = read("scripts/patch-next-nft-concurrency.cjs");
+    expect(patcher).toContain("next/dist/compiled/@vercel/nft");
+    expect(patcher).toContain("fileIOConcurrency:w=1024");
+    expect(patcher).toContain("fileIOConcurrency:w=16");
+    expect(patcher).toContain("16.4.5");
+    const diagnostic = read("scripts/cloudflare-next-build-diagnostics.mjs");
+    expect(diagnostic).toContain("HEAVIX_FD_PEAK");
+  });
+});

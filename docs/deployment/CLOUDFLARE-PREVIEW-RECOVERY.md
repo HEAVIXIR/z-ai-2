@@ -253,3 +253,9 @@ Cloudflare Build `6b681988-3ed3-4c94-a6a6-875e291e3c43` proved the `fileIOConcur
 However, the descriptor sampler measured a main-process peak of 954 (down from 1,024) and the build still failed during the final standalone `copyfile` operation. The 64-operation cap therefore reduces but does not eliminate descriptor pressure under the 1,024 hard limit.
 
 The guarded patch target is now reduced from 64 to **16**. The same exact-version and exact-token checks remain in force; FD sampling remains enabled. The next build must prove a materially lower peak and complete standalone/OpenNext output before this is accepted.
+
+## Base branch synchronization — Bun and Cloudflare FD guards
+
+The PR #183 base branch now pins all six CI Bun setup steps to `1.4.4`, matching the lockfile writer. It also includes the same Cloudflare-only Next 16.4.5 vendored NFT patch (`fileIOConcurrency=16`) and FD sampling wrapper. This PR branch already carried Bun 1.4.4 and the PPG-specific Next settings; the synchronized contract test now verifies the shared dependency, toolchain, and Cloudflare FD guard invariants across both branches.
+
+The merge commit records base history only. PR #183 and PR #191 remain Draft/unmerged; no production branch or Worker deployment was changed.
