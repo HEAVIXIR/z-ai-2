@@ -55,7 +55,7 @@ describe("public homepage renderer contracts", () => {
 
   it("uses public-only, active and featured brands", () => {
     const source = getDataSource("brand.popular");
-    expect(source?.apiPath).toBe("/api/taxonomy/brands?status=ACTIVE&featured=true&limit={limit}&sort=featured");
+    expect(source?.apiPath).toBe("/api/taxonomy/brands?status=ACTIVE&active=true&featured=true&limit={limit}&sort=featured");
     expect(source?.permissions).toEqual([]);
     expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular");
     expect(getWidget("brand-grid")?.permissions).toEqual([]);
