@@ -16,6 +16,10 @@ describe("public footer navigation targets", () => {
     expect(existsSync(path.join(root, "src/app/sell-in-7-days/page.tsx"))).toBe(true);
   });
 
+  it("does not display unverified certification placeholders as trust badges", () => {
+    expect(footer).not.toMatch(/اینماد|ساماندهی/);
+  });
+
   it("retains the real contact anchor", () => {
     expect(footer).toMatch(/id="contact"/);
     expect(footer).toMatch(/href="\/\#contact"/);

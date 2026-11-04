@@ -111,15 +111,6 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
               {aboutText}
             </p>
 
-            {/* Trust badges */}
-            <div className="mt-7 flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[8px] font-bold text-white/35">
-                اینماد
-              </div>
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[8px] font-bold text-white/35">
-                ساماندهی
-              </div>
-            </div>
           </div>
 
           {/* Link columns */}
