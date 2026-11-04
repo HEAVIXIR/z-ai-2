@@ -16,13 +16,13 @@ export interface DataSourceDef {
 }
 
 export const DATA_SOURCES: DataSourceDef[] = [
-  { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit=12&sort=newest', cacheTtl: 60, permissions: [] },
-  { key: 'listing.featured', label: 'آگهی‌های منتخب', apiPath: '/api/listings?sort=featured&limit=8', cacheTtl: 120, permissions: [] },
+  { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit={limit}&sort=newest', cacheTtl: 60, permissions: [] },
+  { key: 'listing.featured', label: 'آگهی‌های منتخب', apiPath: '/api/listings?sort=featured&limit={limit}', cacheTtl: 120, permissions: [] },
   { key: 'taxonomy.categories', label: 'دسته‌بندی‌های عمومی', apiPath: '/api/taxonomy/categories?root=true&layer=CATALOG', cacheTtl: 300, permissions: [] },
   { key: 'product.latest', label: 'آخرین محصولات', apiPath: '/api/admin/resources/products?pageSize=12', cacheTtl: 120, permissions: ['product.read'] },
-  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&featured=true&limit=24&sort=featured', cacheTtl: 300, permissions: [] },
-  { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit=6', cacheTtl: 120, permissions: [] },
-  { key: 'service.all', label: 'خدمات', apiPath: '/api/services?featured=1&limit=12', cacheTtl: 600, permissions: [] },
+  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&featured=true&limit={limit}&sort=featured', cacheTtl: 300, permissions: [] },
+  { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit={limit}', cacheTtl: 120, permissions: [] },
+  { key: 'service.all', label: 'خدمات', apiPath: '/api/services?featured=1&limit={limit}', cacheTtl: 600, permissions: [] },
   { key: 'stats.site', label: 'آمار سایت', apiPath: '/api/admin/site-stats', cacheTtl: 300, permissions: ['admin.dashboard.read'] },
 ];
 
@@ -76,6 +76,8 @@ export const WIDGETS: WidgetDef[] = [
       {key:'title',label:'عنوان',type:'text'},
       {key:'columns',label:'ستون‌ها',type:'select',defaultValue:'4',options:[{value:'2',label:'۲'},{value:'3',label:'۳'},{value:'4',label:'۴'}]},
       {key:'limit',label:'حداکثر',type:'number',defaultValue:8},
+      {key:'showPrice',label:'نمایش قیمت',type:'boolean',defaultValue:true},
+      {key:'showLocation',label:'نمایش موقعیت',type:'boolean',defaultValue:true},
     ]},
   { key:'category-grid', label:'دسته‌بندی‌ها', category:'data', icon:'FolderGrid', description:'کارت دسته‌ها',
     hasDataSource:true, defaultDataSource:'taxonomy.categories', permissions:[],
