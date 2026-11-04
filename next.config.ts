@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 /**
@@ -96,6 +97,8 @@ const securityHeaders = [
   },
 ];
 
+const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
@@ -104,6 +107,24 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: false,
+  ...(isCloudflareBuild
+    ? {
+        turbopack: {
+          resolveAlias: {
+            "@/lib/db": "./src/lib/db.worker.ts",
+            "@/lib/store-db": "./src/lib/store-db.worker.ts",
+          },
+        },
+        webpack(config) {
+          config.resolve.alias = {
+            ...config.resolve.alias,
+            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+          };
+          return config;
+        },
+      }
+    : {}),
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",
