@@ -158,3 +158,12 @@ A dedicated Bun 1.4.4 lock-refresh workflow regenerates `bun.lock` after this pa
 ## Pin OpenNext adapter in the manifest
 
 The Cloudflare adapter and Wrangler are now declared as exact dev dependencies (`@opennextjs/cloudflare@1.20.14`, `wrangler@4.156.0`) rather than being installed opportunistically during the Cloudflare Build. This ensures the lockfile captures the adapter's transitive `glob` / `minimatch` / `brace-expansion` graph and makes the scoped override contract reproducible. The lock-refresh workflow will regenerate `bun.lock`; the contract test checks both the scoped manifest rules and the resulting nested lock paths.
+
+### Lockfile refresh verified — PR #183 branch
+
+Bun 1.4.4 lock refresh completed successfully at commit `c593a627decc168b16c95d2f93e043b8936d3495`. The resulting `bun.lock` contains the nested modern API resolutions required by the pinned Cloudflare adapter:
+- `@node-minify/core/glob/minimatch` and `glob/minimatch` resolve to `minimatch@11.0.4`.
+- Their nested `brace-expansion` entries resolve to `5.0.12`.
+- Legacy top-level consumers remain on `minimatch@3.1.5` and `brace-expansion@1.1.21`.
+
+The contract test now checks these lock paths as well as the manifest overrides. Exact-head CI and a Cloudflare Build on the refreshed lockfile are required before declaring the dependency recovery complete.
