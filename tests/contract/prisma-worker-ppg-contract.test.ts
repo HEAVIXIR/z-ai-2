@@ -39,6 +39,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(config.compilerOptions.paths["@/lib/generated/store-client"]).toEqual(["./src/lib/generated/store-worker-client/client.ts"]);
     const next = read("next.config.ts");
     expect(next).toContain('process.env.HEAVIX_ENV?.toLowerCase() === "preview"');
+    expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
   });
 

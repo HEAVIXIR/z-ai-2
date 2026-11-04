@@ -99,7 +99,8 @@ const securityHeaders = [
 
 const isCloudflareBuild =
   process.env.HEAVIX_BUILD_TARGET === "cloudflare" ||
-  process.env.HEAVIX_ENV?.toLowerCase() === "preview";
+  (process.env.HEAVIX_ENV?.toLowerCase() === "preview" &&
+    process.env.VERCEL !== "1");
 
 const nextConfig: NextConfig = {
   output: "standalone",
