@@ -173,3 +173,9 @@ The contract test now checks these lock paths as well as the manifest overrides.
 The exact-head CI run `41917522190` revealed that the workflow used Bun `1.3.14` while the dependency lockfile and lock-refresh workflow use Bun `1.4.4`. The log showed Bun 1.3.14 rejecting the lockfile as an unknown version, discarding it, resolving 4,570 packages again, and warning that it does not support nested overrides. The resulting install did not exercise the checked-in lockfile or its scoped dependency graph, and the lock-contract test failed because the generated lock differed.
 
 All six `oven-sh/setup-bun@v2` steps in this branch's CI workflow are now explicitly pinned to `1.4.4`. A contract test asserts that every setup-bun occurrence has the same version pin and rejects the old `1.3.14` value. This aligns CI with the lockfile refresh workflow and makes the dependency API contract reproducible.
+
+## Docker image Bun version aligned with CI and lockfile
+
+The `docker-build-proof` job on PR #183 failed because the Dockerfile still used `oven/bun:1.3.14-slim` in its builder/runtime stages. The build log showed `bun install --frozen-lockfile` failing with `Unknown lockfile version` against the Bun 1.4.4-generated lockfile. This is the same toolchain mismatch previously observed in the GitHub-hosted CI runner.
+
+Both Docker stages now use `oven/bun:1.4.4` / `oven/bun:1.4.4-slim`. Docker Hub's official `oven/bun` tag listing confirms the `1.4.4-slim` tag exists. A contract test checks both Docker tags and rejects the old 1.3.14 tag. This aligns CI, Docker, and lockfile refresh to Bun 1.4.4.
