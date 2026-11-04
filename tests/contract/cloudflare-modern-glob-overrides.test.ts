@@ -31,3 +31,14 @@ describe("Cloudflare modern glob dependency overrides", () => {
     expect(lock).toContain('"glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
   });
 });
+
+describe("CI Bun and lockfile compatibility", () => {
+  it("pins every CI Bun setup to the lockfile writer version", () => {
+    const ci = read(".github/workflows/ci.yml");
+    const setupCount = (ci.match(/uses: oven-sh\/setup-bun@v2/g) || []).length;
+    const pinCount = (ci.match(/bun-version: "1.4.4"/g) || []).length;
+    expect(setupCount).toBeGreaterThan(0);
+    expect(pinCount).toBe(setupCount);
+    expect(ci).not.toContain('bun-version: "1.3.14"');
+  });
+});
