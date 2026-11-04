@@ -32,3 +32,30 @@ export function resolveWidgetDataBaseUrl(
     fallback
   );
 }
+
+/**
+ * Resolve registry placeholders without allowing malformed widget props to
+ * inject query parameters or request unbounded collection sizes.
+ */
+export function resolveWidgetDataPath(
+  apiPath: string,
+  props: Record<string, unknown>,
+  maxLimit = 24,
+): string {
+  const rawLimit = props.limit;
+  const parsedLimit = typeof rawLimit === "number" ? rawLimit : Number(rawLimit);
+  const safeLimit = Number.isFinite(parsedLimit)
+    ? Math.min(maxLimit, Math.max(1, Math.floor(parsedLimit)))
+    : 8;
+
+  let resolved = apiPath;
+  for (const [key, value] of Object.entries(props)) {
+    if (value === null || value === undefined) continue;
+    const safeValue =
+      key === "limit"
+        ? String(safeLimit)
+        : encodeURIComponent(String(value).slice(0, 128));
+    resolved = resolved.replaceAll(`{${key}}`, safeValue);
+  }
+  return resolved;
+}
