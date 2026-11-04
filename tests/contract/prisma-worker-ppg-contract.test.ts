@@ -21,14 +21,14 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(main).toContain("createRequestScopedClientResolver");
     expect(main).not.toMatch(/globalThis\s*\.\s*\w+/);
     expect(main).not.toContain("@prisma/adapter-pg");
-    expect(main).toContain('requiredEnv("DATABASE_URL")');
+    expect(main).toContain('Missing Cloudflare Worker secret: DATABASE_URL');
     expect(store).toContain("@/lib/generated/store-worker-client/client");
     expect(store).toContain("@prisma/adapter-ppg");
     expect(store).toContain("getCloudflareContext");
     expect(store).toContain("createRequestScopedClientResolver");
     expect(store).not.toMatch(/globalThis\s*\.\s*\w+/);
     expect(store).not.toContain("@prisma/adapter-pg");
-    expect(store).toContain('requiredEnv("STORE_DATABASE_URL")');
+    expect(store).toContain('Missing Cloudflare Worker secret: STORE_DATABASE_URL');
   });
 
   it("selects Worker-only aliases and type resolution for Cloudflare", () => {
