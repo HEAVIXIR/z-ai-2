@@ -3,8 +3,7 @@ import { resolveWidgetDataBaseUrl, resolveWidgetDataPath } from "@/lib/admin/pag
 
 describe("resolveWidgetDataBaseUrl", () => {
   it("prefers the current Cloudflare branch Preview host over the stable build-time URL", () => {
-    // Bun's Fetch Headers may normalize or omit the forbidden "host" header.
-    // x-forwarded-host is the proxy header this resolver explicitly supports.
+    // Exercise the trusted proxy header, which the resolver checks before Host.
     const headers = new Headers({ "x-forwarded-host": "infra-prisma6-cloudflare-runtime-heavix-preview.heavixir.workers.dev", "x-forwarded-proto": "https" });
     expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" }, headers))
       .toBe("https://infra-prisma6-cloudflare-runtime-heavix-preview.heavixir.workers.dev");
