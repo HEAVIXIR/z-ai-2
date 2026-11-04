@@ -259,3 +259,7 @@ The guarded patch target is now reduced from 64 to **16**. The same exact-versio
 The PR #183 base branch now pins all six CI Bun setup steps to `1.4.4`, matching the lockfile writer. It also includes the same Cloudflare-only Next 16.4.5 vendored NFT patch (`fileIOConcurrency=16`) and FD sampling wrapper. This PR branch already carried Bun 1.4.4 and the PPG-specific Next settings; the synchronized contract test now verifies the shared dependency, toolchain, and Cloudflare FD guard invariants across both branches.
 
 The merge commit records base history only. PR #183 and PR #191 remain Draft/unmerged; no production branch or Worker deployment was changed.
+
+## Docker/CI Bun pin synchronization
+
+PR #183's Docker proof found one remaining toolchain mismatch: the Docker builder/runtime images were still `oven/bun:1.3.14`, so `bun install --frozen-lockfile` rejected the Bun 1.4.4 lockfile. Both Docker stages are now pinned to the published `oven/bun:1.4.4` and `oven/bun:1.4.4-slim` tags. This PR branch already carries those exact Docker tags and pins all CI Bun setup steps to 1.4.4. The synchronized dependency contract test now checks the Docker tags as well.

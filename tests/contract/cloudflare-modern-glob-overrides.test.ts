@@ -60,3 +60,12 @@ describe("Cloudflare Next file-descriptor guard", () => {
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
   });
 });
+
+describe("Docker Bun toolchain alignment", () => {
+  it("uses the same pinned Bun version as CI and the lockfile refresh", () => {
+    const dockerfile = read("Dockerfile");
+    expect(dockerfile).toContain("FROM oven/bun:1.4.4 AS builder");
+    expect(dockerfile).toContain("FROM oven/bun:1.4.4-slim AS runtime");
+    expect(dockerfile).not.toContain("oven/bun:1.3.14");
+  });
+});
