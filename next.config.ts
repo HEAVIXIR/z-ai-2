@@ -97,14 +97,15 @@ const securityHeaders = [
   },
 ];
 
-const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";
+const isCloudflareBuild =
+  process.env.HEAVIX_BUILD_TARGET === "cloudflare" ||
+  process.env.HEAVIX_ENV?.toLowerCase() === "preview";
 
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
-    // F-013: build MUST fail on type errors. Was previously `true` which masked
-    // security-relevant type mismatches at build time.
     ignoreBuildErrors: false,
+    tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
   ...(isCloudflareBuild
