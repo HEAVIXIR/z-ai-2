@@ -2,6 +2,7 @@
   "name": "heavix",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "bun@1.4.4",
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build",
