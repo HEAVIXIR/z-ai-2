@@ -9,7 +9,6 @@ type BrandItem = {
   nameEn?: string | null;
   country?: string | null;
   logoUrl?: string | null;
-  listingsCount?: number;
 };
 
 export default function BrandGridWidget({
@@ -28,7 +27,7 @@ export default function BrandGridWidget({
       {props.title && <h2 className="mb-4 text-center text-lg font-bold">{props.title}</h2>}
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground" role="status">
-          برندهای تأییدشده پس از تکمیل اطلاعات کاتالوگ نمایش داده می‌شوند.
+          برندهای فعال و منتخب پس از تکمیل کاتالوگ نمایش داده می‌شوند.
         </p>
       ) : (
         <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${columns}`}>
@@ -54,11 +53,6 @@ export default function BrandGridWidget({
               <span className="min-w-0">
                 <span className="block truncate text-sm font-bold">{brand.name}</span>
                 {brand.nameEn && <span className="block truncate text-xs text-muted-foreground" dir="ltr">{brand.nameEn}</span>}
-                {typeof brand.listingsCount === 'number' && (
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    {brand.listingsCount.toLocaleString('fa-IR')} آگهی
-                  </span>
-                )}
               </span>
             </Link>
           ))}
