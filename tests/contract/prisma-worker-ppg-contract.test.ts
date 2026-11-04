@@ -133,5 +133,6 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(patcher).toContain("fileIOConcurrency:w=1024");
     expect(patcher).toContain("fileIOConcurrency:w=64");
     expect(patcher).toContain("16.4.5");
+    expect(patcher).toContain("path.resolve(path.dirname(nftPath)");
   });
 });
