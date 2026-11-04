@@ -11,7 +11,7 @@ const nextVersion = JSON.parse(fs.readFileSync(nextPackagePath, "utf8")).version
 
 if (!expectedNextVersions.has(nextVersion)) {
   throw new Error(
-    `HEAVIX_NFT_PATCH_BLOCKED: expected Next.js ${expectedNextVersion}, found ${nextVersion}`
+    `HEAVIX_NFT_PATCH_BLOCKED: expected Next.js ${[...expectedNextVersions].join(" or ")}, found ${nextVersion}`
   );
 }
 
