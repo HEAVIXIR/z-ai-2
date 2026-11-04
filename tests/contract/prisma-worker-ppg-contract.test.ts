@@ -43,6 +43,31 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
   });
 
+  it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {
+    const nodeMain = read("src/lib/db.ts");
+    const nodeStore = read("src/lib/store-db.ts");
+    expect(nodeMain).toContain("require('@prisma/client')");
+    expect(nodeMain).not.toContain("@prisma/adapter-ppg");
+    expect(nodeMain).not.toContain("worker-client");
+    expect(nodeStore).toContain("@/lib/generated/store-client");
+    expect(nodeStore).not.toContain("@prisma/adapter-ppg");
+    expect(nodeStore).not.toContain("store-worker-client");
+  });
+
+  it("generates independent workerd clients without changing the Node generators", () => {
+    const main = read("prisma/schema.prisma");
+    const store = read("prisma/store/schema.prisma");
+    for (const schema of [main, store]) {
+      expect(schema).toContain('provider   = "prisma-client"');
+      expect(schema).toContain('engineType = "client"');
+      expect(schema).toContain('runtime    = "workerd"');
+    }
+    expect(main).toContain('output     = "../src/lib/generated/worker-client"');
+    expect(store).toContain('output     = "../../src/lib/generated/store-worker-client"');
+    expect(main).toContain('provider = "prisma-client-js"');
+    expect(store).toContain('provider = "prisma-client-js"');
+  });
+
   it("blocks native PostgreSQL scalar-list fields unsupported by PPG 7.10.1", () => {
     expect(scalarListFields(read("prisma/schema.prisma"))).toEqual([]);
     expect(scalarListFields(read("prisma/store/schema.prisma"))).toEqual([]);
