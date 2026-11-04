@@ -154,3 +154,7 @@ The Cloudflare build exposed two incompatible global overrides:
 This branch now uses version-scoped overrides matching the dependency-declared ranges: legacy minimatch v3 and brace-expansion v1 remain pinned to patched versions; modern minimatch consumers resolve to 11.0.4 and modern brace-expansion consumers to 5.0.12. No global `glob` override is introduced.
 
 A dedicated Bun 1.4.4 lock-refresh workflow regenerates `bun.lock` after this package manifest change. The lockfile must be refreshed and exact-head CI rerun before this branch is considered dependency-clean. This repair does not imply a successful Cloudflare build or authorize deployment.
+
+## Pin OpenNext adapter in the manifest
+
+The Cloudflare adapter and Wrangler are now declared as exact dev dependencies (`@opennextjs/cloudflare@1.20.14`, `wrangler@4.156.0`) rather than being installed opportunistically during the Cloudflare Build. This ensures the lockfile captures the adapter's transitive `glob` / `minimatch` / `brace-expansion` graph and makes the scoped override contract reproducible. The lock-refresh workflow will regenerate `bun.lock`; the contract test checks both the scoped manifest rules and the resulting nested lock paths.

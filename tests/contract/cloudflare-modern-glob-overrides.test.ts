@@ -22,5 +22,12 @@ describe("Cloudflare modern glob dependency overrides", () => {
     expect(pkg.overrides["brace-expansion@^1.1.7"]).toBe("1.1.21");
     expect(pkg.overrides["brace-expansion@^5.0.12"]).toBe("5.0.12");
     expect(pkg.overrides.glob).toBeUndefined();
+    expect(pkg.devDependencies["@opennextjs/cloudflare"]).toBe("1.20.14");
+    expect(pkg.devDependencies.wrangler).toBe("4.156.0");
+    const lock = read("bun.lock");
+    expect(lock).toContain('"@node-minify/core/glob/minimatch": ["minimatch@11.0.4"');
+    expect(lock).toContain('"glob/minimatch": ["minimatch@11.0.4"');
+    expect(lock).toContain('"@node-minify/core/glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
+    expect(lock).toContain('"glob/minimatch/brace-expansion": ["brace-expansion@5.0.12"');
   });
 });
