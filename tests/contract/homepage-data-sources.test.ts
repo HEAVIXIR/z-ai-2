@@ -36,13 +36,13 @@ describe("public homepage renderer contracts", () => {
 
   it("uses the supported featured-first public listing query", () => {
     const source = getDataSource("listing.featured");
-    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit=8");
+    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit={limit}");
     expect(source?.permissions).toEqual([]);
   });
 
   it("uses the newest-first public listing query", () => {
     const source = getDataSource("listing.latest");
-    expect(source?.apiPath).toBe("/api/listings?limit=12&sort=newest");
+    expect(source?.apiPath).toBe("/api/listings?limit={limit}&sort=newest");
     expect(source?.permissions).toEqual([]);
   });
 
@@ -55,16 +55,16 @@ describe("public homepage renderer contracts", () => {
 
   it("uses public-only, active and featured brands", () => {
     const source = getDataSource("brand.popular");
-    expect(source?.apiPath).toBe("/api/taxonomy/brands?status=ACTIVE&featured=true&limit=24&sort=featured");
+    expect(source?.apiPath).toBe("/api/taxonomy/brands?status=ACTIVE&featured=true&limit={limit}&sort=featured");
     expect(source?.permissions).toEqual([]);
     expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular");
     expect(getWidget("brand-grid")?.permissions).toEqual([]);
   });
 
   it("uses public active services and articles without admin permission gates", () => {
-    expect(getDataSource("service.all")?.apiPath).toBe("/api/services?featured=1&limit=12");
+    expect(getDataSource("service.all")?.apiPath).toBe("/api/services?featured=1&limit={limit}");
     expect(getDataSource("service.all")?.permissions).toEqual([]);
-    expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit=6");
+    expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit={limit}");
     expect(getDataSource("article.latest")?.permissions).toEqual([]);
     expect(getWidget("service-grid")?.defaultDataSource).toBe("service.all");
     expect(getWidget("service-grid")?.permissions).toEqual([]);
