@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveWidgetDataBaseUrl } from "@/lib/admin/page-builder/widget-data-url";
+import { resolveWidgetDataBaseUrl, resolveWidgetDataPath } from "@/lib/admin/page-builder/widget-data-url";
 
 describe("resolveWidgetDataBaseUrl", () => {
   it("prefers an explicit base URL", () => {
@@ -32,5 +32,32 @@ describe("resolveWidgetDataBaseUrl", () => {
       NEXT_PUBLIC_BASE_URL: "javascript:alert(1)",
       NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev",
     })).toBe("https://heavix-preview.heavixir.workers.dev");
+  });
+});
+
+describe("resolveWidgetDataPath", () => {
+  it("substitutes configured limits", () => {
+    expect(resolveWidgetDataPath("/api/listings?limit={limit}", { limit: 12 }))
+      .toBe("/api/listings?limit=12");
+  });
+
+  it("caps collection limits", () => {
+    expect(resolveWidgetDataPath("/api/brands?limit={limit}", { limit: 999 }))
+      .toBe("/api/brands?limit=24");
+  });
+
+  it("clamps negative limits to one", () => {
+    expect(resolveWidgetDataPath("/api/brands?limit={limit}", { limit: -4 }))
+      .toBe("/api/brands?limit=1");
+  });
+
+  it("uses a safe default for malformed limits rather than interpolating arbitrary query text", () => {
+    expect(resolveWidgetDataPath("/api/brands?limit={limit}", { limit: "1&status=all" }))
+      .toBe("/api/brands?limit=8");
+  });
+
+  it("URL-encodes non-limit values before substitution", () => {
+    expect(resolveWidgetDataPath("/api/search?q={query}", { query: "cat & dog" }))
+      .toBe("/api/search?q=cat%20%26%20dog");
   });
 });
