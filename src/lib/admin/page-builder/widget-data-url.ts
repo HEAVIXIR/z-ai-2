@@ -18,7 +18,7 @@ function requestOrigin(env: WidgetDataUrlEnvironment, requestHeaders?: RequestHe
   const rawHost = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   if (!rawHost) return null;
   const host = rawHost.split(",")[0].trim();
-  if (!host || /[\\s/@?#]/.test(host)) return null;
+  if (!host || /[\s/@?#]/.test(host)) return null;
   const rawProtocol = requestHeaders.get("x-forwarded-proto")?.split(",")[0].trim().toLowerCase();
   const protocol = rawProtocol || "https";
   if (protocol !== "http" && protocol !== "https") return null;
