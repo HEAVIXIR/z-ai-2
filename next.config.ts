@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -170,7 +171,17 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          ...(IS_PREVIEW_DEPLOYMENT
+            ? [
+                {
+                  key: "X-Robots-Tag",
+                  value: "noindex, nofollow, noarchive",
+                },
+              ]
+            : []),
+        ],
       },
     ];
   },

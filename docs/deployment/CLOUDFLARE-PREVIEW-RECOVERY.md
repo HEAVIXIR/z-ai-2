@@ -203,3 +203,15 @@ The Cloudflare-only configuration now narrows standalone output tracing:
 - Explicitly includes the Main and Store Worker `query_compiler_bg.wasm` assets.
 
 The OpenNext command retains the nofile soft/hard diagnostic and restores the default-size libuv thread pool (4). This is a targeted trace reduction experiment; a successful Next standalone build and OpenNext Worker bundle are required before acceptance. Node/Vercel tracing remains unchanged.
+
+## Preview crawler protection — CI regression repaired
+
+The exact-head CI run `41914626205` failed one of 1,912 contract/unit assertions: `tests/contract/preview-indexing-policy.test.ts` expected `X-Robots-Tag: noindex, nofollow, noarchive`, but `next.config.ts` did not emit that response header. The other 1,911 assertions passed; the independent phase, database, TLS, backup/restore, and runtime-contract jobs were green.
+
+The Next config now imports the canonical `IS_PREVIEW_DEPLOYMENT` flag from `src/lib/site-config.ts` and adds the global `X-Robots-Tag` header only for preview/development. Production retains the existing security header set without the preview noindex directive. The existing test remains strict; it was not weakened.
+
+## Current Cloudflare build limitation — nofile
+
+Cloudflare Build `3d9359c6-3cb1-49c1-b226-995a6eb9e561` compiled successfully (72s), completed TypeScript (51s), and generated all 14 static pages with one worker, but failed when Next attempted to open `.next/trace-build` and `.next/server/pages-manifest.json` with `EMFILE`. The build container reports both soft and hard `RLIMIT_NOFILE=1024`; raising the soft limit is not permitted.
+
+Important distinction: Next 16.4.5 applies `outputFileTracingIncludes/Excludes` after the Node File Trace operation has already run. Therefore these patterns can reduce the final standalone trace contents but cannot be assumed to fix the earlier `.next/trace-build` file-descriptor exhaustion. Do not treat trace exclusions or worker count as a proven fix. Next work must isolate the build trace file-descriptor pressure (or establish a Cloudflare Builds platform limitation) before further config changes. Keep standalone output and deployment gates unchanged.
