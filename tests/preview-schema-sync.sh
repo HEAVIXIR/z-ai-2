@@ -21,5 +21,11 @@ sed \
 # Normalize Main by removing only the extra Workerd generator block.
 sed '/^generator workerClient {/,/^}/d' "$ROOT/prisma/schema.prisma" > "$TMP_MAIN"
 
-diff -u "$TMP_MAIN" "$TMP_SCHEMA"
+# Ignore only repeated blank lines introduced when removing the generator;
+# all non-empty schema content and ordering remain strictly compared.
+normalize_blank_lines() {
+  awk 'NF { if (blank) print ""; print; blank=0; next } { blank=1 } END { if (blank) print "" }' "$1"
+}
+
+diff -u <(normalize_blank_lines "$TMP_MAIN") <(normalize_blank_lines "$TMP_SCHEMA")
 echo "Preview schema matches Main application models and Node client contract."
