@@ -28,13 +28,19 @@ Create these repository Actions secrets. Values must be entered in GitHub's secr
 | `B2_APPLICATION_KEY_ID` | Backblaze application key ID scoped to this bucket |
 | `B2_APPLICATION_KEY` | Backblaze application key secret |
 
-The B2 key should be restricted to `heavix-dev-assets` and only the operations needed to list/write/read archive objects. Do not reuse the account master key. The workflow never echoes secret values.
+The B2 key should be restricted to `heavix-dev-assets` and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step.
+
+## Pre-archive secret scanning
+
+Before any Git bundle is created or uploaded, the workflow downloads the pinned Gitleaks CLI release `8.30.1`, verifies its archive against the release-published SHA-256 checksum file, and scans the complete history of both repositories with redaction enabled. The CLI is used directly rather than the Gitleaks GitHub Action, avoiding that Action's separate organization-license requirement.
+
+Any detected finding fails the workflow before database dump/upload steps proceed. Do not add broad allowlists or silently suppress findings. Each result must be reviewed; confirmed exposed credentials must be rotated/revoked through their owning provider before the archive proceeds. A clean Gitleaks result reduces risk but is not proof that no secret exists.
 
 ## Run
 
 GitHub → `HEAVIXIR/z-ai-2` → Actions → **Backblaze B2 Archive** → Run workflow.
 
-The job fails closed if a required secret is missing, either DB URL is not PostgreSQL, a dump is empty, `pg_restore --list` cannot parse it, a Git bundle fails verification, local checksums fail, B2 cannot be reached, or a remote object size differs from its local file.
+The job fails closed if a required secret is missing, either DB URL is not PostgreSQL, the Gitleaks history scan fails, a dump is empty, `pg_restore --list` cannot parse it, a Git bundle fails verification, local checksums fail, B2 cannot be reached, or a remote object size differs from its local file.
 
 Object layout:
 
