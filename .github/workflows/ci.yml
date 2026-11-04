@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'infra/cloudflare-opennext-build-recovery']
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'infra/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
