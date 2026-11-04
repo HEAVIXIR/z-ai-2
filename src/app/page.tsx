@@ -171,7 +171,7 @@ export default async function HomePage() {
     logoHeight: settings.logoHeight,
     showPersianName: settings.showPersianName,
     logoPosition: settings.logoPosition,
-  } : undefined;
+  } : {};
   const footerSettings = settings ? {
     about: settings.about,
     phone: settings.phone,
