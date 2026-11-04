@@ -13,6 +13,7 @@
 import { db } from '@/lib/db';
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
 import { can } from '@/lib/authorization';
+import { resolveWidgetDataBaseUrl } from '@/lib/admin/page-builder/widget-data-url';
 import HeroWidget from './widgets/hero-widget';
 import ListingGridWidget from './widgets/listing-grid-widget';
 import CategoryGridWidget from './widgets/category-grid-widget';
@@ -57,13 +58,13 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
 
   // Fetch data (server-side fetch)
   try {
-    const deploymentHost = process.env.VERCEL_URL;
-    const base = process.env.NEXT_PUBLIC_BASE_URL || (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000');
-    const res = await fetch(`${base}${apiPath}`, { next: { revalidate: ds.cacheTtl || 60 } });
+    const base = resolveWidgetDataBaseUrl(process.env);
+    const res = await fetch(new URL(apiPath, base), { next: { revalidate: ds.cacheTtl || 60 } });
     if (!res.ok) return null;
     const json = await res.json();
     return json?.data?.items ?? json?.items ?? json?.categories ?? json?.data ?? null;
-  } catch {
+  } catch (error) {
+    console.error("[PageRenderer] Widget data fetch failed", { dataSourceKey, apiPath, error });
     return null;
   }
 }

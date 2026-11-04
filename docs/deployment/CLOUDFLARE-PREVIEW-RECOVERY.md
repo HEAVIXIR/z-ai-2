@@ -28,6 +28,8 @@ Those deployment guards are intentionally preserved.
 
 ## Configuration
 
+The Page Builder also resolves the origin for its server-side data-source fetches from `NEXT_PUBLIC_BASE_URL`, then Vercel's `VERCEL_URL`, then `NEXT_PUBLIC_SITE_URL`. This is required because Cloudflare Workers does not provide `VERCEL_URL`; without the Cloudflare preview URL fallback, homepage listing/category widgets attempted to fetch from `http://localhost:3000` and silently rendered empty. A pure unit test covers all resolution paths.
+
 - `open-next.config.ts` selects the Cloudflare OpenNext adapter with its
   default configuration. No unverified cache, queue, or R2 integration is
   enabled.
