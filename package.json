@@ -176,5 +176,6 @@
     "@swc/core",
     "es5-ext",
     "unrs-resolver"
-  ]
+  ],
+  "packageManager": "bun@1.4.4"
 }
