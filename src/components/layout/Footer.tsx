@@ -33,7 +33,7 @@ const LINK_COLUMNS: { title: string; links: { label: string; href: string }[] }[
     links: [
       { label: "خرید و فروش", href: "/listings" },
       { label: "اجاره دستگاه", href: "/listings?type=RENT" },
-      { label: "فروش در ۷ روز", href: "/#sell7" },
+      { label: "فروش در ۷ روز", href: "/sell-in-7-days" },
       { label: "قطعات یدکی", href: "/listings?category=spare-parts" },
       { label: "MEKANIX", href: "https://mekanix.ir" },
     ],
@@ -88,7 +88,7 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
       <div className="mx-auto max-w-[1440px] px-6 pb-14 pt-16 lg:px-10">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
           {/* Brand column */}
-          <div className="lg:col-span-4">
+          <div id="about" className="lg:col-span-4">
             <div className={`flex items-center ${logoAlignClass}`}>
               <img
                 src={heavixLogoSrc}
