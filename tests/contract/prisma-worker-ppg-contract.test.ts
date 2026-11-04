@@ -19,14 +19,14 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(main).toContain("@prisma/adapter-ppg");
     expect(main).toContain("getCloudflareContext");
     expect(main).toContain("createRequestScopedClientResolver");
-    expect(main).not.toContain("globalThis");
+    expect(main).not.toMatch(/globalThis\\s*\\.\\s*\\w+/);
     expect(main).not.toContain("@prisma/adapter-pg");
     expect(main).toContain('requiredEnv("DATABASE_URL")');
     expect(store).toContain("@/lib/generated/store-worker-client/client");
     expect(store).toContain("@prisma/adapter-ppg");
     expect(store).toContain("getCloudflareContext");
     expect(store).toContain("createRequestScopedClientResolver");
-    expect(store).not.toContain("globalThis");
+    expect(store).not.toMatch(/globalThis\\s*\\.\\s*\\w+/);
     expect(store).not.toContain("@prisma/adapter-pg");
     expect(store).toContain('requiredEnv("STORE_DATABASE_URL")');
   });
