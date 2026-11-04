@@ -16,13 +16,13 @@ export interface DataSourceDef {
 }
 
 export const DATA_SOURCES: DataSourceDef[] = [
-  { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit=12', cacheTtl: 60, permissions: ['listing.read'] },
+  { key: 'listing.latest', label: 'آخرین آگهی‌ها', apiPath: '/api/listings?limit=12&sort=newest', cacheTtl: 60, permissions: [] },
   { key: 'listing.featured', label: 'آگهی‌های ویژه', apiPath: '/api/listings?featured=true&limit=8', cacheTtl: 120, permissions: [] },
   { key: 'taxonomy.categories', label: 'دسته‌بندی‌های عمومی', apiPath: '/api/taxonomy/categories?root=true&layer=CATALOG', cacheTtl: 300, permissions: [] },
   { key: 'product.latest', label: 'آخرین محصولات', apiPath: '/api/admin/resources/products?pageSize=12', cacheTtl: 120, permissions: ['product.read'] },
-  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?limit=24', cacheTtl: 300, permissions: ['brand.read'] },
-  { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit=6', cacheTtl: 120, permissions: ['content.read'] },
-  { key: 'service.all', label: 'خدمات', apiPath: '/api/services?limit=50', cacheTtl: 600, permissions: ['content.read'] },
+  { key: 'brand.popular', label: 'برندهای محبوب', apiPath: '/api/taxonomy/brands?status=ACTIVE&featured=true&limit=24&sort=featured', cacheTtl: 300, permissions: [] },
+  { key: 'article.latest', label: 'آخرین مقالات', apiPath: '/api/articles?limit=6', cacheTtl: 120, permissions: [] },
+  { key: 'service.all', label: 'خدمات', apiPath: '/api/services?featured=1&limit=12', cacheTtl: 600, permissions: [] },
   { key: 'stats.site', label: 'آمار سایت', apiPath: '/api/admin/site-stats', cacheTtl: 300, permissions: ['admin.dashboard.read'] },
 ];
 
@@ -81,6 +81,22 @@ export const WIDGETS: WidgetDef[] = [
     hasDataSource:true, defaultDataSource:'taxonomy.categories', permissions:[],
     defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:4},mobile:{w:12,h:6}},
     propsSchema:[{key:'title',label:'عنوان',type:'text'},{key:'columns',label:'ستون',type:'select',defaultValue:'4',options:[{value:'3',label:'۳'},{value:'4',label:'۴'}]}]},
+  { key:'brand-grid', label:'شبکه برندها', category:'data', icon:'Factory', description:'برندهای فعال و منتخب',
+    hasDataSource:true, defaultDataSource:'brand.popular', permissions:[],
+    defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:4},mobile:{w:12,h:6}},
+    propsSchema:[
+      {key:'title',label:'عنوان',type:'text'},
+      {key:'limit',label:'حداکثر',type:'number',defaultValue:12},
+      {key:'columns',label:'ستون‌ها',type:'select',defaultValue:'4',options:[{value:'3',label:'۳'},{value:'4',label:'۴'}]},
+    ]},
+  { key:'service-grid', label:'شبکه خدمات', category:'data', icon:'Wrench', description:'خدمات عمومی هویکس',
+    hasDataSource:true, defaultDataSource:'service.all', permissions:[],
+    defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:4},mobile:{w:12,h:6}},
+    propsSchema:[
+      {key:'title',label:'عنوان',type:'text'},
+      {key:'limit',label:'حداکثر',type:'number',defaultValue:8},
+      {key:'columns',label:'ستون‌ها',type:'select',defaultValue:'4',options:[{value:'3',label:'۳'},{value:'4',label:'۴'}]},
+    ]},
   { key:'search-box', label:'جستجو', category:'navigation', icon:'Search', description:'باکس جستجو', isSystem:true,
     defaultSize:{desktop:{w:12,h:1},tablet:{w:12,h:1},mobile:{w:12,h:2}},
     propsSchema:[{key:'placeholder',label:'راهنما',type:'text',defaultValue:'جستجو...'},{key:'showFilters',label:'فیلتر',type:'boolean',defaultValue:true}]},
@@ -98,7 +114,7 @@ export const WIDGETS: WidgetDef[] = [
     defaultSize:{desktop:{w:12,h:2},tablet:{w:12,h:2},mobile:{w:12,h:3}},
     propsSchema:[{key:'title',label:'عنوان',type:'text'}]},
   { key:'article-list', label:'مقالات', category:'data', icon:'Newspaper', description:'آخرین مقالات',
-    hasDataSource:true, defaultDataSource:'article.latest', permissions:['content.read'],
+    hasDataSource:true, defaultDataSource:'article.latest', permissions:[],
     defaultSize:{desktop:{w:12,h:3},tablet:{w:12,h:3},mobile:{w:12,h:4}},
     propsSchema:[{key:'title',label:'عنوان',type:'text'},{key:'limit',label:'تعداد',type:'number',defaultValue:6}]},
   { key:'trust-badges', label:'نشان‌های اعتماد', category:'content', icon:'ShieldCheck', description:'نشان‌ها',
