@@ -15,5 +15,10 @@ sed \
   -e 's/url      = env("PREVIEW_DATABASE_URL")/url      = env("DATABASE_URL")/' \
   "$ROOT/prisma/preview-schema.prisma" > "$TMP_SCHEMA"
 
+# The Worker-only generated client is intentionally absent from the SQLite
+# development schema; strip only that generator before comparing the shared
+# application models and the Node client contract.
+sed -i '/^generator workerClient {/,/^}/d' "$TMP_SCHEMA"
+
 diff -u "$ROOT/prisma/schema.prisma" "$TMP_SCHEMA"
 echo "Preview schema matches Main schema (only datasource/client-output differences)."

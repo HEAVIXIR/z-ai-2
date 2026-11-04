@@ -55,13 +55,13 @@ export function createRequestScopedPrismaProxy<TClient extends object>(
               if (method === "then") return undefined;
               if (method === "fields") {
                 const client = getClient();
-                const modelDelegate = Reflect.get(client, property, client);
+                const modelDelegate = Reflect.get(client, property, client) as object;
                 return Reflect.get(modelDelegate, method, modelDelegate);
               }
 
               return (...args: unknown[]) => {
                 const client = getClient();
-                const modelDelegate = Reflect.get(client, property, client);
+                const modelDelegate = Reflect.get(client, property, client) as object;
                 const member = Reflect.get(modelDelegate, method, modelDelegate);
                 if (typeof member !== "function") return member;
                 return Reflect.apply(member, modelDelegate, args);
