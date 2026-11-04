@@ -221,3 +221,9 @@ Important distinction: Next 16.4.5 applies `outputFileTracingIncludes/Excludes` 
 Three consecutive Cloudflare builds reached the same Next.js finalization failure under a hard/soft descriptor limit of 1024. The observed errors include an attempted write of `.next/trace-build` (Next's diagnostic trace reporter catches/logs its own write error) followed by a fatal open of `.next/server/pages-manifest.json`. Build compilation, TypeScript, and all 14 static pages had already succeeded.
 
 The next build now invokes the same Next.js CLI through a thin Node diagnostic wrapper. It samples the Next process and descendant process descriptor counts from `/proc/<pid>/fd`, records per-process peaks, and prints `HEAVIX_FD_PEAK` at exit. It does not raise limits, change Next configuration, suppress errors, remove standalone output, or deploy anything. This will distinguish a real process-local descriptor exhaustion from an unrelated Cloudflare build-environment issue before another mitigation is selected.
+
+## PR #183 base dependency-lock synchronization
+
+PR #183's updated base branch has now completed the scoped dependency repair and Bun 1.4.4 lock refresh at `b1a99f07e8bf1fe048511a1dc71e32704512f06a`. This PR branch carries the same exact OpenNext/Wrangler pins and version-scoped overrides, and its lockfile contains the equivalent modern nested `minimatch@11.0.4` / `brace-expansion@5.0.12` resolutions alongside the additional Prisma Worker dependencies.
+
+The base synchronization also brings in the dedicated `tests/contract/cloudflare-modern-glob-overrides.test.ts` regression guard. The Worker adapter refresh workflow remains scoped to this PR's branch. This merge commit synchronizes source history; it is not a merge of either pull request into `main`.
