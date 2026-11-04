@@ -82,3 +82,10 @@ The preview build environment currently contains no `DATABASE_URL` or `STORE_DAT
 
 A successful adapter build is **not** proof of runtime compatibility and is not
 a production release approval.
+
+
+## Branch Preview isolation
+
+The Page Builder now derives its same-origin API base from the current request host when it matches the HEAVIX Workers Preview, HEAVIX site, configured Vercel deployment, or local development host. This is required for branch-specific Workers Preview URLs: a build-time `NEXT_PUBLIC_SITE_URL` points at the stable preview Worker and would otherwise make a branch Preview fetch data from the wrong Worker.
+
+The Wrangler configuration declares a dedicated `previews` block with Preview-only `HEAVIX_ENV=preview`, `NODE_ENV=production`, and full Preview observability. The two database secret names are declared as required; values are not committed. Cloudflare Preview secrets must be provisioned separately and must point only to the new App Preview and Store Preview databases. Production settings, bindings, and DNS remain untouched. Preview deployments remain disabled until the Preview Base secrets and access policy are verified.
