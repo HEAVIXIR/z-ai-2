@@ -83,7 +83,11 @@ try {
     compatibility_date: "2026-10-28",
     compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
     assets: { directory: resolve(root, ".open-next/assets"), binding: "ASSETS" },
-    vars: { HEAVIX_OPENNEXT_PROOF_MODE: "SMOKE_ONLY", NODE_ENV: "production" },
+    vars: {
+      HEAVIX_OPENNEXT_PROOF_MODE: "SMOKE_ONLY",
+      NODE_ENV: "production",
+      HEAVIX_BACKUP_EXECUTION_ENABLED: "false",
+    },
     workers_dev: false,
     observability: { enabled: false },
   }, null, 2), { mode: 0o600 });
@@ -129,6 +133,14 @@ try {
   assert.equal(body.storeFailsClosedWithoutBinding, true);
   assert.equal(body.databaseConnectionsAttempted, false);
   assert.equal(body.writesPerformed, false);
+
+  // This route depends on child_process, bash, pg_dump, and a writable host
+  // filesystem. Prove the Worker exposes no accidental execution path.
+  const backupResponse = await fetch(new URL("/api/admin/backup", baseUrl), {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  assert.equal(backupResponse.status, 404, "Worker must keep host-process backup disabled.");
 
   console.log(JSON.stringify({
     result: "PASS",
