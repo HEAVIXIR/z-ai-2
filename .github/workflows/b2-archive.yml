@@ -192,9 +192,15 @@ jobs:
           STORE_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_STORE_PREVIEW_BACKUP_ROLE }}
         run: |
           set -euo pipefail
-          for name in DATABASE_URL STORE_DATABASE_URL B2_APPLICATION_KEY_ID B2_APPLICATION_KEY APP_PREVIEW_BACKUP_ROLE STORE_PREVIEW_BACKUP_ROLE; do
+          for name in DATABASE_URL STORE_DATABASE_URL B2_APPLICATION_KEY_ID B2_APPLICATION_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required GitHub Actions secret is missing: $name"
+              exit 1
+            fi
+          done
+          for name in APP_PREVIEW_BACKUP_ROLE STORE_PREVIEW_BACKUP_ROLE; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required repository variable is missing: $name"
               exit 1
             fi
           done
@@ -291,8 +297,8 @@ jobs:
           verify_preview_target() {
             local label="$1" dsn="$2" expected_addr="$3" expected_start="$4" expected_role="$5"
             local actual addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly
-            actual="$(docker run --rm \
-              -e PG_DSN="$dsn" \
+            actual="$(PG_DSN="$dsn" docker run --rm \
+              -e PG_DSN \
               -v "$RUNNER_TEMP/heavix-preview-identity.sql:/identity.sql:ro" \
               postgres:17-alpine sh -ec 'psql "$PG_DSN" -XAt -v ON_ERROR_STOP=1 -F "|" -f /identity.sql')"
             IFS="|" read -r addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly <<< "$actual"
