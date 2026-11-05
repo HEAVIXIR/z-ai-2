@@ -67,6 +67,7 @@ jobs:
           abort("Archive must require explicit read-only backup role names") unless config_script.include?("HEAVIX_APP_PREVIEW_BACKUP_ROLE") && config_script.include?("HEAVIX_STORE_PREVIEW_BACKUP_ROLE")
           dump_script = archive_job.fetch("steps").find { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }.fetch("run")
           abort("Archive must perform a Preview server fingerprint preflight before pg_dump") unless dump_script.include?("172.16.163.89") && dump_script.include?("172.16.163.49") && dump_script.include?("pg_postmaster_start_time")
+          abort("Archive must fail closed on RLS-enabled tables") unless dump_script.include?("NOT c.relrowsecurity")
           encryption_design = File.read("docs/ops/BACKUP-ENCRYPTION-DESIGN.md")
           abort("Encryption design must require offline private-key custody") unless encryption_design.include?("offline") && encryption_design.include?("must never receive the private identity")
           abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
@@ -360,6 +361,7 @@ jobs:
                    AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'TRUNCATE')
                    AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES')
                    AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'TRIGGER')
+                   AND NOT c.relrowsecurity
                  ) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                    WHERE c.relkind IN ('r','p','m','f') AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'), true),
                  COALESCE((SELECT bool_and(
@@ -386,7 +388,7 @@ jobs:
             [[ "$started" == "$expected_start" ]] || { echo "::error::$label server-start fingerprint mismatch"; exit 1; }
             [[ "$role" == "$expected_role" ]] || { echo "::error::$label backup-role identity mismatch"; exit 1; }
             [[ "$superuser,$createdb,$createrole,$replication,$bypassrls,$dbcreate" == "f,f,f,f,f,f" ]] || { echo "::error::$label backup role has elevated PostgreSQL/database privileges"; exit 1; }
-            [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "::error::$label backup role is not read-only across inspected objects"; exit 1; }
+            [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "::error::$label backup role is not read-only, or row-level security prevents a complete pg_dump"; exit 1; }
             echo "$label Preview fingerprint and read-only role checks passed."
           }
 
