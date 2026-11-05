@@ -52,6 +52,11 @@ jobs:
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
+          config_script = archive_job.fetch("steps").find { |step| step["name"] == "Validate required configuration without printing secrets" }.fetch("run")
+          abort("Archive must use explicit Preview-only DB secrets") unless config_script.include?("HEAVIX_APP_PREVIEW_DATABASE_URL") && config_script.include?("HEAVIX_STORE_PREVIEW_DATABASE_URL")
+          abort("Archive must use dedicated DB-backups B2 key secrets") unless config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY_ID") && config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY")
+          dump_script = archive_job.fetch("steps").find { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }.fetch("run")
+          abort("Archive must perform a Preview server fingerprint preflight before pg_dump") unless dump_script.include?("172.16.163.89") && dump_script.include?("172.16.163.49") && dump_script.include?("pg_postmaster_start_time")
           encryption_design = File.read("docs/ops/BACKUP-ENCRYPTION-DESIGN.md")
           abort("Encryption design must require offline private-key custody") unless encryption_design.include?("offline") && encryption_design.include?("must never receive the private identity")
           abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
@@ -177,13 +182,15 @@ jobs:
         id: config
         shell: bash
         env:
-          DATABASE_URL: ${{ secrets.HEAVIX_DATABASE_URL }}
-          STORE_DATABASE_URL: ${{ secrets.HEAVIX_STORE_DATABASE_URL }}
-          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
-          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          DATABASE_URL: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_URL }}
+          STORE_DATABASE_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_URL }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY }}
+          APP_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_APP_PREVIEW_BACKUP_ROLE }}
+          STORE_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_STORE_PREVIEW_BACKUP_ROLE }}
         run: |
           set -euo pipefail
-          for name in DATABASE_URL STORE_DATABASE_URL B2_APPLICATION_KEY_ID B2_APPLICATION_KEY; do
+          for name in DATABASE_URL STORE_DATABASE_URL B2_APPLICATION_KEY_ID B2_APPLICATION_KEY APP_PREVIEW_BACKUP_ROLE STORE_PREVIEW_BACKUP_ROLE; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required GitHub Actions secret is missing: $name"
               exit 1
@@ -199,6 +206,8 @@ jobs:
               parsed = urlsplit(raw)
               if parsed.scheme not in {"postgres", "postgresql"} or not parsed.hostname or not parsed.path.strip("/"):
                   raise SystemExit(f"{source} is not a complete PostgreSQL URL")
+              if parsed.hostname != "db.prisma.io":
+                  raise SystemExit(f"{source} must use the direct Prisma DB endpoint db.prisma.io; pooled or unknown endpoints are rejected")
               query = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() not in prisma_only]
               dsn = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
               if chr(10) in dsn or chr(13) in dsn:
@@ -241,6 +250,61 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/heavix-archive"
           chmod 700 "$RUNNER_TEMP/heavix-archive"
+
+          # Point-in-time Preview fingerprints from the independently reviewed
+          # Prisma metadata audit. A backend restart/failover changes the start
+          # timestamp and intentionally blocks the archive until re-attested.
+          verify_preview_target() {
+            local label="$1" dsn="$2" expected_addr="$3" expected_start="$4" expected_role="$5"
+            docker run --rm \
+              -e PG_DSN="$dsn" \
+              -e EXPECTED_ADDR="$expected_addr" \
+              -e EXPECTED_START="$expected_start" \
+              -e EXPECTED_ROLE="$expected_role" \
+              postgres:17-alpine sh -ec '
+                actual="$(psql "$PG_DSN" -XAt -v ON_ERROR_STOP=1 -F "|" -c "
+                  SELECT inet_server_addr()::text,
+                         to_char(pg_postmaster_start_time() AT TIME ZONE '''UTC''', '''YYYY-MM-DD HH24:MI:SS.US'''),
+                         current_user,
+                         r.rolsuper,
+                         r.rolcreatedb,
+                         r.rolcreaterole,
+                         r.rolreplication,
+                         r.rolbypassrls,
+                         COALESCE((SELECT bool_and(
+                           has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''SELECT''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''INSERT''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''UPDATE''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''DELETE''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''TRUNCATE''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''REFERENCES''')
+                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''TRIGGER''')
+                         ) FROM pg_tables WHERE schemaname NOT IN ('''pg_catalog''','''information_schema''')), true),
+                         COALESCE((SELECT bool_and(
+                           has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''SELECT''')
+                           AND NOT has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''UPDATE''')
+                           AND NOT has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''USAGE''')
+                         ) FROM pg_sequences WHERE schemaname NOT IN ('''pg_catalog''','''information_schema''')), true),
+                         COALESCE((SELECT bool_and(
+                           has_schema_privilege(current_user, nspname, '''USAGE''')
+                           AND NOT has_schema_privilege(current_user, nspname, '''CREATE''')
+                         ) FROM pg_namespace WHERE nspname NOT IN ('''pg_catalog''','''information_schema''')), true)
+                  FROM pg_roles r WHERE r.rolname = current_user
+                ")"
+                IFS="|" read -r addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly <<< "$actual"
+                [[ "$addr" == "$EXPECTED_ADDR" ]] || { echo "Preview address fingerprint mismatch"; exit 1; }
+                [[ "$started" == "$EXPECTED_START" ]] || { echo "Preview server-start fingerprint mismatch"; exit 1; }
+                [[ "$role" == "$EXPECTED_ROLE" ]] || { echo "Backup role identity mismatch"; exit 1; }
+                [[ "$superuser,$createdb,$createrole,$replication,$bypassrls" == "f,f,f,f,f" ]] || { echo "Backup role has elevated PostgreSQL attributes"; exit 1; }
+                [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "Backup role is not read-only across inspected objects"; exit 1; }
+                echo "Preview target fingerprint and read-only role checks passed."
+              '
+          }
+
+          verify_preview_target "App Preview" "$PG_DSN_MAIN" \
+            "172.16.163.89" "2026-11-03 10:11:45.178128" "$APP_PREVIEW_BACKUP_ROLE"
+          verify_preview_target "Store Preview" "$PG_DSN_STORE" \
+            "172.16.163.49" "2026-11-03 10:11:37.778073" "$STORE_PREVIEW_BACKUP_ROLE"
 
           docker run --rm \
             -e PG_DSN_MAIN \
