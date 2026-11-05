@@ -20,6 +20,11 @@ export async function readBoundedJson<T = unknown>(
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null) {
     if (!/^\\d+$/.test(contentLength)) {
+      try {
+        await request.body?.cancel("invalid Content-Length header");
+      } catch {
+        // Preserve the deterministic 400 response if the stream is already closed.
+      }
       return { ok: false, status: 400, error: "invalid JSON body" };
     }
     if (Number(contentLength) > maxBytes) {
