@@ -178,9 +178,26 @@ export function withIdentityGuard<TClient extends object>(
 
       if (property === "$transaction" && typeof value === "function") {
         return async (...args: unknown[]) => {
-          // This completes before Prisma starts either an interactive or an
-          // array transaction. The array's PrismaPromises remain lazy.
+          // Verify the root client before Prisma opens either transaction form.
+          // Array transactions retain their lazy PrismaPromise/requestTransaction
+          // contract; interactive callbacks receive a separately guarded tx
+          // client so identity is checked on the transaction connection too.
           await ensureIdentity();
+          const callback = args[0];
+          if (typeof callback === "function") {
+            const guardedCallback = (transactionClient: object) =>
+              Reflect.apply(
+                callback,
+                undefined,
+                [withIdentityGuard(
+                  transactionClient,
+                  expectedSystemIdentifier,
+                  expectedDatabaseOid,
+                  label,
+                )],
+              );
+            return Reflect.apply(value, target, [guardedCallback, ...args.slice(1)]);
+          }
           return Reflect.apply(value, target, args);
         };
       }
