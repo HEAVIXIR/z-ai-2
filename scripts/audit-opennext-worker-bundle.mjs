@@ -27,18 +27,18 @@ async function walk(directory) {
 }
 
 const forbiddenPatterns = [
-  { id: "node-net-import", pattern: /(?:from\\s*|import\\s*\\(|require\\s*\\()\\s*["'](?:node:)?net["']/g },
-  { id: "node-tls-import", pattern: /(?:from\\s*|import\\s*\\(|require\\s*\\()\\s*["'](?:node:)?tls["']/g },
-  { id: "node-dgram-import", pattern: /(?:from\\s*|import\\s*\\(|require\\s*\\()\\s*["'](?:node:)?dgram["']/g },
-  { id: "node-tcp-module-marker", pattern: /node:(?:net|tls|dgram)\\b/g },
-  { id: "node-postgres-adapter", pattern: /@prisma\\/adapter-pg/g },
-  { id: "node-postgres-package-path", pattern: /node_modules\\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)(?:\\/|["'])/g },
-  { id: "node-postgres-package-marker", pattern: /\\b(?:pg-protocol|pg-pool|pg-native|pgpass)\\b/g },
-  { id: "tcp-api-symbol", pattern: /\\b(?:net\\.connect|tls\\.connect|new\\s+net\\.Socket)\\b/g },
+  { id: "node-net-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?net["']/g },
+  { id: "node-tls-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?tls["']/g },
+  { id: "node-dgram-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?dgram["']/g },
+  { id: "node-tcp-module-marker", pattern: /node:(?:net|tls|dgram)\b/g },
+  { id: "node-postgres-adapter", pattern: /@prisma\/adapter-pg/g },
+  { id: "node-postgres-package-path", pattern: /node_modules\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)(?:\/|["'])/g },
+  { id: "node-postgres-package-marker", pattern: /\b(?:pg-protocol|pg-pool|pg-native|pgpass)\b/g },
+  { id: "tcp-api-symbol", pattern: /\b(?:net\.connect|tls\.connect|new\s+net\.Socket)\b/g },
 ];
 const expectedPpgPatterns = [
-  { id: "prisma-ppg-adapter", pattern: /@prisma\\/adapter-ppg/g },
-  { id: "prisma-ppg-driver", pattern: /@prisma\\/ppg/g },
+  { id: "prisma-ppg-adapter", pattern: /@prisma\/adapter-ppg/g },
+  { id: "prisma-ppg-driver", pattern: /@prisma\/ppg/g },
 ];
 
 const workerStat = await stat(workerEntry).catch(() => null);
@@ -106,7 +106,7 @@ const report = {
 };
 
 await mkdir(resolve(outputRoot, "audit"), { recursive: true });
-await writeFile(reportPath, JSON.stringify(report, null, 2) + "\\n", { mode: 0o600 });
+await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", { mode: 0o600 });
 console.log(JSON.stringify({
   result: report.verdict,
   report: relative(root, reportPath),
