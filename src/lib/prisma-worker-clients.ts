@@ -6,6 +6,8 @@ import { createRequestScopedClientResolver } from "./prisma-worker-proxy";
 export type WorkerDatabaseEnv = {
   DATABASE_URL?: string;
   STORE_DATABASE_URL?: string;
+  HEAVIX_APP_PREVIEW_DATABASE_OID?: string;
+  HEAVIX_STORE_PREVIEW_DATABASE_OID?: string;
 };
 
 // ── STEP 18.2.7.3.10 (Finding S-3, extended to real app path) ──────────
@@ -31,15 +33,26 @@ export type WorkerDatabaseEnv = {
 const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
 const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 
+function requireExpectedDatabaseOid(value: string | undefined, label: string): string {
+  if (!value || !/^[1-9]\d{0,9}$/.test(value) || Number(value) > 4_294_967_295) {
+    throw new Error(label + ": missing or invalid HEAVIX database OID; refusing to create a database client");
+  }
+  return value;
+}
+
 export class PreviewIdentityMismatchError extends Error {
   readonly expectedSystemIdentifier: string;
   readonly actualSystemIdentifier: string;
+  readonly expectedDatabaseOid: string;
+  readonly actualDatabaseOid: string;
   readonly databaseLabel: string;
-  constructor(actual: string, expected: string, label: string) {
-    super(`${label} system_identifier mismatch: expected ${expected}, got ${actual}. The configured connection string does not point at the expected Preview database — refusing to execute queries.`);
+  constructor(actual: string, expected: string, actualOid: string, expectedOid: string, label: string) {
+    super(`${label} database identity mismatch; refusing to execute queries.`);
     this.name = "PreviewIdentityMismatchError";
     this.expectedSystemIdentifier = expected;
     this.actualSystemIdentifier = actual;
+    this.expectedDatabaseOid = expectedOid;
+    this.actualDatabaseOid = actualOid;
     this.databaseLabel = label;
   }
 }
@@ -47,14 +60,18 @@ export class PreviewIdentityMismatchError extends Error {
 async function verifyDatabaseIdentity(
   client: { $queryRaw: <T = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T> },
   expectedSystemIdentifier: string,
+  expectedDatabaseOid: string,
   label: string,
 ): Promise<void> {
   const rows = await client.$queryRaw<
-    Array<{ system_identifier: string }>
-  >`SELECT system_identifier::text AS system_identifier FROM pg_control_system()`;
+    Array<{ system_identifier: string; database_oid: string }>
+  >`SELECT
+    (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
+    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid`;
   const actual = rows[0]?.system_identifier ?? "";
-  if (actual !== expectedSystemIdentifier) {
-    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, label);
+  const actualOid = rows[0]?.database_oid ?? "";
+  if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
+    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label);
   }
 }
 
@@ -66,12 +83,13 @@ async function verifyDatabaseIdentity(
 export function withIdentityGuard<TClient extends object>(
   client: TClient,
   expectedSystemIdentifier: string,
+  expectedDatabaseOid: string,
   label: string,
 ): TClient {
   let identityCheckPromise: Promise<void> | null = null;
   const delegateProxyCache = new WeakMap<object, object>();
   const identitySql =
-    "SELECT system_identifier::text AS system_identifier FROM pg_control_system()";
+    "SELECT (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid";
 
   const ensureIdentity = (): Promise<void> => {
     if (!identityCheckPromise) {
@@ -90,14 +108,13 @@ export function withIdentityGuard<TClient extends object>(
           raw: [identitySql],
         }) as unknown as TemplateStringsArray;
         const rows = (await Reflect.apply(rawMethod, client, [strings])) as
-          | Array<{ system_identifier: string }>
+          | Array<{ system_identifier: string; database_oid: string }>
           | undefined;
         const actual = rows?.[0]?.system_identifier ?? "";
-        if (actual !== expectedSystemIdentifier) {
+        const actualOid = rows?.[0]?.database_oid ?? "";
+        if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
           throw new PreviewIdentityMismatchError(
-            actual,
-            expectedSystemIdentifier,
-            label,
+            actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label,
           );
         }
       })();
@@ -154,6 +171,7 @@ export function withIdentityGuard<TClient extends object>(
           withIdentityGuard(
             Reflect.apply(value, target, args) as object,
             expectedSystemIdentifier,
+            expectedDatabaseOid,
             label,
           );
       }
@@ -182,13 +200,12 @@ export function createAppWorkerClientResolver() {
       if (!connectionString) {
         throw new Error("Missing Cloudflare Worker secret: DATABASE_URL");
       }
+      const expectedDatabaseOid = requireExpectedDatabaseOid(env.HEAVIX_APP_PREVIEW_DATABASE_OID, "App");
       const client = new AppPrismaClient({
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      // STEP 18.2.7.3.10 (Finding S-3): wrap the client with an identity
-      // guard that verifies system_identifier before the first query.
-      return withIdentityGuard(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+      return withIdentityGuard(client, EXPECTED_APP_SYSTEM_IDENTIFIER, expectedDatabaseOid, "App");
     },
   );
 }
@@ -200,13 +217,12 @@ export function createStoreWorkerClientResolver() {
       if (!connectionString) {
         throw new Error("Missing Cloudflare Worker secret: STORE_DATABASE_URL");
       }
+      const expectedDatabaseOid = requireExpectedDatabaseOid(env.HEAVIX_STORE_PREVIEW_DATABASE_OID, "Store");
       const client = new StorePrismaClient({
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      // STEP 18.2.7.3.10 (Finding S-3): wrap the client with an identity
-      // guard that verifies system_identifier before the first query.
-      return withIdentityGuard(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+      return withIdentityGuard(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
     },
   );
 }
