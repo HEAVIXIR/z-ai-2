@@ -139,7 +139,9 @@ try {
   // filesystem. Prove the Worker exposes no accidental execution path.
   const backupResponse = await fetch(new URL("/api/admin/backup", baseUrl), {
     method: "POST",
-    headers: { accept: "application/json" },
+    // Pass the middleware's cookie-presence gate with a deliberately invalid
+    // token. The route-level execution flag must return 404 before auth/DB.
+    headers: { accept: "application/json", cookie: "heavix-user=smoke-invalid" },
   });
   assert.equal(backupResponse.status, 404, "Worker must keep host-process backup disabled.");
 
