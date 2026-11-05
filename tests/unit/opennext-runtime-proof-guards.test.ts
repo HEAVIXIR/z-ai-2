@@ -80,16 +80,16 @@ describe("RO-1 route enforcement wiring", () => {
   });
 
   it.each(["probeApp", "probeStore"])(
-    "%s issues SET TRANSACTION READ ONLY before reading transaction state",
+    "%s applies transaction-local read-only mode before reading transaction state",
     async (probe) => {
       const content = await readRoute();
-      const start = content.indexOf(`async function ${probe}()`);
+      const start = content.indexOf("async function " + probe + "()");
       expect(start).toBeGreaterThanOrEqual(0);
       const next = probe === "probeApp"
         ? content.indexOf("async function probeStore()", start)
         : content.indexOf("export async function GET", start);
       const body = content.slice(start, next);
-      const setIndex = body.indexOf("$executeRaw\x60SET TRANSACTION READ ONLY\x60");
+      const setIndex = body.indexOf("set_config('transaction_read_only', 'on', true)");
       const stateIndex = body.indexOf("current_setting('transaction_read_only')::boolean");
       expect(setIndex).toBeGreaterThanOrEqual(0);
       expect(stateIndex).toBeGreaterThan(setIndex);
@@ -98,14 +98,17 @@ describe("RO-1 route enforcement wiring", () => {
   );
 });
 
-
 describe("PostgreSQL read-only transaction semantics (local PGlite)", () => {
-  it("SET TRANSACTION READ ONLY flips the state and rejects writes", async () => {
+  it("a prepared SELECT set_config flips the state and rejects writes", async () => {
     const database = new PGlite();
     try {
       await database.query("CREATE TABLE ro_probe (value integer)");
+      await database.query(
+        "PREPARE ro_probe AS SELECT set_config('transaction_read_only', 'on', true) AS read_only",
+      );
       await database.query("BEGIN");
-      await database.query("SET TRANSACTION READ ONLY");
+      const configured = await database.query<{ read_only: string }>("EXECUTE ro_probe");
+      expect(configured.rows[0]?.read_only).toBe("on");
       const state = await database.query<{ read_only: boolean }>(
         "SELECT current_setting('transaction_read_only')::boolean AS read_only",
       );
