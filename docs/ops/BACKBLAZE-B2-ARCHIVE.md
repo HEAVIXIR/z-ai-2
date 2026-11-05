@@ -131,6 +131,19 @@ Do not enable public bucket access as a shortcut. Do not delete local media afte
 
 ## Current verified evidence
 
+Read-only Prisma workspace metadata inventory (rechecked 2026-11-06):
+
+| Resource | Prisma database ID | Expected system identifier | Status |
+|---|---|---:|---|
+| App Preview | `db_ew8d6duermpt125paxaqorr9` | `7701427422680793119` | Ready |
+| Store Preview | `db_cmtgxfrfwxw5mi77020tcnc3` | `7701425043360235551` | Ready |
+| Production | `db_rc9ln1df4rwgxducp2zsge2s` | Not an archive target | Ready; explicitly excluded |
+
+- Prisma automated backup listings for App Preview and Store Preview are empty.
+- No Prisma Object Store buckets exist in the workspace.
+- These resource IDs/system identifiers are provider-side metadata evidence. The workflow additionally requires its point-in-time server-address/start-time preflight; neither evidence source should be silently substituted for the other.
+- No database connection or SQL query was executed by this PR update.
+
 - Existing bucket `heavix-dev-assets` exists and is private, but is reserved for development assets and must not receive database backups.
 - Dedicated bucket `heavix-db-backups` has not been created; no database archive writes are permitted until it is provisioned and all readiness gates are satisfied.
 - AWS CLI profile `heavix-b2` was configured locally by the operator.
