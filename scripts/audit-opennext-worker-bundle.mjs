@@ -31,6 +31,17 @@ async function walk(directory) {
   return files;
 }
 
+async function walkAllFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await walkAllFiles(fullPath));
+    else if (entry.isFile()) files.push(fullPath);
+  }
+  return files;
+}
+
 function isolatedEnv() {
   const env = { ...process.env };
   for (const key of [
@@ -214,6 +225,43 @@ const sizeGate = parsedSize
   ? (parsedSize.totalUploadBytes <= workerLimitBytes ? "WITHIN_LIMIT" : "OVER_LIMIT")
   : "UNKNOWN";
 
+const startupResult = await run(wranglerBin, ["check", "startup", "--config", dryRunConfigPath], auditRoot);
+const startupOutput = startupResult.stdout + "\n" + startupResult.stderr;
+const startupMetric = (label) => {
+  const match = startupOutput.match(new RegExp(label + ":\\s*([\\d.]+)\\s*ms", "i"));
+  return match ? Number(match[1]) : null;
+};
+const startupCheck = {
+  status: startupResult.code === 0 ? "SUCCESS" : "FAILED",
+  localProfileWindowMs: startupMetric("Profile window"),
+  localActiveMs: startupMetric("Active"),
+  localIdleMs: startupMetric("Idle"),
+  samples: Number(startupOutput.match(/Samples:\\s*(\\d+)/i)?.[1] ?? 0) || null,
+  error: startupResult.error,
+  outputTail: startupOutput.slice(-6000),
+  note: "Local Wrangler profile only; not authoritative Cloudflare startup_time_ms.",
+};
+
+const assetRoot = resolve(outputRoot, "assets");
+const assetFiles = await walkAllFiles(assetRoot).catch(() => []);
+const assetStats = await Promise.all(assetFiles.map(async (file) => ({
+  file: relative(root, file),
+  bytes: (await stat(file)).size,
+})));
+const assetFileLimit = 20000;
+const assetIndividualLimitBytes = 25 * 1024 * 1024;
+const assetSummary = {
+  status: assetFiles.length ? "AVAILABLE" : "MISSING_OR_EMPTY",
+  fileCount: assetFiles.length,
+  totalBytes: assetStats.reduce((sum, file) => sum + file.bytes, 0),
+  largestFiles: [...assetStats].sort((a, b) => b.bytes - a.bytes).slice(0, 10),
+  filesOverIndividualLimit: assetStats.filter((file) => file.bytes > assetIndividualLimitBytes),
+  fileCountLimit: assetFileLimit,
+  individualFileLimitBytes: assetIndividualLimitBytes,
+  withinFreePlanLimits: assetFiles.length <= assetFileLimit &&
+    assetStats.every((file) => file.bytes <= assetIndividualLimitBytes),
+};
+
 const metafilePath = resolve(auditRoot, "wrangler-bundle-meta.json");
 let metafile = null;
 try {
@@ -266,7 +314,8 @@ const reviewRequired = forbiddenCount > 0 ||
   dryRunStatus !== "SUCCESS" ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
-  unsupportedExternalNodeTcpImports.length > 0;
+  unsupportedExternalNodeTcpImports.length > 0 ||
+  !assetSummary.withinFreePlanLimits;
 const verdict = reviewRequired
   ? "REVIEW_REQUIRED"
   : externalNodeTcpImports.length
@@ -298,6 +347,8 @@ const report = {
     externalImports: externalNodeTcpImports,
     unsupportedExternalImports: unsupportedExternalNodeTcpImports,
   },
+  assets: assetSummary,
+  startupCheck,
   expectedPpgMarkers: expectedSummary,
   diagnostics,
   wranglerDryRun: {
@@ -325,6 +376,8 @@ console.log(JSON.stringify({
   forbiddenMarkers: report.forbiddenMarkers,
   nodeCompatibilityMarkers: report.nodeCompatibilityMarkers,
   nodeCompatibility: report.nodeCompatibility,
+  assets: report.assets,
+  startupCheck: report.startupCheck,
   expectedPpgMarkers: report.expectedPpgMarkers,
   wranglerDryRun: report.wranglerDryRun,
   note: report.method,
