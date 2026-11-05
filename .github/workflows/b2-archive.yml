@@ -45,6 +45,8 @@ jobs:
           abort("Archive must be workflow_dispatch-only") unless archive_job["if"] == "github.event_name == 'workflow_dispatch'"
           gate_script = gate_job.fetch("steps").map { |step| step["run"].to_s }.join("\\n")
           abort("Preview identity attestation latch is missing") unless gate_script.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
+          abort("Archive readiness attestation latch is missing") unless gate_script.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
+          abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
 
           checked = 0
 
@@ -70,22 +72,27 @@ jobs:
           puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
           RUBY
   database-identity-dispatch-gate:
-    name: Require verified Preview DB identity attestation
+    name: Require Preview identity and archive readiness attestations
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Fail closed until Preview destinations are independently verified
+      - name: Fail closed until Preview identity and archive readiness are attested
         shell: bash
         env:
           IDENTITY_GATE: ${{ vars.HEAVIX_B2_DB_IDENTITY_GATE }}
+          ARCHIVE_READINESS_GATE: ${{ vars.HEAVIX_B2_ARCHIVE_READINESS_GATE }}
         run: |
           set -euo pipefail
           if [[ "$IDENTITY_GATE" != "VERIFIED_PREVIEW_ONLY" ]]; then
             echo "::error::Archive blocked: HEAVIX_B2_DB_IDENTITY_GATE is not VERIFIED_PREVIEW_ONLY. Independently verify both dedicated Preview DB identities and read-only credential scope before setting this repository variable."
             exit 1
           fi
-          echo "Preview database identity attestation flag is present."
+          if [[ "$ARCHIVE_READINESS_GATE" != "APPROVED_PREVIEW_ARCHIVE_V1" ]]; then
+            echo "::error::Archive blocked: archive readiness is not approved. Require the dedicated private backup bucket, bucket-scoped key, client-side encryption and recovery-key custody, bounded retention/data cap, and isolated restore target before setting this variable."
+            exit 1
+          fi
+          echo "Preview identity and archive readiness attestations are present."
 
   archive:
     if: github.event_name == 'workflow_dispatch'
@@ -97,7 +104,7 @@ jobs:
       AWS_DEFAULT_REGION: us-east-005
       AWS_EC2_METADATA_DISABLED: "true"
       B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
-      B2_BUCKET: heavix-dev-assets
+      B2_BUCKET: heavix-db-backups
       B2_PREFIX: heavix-archive
 
     steps:
