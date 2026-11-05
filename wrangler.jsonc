@@ -35,7 +35,9 @@
   "secrets": {
     "required": [
       "DATABASE_URL",
-      "STORE_DATABASE_URL"
+      "STORE_DATABASE_URL",
+      "HEAVIX_APP_PREVIEW_DATABASE_OID",
+      "HEAVIX_STORE_PREVIEW_DATABASE_OID"
     ]
   }
 }
