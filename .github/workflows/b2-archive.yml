@@ -191,7 +191,21 @@ jobs:
               echo "::error::B2 size verification failed for $file"
               exit 1
             fi
+
+            # Verify the stored bytes, not only object metadata. This is a
+            # read-after-write integrity check using the locally generated
+            # SHA-256 manifest as the expected digest.
+            mkdir -p "$RUNNER_TEMP/heavix-b2-readback"
+            aws --endpoint-url "$B2_ENDPOINT" s3 cp \
+              "s3://$B2_BUCKET/$DEST/$file" \
+              "$RUNNER_TEMP/heavix-b2-readback/$file" --only-show-errors
+            EXPECTED_SHA="$(awk -v name="$file" '$2 == name {print $1}' SHA256SUMS)"
+            ACTUAL_SHA="$(sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file" | awk '{print $1}')"
+            if [[ -z "$EXPECTED_SHA" || "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
+              echo "::error::B2 read-back SHA-256 verification failed for $file"
+              exit 1
+            fi
           done
 
-          echo "B2 archive verified by remote object size."
+          echo "B2 archive verified by remote object size and SHA-256 read-back."
           echo "Archive prefix: s3://$B2_BUCKET/$DEST/"
