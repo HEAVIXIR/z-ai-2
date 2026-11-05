@@ -51,6 +51,10 @@ jobs:
           abort("Preview identity attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption implementation must be enabled") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=true")
+          static_age_install = static_job.fetch("steps").find { |step| step["name"] == "Install age v1.3.2 for static tests" }
+          archive_age_install = archive_job.fetch("steps").find { |step| step["name"] == "Install age v1.3.2" }
+          abort("Static age CLI must be pinned to v1.3.2") unless static_age_install && static_age_install.fetch("run").include?("@v1.3.2")
+          abort("Archive age CLI must be pinned to v1.3.2") unless archive_age_install && archive_age_install.fetch("run").include?("@v1.3.2")
           encryption_step = archive_job.fetch("steps").find { |step| step["name"] == "Encrypt archive payloads before any upload" }
           abort("Archive payload encryption step is missing") unless encryption_step && encryption_step.fetch("run").include?('age -r "$AGE_RECIPIENT"') && encryption_step.fetch("run").include?('rm -f "$file"')
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
@@ -112,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
-          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
+          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.3.2
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/age" --version
       - name: Test age encryption, decryption, and tamper rejection
@@ -121,7 +125,10 @@ jobs:
           set -euo pipefail
           TEMP_CRYPTO="$(mktemp -d)"
           trap 'rm -rf "$TEMP_CRYPTO"' EXIT
-          age-keygen -pq -o "$TEMP_CRYPTO/identity.txt" 2>/dev/null
+          if ! age-keygen -pq -o "$TEMP_CRYPTO/identity.txt" 2> "$TEMP_CRYPTO/keygen.log"; then
+            cat "$TEMP_CRYPTO/keygen.log" >&2
+            exit 1
+          fi
           RECIPIENT="$(age-keygen -y "$TEMP_CRYPTO/identity.txt")"
           [[ "$RECIPIENT" == age1pq1* ]] || { echo "::error::age-keygen did not produce a post-quantum recipient"; exit 1; }
           printf 'HEAVIX synthetic backup payload\\n' > "$TEMP_CRYPTO/plain.bin"
@@ -236,7 +243,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
-          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
+          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.3.2
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/age" --version
 
