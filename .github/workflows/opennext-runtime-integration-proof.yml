@@ -6,6 +6,7 @@ on:
       - infra/prisma6-cloudflare-runtime
     paths:
       - "src/app/api/opennext-runtime-proof/**"
+      - "src/app/sitemap.ts"
       - "src/lib/db.worker.ts"
       - "src/lib/store-db.worker.ts"
       - "src/lib/prisma-worker-clients.ts"
