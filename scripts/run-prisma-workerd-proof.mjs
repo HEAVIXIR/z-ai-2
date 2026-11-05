@@ -48,18 +48,20 @@ async function getJson(baseUrl, path) {
   return body;
 }
 
-// Prisma Postgres reports the internal database name "postgres" for both
-// Preview resources. It is not a unique resource identifier; the exact,
- // independently reviewed migration-name sets below are the distinguishing
-// read-only fingerprint. Production currently has no application migration
-// ledger and therefore cannot satisfy either allowlist.
+// Prisma Postgres reports the internal database name "postgres" for every
+// resource, so database_name is not a unique resource identifier. The stable
+// PostgreSQL system_identifier is independently inventoried per Preview
+// resource and is the primary fail-closed resource allowlist below; exact
+// migration-name sets are a second, schema-level fingerprint.
 const expected = {
   app: {
     databaseName: "postgres",
+    systemIdentifier: "7701427422680793119",
     migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
   },
   store: {
     databaseName: "postgres",
+    systemIdentifier: "7701425043360235551",
     migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
   },
 };
@@ -150,7 +152,9 @@ try {
   ]) {
     assert.equal(result.sameRequestClientReused, true, `${label}: client was not reused within one request`);
     assert.equal(result.identity?.database_name, target.databaseName,
-      `${label}: unexpected database target (expected exact Preview database)`);
+      `${label}: unexpected internal database name`);
+    assert.equal(result.identity?.system_identifier, target.systemIdentifier,
+      `${label}: PostgreSQL system identifier does not match the exact Preview resource`);
     assert.equal(result.identity?.schema_name, "public", `${label}: unexpected schema`);
     assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
     assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
@@ -168,9 +172,11 @@ try {
     "Concurrent requests shared a Prisma client.");
   for (const [index, result] of concurrent.entries()) {
     assert.equal(result.sameRequestClientReused, true);
-    const expectedDatabase = index < 2 ? expected.app.databaseName : expected.store.databaseName;
-    assert.equal(result.identity?.database_name, expectedDatabase,
-      `Concurrent request ${index + 1}: unexpected database target`);
+    const target = index < 2 ? expected.app : expected.store;
+    assert.equal(result.identity?.database_name, target.databaseName,
+      `Concurrent request ${index + 1}: unexpected internal database name`);
+    assert.equal(result.identity?.system_identifier, target.systemIdentifier,
+      `Concurrent request ${index + 1}: unexpected Preview resource identity`);
   }
 
   const [appTx, storeTx] = await Promise.all([
