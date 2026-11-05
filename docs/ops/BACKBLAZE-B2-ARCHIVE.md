@@ -52,7 +52,7 @@ The workflow currently requires the explicitly Preview-named Actions secrets abo
 
 These are point-in-time infrastructure fingerprints, not permanent database IDs. Any restart, failover, address change, or Prisma topology change must stop the workflow. Re-verify the database resource identity through Prisma's non-secret metadata and a separately reviewed read-only connection before changing the expected values. Do not merely update a timestamp to make the check pass.
 
-The preflight also requires the connected role to match the separately configured repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE` and `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, rejects superuser/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS roles, and checks SELECT-only table/sequence access plus USAGE-without-CREATE on user schemas. A passing role-name check alone is not sufficient; the effective privilege checks must also pass.
+The preflight also requires the connected role to match the separately configured repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE` and `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, rejects superuser/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS roles, and checks SELECT-only table/sequence access plus USAGE-without-CREATE on user schemas. A passing role-name check alone is not sufficient; the effective privilege checks must also pass. It also fails closed if any user table/view/materialized view/foreign table has row-level security enabled, because a non-bypass role could otherwise produce an incomplete dump. RLS must be explicitly reviewed and the backup policy designed before relaxing this check.
 
 Before any archive dispatch:
 1. Independently establish both destination identities using the approved non-secret metadata/OID verification process.
