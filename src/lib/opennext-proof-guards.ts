@@ -1,10 +1,10 @@
 /** Pure guards shared by the OpenNext proof route and its unit tests. */
 export function isPostgres17(version: string | null | undefined): boolean {
-  return /^17\\./.test(version ?? "");
+  return /^17\./.test(version ?? "");
 }
 
 export function extractBearerToken(header: string | null): string {
-  return header?.replace(/^Bearer\\s+/i, "") ?? "";
+  return header?.replace(/^Bearer\s+/i, "") ?? "";
 }
 
 export function constantTimeEqual(left: string, right: string): boolean {
