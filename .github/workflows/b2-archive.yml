@@ -66,8 +66,11 @@ jobs:
           abort("Encryption design must require offline private-key custody") unless encryption_design.include?("offline") && encryption_design.include?("must never receive the private identity")
           abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
           abort("B2 upload allowlist must contain encrypted payloads only") unless archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run").include?("main.dump.age")
-          upload_script = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run")
+          upload_step = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }
+          upload_script = upload_step.fetch("run")
+          upload_env = upload_step.fetch("env", {}).map { |key, value| "#{key}=#{value}" }.join(" ")
           abort("B2 upload loop must not contain plaintext payload names") if upload_script.include?("for file in main.dump store.dump")
+          abort("B2 upload must use only dedicated backup-bucket credentials") unless upload_env.include?("HEAVIX_DB_BACKUPS_B2_KEY_ID") && upload_env.include?("HEAVIX_DB_BACKUPS_B2_KEY")
           abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
           abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
 
@@ -225,6 +228,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
           GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/age" --version
