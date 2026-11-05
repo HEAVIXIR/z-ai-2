@@ -15,7 +15,7 @@ Backblaze B2 is the off-site archive destination, not the only copy and not a su
 4. Complete Git history bundle and source snapshot for legacy `HEAVIXIR/z`.
 5. SHA-256 manifest and archive metadata.
 
-The workflow is deliberately manual (`workflow_dispatch`) for its first operational phase. Do not schedule repeated full dumps until actual database sizes, B2 free allowance, expected growth, and retention/cost have been measured. The bucket currently uses Keep all versions; no automated deletion or lifecycle expiration is configured by this change.
+The workflow is deliberately manual (`workflow_dispatch`) for its first operational phase. Do not schedule repeated full dumps until actual database sizes, B2 free allowance, expected growth, and retention/cost have been measured. The bucket currently uses Keep all versions; no automated deletion or lifecycle expiration is configured by this change. A pull-request-only static-validation job also parses the workflow YAML and runs `bash -n` against embedded Bash blocks; the archive job is explicitly skipped for pull-request events and runs only after a manual dispatch.
 
 ## Required GitHub Actions secrets
 
@@ -36,13 +36,25 @@ Before any Git bundle is created or uploaded, the workflow downloads the pinned 
 
 Any detected finding fails the workflow before database dump/upload steps proceed. Do not add broad allowlists or silently suppress findings. Each result must be reviewed; confirmed exposed credentials must be rotated/revoked through their owning provider before the archive proceeds. A clean Gitleaks result reduces risk but is not proof that no secret exists.
 
+## Database identity hard gate
+
+**Do not dispatch the archive job yet.** The workflow currently accepts generic `HEAVIX_DATABASE_URL` and `HEAVIX_STORE_DATABASE_URL` secrets, but it does not independently prove that they target the dedicated App Preview and Store Preview databases. Secret names, connection-string labels, successful TCP/TLS connectivity, or a successful PostgreSQL login are not database identity evidence.
+
+Before any archive dispatch:
+1. Independently establish both destination identities using the approved non-secret metadata/OID verification process.
+2. Confirm App Preview matches the expected App Preview database identity and Store Preview matches the expected Store Preview identity.
+3. Confirm the credentials are read-only and cannot reach Production or any unapproved database.
+4. Review the evidence and update this runbook/workflow gate before dispatch.
+
+Until all four conditions are satisfied, do not create/populate the two database URL secrets for this workflow, do not run `pg_dump`, and do not use a real database URL as a connectivity test. Git-only archival can be designed as a separate workflow if needed; this combined workflow remains blocked.
+
 ## Run
 
-GitHub → `HEAVIXIR/z-ai-2` → Actions → **Backblaze B2 Archive** → Run workflow.
+GitHub → `HEAVIXIR/z-ai-2` → Actions → **Backblaze B2 Archive** → Run workflow. This manual dispatch is blocked until the database identity hard gate above is independently satisfied.
 
 The job fails closed if a required secret is missing, either DB URL is not PostgreSQL, the Gitleaks history scan fails, a dump is empty, `pg_restore --list` cannot parse it, a Git bundle fails verification, local checksums fail, B2 cannot be reached, a remote object size differs from its local file, or a downloaded post-upload object fails SHA-256 comparison against the local manifest.
 
-After each upload, the workflow now downloads that exact object from B2 to the ephemeral runner and compares its SHA-256 digest with the locally generated `SHA256SUMS` entry. This is a read-after-write byte-integrity check; it is stronger than `ContentLength` alone, but it is not encryption, retention validation, or a restore rehearsal.
+After each upload, the workflow now downloads that exact object from B2 to the ephemeral runner and compares its SHA-256 digest with the locally generated `SHA256SUMS` entry. This is a read-after-write byte-integrity check; it is stronger than `ContentLength` alone, but it is not encryption, retention validation, or a restore rehearsal. `SHA256SUMS` covers every payload plus `manifest.json`; because a checksum file cannot contain its own digest, the workflow computes the local `SHA256SUMS` digest independently and compares it with the downloaded copy.
 
 Object layout:
 
