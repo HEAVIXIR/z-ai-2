@@ -104,3 +104,31 @@ Prisma's raw SQL documentation states that tagged raw queries are submitted as p
 - Worker deployment: unchanged at Version #14; no upload or deployment occurred.
 - No workflow artifact was uploaded by CI #33. Therefore, although the Worker was generated and exercised, a retained artifact-level dependency graph and reproducible bundle-size report are still unavailable. The separate bundle audit remains open.
 - This document-only commit creates a new branch HEAD. Re-run CI and obtain fresh independent approval on that new exact HEAD before treating the documentation snapshot as fully accepted.
+
+
+## 2026-11-05 remediation: database-scoped identity
+
+The earlier guard compared only `pg_control_system().system_identifier`. That value is cluster-scoped, so it cannot distinguish two databases hosted on the same PostgreSQL cluster. The current implementation closes that code-level gap by requiring the pair:
+
+- `system_identifier`: trusted PostgreSQL cluster identity.
+- `pg_database.oid` for `current_database()`: trusted database identity within that cluster.
+
+The real OpenNext Worker client factories require separate App and Store expected OIDs through `HEAVIX_APP_PREVIEW_DATABASE_OID` and `HEAVIX_STORE_PREVIEW_DATABASE_OID`. Missing, malformed, zero, or out-of-range OIDs fail before constructing a Prisma client. The first database query in each client checks both cluster and database identity; the result (including failure) is cached for that client. Raw SQL, unsafe raw SQL, model delegates, interactive/array transactions, and Prisma extensions remain behind the proxy guard. The temporary PREVIEW proof route independently reports cluster and database matches and refuses to start unless both expected OIDs are configured.
+
+The Workerd proof runner now requires both trusted OIDs for `PREVIEW_ONLY`, writes them only into its private temporary `.dev.vars` file, and asserts the returned OID for App and Store. CI adds a zero-database-contact Workerd smoke that imports the PPG adapter/client graph and verifies missing-secret fail-closed behavior. That smoke does not establish a successful PPG database handshake or prove the prepared read-only transaction against a Preview database.
+
+The current Wrangler configuration declares both OID values as required Worker secrets. Their values have **not** been retrieved, inferred, or configured here. The exact OIDs must be collected independently from the already-verified dedicated Preview destinations; if a Preview database is recreated, its OID must be re-inventoried. Do not run `PREVIEW_ONLY` until both secret destinations are independently verified and separate authorization for Preview database contact is recorded.
+
+### Current acceptance state
+
+- [x] Code now distinguishes a sibling database on the same cluster by the cluster/OID pair.
+- [x] Unit coverage includes the correct-cluster/wrong-database rejection case and OID input validation.
+- [x] The Workerd Preview runner requires and checks per-target OIDs.
+- [x] CI workflow includes a no-DB Workerd PPG module-load smoke.
+- [ ] Independently verify the Cloudflare App and Store connection-secret destinations without reading or disclosing secret values.
+- [ ] Obtain each target's database OID and configure the two required Worker OID secrets.
+- [ ] Run the authorized read-only Preview proof against those exact targets; this is database contact and has not been run.
+- [ ] Prove the actual Prisma PPG prepared read-only transaction against the Preview Worker runtime.
+- [ ] Obtain fresh independent approval on the final exact PR HEAD.
+
+Production remains NO-GO. No Production access, Preview database contact, migrations, writes, Worker upload/deployment, DNS change, PR merge, or main-branch change was performed as part of this remediation.

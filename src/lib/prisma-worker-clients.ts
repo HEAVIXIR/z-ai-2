@@ -10,25 +10,18 @@ export type WorkerDatabaseEnv = {
   HEAVIX_STORE_PREVIEW_DATABASE_OID?: string;
 };
 
-// ── STEP 18.2.7.3.10 (Finding S-3, extended to real app path) ──────────
-// The isolated Workerd proof (tests/workerd/worker.ts) already verifies
-// database identity before any other query. But the REAL app path (when
-// OpenNext runs the Worker in production) uses these factory functions
-// directly. If a secret is misconfigured to point at Production, the real
-// app would execute queries against Production without any identity check.
+// Database identity is a pair, not just a PostgreSQL cluster identifier:
+//   - pg_control_system().system_identifier identifies the cluster.
+//   - pg_database.oid identifies the current database within that cluster.
+// The OID is supplied independently for each target through protected Worker
+// configuration. Missing or malformed expected OIDs fail before a Prisma
+// client is created. The first database statement then checks both values.
 //
-// This module now wraps each PrismaClient in a Proxy that intercepts the
-// FIRST query to verify database identity. If the identity check fails
-// (system_identifier does not match the expected Preview value), the
-// Proxy throws PreviewIdentityMismatchError and the query is never
-// forwarded to the underlying client.
-//
-// The identity check runs ONCE per client instance (cached). Subsequent
-// queries on the same client proceed without re-checking.
-//
-// The ONLY query that runs before identity verification is:
-//   SELECT system_identifier::text FROM pg_control_system()
-// This is a read-only system function that exposes no user data.
+// Each real OpenNext Prisma client is wrapped in a Proxy. The identity result
+// (including a failure) is cached per client; all raw-query, model-delegate,
+// transaction, and extension paths must pass the guard before execution.
+// This prevents a connection accidentally aimed at a sibling database on
+// the same PostgreSQL cluster from passing the Preview allowlist.
 
 const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
 const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
@@ -54,24 +47,6 @@ export class PreviewIdentityMismatchError extends Error {
     this.expectedDatabaseOid = expectedOid;
     this.actualDatabaseOid = actualOid;
     this.databaseLabel = label;
-  }
-}
-
-async function verifyDatabaseIdentity(
-  client: { $queryRaw: <T = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T> },
-  expectedSystemIdentifier: string,
-  expectedDatabaseOid: string,
-  label: string,
-): Promise<void> {
-  const rows = await client.$queryRaw<
-    Array<{ system_identifier: string; database_oid: string }>
-  >`SELECT
-    (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
-    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid`;
-  const actual = rows[0]?.system_identifier ?? "";
-  const actualOid = rows[0]?.database_oid ?? "";
-  if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
-    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label);
   }
 }
 
