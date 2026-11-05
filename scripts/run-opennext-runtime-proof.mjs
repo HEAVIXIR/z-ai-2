@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const routePath = "/api/_internal/opennext-runtime-proof";
+const routePath = "/api/opennext-runtime-proof";
 const timeoutMs = 90_000;
 
 function isolatedEnv(extra = {}) {
