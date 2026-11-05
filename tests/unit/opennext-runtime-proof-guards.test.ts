@@ -27,7 +27,7 @@ describe("production OpenNext proof guards", () => {
       ["bearer abc123", "abc123"],
       ["BEARER abc123", "abc123"],
       ["Bearer    abc123", "abc123"],
-      ["Bearer\\tabc123", "abc123"],
+      ["Bearer\tabc123", "abc123"],
     ])("extracts token from %j", (header, expected) => {
       expect(extractBearerToken(header)).toBe(expected);
     });
