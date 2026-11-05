@@ -143,9 +143,14 @@ export async function GET(request: Request) {
   // This branch is only enabled by the local test runner's temporary
   // Wrangler config. It invokes both real application proxies, but has no
   // database bindings; resolver failure must occur before any network I/O.
+  // Defer proxy access into promise callbacks: the real Worker resolver may
+  // throw synchronously while resolving a missing binding, before returning
+  // a Prisma promise. Promise.allSettled only observes rejections, so each
+  // access must first cross a promise boundary to capture both sync throws
+  // and asynchronous query failures without allowing an unhandled 500.
   const [app, store] = await Promise.allSettled([
-    db.$queryRaw`SELECT 1`,
-    storeDb.$queryRaw`SELECT 1`,
+    Promise.resolve().then(() => db.$queryRaw`SELECT 1`),
+    Promise.resolve().then(() => storeDb.$queryRaw`SELECT 1`),
   ]);
   const appClosed = app.status === "rejected" &&
     app.reason instanceof Error &&
