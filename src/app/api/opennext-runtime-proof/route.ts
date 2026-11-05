@@ -60,13 +60,13 @@ async function probeApp() {
     // this observed the existing state but did NOT enforce read-only mode.
     // A misconfigured read-write database would pass that check.
     //
-    // Now we explicitly SET TRANSACTION READ ONLY as the FIRST statement
-    // in the transaction. If the database is already read-only, this is a
-    // no-op. If it is read-write, PostgreSQL will either:
-    //   - Set the transaction to read-only (if the role has permission), or
-    //   - Throw an error (if the role lacks SET permission).
-    // Either way, no write can occur in this transaction after this point.
-    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    // Set transaction_read_only with a transaction-local GUC as the first
+    // statement. This is a SELECT function call, so it can use Prisma's
+    // prepared-statement raw-query path (unlike a SET utility command).
+    // is_local=true resets the setting when this transaction ends.
+    const configured = await tx.$queryRaw<Array<{ read_only: string }>>`
+      SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
+    if (configured[0]?.read_only !== "on") return false;
     const rows = await tx.$queryRaw<Array<{ read_only: boolean }>>`
       SELECT current_setting('transaction_read_only')::boolean AS read_only`;
     return rows[0]?.read_only === true;
@@ -100,8 +100,10 @@ async function probeStore() {
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
     ORDER BY migration_name`;
   const transaction = await storeDb.$transaction(async (tx) => {
-    // STEP 18.2.7.3.11 (Finding RO-1): see probeApp() above.
-    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    // STEP 18.2.7.3.11 (Finding RO-1): use the same prepared-safe GUC as probeApp().
+    const configured = await tx.$queryRaw<Array<{ read_only: string }>>`
+      SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
+    if (configured[0]?.read_only !== "on") return false;
     const rows = await tx.$queryRaw<Array<{ read_only: boolean }>>`
       SELECT current_setting('transaction_read_only')::boolean AS read_only`;
     return rows[0]?.read_only === true;
