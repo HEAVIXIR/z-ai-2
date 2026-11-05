@@ -183,20 +183,18 @@ try {
     getJson(baseUrl, "/app/transaction"),
     getJson(baseUrl, "/store/transaction"),
   ]);
-  assert.equal(appTx.transactionOk, true, "App read-only transaction failed.");
-  assert.equal(storeTx.transactionOk, true, "Store read-only transaction failed.");
-  // STEP 18.2.7.3.10 (Finding T-1): a successful SELECT 1 does NOT prove
-  // READ ONLY mode. The worker now also attempts a write (CREATE TEMP TABLE)
-  // inside the transaction and reports readOnlyProven=true only if PostgreSQL
-  // rejected the write with SQLSTATE 25006 ("cannot execute CREATE TABLE in a
-  // read-only transaction"). This is the only way to actually prove the
-  // database connection is read-only.
-  assert.equal(appTx.writeAttempted, true, "App transaction did not attempt a write to prove READ ONLY.");
-  assert.equal(storeTx.writeAttempted, true, "Store transaction did not attempt a write to prove READ ONLY.");
-  assert.equal(appTx.writeRejected, true, "App transaction allowed a write — database is NOT read-only!");
-  assert.equal(storeTx.writeRejected, true, "Store transaction allowed a write — database is NOT read-only!");
-  assert.equal(appTx.readOnlyProven, true, `App transaction did not prove READ ONLY (writeErrorCode=${appTx.writeErrorCode}). Expected SQLSTATE 25006.`);
-  assert.equal(storeTx.readOnlyProven, true, `Store transaction did not prove READ ONLY (writeErrorCode=${storeTx.writeErrorCode}). Expected SQLSTATE 25006.`);
+  assert.equal(appTx.transactionOk, true, "App transaction failed (connection check SELECT 1).");
+  assert.equal(storeTx.transactionOk, true, "Store transaction failed (connection check SELECT 1).");
+  // STEP 18.2.7.3.10 (Finding T-1, revised per review #6657226686):
+  // The previous approach attempted CREATE TEMP TABLE and expected SQLSTATE
+  // 25006. Per PostgreSQL docs, CREATE TEMP TABLE is ALLOWED in read-only
+  // transactions, so that test was invalid. The correct approach is to read
+  // the runtime GUC directly via current_setting('transaction_read_only')::boolean.
+  // No write is attempted. readOnlyProven=true means the GUC returned true.
+  assert.equal(appTx.readOnlyProven, true, `App transaction_read_only is NOT on (setting=${appTx.transactionReadOnlySetting}). Preview database must be read-only.`);
+  assert.equal(storeTx.readOnlyProven, true, `Store transaction_read_only is NOT on (setting=${storeTx.transactionReadOnlySetting}). Preview database must be read-only.`);
+  assert.equal(appTx.writesPerformed, false, "App transaction must not perform any writes.");
+  assert.equal(storeTx.writesPerformed, false, "Store transaction must not perform any writes.");
 
   const [missingApp, missingStore] = await Promise.all([
     getJson(baseUrl, "/failure/missing-app-secret"),
@@ -217,14 +215,14 @@ try {
       "same-request client reuse",
       "sequential request isolation",
       "concurrent request isolation",
-      "read-only transaction proven (write rejected with SQLSTATE 25006)",
+      "read-only transaction proven (current_setting('transaction_read_only')::boolean = true)",
       "fail-closed missing-secret behavior",
     ],
     writesPerformed: false,
     productionAccessed: false,
     readOnlyProven: {
-      app: { writeAttempted: appTx.writeAttempted, writeRejected: appTx.writeRejected, writeErrorCode: appTx.writeErrorCode },
-      store: { writeAttempted: storeTx.writeAttempted, writeRejected: storeTx.writeRejected, writeErrorCode: storeTx.writeErrorCode },
+      app: { method: appTx.readOnlyCheckMethod, setting: appTx.transactionReadOnlySetting, proven: appTx.readOnlyProven },
+      store: { method: storeTx.readOnlyCheckMethod, setting: storeTx.transactionReadOnlySetting, proven: storeTx.readOnlyProven },
     },
   }, null, 2));
   }

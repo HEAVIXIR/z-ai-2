@@ -105,46 +105,46 @@ export default {
       }
     }
     if (path === "/app/transaction") {
-      // STEP 18.2.7.3.10 (Finding T-1): a successful `SELECT 1` inside a
-      // transaction only proves the connection works — it does NOT prove the
-      // transaction is read-only. A misconfigured read-write database would
-      // also pass that test. To actually prove READ ONLY mode, we attempt a
-      // write (CREATE TEMP TABLE) inside the transaction. PostgreSQL
-      // returns `ERROR: cannot execute CREATE TABLE in a read-only
-      // transaction` (SQLSTATE 25006) when transaction_read_only=on.
-      // The proof PASSES only if the write is REJECTED with that exact code.
+      // STEP 18.2.7.3.10 (Finding T-1, revised per review comment #6657226686):
+      // The previous approach attempted CREATE TEMP TABLE inside the
+      // transaction. Per PostgreSQL documentation, CREATE TEMP TABLE is
+      // ALLOWED in a read-only transaction (only DML writes to permanent
+      // tables are blocked). So a successful CREATE TEMP TABLE did NOT
+      // prove read-only, and a failed one (25006) would have been even
+      // less meaningful.
+      //
+      // The correct approach is to query the runtime GUC directly:
+      //   SELECT current_setting('transaction_read_only')::boolean
+      // This returns the actual state of the transaction_read_only GUC
+      // for the current transaction. If the Preview database is
+      // configured with transaction_read_only=on (either at the role
+      // level or the session level), this returns true.
+      //
+      // We also verify that the SELECT itself succeeded (transactionOk)
+      // to prove the connection works.
       try {
         const client = getAppClient(ctx, env);
         const result = await client.$transaction(async (tx) => {
-          const rows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
-          let writeRejected = false;
-          let writeError: { code?: string; message?: string } | null = null;
-          try {
-            await tx.$executeRaw`CREATE TEMP TABLE __readonly_proof (id int)`;
-          } catch (writeErr: unknown) {
-            writeRejected = true;
-            const code = (writeErr as { code?: string } | null)?.code;
-            const message = (writeErr as { message?: string } | null)?.message ?? "";
-            writeError = { code, message };
-          }
+          const [selectRows, settingRows] = await Promise.all([
+            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
+            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
+          ]);
+          const rawSetting = settingRows[0]?.transaction_read_only;
+          const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
-            selectOk: Number(rows[0]?.ok) === 1,
-            writeRejected,
-            writeError,
+            selectOk: Number(selectRows[0]?.ok) === 1,
+            transactionReadOnlySetting: String(rawSetting),
+            isReadOnly,
           };
         });
-        const readOnlyProven =
-          result.selectOk === true &&
-          result.writeRejected === true &&
-          typeof result.writeError?.code === "string" &&
-          result.writeError.code === "25006";
+        const readOnlyProven = result.selectOk === true && result.isReadOnly === true;
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,
           readOnlyProven,
-          writeAttempted: true,
-          writeRejected: result.writeRejected,
-          writeErrorCode: result.writeError?.code ?? null,
+          readOnlyCheckMethod: "current_setting('transaction_read_only')::boolean",
+          transactionReadOnlySetting: result.transactionReadOnlySetting,
+          writesPerformed: false,
         });
       } catch (error) {
         return json({
@@ -154,39 +154,30 @@ export default {
       }
     }
     if (path === "/store/transaction") {
-      // STEP 18.2.7.3.10 (Finding T-1): same as /app/transaction above.
+      // STEP 18.2.7.3.10 (Finding T-1, revised): see /app/transaction above.
       try {
         const client = getStoreClient(ctx, env);
         const result = await client.$transaction(async (tx) => {
-          const rows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
-          let writeRejected = false;
-          let writeError: { code?: string; message?: string } | null = null;
-          try {
-            await tx.$executeRaw`CREATE TEMP TABLE __readonly_proof (id int)`;
-          } catch (writeErr: unknown) {
-            writeRejected = true;
-            const code = (writeErr as { code?: string } | null)?.code;
-            const message = (writeErr as { message?: string } | null)?.message ?? "";
-            writeError = { code, message };
-          }
+          const [selectRows, settingRows] = await Promise.all([
+            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
+            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
+          ]);
+          const rawSetting = settingRows[0]?.transaction_read_only;
+          const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
-            selectOk: Number(rows[0]?.ok) === 1,
-            writeRejected,
-            writeError,
+            selectOk: Number(selectRows[0]?.ok) === 1,
+            transactionReadOnlySetting: String(rawSetting),
+            isReadOnly,
           };
         });
-        const readOnlyProven =
-          result.selectOk === true &&
-          result.writeRejected === true &&
-          typeof result.writeError?.code === "string" &&
-          result.writeError.code === "25006";
+        const readOnlyProven = result.selectOk === true && result.isReadOnly === true;
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,
           readOnlyProven,
-          writeAttempted: true,
-          writeRejected: result.writeRejected,
-          writeErrorCode: result.writeError?.code ?? null,
+          readOnlyCheckMethod: "current_setting('transaction_read_only')::boolean",
+          transactionReadOnlySetting: result.transactionReadOnlySetting,
+          writesPerformed: false,
         });
       } catch (error) {
         return json({
