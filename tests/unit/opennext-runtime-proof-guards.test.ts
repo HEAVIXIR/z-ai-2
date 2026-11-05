@@ -94,7 +94,7 @@ describe("RO-1 route enforcement wiring", () => {
     "%s applies transaction-local read-only mode before reading transaction state",
     async (probe) => {
       const content = await readRoute();
-      const start = content.indexOf("async function " + probe + "()");
+      const start = content.indexOf("async function " + probe + "(");
       expect(start).toBeGreaterThanOrEqual(0);
       const next = probe === "probeApp"
         ? content.indexOf("async function probeStore()", start)
