@@ -4,6 +4,8 @@ import {
   validateLLMJson,
   listingBuilderSchema,
   moderationSchema,
+  MAX_LISTING_BUILDER_OUTPUT_CHARS,
+  MAX_MODERATION_OUTPUT_CHARS,
 } from "@/lib/ai-gateway-validation";
 
 // ============================================================
@@ -247,6 +249,35 @@ describe("Normalization policy — trim before validate", () => {
 // ============================================================
 
 describe("JSON extraction edge cases", () => {
+  it("rejects oversized listing output before parsing", () => {
+    const result = validateLLMJson(
+      JSON.stringify({ title: "x".repeat(MAX_LISTING_BUILDER_OUTPUT_CHARS) }),
+      listingBuilderSchema,
+      MAX_LISTING_BUILDER_OUTPUT_CHARS,
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain("size limit");
+  });
+
+  it("rejects oversized moderation output before parsing", () => {
+    const result = validateLLMJson(
+      JSON.stringify({ appropriate: true, reason: "x".repeat(MAX_MODERATION_OUTPUT_CHARS) }),
+      moderationSchema,
+      MAX_MODERATION_OUTPUT_CHARS,
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain("size limit");
+  });
+
+  it("rejects prices beyond JavaScript safe integer precision", () => {
+    const result = validateLLMJson(
+      JSON.stringify({ title: "Valid listing", price: Number.MAX_SAFE_INTEGER + 1 }),
+      listingBuilderSchema,
+    );
+    expect(result.success).toBe(false);
+  });
+
+
   it("multiple JSON objects — rejected", () => {
     const result = validateLLMJson(
       '{"appropriate":true} {"appropriate":false}',
