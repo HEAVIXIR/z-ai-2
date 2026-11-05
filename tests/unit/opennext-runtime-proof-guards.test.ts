@@ -106,7 +106,7 @@ describe("RO-1 route enforcement wiring", () => {
       expect(stateIndex).toBeGreaterThan(setIndex);
       expect(body).toContain("transactionReadOnlyEnforced: transaction");
     expect(body).toContain("database_oid");
-    expect(body).toContain("databaseMatch:");
+    expect(body).toContain("const databaseMatch =");
     },
   );
 });
