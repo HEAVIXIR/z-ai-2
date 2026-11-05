@@ -31,7 +31,7 @@ Create these repository Actions secrets. Values must be entered in GitHub's secr
 
 The B2 key must be restricted to the dedicated `heavix-db-backups` bucket and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step. The existing `heavix-dev-assets` bucket must never receive database dumps.
 
-The workflow also requires repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE`, `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, and the public age recipient `HEAVIX_B2_AGE_RECIPIENT`. The public recipient is not a secret; the corresponding private age identity must remain offline and must never be added to GitHub.
+The workflow also requires repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE`, `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, and the public age recipient `HEAVIX_B2_AGE_RECIPIENT`. The public recipient is not a secret; the corresponding private age identity must remain offline and must never be added to GitHub. Before any database contact, it performs a disposable encryption probe with the configured post-quantum recipient and a read-only `head-bucket` check against `heavix-db-backups`; failure of either stops the run before the DB preflight/dumps.
 
 ## Pre-archive secret scanning
 
