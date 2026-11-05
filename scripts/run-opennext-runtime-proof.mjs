@@ -18,6 +18,7 @@ function isolatedEnv(extra = {}) {
     "HEAVIX_APP_PREVIEW_PPG_URL",
     "HEAVIX_STORE_PREVIEW_PPG_URL",
     "HEAVIX_OPENNEXT_PROOF_TOKEN",
+    "HEAVIX_BACKUP_EXECUTION_ENABLED",
     "CLOUDFLARE_API_TOKEN",
     "CLOUDFLARE_API_KEY",
   ]) delete env[key];
