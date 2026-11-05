@@ -25,7 +25,7 @@ describe("public homepage renderer contracts", () => {
 
   it("uses the public featured-listings endpoint without an admin permission gate", () => {
     const source = getDataSource("listing.featured");
-    expect(source?.apiPath).toBe("/api/listings?featured=true&limit=8");
+    expect(source?.apiPath).toBe("/api/listings?sort=featured&limit=8");
     expect(source?.permissions).toEqual([]);
   });
 
