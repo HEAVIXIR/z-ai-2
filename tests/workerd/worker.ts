@@ -20,7 +20,55 @@ function getClientId(client: object): number {
   return id;
 }
 
-async function appFingerprint(client: AppPrismaClient) {
+// STEP 18.2.7.3.10 (Finding S-3, per senior-manager audit):
+// The expected PostgreSQL system_identifier values for the App and Store
+// Preview databases. These are the ONLY values that the runtime proof is
+// permitted to connect to. If a secret is misconfigured to point at a
+// different database (e.g. Production), the proof MUST fail-closed BEFORE
+// any other query (migrations, transaction tests, etc.) is executed —
+// otherwise read access to Production would occur before the mismatch
+// is detected.
+const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
+const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
+
+class PreviewIdentityMismatchError extends Error {
+  readonly expectedSystemIdentifier: string;
+  readonly actualSystemIdentifier: string;
+  constructor(actual: string, expected: string, label: string) {
+    super(`${label} system_identifier mismatch: expected ${expected}, got ${actual}`);
+    this.name = "PreviewIdentityMismatchError";
+    this.expectedSystemIdentifier = expected;
+    this.actualSystemIdentifier = actual;
+  }
+}
+
+/**
+ * Verify the connected database's system_identifier BEFORE any other query.
+ * This is the fail-closed gate: if the secret points at the wrong database
+ * (e.g. Production), this function throws PreviewIdentityMismatchError
+ * before migrations or transaction tests are read.
+ */
+async function verifyDatabaseIdentity(
+  client: AppPrismaClient | StorePrismaClient,
+  expectedSystemIdentifier: string,
+  label: string,
+): Promise<void> {
+  const rows = await client.$queryRaw<
+    Array<{ system_identifier: string }>
+  >`SELECT system_identifier::text AS system_identifier FROM pg_control_system()`;
+  const actual = rows[0]?.system_identifier ?? "";
+  if (actual !== expectedSystemIdentifier) {
+    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, label);
+  }
+}
+
+async function appFingerprint(client: AppPrismaClient): Promise<{
+  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+  migrationNames: string[];
+}> {
+  // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
+  // If this throws, the caller returns 502 immediately — migrations are never read.
+  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
@@ -28,7 +76,12 @@ async function appFingerprint(client: AppPrismaClient) {
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
 
-async function storeFingerprint(client: StorePrismaClient) {
+async function storeFingerprint(client: StorePrismaClient): Promise<{
+  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+  migrationNames: string[];
+}> {
+  // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
+  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
@@ -122,8 +175,13 @@ export default {
       //
       // We also verify that the SELECT itself succeeded (transactionOk)
       // to prove the connection works.
+      //
+      // STEP 18.2.7.3.10 (Finding S-3): verify identity BEFORE opening the
+      // transaction. If the secret points at Production, the transaction
+      // is never opened.
       try {
         const client = getAppClient(ctx, env);
+        await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
@@ -155,8 +213,11 @@ export default {
     }
     if (path === "/store/transaction") {
       // STEP 18.2.7.3.10 (Finding T-1, revised): see /app/transaction above.
+      // STEP 18.2.7.3.10 (Finding S-3): verify identity BEFORE opening the
+      // transaction.
       try {
         const client = getStoreClient(ctx, env);
+        await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
