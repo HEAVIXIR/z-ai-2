@@ -65,7 +65,7 @@ try {
   if (!smokeOnly) {
     await writeFile(
       varsPath,
-      `DATABASE_URL=${JSON.stringify(appUrl)}\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\\n`,
+      `DATABASE_URL=${JSON.stringify(appUrl)}\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\n`,
       { mode: 0o600 },
     );
   }
