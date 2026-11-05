@@ -8,14 +8,19 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appUrl = process.env.HEAVIX_APP_PREVIEW_PPG_URL;
 const storeUrl = process.env.HEAVIX_STORE_PREVIEW_PPG_URL;
+const target = process.env.HEAVIX_RUNTIME_PROOF_TARGET;
+const smokeOnly = target === "SMOKE_ONLY";
 
-if (process.env.HEAVIX_RUNTIME_PROOF_TARGET !== "PREVIEW_ONLY") {
-  throw new Error("Blocked: explicit PREVIEW_ONLY confirmation is required.");
+if (target !== "PREVIEW_ONLY" && !smokeOnly) {
+  throw new Error("Blocked: choose SMOKE_ONLY or explicitly confirm PREVIEW_ONLY.");
 }
-if (!appUrl || !storeUrl || appUrl === storeUrl) {
+if (smokeOnly && (appUrl || storeUrl)) {
+  throw new Error("Blocked: SMOKE_ONLY must not receive database connection strings.");
+}
+if (!smokeOnly && (!appUrl || !storeUrl || appUrl === storeUrl)) {
   throw new Error("Blocked: two distinct Preview-only PPG connection strings are required.");
 }
-if (!appUrl.includes("://") || !storeUrl.includes("://")) {
+if (!smokeOnly && (!appUrl.includes("://") || !storeUrl.includes("://"))) {
   throw new Error("Blocked: one or both Preview connection inputs are malformed.");
 }
 
@@ -96,6 +101,30 @@ try {
     }
   }
   assert.equal(ready, true, "Local Workerd Worker did not become ready within 45 seconds.");
+
+  if (smokeOnly) {
+    const [missingApp, missingStore] = await Promise.all([
+      getJson(baseUrl, "/failure/missing-app-secret"),
+      getJson(baseUrl, "/failure/missing-store-secret"),
+    ]);
+    assert.equal(missingApp.expectedFailure, true, "App client did not fail closed without its secret.");
+    assert.equal(missingStore.expectedFailure, true, "Store client did not fail closed without its secret.");
+    console.log(JSON.stringify({
+      result: "PASS",
+      mode: "SMOKE_ONLY",
+      runtime: "workerd via Wrangler/Miniflare",
+      checks: [
+        "Worker module graph loaded in workerd",
+        "App and Store generated Prisma clients imported",
+        "PPG adapter imported in workerd",
+        "missing App/Store secrets fail closed",
+      ],
+      databaseConnectionsAttempted: false,
+      writesPerformed: false,
+      productionAccessed: false,
+    }, null, 2));
+    return;
+  }
 
   const appFirst = await getJson(baseUrl, "/app/fingerprint");
   const appSecond = await getJson(baseUrl, "/app/fingerprint");

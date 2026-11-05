@@ -141,6 +141,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(workflow).toContain("bun run test:workerd");
     expect(ci).toContain("prisma-workerd-runtime-proof:");
     expect(ci).toContain("HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF");
+    expect(ci).toContain("prisma-workerd-smoke:");
+    expect(ci).toContain("HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY");
   });
 });
 

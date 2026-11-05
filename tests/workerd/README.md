@@ -32,6 +32,13 @@ business-row reads, or writes.
 A successful local proof does not establish which databases the deployed
 Cloudflare secrets target and does not authorize deployment.
 
+## No-database smoke mode
+
+The ordinary PR CI runs the same Worker entrypoint in `SMOKE_ONLY` mode.
+It generates and imports both clients and the PPG adapter in workerd, checks
+missing-secret fail-closed behavior, and never receives or attempts a database
+connection. This is runtime/module-graph evidence, not database acceptance.
+
 ## GitHub Actions enablement
 
 The repository CI workflow contains an opt-in runtime-proof job. It is skipped
