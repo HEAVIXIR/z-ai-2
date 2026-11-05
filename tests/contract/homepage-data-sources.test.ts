@@ -51,6 +51,22 @@ describe("public homepage renderer contracts", () => {
     }
   });
 
+  it("filters homepage brand cards to explicitly active records", () => {
+    const route = readFileSync(
+      path.join(root, "src/app/api/taxonomy/brands/route.ts"),
+      "utf8",
+    );
+    expect(getDataSource("brand.popular")?.apiPath).toContain("active=true");
+    expect(route).toContain('const activeRaw = url.searchParams.get("active")');
+    expect(route).toContain("if (active !== undefined) where.active = active");
+  });
+
+  it("renders all intended public content widget types in the default homepage", () => {
+    for (const key of ["listing-grid", "category-grid", "brand-grid", "service-grid", "article-list"]) {
+      expect(defaultLayoutSource).toContain(`key: "${key}"`);
+    }
+  });
+
   it("uses the real public endpoint envelopes for brands, services, and articles", () => {
     expect(getDataSource("brand.popular")?.apiPath).toBe(
       "/api/taxonomy/brands?active=true&status=ACTIVE&sort=featured&limit=12",
