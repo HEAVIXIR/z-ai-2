@@ -189,4 +189,73 @@ describe("Prisma Worker database identity guard", () => {
     expect(rows).toEqual([{ result: 1 }]);
     expect(client.$queryRaw).toHaveBeenCalledTimes(2);
   });
+
+  it("guards the interactive transaction client on its own transaction connection", async () => {
+    const events: string[] = [];
+    const transactionClient = {
+      $queryRaw: vi.fn(async () => {
+        events.push("transaction-identity");
+        return [{ system_identifier: "preview-app-id", database_oid: "101" }];
+      }),
+      user: {
+        findMany: vi.fn(() => lazyPrismaPromise(() => {
+          events.push("transaction-query");
+          return [{ id: "inside-transaction" }];
+        })),
+      },
+    };
+    const client = {
+      $queryRaw: vi.fn(async () => {
+        events.push("root-identity");
+        return [{ system_identifier: "preview-app-id", database_oid: "101" }];
+      }),
+      $transaction: vi.fn(async (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+        callback(transactionClient)),
+    };
+
+    const guarded = withIdentityGuard(client, "preview-app-id", "101", "App");
+    await expect(guarded.$transaction(async (tx) => tx.user.findMany())).resolves.toEqual([
+      { id: "inside-transaction" },
+    ]);
+
+    expect(events).toEqual(["root-identity", "transaction-identity", "transaction-query"]);
+    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transactionClient.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an interactive transaction whose transaction connection has the wrong database", async () => {
+    let transactionQueryExecutions = 0;
+    const transactionClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "wrong-oid" },
+      ]),
+      user: {
+        findMany: vi.fn(() => lazyPrismaPromise(() => {
+          transactionQueryExecutions += 1;
+          return [{ id: "must-not-run" }];
+        })),
+      },
+    };
+    const client = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      $transaction: vi.fn(async (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+        callback(transactionClient)),
+    };
+
+    const guarded = withIdentityGuard(client, "preview-app-id", "101", "App");
+    await expect(
+      guarded.$transaction(async (tx) => tx.user.findMany()),
+    ).rejects.toMatchObject({
+      name: "PreviewIdentityMismatchError",
+      expectedDatabaseOid: "101",
+      actualDatabaseOid: "wrong-oid",
+    });
+
+    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transactionClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(transactionQueryExecutions).toBe(0);
+  });
+
 });
