@@ -1,31 +1,17 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { PrismaClient } from "@/lib/generated/store-worker-client/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { PrismaClient } from "./generated/store-worker-client/client";
 import {
-  createRequestScopedClientResolver,
-  createRequestScopedPrismaProxy,
-} from "@/lib/prisma-worker-proxy";
+  createStoreWorkerClientResolver,
+  type WorkerDatabaseEnv,
+} from "./prisma-worker-clients";
+import { createRequestScopedPrismaProxy } from "./prisma-worker-proxy";
 
-type WorkerEnv = {
-  STORE_DATABASE_URL?: string;
+const getRequestStoreClient = createStoreWorkerClientResolver();
+const getCurrentRequestStoreClient = () => {
+  const { ctx, env } = getCloudflareContext();
+  return getRequestStoreClient(ctx as object, env as WorkerDatabaseEnv);
 };
 
-const getRequestStoreClient = createRequestScopedClientResolver(
-  () => getCloudflareContext().ctx as object,
-  () => {
-    const { env } = getCloudflareContext();
-    const connectionString = (env as WorkerEnv).STORE_DATABASE_URL;
-    if (!connectionString) {
-      throw new Error("Missing Cloudflare Worker secret: STORE_DATABASE_URL");
-    }
-
-    return new PrismaClient({
-      adapter: new PrismaPostgresAdapter({ connectionString }),
-      log: ["error", "warn"],
-    });
-  },
-);
-
 export const storeDb = createRequestScopedPrismaProxy(
-  getRequestStoreClient,
+  getCurrentRequestStoreClient,
 ) as PrismaClient;

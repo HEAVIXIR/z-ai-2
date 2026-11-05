@@ -1,33 +1,17 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { PrismaClient, Prisma } from "@/lib/generated/worker-client/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { PrismaClient, Prisma } from "./generated/worker-client/client";
 import {
-  createRequestScopedClientResolver,
-  createRequestScopedPrismaProxy,
-} from "@/lib/prisma-worker-proxy";
+  createAppWorkerClientResolver,
+  type WorkerDatabaseEnv,
+} from "./prisma-worker-clients";
+import { createRequestScopedPrismaProxy } from "./prisma-worker-proxy";
 
-type WorkerEnv = {
-  DATABASE_URL?: string;
+const getRequestClient = createAppWorkerClientResolver();
+const getCurrentRequestClient = () => {
+  const { ctx, env } = getCloudflareContext();
+  return getRequestClient(ctx as object, env as WorkerDatabaseEnv);
 };
 
-// ExecutionContext is unique to the current request. Never put the Prisma
-// client itself on globalThis: its I/O context cannot cross Worker requests.
-const getRequestClient = createRequestScopedClientResolver(
-  () => getCloudflareContext().ctx as object,
-  () => {
-    const { env } = getCloudflareContext();
-    const connectionString = (env as WorkerEnv).DATABASE_URL;
-    if (!connectionString) {
-      throw new Error("Missing Cloudflare Worker secret: DATABASE_URL");
-    }
-
-    return new PrismaClient({
-      adapter: new PrismaPostgresAdapter({ connectionString }),
-      log: ["error", "warn"],
-    });
-  },
-);
-
-export const db = createRequestScopedPrismaProxy(getRequestClient) as PrismaClient;
+export const db = createRequestScopedPrismaProxy(getCurrentRequestClient) as PrismaClient;
 export { Prisma };
-export type { Article } from "@/lib/generated/worker-client/client";
+export type { Article } from "./generated/worker-client/client";

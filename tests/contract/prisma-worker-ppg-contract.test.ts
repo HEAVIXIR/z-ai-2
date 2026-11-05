@@ -12,23 +12,28 @@ function scalarListFields(schema: string): string[] {
 }
 
 describe("Prisma Postgres workerd client contract", () => {
-  it("uses PPG adapters and distinct workerd clients for both databases", () => {
+  it("uses separate request-scoped PPG factories for App and Store", () => {
     const main = read("src/lib/db.worker.ts");
     const store = read("src/lib/store-db.worker.ts");
-    expect(main).toContain("@/lib/generated/worker-client/client");
-    expect(main).toContain("@prisma/adapter-ppg");
+    const factories = read("src/lib/prisma-worker-clients.ts");
+    const resolver = read("src/lib/prisma-worker-proxy.ts");
+
+    expect(main).toContain("./generated/worker-client/client");
     expect(main).toContain("getCloudflareContext");
-    expect(main).toContain("createRequestScopedClientResolver");
-    expect(main).not.toMatch(/globalThis\s*\.\s*\w+/);
-    expect(main).not.toContain("@prisma/adapter-pg");
-    expect(main).toContain('Missing Cloudflare Worker secret: DATABASE_URL');
-    expect(store).toContain("@/lib/generated/store-worker-client/client");
-    expect(store).toContain("@prisma/adapter-ppg");
+    expect(main).toContain("createAppWorkerClientResolver");
+    expect(store).toContain("./generated/store-worker-client/client");
     expect(store).toContain("getCloudflareContext");
-    expect(store).toContain("createRequestScopedClientResolver");
+    expect(store).toContain("createStoreWorkerClientResolver");
+    expect(factories).toContain("@prisma/adapter-ppg");
+    expect(factories).toContain("DATABASE_URL");
+    expect(factories).toContain("STORE_DATABASE_URL");
+    expect(factories).toContain('Missing Cloudflare Worker secret: DATABASE_URL');
+    expect(factories).toContain('Missing Cloudflare Worker secret: STORE_DATABASE_URL');
+    expect(factories).not.toContain("@prisma/adapter-pg");
+    expect(resolver).toContain("new WeakMap<object, TClient>()");
+    expect(resolver).toContain("requestKey");
+    expect(main).not.toMatch(/globalThis\s*\.\s*\w+/);
     expect(store).not.toMatch(/globalThis\s*\.\s*\w+/);
-    expect(store).not.toContain("@prisma/adapter-pg");
-    expect(store).toContain('Missing Cloudflare Worker secret: STORE_DATABASE_URL');
   });
 
   it("selects Worker-only aliases and type resolution for Cloudflare", () => {
@@ -85,7 +90,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(scalarListFields(read("prisma/store/schema.prisma"))).toEqual([]);
   });
 
-  it("pins tested Prisma and PPG package versions", () => {
+  it("pins tested Prisma and PPG package versions and the local proof runner", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.dependencies["@prisma/client"]).toBe("6.19.3");
     expect(pkg.dependencies.prisma).toBe("6.19.3");
@@ -95,6 +100,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(pkg.devDependencies["@opennextjs/cloudflare"]).toBe("1.20.14");
     expect(pkg.devDependencies.wrangler).toBe("4.156.0");
     expect(pkg.scripts["build:cloudflare"]).toContain("--noMinify");
+    expect(pkg.scripts["test:workerd"]).toBe("bun scripts/run-prisma-workerd-proof.mjs");
     expect(pkg.overrides["minimatch@^3.1.2"]).toBe("3.1.5");
     expect(pkg.overrides["minimatch@^3.1.5"]).toBe("3.1.5");
     expect(pkg.overrides["minimatch@^9.0.1"]).toBe("11.0.4");
@@ -116,6 +122,22 @@ describe("Prisma Postgres workerd client contract", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.scripts["typecheck:worker"]).toBe("tsc --noEmit -p tsconfig.worker.json");
     expect(read(".github/workflows/ci.yml")).toContain("run: bun run typecheck:worker");
+  });
+
+  it("provides a separate fail-closed local Workerd runtime proof", () => {
+    const worker = read("tests/workerd/worker.ts");
+    const runner = read("scripts/run-prisma-workerd-proof.mjs");
+    const workflow = read(".github/workflows/prisma-workerd-proof.yml");
+    expect(worker).toContain('SELECT migration_name FROM "_prisma_migrations"');
+    expect(worker).toContain("createAppWorkerClientResolver");
+    expect(worker).toContain("createStoreWorkerClientResolver");
+    expect(runner).toContain('HEAVIX_RUNTIME_PROOF_TARGET');
+    expect(runner).toContain("wrangler");
+    expect(runner).toContain("concurrent request isolation");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("HEAVIX_APP_PREVIEW_PPG_URL");
+    expect(workflow).toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
+    expect(workflow).toContain("bun run test:workerd");
   });
 });
 

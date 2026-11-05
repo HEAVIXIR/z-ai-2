@@ -100,3 +100,7 @@ public/uploads/articles/test-article-*.png
 # Generated Prisma workerd clients
 /src/lib/generated/worker-client/
 /src/lib/generated/store-worker-client/
+
+# Temporary local-only Workerd runtime proof config and credentials
+.heavix-workerd-proof-*/
+.dev.vars
