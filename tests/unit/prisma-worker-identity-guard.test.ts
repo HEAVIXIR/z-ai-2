@@ -56,12 +56,16 @@ describe("Prisma Worker database identity guard", () => {
   });
 
   it("blocks nested model queries after an identity mismatch and caches failure", async () => {
+    let queryExecutions = 0;
     const client = {
       $queryRaw: vi.fn(async () => [
         { system_identifier: "production-system-id", database_oid: "202" },
       ]),
       listing: {
-        findMany: vi.fn(() => lazyPrismaPromise(() => [{ id: "must-not-be-read" }])),
+        findMany: vi.fn(() => lazyPrismaPromise(() => {
+          queryExecutions += 1;
+          return [{ id: "must-not-be-read" }];
+        })),
       },
     };
 
@@ -80,8 +84,9 @@ describe("Prisma Worker database identity guard", () => {
     });
 
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
-    // Creating a PrismaPromise is safe; its executor must never run after a mismatch.
-    expect(client.listing.findMany).toHaveBeenCalledTimes(1);
+    // Two lazy PrismaPromises may be created; neither executor may run after a mismatch.
+    expect(client.listing.findMany).toHaveBeenCalledTimes(2);
+    expect(queryExecutions).toBe(0);
   });
 
   it("blocks a different database on the expected cluster", async () => {
