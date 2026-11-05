@@ -1,6 +1,6 @@
 # OpenNext Runtime Integration Proof
 
-Status: Draft PR #200; documentation refreshed after CI #33 and Cloudflare Build 0179afc0 on 2026-11-05. The implementation is stacked on PR #191 and is not a deployment or Production acceptance. Current branch HEAD at this documentation snapshot: 6a6e7a551bfb796ec19b0f679638ae5793cba41a. This documentation-only update will create a new HEAD and requires fresh CI/review on that new revision.
+Status: Draft PR #200; refreshed after exact-HEAD CI run 42109029726, OpenNext run 42109029734, and Cloudflare Build 409720f3-6545-4676-8b6d-e9578b0e84e7 on 2026-11-06. Current code HEAD before this documentation refresh: 4a55350c5a0d3de90828b81c4c4f68c089062909. CI and OpenNext smoke passed; Cloudflare Build passed without upload/deploy. This document refresh creates a new HEAD and therefore requires fresh CI and independent review.
 
 ## Objective
 
@@ -86,7 +86,7 @@ Never read or print secret values, database URLs, bearer tokens, or connection s
 
 A metadata-only Prisma inventory confirmed three distinct managed databases in Europe (Frankfurt): heavix-production, heavix-app-preview, and heavix-store-preview. Both Preview databases report ready status. Connection-string metadata includes a worker-named connection on each Preview project; the App Preview project also has a separately named app-worker connection. No connection-string values were requested, read, or returned.
 
-Branch inventory is not symmetric: the App Preview project contains a preview branch named test/opennext-runtime-integration, while the Store Preview project currently lists main (role production) and feature/prisma7-runtime-contract-proof, but no matching test/opennext-runtime-integration branch. This is a metadata discrepancy to resolve before assuming the two Worker bindings target equivalent branch contexts. Connection-string names and database existence do not prove which encrypted Cloudflare secret value points to which database. The binding-to-resource mapping remains unverified.
+The latest metadata inventory now shows both App Preview and Store Preview projects contain a preview branch named test/opennext-runtime-integration. This corrects an earlier inventory snapshot that did not show the Store branch. Branch-name parity alone does not prove matching database resources, Compute apps, or deployment topology. Connection-string names and database existence do not prove which encrypted Cloudflare secret value points to which database. The binding-to-resource mapping remains unverified.
 
 Cloudflare Workers Build 0179afc0-07ef-4880-a673-489b749a4df3 for code commit f039c028e8c91ce303f25e7f8e26560384a9c02d completed successfully. The later code-HEAD 6a6e7a5 differs from f039c02 only by this architecture-document change. The configured deploy command remains an explicit no-op marker. This is a build, not an upload or deployment. Live Worker inventory remains Version #14.
 
@@ -132,3 +132,46 @@ The current Wrangler configuration declares both OID values as required Worker s
 - [ ] Obtain fresh independent approval on the final exact PR HEAD.
 
 Production remains NO-GO. No Production access, Preview database contact, migrations, writes, Worker upload/deployment, DNS change, PR merge, or main-branch change was performed as part of this remediation.
+
+
+## 2026-11-06 exact-HEAD validation refresh
+
+Code HEAD `4a55350c5a0d3de90828b81c4c4f68c089062909` was independently checked:
+
+- GitHub CI run `42109029726`: SUCCESS. Seven jobs succeeded; two intentionally skipped (legacy archive inventory and Preview-only Prisma proof); no failed jobs.
+- OpenNext runtime integration run `42109029734`: SUCCESS. The real OpenNext App Router route ran in local Wrangler/Workerd with no database credentials and both actual application proxies failed closed.
+- Cloudflare Build `409720f3-6545-4676-8b6d-e9578b0e84e7`: build_outcome SUCCESS. Its deploy command remains a deliberate blocked/no-op marker. No upload or deployment occurred.
+- Vercel Preview check for this code revision was reported successful by the PR check.
+- Bundle audit artifact `13452574498`, digest `sha256:bf0ab7ee5790fa8bd5254020dbb1d990b6611ad285cf6898d156ba697b69228c`, was downloaded and inspected. Heuristic verdict `PASS_WITH_SUPPORTED_NODE_COMPAT_IMPORTS`; 2,434 JS files; zero forbidden PostgreSQL TCP adapter/package markers; Wrangler dry-run 29,462,661 bytes (4,203,663 gzip); 622 static assets; no unsupported external Node TCP imports. Six PPG driver markers were found and zero literal adapter markers; this remains heuristic rather than complete dependency-graph proof. Local startup profile is not authoritative Cloudflare startup time.
+- Cloudflare live Worker remains Version #14; latest deployment remains the 2026-10-29 deployment. The successful build did not change active traffic.
+- Current PR #200 remains Open, Draft, Unmerged, and mergeable; base is still PR #191 HEAD `3bf2333fde4f81473ce0d14c99cbd653a386c2e2`.
+- Current main baseline checked against `d86e3fa715d27b95477ed09eda60b2bfba8daaa6`; main is an ancestor of the PR head. No change to main was made.
+- The latest independent approval found in PR history is for older HEAD `a2e5985`; it does not approve current code HEAD `4a55350`.
+
+## 2026-11-06 Preview infrastructure metadata audit
+
+Read-only Prisma metadata inventory confirms:
+
+- Projects: `heavix-app-preview`, `heavix-store-preview`, `heavix-production`, and a separate `heavix-web-preview` project.
+- App Preview DB `db_ew8d6duermpt125paxaqorr9`, Store Preview DB `db_cmtgxfrfwxw5mi77020tcnc3`, and Production DB `db_rc9ln1df4rwgxducp2zsge2s` are all `ready`, each in `eu-central-1` (Frankfurt).
+- Both Preview projects have a metadata branch named `test/opennext-runtime-integration`.
+- No Prisma Compute apps are attached to the App Preview project; no Composer topology is recorded for the App Preview test branch or Store Preview test branch.
+- No Prisma Object Store buckets exist in the workspace.
+- Prisma automated backup listings for App Preview, Store Preview, and Production are empty.
+- Connection-string inventory was restricted to names, IDs, and timestamps. No connection-string values or credentials were retrieved.
+- Active Cloudflare Worker settings expose binding metadata for `DATABASE_URL` and `STORE_DATABASE_URL` as `secret_text`, but that metadata does not identify their destination database. No secret values were accessed.
+- Active Cloudflare Worker settings do not list `HEAVIX_APP_PREVIEW_DATABASE_OID` or `HEAVIX_STORE_PREVIEW_DATABASE_OID` bindings. The repository Wrangler config declares these as required secrets, so the active Worker configuration is not yet ready for PREVIEW_ONLY.
+- Because the active secret destinations are not independently verifiable from non-secret metadata, no Preview database contact was made. This remains a hard safety gate even though the project owner authorized continuing operations.
+
+## Remaining blockers — do not mark release-ready
+
+1. Establish a safe, independently auditable mapping from the active App and Store Cloudflare secret bindings to their dedicated Preview databases without reading, printing, hashing, or comparing secret values.
+2. Obtain the two expected database OIDs from a trusted, non-ambiguous source after the target mapping is established, then provision the two separate OID bindings through a secure secret-management path.
+3. Only then perform the separately authorized PREVIEW_ONLY proof, checking cluster identity, per-database OID, migration fingerprints, PostgreSQL 17, and transaction-local read-only enforcement. The proof contacts both Preview databases; it must never contact Production.
+4. Obtain a fresh independent review for the exact final code/documentation HEAD.
+5. Define and test backup/restore, encryption, retention, and off-host recovery. Prisma automated backup metadata is currently empty; the workspace has no object-store bucket.
+6. Keep PR #200 Draft and main unchanged until every acceptance gate is met. No Worker upload/deployment, DNS change, migration, seed, or Production operation is authorized by a green build.
+
+## Explicit current decision
+
+`SMOKE_ONLY` is proven on the current code HEAD. `PREVIEW_ONLY` is **NOT RUN**. Production remains **NO-GO**. Cloudflare Build success is not deployment success. The PR remains Draft and unmerged.
