@@ -324,9 +324,6 @@ export async function GET(req: Request) {
       });
     }
 
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
-
     return NextResponse.json({ success: true, count: total, data });
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/listings" });
