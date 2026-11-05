@@ -17,6 +17,8 @@ import {
   validateLLMJson,
   listingBuilderSchema,
   moderationSchema,
+  MAX_LISTING_BUILDER_OUTPUT_CHARS,
+  MAX_MODERATION_OUTPUT_CHARS,
 } from "@/lib/ai-gateway-validation";
 
 /* ============================================================
@@ -199,7 +201,7 @@ export async function POST(req: NextRequest) {
         // doesn't match schema, the call fails with a validation error.
         // Previously fell back to { title: desc.substring(0, 80) },
         // silently accepting unvalidated LLM output.
-        const validated = validateLLMJson(content, listingBuilderSchema);
+        const validated = validateLLMJson(content, listingBuilderSchema, MAX_LISTING_BUILDER_OUTPUT_CHARS);
         if (!validated.success) {
           throw new Error(`LISTING_BUILDER output validation failed: ${validated.error}`);
         }
@@ -247,7 +249,7 @@ export async function POST(req: NextRequest) {
         // doesn't match schema, the call FAILS. Previously fell back to
         // { appropriate: true }, which silently approved content when
         // the LLM returned malformed output — a P1 security gap.
-        const validated = validateLLMJson(content, moderationSchema);
+        const validated = validateLLMJson(content, moderationSchema, MAX_MODERATION_OUTPUT_CHARS);
         if (!validated.success) {
           throw new Error(`MODERATION output validation failed: ${validated.error}`);
         }
