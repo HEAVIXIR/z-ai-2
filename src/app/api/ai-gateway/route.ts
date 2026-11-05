@@ -97,7 +97,10 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { task, input } = body as { task?: unknown; input?: unknown };
+  const { task, input } = body as {
+    task?: unknown;
+    input?: { query?: unknown; description?: unknown; text?: unknown } | null;
+  };
 
   if (!task || typeof task !== "string") {
     return NextResponse.json({ error: "task required" }, { status: 400 });
