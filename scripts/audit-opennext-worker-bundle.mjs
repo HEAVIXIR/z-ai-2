@@ -83,13 +83,15 @@ function parseSize(text) {
 }
 
 const forbiddenPatterns = [
+  { id: "node-postgres-adapter", pattern: /@prisma\/adapter-pg/g },
+  { id: "node-postgres-package-path", pattern: /node_modules\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)(?:\/|["'])/g },
+  { id: "node-postgres-package-marker", pattern: /\b(?:pg-protocol|pg-pool|pg-native|pgpass)\b/g },
+];
+const nodeCompatibilityPatterns = [
   { id: "node-net-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?net["']/g },
   { id: "node-tls-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?tls["']/g },
   { id: "node-dgram-import", pattern: /(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:)?dgram["']/g },
   { id: "node-tcp-module-marker", pattern: /node:(?:net|tls|dgram)\b/g },
-  { id: "node-postgres-adapter", pattern: /@prisma\/adapter-pg/g },
-  { id: "node-postgres-package-path", pattern: /node_modules\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)(?:\/|["'])/g },
-  { id: "node-postgres-package-marker", pattern: /\b(?:pg-protocol|pg-pool|pg-native|pgpass)\b/g },
   { id: "tcp-api-symbol", pattern: /\b(?:net\.connect|tls\.connect|new\s+net\.Socket)\b/g },
 ];
 const expectedPpgPatterns = [
@@ -106,6 +108,7 @@ await mkdir(auditRoot, { recursive: true });
 const files = (await walk(outputRoot)).sort();
 const scanned = [];
 const totals = new Map(forbiddenPatterns.map(({ id }) => [id, 0]));
+const nodeCompatibilityTotals = new Map(nodeCompatibilityPatterns.map(({ id }) => [id, 0]));
 const expectedTotals = new Map(expectedPpgPatterns.map(({ id }) => [id, 0]));
 
 for (const file of files) {
@@ -116,6 +119,14 @@ for (const file of files) {
     if (count) {
       totals.set(item.id, totals.get(item.id) + count);
       matches.push({ marker: item.id, count });
+    }
+  }
+  const compatibilityMatches = [];
+  for (const item of nodeCompatibilityPatterns) {
+    const count = [...content.matchAll(item.pattern)].length;
+    if (count) {
+      nodeCompatibilityTotals.set(item.id, nodeCompatibilityTotals.get(item.id) + count);
+      compatibilityMatches.push({ marker: item.id, count });
     }
   }
   const expected = [];
@@ -131,12 +142,14 @@ for (const file of files) {
     bytes: (await stat(file)).size,
     sha256: createHash("sha256").update(content).digest("hex"),
     forbiddenMatches: matches,
+    nodeCompatibilityMatches: compatibilityMatches,
     expectedPpgMatches: expected,
   });
 }
 
 const jsFiles = scanned.filter((file) => codeExtensions.has(extname(file.file)));
 const forbiddenSummary = [...totals].map(([marker, count]) => ({ marker, count }));
+const nodeCompatibilitySummary = [...nodeCompatibilityTotals].map(([marker, count]) => ({ marker, count }));
 const expectedSummary = [...expectedTotals].map(([marker, count]) => ({ marker, count }));
 const totalJsBytes = jsFiles.reduce((sum, file) => sum + file.bytes, 0);
 const forbiddenCount = forbiddenSummary.reduce((sum, item) => sum + item.count, 0);
@@ -156,7 +169,7 @@ for (const path of diagnosticPaths) {
   const content = await readFile(fullPath, "utf8").catch(() => null);
   if (content === null) continue;
   const samples = [];
-  for (const item of forbiddenPatterns) {
+  for (const item of [...forbiddenPatterns, ...nodeCompatibilityPatterns]) {
     const found = [...content.matchAll(item.pattern)].slice(0, 3);
     for (const match of found) {
       const start = Math.max(0, match.index - 90);
@@ -221,6 +234,18 @@ const ppgPackageInputs = metaInputs.filter((path) =>
 const externalNodeTcpImports = externalImports.filter((path) =>
   /^(?:node:)?(?:net|tls|dgram)$/.test(path),
 );
+const wranglerConfigText = await readFile(resolve(root, "wrangler.jsonc"), "utf8");
+const compatibilityDate = wranglerConfigText.match(/"compatibility_date"\\s*:\\s*"([^"]+)"/)?.[1] ?? null;
+const compatibilityFlagsMatch = wranglerConfigText.match(/"compatibility_flags"\\s*:\\s*\\[([^\\]]+)\\]/);
+const compatibilityFlags = compatibilityFlagsMatch
+  ? [...compatibilityFlagsMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
+  : [];
+const nodejsCompatSupported = Boolean(
+  compatibilityDate && compatibilityDate >= "2026-08-04" && compatibilityFlags.includes("nodejs_compat"),
+);
+const unsupportedExternalNodeTcpImports = nodejsCompatSupported
+  ? externalNodeTcpImports.filter((path) => !/^(?:node:)?(?:net|tls)$/.test(path))
+  : externalNodeTcpImports;
 const outputBytes = metaOutputs.reduce((sum, [, output]) => sum + (output.bytes ?? 0), 0);
 const bundleMetaAudit = {
   status: metafile ? "AVAILABLE" : "NOT_AVAILABLE",
@@ -230,6 +255,7 @@ const bundleMetaAudit = {
   forbiddenPackageInputs,
   ppgPackageInputs,
   externalNodeTcpImports,
+  unsupportedExternalNodeTcpImports,
   largestOutputs: metaOutputs
     .map(([path, output]) => ({ path, bytes: output.bytes ?? 0 }))
     .sort((a, b) => b.bytes - a.bytes)
@@ -240,8 +266,12 @@ const reviewRequired = forbiddenCount > 0 ||
   dryRunStatus !== "SUCCESS" ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
-  externalNodeTcpImports.length > 0;
-const verdict = reviewRequired ? "REVIEW_REQUIRED" : "NO_FORBIDDEN_MARKERS_FOUND";
+  unsupportedExternalNodeTcpImports.length > 0;
+const verdict = reviewRequired
+  ? "REVIEW_REQUIRED"
+  : externalNodeTcpImports.length
+    ? "PASS_WITH_SUPPORTED_NODE_COMPAT_IMPORTS"
+    : "PASS";
 
 const report = {
   schemaVersion: 2,
@@ -260,6 +290,14 @@ const report = {
     forbiddenMarkerCount: forbiddenCount,
   },
   forbiddenMarkers: forbiddenSummary,
+  nodeCompatibilityMarkers: nodeCompatibilitySummary,
+  nodeCompatibility: {
+    compatibilityDate,
+    compatibilityFlags,
+    supported: nodejsCompatSupported,
+    externalImports: externalNodeTcpImports,
+    unsupportedExternalImports: unsupportedExternalNodeTcpImports,
+  },
   expectedPpgMarkers: expectedSummary,
   diagnostics,
   wranglerDryRun: {
@@ -285,6 +323,8 @@ console.log(JSON.stringify({
   javascriptFiles: report.totals.javascriptFiles,
   javascriptBytes: report.totals.javascriptBytes,
   forbiddenMarkers: report.forbiddenMarkers,
+  nodeCompatibilityMarkers: report.nodeCompatibilityMarkers,
+  nodeCompatibility: report.nodeCompatibility,
   expectedPpgMarkers: report.expectedPpgMarkers,
   wranglerDryRun: report.wranglerDryRun,
   note: report.method,
