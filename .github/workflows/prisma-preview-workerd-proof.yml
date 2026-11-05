@@ -1,0 +1,65 @@
+name: Prisma Preview Workerd Runtime Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_preview_only:
+        description: Confirm both configured connection strings are dedicated Preview resources
+        required: true
+        type: choice
+        options:
+          - PREVIEW_ONLY
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-prisma-workerd-proof
+  cancel-in-progress: false
+
+jobs:
+  runtime-proof:
+    name: Read-only App + Store Workerd proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: ${{ inputs.confirm_preview_only }}
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
+    steps:
+      - name: Checkout reviewed Prisma Workerd proof commit
+        uses: actions/checkout@v4
+        with:
+          ref: aef4ec7ad94f3edb21358021fc36e09c8dc33bfe
+
+      - name: Verify pinned proof commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "aef4ec7ad94f3edb21358021fc36e09c8dc33bfe"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Fail closed unless both Preview inputs are supplied
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$HEAVIX_RUNTIME_PROOF_TARGET" = "PREVIEW_ONLY"
+          test -n "$HEAVIX_APP_PREVIEW_PPG_URL"
+          test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          echo "Two distinct Preview connection inputs are present; values remain redacted."
+
+      - name: Execute read-only local Workerd runtime proof
+        run: bun run test:workerd
