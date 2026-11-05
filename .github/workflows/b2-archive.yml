@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/b2-archive.yml'
+      - 'docs/ops/BACKBLAZE-B2-ARCHIVE.md'
+      - 'docs/ops/BACKUP-ENCRYPTION-DESIGN.md'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +52,9 @@ jobs:
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
+          encryption_design = File.read("docs/ops/BACKUP-ENCRYPTION-DESIGN.md")
+          abort("Encryption design must require offline private-key custody") unless encryption_design.include?("offline") && encryption_design.include?("runner must never receive the private identity")
+          abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
           upload_script = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run")
           abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
           abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
