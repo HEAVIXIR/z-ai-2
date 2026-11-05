@@ -235,8 +235,8 @@ const externalNodeTcpImports = externalImports.filter((path) =>
   /^(?:node:)?(?:net|tls|dgram)$/.test(path),
 );
 const wranglerConfigText = await readFile(resolve(root, "wrangler.jsonc"), "utf8");
-const compatibilityDate = wranglerConfigText.match(/"compatibility_date"\\s*:\\s*"([^"]+)"/)?.[1] ?? null;
-const compatibilityFlagsMatch = wranglerConfigText.match(/"compatibility_flags"\\s*:\\s*\\[([^\\]]+)\\]/);
+const compatibilityDate = wranglerConfigText.match(/"compatibility_date"\s*:\s*"([^"]+)"/)?.[1] ?? null;
+const compatibilityFlagsMatch = wranglerConfigText.match(/"compatibility_flags"\s*:\s*\[([^\]]+)\]/);
 const compatibilityFlags = compatibilityFlagsMatch
   ? [...compatibilityFlagsMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
   : [];
