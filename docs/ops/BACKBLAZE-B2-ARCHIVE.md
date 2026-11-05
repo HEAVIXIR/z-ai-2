@@ -78,6 +78,10 @@ heavix-archive/YYYY/MM/DD/run-<run-id>-attempt-<n>/
   manifest.json
 ```
 
+## Client-side encryption design
+
+The implementation design is recorded in [BACKUP-ENCRYPTION-DESIGN.md](./BACKUP-ENCRYPTION-DESIGN.md). It selects the upstream age format with an offline owner-held private identity and a public recipient supplied to GitHub Actions. The runner must never receive the private identity. The current archive workflow still has a code-level encryption blocker and must not be dispatched until encryption is implemented, CI proves round-trip and tamper rejection, and the offline restore operator has confirmed key custody.
+
 ## Restore outline
 
 1. Download the selected run's objects from B2 to a controlled restore host.
