@@ -47,8 +47,8 @@ function safeDiagnostic(error: unknown, env: WorkerDatabaseEnv) {
     if (secret) message = message.split(secret).join("[redacted]");
   }
   message = message
-    .replace(/postgres(?:ql)?:\/\/[^\\s"'\x60]+/gi, "[redacted connection URL]")
-    .replace(/\\b(password|token|secret)\\s*[:=]\\s*[^,\\s;]+/gi, "$1=[redacted]")
+    .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, "[redacted connection URL]")
+    .replace(/\b(password|token|secret)\s*[:=]\s*[^,\s;]+/gi, "$1=[redacted]")
     .slice(0, 240);
   return { name, ...(code ? { code } : {}), message };
 }
