@@ -19,7 +19,7 @@ export async function readBoundedJson<T = unknown>(
 
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null) {
-    if (!/^\\d+$/.test(contentLength)) {
+    if (!/^\d+$/.test(contentLength)) {
       try {
         await request.body?.cancel("invalid Content-Length header");
       } catch {
