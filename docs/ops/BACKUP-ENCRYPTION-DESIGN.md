@@ -1,6 +1,6 @@
 # HEAVIX Backup Encryption Design
 
-**Status:** Approved implementation design; not yet wired into the archive workflow.  
+**Status:** Implemented in the PR archive workflow source; exact-head CI and owner key-custody verification are pending.  
 **Scope:** PR #188, Preview-only backup artifacts.  
 **Production:** Explicitly excluded.  
 **Cost constraint:** No paid service or permanent server.
@@ -24,15 +24,20 @@ Upstream references:
 
 ## Key generation and custody
 
-1. Generate an age identity on a trusted offline machine using `age-keygen`.
-2. Extract the corresponding public recipient using `age-keygen -y`.
+1. On a trusted offline machine, create a private working directory and restrictive file permissions:
+   ```sh
+   umask 077
+   age-keygen -o heavix-backup-identity.txt
+   age-keygen -y heavix-backup-identity.txt > heavix-backup-recipient.txt
+   ```
+2. Keep `heavix-backup-identity.txt` offline. Inspect and copy only the public value from `heavix-backup-recipient.txt`.
 3. Store only the public recipient in the GitHub repository variable `HEAVIX_B2_AGE_RECIPIENT`.
 4. Store the private identity in at least two controlled offline recovery locations, protected by the owner's existing secure custody process. Do not store both copies in the same cloud account or same physical location.
 5. Record the identity fingerprint and custodian in the private operational inventory, never the private key itself.
 6. Test decryption from a disposable fixture before the first real archive. Do not upload real backups until the restore operator confirms possession and successful recovery.
 7. Key rotation must add the new public recipient before switching the workflow. During transition, encrypt to both old and new recipients. Retain the old identity until every archive encrypted only to it has passed retention expiry and restore acceptance.
 
-No key generation, key upload, secret creation, or real archive is performed by this design document.
+No key generation, key upload, secret creation, bucket creation, database contact, or real archive has been performed by this PR execution.
 
 ## Archive transformation
 
