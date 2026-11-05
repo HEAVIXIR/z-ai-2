@@ -1,21 +1,6 @@
 name: OpenNext runtime integration proof
 
 on:
-  push:
-    branches:
-      - test/opennext-runtime-integration
-    paths:
-      - "src/app/api/opennext-runtime-proof/**"
-      - "src/lib/db.worker.ts"
-      - "src/lib/store-db.worker.ts"
-      - "src/lib/prisma-worker-clients.ts"
-      - "src/lib/prisma-worker-proxy.ts"
-      - "scripts/run-opennext-runtime-proof.mjs"
-      - "wrangler.jsonc"
-      - "next.config.ts"
-      - "package.json"
-      - "bun.lock*"
-      - ".github/workflows/opennext-runtime-integration-proof.yml"
   pull_request:
     branches:
       - infra/prisma6-cloudflare-runtime
@@ -36,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opennext-runtime-proof-${{ github.event.pull_request.number || github.ref }}
+  group: opennext-runtime-proof-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
