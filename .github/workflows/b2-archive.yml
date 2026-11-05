@@ -58,8 +58,27 @@ jobs:
           abort("No Bash run blocks were validated") if checked.zero?
           puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
           RUBY
+  database-identity-dispatch-gate:
+    name: Require verified Preview DB identity attestation
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fail closed until Preview destinations are independently verified
+        shell: bash
+        env:
+          IDENTITY_GATE: ${{ vars.HEAVIX_B2_DB_IDENTITY_GATE }}
+        run: |
+          set -euo pipefail
+          if [[ "$IDENTITY_GATE" != "VERIFIED_PREVIEW_ONLY" ]]; then
+            echo "::error::Archive blocked: HEAVIX_B2_DB_IDENTITY_GATE is not VERIFIED_PREVIEW_ONLY. Independently verify both dedicated Preview DB identities and read-only credential scope before setting this repository variable."
+            exit 1
+          fi
+          echo "Preview database identity attestation flag is present."
+
   archive:
     if: github.event_name == 'workflow_dispatch'
+    needs: database-identity-dispatch-gate
     name: Verify and archive databases and Git history
     runs-on: ubuntu-latest
     timeout-minutes: 30
