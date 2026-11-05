@@ -46,10 +46,10 @@ function isolatedEnv() {
   return env;
 }
 
-function run(command, args) {
+function run(command, args, cwd = root) {
   return new Promise((resolveRun) => {
     const child = spawn(command, args, {
-      cwd: root,
+      cwd,
       env: isolatedEnv(),
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -193,7 +193,7 @@ const dryRunResult = await run(wranglerBin, [
   dryRunConfigPath,
   "--metafile",
   resolve(auditRoot, "wrangler-bundle-meta.json"),
-]);
+], auditRoot);
 const dryRunOutput = dryRunResult.stdout + "\n" + dryRunResult.stderr;
 const parsedSize = parseSize(dryRunOutput);
 const dryRunStatus = dryRunResult.code === 0 ? "SUCCESS" : "FAILED";
