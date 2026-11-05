@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
+import {
+  constantTimeEqual,
+  extractBearerToken,
+  isPostgres17,
+} from "@/lib/opennext-proof-guards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,15 +24,6 @@ const EXPECTED = {
     migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
   },
 } as const;
-
-function constantTimeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-  return difference === 0;
-}
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -84,7 +80,7 @@ async function probeApp() {
       JSON.stringify(migrations.map((row) => row.migration_name)) ===
       JSON.stringify(EXPECTED.app.migrations),
     transactionReadOnly: transaction,
-    transactionReadOnlyEnforced: true,
+    transactionReadOnlyEnforced: transaction,
   };
 }
 
@@ -119,7 +115,7 @@ async function probeStore() {
       JSON.stringify(migrations.map((row) => row.migration_name)) ===
       JSON.stringify(EXPECTED.store.migrations),
     transactionReadOnly: transaction,
-    transactionReadOnlyEnforced: true,
+    transactionReadOnlyEnforced: transaction,
   };
 }
 
