@@ -9,7 +9,8 @@ describe("Prisma Worker database identity guard", () => {
       $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
         calls.push("identity");
         expect(strings[0]).toContain("pg_control_system()");
-        return [{ system_identifier: "preview-app-id" }];
+        expect(strings[0]).toContain("pg_database");
+        return [{ system_identifier: "preview-app-id", database_oid: "101" }];
       }),
       user: {
         findMany: vi.fn(async () => {
@@ -19,7 +20,7 @@ describe("Prisma Worker database identity guard", () => {
       },
     };
 
-    const guardedClient = withIdentityGuard(client, "preview-app-id", "App");
+    const guardedClient = withIdentityGuard(client, "preview-app-id", "101", "App");
     const db = createRequestScopedPrismaProxy(() => guardedClient);
     await expect(db.user.findMany()).resolves.toEqual([
       { id: "preview-user" },
@@ -33,26 +34,44 @@ describe("Prisma Worker database identity guard", () => {
   it("blocks nested model queries after an identity mismatch and caches failure", async () => {
     const client = {
       $queryRaw: vi.fn(async () => [
-        { system_identifier: "production-system-id" },
+        { system_identifier: "production-system-id", database_oid: "202" },
       ]),
       listing: {
         findMany: vi.fn(async () => [{ id: "must-not-be-read" }]),
       },
     };
 
-    const guardedClient = withIdentityGuard(client, "preview-system-id", "App");
+    const guardedClient = withIdentityGuard(client, "preview-system-id", "101", "App");
     const db = createRequestScopedPrismaProxy(() => guardedClient);
 
     await expect(db.listing.findMany()).rejects.toMatchObject({
       name: "PreviewIdentityMismatchError",
       expectedSystemIdentifier: "preview-system-id",
       actualSystemIdentifier: "production-system-id",
+      expectedDatabaseOid: "101",
+      actualDatabaseOid: "202",
     });
     await expect(db.listing.findMany()).rejects.toMatchObject({
       name: "PreviewIdentityMismatchError",
     });
 
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(client.listing.findMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks a different database on the expected cluster", async () => {
+    const client = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-system-id", database_oid: "wrong-database-oid" },
+      ]),
+      listing: { findMany: vi.fn(async () => [{ id: "must-not-be-read" }]) },
+    };
+    const guarded = withIdentityGuard(client, "preview-system-id", "expected-database-oid", "App");
+    await expect(guarded.listing.findMany()).rejects.toMatchObject({
+      name: "PreviewIdentityMismatchError",
+      expectedDatabaseOid: "expected-database-oid",
+      actualDatabaseOid: "wrong-database-oid",
+    });
     expect(client.listing.findMany).not.toHaveBeenCalled();
   });
 
@@ -64,7 +83,7 @@ describe("Prisma Worker database identity guard", () => {
     const client = {
       $queryRaw: vi.fn(async () => {
         await identityGate;
-        return [{ system_identifier: "preview-store-id" }];
+        return [{ system_identifier: "preview-store-id", database_oid: "303" }];
       }),
       product: {
         findMany: vi.fn(async () => ["products"]),
@@ -72,7 +91,7 @@ describe("Prisma Worker database identity guard", () => {
       },
     };
 
-    const guarded = withIdentityGuard(client, "preview-store-id", "Store");
+    const guarded = withIdentityGuard(client, "preview-store-id", "303", "Store");
     const first = guarded.product.findMany();
     const second = guarded.product.count();
 
@@ -93,7 +112,7 @@ describe("Prisma Worker database identity guard", () => {
     const client = {
       $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
         if (strings[0].includes("pg_control_system()")) {
-          return [{ system_identifier: "preview-app-id" }];
+          return [{ system_identifier: "preview-app-id", database_oid: "101" }];
         }
         return [{ result: 1 }];
       }),
@@ -102,7 +121,7 @@ describe("Prisma Worker database identity guard", () => {
       },
     };
 
-    const guarded = withIdentityGuard(client, "preview-app-id", "App");
+    const guarded = withIdentityGuard(client, "preview-app-id", "101", "App");
     const query = ["SELECT 1 AS result"] as unknown as TemplateStringsArray;
     const rows = await guarded.$queryRaw(query);
 
