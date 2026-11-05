@@ -80,9 +80,7 @@ export function withIdentityGuard<TClient extends object>(
           | ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>)
           | undefined;
         if (typeof rawMethod !== "function") {
-          throw new Error(
-            \`\${label}: $queryRaw not available on client — cannot verify identity\`,
-          );
+          throw new Error(label + ": $queryRaw not available on client — cannot verify identity");
         }
 
         // Prisma's tagged-template API expects a TemplateStringsArray with
