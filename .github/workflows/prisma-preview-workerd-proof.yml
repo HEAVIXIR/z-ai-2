@@ -27,16 +27,16 @@ jobs:
       HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
       HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
     steps:
-      - name: Checkout reviewed Prisma Workerd proof commit
+      - name: Checkout exact reviewed PR #191 Workerd proof commit
         uses: actions/checkout@v4
         with:
-          ref: a5b62a41a94b41ea5d09ffb27ec02cadec51fc64
+          ref: b94b9d6f3540e8f4467b1d4ac051d5ef050c0994
 
       - name: Verify pinned proof commit
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "a5b62a41a94b41ea5d09ffb27ec02cadec51fc64"
+          test "$(git rev-parse HEAD)" = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
