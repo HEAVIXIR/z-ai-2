@@ -51,6 +51,10 @@ jobs:
           abort("Preview identity attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption implementation must be enabled") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=true")
+          static_go_setup = static_job.fetch("steps").find { |step| step["name"] == "Set up Go for pinned age cryptography tests" }
+          archive_go_setup = archive_job.fetch("steps").find { |step| step["name"] == "Set up Go for pinned age CLI" }
+          abort("Static age build must use Go 1.27.0") unless static_go_setup && static_go_setup.fetch("with").fetch("go-version") == "1.27.0"
+          abort("Archive age build must use Go 1.27.0") unless archive_go_setup && archive_go_setup.fetch("with").fetch("go-version") == "1.27.0"
           static_age_install = static_job.fetch("steps").find { |step| step["name"] == "Install age v1.3.2 for static tests" }
           archive_age_install = archive_job.fetch("steps").find { |step| step["name"] == "Install age v1.3.2" }
           abort("Static age CLI must be pinned to v1.3.2") unless static_age_install && static_age_install.fetch("run").include?("@v1.3.2")
@@ -114,7 +118,7 @@ jobs:
       - name: Set up Go for pinned age cryptography tests
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24.2'
+          go-version: '1.27.0'
       - name: Install age v1.3.2 for static tests
         shell: bash
         run: |
@@ -240,7 +244,7 @@ jobs:
       - name: Set up Go for pinned age CLI
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24.2'
+          go-version: '1.27.0'
 
       - name: Install age v1.3.2
         shell: bash
