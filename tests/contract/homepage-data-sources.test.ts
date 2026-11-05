@@ -53,7 +53,7 @@ describe("public homepage renderer contracts", () => {
 
   it("uses the real public endpoint envelopes for brands, services, and articles", () => {
     expect(getDataSource("brand.popular")?.apiPath).toBe(
-      "/api/taxonomy/brands?status=ACTIVE&sort=featured&limit=12",
+      "/api/taxonomy/brands?active=true&status=ACTIVE&sort=featured&limit=12",
     );
     expect(getDataSource("service.all")?.apiPath).toBe("/api/services?limit=12");
     expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit=6");
