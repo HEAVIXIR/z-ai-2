@@ -2,6 +2,30 @@ import { describe, expect, it, vi } from "vitest";
 import { withIdentityGuard } from "@/lib/prisma-worker-clients";
 import { createRequestScopedPrismaProxy } from "@/lib/prisma-worker-proxy";
 
+function lazyPrismaPromise<T>(execute: () => T | Promise<T>) {
+  let execution: Promise<T> | undefined;
+  const run = () => execution ??= Promise.resolve().then(execute);
+  const promise = {
+    then(onFulfilled?: (value: T) => unknown, onRejected?: (reason: unknown) => unknown) {
+      return run().then(onFulfilled, onRejected);
+    },
+    catch(onRejected?: (reason: unknown) => unknown) {
+      return promise.then(undefined, onRejected);
+    },
+    finally(onFinally?: () => unknown) {
+      return promise.then(
+        (value) => Promise.resolve(onFinally?.()).then(() => value),
+        (reason) => Promise.resolve(onFinally?.()).then(() => { throw reason; }),
+      );
+    },
+    requestTransaction(_transaction: unknown) {
+      return lazyPrismaPromise(execute);
+    },
+    [Symbol.toStringTag]: "PrismaPromise",
+  };
+  return promise;
+}
+
 describe("Prisma Worker database identity guard", () => {
   it("verifies identity before invoking a nested model delegate", async () => {
     const calls: string[] = [];
@@ -13,10 +37,10 @@ describe("Prisma Worker database identity guard", () => {
         return [{ system_identifier: "preview-app-id", database_oid: "101" }];
       }),
       user: {
-        findMany: vi.fn(async () => {
+        findMany: vi.fn(() => lazyPrismaPromise(() => {
           calls.push("findMany");
           return [{ id: "preview-user" }];
-        }),
+        })),
       },
     };
 
@@ -37,7 +61,7 @@ describe("Prisma Worker database identity guard", () => {
         { system_identifier: "production-system-id", database_oid: "202" },
       ]),
       listing: {
-        findMany: vi.fn(async () => [{ id: "must-not-be-read" }]),
+        findMany: vi.fn(() => lazyPrismaPromise(() => [{ id: "must-not-be-read" }])),
       },
     };
 
@@ -56,7 +80,8 @@ describe("Prisma Worker database identity guard", () => {
     });
 
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(client.listing.findMany).not.toHaveBeenCalled();
+    // Creating a PrismaPromise is safe; its executor must never run after a mismatch.
+    expect(client.listing.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("blocks a different database on the expected cluster", async () => {
@@ -64,7 +89,7 @@ describe("Prisma Worker database identity guard", () => {
       $queryRaw: vi.fn(async () => [
         { system_identifier: "preview-system-id", database_oid: "wrong-database-oid" },
       ]),
-      listing: { findMany: vi.fn(async () => [{ id: "must-not-be-read" }]) },
+      listing: { findMany: vi.fn(() => lazyPrismaPromise(() => [{ id: "must-not-be-read" }])) },
     };
     const guarded = withIdentityGuard(client, "preview-system-id", "expected-database-oid", "App");
     await expect(guarded.listing.findMany()).rejects.toMatchObject({
@@ -72,7 +97,7 @@ describe("Prisma Worker database identity guard", () => {
       expectedDatabaseOid: "expected-database-oid",
       actualDatabaseOid: "wrong-database-oid",
     });
-    expect(client.listing.findMany).not.toHaveBeenCalled();
+    expect(client.listing.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("shares one identity check across concurrent model queries", async () => {
@@ -86,35 +111,66 @@ describe("Prisma Worker database identity guard", () => {
         return [{ system_identifier: "preview-store-id", database_oid: "303" }];
       }),
       product: {
-        findMany: vi.fn(async () => ["products"]),
-        count: vi.fn(async () => 3),
+        findMany: vi.fn(() => lazyPrismaPromise(() => ["products"])),
+        count: vi.fn(() => lazyPrismaPromise(() => 3)),
       },
     };
 
     const guarded = withIdentityGuard(client, "preview-store-id", "303", "Store");
     const first = guarded.product.findMany();
     const second = guarded.product.count();
+    expect(client.product.findMany).toHaveBeenCalledTimes(1);
+    expect(client.product.count).toHaveBeenCalledTimes(1);
+    const combined = Promise.all([first, second]);
 
     await Promise.resolve();
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(client.product.findMany).not.toHaveBeenCalled();
-    expect(client.product.count).not.toHaveBeenCalled();
 
     releaseIdentity();
-    await expect(Promise.all([first, second])).resolves.toEqual([
+    await expect(combined).resolves.toEqual([
       ["products"],
       3,
     ]);
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves lazy PrismaPromise requestTransaction for array transactions", async () => {
+    const events: string[] = [];
+    const client = {
+      $queryRaw: vi.fn(async () => {
+        events.push("identity");
+        return [{ system_identifier: "preview-app-id", database_oid: "101" }];
+      }),
+      user: {
+        findMany: vi.fn(() => lazyPrismaPromise(() => {
+          events.push("array-query");
+          return [{ id: "preview-user" }];
+        })),
+      },
+      $transaction: vi.fn(async (queries: Array<{ requestTransaction: (tx: unknown) => unknown }>) => {
+        events.push("transaction");
+        return Promise.all(queries.map((query) => query.requestTransaction({ kind: "batch" })));
+      }),
+    };
+    const guarded = withIdentityGuard(client, "preview-app-id", "101", "App");
+    const query = guarded.user.findMany();
+
+    expect(events).toEqual([]);
+    expect(typeof query.requestTransaction).toBe("function");
+
+    await expect(guarded.$transaction([query])).resolves.toEqual([
+      [{ id: "preview-user" }],
+    ]);
+    expect(events).toEqual(["identity", "transaction", "array-query"]);
+  });
+
   it("guards direct raw queries before forwarding them", async () => {
     const client = {
-      $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
+      $queryRaw: vi.fn((strings: TemplateStringsArray) => {
         if (strings[0].includes("pg_control_system()")) {
-          return [{ system_identifier: "preview-app-id", database_oid: "101" }];
+          return Promise.resolve([{ system_identifier: "preview-app-id", database_oid: "101" }]);
         }
-        return [{ result: 1 }];
+        return lazyPrismaPromise(() => [{ result: 1 }]);
       }),
       user: {
         findMany: vi.fn(async () => []),
