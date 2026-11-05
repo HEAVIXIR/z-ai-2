@@ -57,10 +57,11 @@ async function getJson(baseUrl, path) {
 }
 
 // Prisma Postgres reports the internal database name "postgres" for every
-// resource, so database_name is not a unique resource identifier. The stable
-// PostgreSQL system_identifier is independently inventoried per Preview
-// resource and is the primary fail-closed resource allowlist below; exact
-// migration-name sets are a second, schema-level fingerprint.
+// resource, so database_name is not a unique resource identifier. The
+// fail-closed identity is the pair (PostgreSQL system_identifier, pg_database.oid):
+// the former identifies the cluster; the latter distinguishes databases within
+// that cluster. Both expected values are independently inventoried per target.
+// Exact migration-name sets remain a separate schema-level fingerprint.
 const expected = {
   app: {
     databaseName: "postgres",

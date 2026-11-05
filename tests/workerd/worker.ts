@@ -91,7 +91,7 @@ async function storeFingerprint(client: StorePrismaClient, expectedDatabaseOid: 
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
   await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
   const identity = await client.$queryRaw<
-    Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
+    Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };

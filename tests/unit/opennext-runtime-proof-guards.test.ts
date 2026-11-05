@@ -97,7 +97,7 @@ describe("RO-1 route enforcement wiring", () => {
       const start = content.indexOf("async function " + probe + "(");
       expect(start).toBeGreaterThanOrEqual(0);
       const next = probe === "probeApp"
-        ? content.indexOf("async function probeStore()", start)
+        ? content.indexOf("async function probeStore(", start)
         : content.indexOf("export async function GET", start);
       const body = content.slice(start, next);
       const setIndex = body.indexOf("set_config('transaction_read_only', 'on', true)");
