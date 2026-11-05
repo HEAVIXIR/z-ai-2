@@ -16,9 +16,10 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
   });
 
   it("checks out and verifies the exact reviewed Prisma Workerd commit", () => {
-    const reviewedSha = "a5b62a41a94b41ea5d09ffb27ec02cadec51fc64";
+    const reviewedSha = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994";
     expect(workflow).toContain(`ref: ${reviewedSha}`);
     expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${reviewedSha}"`);
+    expect(workflow).not.toContain("a5b62a41a94b41ea5d09ffb27ec02cadec51fc64");
   });
 
   it("requires both distinct Preview secrets without printing their values", () => {
