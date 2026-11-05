@@ -36,6 +36,23 @@ async function storeFingerprint(client: StorePrismaClient) {
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
 
+function safeDiagnostic(error: unknown, env: WorkerDatabaseEnv) {
+  const name = error instanceof Error ? error.name : "UnknownError";
+  const code = error && typeof error === "object" && "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code.slice(0, 64)
+    : undefined;
+  let message = error instanceof Error ? error.message : String(error);
+  for (const secret of [env.DATABASE_URL, env.STORE_DATABASE_URL]) {
+    if (secret) message = message.split(secret).join("[redacted]");
+  }
+  message = message
+    .replace(/postgres(?:ql)?:\/\/[^\\s"'\x60]+/gi, "[redacted connection URL]")
+    .replace(/\\b(password|token|secret)\\s*[:=]\\s*[^,\\s;]+/gi, "$1=[redacted]")
+    .slice(0, 240);
+  return { name, ...(code ? { code } : {}), message };
+}
+
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -68,8 +85,11 @@ export default {
         const client = getAppClient(ctx, env);
         const sameRequestClientReused = client === getAppClient(ctx, env);
         return json({ clientId: getClientId(client), sameRequestClientReused, ...(await appFingerprint(client)) });
-      } catch {
-        return json({ error: "app_preview_probe_failed" }, 502);
+      } catch (error) {
+        return json({
+          error: "app_preview_probe_failed",
+          diagnostic: safeDiagnostic(error, env),
+        }, 502);
       }
     }
     if (path === "/store/fingerprint") {
@@ -77,8 +97,11 @@ export default {
         const client = getStoreClient(ctx, env);
         const sameRequestClientReused = client === getStoreClient(ctx, env);
         return json({ clientId: getClientId(client), sameRequestClientReused, ...(await storeFingerprint(client)) });
-      } catch {
-        return json({ error: "store_preview_probe_failed" }, 502);
+      } catch (error) {
+        return json({
+          error: "store_preview_probe_failed",
+          diagnostic: safeDiagnostic(error, env),
+        }, 502);
       }
     }
     if (path === "/app/transaction") {
@@ -88,8 +111,11 @@ export default {
           tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
         );
         return json({ clientId: getClientId(client), transactionOk: Number(rows[0]?.ok) === 1 });
-      } catch {
-        return json({ error: "app_preview_readonly_transaction_failed" }, 502);
+      } catch (error) {
+        return json({
+          error: "app_preview_readonly_transaction_failed",
+          diagnostic: safeDiagnostic(error, env),
+        }, 502);
       }
     }
     if (path === "/store/transaction") {
@@ -99,8 +125,11 @@ export default {
           tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
         );
         return json({ clientId: getClientId(client), transactionOk: Number(rows[0]?.ok) === 1 });
-      } catch {
-        return json({ error: "store_preview_readonly_transaction_failed" }, 502);
+      } catch (error) {
+        return json({
+          error: "store_preview_readonly_transaction_failed",
+          diagnostic: safeDiagnostic(error, env),
+        }, 502);
       }
     }
     return json({ error: "not_found" }, 404);
