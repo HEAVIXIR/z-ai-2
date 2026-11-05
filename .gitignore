@@ -16,6 +16,8 @@ node_modules
 # next.js
 /.next/
 /out/
+.open-next/
+.wrangler/
 
 # production
 /build
@@ -92,7 +94,4 @@ public/uploads/articles/test-article-*.png
 
 # STEP 15.88: local real-TLS PostgreSQL infrastructure (binaries, certs, cluster data)
 .tls-pg/
-
-# Cloudflare OpenNext generated output (never commit build artifacts)
-.open-next/
-.wrangler/
+src/lib/generated/
