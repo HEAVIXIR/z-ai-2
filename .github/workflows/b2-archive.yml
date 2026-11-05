@@ -48,6 +48,7 @@ jobs:
           gate_configuration = gate_script + " " + gate_env_bindings
           abort("Preview identity attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
+          abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
 
           checked = 0
@@ -74,7 +75,7 @@ jobs:
           puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
           RUBY
   database-identity-dispatch-gate:
-    name: Require Preview identity and archive readiness attestations
+    name: Require Preview identity, archive readiness, and encryption implementation
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -84,6 +85,7 @@ jobs:
         env:
           IDENTITY_GATE: ${{ vars.HEAVIX_B2_DB_IDENTITY_GATE }}
           ARCHIVE_READINESS_GATE: ${{ vars.HEAVIX_B2_ARCHIVE_READINESS_GATE }}
+          ENCRYPTION_IMPLEMENTATION: "false"
         run: |
           set -euo pipefail
           if [[ "$IDENTITY_GATE" != "VERIFIED_PREVIEW_ONLY" ]]; then
@@ -94,7 +96,11 @@ jobs:
             echo "::error::Archive blocked: archive readiness is not approved. Require the dedicated private backup bucket, bucket-scoped key, client-side encryption and recovery-key custody, bounded retention/data cap, and isolated restore target before setting this variable."
             exit 1
           fi
-          echo "Preview identity and archive readiness attestations are present."
+          if [[ "$ENCRYPTION_IMPLEMENTATION" != "true" ]]; then
+            echo "::error::Archive blocked: client-side encryption is not implemented in this workflow. Plaintext database dumps must never be uploaded to B2."
+            exit 1
+          fi
+          echo "Preview identity, archive readiness, and encryption implementation gates are present."
 
   archive:
     if: github.event_name == 'workflow_dispatch'
