@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { withIdentityGuard } from "@/lib/prisma-worker-clients";
+import { createAppWorkerClientResolver, createStoreWorkerClientResolver, withIdentityGuard } from "@/lib/prisma-worker-clients";
 import { createRequestScopedPrismaProxy } from "@/lib/prisma-worker-proxy";
 
 function lazyPrismaPromise<T>(execute: () => T | Promise<T>) {
@@ -25,6 +25,39 @@ function lazyPrismaPromise<T>(execute: () => T | Promise<T>) {
   };
   return promise;
 }
+
+
+describe("Prisma Worker expected database OID configuration", () => {
+  const invalidOids = ["", "0", "4294967296", "01", "1.2", "-1", " 123"];
+
+  it("fails closed for App when the trusted database OID is missing", () => {
+    const resolveApp = createAppWorkerClientResolver();
+    expect(() => resolveApp({}, { DATABASE_URL: "postgresql://unused" }))
+      .toThrow(/missing or invalid HEAVIX database OID/);
+  });
+
+  it("fails closed for Store when the trusted database OID is missing", () => {
+    const resolveStore = createStoreWorkerClientResolver();
+    expect(() => resolveStore({}, { STORE_DATABASE_URL: "postgresql://unused" }))
+      .toThrow(/missing or invalid HEAVIX database OID/);
+  });
+
+  it.each(invalidOids)("rejects malformed App database OID %j before client creation", (oid) => {
+    const resolveApp = createAppWorkerClientResolver();
+    expect(() => resolveApp({}, {
+      DATABASE_URL: "postgresql://unused",
+      HEAVIX_APP_PREVIEW_DATABASE_OID: oid,
+    })).toThrow(/missing or invalid HEAVIX database OID/);
+  });
+
+  it.each(invalidOids)("rejects malformed Store database OID %j before client creation", (oid) => {
+    const resolveStore = createStoreWorkerClientResolver();
+    expect(() => resolveStore({}, {
+      STORE_DATABASE_URL: "postgresql://unused",
+      HEAVIX_STORE_PREVIEW_DATABASE_OID: oid,
+    })).toThrow(/missing or invalid HEAVIX database OID/);
+  });
+});
 
 describe("Prisma Worker database identity guard", () => {
   it("verifies identity before invoking a nested model delegate", async () => {
