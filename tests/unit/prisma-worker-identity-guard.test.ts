@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { withIdentityGuard } from "@/lib/prisma-worker-clients";
+import { createRequestScopedPrismaProxy } from "@/lib/prisma-worker-proxy";
 
 describe("Prisma Worker database identity guard", () => {
   it("verifies identity before invoking a nested model delegate", async () => {
@@ -18,8 +19,9 @@ describe("Prisma Worker database identity guard", () => {
       },
     };
 
-    const guarded = withIdentityGuard(client, "preview-app-id", "App");
-    await expect(guarded.user.findMany()).resolves.toEqual([
+    const guardedClient = withIdentityGuard(client, "preview-app-id", "App");
+    const db = createRequestScopedPrismaProxy(() => guardedClient);
+    await expect(db.user.findMany()).resolves.toEqual([
       { id: "preview-user" },
     ]);
 
@@ -38,14 +40,15 @@ describe("Prisma Worker database identity guard", () => {
       },
     };
 
-    const guarded = withIdentityGuard(client, "preview-system-id", "App");
+    const guardedClient = withIdentityGuard(client, "preview-system-id", "App");
+    const db = createRequestScopedPrismaProxy(() => guardedClient);
 
-    await expect(guarded.listing.findMany()).rejects.toMatchObject({
+    await expect(db.listing.findMany()).rejects.toMatchObject({
       name: "PreviewIdentityMismatchError",
       expectedSystemIdentifier: "preview-system-id",
       actualSystemIdentifier: "production-system-id",
     });
-    await expect(guarded.listing.findMany()).rejects.toMatchObject({
+    await expect(db.listing.findMany()).rejects.toMatchObject({
       name: "PreviewIdentityMismatchError",
     });
 
