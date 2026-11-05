@@ -61,17 +61,29 @@ describe("readBoundedJson", () => {
 
   it("rejects chunked/unknown-length payloads once the streamed byte cap is crossed", async () => {
     const payload = new TextEncoder().encode(JSON.stringify({ input: "x".repeat(70_000) }));
-    const { request, wasCancelled } = requestFromChunks([
-      payload.slice(0, 32_000),
-      payload.slice(32_000),
-    ]);
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // Deliberately leave the stream open so cancellation is observable.
+        controller.enqueue(payload);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const request = new Request("https://heavix.ir/api/ai-gateway", {
+      method: "POST",
+      body,
+      // @ts-expect-error Node/Undici extension used by the test runtime.
+      duplex: "half",
+    });
     const result = await readBoundedJson(request);
     expect(result).toEqual({
       ok: false,
       status: 413,
       error: "request body too large",
     });
-    expect(wasCancelled()).toBe(true);
+    expect(cancelled).toBe(true);
   });
 
   it("rejects invalid UTF-8 rather than silently replacing invalid bytes", async () => {
