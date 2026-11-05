@@ -59,6 +59,11 @@ jobs:
           abort("Archive must use explicit Preview-only DB secrets") unless config_script.include?("HEAVIX_APP_PREVIEW_DATABASE_URL") && config_script.include?("HEAVIX_STORE_PREVIEW_DATABASE_URL")
           abort("Archive must use dedicated DB-backups B2 key secrets") unless config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY_ID") && config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY")
           abort("Archive must require the public age recipient variable") unless config_script.include?("HEAVIX_B2_AGE_RECIPIENT")
+          abort("Age recipient must be cryptographically preflighted before database contact") unless config_step.fetch("run").include?('age -r "$AGE_RECIPIENT"')
+          archive_steps = archive_job.fetch("steps")
+          b2_preflight_index = archive_steps.index { |step| step["name"] == "Verify dedicated B2 bucket access before database contact" }
+          db_dump_index = archive_steps.index { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }
+          abort("Dedicated B2 bucket access must be checked before database contact") unless b2_preflight_index && db_dump_index && b2_preflight_index < db_dump_index
           abort("Archive must require explicit read-only backup role names") unless config_script.include?("HEAVIX_APP_PREVIEW_BACKUP_ROLE") && config_script.include?("HEAVIX_STORE_PREVIEW_BACKUP_ROLE")
           dump_script = archive_job.fetch("steps").find { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }.fetch("run")
           abort("Archive must perform a Preview server fingerprint preflight before pg_dump") unless dump_script.include?("172.16.163.89") && dump_script.include?("172.16.163.49") && dump_script.include?("pg_postmaster_start_time")
@@ -263,6 +268,10 @@ jobs:
             echo "::error::HEAVIX_B2_AGE_RECIPIENT must be a post-quantum age recipient (age1pq1...) without whitespace."
             exit 1
           fi
+          printf 'HEAVIX age recipient preflight' > "$RUNNER_TEMP/age-recipient-preflight.txt"
+          age -r "$AGE_RECIPIENT" -o "$RUNNER_TEMP/age-recipient-preflight.age" "$RUNNER_TEMP/age-recipient-preflight.txt"
+          test -s "$RUNNER_TEMP/age-recipient-preflight.age"
+          rm -f "$RUNNER_TEMP/age-recipient-preflight.txt" "$RUNNER_TEMP/age-recipient-preflight.age"
           python3 - <<'PY'
           import os
           from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -288,6 +297,16 @@ jobs:
           aws --version
           docker --version
           git --version
+
+      - name: Verify dedicated B2 bucket access before database contact
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY }}
+        run: |
+          set -euo pipefail
+          aws --endpoint-url "$B2_ENDPOINT" s3api head-bucket --bucket "$B2_BUCKET"
+          echo "Dedicated database-backup bucket access verified before any database connection."
 
       - name: Scan complete Git histories for exposed secrets
         shell: bash
@@ -468,8 +487,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY }}
         run: |
           set -euo pipefail
-          aws --endpoint-url "$B2_ENDPOINT" s3api head-bucket --bucket "$B2_BUCKET"
-
           STAMP="$(date -u +%Y/%m/%d)"
           DEST="$B2_PREFIX/$STAMP/run-$GITHUB_RUN_ID-attempt-$GITHUB_RUN_ATTEMPT"
           cd "$RUNNER_TEMP/heavix-archive"
