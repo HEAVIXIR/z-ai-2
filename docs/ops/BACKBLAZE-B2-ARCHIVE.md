@@ -10,8 +10,8 @@
 
 Backblaze B2 is the off-site archive destination, not the only copy and not a substitute for source control or database restore rehearsals. This foundation archives independently recoverable copies of:
 
-1. Main PostgreSQL database (`DATABASE_URL`).
-2. Store PostgreSQL database (`STORE_DATABASE_URL`).
+1. App Preview PostgreSQL database (`HEAVIX_APP_PREVIEW_DATABASE_URL`).
+2. Store Preview PostgreSQL database (`HEAVIX_STORE_PREVIEW_DATABASE_URL`).
 3. Complete Git history bundle and source snapshot for `HEAVIXIR/z-ai-2`.
 4. Complete Git history bundle and source snapshot for legacy `HEAVIXIR/z`.
 5. SHA-256 manifest and archive metadata.
@@ -30,6 +30,8 @@ Create these repository Actions secrets. Values must be entered in GitHub's secr
 | `HEAVIX_DB_BACKUPS_B2_KEY` | Backblaze application key secret scoped only to `heavix-db-backups` |
 
 The B2 key must be restricted to the dedicated `heavix-db-backups` bucket and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step. The existing `heavix-dev-assets` bucket must never receive database dumps.
+
+The workflow also requires repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE`, `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, and the public age recipient `HEAVIX_B2_AGE_RECIPIENT`. The public recipient is not a secret; the corresponding private age identity must remain offline and must never be added to GitHub.
 
 ## Pre-archive secret scanning
 
@@ -52,20 +54,20 @@ These are point-in-time infrastructure fingerprints, not permanent database IDs.
 
 The preflight also requires the connected role to match the separately configured repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE` and `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, rejects superuser/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS roles, and checks SELECT-only table/sequence access plus USAGE-without-CREATE on user schemas. A passing role-name check alone is not sufficient; the effective privilege checks must also pass.
 
- The workflow currently accepts generic `HEAVIX_DATABASE_URL` and `HEAVIX_STORE_DATABASE_URL` secrets, but it does not independently prove that they target the dedicated App Preview and Store Preview databases. Secret names, connection-string labels, successful TCP/TLS connectivity, or a successful PostgreSQL login are not database identity evidence.
-
 Before any archive dispatch:
 1. Independently establish both destination identities using the approved non-secret metadata/OID verification process.
 2. Confirm App Preview matches the expected App Preview database identity and Store Preview matches the expected Store Preview identity.
 3. Confirm the credentials are read-only and cannot reach Production or any unapproved database.
 4. Provision a separate private `heavix-db-backups` bucket; do not reuse `heavix-dev-assets`.
 5. Verify a least-privilege B2 Application Key scoped only to the dedicated backup bucket.
-6. Implement client-side encryption and document recovery-key custody; bucket-level encryption alone is insufficient.
-7. Approve bounded retention, data caps, expected growth, and a zero-cost limit.
-8. Prepare an isolated PostgreSQL 17 restore target and a documented restore rehearsal procedure.
+6. Generate the age identity offline, store only its public recipient in `HEAVIX_B2_AGE_RECIPIENT`, and independently confirm private-key custody plus a successful disposable decryption test.
+7. Provision a disposable PostgreSQL 17 restore target and document the full restore rehearsal.
+8. Approve bounded retention, data caps, expected growth, and a zero-cost limit.
 9. Review the evidence and update this runbook/workflow gate before dispatch.
 
-The workflow enforces two fail-closed dispatch latches: `HEAVIX_B2_DB_IDENTITY_GATE=VERIFIED_PREVIEW_ONLY` and `HEAVIX_B2_ARCHIVE_READINESS_GATE=APPROVED_PREVIEW_ARCHIVE_V1`. Leave both unset until every prerequisite above is independently verified and approved. These variables are operational attestation latches, not independent proof of database identity, key scope, encryption, retention, or restore readiness; setting them without the underlying evidence would defeat the safety model. In addition, the workflow currently hard-codes `ENCRYPTION_IMPLEMENTATION=false` and fails the dispatch gate even if both repository variables are mistakenly set. This code-level blocker must remain until client-side encryption is implemented in the workflow, its recovery-key custody is documented, and encrypted-payload/restore tests pass. The current workflow must not upload plaintext database dumps.
+The workflow enforces two fail-closed dispatch latches: `HEAVIX_B2_DB_IDENTITY_GATE=VERIFIED_PREVIEW_ONLY` and `HEAVIX_B2_ARCHIVE_READINESS_GATE=APPROVED_PREVIEW_ARCHIVE_V1`. Leave both unset until every prerequisite above is independently verified and approved. These variables are operational attestation latches, not independent proof of database identity, key scope, encryption, retention, or restore readiness; setting them without the underlying evidence would defeat the safety model.
+
+Client-side encryption is now implemented in the workflow source using pinned `age v1.2.1`: all six DB/source payloads are encrypted before upload, plaintext staging files are removed, and the upload allowlist contains only `.age` payloads plus non-sensitive `manifest.json` and `SHA256SUMS`. The public recipient is read from `HEAVIX_B2_AGE_RECIPIENT`; no private identity is passed to the runner. The PR-only CI job tests age encrypt/decrypt round-trip and tamper rejection. The archive remains blocked until the owner configures and verifies the public recipient, confirms offline private-key custody and restore access, provisions the dedicated bucket/key, closes DB identity/read-only gates, and approves retention/cost limits.
 
 Until all four conditions are satisfied, do not create/populate the two database URL secrets for this workflow, do not run `pg_dump`, and do not use a real database URL as a connectivity test. Git-only archival can be designed as a separate workflow if needed; this combined workflow remains blocked.
 
@@ -73,7 +75,7 @@ Until all four conditions are satisfied, do not create/populate the two database
 
 GitHub → `HEAVIXIR/z-ai-2` → Actions → **Backblaze B2 Archive** → Run workflow. This manual dispatch is blocked until the database identity hard gate above is independently satisfied.
 
-The job fails closed if a required secret is missing, either DB URL is not PostgreSQL, the Gitleaks history scan fails, a dump is empty, `pg_restore --list` cannot parse it, a Git bundle fails verification, local checksums fail, B2 cannot be reached, a remote object size differs from its local file, or a downloaded post-upload object fails SHA-256 comparison against the local manifest.
+The job fails closed if a required secret or repository variable is missing, either DB URL is not PostgreSQL or does not use the direct Prisma endpoint, a Preview server fingerprint or read-only role check fails, the Gitleaks history scan fails, a dump is empty, `pg_restore --list` cannot parse it, a Git bundle fails verification, age encryption fails, any plaintext payload remains in the upload allowlist, local checksums fail, B2 cannot be reached, a remote object size differs from its local file, or a downloaded post-upload object fails SHA-256 comparison against the local manifest.
 
 After each upload, the workflow now downloads that exact object from B2 to the ephemeral runner and compares its SHA-256 digest with the locally generated `SHA256SUMS` entry. This is a read-after-write byte-integrity check; it is stronger than `ContentLength` alone, but it is not encryption, retention validation, or a restore rehearsal. `SHA256SUMS` covers every payload plus `manifest.json`; because a checksum file cannot contain its own digest, the workflow computes the local `SHA256SUMS` digest independently and compares it with the downloaded copy.
 
@@ -81,28 +83,29 @@ Object layout:
 
 ```
 heavix-archive/YYYY/MM/DD/run-<run-id>-attempt-<n>/
-  main.dump
-  store.dump
-  heavix-source.bundle
-  heavix-source.tar.gz
-  heavix-legacy.bundle
-  heavix-legacy.tar.gz
+  main.dump.age
+  store.dump.age
+  heavix-source.bundle.age
+  heavix-source.tar.gz.age
+  heavix-legacy.bundle.age
+  heavix-legacy.tar.gz.age
   SHA256SUMS
   manifest.json
 ```
 
 ## Client-side encryption design
 
-The implementation design is recorded in [BACKUP-ENCRYPTION-DESIGN.md](./BACKUP-ENCRYPTION-DESIGN.md). It selects the upstream age format with an offline owner-held private identity and a public recipient supplied to GitHub Actions. The runner must never receive the private identity. The current archive workflow still has a code-level encryption blocker and must not be dispatched until encryption is implemented, CI proves round-trip and tamper rejection, and the offline restore operator has confirmed key custody.
+The implementation and custody design is recorded in [BACKUP-ENCRYPTION-DESIGN.md](./BACKUP-ENCRYPTION-DESIGN.md). The workflow encrypts each DB and source payload to the public recipient with age v1.2.1 before B2 upload; only ciphertext is included in the upload allowlist. The private identity is kept offline and is never sent to GitHub Actions. CI tests round-trip and authenticated tamper rejection. The owner must still generate the real keypair, store the public recipient in the repository variable, verify offline private-key custody, and prove decryption of a disposable fixture before archive readiness can be approved.
 
 ## Restore outline
 
 1. Download the selected run's objects from B2 to a controlled restore host.
-2. Run `sha256sum -c SHA256SUMS`.
-3. Inspect dump metadata with PostgreSQL 17 `pg_restore --list`.
-4. Restore Main and Store into two separate, newly provisioned, isolated PostgreSQL databases. Never overwrite a live target during a rehearsal.
-5. Compare table counts, migration history, critical row counts, constraints, and application-level sentinels.
-6. Record restore duration and evidence before declaring the archive recoverable.
+2. Run `sha256sum -c SHA256SUMS` before decryption.
+3. Decrypt the corresponding `.age` files using the offline private identity.
+4. Inspect decrypted dump metadata with PostgreSQL 17 `pg_restore --list`.
+5. Restore Main and Store into two separate, newly provisioned, isolated PostgreSQL databases. Never overwrite a live target during a rehearsal.
+6. Compare table counts, migration history, critical row counts, constraints, and application-level sentinels.
+7. Record restore duration and evidence before declaring the archive recoverable.
 
 Git recovery:
 
