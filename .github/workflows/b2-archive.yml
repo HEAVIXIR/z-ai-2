@@ -50,6 +50,9 @@ jobs:
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
+          upload_script = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run")
+          abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
+          abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
 
           checked = 0
 
@@ -74,6 +77,41 @@ jobs:
           abort("No Bash run blocks were validated") if checked.zero?
           puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
           RUBY
+      - name: Exercise manifest and read-back checksums with synthetic files
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMP_ARCHIVE="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_ARCHIVE"' EXIT
+          cd "$TEMP_ARCHIVE"
+
+          printf 'main test payload\\n' > main.dump
+          printf 'store test payload\\n' > store.dump
+          printf 'git bundle test payload\\n' > source.bundle
+          printf '{"fixture":"manifest"}\\n' > manifest.json
+
+          sha256sum main.dump store.dump source.bundle manifest.json > SHA256SUMS
+          for file in main.dump store.dump source.bundle manifest.json SHA256SUMS; do
+            if [[ "$file" == "SHA256SUMS" ]]; then
+              EXPECTED_SHA="$(sha256sum SHA256SUMS | awk '{print $1}')"
+            else
+              EXPECTED_SHA="$(awk -v name="$file" '$2 == name {print $1}' SHA256SUMS)"
+            fi
+            ACTUAL_SHA="$(sha256sum "$file" | awk '{print $1}')"
+            if [[ -z "$EXPECTED_SHA" || "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
+              echo "::error::Synthetic checksum verification failed for $file"
+              exit 1
+            fi
+          done
+
+          EXPECTED_SHA="$(awk '$2 == "main.dump" {print $1}' SHA256SUMS)"
+          printf 'tamper' >> main.dump
+          ACTUAL_SHA="$(sha256sum main.dump | awk '{print $1}')"
+          if [[ "$EXPECTED_SHA" == "$ACTUAL_SHA" ]]; then
+            echo "::error::Synthetic tamper detection did not detect changed bytes"
+            exit 1
+          fi
+          echo "Synthetic manifest, self-checksum, read-back, and tamper-detection checks passed."
   database-identity-dispatch-gate:
     name: Require Preview identity, archive readiness, and encryption implementation
     if: github.event_name == 'workflow_dispatch'
