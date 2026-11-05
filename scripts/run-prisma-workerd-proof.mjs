@@ -185,6 +185,18 @@ try {
   ]);
   assert.equal(appTx.transactionOk, true, "App read-only transaction failed.");
   assert.equal(storeTx.transactionOk, true, "Store read-only transaction failed.");
+  // STEP 18.2.7.3.10 (Finding T-1): a successful SELECT 1 does NOT prove
+  // READ ONLY mode. The worker now also attempts a write (CREATE TEMP TABLE)
+  // inside the transaction and reports readOnlyProven=true only if PostgreSQL
+  // rejected the write with SQLSTATE 25006 ("cannot execute CREATE TABLE in a
+  // read-only transaction"). This is the only way to actually prove the
+  // database connection is read-only.
+  assert.equal(appTx.writeAttempted, true, "App transaction did not attempt a write to prove READ ONLY.");
+  assert.equal(storeTx.writeAttempted, true, "Store transaction did not attempt a write to prove READ ONLY.");
+  assert.equal(appTx.writeRejected, true, "App transaction allowed a write — database is NOT read-only!");
+  assert.equal(storeTx.writeRejected, true, "Store transaction allowed a write — database is NOT read-only!");
+  assert.equal(appTx.readOnlyProven, true, `App transaction did not prove READ ONLY (writeErrorCode=${appTx.writeErrorCode}). Expected SQLSTATE 25006.`);
+  assert.equal(storeTx.readOnlyProven, true, `Store transaction did not prove READ ONLY (writeErrorCode=${storeTx.writeErrorCode}). Expected SQLSTATE 25006.`);
 
   const [missingApp, missingStore] = await Promise.all([
     getJson(baseUrl, "/failure/missing-app-secret"),
@@ -205,11 +217,15 @@ try {
       "same-request client reuse",
       "sequential request isolation",
       "concurrent request isolation",
-      "read-only transaction on both databases",
+      "read-only transaction proven (write rejected with SQLSTATE 25006)",
       "fail-closed missing-secret behavior",
     ],
     writesPerformed: false,
     productionAccessed: false,
+    readOnlyProven: {
+      app: { writeAttempted: appTx.writeAttempted, writeRejected: appTx.writeRejected, writeErrorCode: appTx.writeErrorCode },
+      store: { writeAttempted: storeTx.writeAttempted, writeRejected: storeTx.writeRejected, writeErrorCode: storeTx.writeErrorCode },
+    },
   }, null, 2));
   }
 } catch (error) {

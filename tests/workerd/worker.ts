@@ -105,12 +105,47 @@ export default {
       }
     }
     if (path === "/app/transaction") {
+      // STEP 18.2.7.3.10 (Finding T-1): a successful `SELECT 1` inside a
+      // transaction only proves the connection works — it does NOT prove the
+      // transaction is read-only. A misconfigured read-write database would
+      // also pass that test. To actually prove READ ONLY mode, we attempt a
+      // write (CREATE TEMP TABLE) inside the transaction. PostgreSQL
+      // returns `ERROR: cannot execute CREATE TABLE in a read-only
+      // transaction` (SQLSTATE 25006) when transaction_read_only=on.
+      // The proof PASSES only if the write is REJECTED with that exact code.
       try {
         const client = getAppClient(ctx, env);
-        const rows = await client.$transaction((tx) =>
-          tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-        );
-        return json({ clientId: getClientId(client), transactionOk: Number(rows[0]?.ok) === 1 });
+        const result = await client.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          let writeRejected = false;
+          let writeError: { code?: string; message?: string } | null = null;
+          try {
+            await tx.$executeRaw`CREATE TEMP TABLE __readonly_proof (id int)`;
+          } catch (writeErr: unknown) {
+            writeRejected = true;
+            const code = (writeErr as { code?: string } | null)?.code;
+            const message = (writeErr as { message?: string } | null)?.message ?? "";
+            writeError = { code, message };
+          }
+          return {
+            selectOk: Number(rows[0]?.ok) === 1,
+            writeRejected,
+            writeError,
+          };
+        });
+        const readOnlyProven =
+          result.selectOk === true &&
+          result.writeRejected === true &&
+          typeof result.writeError?.code === "string" &&
+          result.writeError.code === "25006";
+        return json({
+          clientId: getClientId(client),
+          transactionOk: result.selectOk,
+          readOnlyProven,
+          writeAttempted: true,
+          writeRejected: result.writeRejected,
+          writeErrorCode: result.writeError?.code ?? null,
+        });
       } catch (error) {
         return json({
           error: "app_preview_readonly_transaction_failed",
@@ -119,12 +154,40 @@ export default {
       }
     }
     if (path === "/store/transaction") {
+      // STEP 18.2.7.3.10 (Finding T-1): same as /app/transaction above.
       try {
         const client = getStoreClient(ctx, env);
-        const rows = await client.$transaction((tx) =>
-          tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-        );
-        return json({ clientId: getClientId(client), transactionOk: Number(rows[0]?.ok) === 1 });
+        const result = await client.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          let writeRejected = false;
+          let writeError: { code?: string; message?: string } | null = null;
+          try {
+            await tx.$executeRaw`CREATE TEMP TABLE __readonly_proof (id int)`;
+          } catch (writeErr: unknown) {
+            writeRejected = true;
+            const code = (writeErr as { code?: string } | null)?.code;
+            const message = (writeErr as { message?: string } | null)?.message ?? "";
+            writeError = { code, message };
+          }
+          return {
+            selectOk: Number(rows[0]?.ok) === 1,
+            writeRejected,
+            writeError,
+          };
+        });
+        const readOnlyProven =
+          result.selectOk === true &&
+          result.writeRejected === true &&
+          typeof result.writeError?.code === "string" &&
+          result.writeError.code === "25006";
+        return json({
+          clientId: getClientId(client),
+          transactionOk: result.selectOk,
+          readOnlyProven,
+          writeAttempted: true,
+          writeRejected: result.writeRejected,
+          writeErrorCode: result.writeError?.code ?? null,
+        });
       } catch (error) {
         return json({
           error: "store_preview_readonly_transaction_failed",
