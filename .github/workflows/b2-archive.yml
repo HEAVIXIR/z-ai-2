@@ -1,6 +1,9 @@
 name: Backblaze B2 Archive
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/b2-archive.yml'
   workflow_dispatch:
 
 permissions:
@@ -11,7 +14,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  static-validation:
+    name: Validate workflow YAML and embedded Bash
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout workflow source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Parse workflow YAML and syntax-check Bash steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require "yaml"
+          require "tempfile"
+          require "open3"
+
+          workflow = YAML.load_file(".github/workflows/b2-archive.yml")
+          jobs = workflow.fetch("jobs")
+          checked = 0
+
+          jobs.each do |job_name, job|
+            job.fetch("steps", []).each_with_index do |step, index|
+              script = step["run"]
+              next unless script.is_a?(String)
+              next unless step["shell"].to_s.start_with?("bash")
+
+              Tempfile.create(["heavix-b2-step-", ".sh"]) do |file|
+                file.write(script)
+                file.flush
+                _stdout, stderr, status = Open3.capture3("bash", "-n", file.path)
+                unless status.success?
+                  abort("Bash syntax error in job #{job_name}, step #{index + 1}: #{stderr}")
+                end
+              end
+              checked += 1
+            end
+          end
+
+          abort("No Bash run blocks were validated") if checked.zero?
+          puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
+          RUBY
   archive:
+    if: github.event_name == 'workflow_dispatch'
     name: Verify and archive databases and Git history
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -148,9 +196,6 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/heavix-archive"
-          sha256sum main.dump store.dump heavix-source.bundle heavix-source.tar.gz \
-            heavix-legacy.bundle heavix-legacy.tar.gz > SHA256SUMS
-          sha256sum -c SHA256SUMS
           TARGET_SHA="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
           LEGACY_SHA="$(git -C "$GITHUB_WORKSPACE/legacy-source" rev-parse HEAD)"
           CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -166,6 +211,12 @@ jobs:
             --arg store_bytes "$(stat -c %s store.dump)" \
             '{created_at:$created_at, target:{repository:$target_repository,commit:$target_commit}, legacy:{repository:$legacy_repository,commit:$legacy_commit}, workflow:{run_id:$workflow_run,attempt:$workflow_attempt}, databases:{main:{format:"pg_dump custom",bytes:($main_bytes|tonumber)},store:{format:"pg_dump custom",bytes:($store_bytes|tonumber)}}, integrity:"SHA256SUMS"}' \
             > manifest.json
+
+          # Hash every payload and the manifest. SHA256SUMS itself is verified
+          # separately after download because a checksum file cannot hash itself.
+          sha256sum main.dump store.dump heavix-source.bundle heavix-source.tar.gz \
+            heavix-legacy.bundle heavix-legacy.tar.gz manifest.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
 
       - name: Verify B2 bucket and archive objects
         shell: bash
@@ -199,7 +250,11 @@ jobs:
             aws --endpoint-url "$B2_ENDPOINT" s3 cp \
               "s3://$B2_BUCKET/$DEST/$file" \
               "$RUNNER_TEMP/heavix-b2-readback/$file" --only-show-errors
-            EXPECTED_SHA="$(awk -v name="$file" '$2 == name {print $1}' SHA256SUMS)"
+            if [[ "$file" == "SHA256SUMS" ]]; then
+              EXPECTED_SHA="$(sha256sum SHA256SUMS | awk '{print $1}')"
+            else
+              EXPECTED_SHA="$(awk -v name="$file" '$2 == name {print $1}' SHA256SUMS)"
+            fi
             ACTUAL_SHA="$(sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file" | awk '{print $1}')"
             if [[ -z "$EXPECTED_SHA" || "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
               echo "::error::B2 read-back SHA-256 verification failed for $file"
