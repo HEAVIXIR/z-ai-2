@@ -101,7 +101,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: '1.24.2'
-      - name: Install age v1.2.1 for static tests
+      - name: Install age v1.3.2 for static tests
         shell: bash
         run: |
           set -euo pipefail
@@ -115,8 +115,9 @@ jobs:
           set -euo pipefail
           TEMP_CRYPTO="$(mktemp -d)"
           trap 'rm -rf "$TEMP_CRYPTO"' EXIT
-          age-keygen -o "$TEMP_CRYPTO/identity.txt" 2>/dev/null
+          age-keygen -pq -o "$TEMP_CRYPTO/identity.txt" 2>/dev/null
           RECIPIENT="$(age-keygen -y "$TEMP_CRYPTO/identity.txt")"
+          [[ "$RECIPIENT" == age1pq1* ]] || { echo "::error::age-keygen did not produce a post-quantum recipient"; exit 1; }
           printf 'HEAVIX synthetic backup payload\\n' > "$TEMP_CRYPTO/plain.bin"
           age -r "$RECIPIENT" -o "$TEMP_CRYPTO/payload.age" "$TEMP_CRYPTO/plain.bin"
           age -d -i "$TEMP_CRYPTO/identity.txt" -o "$TEMP_CRYPTO/recovered.bin" "$TEMP_CRYPTO/payload.age"
@@ -224,7 +225,7 @@ jobs:
         with:
           go-version: '1.24.2'
 
-      - name: Install age v1.2.1
+      - name: Install age v1.3.2
         shell: bash
         run: |
           set -euo pipefail
@@ -258,8 +259,8 @@ jobs:
               exit 1
             fi
           done
-          if [[ "$AGE_RECIPIENT" != age1* || "$AGE_RECIPIENT" == *[[:space:]]* ]]; then
-            echo "::error::HEAVIX_B2_AGE_RECIPIENT must be a valid age public recipient without whitespace."
+          if [[ "$AGE_RECIPIENT" != age1pq1* || "$AGE_RECIPIENT" == *[[:space:]]* ]]; then
+            echo "::error::HEAVIX_B2_AGE_RECIPIENT must be a post-quantum age recipient (age1pq1...) without whitespace."
             exit 1
           fi
           python3 - <<'PY'
@@ -430,7 +431,7 @@ jobs:
             --arg workflow_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg main_bytes "$(stat -c %s main.dump)" \
             --arg store_bytes "$(stat -c %s store.dump)" \
-            --arg encryption "age v1.2.1; recipient held as a public repository variable" \
+            --arg encryption "age v1.3.2; hybrid ML-KEM-768 plus X25519; public recipient held as a repository variable" \
             '{created_at:$created_at, target:{repository:$target_repository,commit:$target_commit}, legacy:{repository:$legacy_repository,commit:$legacy_commit}, workflow:{run_id:$workflow_run,attempt:$workflow_attempt}, databases:{main:{format:"pg_dump custom",bytes:($main_bytes|tonumber)},store:{format:"pg_dump custom",bytes:($store_bytes|tonumber)}}, encryption:$encryption, integrity:"SHA256SUMS"}' \
             > manifest.json
 
