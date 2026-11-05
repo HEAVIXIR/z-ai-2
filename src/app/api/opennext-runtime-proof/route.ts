@@ -5,6 +5,7 @@ import {
   constantTimeEqual,
   extractBearerToken,
   isPostgres17,
+  isPostgresDatabaseOid,
 } from "@/lib/opennext-proof-guards";
 
 export const runtime = "nodejs";
@@ -39,14 +40,16 @@ function safeError(error: unknown) {
   };
 }
 
-async function probeApp() {
+async function probeApp(expectedDatabaseOid: string) {
   const identity = await db.$queryRaw<Array<{
     system_identifier: string;
+    database_oid: string;
     database_name: string;
     schema_name: string;
     server_version: string;
   }>>`SELECT
     (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
+    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid,
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
@@ -72,8 +75,12 @@ async function probeApp() {
     return rows[0]?.read_only === true;
   });
   const actual = identity[0];
+  const clusterMatch = actual?.system_identifier === EXPECTED.app.systemIdentifier;
+  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
   return {
-    identityMatch: actual?.system_identifier === EXPECTED.app.systemIdentifier,
+    clusterMatch,
+    databaseMatch,
+    identityMatch: clusterMatch && databaseMatch,
     schemaMatch: actual?.schema_name === "public",
     postgres17: isPostgres17(actual?.server_version),
     migrationsMatch:
@@ -84,14 +91,16 @@ async function probeApp() {
   };
 }
 
-async function probeStore() {
+async function probeStore(expectedDatabaseOid: string) {
   const identity = await storeDb.$queryRaw<Array<{
     system_identifier: string;
+    database_oid: string;
     database_name: string;
     schema_name: string;
     server_version: string;
   }>>`SELECT
     (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
+    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid,
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
@@ -109,8 +118,12 @@ async function probeStore() {
     return rows[0]?.read_only === true;
   });
   const actual = identity[0];
+  const clusterMatch = actual?.system_identifier === EXPECTED.store.systemIdentifier;
+  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
   return {
-    identityMatch: actual?.system_identifier === EXPECTED.store.systemIdentifier,
+    clusterMatch,
+    databaseMatch,
+    identityMatch: clusterMatch && databaseMatch,
     schemaMatch: actual?.schema_name === "public",
     postgres17: isPostgres17(actual?.server_version),
     migrationsMatch:
@@ -133,12 +146,18 @@ export async function GET(request: Request) {
     if (!expectedToken || !constantTimeEqual(suppliedToken, expectedToken)) {
       return json({ error: "not_found" }, 404);
     }
+    const appDatabaseOid = process.env.HEAVIX_APP_PREVIEW_DATABASE_OID;
+    const storeDatabaseOid = process.env.HEAVIX_STORE_PREVIEW_DATABASE_OID;
     if (!process.env.DATABASE_URL || !process.env.STORE_DATABASE_URL ||
-        process.env.DATABASE_URL === process.env.STORE_DATABASE_URL) {
-      return json({ error: "preview_targets_not_configured" }, 503);
+        process.env.DATABASE_URL === process.env.STORE_DATABASE_URL ||
+        !isPostgresDatabaseOid(appDatabaseOid) ||
+        !isPostgresDatabaseOid(storeDatabaseOid)) {
+      return json({ error: "preview_targets_or_database_identity_not_configured" }, 503);
     }
     try {
-      const [app, store] = await Promise.all([probeApp(), probeStore()]);
+      const [app, store] = await Promise.all([
+        probeApp(appDatabaseOid), probeStore(storeDatabaseOid),
+      ]);
       const passed = Object.values(app).every(Boolean) && Object.values(store).every(Boolean);
       return json({
         result: passed ? "PASS" : "FAIL",
