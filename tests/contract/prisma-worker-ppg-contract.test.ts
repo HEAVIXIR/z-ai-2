@@ -128,6 +128,7 @@ describe("Prisma Postgres workerd client contract", () => {
     const worker = read("tests/workerd/worker.ts");
     const runner = read("scripts/run-prisma-workerd-proof.mjs");
     const workflow = read(".github/workflows/prisma-workerd-proof.yml");
+    const ci = read(".github/workflows/ci.yml");
     expect(worker).toContain('SELECT migration_name FROM "_prisma_migrations"');
     expect(worker).toContain("createAppWorkerClientResolver");
     expect(worker).toContain("createStoreWorkerClientResolver");
@@ -138,6 +139,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(workflow).toContain("HEAVIX_APP_PREVIEW_PPG_URL");
     expect(workflow).toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
     expect(workflow).toContain("bun run test:workerd");
+    expect(ci).toContain("prisma-workerd-runtime-proof:");
+    expect(ci).toContain("HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF");
   });
 });
 

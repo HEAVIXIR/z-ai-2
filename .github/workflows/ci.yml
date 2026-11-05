@@ -652,3 +652,42 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Optional, explicit Preview-only PPG runtime proof. It remains skipped until
+  # the repository variable is deliberately enabled and both secrets exist.
+  prisma-workerd-runtime-proof:
+    name: Prisma Workerd runtime proof (Preview-only)
+    if: ${{ vars.HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: PREVIEW_ONLY
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Fail closed unless both Preview inputs are supplied
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HEAVIX_APP_PREVIEW_PPG_URL"
+          test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          echo "Two distinct Preview connection inputs are present; values remain redacted."
+
+      - name: Execute read-only local Workerd runtime proof
+        run: bun run test:workerd

@@ -31,3 +31,18 @@ business-row reads, or writes.
 
 A successful local proof does not establish which databases the deployed
 Cloudflare secrets target and does not authorize deployment.
+
+## GitHub Actions enablement
+
+The repository CI workflow contains an opt-in runtime-proof job. It is skipped
+unless the repository Actions variable
+`HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF` is set to the literal value
+`true`. Configure these two repository Actions secrets with the dedicated
+Preview-only PPG connection strings:
+
+- `HEAVIX_APP_PREVIEW_PPG_URL`
+- `HEAVIX_STORE_PREVIEW_PPG_URL`
+
+Only enable the variable after independently verifying the two secret targets.
+The workflow fails closed if either input is missing or if the migration
+fingerprint does not match the intended Preview database.
