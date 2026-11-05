@@ -4,6 +4,7 @@ import {
   constantTimeEqual,
   extractBearerToken,
   isPostgres17,
+  isPostgresDatabaseOid,
 } from "../../src/lib/opennext-proof-guards";
 
 describe("production OpenNext proof guards", () => {
@@ -19,6 +20,16 @@ describe("production OpenNext proof guards", () => {
       expect(isPostgres17(null)).toBe(false);
       expect(isPostgres17(undefined)).toBe(false);
     });
+  });
+
+  describe("isPostgresDatabaseOid", () => {
+    it.each(["1", "101", "4294967295"])("accepts valid OID %s", (value) => {
+      expect(isPostgresDatabaseOid(value)).toBe(true);
+    });
+    it.each([null, undefined, "", "0", "-1", "01", "4294967296", "abc", "1.2"])(
+      "rejects invalid OID %s",
+      (value) => expect(isPostgresDatabaseOid(value)).toBe(false),
+    );
   });
 
   describe("extractBearerToken", () => {
@@ -94,6 +105,8 @@ describe("RO-1 route enforcement wiring", () => {
       expect(setIndex).toBeGreaterThanOrEqual(0);
       expect(stateIndex).toBeGreaterThan(setIndex);
       expect(body).toContain("transactionReadOnlyEnforced: transaction");
+    expect(body).toContain("database_oid");
+    expect(body).toContain("databaseMatch:");
     },
   );
 });
