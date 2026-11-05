@@ -49,8 +49,14 @@ async function getJson(baseUrl, path) {
 }
 
 const expected = {
-  app: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
-  store: ["0001_init_store_baseline", "0002_add_audit_outbox"],
+  app: {
+    databaseName: "heavix-app-preview",
+    migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
+  },
+  store: {
+    databaseName: "heavix-store-preview",
+    migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
+  },
 };
 const configDir = await mkdtemp(resolve(root, ".heavix-workerd-proof-"));
 const configPath = resolve(configDir, "wrangler.jsonc");
@@ -131,16 +137,20 @@ try {
   const storeFirst = await getJson(baseUrl, "/store/fingerprint");
   const storeSecond = await getJson(baseUrl, "/store/fingerprint");
 
-  for (const [label, result, migrations] of [
+  for (const [label, result, target] of [
     ["App", appFirst, expected.app],
     ["App repeated", appSecond, expected.app],
     ["Store", storeFirst, expected.store],
     ["Store repeated", storeSecond, expected.store],
   ]) {
     assert.equal(result.sameRequestClientReused, true, `${label}: client was not reused within one request`);
+    assert.equal(result.identity?.database_name, target.databaseName,
+      `${label}: unexpected database target (expected exact Preview database)`);
+    assert.notEqual(result.identity?.database_name, "heavix-production",
+      `${label}: Production database target is forbidden`);
     assert.equal(result.identity?.schema_name, "public", `${label}: unexpected schema`);
     assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
-    assert.deepEqual(result.migrationNames, migrations, `${label}: Preview migration fingerprint mismatch`);
+    assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
   }
   assert.notEqual(appFirst.clientId, appSecond.clientId, "App client leaked across sequential requests.");
   assert.notEqual(storeFirst.clientId, storeSecond.clientId, "Store client leaked across sequential requests.");
@@ -153,7 +163,12 @@ try {
   ]);
   assert.equal(new Set(concurrent.map((item) => item.clientId)).size, 4,
     "Concurrent requests shared a Prisma client.");
-  for (const result of concurrent) assert.equal(result.sameRequestClientReused, true);
+  for (const [index, result] of concurrent.entries()) {
+    assert.equal(result.sameRequestClientReused, true);
+    const expectedDatabase = index < 2 ? expected.app.databaseName : expected.store.databaseName;
+    assert.equal(result.identity?.database_name, expectedDatabase,
+      `Concurrent request ${index + 1}: unexpected database target`);
+  }
 
   const [appTx, storeTx] = await Promise.all([
     getJson(baseUrl, "/app/transaction"),
@@ -173,8 +188,8 @@ try {
     result: "PASS",
     runtime: "workerd via Wrangler/Miniflare",
     databases: {
-      app: { server: appFirst.identity.server_version, schema: appFirst.identity.schema_name, migrations: appFirst.migrationNames },
-      store: { server: storeFirst.identity.server_version, schema: storeFirst.identity.schema_name, migrations: storeFirst.migrationNames },
+      app: { database: appFirst.identity.database_name, server: appFirst.identity.server_version, schema: appFirst.identity.schema_name, migrations: appFirst.migrationNames },
+      store: { database: storeFirst.identity.database_name, server: storeFirst.identity.server_version, schema: storeFirst.identity.schema_name, migrations: storeFirst.migrationNames },
     },
     checks: [
       "exact App and Store Preview migration fingerprints",
