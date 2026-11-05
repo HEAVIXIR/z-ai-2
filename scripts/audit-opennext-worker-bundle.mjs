@@ -201,11 +201,53 @@ const sizeGate = parsedSize
   ? (parsedSize.totalUploadBytes <= workerLimitBytes ? "WITHIN_LIMIT" : "OVER_LIMIT")
   : "UNKNOWN";
 
+const metafilePath = resolve(auditRoot, "wrangler-bundle-meta.json");
+let metafile = null;
+try {
+  metafile = JSON.parse(await readFile(metafilePath, "utf8"));
+} catch {}
+const metaInputs = Object.keys(metafile?.inputs ?? {});
+const metaOutputs = Object.entries(metafile?.outputs ?? {});
+const externalImports = [...new Set(metaOutputs.flatMap(([, output]) =>
+  (output.imports ?? []).filter((item) => item.external).map((item) => item.path),
+))].sort();
+const forbiddenPackageInputs = metaInputs.filter((path) =>
+  /node_modules\\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)\\//.test(path) ||
+  /node_modules\\/@prisma\\/adapter-pg(?:\\/|$)/.test(path),
+);
+const ppgPackageInputs = metaInputs.filter((path) =>
+  /node_modules\\/@prisma\\/(?:adapter-ppg|ppg)(?:\\/|$)/.test(path),
+);
+const externalNodeTcpImports = externalImports.filter((path) =>
+  /^(?:node:)?(?:net|tls|dgram)$/.test(path),
+);
+const outputBytes = metaOutputs.reduce((sum, [, output]) => sum + (output.bytes ?? 0), 0);
+const bundleMetaAudit = {
+  status: metafile ? "AVAILABLE" : "NOT_AVAILABLE",
+  inputCount: metaInputs.length,
+  outputCount: metaOutputs.length,
+  outputBytes,
+  forbiddenPackageInputs,
+  ppgPackageInputs,
+  externalNodeTcpImports,
+  largestOutputs: metaOutputs
+    .map(([path, output]) => ({ path, bytes: output.bytes ?? 0 }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 15),
+};
+
+const reviewRequired = forbiddenCount > 0 ||
+  dryRunStatus !== "SUCCESS" ||
+  sizeGate !== "WITHIN_LIMIT" ||
+  forbiddenPackageInputs.length > 0 ||
+  externalNodeTcpImports.length > 0;
+const verdict = reviewRequired ? "REVIEW_REQUIRED" : "NO_FORBIDDEN_MARKERS_FOUND";
+
 const report = {
   schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   method: "heuristic scan of generated OpenNext Worker JavaScript plus Wrangler deploy --dry-run bundle; source-marker scan is not a complete dependency-graph proof",
-  verdict: forbiddenCount ? "REVIEW_REQUIRED" : "NO_FORBIDDEN_MARKERS_FOUND",
+  verdict,
   workerEntry: {
     file: relative(root, workerEntry),
     bytes: workerStat.size,
@@ -225,6 +267,7 @@ const report = {
     sizeGate,
     workerLimitBytes,
     parsedSize,
+    metafile: bundleMetaAudit,
     command: "wrangler deploy --dry-run --outdir <audit-dir> --config <secret-free-audit-config> --metafile <audit-meta>",
     exitCode: dryRunResult.code,
     signal: dryRunResult.signal,
