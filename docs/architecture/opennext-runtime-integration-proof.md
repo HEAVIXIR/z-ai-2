@@ -40,7 +40,7 @@ The identity query uses pg_control_system() and contacts the target database. Th
 
 tests/unit/opennext-runtime-proof-guards.test.ts now imports the production guard module instead of reimplementing its regexes and comparison function. It covers PostgreSQL 17 detection, bearer-token extraction, constant-time comparison behavior, route wiring/order for RO-1, and local PGlite read-only SQL semantics.
 
-The route-wiring checks remain structural. PGlite is a local PostgreSQL-compatible engine, not the production Prisma PPG adapter. The OpenNext smoke remains a real Worker request-path test, but it deliberately runs with no database credentials and cannot prove Preview connectivity or transaction enforcement against the target PPG service.
+The route-wiring checks remain structural. The OpenNext proof workflow now explicitly runs this test file with Vitest before the Worker smoke. The test file contains 26 cases, including the PGlite transaction check. PGlite is a local PostgreSQL-compatible engine, not the production Prisma PPG adapter. The OpenNext smoke remains a real Worker request-path test, but it deliberately runs with no database credentials and cannot prove Preview connectivity or transaction enforcement against the target PPG service.
 
 ## CI and deployment evidence
 
@@ -77,3 +77,12 @@ The code changes after CI #20 require fresh exact-HEAD CI. A green smoke/build i
 No Production access, migration, seed, write query, backup, B2 operation, secret read/rotation, DNS change, Worker upload/deployment, PR merge, or change to main.
 
 Never read or print secret values, database URLs, bearer tokens, or connection strings. Do not execute PREVIEW_ONLY until both secret destinations have been independently verified and separate authorization is given. Keep Production NO-GO.
+
+
+## Preview resource inventory (metadata only)
+
+A metadata-only Prisma inventory confirmed three distinct managed databases in Europe (Frankfurt): heavix-production, heavix-app-preview, and heavix-store-preview. Both Preview databases report ready status. Connection-string metadata includes a worker-named connection on each Preview project; the App Preview project also has a separately named app-worker connection. No connection-string values were requested, read, or returned.
+
+Branch inventory is not symmetric: the App Preview project contains a preview branch named test/opennext-runtime-integration, while the Store Preview project currently lists main (role production) and feature/prisma7-runtime-contract-proof, but no matching test/opennext-runtime-integration branch. This is a metadata discrepancy to resolve before assuming the two Worker bindings target equivalent branch contexts. Connection-string names and database existence do not prove which encrypted Cloudflare secret value points to which database. The binding-to-resource mapping remains unverified.
+
+Cloudflare's latest Workers Build for code commit 198cb5c8f152084b4408fbe1a799cc9010cd9d27 was observed queued (build UUID 177a68e2-822e-480a-8bdc-e08884421838). Its configured deploy command remains an explicit no-op marker. This is a build, not an upload or deployment.
