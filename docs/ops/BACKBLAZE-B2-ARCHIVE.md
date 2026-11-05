@@ -1,6 +1,6 @@
 # HEAVIX — Backblaze B2 Archive Foundation
 
-**Status:** Foundation workflow authored; first remote archive run is not yet verified.  
+**Status:** Client-side encrypted archive workflow authored; first real remote archive and restore are not yet verified.  
 **Target bucket:** `heavix-db-backups` (proposed; not yet created)  
 **Existing development bucket:** `heavix-dev-assets` (private; not a database-backup destination)  
 **S3 endpoint:** `https://s3.us-east-005.backblazeb2.com`  
@@ -109,9 +109,9 @@ The implementation and custody design is recorded in [BACKUP-ENCRYPTION-DESIGN.m
 
 Git recovery:
 
-- `git clone heavix-source.bundle` restores the captured target repository refs included in the bundle.
-- `git clone heavix-legacy.bundle` restores the captured legacy repository refs.
-- The `.tar.gz` files are source snapshots for inspection, not substitutes for the Git bundles.
+- First decrypt `heavix-source.bundle.age` with the offline age identity, then clone the resulting `heavix-source.bundle` to restore the captured target repository refs.
+- First decrypt `heavix-legacy.bundle.age`, then clone the resulting `heavix-legacy.bundle` to restore the captured legacy repository refs.
+- Decrypt the `.tar.gz.age` files before inspecting source snapshots. They are not substitutes for the Git bundles.
 
 ## Explicitly not covered yet
 
