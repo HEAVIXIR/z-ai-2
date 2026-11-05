@@ -35,6 +35,17 @@ jobs:
 
           workflow = YAML.load_file(".github/workflows/b2-archive.yml")
           jobs = workflow.fetch("jobs")
+
+          static_job = jobs.fetch("static-validation")
+          gate_job = jobs.fetch("database-identity-dispatch-gate")
+          archive_job = jobs.fetch("archive")
+          abort("Static validation must run only for pull requests") unless static_job["if"] == "github.event_name == 'pull_request'"
+          abort("Dispatch gate must be workflow_dispatch-only") unless gate_job["if"] == "github.event_name == 'workflow_dispatch'"
+          abort("Archive must require the dispatch gate") unless archive_job["needs"] == "database-identity-dispatch-gate"
+          abort("Archive must be workflow_dispatch-only") unless archive_job["if"] == "github.event_name == 'workflow_dispatch'"
+          gate_script = gate_job.fetch("steps").map { |step| step["run"].to_s }.join("\\n")
+          abort("Preview identity attestation latch is missing") unless gate_script.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
+
           checked = 0
 
           jobs.each do |job_name, job|
