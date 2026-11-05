@@ -11,6 +11,7 @@ on:
       - "src/lib/prisma-worker-clients.ts"
       - "src/lib/prisma-worker-proxy.ts"
       - "scripts/run-opennext-runtime-proof.mjs"
+      - "docs/architecture/opennext-runtime-integration-proof.md"
       - "wrangler.jsonc"
       - "next.config.ts"
       - "package.json"
