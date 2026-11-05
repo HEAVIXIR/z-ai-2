@@ -86,6 +86,14 @@ describe("public homepage renderer contracts", () => {
     expect(defaultLayoutSource).not.toContain('key: "trust-badges"');
   });
 
+  it("keeps listings GET read-only and invalidates homepage cache only after writes", () => {
+    const source = readFileSync(path.join(root, "src/app/api/listings/route.ts"), "utf8");
+    const getBody = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function POST"));
+    const mutationBody = source.slice(source.indexOf("export async function POST"));
+    expect(getBody).not.toContain("revalidateTag(");
+    expect(mutationBody).toContain("revalidateTag(HOMEPAGE_CACHE_TAGS.listings");
+  });
+
   it("keeps category GET read-only and invalidates homepage cache only after writes", () => {
     const source = readFileSync(path.join(root, "src/app/api/taxonomy/categories/route.ts"), "utf8");
     const getBody = source.slice(source.indexOf("export async function GET"), source.indexOf("export async function POST"));
