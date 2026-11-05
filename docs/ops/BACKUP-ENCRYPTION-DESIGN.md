@@ -35,7 +35,7 @@ Upstream references:
 4. Store the private identity in at least two controlled offline recovery locations, protected by the owner's existing secure custody process. Do not store both copies in the same cloud account or same physical location.
 5. Record the identity fingerprint and custodian in the private operational inventory, never the private key itself.
 6. Test decryption from a disposable fixture before the first real archive. Do not upload real backups until the restore operator confirms possession and successful recovery.
-7. Key rotation must add the new public recipient before switching the workflow. During transition, encrypt to both old and new recipients. Retain the old identity until every archive encrypted only to it has passed retention expiry and restore acceptance.
+7. Key rotation must preserve the old private identity until every archive encrypted to its recipient has passed retention expiry and restore acceptance. The current workflow accepts one public recipient. If overlapping old/new recipient support is required, implement and test a multi-recipient configuration before changing the workflow; never discard the old identity merely because the public recipient variable changed.
 
 No key generation, key upload, secret creation, bucket creation, database contact, or real archive has been performed by this PR execution.
 
