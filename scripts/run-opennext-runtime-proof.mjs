@@ -88,8 +88,8 @@ try {
     observability: { enabled: false },
   }, null, 2), { mode: 0o600 });
 
-  preview = start("bunx", [
-    "opennextjs-cloudflare", "preview",
+  preview = start(resolve(root, "node_modules/.bin/opennextjs-cloudflare"), [
+    "preview",
     "--config", configPath,
     "--ip", "127.0.0.1",
     "--port", String(port),
