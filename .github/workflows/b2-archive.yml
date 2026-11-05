@@ -50,18 +50,22 @@ jobs:
           gate_configuration = gate_script + " " + gate_env_bindings
           abort("Preview identity attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_DB_IDENTITY_GATE") && gate_script.include?("VERIFIED_PREVIEW_ONLY")
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
-          abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
+          abort("Client-side encryption implementation must be enabled") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=true")
+          encryption_step = archive_job.fetch("steps").find { |step| step["name"] == "Encrypt archive payloads before any upload" }
+          abort("Archive payload encryption step is missing") unless encryption_step && encryption_step.fetch("run").include?('age -r "$AGE_RECIPIENT"') && encryption_step.fetch("run").include?('rm -f "$file"')
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
           config_step = archive_job.fetch("steps").find { |step| step["name"] == "Validate required configuration without printing secrets" }
           config_script = config_step.fetch("run") + " " + config_step.fetch("env", {}).map { |key, value| "#{key}=#{value}" }.join(" ")
           abort("Archive must use explicit Preview-only DB secrets") unless config_script.include?("HEAVIX_APP_PREVIEW_DATABASE_URL") && config_script.include?("HEAVIX_STORE_PREVIEW_DATABASE_URL")
           abort("Archive must use dedicated DB-backups B2 key secrets") unless config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY_ID") && config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY")
+          abort("Archive must require the public age recipient variable") unless config_script.include?("HEAVIX_B2_AGE_RECIPIENT")
           abort("Archive must require explicit read-only backup role names") unless config_script.include?("HEAVIX_APP_PREVIEW_BACKUP_ROLE") && config_script.include?("HEAVIX_STORE_PREVIEW_BACKUP_ROLE")
           dump_script = archive_job.fetch("steps").find { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }.fetch("run")
           abort("Archive must perform a Preview server fingerprint preflight before pg_dump") unless dump_script.include?("172.16.163.89") && dump_script.include?("172.16.163.49") && dump_script.include?("pg_postmaster_start_time")
           encryption_design = File.read("docs/ops/BACKUP-ENCRYPTION-DESIGN.md")
           abort("Encryption design must require offline private-key custody") unless encryption_design.include?("offline") && encryption_design.include?("must never receive the private identity")
           abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
+          abort("B2 upload allowlist must contain encrypted payloads only") unless archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run").include?("main.dump.age")
           upload_script = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run")
           abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
           abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
@@ -89,6 +93,36 @@ jobs:
           abort("No Bash run blocks were validated") if checked.zero?
           puts("Workflow YAML parsed; #{checked} embedded Bash blocks passed bash -n.")
           RUBY
+      - name: Set up Go for pinned age cryptography tests
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.2'
+      - name: Install age v1.2.1 for static tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/age" --version
+      - name: Test age encryption, decryption, and tamper rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMP_CRYPTO="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_CRYPTO"' EXIT
+          age-keygen -o "$TEMP_CRYPTO/identity.txt" 2>/dev/null
+          RECIPIENT="$(age-keygen -y "$TEMP_CRYPTO/identity.txt")"
+          printf 'HEAVIX synthetic backup payload\\n' > "$TEMP_CRYPTO/plain.bin"
+          age -r "$RECIPIENT" -o "$TEMP_CRYPTO/payload.age" "$TEMP_CRYPTO/plain.bin"
+          age -d -i "$TEMP_CRYPTO/identity.txt" -o "$TEMP_CRYPTO/recovered.bin" "$TEMP_CRYPTO/payload.age"
+          cmp "$TEMP_CRYPTO/plain.bin" "$TEMP_CRYPTO/recovered.bin"
+          cp "$TEMP_CRYPTO/payload.age" "$TEMP_CRYPTO/tampered.age"
+          printf 'x' | dd of="$TEMP_CRYPTO/tampered.age" bs=1 seek=80 conv=notrunc status=none
+          if age -d -i "$TEMP_CRYPTO/identity.txt" -o "$TEMP_CRYPTO/tampered.bin" "$TEMP_CRYPTO/tampered.age" >/dev/null 2>&1; then
+            echo "::error::age accepted a modified ciphertext"
+            exit 1
+          fi
+          echo "age encryption/decryption round-trip and authenticated tamper rejection passed."
       - name: Exercise manifest and read-back checksums with synthetic files
         shell: bash
         run: |
@@ -103,7 +137,7 @@ jobs:
           printf '{"fixture":"manifest"}\n' > manifest.json
 
           sha256sum main.dump store.dump source.bundle manifest.json > SHA256SUMS
-          for file in main.dump store.dump source.bundle manifest.json SHA256SUMS; do
+          for file in main.dump.age store.dump.age source.bundle manifest.json SHA256SUMS; do
             if [[ "$file" == "SHA256SUMS" ]]; then
               EXPECTED_SHA="$(sha256sum SHA256SUMS | awk '{print $1}')"
             else
@@ -135,7 +169,7 @@ jobs:
         env:
           IDENTITY_GATE: ${{ vars.HEAVIX_B2_DB_IDENTITY_GATE }}
           ARCHIVE_READINESS_GATE: ${{ vars.HEAVIX_B2_ARCHIVE_READINESS_GATE }}
-          ENCRYPTION_IMPLEMENTATION: "false"
+          ENCRYPTION_IMPLEMENTATION: "true"
         run: |
           set -euo pipefail
           if [[ "$IDENTITY_GATE" != "VERIFIED_PREVIEW_ONLY" ]]; then
@@ -147,7 +181,7 @@ jobs:
             exit 1
           fi
           if [[ "$ENCRYPTION_IMPLEMENTATION" != "true" ]]; then
-            echo "::error::Archive blocked: client-side encryption is not implemented in this workflow. Plaintext database dumps must never be uploaded to B2."
+            echo "::error::Archive blocked: client-side encryption implementation gate is not satisfied. Plaintext database dumps must never be uploaded to B2."
             exit 1
           fi
           echo "Preview identity, archive readiness, and encryption implementation gates are present."
@@ -180,6 +214,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up Go for pinned age CLI
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.2'
+
+      - name: Install age v1.2.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/age" --version
+
       - name: Validate required configuration without printing secrets
         id: config
         shell: bash
@@ -190,6 +237,7 @@ jobs:
           B2_APPLICATION_KEY: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY }}
           APP_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_APP_PREVIEW_BACKUP_ROLE }}
           STORE_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_STORE_PREVIEW_BACKUP_ROLE }}
+          AGE_RECIPIENT: ${{ vars.HEAVIX_B2_AGE_RECIPIENT }}
         run: |
           set -euo pipefail
           for name in DATABASE_URL STORE_DATABASE_URL B2_APPLICATION_KEY_ID B2_APPLICATION_KEY; do
@@ -198,12 +246,16 @@ jobs:
               exit 1
             fi
           done
-          for name in APP_PREVIEW_BACKUP_ROLE STORE_PREVIEW_BACKUP_ROLE; do
+          for name in APP_PREVIEW_BACKUP_ROLE STORE_PREVIEW_BACKUP_ROLE AGE_RECIPIENT; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required repository variable is missing: $name"
               exit 1
             fi
           done
+          if [[ "$AGE_RECIPIENT" != age1* || "$AGE_RECIPIENT" == *[[:space:]]* ]]; then
+            echo "::error::HEAVIX_B2_AGE_RECIPIENT must be a valid age public recipient without whitespace."
+            exit 1
+          fi
           python3 - <<'PY'
           import os
           from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -379,11 +431,31 @@ jobs:
             heavix-legacy.bundle heavix-legacy.tar.gz manifest.json > SHA256SUMS
           sha256sum -c SHA256SUMS
 
+      - name: Encrypt archive payloads before any upload
+        shell: bash
+        env:
+          AGE_RECIPIENT: ${{ vars.HEAVIX_B2_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/heavix-archive"
+          for file in main.dump store.dump heavix-source.bundle heavix-source.tar.gz heavix-legacy.bundle heavix-legacy.tar.gz; do
+            test -s "$file"
+            age -r "$AGE_RECIPIENT" -o "$file.age" "$file"
+            test -s "$file.age"
+            rm -f "$file"
+          done
+          test ! -e main.dump
+          test ! -e store.dump
+          rm -f SHA256SUMS
+          sha256sum main.dump.age store.dump.age heavix-source.bundle.age heavix-source.tar.gz.age heavix-legacy.bundle.age heavix-legacy.tar.gz.age manifest.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          echo "All database and source payloads encrypted; plaintext payload files removed before upload."
+
       - name: Verify B2 bucket and archive objects
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HEAVIX_DB_BACKUPS_B2_KEY }}
         run: |
           set -euo pipefail
           aws --endpoint-url "$B2_ENDPOINT" s3api head-bucket --bucket "$B2_BUCKET"
@@ -393,7 +465,7 @@ jobs:
           cd "$RUNNER_TEMP/heavix-archive"
 
           for file in main.dump store.dump heavix-source.bundle heavix-source.tar.gz \
-                      heavix-legacy.bundle heavix-legacy.tar.gz SHA256SUMS manifest.json; do
+                      heavix-legacy.bundle.age heavix-legacy.tar.gz.age SHA256SUMS manifest.json; do
             aws --endpoint-url "$B2_ENDPOINT" s3 cp "$file" \
               "s3://$B2_BUCKET/$DEST/$file" --only-show-errors
             LOCAL_BYTES="$(stat -c %s "$file")"
