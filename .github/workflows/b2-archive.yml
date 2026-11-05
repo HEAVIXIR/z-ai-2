@@ -331,39 +331,41 @@ jobs:
                  r.rolcreaterole,
                  r.rolreplication,
                  r.rolbypassrls,
+                 has_database_privilege(current_user, current_database(), 'CREATE'),
                  COALESCE((SELECT bool_and(
-                   has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')
-                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')
-                 ) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')), true),
+                   has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'SELECT')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'INSERT')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'UPDATE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'DELETE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'TRUNCATE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'TRIGGER')
+                 ) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.relkind IN ('r','p','m','f') AND n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'), true),
                  COALESCE((SELECT bool_and(
                    has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'SELECT')
                    AND NOT has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'UPDATE')
                    AND NOT has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'USAGE')
-                 ) FROM pg_sequences WHERE schemaname NOT IN ('pg_catalog','information_schema')), true),
+                 ) FROM pg_sequences WHERE schemaname !~ '^pg_' AND schemaname <> 'information_schema'), true),
                  COALESCE((SELECT bool_and(
                    has_schema_privilege(current_user, nspname, 'USAGE')
                    AND NOT has_schema_privilege(current_user, nspname, 'CREATE')
-                 ) FROM pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema')), true)
+                 ) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'), true)
             FROM pg_roles r WHERE r.rolname = current_user;
           SQL
 
           verify_preview_target() {
             local label="$1" dsn="$2" expected_addr="$3" expected_start="$4" expected_role="$5"
-            local actual addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly
+            local actual addr started role superuser createdb createrole replication bypassrls dbcreate tables_readonly sequences_readonly schemas_readonly
             actual="$(PG_DSN="$dsn" docker run --rm \
               -e PG_DSN \
               -v "$RUNNER_TEMP/heavix-preview-identity.sql:/identity.sql:ro" \
               postgres:17-alpine sh -ec 'psql "$PG_DSN" -XAt -v ON_ERROR_STOP=1 -F "|" -f /identity.sql')"
-            IFS="|" read -r addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly <<< "$actual"
+            IFS="|" read -r addr started role superuser createdb createrole replication bypassrls dbcreate tables_readonly sequences_readonly schemas_readonly <<< "$actual"
             [[ "$addr" == "$expected_addr" ]] || { echo "::error::$label server-address fingerprint mismatch"; exit 1; }
             [[ "$started" == "$expected_start" ]] || { echo "::error::$label server-start fingerprint mismatch"; exit 1; }
             [[ "$role" == "$expected_role" ]] || { echo "::error::$label backup-role identity mismatch"; exit 1; }
-            [[ "$superuser,$createdb,$createrole,$replication,$bypassrls" == "f,f,f,f,f" ]] || { echo "::error::$label backup role has elevated PostgreSQL attributes"; exit 1; }
+            [[ "$superuser,$createdb,$createrole,$replication,$bypassrls,$dbcreate" == "f,f,f,f,f,f" ]] || { echo "::error::$label backup role has elevated PostgreSQL/database privileges"; exit 1; }
             [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "::error::$label backup role is not read-only across inspected objects"; exit 1; }
             echo "$label Preview fingerprint and read-only role checks passed."
           }
