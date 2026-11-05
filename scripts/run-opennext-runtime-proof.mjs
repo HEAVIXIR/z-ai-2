@@ -94,7 +94,9 @@ try {
     "--ip", "127.0.0.1",
     "--port", String(port),
   ], {
-    cwd: tempRoot,
+    // OpenNext resolves its generated .open-next/config relative to the project root.
+    // Keep the Wrangler config isolated in tempRoot, but run the CLI from root.
+    cwd: root,
     detached: process.platform !== "win32",
     env: isolatedEnv({ NODE_ENV: "production" }),
   });
