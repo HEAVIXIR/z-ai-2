@@ -97,9 +97,59 @@ export function withIdentityGuard<TClient extends object>(
     return identityCheckPromise;
   };
 
+  // Prisma model operations return lazy PrismaPromise objects. Keep that
+  // contract intact: Prisma's array $transaction API relies on
+  // requestTransaction() being present before the promise is awaited.
+  const promiseProxyCache = new WeakMap<object, object>();
+  const wrapPrismaPromise = (promise: object): object => {
+    const cached = promiseProxyCache.get(promise);
+    if (cached) return cached;
+    const thenMethod = Reflect.get(promise, "then", promise);
+    if (typeof thenMethod !== "function") return promise;
+
+    let guardedPromise: object;
+    guardedPromise = new Proxy(promise, {
+      get(target, property) {
+        if (property === "then") {
+          return (onFulfilled?: unknown, onRejected?: unknown) =>
+            ensureIdentity().then(() =>
+              Reflect.apply(thenMethod, target, [onFulfilled, onRejected]),
+            );
+        }
+        if (property === "catch") {
+          return (onRejected?: unknown) =>
+            Reflect.get(guardedPromise, "then")?.(undefined, onRejected);
+        }
+        if (property === "finally") {
+          return (onFinally?: unknown) =>
+            Reflect.get(guardedPromise, "then")(
+              (value: unknown) =>
+                Promise.resolve(typeof onFinally === "function" ? onFinally() : undefined)
+                  .then(() => value),
+              (reason: unknown) =>
+                Promise.resolve(typeof onFinally === "function" ? onFinally() : undefined)
+                  .then(() => { throw reason; }),
+            );
+        }
+        if (property === "requestTransaction") {
+          const requestTransaction = Reflect.get(target, property, target);
+          if (typeof requestTransaction !== "function") return requestTransaction;
+          return (...args: unknown[]) => {
+            const transactionPromise = Reflect.apply(requestTransaction, target, args);
+            return transactionPromise && typeof transactionPromise === "object"
+              ? wrapPrismaPromise(transactionPromise)
+              : transactionPromise;
+          };
+        }
+        return Reflect.get(target, property, target);
+      },
+    });
+    promiseProxyCache.set(promise, guardedPromise);
+    return guardedPromise;
+  };
+
   // Prisma model APIs are nested delegates (client.user.findMany()), not
-  // root-level client functions. Proxy every delegate method so ORM queries
-  // cannot bypass the identity check.
+  // root-level client functions. Guard their lazy PrismaPromise at await time.
   const wrapDelegate = (delegate: object): object => {
     const cached = delegateProxyCache.get(delegate);
     if (cached) return cached;
@@ -109,9 +159,11 @@ export function withIdentityGuard<TClient extends object>(
         const value = Reflect.get(target, property, target);
         if (typeof value !== "function") return value;
 
-        return async (...args: unknown[]) => {
-          await ensureIdentity();
-          return Reflect.apply(value, target, args);
+        return (...args: unknown[]) => {
+          const result = Reflect.apply(value, target, args);
+          return result && typeof result === "object"
+            ? wrapPrismaPromise(result)
+            : result;
         };
       },
     });
@@ -123,19 +175,25 @@ export function withIdentityGuard<TClient extends object>(
     get(target, property) {
       const value = Reflect.get(target, property, target);
 
+      if (property === "$transaction" && typeof value === "function") {
+        return async (...args: unknown[]) => {
+          // This completes before Prisma starts either an interactive or an
+          // array transaction. The array's PrismaPromises remain lazy.
+          await ensureIdentity();
+          return Reflect.apply(value, target, args);
+        };
+      }
+
       if (
         typeof property === "string" &&
         (property === "$queryRaw" ||
           property === "$queryRawUnsafe" ||
           property === "$executeRaw" ||
-          property === "$executeRawUnsafe" ||
-          property === "$transaction") &&
+          property === "$executeRawUnsafe") &&
         typeof value === "function"
       ) {
-        return async (...args: unknown[]) => {
-          await ensureIdentity();
-          return Reflect.apply(value, target, args);
-        };
+        return (...args: unknown[]) =>
+          wrapPrismaPromise(Reflect.apply(value, target, args) as object);
       }
 
       // Preserve Prisma extensions while ensuring the returned client is
