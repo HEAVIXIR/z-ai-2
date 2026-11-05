@@ -34,11 +34,15 @@ const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 class PreviewIdentityMismatchError extends Error {
   readonly expectedSystemIdentifier: string;
   readonly actualSystemIdentifier: string;
-  constructor(actual: string, expected: string, label: string) {
-    super(`${label} system_identifier mismatch: expected ${expected}, got ${actual}`);
+  readonly expectedDatabaseOid: string;
+  readonly actualDatabaseOid: string;
+  constructor(actual: string, expected: string, actualOid: string, expectedOid: string, label: string) {
+    super(`${label} database identity mismatch; refusing to continue`);
     this.name = "PreviewIdentityMismatchError";
     this.expectedSystemIdentifier = expected;
     this.actualSystemIdentifier = actual;
+    this.expectedDatabaseOid = expectedOid;
+    this.actualDatabaseOid = actualOid;
   }
 }
 
@@ -51,27 +55,31 @@ class PreviewIdentityMismatchError extends Error {
 async function verifyDatabaseIdentity(
   client: AppPrismaClient | StorePrismaClient,
   expectedSystemIdentifier: string,
+  expectedDatabaseOid: string,
   label: string,
 ): Promise<void> {
   const rows = await client.$queryRaw<
-    Array<{ system_identifier: string }>
-  >`SELECT system_identifier::text AS system_identifier FROM pg_control_system()`;
+    Array<{ system_identifier: string; database_oid: string }>
+  >`SELECT
+    (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
+    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid`;
   const actual = rows[0]?.system_identifier ?? "";
-  if (actual !== expectedSystemIdentifier) {
-    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, label);
+  const actualOid = rows[0]?.database_oid ?? "";
+  if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
+    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label);
   }
 }
 
 async function appFingerprint(client: AppPrismaClient): Promise<{
-  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+  identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
   // If this throws, the caller returns 502 immediately — migrations are never read.
-  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "", "App");
   const identity = await client.$queryRaw<
-    Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+    Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
+  >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
@@ -81,10 +89,10 @@ async function storeFingerprint(client: StorePrismaClient): Promise<{
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
-  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "", "Store");
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
