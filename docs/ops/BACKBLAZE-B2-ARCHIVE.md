@@ -1,7 +1,8 @@
 # HEAVIX — Backblaze B2 Archive Foundation
 
 **Status:** Foundation workflow authored; first remote archive run is not yet verified.  
-**Bucket:** `heavix-dev-assets` (private)  
+**Target bucket:** `heavix-db-backups` (proposed; not yet created)  
+**Existing development bucket:** `heavix-dev-assets` (private; not a database-backup destination)  
 **S3 endpoint:** `https://s3.us-east-005.backblazeb2.com`  
 **Region:** `us-east-005`
 
@@ -28,7 +29,7 @@ Create these repository Actions secrets. Values must be entered in GitHub's secr
 | `B2_APPLICATION_KEY_ID` | Backblaze application key ID scoped to this bucket |
 | `B2_APPLICATION_KEY` | Backblaze application key secret |
 
-The B2 key should be restricted to `heavix-dev-assets` and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step.
+The B2 key must be restricted to the dedicated `heavix-db-backups` bucket and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step. The existing `heavix-dev-assets` bucket must never receive database dumps.
 
 ## Pre-archive secret scanning
 
@@ -44,9 +45,14 @@ Before any archive dispatch:
 1. Independently establish both destination identities using the approved non-secret metadata/OID verification process.
 2. Confirm App Preview matches the expected App Preview database identity and Store Preview matches the expected Store Preview identity.
 3. Confirm the credentials are read-only and cannot reach Production or any unapproved database.
-4. Review the evidence and update this runbook/workflow gate before dispatch.
+4. Provision a separate private `heavix-db-backups` bucket; do not reuse `heavix-dev-assets`.
+5. Verify a least-privilege B2 Application Key scoped only to the dedicated backup bucket.
+6. Implement client-side encryption and document recovery-key custody; bucket-level encryption alone is insufficient.
+7. Approve bounded retention, data caps, expected growth, and a zero-cost limit.
+8. Prepare an isolated PostgreSQL 17 restore target and a documented restore rehearsal procedure.
+9. Review the evidence and update this runbook/workflow gate before dispatch.
 
-The workflow now enforces an additional fail-closed dispatch latch: repository variable `HEAVIX_B2_DB_IDENTITY_GATE` must equal `VERIFIED_PREVIEW_ONLY`. Leave it unset until all four checks above are complete and the evidence has been reviewed. This variable is an operational attestation latch, not an independent proof of database identity; setting it without the underlying evidence would defeat the safety model.
+The workflow enforces two fail-closed dispatch latches: `HEAVIX_B2_DB_IDENTITY_GATE=VERIFIED_PREVIEW_ONLY` and `HEAVIX_B2_ARCHIVE_READINESS_GATE=APPROVED_PREVIEW_ARCHIVE_V1`. Leave both unset until every prerequisite above is independently verified and approved. These variables are operational attestation latches, not independent proof of database identity, key scope, encryption, retention, or restore readiness; setting them without the underlying evidence would defeat the safety model.
 
 Until all four conditions are satisfied, do not create/populate the two database URL secrets for this workflow, do not run `pg_dump`, and do not use a real database URL as a connectivity test. Git-only archival can be designed as a separate workflow if needed; this combined workflow remains blocked.
 
@@ -105,7 +111,8 @@ Do not enable public bucket access as a shortcut. Do not delete local media afte
 
 ## Current verified evidence
 
-- Bucket `heavix-dev-assets` exists and is private.
+- Existing bucket `heavix-dev-assets` exists and is private, but is reserved for development assets and must not receive database backups.
+- Dedicated bucket `heavix-db-backups` has not been created; no database archive writes are permitted until it is provisioned and all readiness gates are satisfied.
 - AWS CLI profile `heavix-b2` was configured locally by the operator.
 - A prior single-object upload/download round-trip succeeded and SHA-256 matched:
   `A83A35F20962B88F225EAD001F15B85855343C6A6C37711D85398F780E9F7888`.
