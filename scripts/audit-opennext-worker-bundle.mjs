@@ -212,7 +212,7 @@ const externalImports = [...new Set(metaOutputs.flatMap(([, output]) =>
   (output.imports ?? []).filter((item) => item.external).map((item) => item.path),
 ))].sort();
 const forbiddenPackageInputs = metaInputs.filter((path) =>
-  /node_modules\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)\\//.test(path) ||
+  /node_modules\/(?:pg|pg-pool|pg-protocol|pg-native|pgpass)\//.test(path) ||
   /node_modules\/@prisma\/adapter-pg(?:\/|$)/.test(path),
 );
 const ppgPackageInputs = metaInputs.filter((path) =>
