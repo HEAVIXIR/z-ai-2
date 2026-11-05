@@ -12,6 +12,15 @@ import {
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import ZAI from "z-ai-web-dev-sdk";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+
+import {
+  validateLLMJson,
+  listingBuilderSchema,
+  moderationSchema,
+  MAX_LISTING_BUILDER_OUTPUT_CHARS,
+  MAX_MODERATION_OUTPUT_CHARS,
+} from "@/lib/ai-gateway-validation";
 
 /* ============================================================
    POST /api/ai-gateway
@@ -73,24 +82,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Parse body ──────────────────────────────────────────────
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
+  // ── Bounded body read (before JSON parsing / policy / provider) ──
+  // The stream reader enforces a hard 64 KiB byte ceiling even when
+  // Content-Length is absent or inaccurate. Oversized bodies are cancelled
+  // and rejected before parsing, budget reservation, DB logging, or LLM calls.
+  const parsedBody = await readBoundedJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json(
+      { error: parsedBody.error },
+      { status: parsedBody.status },
+    );
+  }
+  const body = parsedBody.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { task, input } = body ?? {};
+  const { task, input } = body as {
+    task?: unknown;
+    input?: { query?: unknown; description?: unknown; text?: unknown } | null;
+  };
 
   if (!task || typeof task !== "string") {
     return NextResponse.json({ error: "task required" }, { status: 400 });
   }
 
   // ── P0-7 Policy pre-flight (auth + quota + budget + size) ───
-  // Input length is computed from the serialised input so that the
-  // size cap meaningfully bounds the whole payload, not just a
-  // string sub-field. Truncate the serialisation to a sane upper
-  // bound before measuring so a malicious huge payload can't OOM us.
+  // The raw request body has already been byte-bounded before JSON.parse.
+  // This character count is a secondary task-policy check, not a memory limit.
   let inputLen = 0;
   try {
     inputLen = Math.min(
@@ -189,8 +207,15 @@ export async function POST(req: NextRequest) {
           signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
-        const m = content.match(/\{[\s\S]*\}/);
-        result = m ? JSON.parse(m[0]) : { title: desc.substring(0, 80) };
+        // Issue #179: Fail-closed validation — if JSON is missing or
+        // doesn't match schema, the call fails with a validation error.
+        // Previously fell back to { title: desc.substring(0, 80) },
+        // silently accepting unvalidated LLM output.
+        const validated = validateLLMJson(content, listingBuilderSchema, MAX_LISTING_BUILDER_OUTPUT_CHARS);
+        if (!validated.success) {
+          throw new Error(`LISTING_BUILDER output validation failed: ${validated.error}`);
+        }
+        result = validated.data;
         break;
       }
 
@@ -230,8 +255,15 @@ export async function POST(req: NextRequest) {
           signal: controller.signal,
         });
         const content = llmRes.choices?.[0]?.message?.content ?? "";
-        const m = content.match(/\{[\s\S]*\}/);
-        result = m ? JSON.parse(m[0]) : { appropriate: true };
+        // Issue #179: Fail-closed validation — if JSON is missing or
+        // doesn't match schema, the call FAILS. Previously fell back to
+        // { appropriate: true }, which silently approved content when
+        // the LLM returned malformed output — a P1 security gap.
+        const validated = validateLLMJson(content, moderationSchema, MAX_MODERATION_OUTPUT_CHARS);
+        if (!validated.success) {
+          throw new Error(`MODERATION output validation failed: ${validated.error}`);
+        }
+        result = validated.data;
         break;
       }
 

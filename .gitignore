@@ -92,3 +92,4 @@ public/uploads/articles/test-article-*.png
 
 # STEP 15.88: local real-TLS PostgreSQL infrastructure (binaries, certs, cluster data)
 .tls-pg/
+src/lib/generated/
