@@ -3,6 +3,11 @@ export function isPostgres17(version: string | null | undefined): boolean {
   return /^17\./.test(version ?? "");
 }
 
+/** PostgreSQL OIDs are unsigned 32-bit identifiers scoped to one cluster. */
+export function isPostgresDatabaseOid(value: string | null | undefined): value is string {
+  return !!value && /^[1-9]\d{0,9}$/.test(value) && Number(value) <= 4_294_967_295;
+}
+
 export function extractBearerToken(header: string | null): string {
   return header?.replace(/^Bearer\s+/i, "") ?? "";
 }
