@@ -62,11 +62,13 @@ try {
   const port = await reservePort();
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  await writeFile(
-    varsPath,
-    `DATABASE_URL=${JSON.stringify(appUrl)}\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\n`,
-    { mode: 0o600 },
-  );
+  if (!smokeOnly) {
+    await writeFile(
+      varsPath,
+      `DATABASE_URL=${JSON.stringify(appUrl)}\\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\\n`,
+      { mode: 0o600 },
+    );
+  }
   await writeFile(configPath, JSON.stringify({
     $schema: "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
     name: `heavix-prisma-workerd-proof-${process.pid}`,
@@ -123,9 +125,7 @@ try {
       writesPerformed: false,
       productionAccessed: false,
     }, null, 2));
-    return;
-  }
-
+  } else {
   const appFirst = await getJson(baseUrl, "/app/fingerprint");
   const appSecond = await getJson(baseUrl, "/app/fingerprint");
   const storeFirst = await getJson(baseUrl, "/store/fingerprint");
@@ -187,6 +187,7 @@ try {
     writesPerformed: false,
     productionAccessed: false,
   }, null, 2));
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Workerd proof failed.");
   if (workerExit) console.error(`Worker exit: code=${workerExit.code}, signal=${workerExit.signal}`);
