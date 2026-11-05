@@ -75,7 +75,7 @@ async function probeApp() {
   return {
     identityMatch: actual?.system_identifier === EXPECTED.app.systemIdentifier,
     schemaMatch: actual?.schema_name === "public",
-    postgres17: /^17\./.test(actual?.server_version ?? ""),
+    postgres17: isPostgres17(actual?.server_version),
     migrationsMatch:
       JSON.stringify(migrations.map((row) => row.migration_name)) ===
       JSON.stringify(EXPECTED.app.migrations),
@@ -110,7 +110,7 @@ async function probeStore() {
   return {
     identityMatch: actual?.system_identifier === EXPECTED.store.systemIdentifier,
     schemaMatch: actual?.schema_name === "public",
-    postgres17: /^17\./.test(actual?.server_version ?? ""),
+    postgres17: isPostgres17(actual?.server_version),
     migrationsMatch:
       JSON.stringify(migrations.map((row) => row.migration_name)) ===
       JSON.stringify(EXPECTED.store.migrations),
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
 
   if (mode === "PREVIEW_ONLY") {
     const expectedToken = process.env.HEAVIX_OPENNEXT_PROOF_TOKEN;
-    const suppliedToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+    const suppliedToken = extractBearerToken(request.headers.get("authorization"));
     if (!expectedToken || !constantTimeEqual(suppliedToken, expectedToken)) {
       return json({ error: "not_found" }, 404);
     }
