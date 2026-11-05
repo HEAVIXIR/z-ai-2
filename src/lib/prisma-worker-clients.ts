@@ -63,61 +63,117 @@ async function verifyDatabaseIdentity(
  * the FIRST query. If the identity check fails, all subsequent queries
  * also throw (the check result is cached as a failed promise).
  */
-function withIdentityGuard<TClient extends object>(
+export function withIdentityGuard<TClient extends object>(
   client: TClient,
   expectedSystemIdentifier: string,
   label: string,
 ): TClient {
-  // The identity check promise. It is created lazily on the first query.
-  // If it resolves, subsequent queries skip the check. If it rejects, all
-  // subsequent queries also reject (the same promise is reused).
   let identityCheckPromise: Promise<void> | null = null;
+  const delegateProxyCache = new WeakMap<object, object>();
+  const identitySql =
+    "SELECT system_identifier::text AS system_identifier FROM pg_control_system()";
 
-  return new Proxy(client, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver);
-      if (typeof value !== "function") return value;
-
-      // Intercept $queryRaw and $executeRaw (the raw query methods used
-      // by the identity check itself). We need a special case: the
-      // identity check query must bypass the guard, otherwise we'd have
-      // infinite recursion.
-      const isRawMethod = typeof property === "string" && property.startsWith("$queryRaw");
-
-      return async (...args: unknown[]) => {
-        // For the identity check itself, bypass the guard.
-        if (isRawMethod && args[0] === "identity-check-bypass") {
-          return Reflect.apply(value, target, args.slice(1));
+  const ensureIdentity = (): Promise<void> => {
+    if (!identityCheckPromise) {
+      identityCheckPromise = (async () => {
+        const rawMethod = Reflect.get(client, "$queryRaw", client) as
+          | ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>)
+          | undefined;
+        if (typeof rawMethod !== "function") {
+          throw new Error(
+            \`\${label}: $queryRaw not available on client — cannot verify identity\`,
+          );
         }
 
-        // For all other queries, ensure identity has been verified first.
-        if (!identityCheckPromise) {
-          // Use the raw query method to check identity. We call it
-          // directly on the target (bypassing the proxy) to avoid
-          // recursion.
-          identityCheckPromise = (async () => {
-            const rawMethod = Reflect.get(target, "$queryRaw", target) as
-              | ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>)
-              | undefined;
-            if (typeof rawMethod !== "function") {
-              throw new Error(`${label}: $queryRaw not available on client — cannot verify identity`);
-            }
-            const rows = await rawMethod(
-              ["SELECT system_identifier::text AS system_identifier FROM pg_control_system()"] as unknown as TemplateStringsArray,
-            ) as Array<{ system_identifier: string }>;
-            const actual = rows[0]?.system_identifier ?? "";
-            if (actual !== expectedSystemIdentifier) {
-              throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, label);
-            }
-          })();
+        // Prisma's tagged-template API expects a TemplateStringsArray with
+        // its raw member. Invoke the underlying client directly so this
+        // bootstrap query does not recursively enter the guard.
+        const strings = Object.assign([identitySql], {
+          raw: [identitySql],
+        }) as unknown as TemplateStringsArray;
+        const rows = (await Reflect.apply(rawMethod, client, [strings])) as
+          | Array<{ system_identifier: string }>
+          | undefined;
+        const actual = rows?.[0]?.system_identifier ?? "";
+        if (actual !== expectedSystemIdentifier) {
+          throw new PreviewIdentityMismatchError(
+            actual,
+            expectedSystemIdentifier,
+            label,
+          );
         }
-        await identityCheckPromise; // Throws if identity check failed.
+      })();
+    }
+    return identityCheckPromise;
+  };
 
-        // Identity verified — forward the original query.
-        return Reflect.apply(value, target, args);
-      };
+  // Prisma model APIs are nested delegates (client.user.findMany()), not
+  // root-level client functions. Proxy every delegate method so ORM queries
+  // cannot bypass the identity check.
+  const wrapDelegate = (delegate: object): object => {
+    const cached = delegateProxyCache.get(delegate);
+    if (cached) return cached;
+
+    const guardedDelegate = new Proxy(delegate, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (typeof value !== "function") return value;
+
+        return async (...args: unknown[]) => {
+          await ensureIdentity();
+          return Reflect.apply(value, target, args);
+        };
+      },
+    });
+    delegateProxyCache.set(delegate, guardedDelegate);
+    return guardedDelegate;
+  };
+
+  const guardedClient = new Proxy(client, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+
+      if (
+        typeof property === "string" &&
+        (property === "$queryRaw" ||
+          property === "$queryRawUnsafe" ||
+          property === "$executeRaw" ||
+          property === "$executeRawUnsafe" ||
+          property === "$transaction") &&
+        typeof value === "function"
+      ) {
+        return async (...args: unknown[]) => {
+          await ensureIdentity();
+          return Reflect.apply(value, target, args);
+        };
+      }
+
+      // Preserve Prisma extensions while ensuring the returned client is
+      // guarded independently. The common application path does not need
+      // extensions, but this prevents an accidental guard escape.
+      if (property === "$extends" && typeof value === "function") {
+        return (...args: unknown[]) =>
+          withIdentityGuard(
+            Reflect.apply(value, target, args) as object,
+            expectedSystemIdentifier,
+            label,
+          );
+      }
+
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        typeof property === "string" &&
+        !property.startsWith("$")
+      ) {
+        return wrapDelegate(value);
+      }
+
+      return value;
     },
   });
+
+  return guardedClient;
 }
 
 /** Shared factories used by OpenNext and the isolated local Workerd proof. */
