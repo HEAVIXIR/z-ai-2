@@ -36,6 +36,46 @@ describe("public homepage renderer contracts", () => {
     expect(getWidget("category-grid")?.defaultDataSource).toBe("taxonomy.categories");
   });
 
+  it("registers every public homepage data source with no admin permission requirement", () => {
+    const expected = [
+      "listing.featured",
+      "listing.latest",
+      "taxonomy.categories",
+      "brand.popular",
+      "service.all",
+      "article.latest",
+    ];
+    for (const key of expected) {
+      expect(homepageDataSources).toContain(key);
+      expect(getDataSource(key)?.permissions).toEqual([]);
+    }
+  });
+
+  it("uses the real public endpoint envelopes for brands, services, and articles", () => {
+    expect(getDataSource("brand.popular")?.apiPath).toBe(
+      "/api/taxonomy/brands?status=ACTIVE&sort=featured&limit=12",
+    );
+    expect(getDataSource("service.all")?.apiPath).toBe("/api/services?limit=12");
+    expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit=6");
+    expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular");
+    expect(getWidget("service-grid")?.defaultDataSource).toBe("service.all");
+    expect(getWidget("article-list")?.permissions).toEqual([]);
+  });
+
+  it("keeps public services informational rather than linking to an unverified route", () => {
+    const source = readFileSync(
+      path.join(root, "src/components/page-renderer/widgets/service-grid-widget.tsx"),
+      "utf8",
+    );
+    expect(source).not.toMatch(/href=/);
+    expect(source).toContain("<article");
+  });
+
+  it("preserves the published HOME AdminPage override", () => {
+    expect(homepageSource).toContain('pageType: "HOME", status: "PUBLISHED"');
+    expect(homepageSource).toContain("layout = publishedVersion.layout");
+  });
+
   it("does not put the admin-only site statistics endpoint on the public homepage", () => {
     expect(homepageDataSources).not.toContain("site-stats");
     expect(defaultLayoutSource).not.toContain('key: "stats"');
