@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { extname, relative, resolve, sep } from "node:path";
 
 const root = process.cwd();
 const outputRoot = resolve(root, ".open-next");
 const workerEntry = resolve(outputRoot, "worker.js");
-const reportPath = resolve(outputRoot, "audit/worker-bundle-audit.json");
+const auditRoot = resolve(outputRoot, "audit");
+const reportPath = resolve(auditRoot, "worker-bundle-audit.json");
+const dryRunConfigPath = resolve(auditRoot, "wrangler.audit.jsonc");
+const dryRunOutDir = resolve(auditRoot, "wrangler-dry-run");
 const codeExtensions = new Set([".js", ".mjs", ".cjs"]);
 const sourceExtensions = new Set([...codeExtensions, ".map"]);
+const workerLimitBytes = 64 * 1024 * 1024;
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -15,8 +20,8 @@ async function walk(directory) {
   for (const entry of entries) {
     const fullPath = resolve(directory, entry.name);
     if (entry.isDirectory()) {
-      // Browser assets are not part of the Worker server execution graph.
-      if (relative(outputRoot, fullPath).split(sep)[0] !== "assets") {
+      if (relative(outputRoot, fullPath).split(sep)[0] !== "assets" &&
+          relative(auditRoot, fullPath).split(sep)[0] !== "wrangler-dry-run") {
         files.push(...await walk(fullPath));
       }
     } else if (entry.isFile() && sourceExtensions.has(extname(entry.name))) {
@@ -24,6 +29,57 @@ async function walk(directory) {
     }
   }
   return files;
+}
+
+function isolatedEnv() {
+  const env = { ...process.env };
+  for (const key of [
+    "DATABASE_URL",
+    "STORE_DATABASE_URL",
+    "HEAVIX_APP_PREVIEW_PPG_URL",
+    "HEAVIX_STORE_PREVIEW_PPG_URL",
+    "HEAVIX_OPENNEXT_PROOF_TOKEN",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_API_KEY",
+    "CLOUDFLARE_ACCOUNT_ID",
+  ]) delete env[key];
+  return env;
+}
+
+function run(command, args) {
+  return new Promise((resolveRun) => {
+    const child = spawn(command, args, {
+      cwd: root,
+      env: isolatedEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.once("error", (error) => resolveRun({ code: null, signal: null, stdout, stderr, error: error.message }));
+    child.once("close", (code, signal) => resolveRun({ code, signal, stdout, stderr, error: null }));
+  });
+}
+
+function parseSize(text) {
+  const match = text.match(/Total Upload:\s*([\d.]+)\s*(B|bytes|KiB|MiB|GiB)\s*\/\s*gzip:\s*([\d.]+)\s*(B|bytes|KiB|MiB|GiB)/i);
+  if (!match) return null;
+  const factor = (unit) => {
+    switch (unit.toLowerCase()) {
+      case "b":
+      case "bytes": return 1;
+      case "kib": return 1024;
+      case "mib": return 1024 ** 2;
+      case "gib": return 1024 ** 3;
+      default: return null;
+    }
+  };
+  return {
+    totalUploadBytes: Math.round(Number(match[1]) * factor(match[2])),
+    gzipBytes: Math.round(Number(match[3]) * factor(match[4])),
+    display: match[0],
+  };
 }
 
 const forbiddenPatterns = [
@@ -45,6 +101,7 @@ const workerStat = await stat(workerEntry).catch(() => null);
 if (!workerStat?.isFile()) {
   throw new Error("OpenNext Worker entry .open-next/worker.js was not generated.");
 }
+await mkdir(auditRoot, { recursive: true });
 
 const files = (await walk(outputRoot)).sort();
 const scanned = [];
@@ -84,10 +141,70 @@ const expectedSummary = [...expectedTotals].map(([marker, count]) => ({ marker, 
 const totalJsBytes = jsFiles.reduce((sum, file) => sum + file.bytes, 0);
 const forbiddenCount = forbiddenSummary.reduce((sum, item) => sum + item.count, 0);
 
+const diagnosticPaths = [
+  ".open-next/server-functions/default/handler.mjs",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/@edge-runtime/primitives/load.js",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/@mswjs/interceptors/ClientRequest/index.js",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/http-proxy-agent/index.js",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/https-proxy-agent/index.js",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/httpxy/index.js",
+  ".open-next/server-functions/default/node_modules/next/dist/compiled/ws/index.js",
+];
+const diagnostics = [];
+for (const path of diagnosticPaths) {
+  const fullPath = resolve(root, path);
+  const content = await readFile(fullPath, "utf8").catch(() => null);
+  if (content === null) continue;
+  const samples = [];
+  for (const item of forbiddenPatterns) {
+    const found = [...content.matchAll(item.pattern)].slice(0, 3);
+    for (const match of found) {
+      const start = Math.max(0, match.index - 90);
+      const end = Math.min(content.length, match.index + match[0].length + 90);
+      samples.push({
+        marker: item.id,
+        excerpt: content.slice(start, end).replace(/\s+/g, " ").slice(0, 220),
+      });
+    }
+  }
+  diagnostics.push({ file: path, samples });
+}
+
+const dryRunConfig = {
+  $schema: "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  name: "heavix-opennext-bundle-audit",
+  main: workerEntry,
+  compatibility_date: "2026-10-28",
+  compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  assets: { directory: resolve(outputRoot, "assets"), binding: "ASSETS" },
+  vars: { HEAVIX_OPENNEXT_PROOF_MODE: "SMOKE_ONLY", NODE_ENV: "production" },
+  workers_dev: false,
+  observability: { enabled: false },
+};
+await writeFile(dryRunConfigPath, JSON.stringify(dryRunConfig, null, 2), { mode: 0o600 });
+
+const wranglerBin = resolve(root, "node_modules/.bin/wrangler");
+const dryRunResult = await run(wranglerBin, [
+  "deploy",
+  "--dry-run",
+  "--outdir",
+  dryRunOutDir,
+  "--config",
+  dryRunConfigPath,
+  "--metafile",
+  resolve(auditRoot, "wrangler-bundle-meta.json"),
+]);
+const dryRunOutput = dryRunResult.stdout + "\n" + dryRunResult.stderr;
+const parsedSize = parseSize(dryRunOutput);
+const dryRunStatus = dryRunResult.code === 0 ? "SUCCESS" : "FAILED";
+const sizeGate = parsedSize
+  ? (parsedSize.totalUploadBytes <= workerLimitBytes ? "WITHIN_LIMIT" : "OVER_LIMIT")
+  : "UNKNOWN";
+
 const report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
-  method: "heuristic scan of generated OpenNext Worker JavaScript and source maps; not a complete bundler dependency-graph proof",
+  method: "heuristic scan of generated OpenNext Worker JavaScript plus Wrangler deploy --dry-run bundle; source-marker scan is not a complete dependency-graph proof",
   verdict: forbiddenCount ? "REVIEW_REQUIRED" : "NO_FORBIDDEN_MARKERS_FOUND",
   workerEntry: {
     file: relative(root, workerEntry),
@@ -102,10 +219,21 @@ const report = {
   },
   forbiddenMarkers: forbiddenSummary,
   expectedPpgMarkers: expectedSummary,
+  diagnostics,
+  wranglerDryRun: {
+    status: dryRunStatus,
+    sizeGate,
+    workerLimitBytes,
+    parsedSize,
+    command: "wrangler deploy --dry-run --outdir <audit-dir> --config <secret-free-audit-config> --metafile <audit-meta>",
+    exitCode: dryRunResult.code,
+    signal: dryRunResult.signal,
+    error: dryRunResult.error,
+    outputTail: dryRunOutput.slice(-12000),
+  },
   files: scanned,
 };
 
-await mkdir(resolve(outputRoot, "audit"), { recursive: true });
 await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", { mode: 0o600 });
 console.log(JSON.stringify({
   result: report.verdict,
@@ -115,5 +243,6 @@ console.log(JSON.stringify({
   javascriptBytes: report.totals.javascriptBytes,
   forbiddenMarkers: report.forbiddenMarkers,
   expectedPpgMarkers: report.expectedPpgMarkers,
+  wranglerDryRun: report.wranglerDryRun,
   note: report.method,
 }, null, 2));
