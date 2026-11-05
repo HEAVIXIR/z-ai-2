@@ -24,10 +24,10 @@ Create these repository Actions secrets. Values must be entered in GitHub's secr
 
 | Secret | Purpose |
 |---|---|
-| `HEAVIX_DATABASE_URL` | Main PostgreSQL connection URL, read-only backup role preferred |
-| `HEAVIX_STORE_DATABASE_URL` | Store PostgreSQL connection URL, read-only backup role preferred |
-| `B2_APPLICATION_KEY_ID` | Backblaze application key ID scoped to this bucket |
-| `B2_APPLICATION_KEY` | Backblaze application key secret |
+| `HEAVIX_APP_PREVIEW_DATABASE_URL` | Direct PostgreSQL URL for App Preview only; dedicated read-only backup role |
+| `HEAVIX_STORE_PREVIEW_DATABASE_URL` | Direct PostgreSQL URL for Store Preview only; dedicated read-only backup role |
+| `HEAVIX_DB_BACKUPS_B2_KEY_ID` | Backblaze application key ID scoped only to `heavix-db-backups` |
+| `HEAVIX_DB_BACKUPS_B2_KEY` | Backblaze application key secret scoped only to `heavix-db-backups` |
 
 The B2 key must be restricted to the dedicated `heavix-db-backups` bucket and only the operations needed to list/write/read archive objects. Do not reuse the account master key. Credentials are scoped to only the workflow steps that need them; transformed PostgreSQL DSNs are masked before being passed to the dump step. The existing `heavix-dev-assets` bucket must never receive database dumps.
 
@@ -39,7 +39,20 @@ Any detected finding fails the workflow before database dump/upload steps procee
 
 ## Database identity hard gate
 
-**Do not dispatch the archive job yet.** The workflow currently accepts generic `HEAVIX_DATABASE_URL` and `HEAVIX_STORE_DATABASE_URL` secrets, but it does not independently prove that they target the dedicated App Preview and Store Preview databases. Secret names, connection-string labels, successful TCP/TLS connectivity, or a successful PostgreSQL login are not database identity evidence.
+**Do not dispatch the archive job yet.**
+
+The workflow currently requires the explicitly Preview-named Actions secrets above and rejects any connection URL whose host is not the direct Prisma endpoint `db.prisma.io`. It also runs a read-only preflight before `pg_dump` that compares the server address and PostgreSQL postmaster start timestamp with the last independently reviewed Preview fingerprints:
+
+| Target | Expected `inet_server_addr()` | Expected UTC postmaster start |
+|---|---|---|
+| App Preview | `172.16.163.89` | `2026-11-03 10:11:45.178128` |
+| Store Preview | `172.16.163.49` | `2026-11-03 10:11:37.778073` |
+
+These are point-in-time infrastructure fingerprints, not permanent database IDs. Any restart, failover, address change, or Prisma topology change must stop the workflow. Re-verify the database resource identity through Prisma's non-secret metadata and a separately reviewed read-only connection before changing the expected values. Do not merely update a timestamp to make the check pass.
+
+The preflight also requires the connected role to match the separately configured repository variables `HEAVIX_APP_PREVIEW_BACKUP_ROLE` and `HEAVIX_STORE_PREVIEW_BACKUP_ROLE`, rejects superuser/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS roles, and checks SELECT-only table/sequence access plus USAGE-without-CREATE on user schemas. A passing role-name check alone is not sufficient; the effective privilege checks must also pass.
+
+ The workflow currently accepts generic `HEAVIX_DATABASE_URL` and `HEAVIX_STORE_DATABASE_URL` secrets, but it does not independently prove that they target the dedicated App Preview and Store Preview databases. Secret names, connection-string labels, successful TCP/TLS connectivity, or a successful PostgreSQL login are not database identity evidence.
 
 Before any archive dispatch:
 1. Independently establish both destination identities using the approved non-secret metadata/OID verification process.
