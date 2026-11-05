@@ -1,3 +1,4 @@
+import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 import {
   constantTimeEqual,
@@ -95,4 +96,26 @@ describe("RO-1 route enforcement wiring", () => {
       expect(body).toContain("transactionReadOnlyEnforced: transaction");
     },
   );
+});
+
+
+describe("PostgreSQL read-only transaction semantics (local PGlite)", () => {
+  it("SET TRANSACTION READ ONLY flips the state and rejects writes", async () => {
+    const database = new PGlite();
+    try {
+      await database.query("CREATE TABLE ro_probe (value integer)");
+      await database.query("BEGIN");
+      await database.query("SET TRANSACTION READ ONLY");
+      const state = await database.query<{ read_only: boolean }>(
+        "SELECT current_setting('transaction_read_only')::boolean AS read_only",
+      );
+      expect(state.rows[0]?.read_only).toBe(true);
+      await expect(
+        database.query("INSERT INTO ro_probe (value) VALUES (1)"),
+      ).rejects.toThrow();
+      await database.query("ROLLBACK");
+    } finally {
+      await database.close();
+    }
+  });
 });
