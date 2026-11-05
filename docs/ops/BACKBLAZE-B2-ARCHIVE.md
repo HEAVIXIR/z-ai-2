@@ -46,6 +46,8 @@ Before any archive dispatch:
 3. Confirm the credentials are read-only and cannot reach Production or any unapproved database.
 4. Review the evidence and update this runbook/workflow gate before dispatch.
 
+The workflow now enforces an additional fail-closed dispatch latch: repository variable `HEAVIX_B2_DB_IDENTITY_GATE` must equal `VERIFIED_PREVIEW_ONLY`. Leave it unset until all four checks above are complete and the evidence has been reviewed. This variable is an operational attestation latch, not an independent proof of database identity; setting it without the underlying evidence would defeat the safety model.
+
 Until all four conditions are satisfied, do not create/populate the two database URL secrets for this workflow, do not run `pg_dump`, and do not use a real database URL as a connectivity test. Git-only archival can be designed as a separate workflow if needed; this combined workflow remains blocked.
 
 ## Run
