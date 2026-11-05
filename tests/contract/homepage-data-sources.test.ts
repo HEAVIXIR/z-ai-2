@@ -39,11 +39,11 @@ describe("public homepage renderer contracts", () => {
   it("registers every public homepage data source with no admin permission requirement", () => {
     const expected = [
       "listing.featured",
-      "listing.latest",
+      "listing.latest.public",
       "taxonomy.categories",
-      "brand.popular",
-      "service.all",
-      "article.latest",
+      "brand.popular.public",
+      "service.all.public",
+      "article.latest.public",
     ];
     for (const key of expected) {
       expect(homepageDataSources).toContain(key);
@@ -51,12 +51,19 @@ describe("public homepage renderer contracts", () => {
     }
   });
 
+  it("preserves the original permission gates for admin-builder data sources", () => {
+    expect(getDataSource("listing.latest")?.permissions).toContain("listing.read");
+    expect(getDataSource("brand.popular")?.permissions).toContain("brand.read");
+    expect(getDataSource("article.latest")?.permissions).toContain("content.read");
+    expect(getDataSource("service.all")?.permissions).toContain("content.read");
+  });
+
   it("filters homepage brand cards to explicitly active records", () => {
     const route = readFileSync(
       path.join(root, "src/app/api/taxonomy/brands/route.ts"),
       "utf8",
     );
-    expect(getDataSource("brand.popular")?.apiPath).toContain("active=true");
+    expect(getDataSource("brand.popular.public")?.apiPath).toContain("active=true");
     expect(route).toContain('const activeRaw = url.searchParams.get("active")');
     expect(route).toContain("if (active !== undefined) where.active = active");
   });
@@ -68,13 +75,13 @@ describe("public homepage renderer contracts", () => {
   });
 
   it("uses the real public endpoint envelopes for brands, services, and articles", () => {
-    expect(getDataSource("brand.popular")?.apiPath).toBe(
+    expect(getDataSource("brand.popular.public")?.apiPath).toBe(
       "/api/taxonomy/brands?active=true&status=ACTIVE&sort=featured&limit=12",
     );
-    expect(getDataSource("service.all")?.apiPath).toBe("/api/services?limit=12");
-    expect(getDataSource("article.latest")?.apiPath).toBe("/api/articles?limit=6");
-    expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular");
-    expect(getWidget("service-grid")?.defaultDataSource).toBe("service.all");
+    expect(getDataSource("service.all.public")?.apiPath).toBe("/api/services?limit=12");
+    expect(getDataSource("article.latest.public")?.apiPath).toBe("/api/articles?limit=6");
+    expect(getWidget("brand-grid")?.defaultDataSource).toBe("brand.popular.public");
+    expect(getWidget("service-grid")?.defaultDataSource).toBe("service.all.public");
     expect(getWidget("article-list")?.permissions).toEqual([]);
   });
 
