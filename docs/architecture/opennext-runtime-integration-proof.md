@@ -42,6 +42,8 @@ The actual identity guard performs one read-only `pg_control_system()` query bef
 - [x] Route is disabled by default and guarded by explicit mode; Preview mode also requires bearer auth.
 - [x] Smoke driver strips DB/Cloudflare credentials and uses an isolated temporary Wrangler config/cwd.
 - [x] CI workflow is wired to the stacked Draft PR.
+- [x] Database-backed `src/app/sitemap.ts` is explicitly request-time (`dynamic = force-dynamic`, `revalidate = 0`) so it is not prerendered without a Cloudflare request context.
+- [ ] Confirm sitemap no longer prerenders and full OpenNext build advances past static generation on the next exact-HEAD CI run.
 - [ ] Exact-HEAD Cloudflare build completes and emits `.open-next/worker.js`.
 - [ ] Local OpenNext preview starts and the real route returns `SMOKE_ONLY PASS`.
 - [ ] Smoke mode confirms both application proxies fail closed without bindings and zero DB connections.
