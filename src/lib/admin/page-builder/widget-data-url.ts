@@ -18,13 +18,21 @@ function requestOrigin(env: WidgetDataUrlEnvironment, requestHeaders?: RequestHe
   const rawHost = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   if (!rawHost) return null;
   const host = rawHost.split(",")[0].trim();
-  if (!host || /[\s/@?#]/.test(host)) return null;
+  // STEP 18.2.7.3.10 (SSRF hardening): reject userinfo (@), path/query
+  // separators, whitespace, AND port numbers. A hostname with a port
+  // (e.g. "trusted.dev:9000") could direct server-side fetch() to an
+  // attacker-controlled service on the same host — block it.
+  if (!host || /[\s/@?#:]/.test(host)) return null;
   const rawProtocol = requestHeaders.get("x-forwarded-proto")?.split(",")[0].trim().toLowerCase();
   const protocol = rawProtocol || "https";
   if (protocol !== "http" && protocol !== "https") return null;
   const origin = toHttpOrigin(protocol + "://" + host);
   if (!origin) return null;
-  const hostname = new URL(origin).hostname.toLowerCase();
+  const url = new URL(origin);
+  const hostname = url.hostname.toLowerCase();
+  // Defense-in-depth: URL parsing should have stripped any port by now,
+  // but double-check that the final URL has the default port for its protocol.
+  if (url.port !== "") return null;
   const configuredHosts = [env.NEXT_PUBLIC_BASE_URL, env.VERCEL_URL, env.NEXT_PUBLIC_SITE_URL]
     .map(toHttpOrigin)
     .filter((value): value is string => value !== null)

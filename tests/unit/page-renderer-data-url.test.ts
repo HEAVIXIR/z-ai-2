@@ -31,6 +31,53 @@ describe("resolveWidgetDataBaseUrl", () => {
   it("ignores non-HTTP URL schemes", () => {
     expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_BASE_URL: "javascript:alert(1)", NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" })).toBe("https://heavix-preview.heavixir.workers.dev");
   });
+
+  // ── SSRF hardening (STEP 18.2.7.3.10) ──────────────────────────
+  // The resolved URL is used in server-side fetch() (page-renderer.tsx:67),
+  // so x-forwarded-host MUST NOT allow an attacker to redirect requests to
+  // arbitrary destinations. The allowlist covers workers.dev/heavix.ir
+  // suffixes, but userinfo injection and other tricks must be blocked too.
+
+  it("rejects userinfo injection (attacker@legitimate-host)", () => {
+    const headers = new Headers({ "x-forwarded-host": "attacker@heavixir.workers.dev", "x-forwarded-proto": "https" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" }, headers))
+      .toBe("https://heavix-preview.heavixir.workers.dev");
+  });
+
+  it("rejects userinfo injection on the Host header", () => {
+    const headers = new Headers({ host: "attacker@heavixir.workers.dev" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix.ir" }, headers))
+      .toBe("https://heavix.ir");
+  });
+
+  it("rejects an attacker spoofing a trusted host via path prefix", () => {
+    // "heavixir.workers.dev.evil.example" must NOT pass the .heavixir.workers.dev suffix check.
+    const headers = new Headers({ "x-forwarded-host": "heavixir.workers.dev.evil.example", "x-forwarded-proto": "https" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" }, headers))
+      .toBe("https://heavix-preview.heavixir.workers.dev");
+  });
+
+  it("rejects a hostname containing a port that would redirect to a different service", () => {
+    // Even though the hostname suffix is allowed, the port would send traffic
+    // to an attacker-controlled service. Block hostnames with ports.
+    const headers = new Headers({ "x-forwarded-host": "heavix-preview.heavixir.workers.dev:9000", "x-forwarded-proto": "https" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" }, headers))
+      .toBe("https://heavix-preview.heavixir.workers.dev");
+  });
+
+  it("rejects an x-forwarded-proto that is not http/https (file://, gopher://, etc.)", () => {
+    const headers = new Headers({ "x-forwarded-host": "heavix-preview.heavixir.workers.dev", "x-forwarded-proto": "gopher" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev" }, headers))
+      .toBe("https://heavix-preview.heavixir.workers.dev");
+  });
+
+  it("rejects a multi-value x-forwarded-host that uses the trusted host as a decoy", () => {
+    // x-forwarded-host can be comma-separated; we use the first entry.
+    // "legitimate-host, evil-host" must resolve to legitimate-host, NOT evil.
+    const headers = new Headers({ "x-forwarded-host": "heavix-preview.heavixir.workers.dev, evil.example", "x-forwarded-proto": "https" });
+    expect(resolveWidgetDataBaseUrl({ NEXT_PUBLIC_SITE_URL: "https://heavix.ir" }, headers))
+      .toBe("https://heavix-preview.heavixir.workers.dev");
+  });
 });
 
 describe("resolveWidgetDataPath", () => {
