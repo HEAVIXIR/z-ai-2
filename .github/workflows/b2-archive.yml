@@ -67,6 +67,7 @@ jobs:
           abort("Encryption design must keep Production excluded") unless encryption_design.include?("No Production database or Production credentials")
           abort("B2 upload allowlist must contain encrypted payloads only") unless archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run").include?("main.dump.age")
           upload_script = archive_job.fetch("steps").find { |step| step["name"] == "Verify B2 bucket and archive objects" }.fetch("run")
+          abort("B2 upload loop must not contain plaintext payload names") if upload_script.include?("for file in main.dump store.dump")
           abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
           abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
 
@@ -101,6 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
           GOBIN="$RUNNER_TEMP/bin" go install filippo.io/age/cmd/...@v1.2.1
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/age" --version
@@ -137,7 +139,7 @@ jobs:
           printf '{"fixture":"manifest"}\n' > manifest.json
 
           sha256sum main.dump store.dump source.bundle manifest.json > SHA256SUMS
-          for file in main.dump.age store.dump.age source.bundle manifest.json SHA256SUMS; do
+          for file in main.dump store.dump source.bundle manifest.json SHA256SUMS; do
             if [[ "$file" == "SHA256SUMS" ]]; then
               EXPECTED_SHA="$(sha256sum SHA256SUMS | awk '{print $1}')"
             else
@@ -422,7 +424,8 @@ jobs:
             --arg workflow_attempt "$GITHUB_RUN_ATTEMPT" \
             --arg main_bytes "$(stat -c %s main.dump)" \
             --arg store_bytes "$(stat -c %s store.dump)" \
-            '{created_at:$created_at, target:{repository:$target_repository,commit:$target_commit}, legacy:{repository:$legacy_repository,commit:$legacy_commit}, workflow:{run_id:$workflow_run,attempt:$workflow_attempt}, databases:{main:{format:"pg_dump custom",bytes:($main_bytes|tonumber)},store:{format:"pg_dump custom",bytes:($store_bytes|tonumber)}}, integrity:"SHA256SUMS"}' \
+            --arg encryption "age v1.2.1; recipient held as a public repository variable" \
+            '{created_at:$created_at, target:{repository:$target_repository,commit:$target_commit}, legacy:{repository:$legacy_repository,commit:$legacy_commit}, workflow:{run_id:$workflow_run,attempt:$workflow_attempt}, databases:{main:{format:"pg_dump custom",bytes:($main_bytes|tonumber)},store:{format:"pg_dump custom",bytes:($store_bytes|tonumber)}}, encryption:$encryption, integrity:"SHA256SUMS"}' \
             > manifest.json
 
           # Hash every payload and the manifest. SHA256SUMS itself is verified
@@ -464,7 +467,7 @@ jobs:
           DEST="$B2_PREFIX/$STAMP/run-$GITHUB_RUN_ID-attempt-$GITHUB_RUN_ATTEMPT"
           cd "$RUNNER_TEMP/heavix-archive"
 
-          for file in main.dump store.dump heavix-source.bundle heavix-source.tar.gz \
+          for file in main.dump.age store.dump.age heavix-source.bundle.age heavix-source.tar.gz.age \
                       heavix-legacy.bundle.age heavix-legacy.tar.gz.age SHA256SUMS manifest.json; do
             aws --endpoint-url "$B2_ENDPOINT" s3 cp "$file" \
               "s3://$B2_BUCKET/$DEST/$file" --only-show-errors
