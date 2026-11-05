@@ -12,6 +12,7 @@ import {
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import ZAI from "z-ai-web-dev-sdk";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 import {
   validateLLMJson,
@@ -81,24 +82,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Parse body ──────────────────────────────────────────────
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
+  // ── Bounded body read (before JSON parsing / policy / provider) ──
+  // The stream reader enforces a hard 64 KiB byte ceiling even when
+  // Content-Length is absent or inaccurate. Oversized bodies are cancelled
+  // and rejected before parsing, budget reservation, DB logging, or LLM calls.
+  const parsedBody = await readBoundedJson<unknown>(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json(
+      { error: parsedBody.error },
+      { status: parsedBody.status },
+    );
+  }
+  const body = parsedBody.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { task, input } = body ?? {};
+  const { task, input } = body as { task?: unknown; input?: unknown };
 
   if (!task || typeof task !== "string") {
     return NextResponse.json({ error: "task required" }, { status: 400 });
   }
 
   // ── P0-7 Policy pre-flight (auth + quota + budget + size) ───
-  // Input length is computed from the serialised input so that the
-  // size cap meaningfully bounds the whole payload, not just a
-  // string sub-field. Truncate the serialisation to a sane upper
-  // bound before measuring so a malicious huge payload can't OOM us.
+  // The raw request body has already been byte-bounded before JSON.parse.
+  // This character count is a secondary task-policy check, not a memory limit.
   let inputLen = 0;
   try {
     inputLen = Math.min(
