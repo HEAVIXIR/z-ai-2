@@ -197,8 +197,8 @@ try {
     result: "PASS",
     runtime: "workerd via Wrangler/Miniflare",
     databases: {
-      app: { database: appFirst.identity.database_name, server: appFirst.identity.server_version, schema: appFirst.identity.schema_name, migrations: appFirst.migrationNames },
-      store: { database: storeFirst.identity.database_name, server: storeFirst.identity.server_version, schema: storeFirst.identity.schema_name, migrations: storeFirst.migrationNames },
+      app: { database: appFirst.identity.database_name, systemIdentifier: appFirst.identity.system_identifier, server: appFirst.identity.server_version, schema: appFirst.identity.schema_name, migrations: appFirst.migrationNames },
+      store: { database: storeFirst.identity.database_name, systemIdentifier: storeFirst.identity.system_identifier, server: storeFirst.identity.server_version, schema: storeFirst.identity.schema_name, migrations: storeFirst.migrationNames },
     },
     checks: [
       "exact App and Store Preview migration fingerprints",
