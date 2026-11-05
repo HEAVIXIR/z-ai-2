@@ -71,12 +71,65 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
+      title: "Latest Listings",
+      rows: [{
+        widgets: [{
+          key: "listing-grid",
+          props: { title: "جدیدترین آگهی‌ها", limit: 8, columns: "4" },
+          dataSource: "listing.latest",
+        }],
+      }],
+    },
+    {
       title: "Categories",
       rows: [{
         widgets: [{
           key: "category-grid",
           props: { title: "دسته‌بندی‌ها", limit: 12, columns: "4" },
           dataSource: "taxonomy.categories",
+        }],
+      }],
+    },
+    {
+      title: "Brands",
+      rows: [{
+        widgets: [{
+          key: "brand-grid",
+          props: { title: "برندهای ماشین‌آلات", limit: 12 },
+          dataSource: "brand.popular",
+        }],
+      }],
+    },
+    {
+      title: "Services",
+      rows: [{
+        widgets: [{
+          key: "service-grid",
+          props: { title: "خدمات تخصصی هویکس", limit: 8 },
+          dataSource: "service.all",
+        }],
+      }],
+    },
+    {
+      title: "Knowledge",
+      rows: [{
+        widgets: [{
+          key: "article-list",
+          props: { title: "دانش و راهنمای بازار", limit: 6 },
+          dataSource: "article.latest",
+        }],
+      }],
+    },
+    {
+      title: "Call to Action",
+      rows: [{
+        widgets: [{
+          key: "cta",
+          props: {
+            title: "ماشین‌آلات خود را در بازار تخصصی هویکس معرفی کنید",
+            buttonText: "ثبت آگهی رایگان",
+            buttonLink: "/listings/new",
+          },
         }],
       }],
     },
