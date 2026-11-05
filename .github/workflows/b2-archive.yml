@@ -52,9 +52,11 @@ jobs:
           abort("Archive readiness attestation latch is missing") unless gate_configuration.include?("HEAVIX_B2_ARCHIVE_READINESS_GATE") && gate_script.include?("APPROVED_PREVIEW_ARCHIVE_V1")
           abort("Client-side encryption must remain a hard blocker until implemented") unless gate_configuration.include?("ENCRYPTION_IMPLEMENTATION=false") && gate_script.include?("Plaintext database dumps must never be uploaded to B2.")
           abort("Database archives must use the dedicated backup bucket") unless archive_job.fetch("env").fetch("B2_BUCKET") == "heavix-db-backups"
-          config_script = archive_job.fetch("steps").find { |step| step["name"] == "Validate required configuration without printing secrets" }.fetch("run")
+          config_step = archive_job.fetch("steps").find { |step| step["name"] == "Validate required configuration without printing secrets" }
+          config_script = config_step.fetch("run") + " " + config_step.fetch("env", {}).map { |key, value| "#{key}=#{value}" }.join(" ")
           abort("Archive must use explicit Preview-only DB secrets") unless config_script.include?("HEAVIX_APP_PREVIEW_DATABASE_URL") && config_script.include?("HEAVIX_STORE_PREVIEW_DATABASE_URL")
           abort("Archive must use dedicated DB-backups B2 key secrets") unless config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY_ID") && config_script.include?("HEAVIX_DB_BACKUPS_B2_KEY")
+          abort("Archive must require explicit read-only backup role names") unless config_script.include?("HEAVIX_APP_PREVIEW_BACKUP_ROLE") && config_script.include?("HEAVIX_STORE_PREVIEW_BACKUP_ROLE")
           dump_script = archive_job.fetch("steps").find { |step| step["name"] == "Create paired PostgreSQL 17 logical backups" }.fetch("run")
           abort("Archive must perform a Preview server fingerprint preflight before pg_dump") unless dump_script.include?("172.16.163.89") && dump_script.include?("172.16.163.49") && dump_script.include?("pg_postmaster_start_time")
           encryption_design = File.read("docs/ops/BACKUP-ENCRYPTION-DESIGN.md")
