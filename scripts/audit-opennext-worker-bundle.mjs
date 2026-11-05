@@ -236,7 +236,7 @@ const startupCheck = {
   localProfileWindowMs: startupMetric("Profile window"),
   localActiveMs: startupMetric("Active"),
   localIdleMs: startupMetric("Idle"),
-  samples: Number(startupOutput.match(/Samples:\\s*(\\d+)/i)?.[1] ?? 0) || null,
+  samples: Number(startupOutput.match(/Samples:\s*(\d+)/i)?.[1] ?? 0) || null,
   error: startupResult.error,
   outputTail: startupOutput.slice(-6000),
   note: "Local Wrangler profile only; not authoritative Cloudflare startup_time_ms.",
