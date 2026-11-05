@@ -76,7 +76,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "listing-grid",
           props: { title: "جدیدترین آگهی‌ها", limit: 8, columns: "4" },
-          dataSource: "listing.latest",
+          dataSource: "listing.latest.public",
         }],
       }],
     },
@@ -96,7 +96,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "brand-grid",
           props: { title: "برندهای ماشین‌آلات", limit: 12 },
-          dataSource: "brand.popular",
+          dataSource: "brand.popular.public",
         }],
       }],
     },
@@ -106,7 +106,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "service-grid",
           props: { title: "خدمات تخصصی هویکس", limit: 8 },
-          dataSource: "service.all",
+          dataSource: "service.all.public",
         }],
       }],
     },
@@ -116,7 +116,7 @@ const DEFAULT_HOME_LAYOUT = {
         widgets: [{
           key: "article-list",
           props: { title: "دانش و راهنمای بازار", limit: 6 },
-          dataSource: "article.latest",
+          dataSource: "article.latest.public",
         }],
       }],
     },
