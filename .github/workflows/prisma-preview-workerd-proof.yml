@@ -30,13 +30,13 @@ jobs:
       - name: Checkout reviewed Prisma Workerd proof commit
         uses: actions/checkout@v4
         with:
-          ref: aef4ec7ad94f3edb21358021fc36e09c8dc33bfe
+          ref: b9fa60417ef7dfd7171d806d9e4d0b4c38cafd47
 
       - name: Verify pinned proof commit
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "aef4ec7ad94f3edb21358021fc36e09c8dc33bfe"
+          test "$(git rev-parse HEAD)" = "b9fa60417ef7dfd7171d806d9e4d0b4c38cafd47"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
