@@ -246,6 +246,8 @@ jobs:
         env:
           PG_DSN_MAIN: ${{ steps.config.outputs.pg_dsn_main }}
           PG_DSN_STORE: ${{ steps.config.outputs.pg_dsn_store }}
+          APP_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_APP_PREVIEW_BACKUP_ROLE }}
+          STORE_PREVIEW_BACKUP_ROLE: ${{ vars.HEAVIX_STORE_PREVIEW_BACKUP_ROLE }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/heavix-archive"
@@ -254,51 +256,50 @@ jobs:
           # Point-in-time Preview fingerprints from the independently reviewed
           # Prisma metadata audit. A backend restart/failover changes the start
           # timestamp and intentionally blocks the archive until re-attested.
+          cat > "$RUNNER_TEMP/heavix-preview-identity.sql" <<'SQL'
+          SELECT inet_server_addr()::text,
+                 to_char(pg_postmaster_start_time() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US'),
+                 current_user,
+                 r.rolsuper,
+                 r.rolcreatedb,
+                 r.rolcreaterole,
+                 r.rolreplication,
+                 r.rolbypassrls,
+                 COALESCE((SELECT bool_and(
+                   has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'UPDATE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'DELETE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'REFERENCES')
+                   AND NOT has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRIGGER')
+                 ) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')), true),
+                 COALESCE((SELECT bool_and(
+                   has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'SELECT')
+                   AND NOT has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'UPDATE')
+                   AND NOT has_sequence_privilege(current_user, format('%I.%I', schemaname, sequencename), 'USAGE')
+                 ) FROM pg_sequences WHERE schemaname NOT IN ('pg_catalog','information_schema')), true),
+                 COALESCE((SELECT bool_and(
+                   has_schema_privilege(current_user, nspname, 'USAGE')
+                   AND NOT has_schema_privilege(current_user, nspname, 'CREATE')
+                 ) FROM pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema')), true)
+            FROM pg_roles r WHERE r.rolname = current_user;
+          SQL
+
           verify_preview_target() {
             local label="$1" dsn="$2" expected_addr="$3" expected_start="$4" expected_role="$5"
-            docker run --rm \
+            local actual addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly
+            actual="$(docker run --rm \
               -e PG_DSN="$dsn" \
-              -e EXPECTED_ADDR="$expected_addr" \
-              -e EXPECTED_START="$expected_start" \
-              -e EXPECTED_ROLE="$expected_role" \
-              postgres:17-alpine sh -ec '
-                actual="$(psql "$PG_DSN" -XAt -v ON_ERROR_STOP=1 -F "|" -c "
-                  SELECT inet_server_addr()::text,
-                         to_char(pg_postmaster_start_time() AT TIME ZONE '''UTC''', '''YYYY-MM-DD HH24:MI:SS.US'''),
-                         current_user,
-                         r.rolsuper,
-                         r.rolcreatedb,
-                         r.rolcreaterole,
-                         r.rolreplication,
-                         r.rolbypassrls,
-                         COALESCE((SELECT bool_and(
-                           has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''SELECT''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''INSERT''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''UPDATE''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''DELETE''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''TRUNCATE''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''REFERENCES''')
-                           AND NOT has_table_privilege(current_user, format('''%I.%I''', schemaname, tablename), '''TRIGGER''')
-                         ) FROM pg_tables WHERE schemaname NOT IN ('''pg_catalog''','''information_schema''')), true),
-                         COALESCE((SELECT bool_and(
-                           has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''SELECT''')
-                           AND NOT has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''UPDATE''')
-                           AND NOT has_sequence_privilege(current_user, format('''%I.%I''', schemaname, sequencename), '''USAGE''')
-                         ) FROM pg_sequences WHERE schemaname NOT IN ('''pg_catalog''','''information_schema''')), true),
-                         COALESCE((SELECT bool_and(
-                           has_schema_privilege(current_user, nspname, '''USAGE''')
-                           AND NOT has_schema_privilege(current_user, nspname, '''CREATE''')
-                         ) FROM pg_namespace WHERE nspname NOT IN ('''pg_catalog''','''information_schema''')), true)
-                  FROM pg_roles r WHERE r.rolname = current_user
-                ")"
-                IFS="|" read -r addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly <<< "$actual"
-                [[ "$addr" == "$EXPECTED_ADDR" ]] || { echo "Preview address fingerprint mismatch"; exit 1; }
-                [[ "$started" == "$EXPECTED_START" ]] || { echo "Preview server-start fingerprint mismatch"; exit 1; }
-                [[ "$role" == "$EXPECTED_ROLE" ]] || { echo "Backup role identity mismatch"; exit 1; }
-                [[ "$superuser,$createdb,$createrole,$replication,$bypassrls" == "f,f,f,f,f" ]] || { echo "Backup role has elevated PostgreSQL attributes"; exit 1; }
-                [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "Backup role is not read-only across inspected objects"; exit 1; }
-                echo "Preview target fingerprint and read-only role checks passed."
-              '
+              -v "$RUNNER_TEMP/heavix-preview-identity.sql:/identity.sql:ro" \
+              postgres:17-alpine sh -ec 'psql "$PG_DSN" -XAt -v ON_ERROR_STOP=1 -F "|" -f /identity.sql')"
+            IFS="|" read -r addr started role superuser createdb createrole replication bypassrls tables_readonly sequences_readonly schemas_readonly <<< "$actual"
+            [[ "$addr" == "$expected_addr" ]] || { echo "::error::$label server-address fingerprint mismatch"; exit 1; }
+            [[ "$started" == "$expected_start" ]] || { echo "::error::$label server-start fingerprint mismatch"; exit 1; }
+            [[ "$role" == "$expected_role" ]] || { echo "::error::$label backup-role identity mismatch"; exit 1; }
+            [[ "$superuser,$createdb,$createrole,$replication,$bypassrls" == "f,f,f,f,f" ]] || { echo "::error::$label backup role has elevated PostgreSQL attributes"; exit 1; }
+            [[ "$tables_readonly,$sequences_readonly,$schemas_readonly" == "t,t,t" ]] || { echo "::error::$label backup role is not read-only across inspected objects"; exit 1; }
+            echo "$label Preview fingerprint and read-only role checks passed."
           }
 
           verify_preview_target "App Preview" "$PG_DSN_MAIN" \
