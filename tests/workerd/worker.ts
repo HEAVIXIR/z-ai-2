@@ -70,13 +70,13 @@ async function verifyDatabaseIdentity(
   }
 }
 
-async function appFingerprint(client: AppPrismaClient): Promise<{
+async function appFingerprint(client: AppPrismaClient, expectedDatabaseOid: string): Promise<{
   identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
   // If this throws, the caller returns 502 immediately — migrations are never read.
-  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "", "App");
+  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, expectedDatabaseOid, "App");
   const identity = await client.$queryRaw<
     Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
@@ -84,12 +84,12 @@ async function appFingerprint(client: AppPrismaClient): Promise<{
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
 
-async function storeFingerprint(client: StorePrismaClient): Promise<{
-  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+async function storeFingerprint(client: StorePrismaClient, expectedDatabaseOid: string): Promise<{
+  identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
-  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "", "Store");
+  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
@@ -145,7 +145,7 @@ export default {
       try {
         const client = getAppClient(ctx, env);
         const sameRequestClientReused = client === getAppClient(ctx, env);
-        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await appFingerprint(client)) });
+        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await appFingerprint(client, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "")) });
       } catch (error) {
         return json({
           error: "app_preview_probe_failed",
@@ -157,7 +157,7 @@ export default {
       try {
         const client = getStoreClient(ctx, env);
         const sameRequestClientReused = client === getStoreClient(ctx, env);
-        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await storeFingerprint(client)) });
+        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await storeFingerprint(client, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "")) });
       } catch (error) {
         return json({
           error: "store_preview_probe_failed",
@@ -189,7 +189,7 @@ export default {
       // is never opened.
       try {
         const client = getAppClient(ctx, env);
-        await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+        await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "", "App");
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
@@ -225,7 +225,7 @@ export default {
       // transaction.
       try {
         const client = getStoreClient(ctx, env);
-        await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+        await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "", "Store");
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
