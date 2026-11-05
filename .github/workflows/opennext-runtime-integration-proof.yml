@@ -21,12 +21,15 @@ on:
       - "package.json"
       - "bun.lock*"
       - ".github/workflows/opennext-runtime-integration-proof.yml"
+  push:
+    branches:
+      - test/opennext-runtime-integration
 
 permissions:
   contents: read
 
 concurrency:
-  group: opennext-runtime-proof-${{ github.event.pull_request.number }}
+  group: opennext-runtime-proof-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout exact tested revision
+      - name: Checkout event revision (PR merge ref or branch HEAD)
         uses: actions/checkout@v4
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
