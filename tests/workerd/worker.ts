@@ -23,7 +23,7 @@ function getClientId(client: object): number {
 async function appFingerprint(client: AppPrismaClient) {
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database() AS database_name, current_schema() AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
@@ -31,7 +31,7 @@ async function appFingerprint(client: AppPrismaClient) {
 async function storeFingerprint(client: StorePrismaClient) {
   const identity = await client.$queryRaw<
     Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database() AS database_name, current_schema() AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
