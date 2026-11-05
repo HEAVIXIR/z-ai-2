@@ -4,6 +4,7 @@ export default function ListingGridWidget({ props, data }: { props: Record<strin
   const items = (data as Record<string, any>[]) || [];
   const cols = props.columns === '3' ? 'md:grid-cols-3' : 'md:grid-cols-4';
   const limit = Number(props.limit) || 8;
+  if (items.length === 0) return null;
   return (
     <div>
       {props.title && <h2 className="mb-4 text-center text-lg font-bold">{props.title}</h2>}
