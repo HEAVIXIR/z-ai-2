@@ -31,7 +31,7 @@ export const listingBuilderSchema = z.object({
   year: z.number().int().min(1900).max(2100).optional(),
   hours: z.number().min(0).max(100000).optional(),
   condition: z.string().trim().max(50).optional(),
-  price: z.number().min(0).optional(),
+  price: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   description: z.string().trim().max(5000).optional(),
 }).strict();
 
@@ -39,6 +39,9 @@ export const moderationSchema = z.object({
   appropriate: z.boolean(),
   reason: z.string().trim().max(500).optional(),
 }).strict();
+
+export const MAX_LISTING_BUILDER_OUTPUT_CHARS = 16_384;
+export const MAX_MODERATION_OUTPUT_CHARS = 4_096;
 
 /* ============================================================
    JSON EXTRACTION CONTRACT (STEP 18.2.7.3.4 — Review Point 2)
@@ -87,7 +90,13 @@ export const moderationSchema = z.object({
 export function validateLLMJson<T>(
   content: string,
   schema: z.ZodType<T>,
+  maxChars = MAX_LISTING_BUILDER_OUTPUT_CHARS,
 ): { success: true; data: T } | { success: false; error: string } {
+  // Bound parser work before trim, regex, substring allocation, or JSON.parse.
+  if (content.length > maxChars) {
+    return { success: false, error: "LLM response exceeds size limit" };
+  }
+
   if (!content || !content.trim()) {
     return { success: false, error: "Empty LLM response" };
   }
