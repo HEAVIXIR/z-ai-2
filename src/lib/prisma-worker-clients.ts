@@ -112,8 +112,9 @@ export function withIdentityGuard<TClient extends object>(
       get(target, property) {
         if (property === "then") {
           return (onFulfilled?: unknown, onRejected?: unknown) =>
-            ensureIdentity().then(() =>
-              Reflect.apply(thenMethod, target, [onFulfilled, onRejected]),
+            ensureIdentity().then(
+              () => Reflect.apply(thenMethod, target, [onFulfilled, onRejected]),
+              onRejected as ((reason: unknown) => unknown) | undefined,
             );
         }
         if (property === "catch") {
