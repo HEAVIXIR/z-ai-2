@@ -48,13 +48,18 @@ async function getJson(baseUrl, path) {
   return body;
 }
 
+// Prisma Postgres reports the internal database name "postgres" for both
+// Preview resources. It is not a unique resource identifier; the exact,
+ // independently reviewed migration-name sets below are the distinguishing
+// read-only fingerprint. Production currently has no application migration
+// ledger and therefore cannot satisfy either allowlist.
 const expected = {
   app: {
-    databaseName: "heavix-app-preview",
+    databaseName: "postgres",
     migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
   },
   store: {
-    databaseName: "heavix-store-preview",
+    databaseName: "postgres",
     migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
   },
 };
@@ -146,8 +151,6 @@ try {
     assert.equal(result.sameRequestClientReused, true, `${label}: client was not reused within one request`);
     assert.equal(result.identity?.database_name, target.databaseName,
       `${label}: unexpected database target (expected exact Preview database)`);
-    assert.notEqual(result.identity?.database_name, "heavix-production",
-      `${label}: Production database target is forbidden`);
     assert.equal(result.identity?.schema_name, "public", `${label}: unexpected schema`);
     assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
     assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
