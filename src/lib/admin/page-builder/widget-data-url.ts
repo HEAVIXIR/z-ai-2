@@ -13,9 +13,35 @@ function toHttpOrigin(value: string | undefined): string | null {
   }
 }
 
+// STEP 18.2.7.3.10 (Finding S-2, per review #6657234467):
+// x-forwarded-host is a client-supplied header. Any external caller can set
+// it to any value. The previous allowlist (workers.dev / heavix.ir suffix)
+// only validated the FORMAT of the host — it did not validate the TRUST
+// BOUNDARY: a request from an untrusted source (a direct HTTP request to the
+// Worker, bypassing Cloudflare's proxy) could still supply a spoofed
+// x-forwarded-host that matches the allowlist and redirect server-side fetch()
+// to an attacker-controlled subdomain of heavixir.workers.dev.
+//
+// The correct fix is to gate the header-based origin resolution behind an
+// explicit configuration flag: HEAVIX_TRUSTED_PROXY_HEADER. When this env var
+// is set (e.g. to "x-forwarded-host"), the resolver trusts that header ONLY
+// because the deployment is behind a trusted reverse proxy (Cloudflare) that
+// overwrites client-supplied x-forwarded-* headers. When the env var is absent
+// (default), the resolver ignores ALL forwarded headers and falls back to the
+// configured base URL — fail-closed for direct-access deployments.
+const TRUSTED_HEADER_ENV = "HEAVIX_TRUSTED_PROXY_HEADER";
+
 function requestOrigin(env: WidgetDataUrlEnvironment, requestHeaders?: RequestHeaders): string | null {
   if (!requestHeaders) return null;
-  const rawHost = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  // STEP 18.2.7.3.10 (Finding S-2): only honor forwarded headers when the
+  // deployment has explicitly declared a trusted proxy. This prevents direct
+  // HTTP access (bypassing Cloudflare) from being fooled by spoofed headers.
+  const trustedHeader = env[TRUSTED_HEADER_ENV];
+  if (!trustedHeader) return null;
+  // Allow only the two well-known forwarded-host headers; reject arbitrary
+  // header names to avoid config-injection confusion.
+  if (trustedHeader !== "x-forwarded-host" && trustedHeader !== "host") return null;
+  const rawHost = requestHeaders.get(trustedHeader) ?? requestHeaders.get("host");
   if (!rawHost) return null;
   const host = rawHost.split(",")[0].trim();
   // STEP 18.2.7.3.10 (SSRF hardening): reject userinfo (@), path/query
