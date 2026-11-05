@@ -32,6 +32,12 @@ jobs:
         with:
           ref: aef4ec7ad94f3edb21358021fc36e09c8dc33bfe
 
+      - name: Verify pinned proof commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "aef4ec7ad94f3edb21358021fc36e09c8dc33bfe"
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
