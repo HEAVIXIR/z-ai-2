@@ -22,6 +22,7 @@ on:
       - "tests/unit/preview-version-worker-gate.test.ts"
       - "src/lib/preview-gate.ts"
       - "scripts/preview-gated-worker.mjs"
+      - "scripts/run-preview-gate-smoke.mjs"
       - "tests/unit/preview-gate.test.ts"
       - "docs/operations/preview-gate-runbook.md"
       - "scripts/audit-opennext-worker-bundle.mjs"
@@ -67,6 +68,9 @@ jobs:
         env:
           CI: "1"
         run: bun scripts/run-opennext-runtime-proof.mjs
+
+      - name: Exercise the Preview gate wrapper in Workerd (no DB credentials)
+        run: bun scripts/run-preview-gate-smoke.mjs
 
       - name: Audit generated Worker bundle (heuristic)
         if: success()
