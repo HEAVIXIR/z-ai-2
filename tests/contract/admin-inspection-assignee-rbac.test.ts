@@ -27,6 +27,8 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain("MAX_INSPECTION_REQUEST_BYTES = 16 * 1024");
     expect(source).toContain("reader.cancel()");
     expect(source).toContain('typeof body.listingId !== "string"');
+    expect(source).toContain('listing.status !== "PUBLISHED"');
+    expect(source).not.toContain("include: { listing: true }");
   });
 
   it("rejects inactive or non-admin inspector IDs at the API boundary", () => {
