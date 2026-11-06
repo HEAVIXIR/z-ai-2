@@ -97,6 +97,14 @@ export const COMPARE_ADD_ITEM: RateLimitPreset = {
   label: "compare-add-item",
 };
 
+/** AI comparison summaries — 5 per hour per authenticated user. */
+export const COMPARE_AI_SUMMARY: RateLimitPreset = {
+  limit: 5,
+  windowMs: HOUR,
+  scope: "user",
+  label: "compare-ai-summary",
+};
+
 /** Public comparison reads — 60 per minute per IP. */
 export const COMPARE_READ: RateLimitPreset = {
   limit: 60,
@@ -128,6 +136,7 @@ export const RATE_LIMIT_PRESETS = {
   COMPARE_CREATE,
   COMPARE_ADD_ITEM,
   COMPARE_READ,
+  COMPARE_AI_SUMMARY,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;
