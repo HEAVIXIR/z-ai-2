@@ -112,11 +112,12 @@ However, the live account state currently blocks using a Version URL safely:
 - The `heavix-preview` Worker reports `workers_dev.enabled=true` but `previews_enabled=false`.
 - Cloudflare Access is not enabled on this account; the Access applications API returned `access.api.error.not_enabled`.
 - Cloudflare Version URLs are publicly reachable when enabled unless protected. Do not enable them merely to run this proof.
-- The proof route in PR #200 is bearer-token-gated and returns no raw error messages or credentials, but PR #200 remains Draft and has not received its required fresh independent review.
+- PR #200 now includes a separate outer entrypoint (`scripts/preview-version-worker.mjs`) that forwards only exact `GET /api/opennext-runtime-proof` requests with an ephemeral bearer token; every other path/method/token/query variant is rejected before OpenNext is invoked. Unit tests and the OpenNext smoke runner cover this gate, and the latest CI/OpenNext runs are pending at the time of this edit.
+- This outer gate limits the newly uploaded proof version, but it does not protect historical Worker versions if Preview URLs are enabled. PR #200 remains Draft and still needs fresh independent review of its exact latest HEAD.
 
 Therefore, before any version upload:
 1. Obtain a fresh independent review of the exact PR #200 HEAD and the proof route.
-2. Confirm a protected access path for the version URL (Cloudflare Access or an independently reviewed, token-only route with no other newly exposed functionality).
+2. Enable a protected access path for Preview Version URLs. Prefer Cloudflare Access with a Preview-only policy; the account currently reports Access not enabled. The outer proof-only wrapper protects the new version's application routes, but enabling Preview URLs can also expose historical versions, so do not enable previews until account-level/Worker-level Access protection is confirmed.
 3. Upload only the reviewed OpenNext artifact as a new Worker version; inherit `DATABASE_URL` and `STORE_DATABASE_URL` strictly from the verified current version, without reading or replacing their values.
 4. Add only the two verified OID variables and a short-lived proof token to that version. Do not deploy it to normal traffic.
 5. Invoke the proof endpoint with the token, confirm both identity pairs and read-only assertions, then revoke/remove the proof token and delete or retire the temporary version according to Cloudflare's supported lifecycle.
