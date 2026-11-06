@@ -1,12 +1,9 @@
 import SellIn7RegisterForm from "./RegisterForm";
-import type { Metadata } from "next";
-
-
-
 
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "ثبت درخواست فروش دستگاه | هویکس",
@@ -17,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 /* ============================================================
    /sell-in-7-days/register — server component that fetches
-   catalog roots + active brands + prepayment amount, then
+   catalog roots + active brands, then
    hands them to the client <SellIn7RegisterForm />.
    ============================================================ */
 
