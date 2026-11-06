@@ -14,4 +14,14 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain('userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } }');
     expect(source).not.toContain('OR: [{ role: "ADMIN" }, { role: "SELLER" }]');
   });
+
+  it("rejects inactive or non-admin/non-seller inspector IDs at the API boundary", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/inspections/[id]/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain('status: "ACTIVE"');
+    expect(source).toContain('userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } }');
+    expect(source).toContain('error: "Inspector must be an active admin or seller"');
+  });
 });
