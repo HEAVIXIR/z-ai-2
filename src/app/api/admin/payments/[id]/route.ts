@@ -117,7 +117,14 @@ export async function PATCH(req: Request, { params }: Args) {
   await requirePermission(user.id, "payment.manage");
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
 
     const data: any = {};
 
@@ -181,6 +188,10 @@ export async function PATCH(req: Request, { params }: Args) {
         }
         data.paidAt = paidAt;
       }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "No editable fields supplied" }, { status: 400 });
     }
 
     const payment = await db.$transaction(async (tx) => {
