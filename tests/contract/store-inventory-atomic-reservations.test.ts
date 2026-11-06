@@ -3,6 +3,8 @@ import fs from "node:fs";
 
 const service = fs.readFileSync("src/lib/store-inventory-service.ts", "utf8");
 const route = fs.readFileSync("src/app/api/admin/store/inventory/route.ts", "utf8");
+const reserveRoute = fs.readFileSync("src/app/api/admin/store/inventory/reserve/route.ts", "utf8");
+const releaseRoute = fs.readFileSync("src/app/api/admin/store/inventory/release/route.ts", "utf8");
 
 function section(start: string, end: string) {
   const from = service.indexOf(start);
@@ -51,6 +53,18 @@ describe("Store inventory atomic mutation contract", () => {
     expect(body).toContain("if (nextQty < currentReserved)");
     expect(body).toContain("quantity: { equals: currentQty, gte: -qty }");
     expect(body).toContain("reserved: currentReserved");
+  });
+
+  it("bounds reserve and release payloads and rejects unknown fields", () => {
+    for (const source of [reserveRoute, releaseRoute]) {
+      expect(source).toContain("8 * 1024");
+      expect(source).toContain("Buffer.byteLength(raw, \"utf8\")");
+      expect(source).toContain("allowedFields");
+      expect(source).toContain("Number.isSafeInteger(qty)");
+      expect(source).toContain("Object.keys(input).some");
+      expect(source).toContain('error: "خطای داخلی سرور"');
+      expect(source).not.toContain("err?.message");
+    }
   });
 
   it("bounds inventory POST payloads and rejects unknown fields", () => {
