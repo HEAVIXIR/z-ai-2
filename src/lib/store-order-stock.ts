@@ -110,13 +110,16 @@ export async function decrementOrderStock(
     throw new OrderStockConflictError("قطعه پس از ثبت سفارش یافت نشد");
   }
 
+  const stockBeforeThisOrder = updatedPart.stock + quantity;
+  let consumedSoFar = 0;
   for (const allocation of allocations) {
+    consumedSoFar += allocation.quantity;
     const movement = await tx.stockMovement.create({
       data: {
         partId,
         type: "SALE",
         quantity: -allocation.quantity,
-        balanceAfter: updatedPart.stock,
+        balanceAfter: stockBeforeThisOrder - consumedSoFar,
         reason: "Store checkout",
         reference: orderId,
         createdBy: userId ?? null,
