@@ -153,7 +153,7 @@ export function parseSubscriptionPlanInput(
     }
   }
 
-  if (mode === "create" && data.currency === undefined) data.currency = "IRR";
+  if (mode === "create" && (data.currency === undefined || data.currency === null)) data.currency = "IRR";
   return { ok: true, data };
 }
 
