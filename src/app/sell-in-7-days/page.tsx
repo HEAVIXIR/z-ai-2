@@ -15,7 +15,6 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
-import { getActiveStats } from "@/lib/site-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -96,24 +95,21 @@ const TRUST_CHIPS = [
 ];
 
 export default async function SellIn7DaysLandingPage() {
-  const [categories, settings, activeStats] = await Promise.all([
+  const [categories, settings] = await Promise.all([
     db.category.findMany({
       where: { active: true, layer: "CATALOG", parentId: null },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: { id: true, name: true, slug: true, icon: true },
     }),
     db.siteSettings.findUnique({ where: { id: "main" } }),
-    getActiveStats(),
   ]);
 
-  const heroStats = activeStats.length > 0
-    ? activeStats.slice(0, 4)
-    : [
-        { value: toFa(4), labelFa: "گام‌های فرآیند" },
-        { value: toFa(0), labelFa: "پرداخت در ثبت اولیه" },
-        { value: toFa(16), labelFa: "کاراکتر کد رهگیری" },
-        { value: toFa(1), labelFa: "کد برای هر درخواست" },
-      ];
+  const heroStats = [
+    { value: toFa(4), labelFa: "گام‌های فرآیند" },
+    { value: toFa(0), labelFa: "پرداخت در ثبت اولیه" },
+    { value: toFa(16), labelFa: "کاراکتر کد رهگیری" },
+    { value: toFa(1), labelFa: "کد برای هر درخواست" },
+  ];
 
   const heroStatsNormalized = heroStats.map((s: any) => ({
     value: s.value,
