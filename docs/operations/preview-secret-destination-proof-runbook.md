@@ -306,6 +306,24 @@ The versions API listed 14 versions, each with `has_preview=true`. Because Acces
 
 This is the intended public-Preview boundary while Access remains unavailable: keep the single canonical public Preview endpoint available, but do not expose per-version preview URLs. Re-enable `previews_enabled` only after a reviewed access-control design protects historical/version URLs.
 
+### GitHub-to-Cloudflare source provenance gap
+
+A fresh exact-path check against `main` returned 404 for all of the following runtime integration files:
+- `wrangler.jsonc`
+- `wrangler.toml`
+- `open-next.config.ts`
+- `scripts/preview-version-worker.mjs`
+- `src/lib/db.worker.ts`
+- `src/lib/prisma-worker-clients.ts`
+
+The implementation exists only in the unmerged infrastructure dependency chain:
+- PR #191 HEAD `3bf2333fde4f81473ce0d14c99cbd653a386c2e2`, Draft, base branch `infra/cloudflare-opennext-build-recovery`, `mergeable=false`; its CI run `42059989449` passed.
+- PR #200 HEAD `b2693496f21a396440814950bb232a97e63ffb13`, Draft, base branch `infra/prisma6-cloudflare-runtime`, `mergeable=true`; its CI run `42203629883` and OpenNext runtime proof `42203629863` passed.
+
+These successful CI runs validate the branch-specific code paths only. Neither PR is merged into `main`; PR #200 depends on PR #191. Therefore the active Cloudflare Worker version 14 cannot currently be proven to originate from the repository's `main` HEAD. This is a source-of-truth/provenance gap, not a reason to deploy the draft branch directly.
+
+Required gate: reconcile the dependency chain, bring the reviewed Cloudflare runtime integration onto a branch based on current `main`, pass exact-head CI, independently review the artifact and secret inheritance, and only then consider a separately authorized Worker version upload. No merge, upload, or deployment was performed in this phase.
+
 ### Cloudflare data services
 
 - D1 database inventory returned zero databases.
