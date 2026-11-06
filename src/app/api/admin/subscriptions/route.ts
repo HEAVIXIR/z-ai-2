@@ -3,7 +3,6 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
-import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +49,7 @@ export async function GET() {
     });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process subscription request" },
       { status: 500 },
     );
   }
@@ -69,44 +68,141 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const body = await req.json().catch(() => ({}));
-    const userId = String(body.userId ?? "");
-    if (!userId) {
-      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
     }
-    const plan = body.plan || "BASIC";
-    const amount = parseBig(body.amount);
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    const allowedFields = new Set([
+      "userId", "plan", "status", "featuredCredits", "analyticsAccess",
+      "aiAssistantAccess", "priorityLeads", "companyPage", "paymentRef",
+      "amount", "expiresAt",
+    ]);
+    if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown request field" }, { status: 400 });
+    }
+
+    const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+    if (!userId || userId.length > 128) {
+      return NextResponse.json({ error: "A valid userId is required" }, { status: 400 });
+    }
+    const plan = typeof body.plan === "string" ? body.plan.trim() : "BASIC";
+    const status = typeof body.status === "string" ? body.status.trim() : "ACTIVE";
+    if (!plan || plan.length > 64 || !status || status.length > 32) {
+      return NextResponse.json({ error: "Invalid plan or subscription status" }, { status: 400 });
+    }
+
+    const featuredCredits = body.featuredCredits === undefined ? 0 : Number(body.featuredCredits);
+    if (!Number.isSafeInteger(featuredCredits) || featuredCredits < 0 || featuredCredits > 1_000_000) {
+      return NextResponse.json({ error: "featuredCredits must be a non-negative integer" }, { status: 400 });
+    }
+
+    const featureFields = ["analyticsAccess", "aiAssistantAccess", "priorityLeads", "companyPage"] as const;
+    for (const field of featureFields) {
+      if (body[field] !== undefined && typeof body[field] !== "boolean") {
+        return NextResponse.json({ error: field + " must be a boolean" }, { status: 400 });
+      }
+    }
+
     const data: any = {
       plan,
-      status: body.status || "ACTIVE",
-      featuredCredits: Number(body.featuredCredits) || 0,
-      analyticsAccess: Boolean(body.analyticsAccess),
-      aiAssistantAccess: Boolean(body.aiAssistantAccess),
-      priorityLeads: Boolean(body.priorityLeads),
-      companyPage: Boolean(body.companyPage),
+      status,
+      featuredCredits,
+      analyticsAccess: body.analyticsAccess ?? false,
+      aiAssistantAccess: body.aiAssistantAccess ?? false,
+      priorityLeads: body.priorityLeads ?? false,
+      companyPage: body.companyPage ?? false,
       paymentRef: body.paymentRef ?? null,
     };
-    if (amount) data.amount = amount;
-    if (body.expiresAt) data.expiresAt = new Date(body.expiresAt);
+    if (body.paymentRef !== undefined && body.paymentRef !== null &&
+        (typeof body.paymentRef !== "string" || body.paymentRef.length > 128)) {
+      return NextResponse.json({ error: "paymentRef is invalid" }, { status: 400 });
+    }
+    if (body.amount !== undefined) {
+      const amount = parseBig(body.amount);
+      if (amount === null || amount < 0n || amount > 9223372036854775807n) {
+        return NextResponse.json({ error: "amount is invalid" }, { status: 400 });
+      }
+      data.amount = amount;
+    }
+    if (body.expiresAt !== undefined) {
+      if (body.expiresAt === null) {
+        data.expiresAt = null;
+      } else {
+        const expiresAt = new Date(body.expiresAt);
+        if (!Number.isFinite(expiresAt.getTime())) {
+          return NextResponse.json({ error: "expiresAt must be a valid date" }, { status: 400 });
+        }
+        data.expiresAt = expiresAt;
+      }
+    }
 
-    const s = await db.premiumSubscription.upsert({
-      where: { userId },
-      create: { userId, ...data, startedAt: new Date() },
-      update: data,
+    const result = await db.$transaction(async (tx) => {
+      const targetUser = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!targetUser) return { kind: "USER_NOT_FOUND" as const };
+
+      const before = await tx.premiumSubscription.findUnique({
+        where: { userId },
+      });
+      const subscription = await tx.premiumSubscription.upsert({
+        where: { userId },
+        create: { userId, ...data, startedAt: new Date() },
+        update: data,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.premiumSubscriptions.upsert",
+          entityType: "PremiumSubscription",
+          entityId: subscription.id,
+          beforeJson: before ? JSON.stringify({
+            plan: before.plan,
+            status: before.status,
+            amount: before.amount?.toString() ?? null,
+            expiresAt: before.expiresAt,
+            featuredCredits: before.featuredCredits,
+            analyticsAccess: before.analyticsAccess,
+            aiAssistantAccess: before.aiAssistantAccess,
+            priorityLeads: before.priorityLeads,
+            companyPage: before.companyPage,
+            paymentRef: before.paymentRef,
+          }) : null,
+          afterJson: JSON.stringify({
+            plan: subscription.plan,
+            status: subscription.status,
+            amount: subscription.amount?.toString() ?? null,
+            expiresAt: subscription.expiresAt,
+            featuredCredits: subscription.featuredCredits,
+            analyticsAccess: subscription.analyticsAccess,
+            aiAssistantAccess: subscription.aiAssistantAccess,
+            priorityLeads: subscription.priorityLeads,
+            companyPage: subscription.companyPage,
+            paymentRef: subscription.paymentRef,
+          }),
+          reason: "via admin API",
+        },
+      });
+
+      return { kind: "OK" as const, subscription };
     });
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.premiumSubscriptions.upsert",
-      entityType: "PremiumSubscription",
-      entityId: s.id,
-      after: { userId: s.userId, plan: s.plan, status: s.status, amount: s.amount?.toString() ?? null, expiresAt: s.expiresAt },
-      reason: "via admin API",
-    });
+
+    if (result.kind === "USER_NOT_FOUND") {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    const s = result.subscription;
     return NextResponse.json({ ok: true, subscription: serialize(s) });
   } catch (err: any) {
+    console.error("[admin/subscriptions] request failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process subscription request" },
       { status: 500 },
     );
   }
