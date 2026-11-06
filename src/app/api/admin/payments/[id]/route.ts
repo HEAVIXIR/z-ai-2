@@ -183,15 +183,15 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     }
 
-    // If status is being set to PAID and paidAt is not explicitly provided,
-    // auto-set paidAt to now (matches POST /api/admin/payments markPaid semantics).
-    if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
-      data.paidAt = new Date();
-    }
-
     const payment = await db.$transaction(async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) return null;
+
+      // Preserve the existing mark-paid behavior using the transaction's
+      // authoritative before-state rather than an out-of-transaction read.
+      if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
+        data.paidAt = new Date();
+      }
 
       const updated = await tx.payment.update({ where: { id }, data });
       await tx.auditLog.create({
