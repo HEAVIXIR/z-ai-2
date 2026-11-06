@@ -90,8 +90,26 @@ export async function PATCH(
     if (typeof body.status === "string") data.status = body.status;
     if (body.scheduledDate) data.scheduledDate = new Date(body.scheduledDate);
     if (body.completedAt) data.completedAt = new Date(body.completedAt);
-    if (body.inspectorId !== undefined)
-      data.inspectorId = body.inspectorId ? String(body.inspectorId) : null;
+    if (body.inspectorId !== undefined) {
+      const inspectorId = body.inspectorId ? String(body.inspectorId) : null;
+      if (inspectorId) {
+        const eligibleInspector = await db.user.findFirst({
+          where: {
+            id: inspectorId,
+            status: "ACTIVE",
+            userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } },
+          },
+          select: { id: true },
+        });
+        if (!eligibleInspector) {
+          return NextResponse.json(
+            { error: "Inspector must be an active admin or seller" },
+            { status: 400 },
+          );
+        }
+      }
+      data.inspectorId = inspectorId;
+    }
     if (body.notes !== undefined) data.notes = body.notes ? String(body.notes) : null;
     if (body.reportUrl !== undefined)
       data.reportUrl = body.reportUrl ? String(body.reportUrl) : null;
