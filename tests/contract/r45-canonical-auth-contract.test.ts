@@ -47,6 +47,7 @@ describe("R45 canonical authentication contract", () => {
     expect(s).toContain("async function writeSellerAudit");
     expect(s).toContain("await tx.auditLog.create");
     expect(s).not.toContain("logAudit");
+    expect(s).not.toContain('before.user.status === "PENDING" || before.user.status === "BLOCKED"');
     for (const method of ["registerSeller", "verifySeller", "suspendSeller"]) {
       const start = s.indexOf(`export async function ${method}`);
       expect(start).toBeGreaterThanOrEqual(0);
