@@ -518,9 +518,8 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
       amountIrr: 1000000,
     };
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [pendingPayment] });
-    mockStoreDb.payment.aggregate
-      .mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } })
-      .mockResolvedValueOnce({ _sum: { amountIrr: 0 } });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
     const res = await gatewayCallbackRoute.GET(
       makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
     );
