@@ -30,6 +30,22 @@ describe("public listing and comparison API privacy contract", () => {
     expect(sessionRead).toContain('Cache-Control": "private, no-store"');
   });
 
+  it("keeps owned comparison sessions private while preserving anonymous compare capability", () => {
+    const route = read("src/app/api/compare/[id]/route.ts");
+    expect(route).toContain("if (session.userId !== null)");
+    expect(route).toContain('return NextResponse.json({ error: "Unauthorized" }, { status: 401 })');
+    expect(route).toContain('return NextResponse.json({ error: "Forbidden" }, { status: 403 })');
+  });
+
+  it("rate-limits and caches AI comparison summaries, invalidating cache after item changes", () => {
+    const route = read("src/app/api/compare/[id]/ai-summary/route.ts");
+    const engine = read("src/lib/compare-engine.ts");
+    expect(route).toContain("COMPARE_AI_SUMMARY");
+    expect(route).toContain("rateLimit(");
+    expect(engine).toContain("cacheAgeMs < 15 * 60 * 1000");
+    expect(engine).toContain("aiSummary: null, aiSummaryAt: null");
+  });
+
   it("uses trusted proxy IP extraction instead of the caller-controlled XFF prefix", () => {
     const context = read("src/lib/request-context.ts");
     expect(context).toContain('headers.get("cf-connecting-ip")');
