@@ -104,20 +104,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "بدنهٔ درخواست نامعتبر است." }, { status: 400 });
   }
 
-  const sellerName = (body.sellerName ?? "").toString().trim();
-  const sellerMobileRaw = (body.sellerMobile ?? "").toString().trim();
-  const sellerEmail = (body.sellerEmail ?? "").toString().trim() || null;
-  const deviceName = (body.deviceName ?? "").toString().trim();
-  const categoryId = body.categoryId ? String(body.categoryId) : null;
-  const brandId = body.brandId ? String(body.brandId) : null;
-  const modelName = (body.modelName ?? "").toString().trim() || null;
+  const sellerName = typeof body.sellerName === "string" ? body.sellerName.trim() : "";
+  const sellerMobileRaw = typeof body.sellerMobile === "string" ? body.sellerMobile.trim() : "";
+  const sellerEmail = typeof body.sellerEmail === "string" ? body.sellerEmail.trim() || null : null;
+  const deviceName = typeof body.deviceName === "string" ? body.deviceName.trim() : "";
+  const categoryId = typeof body.categoryId === "string" && body.categoryId ? body.categoryId : null;
+  const brandId = typeof body.brandId === "string" && body.brandId ? body.brandId : null;
+  const modelName = typeof body.modelName === "string" ? body.modelName.trim() || null : null;
   const year = parseNumber(body.year);
   const workingHours = parseNumber(body.workingHours);
-  const condition = body.condition ? String(body.condition) : null;
-  const province = (body.province ?? "").toString().trim() || null;
-  const city = (body.city ?? "").toString().trim() || null;
+  const condition = typeof body.condition === "string" && body.condition ? body.condition : null;
+  const province = typeof body.province === "string" ? body.province.trim() || null : null;
+  const city = typeof body.city === "string" ? body.city.trim() || null : null;
   const expectedPrice = parseBig(body.expectedPrice);
-  const description = (body.description ?? "").toString().trim() || null;
+  const description = typeof body.description === "string" ? body.description.trim() || null : null;
 
   if (!sellerName || sellerName.length < 3) {
     return NextResponse.json({ error: "نام فروشنده الزامی است." }, { status: 400 });
@@ -145,6 +145,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "یکی از فیلدها بیش از حد مجاز یا نامعتبر است." }, { status: 400 });
   }
   const currentYear = new Date().getFullYear();
+  if (body.year !== undefined && body.year !== null && body.year !== "" && year === null) {
+    return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
+  }
+  if (body.workingHours !== undefined && body.workingHours !== null && body.workingHours !== "" && workingHours === null) {
+    return NextResponse.json({ error: "ساعت کارکرد معتبر نیست." }, { status: 400 });
+  }
+  if (body.expectedPrice !== undefined && body.expectedPrice !== null && body.expectedPrice !== "" && expectedPrice === null) {
+    return NextResponse.json({ error: "قیمت مورد انتظار معتبر نیست." }, { status: 400 });
+  }
   if (year !== null && (!Number.isInteger(year) || year < 1900 || year > currentYear + 1)) {
     return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
   }
