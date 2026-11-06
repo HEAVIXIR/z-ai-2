@@ -36,7 +36,17 @@ describe("Sell in 7 Days public flow security contract", () => {
     const context = read("src/lib/request-context.ts");
     expect(context).toContain('headers.get("cf-connecting-ip")');
     expect(context).toContain("hops[hops.length - 1]");
-    expect(context).not.toContain("xff.split(",")[0]");
+    expect(context).not.toContain('xff.split(",")[0]');
+  });
+
+  it("bounds public submission payloads and validates tracking-code shape before lookup", () => {
+    const api = read("src/app/api/sell-in-7-days/route.ts");
+    expect(api).toContain("32_768");
+    expect(api).toContain("sellerName.length > 120");
+    expect(api).toContain("description.length > 4_000");
+    expect(api).toContain("year < 1900");
+    expect(api).toContain("workingHours > 2_000_000");
+    expect(api).toContain("^[A-HJ-NP-Z2-9]{16}$");
   });
 
   it("validates that public submissions reference active catalog entities", () => {
