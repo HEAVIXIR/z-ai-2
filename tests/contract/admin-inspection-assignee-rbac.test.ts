@@ -60,6 +60,7 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain("photos.length > 20");
     expect(source).toContain("checklist.length > 200");
     expect(source).toContain("isHttpUrl");
+    expect(source).toContain("parsedPrice === null");
     expect(source).toContain('error: "Inspection not found"');
     expect(source).toContain('error: "Unable to update inspection"');
     expect(source).not.toContain("e?.message ?? \"Server error\"");
