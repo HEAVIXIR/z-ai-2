@@ -120,8 +120,11 @@ export async function POST(req: Request) {
         if (!isOwner) return { kind: "forbidden" as const };
       }
 
-      if (order.status === "CANCELLED" || order.status === "REFUNDED") {
+      if (order.status === "CANCELLED" || order.status === "REFUNDED" || order.paymentStatus === "REFUNDED") {
         return { kind: "closed" as const };
+      }
+      if (order.paymentStatus === "PAID") {
+        return { kind: "already-paid" as const };
       }
 
       const pendingCount = await tx.payment.count({
@@ -195,6 +198,9 @@ export async function POST(req: Request) {
     }
     if (outcome.kind === "closed") {
       return NextResponse.json({ error: "برای این سفارش نمی‌توان پرداخت ثبت کرد" }, { status: 409 });
+    }
+    if (outcome.kind === "already-paid") {
+      return NextResponse.json({ error: "این سفارش قبلاً به‌طور کامل پرداخت شده است" }, { status: 409 });
     }
     if (outcome.kind === "too-many-pending") {
       return NextResponse.json({ error: `حداکثر ${MAX_PENDING_PAYMENTS} فیش در انتظار تأیید مجاز است` }, { status: 409 });
