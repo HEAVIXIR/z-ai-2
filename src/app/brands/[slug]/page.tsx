@@ -347,7 +347,7 @@ export default async function BrandPage({
                 {models.map((m) => (
                   <Link
                     key={m.id}
-                    href={`/models/${encodeURIComponent(m.slug)}`}
+                    href={`/brands/${encodeURIComponent(brand.slug)}/models/${encodeURIComponent(m.slug)}`}
                     className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-bold text-white/60 transition hover:border-[#F58220]/30 hover:text-[#F58220]"
                   >
                     {m.name}
