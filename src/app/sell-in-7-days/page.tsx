@@ -8,14 +8,12 @@ import {
   Crown,
   CheckCircle2,
   Search,
-  Clock,
-  TrendingUp,
   PhoneCall,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
-import { toFa, formatFullPrice } from "@/lib/format";
+import { toFa } from "@/lib/format";
 import { getActiveStats } from "@/lib/site-stats";
 
 export const dynamic = "force-dynamic";
@@ -30,82 +28,71 @@ export const dynamic = "force-dynamic";
 const STEPS = [
   {
     num: "۰۱",
-    fa: "ثبت دستگاه و تأیید رزرو",
-    en: "Register & Reserve",
+    fa: "ثبت درخواست اولیه",
+    en: "Initial Request",
     desc:
-      "اطلاعات دستگاه را ثبت می‌کنید و با پرداخت پیش‌پرداخت، رزرو ورود به کمپین فروش ویژه تأیید می‌شود. کارشناس ما در کمتر از ۲۴ ساعت با شما تماس می‌گیرد.",
+      "اطلاعات دستگاه و راه ارتباطی را ثبت کنید و کد رهگیری بگیرید. در نسخه فعلی هیچ پرداختی انجام نمی‌شود و ثبت فرم به معنی رزرو قطعی نیست.",
     icon: ClipboardList,
     image: "/images/sell-in-7-days/step-1.jpg",
-    points: ["ثبت آنلاین دستگاه", "تأیید فوری رزرو", "تماس کارشناس در ۲۴ ساعت"],
+    points: ["ثبت مشخصات دستگاه", "دریافت کد رهگیری", "پیگیری وضعیت درخواست"],
   },
   {
     num: "۰۲",
-    fa: "کارشناسی فنی، حقوقی و بدنه",
-    en: "Inspection",
+    fa: "بررسی اولیه اطلاعات",
+    en: "Initial Review",
     desc:
-      "کارشناسان هویکس دستگاه را از نظر فنی، حقوقی و سلامت بدنه به‌طور کامل بررسی می‌کنند و گواهی کارشناسی HEAVIX Verified صادر می‌شود.",
+      "در صورت فعال بودن خدمت و پس از هماهنگی با شما، اطلاعات دستگاه برای امکان کارشناسی بررسی می‌شود. هیچ کارشناسی پیش از توافق جداگانه انجام‌شده تلقی نمی‌شود.",
     icon: ShieldCheck,
     image: "/images/sell-in-7-days/step-2.jpg",
-    points: ["کارشناسی فنی موتور و گیربکس", "بررسی اسناد حقوقی", "گواهی HEAVIX Verified"],
+    points: ["بررسی اطلاعات ثبت‌شده", "هماهنگی با مالک", "تعیین امکان ادامه فرآیند"],
   },
   {
     num: "۰۳",
-    fa: "ارزش‌گذاری و اعلام قیمت",
-    en: "Valuation",
+    fa: "اعلام شرایط و ارزش‌گذاری",
+    en: "Terms & Valuation",
     desc:
-      "بر اساس گزارش کارشناسی، شرایط بازار و قیمت مشابه‌ها، قیمت واقعی و منصفانه دستگاه تعیین و به شما اعلام می‌شود.",
+      "در صورت امکان ارائه خدمت، شرایط، زمان‌بندی و هرگونه هزینه یا روش ارزش‌گذاری پیش از شروع به‌صورت کتبی اعلام می‌شود.",
     icon: BadgeDollarSign,
     image: "/images/sell-in-7-days/step-3.jpg",
-    points: ["قیمت واقعی و شفاف", "مبتنی بر داده بازار", "قابل قبول یا رد"],
+    points: ["اعلام شرایط مکتوب", "توضیح روش ارزش‌گذاری", "تأیید شما پیش از ادامه"],
   },
   {
     num: "۰۴",
-    fa: "عقد قرارداد و تسویه",
-    en: "Contract & Settlement",
+    fa: "قرارداد و مراحل بعدی",
+    en: "Agreement & Next Steps",
     desc:
-      "پس از پذیرش قیمت، قرارداد رسمی منعقد و دستگاه به خریدار تحویل می‌شود. تسویه نهایی انجام می‌گیرد و کارمزد ۱٪ فروش محاسبه می‌شود.",
+      "هرگونه کارشناسی، عرضه، معامله یا تسویه فقط پس از توافق طرفین و امضای قرارداد مربوط انجام می‌شود.",
     icon: FileSignature,
     image: "/images/sell-in-7-days/step-4.jpg",
-    points: ["قرارداد رسمی", "تسویه نهایی فوری", "کارمزد فقط ۱٪ فروش"],
+    points: ["توافق روشن طرفین", "قرارداد کتبی", "پیگیری مراحل با کد رهگیری"],
   },
 ];
 
 const FAQS = [
   {
-    q: "اگر دستگاه تا ۷ روز فروخته نشود چه می‌شود؟",
-    a: "هزینه آگهی کاملاً رایگان می‌شود و پیش‌پرداخت شما به‌طور کامل بازگردانده می‌شود. دستگاه همچنان در بازار هویکس فعال می‌ماند.",
+    q: "آیا فروش دستگاه در ۷ روز تضمین می‌شود؟",
+    a: "خیر. عنوان کمپین به معنی تضمین قطعی فروش نیست. نتیجه به وضعیت دستگاه، قیمت، تقاضای بازار و توافق طرفین بستگی دارد.",
   },
   {
-    q: "پیش‌پرداخت شامل چه هزینه‌هایی است؟",
-    a: "پیش‌پرداخت هزینه کارشناسی فنی، حقوقی و ارزش‌گذاری است که توسط تیم HEAVIX انجام می‌شود. مبلغ از پیش اعلام می‌شود و قابل بازگشت است.",
+    q: "آیا هنگام ثبت درخواست پیش‌پرداخت می‌دهم؟",
+    a: "خیر. در نسخه فعلی درگاه پرداخت فعال نیست و هیچ وجهی از طریق این فرم دریافت نمی‌شود. هر هزینه احتمالی فقط پس از اعلام کتبی شرایط و تأیید شما قابل پرداخت است.",
   },
   {
     q: "کارمزد فروش چگونه محاسبه می‌شود؟",
-    a: "فقط ۱٪ از مبلغ نهایی فروش به‌عنوان کارمزد هویکس کسر می‌شود. هیچ هزینه پنهان دیگری وجود ندارد.",
+    a: "نرخ و شرایط کارمزد در نسخه فعلی قطعی نشده است و فقط در صورت توافق و قرارداد کتبی مشخص می‌شود.",
   },
   {
-    q: "آیا لازم است دستگاه را به محل دیگری منتقل کنم؟",
-    a: "خیر. کارشناسی در محل دستگاه انجام می‌شود. پس از فروش، انتقال توسط خریدار هماهنگ می‌گردد.",
+    q: "آیا لازم است دستگاه را منتقل کنم؟",
+    a: "هرگونه کارشناسی و انتقال فقط پس از هماهنگی و توافق جداگانه انجام می‌شود.",
   },
 ];
 
 const TRUST_CHIPS = [
-  "کارشناسی فنی",
-  "کارشناسی حقوقی",
-  "ارزش‌گذاری رسمی",
-  "مالک تأیید‌شده",
-  "آماده انتقال",
+  "ثبت درخواست اولیه",
+  "کد رهگیری اختصاصی",
+  "بدون پرداخت در نسخه فعلی",
+  "شرایط کتبی پیش از هر هزینه",
 ];
-
-async function getPrepaymentAmount(): Promise<bigint> {
-  try {
-    const s = await db.siteSettings.findUnique({ where: { id: "main" } });
-    if (s?.sellIn7DaysPrepaymentAmount) return s.sellIn7DaysPrepaymentAmount;
-  } catch {
-    /* ignore */
-  }
-  return 500_000n;
-}
 
 export default async function SellIn7DaysLandingPage() {
   const [categories, settings, activeStats] = await Promise.all([
@@ -118,15 +105,13 @@ export default async function SellIn7DaysLandingPage() {
     getActiveStats(),
   ]);
 
-  const prepaymentAmount = await getPrepaymentAmount();
-
   const heroStats = activeStats.length > 0
     ? activeStats.slice(0, 4)
     : [
-        { value: "۷", labelFa: "روز تضمین فروش" },
-        { value: "۱٪", labelFa: "کارمزد فروش" },
-        { value: toFa(31), labelFa: "استان تحت پوشش" },
-        { value: toFa(24), labelFa: "ساعت تماس کارشناس" },
+        { value: toFa(4), labelFa: "گام‌های فرآیند" },
+        { value: toFa(0), labelFa: "پرداخت در ثبت اولیه" },
+        { value: toFa(16), labelFa: "کاراکتر کد رهگیری" },
+        { value: toFa(1), labelFa: "کد برای هر درخواست" },
       ];
 
   const heroStatsNormalized = heroStats.map((s: any) => ({
@@ -153,7 +138,7 @@ export default async function SellIn7DaysLandingPage() {
             <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#F58220]/30 bg-[#F58220]/10 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.25em] text-[#F58220]">
                 <Crown className="h-4 w-4" />
-                HEAVIX GUARANTEE
+                HEAVIX REQUEST
               </span>
               <h1 className="mt-6 text-4xl font-black leading-tight text-white lg:text-6xl">
                 فروش دستگاه شما{" "}
@@ -162,9 +147,8 @@ export default async function SellIn7DaysLandingPage() {
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-8 text-white/60 lg:text-base">
-                دستگاهت را ثبت کن. ما با شبکهٔ دیلرها و خریداران فعال سراسر ایران
-                تطبیق می‌دهیم. اگر تا ۷ روز فروخته نشد، هزینهٔ آگهی کاملاً رایگان
-                می‌شود.
+                اطلاعات دستگاه را ثبت کنید و کد رهگیری بگیرید. در نسخه فعلی این صفحه
+                برای ثبت درخواست اولیه است؛ پرداخت آنلاین، رزرو قطعی یا تضمین فروش فعال نیست.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <Link
@@ -206,10 +190,10 @@ export default async function SellIn7DaysLandingPage() {
                 HOW IT WORKS
               </span>
               <h2 className="mt-3 text-3xl font-black text-white lg:text-5xl">
-                فرآیند فروش در ۴ گام
+                مسیر بررسی درخواست در ۴ گام
               </h2>
               <p className="mt-4 text-sm leading-7 text-white/55">
-                از ثبت تا تسویه — همراه با کارشناسان هویکس در تمام مراحل.
+                از ثبت اولیه تا توافق احتمالی؛ هر مرحله با اطلاع و تأیید شما انجام می‌شود.
               </p>
             </div>
 
@@ -279,7 +263,7 @@ export default async function SellIn7DaysLandingPage() {
           </div>
         </section>
 
-        {/* PREPAYMENT + COMMISSION CALLOUT */}
+        {/* CURRENT SERVICE STATUS */}
         <section className="py-12">
           <div className="mx-auto max-w-[1440px] px-6 lg:px-10">
             <div className="grid gap-4 md:grid-cols-3">
@@ -287,35 +271,30 @@ export default async function SellIn7DaysLandingPage() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F58220]/15 text-[#F58220]">
                   <BadgeDollarSign className="h-6 w-6" />
                 </div>
-                <h3 className="mt-5 text-lg font-black text-white">پیش‌پرداخت</h3>
-                <p className="mt-1 text-3xl font-black text-[#F58220]">
-                  {formatFullPrice(prepaymentAmount)}
-                </p>
-                <p className="mt-3 text-xs leading-6 text-white/55">
-                  هزینهٔ کارشناسی فنی، حقوقی و ارزش‌گذاری. در صورت عدم فروش در ۷
-                  روز، کامل بازگردانده می‌شود.
+                <h3 className="mt-5 text-lg font-black text-white">پرداخت آنلاین</h3>
+                <p className="mt-3 text-sm font-bold text-amber-200">در این نسخه فعال نیست</p>
+                <p className="mt-2 text-xs leading-6 text-white/55">
+                  ثبت درخواست اولیه هیچ پرداختی ایجاد نمی‌کند. هر هزینه احتمالی پیش از دریافت، کتبی اعلام می‌شود.
                 </p>
               </div>
-              <div className="rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/30 to-transparent p-8">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-                  <TrendingUp className="h-6 w-6" />
+              <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <FileSignature className="h-6 w-6" />
                 </div>
-                <h3 className="mt-5 text-lg font-black text-white">کارمزد فروش</h3>
-                <p className="mt-1 text-3xl font-black text-emerald-400">۱٪</p>
-                <p className="mt-3 text-xs leading-6 text-white/55">
-                  فقط در صورت فروش موفق — ۱٪ از مبلغ نهایی فروش. هیچ هزینهٔ پنهان
-                  دیگری وجود ندارد.
+                <h3 className="mt-5 text-lg font-black text-white">کارمزد و قرارداد</h3>
+                <p className="mt-3 text-sm font-bold text-white">فقط با توافق کتبی</p>
+                <p className="mt-2 text-xs leading-6 text-white/55">
+                  هیچ نرخ یا تعهد مالی از طریق این فرم قطعی نمی‌شود؛ شرایط در قرارداد جداگانه مشخص خواهد شد.
                 </p>
               </div>
               <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-8">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
                   <Clock className="h-6 w-6" />
                 </div>
-                <h3 className="mt-5 text-lg font-black text-white">تضمین ۷ روزه</h3>
-                <p className="mt-1 text-3xl font-black text-white">{toFa(7)} روز</p>
-                <p className="mt-3 text-xs leading-6 text-white/55">
-                  اگر در ۷ روز فروخته نشد، هزینهٔ آگهی رایگان و پیش‌پرداخت
-                  بازگردانده می‌شود.
+                <h3 className="mt-5 text-lg font-black text-white">زمان فروش</h3>
+                <p className="mt-3 text-sm font-bold text-white">بدون تضمین قطعی</p>
+                <p className="mt-2 text-xs leading-6 text-white/55">
+                  زمان فروش به وضعیت دستگاه، قیمت، تقاضای بازار و توافق طرفین وابسته است.
                 </p>
               </div>
             </div>
@@ -374,11 +353,11 @@ export default async function SellIn7DaysLandingPage() {
               <div className="relative z-10 flex flex-col items-center text-center">
                 <PhoneCall className="h-10 w-10 text-[#F58220]" />
                 <h2 className="mt-4 text-2xl font-black text-white lg:text-3xl">
-                  آمادهٔ ورود به کمپین هستید؟
+                  آمادهٔ ثبت درخواست اولیه هستید؟
                 </h2>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-white/60">
-                  همین حالا دستگاه خود را ثبت کنید. کارشناسان ما در کمتر از ۲۴
-                  ساعت با شما تماس می‌گیرند و فرآیند فروش ویژه آغاز می‌شود.
+                  اطلاعات دستگاه را ثبت کنید و کد رهگیری بگیرید. ثبت درخواست به معنی
+                  پرداخت، رزرو قطعی یا تضمین فروش نیست.
                 </p>
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                   <Link
