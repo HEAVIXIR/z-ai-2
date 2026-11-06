@@ -228,3 +228,14 @@ The existing `pg_dump` job therefore must not be run with a Prisma-generated ful
 - Private-key recovery custody and an isolated end-to-end restore rehearsal remain unverified.
 - The new hard-coded Prisma access-model guard must remain false until a separately reviewed, least-privilege export architecture replaces the direct Prisma `pg_dump` credential path.
 - No database URL secret was created or read, no database was contacted, no archive was dispatched, and no B2 archive object was written by this hardening change.
+
+
+### Existing application backup endpoint is not an approved archive path
+
+The current Main branch contains `src/app/api/admin/backup/route.ts` and `scripts/backup.sh`. The endpoint:
+- Runs `bash scripts/backup.sh` through Node `child_process.execFile`.
+- Uses the application's `DATABASE_URL` and `STORE_DATABASE_URL` credentials, not independently restricted backup identities.
+- Writes plaintext `main.sql` and `store.sql` plus checksums into a local `./backups` directory.
+- Depends on a Node child process, a local filesystem, and an installed `pg_dump` executable.
+
+This is not a suitable Cloudflare Workers archive mechanism: Workers do not provide the required general-purpose child-process execution or durable local filesystem. It is also not an approved external backup pipeline because it uses the application's full-access Prisma credentials and leaves plaintext dump files on the app filesystem. Do not invoke or expose this endpoint as a workaround for the blocked B2 workflow. A future replacement must be designed for the actual deployment runtime, stream data safely, encrypt before persistence, avoid exposing general SQL access, and pass a complete isolated restore rehearsal.
