@@ -142,6 +142,19 @@ describe("Heavix preview outer authentication gate", () => {
     expect(downstream).not.toHaveBeenCalled();
   });
 
+  it("binds a valid session to the issuing Preview origin", async () => {
+    const session = await login();
+    const cookie = cookieFrom(session);
+    const downstream = vi.fn(async () => new Response("app"));
+    const response = await handlePreviewGate(
+      new Request("https://another-preview.heavix.invalid/", { headers: { cookie } }),
+      ENV,
+      downstream,
+    );
+    expect(response.status).toBe(401);
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
   it("rejects tampered session cookies", async () => {
     const session = await login();
     const cookie = cookieFrom(session);
