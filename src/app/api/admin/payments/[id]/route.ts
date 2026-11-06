@@ -277,7 +277,7 @@ export async function DELETE(_req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "DELETE /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
