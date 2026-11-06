@@ -88,12 +88,10 @@ export async function GET(
  *   lifecycle — verify + suspend mutate user state; register
  *   also flips User.role which is a user-level mutation).
  *
- * The service layer calls logAudit with the canonical action keys
- * (marketplace.seller.verify / marketplace.seller.suspend /
- * marketplace.seller.register). This route handler does not
- * duplicate those audits — they are the contract-required audits
- * and live in the service so the same logic is reusable from
- * server actions or other callers.
+ * The service layer writes the canonical marketplace.seller.*
+ * AuditLog event through the same Prisma transaction as each mutation.
+ * This route does not duplicate mutation audits; actor attribution is
+ * supplied from the authenticated session.
  */
 export async function PATCH(
   req: Request,
