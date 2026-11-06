@@ -86,6 +86,7 @@ const mockStoreDb = {
       order: mockStoreDb.order,
       customer: mockStoreDb.customer,
       auditOutbox: mockStoreDb.auditOutbox,
+      $queryRaw: vi.fn(async () => []),
     };
     return fn(tx);
   }),
