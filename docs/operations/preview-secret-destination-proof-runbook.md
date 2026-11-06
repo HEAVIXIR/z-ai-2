@@ -228,3 +228,22 @@ Backblaze B2 is the designated HEAVIX object-storage and backup provider, separa
 5. Do not query or mutate the Production database as part of these Preview checks.
 
 **No Cloudflare configuration, DNS, Worker version, secret, Prisma resource, database, Backblaze object, or Production state was changed during this recheck.**
+
+
+## Phase 6.1 — repeat Preview database identity verification (2026-11-07)
+
+The App and Store Preview identity query was repeated directly against the exact Prisma project/database IDs listed above. Each query ran in an explicit BEGIN TRANSACTION READ ONLY transaction and was rolled back after the SELECT. Both returned transaction_read_only=on; no DDL or DML was issued.
+
+| Field | App Preview | Store Preview |
+|---|---|---|
+| Project / database | proj_ixevv7dtzykr8qbj3xdxpcbq / db_ew8d6duermpt125paxaqorr9 | proj_ai0qym0x93siv4oeo11bkmuy / db_cmtgxfrfwxw5mi77020tcnc3 |
+| Database / user | postgres / prisma_application | postgres / prisma_application |
+| System identifier | 7701427422680793119 | 7701425043360235551 |
+| Database OID | 5 | 5 |
+| PostgreSQL | 17.2 | 17.2 |
+| Read-only flag | on | on |
+| Expected identity pair | MATCH | MATCH |
+
+The exact PR #200 head was also rechecked: b2693496f21a396440814950bb232a97e63ffb13. GitHub reports the CI run 42203629883 and OpenNext runtime integration proof run 42203629863 as completed successfully for that head. This proves the tested code path and CI artifact only; it does not prove live Cloudflare Secret destinations or authorize uploading/deploying a Worker version.
+
+The documentation PR's new CI run 42292288655 was still in progress when this addendum was written. Its final result must be checked on the exact final documentation commit before review.
