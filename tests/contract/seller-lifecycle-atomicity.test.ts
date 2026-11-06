@@ -26,6 +26,8 @@ describe("seller lifecycle atomicity", () => {
     expect(source).toContain("db.$transaction(async (tx) =>");
     expect(source).toContain("tx.foundingSeller.update");
     expect(source).toContain('data: { status: "ACTIVE" }');
+    expect(source).toContain('if (user.status === "PENDING")');
+    expect(source).not.toContain('user.status === "PENDING" || user.status === "BLOCKED"');
     expect(source).not.toContain("Best-effort");
   });
 
