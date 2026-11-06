@@ -58,6 +58,16 @@ describe("R45 canonical authentication contract", () => {
     }
   });
 
+  it("seller lifecycle API validates bounded JSON and hides internal errors", () => {
+    const s = read("src/app/api/admin/sellers/[id]/route.ts");
+    expect(s).toContain('contentType !== "application/json"');
+    expect(s).toContain("16 * 1024");
+    expect(s).toContain("Unknown request field");
+    expect(s).toContain('typeof payload.action !== "string"');
+    expect(s).toContain('{ error: "Unable to update seller" }');
+    expect(s).not.toContain('{ error: err?.message ?? "Server error" }');
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
