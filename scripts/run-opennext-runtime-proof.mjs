@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -9,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const routePath = "/api/opennext-runtime-proof";
 const timeoutMs = 90_000;
+const proofGateToken = randomBytes(32).toString("base64url");
 
 function isolatedEnv(extra = {}) {
   const env = { ...process.env, ...extra };
@@ -80,12 +82,13 @@ try {
   await writeFile(configPath, JSON.stringify({
     $schema: "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
     name: `heavix-opennext-proof-${process.pid}`,
-    main: resolve(root, ".open-next/worker.js"),
+    main: resolve(root, "scripts/preview-version-worker.mjs"),
     compatibility_date: "2026-10-28",
     compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
     assets: { directory: resolve(root, ".open-next/assets"), binding: "ASSETS" },
     vars: {
       HEAVIX_OPENNEXT_PROOF_MODE: "SMOKE_ONLY",
+      HEAVIX_PREVIEW_PROOF_GATE_TOKEN: proofGateToken,
       NODE_ENV: "production",
       HEAVIX_BACKUP_EXECUTION_ENABLED: "false",
     },
@@ -115,7 +118,10 @@ try {
     }
     try {
       response = await fetch(new URL(routePath, baseUrl), {
-        headers: { accept: "application/json" },
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${proofGateToken}`,
+        },
         signal: AbortSignal.timeout(3_000),
       });
       break;
@@ -135,15 +141,27 @@ try {
   assert.equal(body.databaseConnectionsAttempted, false);
   assert.equal(body.writesPerformed, false);
 
-  // This route depends on child_process, bash, pg_dump, and a writable host
-  // filesystem. Prove the Worker exposes no accidental execution path.
-  const backupResponse = await fetch(new URL("/api/admin/backup", baseUrl), {
-    method: "POST",
-    // Pass the middleware's cookie-presence gate with a deliberately invalid
-    // token. The route-level execution flag must return 404 before auth/DB.
-    headers: { accept: "application/json", cookie: "heavix-user=smoke-invalid" },
-  });
-  assert.equal(backupResponse.status, 404, "Worker must keep host-process backup disabled.");
+  // The outer wrapper must reject every other route before invoking OpenNext.
+  // This matters for a public Version URL: the proof version must not expose
+  // the rest of the application, including the legacy host-process backup route.
+  const [unauthenticatedProof, appRoot, authenticatedRoot, backupResponse, postProof] = await Promise.all([
+    fetch(new URL(routePath, baseUrl), { headers: { accept: "application/json" } }),
+    fetch(new URL("/", baseUrl), { headers: { authorization: `Bearer ${proofGateToken}` } }),
+    fetch(new URL("/", baseUrl), { headers: { authorization: `Bearer ${proofGateToken}` } }),
+    fetch(new URL("/api/admin/backup", baseUrl), {
+      method: "POST",
+      headers: { authorization: `Bearer ${proofGateToken}`, cookie: "heavix-user=smoke-invalid" },
+    }),
+    fetch(new URL(routePath, baseUrl), {
+      method: "POST",
+      headers: { authorization: `Bearer ${proofGateToken}` },
+    }),
+  ]);
+  assert.equal(unauthenticatedProof.status, 404, "Proof route must reject a missing outer token.");
+  assert.equal(appRoot.status, 404, "Application root must be inaccessible through the proof-only wrapper.");
+  assert.equal(authenticatedRoot.status, 404, "A valid token must not expose the application root.");
+  assert.equal(backupResponse.status, 404, "Proof-only wrapper must not expose the legacy backup route.");
+  assert.equal(postProof.status, 404, "Proof-only wrapper must reject non-GET methods.");
 
   console.log(JSON.stringify({
     result: "PASS",
