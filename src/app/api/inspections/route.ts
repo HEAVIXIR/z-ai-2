@@ -81,9 +81,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     const body = parsed.value as Record<string, unknown>;
-    const listingId = String(body.listingId ?? "").trim();
-    const dealRoomId = body.dealRoomId ? String(body.dealRoomId) : null;
-    const notes = body.notes ? String(body.notes).trim() : null;
+    if (
+      typeof body.listingId !== "string" ||
+      (body.dealRoomId !== undefined && body.dealRoomId !== null && typeof body.dealRoomId !== "string") ||
+      (body.notes !== undefined && body.notes !== null && typeof body.notes !== "string")
+    ) {
+      return NextResponse.json({ error: "Invalid inspection request fields" }, { status: 400 });
+    }
+    const listingId = body.listingId.trim();
+    const dealRoomId = typeof body.dealRoomId === "string" && body.dealRoomId.trim()
+      ? body.dealRoomId.trim()
+      : null;
+    const notes = typeof body.notes === "string" && body.notes.trim()
+      ? body.notes.trim()
+      : null;
     if (listingId.length > 128 || (dealRoomId && dealRoomId.length > 128) || (notes && notes.length > 1000)) {
       return NextResponse.json({ error: "Invalid inspection request fields" }, { status: 400 });
     }
