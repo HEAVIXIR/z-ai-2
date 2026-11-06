@@ -5,25 +5,29 @@
  * and src/app/api/admin/store/returns/[id]/route.ts.
  *
  * Responsibilities:
- *   - createReturn(): create a Return for an order + log audit.
+ *   - createReturn(): create a Return and enqueue its audit event in the same transaction.
  *   - updateReturnStatus(): advance status (REQUESTED → APPROVED →
  *     INSPECTED → RESOLVED | REJECTED) + optionally set inspection/
- *     resolution notes + log audit.
+ *     resolution notes + enqueue an audit event in the same transaction.
  *   - listReturns(): query Returns with filters (orderId, status, limit).
  *
  * T2-DEEP — Returns Deep (ReturnItem + Inspection Workflow):
  *   - addReturnItem(): append a ReturnItem (per-OrderItem line) to a
- *     Return + log audit. Validates that the OrderItem exists and that
+ *     Return + transactional audit outbox event. Validates that the OrderItem exists and that
  *     quantity <= OrderItem.quantity (over-return refused).
  *   - inspectReturn(): admin records inspection notes + per-item
- *     restockable flags. Sets status=INSPECTED. Logs audit. Idempotent
+ *     restockable flags. Sets status=INSPECTED with per-item + parent outbox events. Idempotent
  *     re-inspection is allowed (admin can update flags/notes).
  *   - resolveReturn(): finalizes the return with resolution REFUND |
  *     EXCHANGE | REJECT. For REFUND, computes the refund amount from
  *     the restockable ReturnItem line totals (sum of OrderItem.lineTotal
  *     for the returned quantity) and creates a WalletTransaction
  *     (CREDIT) on the customer's wallet + adjusts Customer.walletBalanceIrr.
- *     Sets status=RESOLVED. Logs audit (with refundAmountIrr if REFUND).
+ *     Sets status=RESOLVED with refund + wallet + outbox events in one transaction.
+ *
+ * All Store return mutations and their AuditOutbox events commit together.
+ * Outbox delivery to the independent main AuditLog database is at-least-once
+ * and idempotent; no cross-database transaction is assumed.
  *
  * The route handlers stay thin: parse request, enforce RBAC, call service,
  * map thrown ServiceError → HTTP response. All DB + audit logic lives here.
