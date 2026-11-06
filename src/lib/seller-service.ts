@@ -367,7 +367,7 @@ export async function suspendSeller(
 
 // ── getSellerProfile ─────────────────────────────────────
 /**
- * Return the seller profile: the User row (must have role=SELLER)
+ * Return the seller profile: the User row (must have canonical UserRole=SELLER)
  * with company + foundingStatus + _count.listings for the
  * admin detail page.
  *
