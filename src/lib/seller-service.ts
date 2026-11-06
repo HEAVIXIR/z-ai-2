@@ -182,7 +182,7 @@ export async function verifySeller(
     });
 
     const userStatus =
-      before.user.status === "PENDING" || before.user.status === "BLOCKED"
+      before.user.status === "PENDING"
         ? (await tx.user.update({
             where: { id: userId },
             data: { status: "ACTIVE" },
