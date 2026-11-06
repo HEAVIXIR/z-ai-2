@@ -341,11 +341,21 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 500000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", {
+      orderId: "order-1",
+      amountIrr: 500000,
+      payerCard: "6037-1111-2222-3333",
+    }));
     expect(res.status).toBe(200);
     expect(mockStoreDb.$transaction).toHaveBeenCalledTimes(1);
     expect(mockStoreDb.payment.create).toHaveBeenCalledTimes(1);
+    expect(mockStoreDb.payment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ payerCard: "3333" }),
+    }));
     expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(1);
+    const outboxPayload = JSON.parse(mockStoreDb.auditOutbox.create.mock.calls[0][0].data.payloadJson);
+    expect(outboxPayload.after.payerCardLastFour).toBe("3333");
+    expect(outboxPayload.after).not.toHaveProperty("payerCard");
   });
 });
 
