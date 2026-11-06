@@ -9,13 +9,14 @@ export const dynamic = "force-dynamic";
 function computeLedgerPaymentStatus(
   orderTotalIrr: number,
   approvedPaymentsIrr: number,
-  refundedPaymentsIrr: number,
+  hasRefund: boolean,
 ): "UNPAID" | "PARTIAL" | "PAID" | "REFUNDED" {
-  const netApproved = approvedPaymentsIrr - refundedPaymentsIrr;
-  const hasRefund = refundedPaymentsIrr > 0;
-  if (hasRefund && netApproved <= 0) return "REFUNDED";
-  if (netApproved <= 0) return "UNPAID";
-  if (netApproved >= orderTotalIrr) return hasRefund ? "REFUNDED" : "PAID";
+  // Store refund transitions reclassify the original row from APPROVED to
+  // REFUNDED. That row is already absent from approvedPaymentsIrr; subtracting
+  // the REFUNDED sum again would double-count it and understate the balance.
+  if (hasRefund && approvedPaymentsIrr <= 0) return "REFUNDED";
+  if (approvedPaymentsIrr <= 0) return "UNPAID";
+  if (approvedPaymentsIrr >= orderTotalIrr) return hasRefund ? "REFUNDED" : "PAID";
   return "PARTIAL";
 }
 
@@ -103,22 +104,20 @@ export async function GET(req: Request) {
       const afterPayment = await tx.payment.findUnique({ where: { id: payment.id } });
       if (!afterPayment) throw new Error("GATEWAY_PAYMENT_MISSING_AFTER_UPDATE");
 
-      const [approved, refunded] = await Promise.all([
+      const [approved, refundedCount] = await Promise.all([
         tx.payment.aggregate({
           where: { orderId: order.id, status: "APPROVED" },
           _sum: { amountIrr: true },
         }),
-        tx.payment.aggregate({
+        tx.payment.count({
           where: { orderId: order.id, status: "REFUNDED" },
-          _sum: { amountIrr: true },
         }),
       ]);
       const approvedTotal = Number(approved._sum.amountIrr ?? 0);
-      const refundedTotal = Number(refunded._sum.amountIrr ?? 0);
       const nextPaymentStatus = computeLedgerPaymentStatus(
         Number(beforeOrder.totalIrr ?? 0),
         approvedTotal,
-        refundedTotal,
+        refundedCount > 0,
       );
 
       // A cancellation can race a gateway callback. Record the real money
