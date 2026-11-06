@@ -490,9 +490,8 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
       amountIrr: 1000000,
     };
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, status: "CANCELLED", payments: [pendingPayment] });
-    mockStoreDb.payment.aggregate
-      .mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } })
-      .mockResolvedValueOnce({ _sum: { amountIrr: 0 } });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
     const res = await gatewayCallbackRoute.GET(
       makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
     );
@@ -533,6 +532,27 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
     expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves a partial remaining balance after an earlier payment was refunded", async () => {
+    const pendingPayment = {
+      id: "pay-1",
+      method: "GATEWAY",
+      status: "PENDING",
+      authority: "auth-123",
+      gateway: "ZARINPAL",
+      amountIrr: 500000,
+    };
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, totalIrr: 1000000, payments: [pendingPayment] });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 500000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(1);
+    const res = await gatewayCallbackRoute.GET(
+      makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(300);
+    expect(mockStoreDb.order.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { paymentStatus: "PARTIAL", status: "CONFIRMED" },
+    }));
+  });
+
   it("atomically rejects failed verification and recalculates the remaining order balance", async () => {
     const pendingPayment = {
       id: "pay-1",
@@ -544,9 +564,8 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
     };
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [pendingPayment] });
     vi.mocked(storeZarinpal.verifyPayment).mockResolvedValueOnce({ success: false, refId: null });
-    mockStoreDb.payment.aggregate
-      .mockResolvedValueOnce({ _sum: { amountIrr: 0 } })
-      .mockResolvedValueOnce({ _sum: { amountIrr: 0 } });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 0 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
     const res = await gatewayCallbackRoute.GET(
       makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=NOK"),
     );
