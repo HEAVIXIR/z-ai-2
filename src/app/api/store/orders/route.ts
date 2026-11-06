@@ -3,6 +3,7 @@ import { storeDb } from "@/lib/store-db";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
 import { getStoreUserWithRole } from "@/lib/store-auth";
 import { checkCsrf } from "@/lib/csrf";
+import { decrementOrderStock, OrderStockConflictError } from "@/lib/store-order-stock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -324,15 +325,11 @@ export async function POST(req: Request) {
         },
       });
 
-      // decrement stock + increment soldCount per part
+      // The preflight stock read above is advisory only. This conditional
+      // update is authoritative under concurrent checkouts; a conflict throws
+      // inside the transaction and rolls back the order and all side effects.
       for (const it of orderItemsData) {
-        await tx.part.update({
-          where: { id: it.partId },
-          data: {
-            stock: { decrement: it.quantity },
-            soldCount: { increment: it.quantity },
-          },
-        });
+        await decrementOrderStock(tx, it.partId, it.quantity);
       }
 
       // bump coupon usage
@@ -363,6 +360,12 @@ export async function POST(req: Request) {
       linkedToUser: !!sessionUser?.id,
     });
   } catch (e: any) {
+    if (e instanceof OrderStockConflictError) {
+      return NextResponse.json(
+        { error: "موجودی یکی از قطعات تغییر کرده یا کافی نیست؛ سبد خرید را به‌روزرسانی کنید" },
+        { status: 409 },
+      );
+    }
     console.error("[api/store/orders POST] error:", e);
     return NextResponse.json(
       { error: e?.message ?? "Internal error" },
