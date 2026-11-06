@@ -36,6 +36,18 @@ describe("public API rate limiting", () => {
     expect(getPublicApiClientIdentity(req)).toBe("unknown");
   });
 
+  it("rejects invalid proxy header values instead of creating attacker-controlled buckets", () => {
+    const req = new Request("https://heavix.ir/api/test", {
+      headers: {
+        "cf-connecting-ip": "attacker-controlled-value",
+        "x-real-ip": "also-invalid",
+        "x-forwarded-for": "198.51.100.99",
+      },
+    });
+
+    expect(getPublicApiClientIdentity(req)).toBe("unknown");
+  });
+
   it("rejects requests after the configured per-runtime limit", () => {
     const req = new Request("https://heavix.ir/api/test", {
       headers: { "cf-connecting-ip": "198.51.100.77" },
