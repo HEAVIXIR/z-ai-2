@@ -90,7 +90,6 @@ export async function updateSEO(
 
   const { robotsIndex, robotsFollow } = parseRobots(input.robots);
 
-  // Map Wave 3B task field names → schema field names.
   const patch: Partial<
     Omit<
       SEOMetadata,
@@ -107,8 +106,13 @@ export async function updateSEO(
   if (input.structuredData !== undefined) patch.structuredData = input.structuredData;
   if (input.sitemapPriority !== undefined) patch.sitemapPriority = input.sitemapPriority;
   if (input.sitemapChangeFreq !== undefined) patch.sitemapChangeFreq = input.sitemapChangeFreq;
-  patch.robotsIndex = robotsIndex;
-  patch.robotsFollow = robotsFollow;
+  // Omitted robots fields mean "leave the existing policy unchanged".
+  // New rows receive the Prisma schema defaults (index=true, follow=true).
+  if (input.robots !== undefined) {
+    const { robotsIndex, robotsFollow } = parseRobots(input.robots);
+    patch.robotsIndex = robotsIndex;
+    patch.robotsFollow = robotsFollow;
+  }
 
   const seo = await upsertSEO(input.entityType, input.entityId, patch);
 
@@ -207,7 +211,6 @@ export async function generateSitemap(): Promise<string> {
   for (const p of STATIC_PATHS) {
     entries.push({
       loc: absoluteUrl(p.url),
-      lastmod: new Date().toISOString(),
       changefreq: p.changeFreq,
       priority: p.priority,
     });
