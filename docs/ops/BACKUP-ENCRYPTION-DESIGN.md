@@ -97,3 +97,24 @@ Repository variables are attestations, not evidence. They must not be set until 
 - No public bucket access.
 - No claim that local `public/uploads` media, DNS, Cloudflare settings, provider configuration, or secret-manager state are included.
 - No paid backup service, VPS, or permanent Docker host.
+
+
+## Provider access-model blocker — 2026-11-06
+
+The age encryption implementation and its CI fixture tests do not make the current Prisma database-export path safe to execute.
+
+Prisma Postgres documents that all credentials for a database share the same database user and full access. Custom PostgreSQL roles and read-only credentials are not supported. The direct connection is required for `pg_dump`, but it still carries the same full-access identity. Therefore:
+- Do not interpret separate connection strings as separate database roles.
+- Do not create or store a new full-access Preview database credential in GitHub Actions for the purpose of this archive.
+- Do not rely on SQL privilege checks as proof that a Prisma credential is read-only; Prisma's documented credential model contradicts that assumption.
+- The archive workflow now contains a hard-coded `PRISMA_READ_ONLY_CREDENTIALS_IMPLEMENTATION=false` dispatch blocker. It must remain false until a replacement export architecture is implemented, independently reviewed, and restore-tested.
+
+Official provider references:
+- https://www.prisma.io/docs/postgres/database/connecting-to-your-database
+- https://www.prisma.io/docs/postgres/faq
+
+The zero-cost recovery strategy must be redesigned around an export mechanism that does not hand the GitHub Actions runner a full-access database credential, or around a different database provider that supports genuine least-privilege dump roles within the budget. Any app-mediated export design must use a narrowly scoped, authenticated, read-only export interface, strict table/column allowlists, consistency controls, streaming/size limits, and a tested restore path. It must not expose a general SQL endpoint or return credentials.
+
+Prisma's own automated snapshots are not currently available in the inspected Preview backup inventories. Official documentation says daily snapshots are included on Starter, Pro, and Business plans and not on Free. No paid upgrade is authorized under the zero-cost constraint.
+
+This section supersedes any earlier implication that the current direct-Postgres workflow is ready for dispatch merely because age encryption, B2 configuration, or static CI checks pass.
