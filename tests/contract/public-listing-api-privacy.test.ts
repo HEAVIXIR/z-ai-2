@@ -23,5 +23,6 @@ describe("public listing and comparison API privacy contract", () => {
     const source = read("src/lib/compare-engine.ts");
     expect(source).toContain('status: "PUBLISHED"');
     expect(source).toContain('status: "ACTIVE"');
+    expect(source.split('brand: { is: { active: true, status: "ACTIVE" } }').length - 1).toBe(2);
   });
 });
