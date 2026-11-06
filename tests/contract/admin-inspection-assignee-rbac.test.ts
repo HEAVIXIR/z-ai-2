@@ -44,4 +44,24 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain('userRoles: { some: { role: { key: "ADMIN" } } }');
     expect(source).toContain('error: "Inspector must be an active admin"');
   });
+
+  it("bounds and validates admin inspection PATCH payloads", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/inspections/[id]/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain("const MAX_PATCH_BYTES = 64 * 1024");
+    expect(source).toContain("readBoundedPatchJson");
+    expect(source).toContain("INSPECTION_STATUSES");
+    expect(source).toContain("allowedKeys");
+    expect(source).toContain('error: "Invalid inspection status"');
+    expect(source).toContain('error: `Invalid ${field}`');
+    expect(source).toContain("notes.length > 1000");
+    expect(source).toContain("photos.length > 20");
+    expect(source).toContain("checklist.length > 200");
+    expect(source).toContain("isHttpUrl");
+    expect(source).toContain('error: "Inspection not found"');
+    expect(source).toContain('error: "Unable to update inspection"');
+    expect(source).not.toContain("e?.message ?? \"Server error\"");
+  });
 });
