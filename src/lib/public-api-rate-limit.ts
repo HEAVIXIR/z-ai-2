@@ -2,17 +2,13 @@ import { isIP } from "node:net";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 
 /**
- * Public endpoints must not trust the left-most X-Forwarded-For value:
- * clients can often supply it themselves. Cloudflare's connecting-IP
- * header is preferred; X-Real-IP is only a fallback for trusted proxies.
+ * Use only Cloudflare's authoritative connecting-IP header. Do not fall
+ * back to X-Forwarded-For or X-Real-IP: either can be client-controlled
+ * when a Worker is reached outside the expected proxy chain.
  */
 export function getPublicApiClientIdentity(req: Request): string {
   const cloudflareIp = req.headers.get("cf-connecting-ip")?.trim();
   if (cloudflareIp && isIP(cloudflareIp)) return cloudflareIp;
-
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp && isIP(realIp)) return realIp;
-
   return "unknown";
 }
 
