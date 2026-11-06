@@ -77,6 +77,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       data.refId = body.refId || null;
     }
 
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ success: false, error: "هیچ تغییری ارسال نشده است" }, { status: 400 });
+    }
+
     const result = await storeDb.$transaction(async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) return { kind: "NOT_FOUND" as const };
@@ -103,7 +107,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           const approvedTotal = Number(approved._sum.amountIrr ?? 0);
           const orderTotal = Number(order.totalIrr ?? 0);
           const nextPaymentStatus =
-            approvedTotal >= orderTotal ? "PAID" :
+            approvedTotal > 0 && approvedTotal >= orderTotal ? "PAID" :
             approvedTotal > 0 ? "PARTIAL" : "UNPAID";
 
           if (nextPaymentStatus !== order.paymentStatus) {
@@ -168,7 +172,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const payment = result.payment;
     return NextResponse.json({ success: true, data: serialize(payment) });
   } catch (e: any) {
-    console.error("[store/payments PATCH] error:", e);
     console.error("[store/payments PATCH] request failed:", e);
     return NextResponse.json({ success: false, error: "پردازش پرداخت ناموفق بود" }, { status: 500 });
   }
@@ -196,6 +199,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!payment) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     return NextResponse.json({ success: true, data: serialize(payment) });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    console.error("[store/payments GET] request failed:", e);
+    return NextResponse.json({ success: false, error: "دریافت اطلاعات پرداخت ناموفق بود" }, { status: 500 });
   }
 }
