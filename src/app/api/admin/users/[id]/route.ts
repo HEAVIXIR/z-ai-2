@@ -228,6 +228,7 @@ export async function PATCH(req: Request, { params }: Args) {
           firstName: true,
           lastName: true,
           email: true,
+          mobile: true,
           role: true,
           status: true,
           companyName: true,
@@ -255,7 +256,7 @@ export async function PATCH(req: Request, { params }: Args) {
         }
         await tx.userRole.upsert({
           where: { userId_roleId: { userId: id, roleId: roleChangeForTransaction.roleId } },
-          create: { userId: id, roleId: roleChange.roleId },
+          create: { userId: id, roleId: roleChangeForTransaction.roleId },
           update: {},
         });
       }
@@ -271,7 +272,7 @@ export async function PATCH(req: Request, { params }: Args) {
             firstName: before.firstName,
             lastName: before.lastName,
             email: before.email,
-            mobile: existing.mobile,
+            mobile: before.mobile,
             role: before.role,
             status: before.status,
             companyName: before.companyName,
@@ -295,7 +296,8 @@ export async function PATCH(req: Request, { params }: Args) {
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: serializeUser(updated) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] request failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
