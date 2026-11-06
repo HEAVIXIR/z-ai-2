@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       payerName = optionalText(input.payerName, 120, "payerName");
       payerCardInput = optionalText(input.payerCard, 32, "payerCard");
       note = optionalText(input.note, 1000, "note");
-    } catch (error: any) {
+    } catch {
       return NextResponse.json({ error: "یکی از فیلدهای اطلاعات پرداخت نامعتبر است" }, { status: 400 });
     }
     let payerCard: string | null;
