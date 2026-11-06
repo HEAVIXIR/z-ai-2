@@ -43,6 +43,15 @@ describe("Store inventory atomic mutation contract", () => {
     expect(body).not.toContain("storeDb.inventoryBalance.update(");
   });
 
+  it("does not allow warehouse stock reductions below already-reserved quantity", () => {
+    const body = section("export async function adjustStock(", "// ── reserveStock");
+    expect(body).toContain("const currentReserved = existingBalance?.reserved ?? 0");
+    expect(body).toContain("const nextQty = currentQty + qty");
+    expect(body).toContain("if (nextQty < currentReserved)");
+    expect(body).toContain("quantity: { equals: currentQty, gte: -qty }");
+    expect(body).toContain("reserved: currentReserved");
+  });
+
   it("bounds inventory POST payloads and rejects unknown fields", () => {
     expect(route).toContain("8 * 1024");
     expect(route).toContain("Buffer.byteLength(raw, \"utf8\")");
