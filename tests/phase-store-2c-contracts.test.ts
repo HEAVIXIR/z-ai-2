@@ -1128,7 +1128,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(content).toContain('tx.payment.update');
       expect(content).toContain('tx.order.update');
       expect(content).toContain('tx.payment.aggregate');
-      expect(content).toContain('payment status recalculated from approved payment ledger');
+      expect(content).toContain('payment status recalculated from approved and refunded payment ledger');
       expect(content).not.toContain('logAudit');
     });
 
