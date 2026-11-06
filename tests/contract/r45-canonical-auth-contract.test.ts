@@ -56,7 +56,7 @@ describe("R45 canonical authentication contract", () => {
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
-    expect(s).toContain("db.userRole.upsert");
+    expect(s).toContain("tx.userRole.upsert");
     expect(s).not.toContain('data: { role: "SELLER"');
   });
 
