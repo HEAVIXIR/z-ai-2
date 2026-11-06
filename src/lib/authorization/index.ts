@@ -147,7 +147,9 @@ export async function isAdmin(
   if (!userId) return false;
   try {
     const adminRole = await db.userRole.findFirst({
-      where: { userId, role: { key: 'ADMIN' } },
+      // Defense in depth: an assigned ADMIN role is ineffective unless the
+      // underlying account is currently active.
+      where: { userId, user: { status: 'ACTIVE' }, role: { key: 'ADMIN' } },
       select: { id: true },
     });
     return Boolean(adminRole);
