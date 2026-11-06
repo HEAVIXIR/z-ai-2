@@ -29,8 +29,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
 
-    const user = await db.user.findUnique({
-      where: { id },
+    const user = await db.user.findFirst({
+      where: { id, role: "SELLER", status: "ACTIVE" },
       select: {
         id: true,
         firstName: true,
