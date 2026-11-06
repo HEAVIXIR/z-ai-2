@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { getSEO } from "@/lib/seo";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
 import {
   BRAND_TYPE_LABELS,
@@ -39,14 +40,22 @@ export async function generateMetadata({
   const { slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
   const brand = await resolveBrandBySlugOrAlias(slug);
-  if (!brand) return { title: "برند یافت نشد" };
-  const title = `${brand.name} — ماشین‌آلات سنگین ${brand.name}`;
-  const description = `لیست آگهی‌های ماشین‌آلات سنگین ${brand.name} — خرید، فروش و اجاره در سراسر ایران. بررسی مدل‌ها، قیمت‌ها و مشخصات فنی.`;
+  if (!brand) return { title: "برند یافت نشد", robots: { index: false, follow: false } };
+  const seo = await getSEO("Brand", brand.id);
+  const title = seo?.metaTitle?.trim() || `${brand.name} — ماشین‌آلات سنگین ${brand.name}`;
+  const description = seo?.metaDescription?.trim() || `لیست آگهی‌های ماشین‌آلات سنگین ${brand.name} — خرید، فروش و اجاره در سراسر ایران. بررسی مدل‌ها، قیمت‌ها و مشخصات فنی.`;
   return {
     title,
     description,
-    alternates: { canonical: `/brands/${brand.slug}` },
-    openGraph: { title, description, type: "website", locale: "fa_IR" },
+    alternates: { canonical: seo?.canonicalUrl?.trim() || `/brands/${encodeURIComponent(brand.slug)}` },
+    openGraph: {
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : brand.logoUrl ? [brand.logoUrl] : undefined,
+      type: "website",
+      locale: "fa_IR",
+    },
+    robots: { index: seo?.robotsIndex ?? true, follow: seo?.robotsFollow ?? true },
   };
 }
 
