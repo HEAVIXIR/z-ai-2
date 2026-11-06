@@ -47,6 +47,7 @@ describe("Sell in 7 Days public flow security contract", () => {
     expect(api).toContain("year < 1900");
     expect(api).toContain("workingHours > 2_000_000");
     expect(api).toContain("^[A-HJ-NP-Z2-9]{16}$");
+    expect(api).toContain("^[A-Z0-9]{8}$");
   });
 
   it("validates that public submissions reference active catalog entities", () => {
