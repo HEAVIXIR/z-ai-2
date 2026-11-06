@@ -413,8 +413,11 @@ export async function getSellerProfile(userId: string): Promise<{
     throw new SellerServiceError(400, "userId الزامی است");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
+  const user = await db.user.findFirst({
+    where: {
+      id: userId,
+      userRoles: { some: { role: { key: "SELLER" } } },
+    },
     include: {
       foundingStatus: true,
       company: {
@@ -440,7 +443,7 @@ export async function getSellerProfile(userId: string): Promise<{
     lastName: user.lastName,
     email: user.email,
     mobile: user.mobile,
-    role: user.role,
+    role: "SELLER",
     status: user.status,
     userType: user.userType,
     companyName: user.companyName,
