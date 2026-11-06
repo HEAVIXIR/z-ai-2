@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
+import { computeStoreOrderPaymentStatus } from "@/lib/store-payment-ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,26 +139,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           select: { id: true, paymentStatus: true, totalIrr: true },
         });
         if (order) {
-          const [approved, refunded] = await Promise.all([
+          // A status transition APPROVED → REFUNDED reclassifies the original
+          // payment row; it is no longer included in the APPROVED sum. Do not
+          // subtract the REFUNDED rows again or a partial refund is double-counted.
+          const [approved, refundedCount] = await Promise.all([
             tx.payment.aggregate({
               where: { orderId: order.id, status: "APPROVED" },
               _sum: { amountIrr: true },
             }),
-            tx.payment.aggregate({
+            tx.payment.count({
               where: { orderId: order.id, status: "REFUNDED" },
-              _sum: { amountIrr: true },
             }),
           ]);
           const approvedTotal = Number(approved._sum.amountIrr ?? 0);
-          const refundedTotal = Number(refunded._sum.amountIrr ?? 0);
-          const netApproved = approvedTotal - refundedTotal;
-          const hasRefund = refundedTotal > 0;
-          const orderTotal = Number(order.totalIrr ?? 0);
-          const nextPaymentStatus =
-            hasRefund && netApproved <= 0 ? "REFUNDED" :
-            netApproved <= 0 ? "UNPAID" :
-            netApproved >= orderTotal ? (hasRefund ? "REFUNDED" : "PAID") :
-            "PARTIAL";
+          const nextPaymentStatus = computeStoreOrderPaymentStatus(
+            Number(order.totalIrr ?? 0),
+            approvedTotal,
+            refundedCount > 0,
+          );
 
           if (nextPaymentStatus !== order.paymentStatus) {
             await tx.order.update({
