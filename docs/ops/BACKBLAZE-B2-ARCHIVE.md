@@ -152,3 +152,45 @@ Read-only Prisma workspace metadata inventory (rechecked 2026-11-06):
 - That test object and its two local temporary files were subsequently deleted with operator approval.
 - No current archive payload is known to exist in the bucket after cleanup.
 - No B2 application key value is stored in this repository or this document.
+
+
+## Operator inventory correction — 2026-11-06 (supersedes earlier proposed/not-created statements)
+
+This section records the latest operator-confirmed infrastructure state and supersedes earlier historical statements in this document that the dedicated bucket, B2 key, or age recipient had not yet been configured. Historical entries above are retained as a chronological record; they are not current state.
+
+### B2 destination and credentials
+
+- The dedicated private bucket `heavix-db-backups` has been created in Backblaze B2. It is separate from `heavix-dev-assets`.
+- The bucket's server-side encryption is enabled and its lifecycle is Keep all versions. This is not a bounded-retention policy; object-version growth remains an unresolved storage/cost risk.
+- The operator confirmed that the current B2 application key is restricted to `heavix-db-backups` and has exactly `listBuckets`, `readFiles`, and `writeFiles` capabilities. The previous broader key was revoked and the corresponding GitHub Actions secrets were replaced.
+- The B2 key is not a database credential and does not establish database backup readiness. No archive object has been written by this workflow.
+
+### Age recipient and private-key custody
+
+- The operator confirmed age CLI v1.3.2, an existing local private identity, successful public-recipient derivation, and registration of the public recipient in repository variable `HEAVIX_B2_AGE_RECIPIENT`.
+- The private identity has not been shared with GitHub Actions or this repository.
+- Independent evidence of two geographically/administratively separate recovery copies and a full decrypt-and-restore rehearsal has not been recorded. These remain release gates.
+
+### Prisma Postgres credential limitation — hard architectural blocker
+
+The current Prisma Postgres documentation states that every generated credential for a database uses the same database user, differs only by password, and receives the same full access. Prisma Postgres does not support custom roles or read-only credentials. See:
+- https://www.prisma.io/docs/postgres/database/connecting-to-your-database
+- https://www.prisma.io/docs/postgres/faq
+
+Consequences for this workflow:
+- Creating a connection string named `backup-readonly` would not make it read-only.
+- The current workflow's `HEAVIX_APP_PREVIEW_BACKUP_ROLE` and `HEAVIX_STORE_PREVIEW_BACKUP_ROLE` expectations cannot be satisfied by creating ordinary Prisma connection strings.
+- Do not create new full-access credentials, do not populate the two Preview database URL secrets, and do not set either dispatch-readiness latch as a workaround.
+- The present direct-Postgres `pg_dump` design must be redesigned or explicitly replaced with a different provider/backup architecture before a real archive can be authorized.
+
+### Identity preflight limitation
+
+The workflow currently checks point-in-time server address and PostgreSQL postmaster-start timestamps, but does not query and compare `current_database()` or a provider-verifiable system identifier. Those network fingerprints are not a substitute for a durable database identity check. The workflow must remain blocked until identity verification is redesigned and tested.
+
+### Current status
+
+- App Preview and Store Preview are Ready according to Prisma workspace metadata.
+- Prisma automated-backup listings for both Preview databases are empty.
+- No database SQL was executed as part of this inventory update.
+- No Production operation, database write, archive dispatch, B2 archive upload, Worker deployment, DNS change, or merge was performed.
+- PR #188 remains Draft/Open/unmerged. Keep the archive dispatch blocked until the architecture and every remaining recovery, retention, and identity gate are resolved.
