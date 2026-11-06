@@ -30,14 +30,18 @@ Honor each entity's `SEOMetadata.robotsIndex`, priority, and change-frequency ov
 The following pages are user-specific, transactional, or utility experiences and must not be indexed:
 - `/compare`
 - `/find-my-need`
-- `/rfq/new`
+- `/admin/*`, `/dashboard/*`, and `/seller/*`
+- `/login` and `/register`
+- `/compare`, `/find-my-need`, and `/listings/new`
+- `/requests/new`, `/rfq/new`, and `/rfq/{id}`
 - `/transport/request`
-- `/sell-in-7-days/register`
-- `/sell-in-7-days/track`
+- `/sell-in-7-days/register` and `/sell-in-7-days/track`
+- `/auctions/*` (time-sensitive inventory)
+- `/sellers/{id}` (personal seller profile)
 - Preview page tokens under `/preview/page/{key}`
 - Legacy ambiguous model selector pages under `/models/{slug}`
 
-Use page metadata/layout metadata with `robots.index=false`. Do not block these paths in robots.txt if doing so would prevent crawlers from seeing the noindex directive. Keep genuinely private server APIs and admin routes disallowed as appropriate.
+Use page metadata/layout metadata with `robots.index=false`. Do not block these paths in robots.txt if doing so would prevent crawlers from seeing the noindex directive. The robots.txt currently disallows `/api/*` only. Do not disallow private UI routes at crawl level: crawlers must be able to fetch their pages and observe `noindex`. Authentication and authorization remain enforced by server components and APIs; noindex is not access control.
 
 ## SEO administration
 
