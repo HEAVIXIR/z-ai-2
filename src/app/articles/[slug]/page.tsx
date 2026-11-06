@@ -11,8 +11,8 @@
  *   • Lightweight markdown rendering (same rules as /knowledge/[slug])
  *   • Renders related articles (3 most recent published, different slug)
  *
- * NOTE: the legacy /knowledge/[slug] route continues to serve the
- * existing "هویکس دانش" UI; this new /articles/[slug] is the canonical
+ * NOTE: legacy /knowledge/[slug] URLs permanently redirect here.
+ * /articles/[slug] is the single canonical public article route.
  * content-engine public route (matches the new admin nav key).
  */
 
