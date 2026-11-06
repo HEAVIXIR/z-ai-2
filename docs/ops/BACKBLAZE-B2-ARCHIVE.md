@@ -1,8 +1,8 @@
 # HEAVIX — Backblaze B2 Archive Foundation
 
-**Status:** Client-side encrypted archive workflow authored; first real remote archive and restore are not yet verified.  
-**Target bucket:** `heavix-db-backups` (proposed; not yet created)  
-**Existing development bucket:** `heavix-dev-assets` (private; not a database-backup destination)  
+**Current status (2026-11-06):** Two separate private B2 buckets exist. B2 single-object upload/download/SHA-256/delete smoke testing was previously completed from the operator's local PowerShell/AWS CLI profile. Paired PostgreSQL 17 backup/restore is separately proven in disposable CI. The combined encrypted database-to-B2 archive and cloud restore have not yet run: PR #188's archive/dispatch jobs remain fail-closed/skipped.  
+**Database archive bucket:** `heavix-db-backups` (created; private; bucket-scoped application key configured).  
+**Development/media bucket:** `heavix-dev-assets` (older; private; reserved for development assets/media, not database dumps).  
 **S3 endpoint:** `https://s3.us-east-005.backblazeb2.com`  
 **Region:** `us-east-005`
 
@@ -239,3 +239,72 @@ The current Main branch contains `src/app/api/admin/backup/route.ts` and `script
 - Depends on a Node child process, a local filesystem, and an installed `pg_dump` executable.
 
 This is not a suitable Cloudflare Workers archive mechanism: Workers do not provide the required general-purpose child-process execution or durable local filesystem. It is also not an approved external backup pipeline because it uses the application's full-access Prisma credentials and leaves plaintext dump files on the app filesystem. Do not invoke or expose this endpoint as a workaround for the blocked B2 workflow. A future replacement must be designed for the actual deployment runtime, stream data safely, encrypt before persistence, avoid exposing general SQL access, and pass a complete isolated restore rehearsal.
+
+
+## Consolidated operator history and evidence boundaries — 2026-11-06
+
+This section is the current concise source of truth for the two B2 buckets and the backup tests. It supersedes stale historical statements earlier in this runbook that describe the dedicated bucket as proposed/not created. Historical notes are retained only for chronology.
+
+### The two existing B2 buckets are distinct
+
+| Bucket | Purpose | Confirmed state | Prohibited use |
+|---|---|---|---|
+| `heavix-dev-assets` | Existing development assets / future private media storage (tracked by Issue #189) | Private; bucket ID `356d017312aba16dac1c0411`; server-side encryption enabled; lifecycle Keep all versions; older bucket | Do not place database dumps here |
+| `heavix-db-backups` | Dedicated database/source archive destination (tracked by PR #188) | Private; bucket ID `253da133c22ba1fdac1c0411`; server-side encryption enabled; lifecycle Keep all versions; created 2026-11-06 | Do not treat bucket creation as proof an archive exists |
+
+Both use the B2 S3 endpoint `s3.us-east-005.backblazeb2.com`. Keep-all-versions is currently unbounded; a retention and storage cap still needs a deliberate policy. B2 server-side encryption is not a substitute for the workflow's client-side age encryption.
+
+### Local PowerShell / B2 object-storage smoke test — operator-confirmed historical result
+
+The operator previously configured the local AWS CLI profile `heavix-b2` in Windows PowerShell and completed a single-object round trip: upload, download, SHA-256 comparison, and deletion of the test object and temporary local files. The recorded digest was:
+
+```
+A83A35F20962B88F225EAD001F15B85855343C6A6C37711D85398F780E9F7888
+```
+
+This is accepted as evidence that the local B2 S3-compatible access path and object transfer worked at that time. The exact target bucket for that historical test is not identified in the retained evidence, so it must not be attributed to `heavix-db-backups` without checking the local command history. The test object was deleted; it was not a retained backup.
+
+### Dedicated B2 key — operator-confirmed
+
+The application key currently used for the database-backup bucket is confirmed by the operator as restricted to `heavix-db-backups`, with exactly `listBuckets`, `readFiles`, and `writeFiles`. The previous broader key was revoked, and the GitHub repository secrets were replaced. Never retrieve, print, paste, or commit the key values. This confirms the configured access scope as operator-reported; it does not prove a database archive has been uploaded.
+
+### PostgreSQL backup/restore proof — independently recorded in GitHub CI
+
+PR #122 (merged) repaired the Docker/Node backup runtime contract and added disposable Compose backup proof. PR #137 (merged) added a paired Main + Store PostgreSQL 17 rehearsal using four disposable databases, non-zero sentinel rows, the actual `scripts/backup.sh`, SHA-256 validation, restore into separate targets, and exact sentinel comparison. This is meaningful evidence that the paired local/container backup script can create and restore both database dumps in an isolated disposable test.
+
+- PR #122: https://github.com/HEAVIXIR/z-ai-2/pull/122
+- PR #137: https://github.com/HEAVIXIR/z-ai-2/pull/137
+- Related tracking Issue #121 remains open: https://github.com/HEAVIXIR/z-ai-2/issues/121
+
+This CI evidence is separate from the operator's B2 object-transfer smoke test. Neither alone proves the combined path `PostgreSQL dump → age encryption → B2 upload → remote read-back → offline decryption → PostgreSQL 17 restore`.
+
+### Current PR #188 exact-head result
+
+- PR #188 HEAD: `962878254ccb9dd3f83c19c43f5f226ac0f27450`.
+- Backblaze B2 Archive run `42187016175`: **SUCCESS** for workflow YAML/Bash validation, pinned age v1.3.2 encrypt/decrypt round-trip, authenticated ciphertext tamper rejection, and synthetic manifest/read-back checksum tests.
+- In that same run, both `Require Preview identity, archive readiness, and encryption implementation` and `Verify and archive databases and Git history` were **SKIPPED** because the event was a pull request. No DB dump, B2 archive upload, or cloud restore occurred.
+- Main CI run `42187015916` was still in progress at the time of this record; do not report it as passed until its exact-head result is complete.
+- The workflow has a code-level hard block because Prisma Postgres credentials are full-access and Prisma does not provide custom/read-only DB roles. Do not bypass it by creating another named Prisma connection string or by populating GitHub DB URL secrets.
+
+### What is already working vs. what remains unproven
+
+| Capability | Evidence | Status |
+|---|---|---|
+| B2 S3-compatible single-object upload/download/delete | Operator-confirmed local PowerShell smoke test with matching SHA-256 | Proven historically |
+| Two distinct private B2 buckets | Operator-confirmed inventory and recorded bucket IDs | Provisioned |
+| Bucket-scoped B2 application key | Operator-confirmed exact scope/capabilities; previous broader key revoked | Configured |
+| Paired Main + Store PostgreSQL dump and restore | Merged PR #137; disposable PostgreSQL 17 CI with sentinels and SHA-256 | Proven in isolated CI |
+| age encryption/decryption and tamper detection | PR #188 exact-head static CI | Proven with synthetic fixtures |
+| Encrypted PostgreSQL archive uploaded to `heavix-db-backups` | Archive job skipped; hard gate remains false | Not yet performed |
+| Remote encrypted-object read-back for real DB dumps | No archive object created by PR #188 | Not yet performed |
+| Offline decrypt + PostgreSQL restore of a real B2 archive | No real archive exists in evidence | Not yet performed |
+| Media asset migration to `heavix-dev-assets` | Issue #189 remains open | Not yet implemented |
+| Bounded retention / lifecycle policy | Both buckets currently Keep all versions | Pending |
+
+### Operational interpretation
+
+It is inaccurate to say that “B2 is not set up” or that “no backup testing has been done.” The local B2 transfer smoke test, dedicated backup bucket/key setup, and disposable paired PostgreSQL backup/restore CI are real completed work and must be preserved in every project handoff.
+
+It is also inaccurate to call the full off-site database backup chain complete: the integrated encrypted PostgreSQL-to-B2 archive, remote read-back of real dump objects, offline decryption, and restore from those exact remote objects have not been demonstrated. Keep PR #188 Draft/Open and its fail-closed dispatch gate intact until a safe export design compatible with Prisma's access model is reviewed and the complete chain is rehearsed.
+
+No secret values, database URLs, or private age identity are stored in this document.
