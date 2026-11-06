@@ -62,6 +62,13 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     expect(read("src/app/brands/[slug]/models/[modelSlug]/page.tsx")).toContain('getSEO("ProductModel", model.id)');
   });
 
+  it("applies the SEO control plane to listing, brand, and category detail metadata", () => {
+    expect(read("src/app/listings/[slug]/page.tsx")).toContain('getSEO("Listing", listing.id)');
+    expect(read("src/app/brands/[slug]/page.tsx")).toContain('getSEO("Brand", brand.id)');
+    expect(read("src/app/categories/[slug]/page.tsx")).toContain('getSEO("Category", category.id)');
+    expect(read("src/app/listings/[slug]/page.tsx")).toContain('where: { slug, status: "PUBLISHED" }');
+  });
+
   it("preserves existing robots policy when an SEO update omits robots directives", () => {
     const service = read("src/lib/seo-service.ts");
     expect(service).toContain('if (input.robots !== undefined)');
@@ -78,6 +85,8 @@ describe("SEO canonical routes and private-page indexing contract", () => {
       "src/app/register/layout.tsx",
       "src/app/requests/new/layout.tsx",
       "src/app/rfq/[id]/layout.tsx",
+      "src/app/auctions/layout.tsx",
+      "src/app/sellers/[id]/layout.tsx",
     ];
     for (const file of privatePages) {
       expect(read(file)).toContain("index: false");
