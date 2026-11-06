@@ -23,6 +23,16 @@ describe("Store return lifecycle transactional audit contract", () => {
     expect(body).not.toContain("logAudit(");
   });
 
+  it("prevents callers from creating or directly editing terminal return states", () => {
+    const create = functionBody("createReturn", "updateReturnStatus");
+    const update = functionBody("updateReturnStatus", "listReturns");
+    expect(create).toContain("options.status !== 'REQUESTED'");
+    expect(create).toContain("options.inspection || options.resolution");
+    expect(update).toContain("existing.status === 'RESOLVED' || existing.status === 'REJECTED'");
+    expect(update).toContain("status !== existing.status && status !== 'APPROVED'");
+    expect(update).toContain("inspection !== undefined || resolution !== undefined");
+  });
+
   it("uses serializable transactions for return item duplicate checks and inspection transitions", () => {
     const add = functionBody("addReturnItem", "inspectReturn");
     const inspect = functionBody("inspectReturn", "resolveReturn");
