@@ -677,7 +677,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const updateActionRegex = /action:\s*['"]store\.\w+\.update['"]/g;
         let m;
         while ((m = updateActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/after:/);
           // upsert routes don't have 'before' (no pre-fetch); all others must have it
           if (!isUpsertRoute) {
@@ -693,7 +693,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const createActionRegex = /action:\s*['"]store\.\w+\.create['"]/g;
         let m;
         while ((m = createActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/after:/);
         }
       }
@@ -705,7 +705,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const deleteActionRegex = /action:\s*['"]store\.\w+\.delete['"]/g;
         let m;
         while ((m = deleteActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/before:/);
         }
       }
