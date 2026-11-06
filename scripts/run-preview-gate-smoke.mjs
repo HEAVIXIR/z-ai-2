@@ -79,6 +79,16 @@ try {
     observability: { enabled: false },
   }, null, 2), { mode: 0o600 });
 
+  const childEnv = { ...process.env, NODE_ENV: "production" };
+  for (const key of [
+    "DATABASE_URL",
+    "STORE_DATABASE_URL",
+    "HEAVIX_APP_PREVIEW_PPG_URL",
+    "HEAVIX_STORE_PREVIEW_PPG_URL",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_API_KEY",
+  ]) delete childEnv[key];
+
   preview = start(resolve(root, "node_modules/.bin/opennextjs-cloudflare"), [
     "preview",
     "--config", configPath,
@@ -88,14 +98,7 @@ try {
     cwd: root,
     detached: process.platform !== "win32",
     env: {
-      ...process.env,
-      DATABASE_URL: undefined,
-      STORE_DATABASE_URL: undefined,
-      HEAVIX_APP_PREVIEW_PPG_URL: undefined,
-      HEAVIX_STORE_PREVIEW_PPG_URL: undefined,
-      CLOUDFLARE_API_TOKEN: undefined,
-      CLOUDFLARE_API_KEY: undefined,
-      NODE_ENV: "production",
+      ...childEnv,
     },
   });
 
