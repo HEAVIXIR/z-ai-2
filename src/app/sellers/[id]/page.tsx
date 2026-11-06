@@ -26,7 +26,7 @@ export default async function SellerProfilePage({
     db.user.findFirst({
       where: {
         id,
-        role: "SELLER",
+        userRoles: { some: { role: { key: "SELLER" } } },
         status: "ACTIVE",
         OR: [
           { foundingStatus: null },
