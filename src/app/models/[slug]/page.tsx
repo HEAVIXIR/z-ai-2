@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { ArrowLeft, Cog } from "lucide-react";
@@ -22,7 +21,12 @@ async function getActiveModelsBySlug(slug: string) {
     orderBy: [{ name: "asc" }, { id: "asc" }],
     take: 20,
   });
-  return rows.filter((model) => model.brand?.active && model.brand.slug);
+  type ActiveModel = (typeof rows)[number] & {
+    brand: NonNullable<(typeof rows)[number]["brand"]>;
+  };
+  return rows.filter(
+    (model): model is ActiveModel => Boolean(model.brand?.active && model.brand.slug),
+  );
 }
 
 export async function generateMetadata({
