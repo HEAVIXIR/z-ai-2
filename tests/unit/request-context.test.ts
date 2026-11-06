@@ -21,13 +21,16 @@ describe("trusted client IP extraction", () => {
   });
 
   it("falls back to trusted X-Real-IP and then the unknown sentinel", () => {
-    expect(getClientIp(new Request("https://example.test", {
-      headers: { "x-real-ip": "203.0.113.30" },
-    }))).toBe("203.0.113.30");
+    expect(
+      getClientIp(new Request("https://example.test", {
+        headers: { "x-real-ip": "203.0.113.30" },
+      })),
+    ).toBe("203.0.113.30");
     expect(getClientIp(new Request("https://example.test"))).toBe("unknown");
   });
 
   it("keeps rate-limit buckets endpoint-specific", () => {
+    expect(rateLimitKey("203.0.113.10", "login")).toBe("203.0.113.10:login");
     expect(rateLimitKey("203.0.113.10", "compare-create")).toBe("203.0.113.10:compare-create");
   });
 });
