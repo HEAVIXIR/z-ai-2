@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getArticle, readBrandId } from '@/lib/content-service';
+import { getSEO } from '@/lib/seo';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { BookOpen, ArrowRight, Eye, Tag, Calendar, Building2 } from 'lucide-react';
@@ -52,11 +53,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const title = `${article.title} | هویکس دانش`;
+  const seo = await getSEO("Article", article.id);
+  const title = seo?.metaTitle?.trim() || `${article.title} | هویکس دانش`;
   const description =
+    seo?.metaDescription?.trim() ||
     article.excerpt?.trim() ||
     `هویکس دانش — ${article.title}. راهنماها، مقایسه‌ها و نقد و بررسی ماشین‌آلات صنعتی در بازار هویکس.`;
-  const url = `/articles/${article.slug}`;
+  const url = seo?.canonicalUrl?.trim() || `/articles/${encodeURIComponent(article.slug)}`;
+  const index = seo?.robotsIndex ?? true;
+  const follow = seo?.robotsFollow ?? true;
   const brandId = readBrandId(article.tags);
   const keywords = [
     article.title,
@@ -72,24 +77,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     description,
     alternates: { canonical: url },
     openGraph: {
-      title,
-      description,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
       url,
       type: 'article',
       locale: 'fa_IR',
       siteName: 'HEAVIX',
-      images: article.coverImage ? [{ url: article.coverImage, width: 1200, height: 630, alt: article.title }] : undefined,
+      images: seo?.ogImage ? [{ url: seo.ogImage, alt: seo.ogTitle || title }] : article.coverImage ? [{ url: article.coverImage, width: 1200, height: 630, alt: article.title }] : undefined,
       publishedTime: article.publishedAt?.toISOString() ?? undefined,
       authors: ['هویکس دانش'],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
-      description,
-      images: article.coverImage ? [article.coverImage] : undefined,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : article.coverImage ? [article.coverImage] : undefined,
     },
     keywords,
-    robots: { index: true, follow: true },
+    robots: { index, follow },
   };
 }
 
