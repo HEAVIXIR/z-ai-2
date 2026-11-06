@@ -149,7 +149,7 @@ export async function PATCH(
       );
     }
 
-    const data: Record<string, unknown> = {};
+    const data: any = {};
     const allowedKeys = new Set([
       "status", "scheduledDate", "completedAt", "inspectorId",
       "notes", "reportUrl", "photos", "checklist", "price",
