@@ -19,6 +19,24 @@ describe("public listing and comparison API privacy contract", () => {
     expect(source).not.toContain("function serialize(l: any)");
   });
 
+  it("rate-limits public comparison creation, item mutations, and capability reads", () => {
+    const collection = read("src/app/api/compare/route.ts");
+    const itemMutation = read("src/app/api/compare/[id]/items/route.ts");
+    const sessionRead = read("src/app/api/compare/[id]/route.ts");
+    expect(collection).toContain("COMPARE_CREATE");
+    expect(collection).toContain("COMPARE_READ");
+    expect(itemMutation).toContain("COMPARE_ADD_ITEM");
+    expect(sessionRead).toContain("COMPARE_READ");
+    expect(sessionRead).toContain('Cache-Control": "private, no-store"');
+  });
+
+  it("uses trusted proxy IP extraction instead of the caller-controlled XFF prefix", () => {
+    const context = read("src/lib/request-context.ts");
+    expect(context).toContain('headers.get("cf-connecting-ip")');
+    expect(context).toContain("hops[hops.length - 1]");
+    expect(context).not.toContain('xff.split(",")[0]');
+  });
+
   it("rejects non-public listings before they enter a comparison session", () => {
     const source = read("src/lib/compare-engine.ts");
     expect(source).toContain('status: "PUBLISHED"');
