@@ -1,4 +1,12 @@
 import SellIn7RegisterForm from "./RegisterForm";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "ثبت درخواست فروش دستگاه | هویکس",
+  robots: { index: false, follow: true },
+};
+
+
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
