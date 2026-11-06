@@ -164,7 +164,7 @@ export async function registerSeller(params: {
 // ── verifySeller ─────────────────────────────────────────
 /**
  * Verify a seller — flip FoundingSeller.active=true (VERIFIED).
- * If the user's User.status is PENDING or BLOCKED, also flip it to ACTIVE
+ * If the user's User.status is PENDING, activate it; preserve BLOCKED status
  * (the public-facing status field).
  *
  * The `verifiedBy` actor is captured in the audit `after`
