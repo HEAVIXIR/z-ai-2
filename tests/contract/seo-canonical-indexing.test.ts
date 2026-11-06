@@ -35,6 +35,11 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     expect(sitemap).toContain('getSEOOverridesByType("ProductModel"');
   });
 
+  it("does not render inactive brands or categories as public SEO entities", () => {
+    expect(read("src/app/brands/[slug]/page.tsx")).toContain("!brand || !brand.active");
+    expect(read("src/app/categories/[slug]/page.tsx")).toContain("where: { slug, active: true }");
+  });
+
   it("includes company and model pages only when public inventory exists", () => {
     const sitemap = read("src/app/sitemap.ts");
     expect(sitemap).toContain('status: "ACTIVE", listings: { some: { status: "PUBLISHED" } }');
