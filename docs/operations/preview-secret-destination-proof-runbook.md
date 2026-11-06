@@ -115,6 +115,18 @@ However, the live account state currently blocks using a Version URL safely:
 - PR #200 now includes a separate outer entrypoint (`scripts/preview-version-worker.mjs`) that forwards only exact `GET /api/opennext-runtime-proof` requests with an ephemeral bearer token; every other path/method/token/query variant is rejected before OpenNext is invoked. Unit tests and the OpenNext smoke runner cover this gate, and the latest CI/OpenNext runs are pending at the time of this edit.
 - This outer gate limits the newly uploaded proof version, but it does not protect historical Worker versions if Preview URLs are enabled. PR #200 remains Draft and still needs fresh independent review of its exact latest HEAD.
 
+Before enabling Version URLs, prepare Preview-only Cloudflare Access protection in the Dashboard:
+
+1. Open the Cloudflare Dashboard and select the account containing `heavix-preview`.
+2. Open **Workers & Pages** → **heavix-preview** → **Settings** → **Domains & Routes**.
+3. Find the **Preview URLs** row and choose **Enable Cloudflare Access** (not the separate `workers.dev` Access control).
+4. Configure the Access policy to allow only the operator's own verified sign-in email. Prefer the one-time PIN/email identity option if no identity provider is already configured.
+5. Select the scope **Previews only** if prompted. Do not select **All traffic**.
+6. Save the Access policy, then verify the Preview URLs Access control is enabled. Do **not** turn on the Preview URLs themselves yet.
+7. If the dashboard asks to enable Preview URLs as part of this flow, stop before confirming and report the exact prompt. Do not make the URLs public.
+
+This is the only operator-side step likely required. It does not expose a Version URL while `previews_enabled=false`; it establishes the guard that must be in place before that flag can be enabled for the proof window.
+
 Therefore, before any version upload:
 1. Obtain a fresh independent review of the exact PR #200 HEAD and the proof route.
 2. Enable a protected access path for Preview Version URLs. Prefer Cloudflare Access with a Preview-only policy; the account currently reports Access not enabled. The outer proof-only wrapper protects the new version's application routes, but enabling Preview URLs can also expose historical versions, so do not enable previews until account-level/Worker-level Access protection is confirmed.
