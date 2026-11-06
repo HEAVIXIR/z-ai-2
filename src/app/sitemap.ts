@@ -9,12 +9,11 @@ import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
    ------------------------------------------------------------
    Next.js metadata-route sitemap. Public, cached 1 hour via
    `revalidate = 3600`. Includes:
-     • static pages (/, /listings, /brands, /store)
-     • all active categories
-     • all active brands
-     • all PUBLISHED listings
-     • all published articles
-   Uses sitemapPriority from SEOMetadata when available.
+     • static public pages (including the /knowledge index)
+     • active categories and brands
+     • published listings and canonical /articles pages
+     • active companies and brand-scoped models with published inventory
+   Excludes preview deployments and honors per-entity SEOMetadata.
 
    STEP 13.00: SITE_BASE_URL is now imported from @/lib/site-config
    (single source of truth). The previous local fallback to
