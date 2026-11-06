@@ -271,10 +271,11 @@ export async function PATCH(
         return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
       }
       try {
-        data.price = body.price === null || body.price === "" ? null : parseBig(body.price);
-        if (data.price !== null && data.price !== undefined && data.price < 0n) {
+        const parsedPrice = body.price === null || body.price === "" ? null : parseBig(body.price);
+        if (typeof parsedPrice === "bigint" && parsedPrice < 0n) {
           return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
         }
+        data.price = parsedPrice;
       } catch {
         return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
       }
