@@ -146,7 +146,12 @@ export async function PATCH(
       bodyBytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    const rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+    let rawBody: string;
+    try {
+      rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+    } catch {
+      return NextResponse.json({ error: "Request body must be valid UTF-8" }, { status: 400 });
+    }
 
     let body: unknown;
     try {
