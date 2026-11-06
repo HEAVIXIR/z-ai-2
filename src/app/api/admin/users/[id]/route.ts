@@ -359,6 +359,7 @@ export async function DELETE(_req: Request, { params }: Args) {
     if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] DELETE failed:", err);
+    return NextResponse.json({ error: "Unable to delete user" }, { status: 500 });
   }
 }
