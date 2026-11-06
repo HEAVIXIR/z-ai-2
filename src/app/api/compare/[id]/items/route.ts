@@ -65,7 +65,13 @@ export async function POST(
     return NextResponse.json({ item });
   } catch (err: any) {
     const msg = err?.message ?? "Server error";
-    const status = msg.includes("حداکثر") ? 400 : msg.includes("not found") ? 404 : 500;
+    const status = msg === "Session archived"
+      ? 410
+      : msg.includes("حداکثر")
+        ? 400
+        : msg.includes("not found")
+          ? 404
+          : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }
