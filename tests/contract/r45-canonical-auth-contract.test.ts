@@ -22,12 +22,12 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("validateLogin");
     expect(s).not.toContain("createSession");
     expect(s).not.toContain("ADMIN_USERNAME");
-    expect(s).not.toMatch(/\busername\b/);
+    expect(s).not.toMatch(/\\busername\\b/);
   });
 
   it("removes the ADMIN sentinel bypass", () => {
     const s = read("src/lib/authorization/index.ts");
-    expect(s).not.toMatch(/userId\s*===\s*["']ADMIN["']/);
+    expect(s).not.toMatch(/userId\\s*===\\s*["']ADMIN["']/);
   });
 
   it("uses USER_COOKIE at the edge", () => {
@@ -38,7 +38,7 @@ describe("R45 canonical authentication contract", () => {
 
   it("does not authorize AI through User.role fallback", () => {
     const s = read("src/lib/ai-policy.ts");
-    expect(s).not.toMatch(/user\.role/);
+    expect(s).not.toMatch(/user\\.role/);
     expect(s).not.toContain("select: { role: true }");
   });
 
