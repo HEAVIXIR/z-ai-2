@@ -106,9 +106,9 @@ export async function POST(req: Request) {
     }
     const listing = await db.listing.findUnique({
       where: { id: listingId },
-      select: { id: true, title: true },
+      select: { id: true, title: true, status: true },
     });
-    if (!listing) {
+    if (!listing || listing.status !== "PUBLISHED") {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
     if (dealRoomId) {
@@ -132,7 +132,19 @@ export async function POST(req: Request) {
         status: "REQUESTED",
         notes,
       },
-      include: { listing: true },
+      include: {
+        listing: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            price: true,
+            province: true,
+            city: true,
+            images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1 },
+          },
+        },
+      },
     });
     return NextResponse.json({ inspection: serialize(inspection) }, { status: 201 });
   } catch (e: any) {
