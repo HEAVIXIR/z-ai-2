@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
-import { parseBig, parseNumber } from "@/lib/api-helpers";
+import { parseNumber } from "@/lib/api-helpers";
 import { scoreChecklist } from "@/lib/inspection-checklists";
 
 export const runtime = "nodejs";
@@ -271,14 +271,23 @@ export async function PATCH(
         return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
       }
       try {
-        const parsedPrice = body.price === null || body.price === "" ? null : parseBig(body.price);
-        if (
-          (body.price !== null && body.price !== "" && parsedPrice === null) ||
-          (typeof parsedPrice === "bigint" && parsedPrice < 0n)
-        ) {
-          return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+        if (body.price === null || body.price === "") {
+          data.price = null;
+        } else {
+          const rawPrice = String(body.price)
+            .trim()
+            .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+            .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+            .replace(/[٬,\s]/g, "");
+          if (!/^\d+$/.test(rawPrice)) {
+            return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+          }
+          const parsedPrice = BigInt(rawPrice);
+          if (parsedPrice > 9223372036854775807n) {
+            return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+          }
+          data.price = parsedPrice;
         }
-        data.price = parsedPrice;
       } catch {
         return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
       }
