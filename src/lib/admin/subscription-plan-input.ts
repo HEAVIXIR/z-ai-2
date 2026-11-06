@@ -46,7 +46,7 @@ function parseMoney(value: unknown, field: string): bigint | null | ParseResult 
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") {
     return { ok: false, error: `${field} معتبر نیست` };
   }
-  const raw = String(value).trim();
+  if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) {\n    return { ok: false, error: `${field} باید عدد صحیح امن و نامنفی باشد` };\n  }\n  const raw = String(value).trim();
   if (!/^\d+$/.test(raw)) return { ok: false, error: `${field} باید عدد صحیح نامنفی باشد` };
   try {
     const n = BigInt(raw);
