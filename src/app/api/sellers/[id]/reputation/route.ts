@@ -30,7 +30,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params;
 
     const user = await db.user.findFirst({
-      where: { id, role: "SELLER", status: "ACTIVE" },
+      where: {
+        id,
+        role: "SELLER",
+        status: "ACTIVE",
+        OR: [
+          { foundingStatus: null },
+          { foundingStatus: { is: { active: true } } },
+        ],
+      },
       select: {
         id: true,
         firstName: true,
