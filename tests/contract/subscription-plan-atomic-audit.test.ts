@@ -26,7 +26,10 @@ describe("admin subscription-plan mutation safety", () => {
     expect(detail).not.toContain("logAudit");
   });
 
-  it("deletes only unused plans and audits the deletion transactionally", () => {
+  it("prevents code renames while subscriptions are linked and deletes unused plans serializably", () => {
+    expect(detail).toContain("const linkedCount = await tx.premiumSubscription.count");
+    expect(detail).toContain('kind: "in-use"');
+    expect(detail).toContain("Prisma.TransactionIsolationLevel.Serializable");
     expect(detail).toContain("tx.premiumSubscription.count");
     expect(detail).toContain("tx.subscriptionPlan.delete");
     expect(detail).toContain('action: "admin.subscriptionPlans.delete"');
