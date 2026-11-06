@@ -21,8 +21,9 @@ describe("Store admin payment ledger state machine contract", () => {
   it("recalculates order payment state from approved and refunded ledger totals", () => {
     expect(source).toContain('status: "APPROVED"');
     expect(source).toContain('status: "REFUNDED"');
-    expect(source).toContain("const netApproved = approvedTotal - refundedTotal");
-    expect(source).toContain('hasRefund && netApproved <= 0 ? "REFUNDED"');
+    expect(source).toContain("computeStoreOrderPaymentStatus(");
+    expect(source).toContain("refundedCount > 0");
+    expect(source).not.toContain("approvedTotal - refundedTotal");
   });
 
   it("commits payment and order audit events in the same transaction", () => {
