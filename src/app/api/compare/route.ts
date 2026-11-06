@@ -3,16 +3,10 @@ import { db } from "@/lib/db";
 import { createSession } from "@/lib/compare-engine";
 import { getCurrentUserId } from "@/lib/auth";
 import { trackEvent } from "@/lib/analytics";
+import { toPublicListingDTO } from "@/lib/public-listing-dto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function serialize(l: any) {
-  return {
-    ...l,
-    price: l.price ? l.price.toString() : null,
-  };
-}
 
 /* ============================================================
    POST /api/compare — create a new comparison session.
@@ -107,7 +101,7 @@ export async function GET(req: Request) {
     }
 
     const listings = await db.listing.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, status: "PUBLISHED" },
       include: {
         brand: { select: { id: true, name: true, nameEn: true } },
         category: { select: { id: true, name: true, nameEn: true } },
@@ -120,7 +114,7 @@ export async function GET(req: Request) {
       .filter(Boolean) as typeof listings;
 
     return NextResponse.json({
-      listings: ordered.map(serialize),
+      listings: ordered.map(toPublicListingDTO),
     });
   } catch (err: any) {
     return NextResponse.json(
