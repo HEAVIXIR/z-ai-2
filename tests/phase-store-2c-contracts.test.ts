@@ -1120,6 +1120,18 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       }
     });
 
+
+    it('store payment review uses the transactional audit outbox and reconciles order totals', () => {
+      const content = readRoute('src/app/api/admin/store/payments/[id]/route.ts');
+      expect(content).toContain('enqueueAuditOutbox');
+      expect(content).toContain('storeDb.$transaction');
+      expect(content).toContain('tx.payment.update');
+      expect(content).toContain('tx.order.update');
+      expect(content).toContain('tx.payment.aggregate');
+      expect(content).toContain('payment status recalculated from approved payment ledger');
+      expect(content).not.toContain('logAudit');
+    });
+
     it('procurement routes still inline (no service extraction)', () => {
       // Per T-A-DEEP-STORE scope: procurement routes were NOT migrated to a service.
       // Their mutations stay inline in the route files.
