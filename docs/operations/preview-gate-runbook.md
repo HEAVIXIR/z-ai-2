@@ -13,7 +13,7 @@ The dedicated Worker entrypoint wraps OpenNext before any application request is
 
 Every other path and method — including HTML pages, Next.js RSC requests, `/_next` assets, APIs, admin routes, backup routes, and file endpoints — requires a valid signed session before OpenNext is called.
 
-The session cookie is host-only (`__Host-` prefix), Secure, HttpOnly, SameSite=Strict, Path=/, and expires after eight hours. Its HMAC-SHA-256 signature is made with a separate signing secret. Rotating the signing secret invalidates all existing sessions. The password and signing key are never put in source, URL, query strings, or logs. All gated responses are no-store and marked noindex.
+The session cookie is host-only (`__Host-` prefix), Secure, HttpOnly, SameSite=Strict, Path=/, and expires after eight hours. Its HMAC-SHA-256 signature is made with a separate signing secret. Logout clears the browser cookie; because the session is stateless, a previously copied cookie remains usable until expiry. Rotating the signing secret invalidates all existing sessions immediately. The password and signing key are never put in source, URL, query strings, or logs. All gated responses are no-store and marked noindex.
 
 The gate fails closed with HTTP 503 if `HEAVIX_ENV` is not exactly `preview`, either secret is missing, or either secret is shorter than 32 UTF-8 bytes. It does not fall through to OpenNext on configuration errors. The login/logout forms and every authenticated unsafe application method (anything other than GET/HEAD) require an exact same-origin `Origin` header and reject cross-site Fetch Metadata. This adds a Worker-level CSRF check rather than relying on SameSite cookies alone. Form bodies are bounded to 4 KiB. There is no durable/global rate limiter in this implementation; do not treat the in-isolate process as brute-force protection. Use a high-entropy password and rotate it if exposure is suspected.
 
@@ -48,7 +48,7 @@ The Preview base-config secret command updates the base configuration for new Pr
 
 ## Operator use
 
-Open the Preview URL. Enter the shared Preview password on the Heavix Preview Gate page. The browser stores a host-only, HttpOnly session cookie for up to eight hours. To log out, visit `/__heavix_preview/logout` and submit the logout form. Close the browser session when finished. A signing-key rotation logs out all sessions.
+Open the Preview URL. Enter the shared Preview password on the Heavix Preview Gate page. The browser stores a host-only, HttpOnly session cookie for up to eight hours. To log out, visit `/__heavix_preview/logout` and submit the logout form; the browser cookie is cleared. Do not assume this revokes a copied cookie: it remains valid until its eight-hour expiry. A signing-key rotation logs out all sessions immediately.
 
 ## Known limits
 
