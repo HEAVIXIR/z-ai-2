@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const devEmailCode = String(Math.floor(100000 + Math.random() * 900000));
+    const devEmailCode = String(randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.verificationCode.create({
       data: {
