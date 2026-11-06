@@ -67,6 +67,11 @@ const mockStoreDb = {
     findFirst: vi.fn(async () => null),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
+    count: vi.fn(async () => 0),
+    aggregate: vi.fn(async () => ({ _sum: { amountIrr: 0 } })),
+  },
+  auditOutbox: {
+    create: vi.fn(async () => ({ id: "outbox-1" })),
   },
   wishlist: {
     findMany: vi.fn(async () => []),
@@ -80,6 +85,7 @@ const mockStoreDb = {
       payment: mockStoreDb.payment,
       order: mockStoreDb.order,
       customer: mockStoreDb.customer,
+      auditOutbox: mockStoreDb.auditOutbox,
     };
     return fn(tx);
   }),
@@ -113,6 +119,9 @@ beforeEach(() => {
   mockStoreDb.customer.findUnique.mockResolvedValue(null);
   mockStoreDb.customer.upsert.mockResolvedValue({ id: "cust-1", phone: "09120000000", userId: null });
   mockStoreDb.payment.create.mockResolvedValue({ id: "pay-1" });
+  mockStoreDb.payment.count.mockResolvedValue(0);
+  mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 0 } });
+  mockStoreDb.auditOutbox.create.mockResolvedValue({ id: "outbox-1" });
   mockStoreDb.wishlist.findMany.mockResolvedValue([]);
 });
 
@@ -303,8 +312,8 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
   it("NEGATIVE: too many pending payments → 409", async () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
-    const payments = Array(4).fill(null).map((_, i) => ({ id: `p${i}`, status: "PENDING", amountIrr: 100000 }));
-    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments });
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    mockStoreDb.payment.count.mockResolvedValue(4);
     const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
     expect(res.status).toBe(409);
   });
@@ -312,7 +321,8 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
   it("NEGATIVE: overpayment → 400", async () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
-    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [{ status: "APPROVED", amountIrr: 900000 }] });
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 900000 } });
     const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 200000 }));
     // 900000 + 200000 = 1100000 > 1000000 totalIrr
     expect(res.status).toBe(400);
@@ -324,6 +334,9 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
     const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 500000 }));
     expect(res.status).toBe(200);
+    expect(mockStoreDb.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockStoreDb.payment.create).toHaveBeenCalledTimes(1);
+    expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(1);
   });
 });
 
