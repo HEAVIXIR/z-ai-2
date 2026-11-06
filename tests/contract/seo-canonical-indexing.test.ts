@@ -59,7 +59,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
   it("lets the SEO control plane override public article, company, and model metadata", () => {
     expect(read("src/app/articles/[slug]/page.tsx")).toContain('getSEO("Article", article.id)');
     expect(read("src/app/companies/[slug]/page.tsx")).toContain('getSEO("Company", company.id)');
-    expect(read("src/app/brands/[slug]/models/[modelSlug]/page.tsx')).toContain('getSEO("ProductModel", model.id)');
+    expect(read("src/app/brands/[slug]/models/[modelSlug]/page.tsx")).toContain('getSEO("ProductModel", model.id)');
   });
 
   it("preserves existing robots policy when an SEO update omits robots directives", () => {
