@@ -63,6 +63,7 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain("9223372036854775807n");
     expect(source).toContain("replace(/[۰-۹]/g");
     expect(source).toContain('error: "Inspection not found"');
+    expect(source).toContain('error: "Unable to load inspection"');
     expect(source).toContain('error: "Unable to update inspection"');
     expect(source).not.toContain("e?.message ?? \"Server error\"");
   });
