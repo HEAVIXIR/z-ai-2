@@ -3,10 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const source = fs.readFileSync(
-  path.join(ROOT, "src/app/sellers/[id]/page.tsx"),
-  "utf8",
-);
+
+function read(relativePath: string): string {
+  return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
+}
+
+const source = read("src/app/sellers/[id]/page.tsx");
 
 describe("public seller profile reputation integrity", () => {
   it("does not fabricate trust scores or star ratings from listing counts", () => {
