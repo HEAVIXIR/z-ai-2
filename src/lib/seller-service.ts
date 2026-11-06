@@ -207,7 +207,7 @@ export async function verifySeller(
     if (!user) throw new SellerServiceError(404, "کاربر فروشنده یافت نشد");
 
     let userStatus = user.status;
-    if (user.status === "PENDING" || user.status === "BLOCKED") {
+    if (user.status === "PENDING") {
       const updated = await tx.user.update({
         where: { id: userId },
         data: { status: "ACTIVE" },
