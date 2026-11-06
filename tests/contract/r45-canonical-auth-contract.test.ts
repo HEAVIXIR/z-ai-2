@@ -42,6 +42,24 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("select: { role: true }");
   });
 
+  it("admin user PATCH and DELETE commit audit with their mutations", () => {
+    const s = read("src/app/api/admin/users/[id]/route.ts");
+    const patchStart = s.indexOf("export async function PATCH");
+    const deleteStart = s.indexOf("export async function DELETE");
+    expect(patchStart).toBeGreaterThanOrEqual(0);
+    expect(deleteStart).toBeGreaterThan(patchStart);
+    const patch = s.slice(patchStart, deleteStart);
+    const remove = s.slice(deleteStart);
+    expect(patch).toContain("db.$transaction");
+    expect(patch).toContain("tx.auditLog.create");
+    expect(patch).toContain("tx.userRole.upsert");
+    expect(patch).not.toContain("logAudit");
+    expect(remove).toContain("db.$transaction");
+    expect(remove).toContain("tx.user.delete");
+    expect(remove).toContain("tx.auditLog.create");
+    expect(remove).not.toContain("logAudit");
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
