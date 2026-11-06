@@ -126,13 +126,20 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const body = await req.json().catch(() => ({}));
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
     const userId = String(body.userId ?? "");
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
     const amount = parseBig(body.amount);
-    if (!amount || amount <= 0n) {
+    if (amount === null || amount <= 0n || amount > 9223372036854775807n) {
       return NextResponse.json({ error: "amount is required" }, { status: 400 });
     }
     const type = String(body.type ?? "SUBSCRIPTION").toUpperCase();
@@ -148,6 +155,9 @@ export async function POST(req: Request) {
         { error: `type must be one of: ${ALLOWED.join(", ")}` },
         { status: 400 },
       );
+    }
+    if (body.markPaid !== undefined && typeof body.markPaid !== "boolean") {
+      return NextResponse.json({ error: "markPaid must be a boolean" }, { status: 400 });
     }
     const markPaid = body.markPaid !== false; // default true
 
