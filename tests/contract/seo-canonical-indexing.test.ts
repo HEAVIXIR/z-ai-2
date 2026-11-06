@@ -21,7 +21,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
   });
 
   it("uses brand-scoped canonical model URLs instead of ambiguous global slugs", () => {
-    const model = read("src/app/brands/[brandSlug]/models/[slug]/page.tsx");
+    const model = read("src/app/brands/[slug]/models/[modelSlug]/page.tsx");
     const legacy = read("src/app/models/[slug]/page.tsx");
     const brand = read("src/app/brands/[slug]/page.tsx");
     const sitemap = read("src/app/sitemap.ts");
