@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import {
@@ -73,6 +74,10 @@ export async function PATCH(req: Request, { params }: Params) {
           where: { code: parsed.data.code },
         });
         if (conflict) return { kind: "conflict" as const };
+        const linkedCount = await tx.premiumSubscription.count({
+          where: { plan: before.code },
+        });
+        if (linkedCount > 0) return { kind: "in-use" as const, subscribers: linkedCount };
       }
 
       const updated = await tx.subscriptionPlan.update({
@@ -99,6 +104,12 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (outcome.kind === "conflict") {
       return NextResponse.json({ success: false, error: "کد این پلن قبلاً ثبت شده است" }, { status: 409 });
+    }
+    if (outcome.kind === "in-use") {
+      return NextResponse.json({
+        success: false,
+        error: `کد این پلن به ${outcome.subscribers} اشتراک متصل است و قابل تغییر نیست. ابتدا اشتراک‌ها را منتقل کنید.`,
+      }, { status: 409 });
     }
     return NextResponse.json({ success: true, plan: await serialize(outcome.plan) });
   } catch (err: any) {
@@ -139,7 +150,7 @@ export async function DELETE(_req: Request, { params }: Params) {
         },
       });
       return { kind: "ok" as const };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if (outcome.kind === "not-found") {
       return NextResponse.json({ success: false, error: "طرح یافت نشد" }, { status: 404 });
