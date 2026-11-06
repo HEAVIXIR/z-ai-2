@@ -71,19 +71,19 @@ export async function POST(req: Request) {
         return { kind: "paid" as const };
       }
 
+      // A pending manual receipt must be reviewed before a gateway authority
+      // is reused or opened; otherwise two channels can collect the same balance.
+      const pendingManualCount = await tx.payment.count({
+        where: { orderId: order.id, status: "PENDING", method: { not: "GATEWAY" } },
+      });
+      if (pendingManualCount > 0) return { kind: "pending-manual" as const };
+
       const existingGateway = await tx.payment.findFirst({
         where: { orderId: order.id, method: "GATEWAY", status: "PENDING" },
       });
       if (existingGateway) {
         return { kind: "existing" as const, payment: existingGateway };
       }
-
-      // A pending manual receipt must be reviewed before another payment
-      // channel is opened; otherwise both channels can collect the same balance.
-      const pendingCount = await tx.payment.count({
-        where: { orderId: order.id, status: "PENDING" },
-      });
-      if (pendingCount > 0) return { kind: "pending-manual" as const };
 
       const approved = await tx.payment.aggregate({
         where: { orderId: order.id, status: "APPROVED" },
