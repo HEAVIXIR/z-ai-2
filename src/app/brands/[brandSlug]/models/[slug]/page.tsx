@@ -27,10 +27,30 @@ export async function generateMetadata({
   }
   const model = await db.productModel.findFirst({
     where: { slug, brandId: brand.id, status: "ACTIVE" },
-    select: { name: true, nameEn: true, description: true },
+    select: {
+      name: true,
+      nameEn: true,
+      description: true,
+      _count: {
+        select: {
+          listings: { where: { status: "PUBLISHED" } },
+          generations: { where: { status: "ACTIVE" } },
+        },
+      },
+    },
   });
   if (!model) {
     return { title: "مدل یافت نشد | هویکس", robots: { index: false, follow: false } };
+  }
+  if (
+    !model.description?.trim() &&
+    model._count.listings === 0 &&
+    model._count.generations === 0
+  ) {
+    return {
+      title: `${brand.name} ${model.name} | هویکس`,
+      robots: { index: false, follow: true },
+    };
   }
   const title = `${brand.name} ${model.name} | مشخصات فنی و آگهی‌ها | هویکس`;
   const description =
