@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
 
@@ -89,7 +88,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
@@ -127,13 +126,20 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const body = await req.json().catch(() => ({}));
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
     const userId = String(body.userId ?? "");
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
     const amount = parseBig(body.amount);
-    if (!amount || amount <= 0n) {
+    if (amount === null || amount <= 0n || amount > 9223372036854775807n) {
       return NextResponse.json({ error: "amount is required" }, { status: 400 });
     }
     const type = String(body.type ?? "SUBSCRIPTION").toUpperCase();
@@ -150,69 +156,94 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (body.markPaid !== undefined && typeof body.markPaid !== "boolean") {
+      return NextResponse.json({ error: "markPaid must be a boolean" }, { status: 400 });
+    }
     const markPaid = body.markPaid !== false; // default true
 
-    const user = await db.user.findUnique({ where: { id: userId } });
-    if (!user) {
+    const subscriptionId = body.subscriptionId ? String(body.subscriptionId) : null;
+    const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
+    if (!["ZARINPAL", "PAYIR", "MANUAL"].includes(gateway)) {
+      return NextResponse.json({ error: "gateway is invalid" }, { status: 400 });
+    }
+    const trackingCode = body.trackingCode ? String(body.trackingCode) : null;
+    if (trackingCode && trackingCode.length > 100) {
+      return NextResponse.json({ error: "trackingCode must not exceed 100 characters" }, { status: 400 });
+    }
+    const currency = String(body.currency ?? "IRR").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      return NextResponse.json({ error: "currency must be a 3-letter code" }, { status: 400 });
+    }
+
+    const payment = await db.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!user) return { kind: "USER_NOT_FOUND" as const };
+
+      if (subscriptionId) {
+        const subscription = await tx.premiumSubscription.findFirst({
+          where: { id: subscriptionId, userId },
+          select: { id: true },
+        });
+        if (!subscription) return { kind: "SUBSCRIPTION_NOT_FOUND" as const };
+      }
+
+      const created = await tx.payment.create({
+        data: {
+          userId,
+          subscriptionId,
+          amount,
+          currency,
+          type,
+          status: markPaid ? "PAID" : "PENDING",
+          gateway,
+          trackingCode,
+          paidAt: markPaid ? new Date() : null,
+        },
+      });
+
+      if (markPaid && type === "SUBSCRIPTION" && subscriptionId) {
+        await tx.premiumSubscription.update({
+          where: { id: subscriptionId },
+          data: { status: "ACTIVE", paymentRef: created.id },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "payment.create_manual",
+          entityType: "Payment",
+          entityId: created.id,
+          afterJson: JSON.stringify({
+            userId,
+            subscriptionId,
+            amount: amount.toString(),
+            currency,
+            type,
+            gateway: created.gateway,
+            status: created.status,
+            trackingCode,
+          }),
+          reason: "via admin API",
+        },
+      });
+
+      return { kind: "CREATED" as const, payment: created };
+    });
+
+    if (payment.kind === "USER_NOT_FOUND") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-
-    const payment = await db.payment.create({
-      data: {
-        userId,
-        subscriptionId: body.subscriptionId
-          ? String(body.subscriptionId)
-          : null,
-        amount,
-        currency: body.currency ?? "IRR",
-        type,
-        status: markPaid ? "PAID" : "PENDING",
-        gateway: body.gateway ? String(body.gateway).toUpperCase() : "MANUAL",
-        trackingCode: body.trackingCode ? String(body.trackingCode) : null,
-        paidAt: markPaid ? new Date() : null,
-      },
-    });
-
-    // On markPaid + SUBSCRIPTION type + linked subscriptionId,
-    // activate the subscription so plan features unlock
-    // immediately.
-    if (
-      markPaid &&
-      type === "SUBSCRIPTION" &&
-      payment.subscriptionId
-    ) {
-      try {
-        await db.premiumSubscription.update({
-          where: { id: payment.subscriptionId },
-          data: { status: "ACTIVE", paymentRef: payment.id },
-        });
-      } catch (subErr: any) {
-        console.error(
-          "[admin.payments] sub activation failed:",
-          subErr?.message ?? subErr,
-        );
-      }
+    if (payment.kind === "SUBSCRIPTION_NOT_FOUND") {
+      return NextResponse.json({ error: "Subscription not found for this user" }, { status: 404 });
     }
-
-    await logAudit({
-      actorType: "ADMIN",
-      action: "payment.create_manual",
-      entityType: "Payment",
-      entityId: payment.id,
-      after: {
-        userId,
-        amount: amount.toString(),
-        type,
-        gateway: payment.gateway,
-        status: payment.status,
-      },
-    });
-
-    return NextResponse.json({ ok: true, payment: serialize(payment) });
+    const createdPayment = payment.payment;
+    return NextResponse.json({ ok: true, payment: serialize(createdPayment) });
   } catch (err: any) {
     trackError(err, { endpoint: "POST /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
