@@ -108,9 +108,13 @@ describe("SEO canonical routes and private-page indexing contract", () => {
       expect(read(file)).toContain("index: false");
     }
     const robots = read("src/app/robots.ts");
+    const service = read("src/lib/seo-service.ts");
     expect(robots).toContain('disallow: ["/api/"]');
     expect(robots).not.toContain('"/admin/"');
     expect(robots).not.toContain('"/dashboard/"');
+    expect(service).toContain('"Disallow: /api/"');
+    expect(service).not.toContain('"Disallow: /admin/"');
+    expect(service).not.toContain('"Disallow: /dashboard/"');
   });
 
   it("does not emit a fresh lastmod for unchanged static sitemap URLs", () => {
