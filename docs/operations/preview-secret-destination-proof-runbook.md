@@ -137,6 +137,20 @@ Therefore, before any version upload:
 
 This is a candidate plan only. No version upload, secret inheritance, preview URL enablement, Access configuration, deployment, or token creation has occurred. If the access-control condition cannot be met without exposing the Preview app or changing current access, stop and use a trusted local runner instead.
 
+## Phase 5.1 — proof-only wrapper smoke evidence (2026-11-06)
+
+PR #200 exact code HEAD `6ad466305bdb5bf5da081d28d808f3c3bcf0eb7b` completed OpenNext workflow run `42200073422` (#121) with **SUCCESS**.
+
+Verified in CI:
+- The generated OpenNext Worker ran through `scripts/preview-version-worker.mjs`.
+- Only the exact proof GET route with a generated 256-bit ephemeral bearer token was forwarded to OpenNext.
+- Missing token, application root, admin/backup path, and non-GET proof method were denied with HTTP 404 before the OpenNext app was invoked.
+- Existing identity guard tests and PPG Workerd module-load smoke passed without database credentials.
+- Worker bundle audit completed and was uploaded as artifact `13493364561`, digest `sha256:57309cb361738b27544fb2c0eb828c34588c54ddf0ef73c912a6164c556ed22e`.
+- Full CI run `42200073408` was queued at the time of this update.
+
+This is code-path and exposure-boundary evidence only. It is not a Preview DB connection test, does not prove the live Cloudflare Secret destinations, and does not authorize a Worker upload or Version URL enablement.
+
 ## Phase 4 — evidence to report
 
 Share only:
