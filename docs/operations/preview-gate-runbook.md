@@ -15,7 +15,7 @@ Every other path and method — including HTML pages, Next.js RSC requests, `/_n
 
 The session cookie is host-only (`__Host-` prefix), Secure, HttpOnly, SameSite=Strict, Path=/, and expires after eight hours. Its HMAC-SHA-256 signature is made with a separate signing secret. Rotating the signing secret invalidates all existing sessions. The password and signing key are never put in source, URL, query strings, or logs. All gated responses are no-store and marked noindex.
 
-The gate fails closed with HTTP 503 if `HEAVIX_ENV` is not exactly `preview`, either secret is missing, or either secret is shorter than 32 UTF-8 bytes. It does not fall through to OpenNext on configuration errors. The login form requires an exact same-origin `Origin` header and rejects cross-site Fetch Metadata. Form bodies are bounded to 4 KiB. There is no durable/global rate limiter in this implementation; do not treat the in-isolate process as brute-force protection. Use a high-entropy password and rotate it if exposure is suspected.
+The gate fails closed with HTTP 503 if `HEAVIX_ENV` is not exactly `preview`, either secret is missing, or either secret is shorter than 32 UTF-8 bytes. It does not fall through to OpenNext on configuration errors. The login/logout forms and every authenticated unsafe application method (anything other than GET/HEAD) require an exact same-origin `Origin` header and reject cross-site Fetch Metadata. This adds a Worker-level CSRF check rather than relying on SameSite cookies alone. Form bodies are bounded to 4 KiB. There is no durable/global rate limiter in this implementation; do not treat the in-isolate process as brute-force protection. Use a high-entropy password and rotate it if exposure is suspected.
 
 ## Preview-only secrets
 
