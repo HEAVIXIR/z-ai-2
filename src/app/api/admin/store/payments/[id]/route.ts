@@ -35,7 +35,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const { id } = await params;
   try {
-    const body = await req.json();
+    const declaredLength = Number(req.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست بیش از حد بزرگ است" }, { status: 413 });
+    }
+    const raw = await req.text();
+    if (raw.length > 16 * 1024) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست بیش از حد بزرگ است" }, { status: 413 });
+    }
+    let body: any;
+    try {
+      body = raw.trim() ? JSON.parse(raw) : null;
+    } catch {
+      return NextResponse.json({ success: false, error: "JSON درخواست معتبر نیست" }, { status: 400 });
+    }
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ success: false, error: "بدنه درخواست نامعتبر است" }, { status: 400 });
     }
@@ -82,17 +95,42 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const result = await storeDb.$transaction(async (tx) => {
+      const initial = await tx.payment.findUnique({ where: { id } });
+      if (!initial) return { kind: "NOT_FOUND" as const };
+
+      // All payment channels serialize ledger mutations on the parent order.
+      if (initial.orderId) {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${initial.orderId}, 0))`;
+      }
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) return { kind: "NOT_FOUND" as const };
 
-      const payment = await tx.payment.update({
-        where: { id },
+      if (body.status !== undefined && body.status !== existing.status) {
+        const allowedNext: Record<string, string[]> = {
+          PENDING: ["APPROVED", "REJECTED"],
+          APPROVED: ["REFUNDED"],
+          REJECTED: [],
+          REFUNDED: [],
+        };
+        if (!(allowedNext[existing.status] || []).includes(body.status)) {
+          return { kind: "INVALID_TRANSITION" as const };
+        }
+      }
+
+      const changed = await tx.payment.updateMany({
+        where: { id, status: existing.status },
         data,
+      });
+      if (changed.count !== 1) return { kind: "CONFLICT" as const };
+
+      const payment = await tx.payment.findUnique({
+        where: { id },
         include: {
           order: { select: { id: true, orderNumber: true, totalIrr: true, status: true } },
           customer: { select: { id: true, name: true, family: true, phone: true } },
         },
       });
+      if (!payment) return { kind: "NOT_FOUND" as const };
 
       if (body.status !== undefined && existing.orderId) {
         const order = await tx.order.findUnique({
@@ -100,15 +138,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           select: { id: true, paymentStatus: true, totalIrr: true },
         });
         if (order) {
-          const approved = await tx.payment.aggregate({
-            where: { orderId: order.id, status: "APPROVED" },
-            _sum: { amountIrr: true },
-          });
+          const [approved, refunded] = await Promise.all([
+            tx.payment.aggregate({
+              where: { orderId: order.id, status: "APPROVED" },
+              _sum: { amountIrr: true },
+            }),
+            tx.payment.aggregate({
+              where: { orderId: order.id, status: "REFUNDED" },
+              _sum: { amountIrr: true },
+            }),
+          ]);
           const approvedTotal = Number(approved._sum.amountIrr ?? 0);
+          const refundedTotal = Number(refunded._sum.amountIrr ?? 0);
+          const netApproved = approvedTotal - refundedTotal;
+          const hasRefund = refundedTotal > 0;
           const orderTotal = Number(order.totalIrr ?? 0);
           const nextPaymentStatus =
-            approvedTotal > 0 && approvedTotal >= orderTotal ? "PAID" :
-            approvedTotal > 0 ? "PARTIAL" : "UNPAID";
+            hasRefund && netApproved <= 0 ? "REFUNDED" :
+            netApproved <= 0 ? "UNPAID" :
+            netApproved >= orderTotal ? (hasRefund ? "REFUNDED" : "PAID") :
+            "PARTIAL";
 
           if (nextPaymentStatus !== order.paymentStatus) {
             await tx.order.update({
@@ -118,12 +167,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             await enqueueAuditOutbox(tx, {
               actorId: user.id,
               actorType: "ADMIN",
-              action: 'store.order.update',
-              entityType: 'Order',
+              action: "store.order.update",
+              entityType: "Order",
               entityId: order.id,
               before: { paymentStatus: order.paymentStatus },
               after: { paymentStatus: nextPaymentStatus },
-              reason: "payment status recalculated from approved payment ledger",
+              reason: "payment status recalculated from approved and refunded payment ledger",
             });
           }
         }
@@ -132,8 +181,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await enqueueAuditOutbox(tx, {
         actorId: user.id,
         actorType: "ADMIN",
-        action: 'store.payment.update',
-        entityType: 'Payment',
+        action: "store.payment.update",
+        entityType: "Payment",
         entityId: payment.id,
         before: {
           orderId: existing.orderId,
@@ -164,14 +213,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       });
 
       return { kind: "OK" as const, payment };
-    });
+    });;
 
     if (result.kind === "NOT_FOUND") {
       return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     }
+    if (result.kind === "INVALID_TRANSITION") {
+      return NextResponse.json({ success: false, error: "انتقال وضعیت پرداخت مجاز نیست" }, { status: 409 });
+    }
+    if (result.kind === "CONFLICT") {
+      return NextResponse.json({ success: false, error: "پرداخت هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید" }, { status: 409 });
+    }
     const payment = result.payment;
     return NextResponse.json({ success: true, data: serialize(payment) });
   } catch (e: any) {
+    if (e?.code === "P2034") {
+      return NextResponse.json({ success: false, error: "پرداخت هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید" }, { status: 409 });
+    }
     console.error("[store/payments PATCH] request failed:", e);
     return NextResponse.json({ success: false, error: "پردازش پرداخت ناموفق بود" }, { status: 500 });
   }
