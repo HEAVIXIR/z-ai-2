@@ -80,16 +80,45 @@ const anonSession = {
 
 // ── GET /api/compare/[id] ───────────────────────────────────
 
-describe("GET /api/compare/[id] — capability access + userId redaction", () => {
-  it("POSITIVE: anonymous can GET (capability model)", async () => {
+describe("GET /api/compare/[id] — anonymous capability + owner privacy", () => {
+  it("POSITIVE: anonymous can GET an anonymous-created session", async () => {
     mockCurrentUser = null;
-    mockSession = { ...ownedSession };
-    const res = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
+    mockSession = { ...anonSession };
+    const res = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s2"), ARGS("s2"));
     expect(res.status).toBe(200);
   });
 
-  it("SECURITY: userId is NOT in the response (PII redaction)", async () => {
+  it("NEGATIVE: anonymous cannot GET an owned session", async () => {
     mockCurrentUser = null;
+    mockSession = { ...ownedSession };
+    const res = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
+    expect(res.status).toBe(401);
+  });
+
+  it("NEGATIVE: non-owner cannot GET another user's session", async () => {
+    mockCurrentUser = { id: "user-B" };
+    mockIsAdminResult = false;
+    mockSession = { ...ownedSession };
+    const res = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
+    expect(res.status).toBe(403);
+  });
+
+  it("POSITIVE: owner and admin can GET an owned session", async () => {
+    mockCurrentUser = { id: "user-A" };
+    mockIsAdminResult = false;
+    mockSession = { ...ownedSession };
+    const ownerRes = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
+    expect(ownerRes.status).toBe(200);
+
+    mockCurrentUser = { id: "admin-1" };
+    mockIsAdminResult = true;
+    const adminRes = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
+    expect(adminRes.status).toBe(200);
+  });
+
+  it("SECURITY: userId is NOT in the response (PII redaction)", async () => {
+    mockCurrentUser = { id: "user-A" };
+    mockIsAdminResult = false;
     mockSession = { ...ownedSession };
     const res = await compareIdRoute.GET(makeReq("http://localhost/api/compare/s1"), ARGS("s1"));
     const body = await res.json();
