@@ -20,7 +20,7 @@ export async function generateMetadata({
   const { slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
   const category = await db.category.findFirst({
-    where: { slug },
+    where: { slug, active: true },
     select: { id: true, name: true, slug: true },
   });
   if (!category) return { title: "دسته‌بندی یافت نشد", robots: { index: false, follow: false } };
@@ -52,7 +52,7 @@ export default async function CategoryPage({
 
   const [category, headerCats] = await Promise.all([
     db.category.findFirst({
-      where: { slug },
+      where: { slug, active: true },
       include: {
         children: {
           where: { active: true },
