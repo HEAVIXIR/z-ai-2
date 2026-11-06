@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
    STEP 11.35 — Compare IDOR Fix: all 5 routes
    ------------------------------------------------------------
    Reproduction (BEFORE fix):
-   - GET /api/compare/[id] — NO auth, exposes userId + shareToken
+   - GET /api/compare/[id] — NO auth for owned sessions; exposes shareToken
+     (anonymous sessions intentionally retain capability access)
    - DELETE /api/compare/[id] — NO auth, anyone can archive
    - PATCH /api/compare/[id] — NO auth, anyone can rename/refresh token
    - POST /api/compare/[id]/items — NO auth, anyone can add items
