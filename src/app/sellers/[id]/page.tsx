@@ -7,12 +7,7 @@ import Footer from "@/components/layout/Footer";
 import ListingCard from "@/components/listings/ListingCard";
 import {
   ArrowLeft,
-  User,
-  Phone,
-  Mail,
-  MapPin,
   Building2,
-  Star,
   ShieldCheck,
   Megaphone,
   CheckCircle2,
@@ -28,8 +23,16 @@ export default async function SellerProfilePage({
   const { id } = await params;
 
   const [seller, headerCats] = await Promise.all([
-    db.user.findUnique({
-      where: { id },
+    db.user.findFirst({
+      where: {
+        id,
+        userRoles: { some: { role: { key: "SELLER" } } },
+        status: "ACTIVE",
+        OR: [
+          { foundingStatus: null },
+          { foundingStatus: { is: { active: true } } },
+        ],
+      },
       include: {
         company: { select: { id: true, name: true, slug: true, logoUrl: true, verified: true } },
         _count: {
@@ -57,18 +60,12 @@ export default async function SellerProfilePage({
     },
   });
 
+  // Public statistics must include only published listings. Draft,
+  // rejected, or hidden listing activity is not exposed on a public profile.
   const totalViews = await db.listing.aggregate({
-    where: { sellerId: seller.id },
+    where: { sellerId: seller.id, status: "PUBLISHED" },
     _sum: { viewCount: true },
   });
-
-  const trustScore = Math.min(
-    100,
-    40 +
-      (listings.length >= 5 ? 20 : listings.length * 4) +
-      (seller._count.listings >= 10 ? 20 : 0) +
-      (seller.company?.verified ? 20 : 0),
-  );
 
   const fullName = `${seller.firstName} ${seller.lastName}`.trim();
 
@@ -112,15 +109,6 @@ export default async function SellerProfilePage({
                   </p>
                 )}
 
-                {/* Trust score */}
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-1.5">
-                    <Star className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-xs font-bold text-emerald-400">
-                      امتیاز اعتماد: {toFa(trustScore)} از {toFa(100)}
-                    </span>
-                  </div>
-                </div>
               </div>
 
               {/* Quick stats */}
@@ -140,11 +128,15 @@ export default async function SellerProfilePage({
                   <div className="text-[10px] text-white/45">بازدید</div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-[#111] p-4 text-center">
-                  <Star className="mx-auto h-5 w-5 text-amber-400" />
-                  <div className="mt-1 text-xl font-black text-white">
-                    {toFa(seller._count.listings > 0 ? 5 : 0)}
+                  <Building2 className="mx-auto h-5 w-5 text-[#F58220]" />
+                  <div className="mt-1 text-sm font-black text-white">
+                    {seller.company?.verified
+                      ? "تأییدشده"
+                      : seller.company
+                        ? "در انتظار بررسی"
+                        : "ثبت نشده"}
                   </div>
-                  <div className="text-[10px] text-white/45">امتیاز</div>
+                  <div className="text-[10px] text-white/45">وضعیت شرکت</div>
                 </div>
               </div>
             </div>
