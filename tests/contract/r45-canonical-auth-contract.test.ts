@@ -48,4 +48,20 @@ describe("R45 canonical authentication contract", () => {
     expect(s).toContain("db.userRole.upsert");
     expect(s).not.toContain('role: "SELLER"');
   });
+
+  it("admin premium subscription grants commit entitlement changes with audit", () => {
+    const s = read("src/app/api/admin/subscriptions/route.ts");
+    const postStart = s.indexOf("export async function POST");
+    expect(postStart).toBeGreaterThanOrEqual(0);
+    const post = s.slice(postStart);
+    expect(post).toContain("db.$transaction");
+    expect(post).toContain("tx.premiumSubscription.findUnique");
+    expect(post).toContain("tx.premiumSubscription.upsert");
+    expect(post).toContain("tx.auditLog.create");
+    expect(post).toContain("actorId: sessionUser.id");
+    expect(post).toContain("16 * 1024");
+    expect(post).toContain("Unknown request field");
+    expect(post).toContain("9223372036854775807n");
+    expect(post).not.toContain("logAudit");
+  });
 });
