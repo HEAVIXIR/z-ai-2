@@ -919,7 +919,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
     it('payments/[id] has 2 mutations and 2 audits', () => {
       const content = readRoute(paymentsId);
       const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-      const auditMatches = content.match(/await logAudit\(/g) || [];
+      const auditMatches = content.match(/await enqueueAuditOutbox\(/g) || [];
       expect(mutMatches.length).toBe(2);
       expect(auditMatches.length).toBe(2);
     });
