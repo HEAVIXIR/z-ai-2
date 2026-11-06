@@ -32,16 +32,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Seller not found" }, { status: 404 });
     }
 
-    // Listing stats
-    const listingStats = await db.listing.groupBy({
-      by: ["status"],
-      _count: true,
-      where: { sellerId: id },
+    // Public reputation responses must not disclose draft, rejected, or
+    // hidden inventory counts. All listing metrics are scoped to PUBLISHED.
+    const publishedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED" },
     });
-
-    const totalListings = listingStats.reduce((sum, s) => sum + s._count, 0);
-    const publishedListings = listingStats.find(s => s.status === "PUBLISHED")?._count || 0;
-    const verifiedListings = await db.listing.count({ where: { sellerId: id, verified: true } });
+    const totalListings = publishedListings;
+    const verifiedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED", verified: true },
+    });
 
     // Build trust signals
     const trustSignals: any[] = [
