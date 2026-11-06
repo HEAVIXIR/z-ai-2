@@ -106,7 +106,8 @@ export async function GET(_req: Request, { params }: Args) {
 
     return NextResponse.json({ success: true, data: serialized });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] request failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -216,6 +217,7 @@ export async function PATCH(req: Request, { params }: Args) {
     // before snapshot under the same row lock so concurrent updates cannot
     // produce an audit record for a stale state.
     const replaceableKeys = ["ADMIN", "SELLER", "BUYER"];
+    const roleChangeForTransaction = roleChange;
     const updated = await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE "id" = ${id} FOR UPDATE`;
 
@@ -231,9 +233,7 @@ export async function PATCH(req: Request, { params }: Args) {
           companyName: true,
         },
       });
-      if (!before) {
-        throw new Error("USER_NOT_FOUND_DURING_UPDATE");
-      }
+      if (!before) return null;
 
       const user = await tx.user.update({
         where: { id },
@@ -243,7 +243,7 @@ export async function PATCH(req: Request, { params }: Args) {
         },
       });
 
-      if (roleChange) {
+      if (roleChangeForTransaction) {
         const existingUserRoles = await tx.userRole.findMany({
           where: { userId: id, role: { key: { in: replaceableKeys } } },
           select: { id: true },
@@ -254,7 +254,7 @@ export async function PATCH(req: Request, { params }: Args) {
           });
         }
         await tx.userRole.upsert({
-          where: { userId_roleId: { userId: id, roleId: roleChange.roleId } },
+          where: { userId_roleId: { userId: id, roleId: roleChangeForTransaction.roleId } },
           create: { userId: id, roleId: roleChange.roleId },
           update: {},
         });
@@ -271,6 +271,7 @@ export async function PATCH(req: Request, { params }: Args) {
             firstName: before.firstName,
             lastName: before.lastName,
             email: before.email,
+            mobile: existing.mobile,
             role: before.role,
             status: before.status,
             companyName: before.companyName,
@@ -279,6 +280,7 @@ export async function PATCH(req: Request, { params }: Args) {
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
+            mobile: user.mobile,
             role: user.role,
             status: user.status,
             companyName: user.companyName,
@@ -290,6 +292,7 @@ export async function PATCH(req: Request, { params }: Args) {
       return user;
     });
 
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: serializeUser(updated) });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
