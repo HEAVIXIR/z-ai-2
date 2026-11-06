@@ -56,6 +56,9 @@ describe("R45 canonical authentication contract", () => {
     expect(s).toContain("tx.payment.delete");
     expect(s.match(/tx\.auditLog\.create/g)?.length).toBeGreaterThanOrEqual(2);
     expect(s).not.toContain("logAudit");
+    expect(s).toContain("16 * 1024");
+    expect(s).toContain("No editable fields supplied");
+    expect(s).toContain("paidAt must be a valid date");
   });
 
   it("manual payment creation, subscription activation and audit are atomic", () => {
@@ -70,5 +73,8 @@ describe("R45 canonical authentication contract", () => {
     expect(post).toContain("actorId: sessionUser.id");
     expect(post).not.toContain("logAudit");
     expect(post).not.toContain("sub activation failed");
+    expect(post).toContain("16 * 1024");
+    expect(post).toContain("9223372036854775807n");
+    expect(post).toContain("markPaid must be a boolean");
   });
 });
