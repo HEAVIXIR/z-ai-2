@@ -118,8 +118,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             await enqueueAuditOutbox(tx, {
               actorId: user.id,
               actorType: "ADMIN",
-              action: "store.order.update",
-              entityType: "Order",
+              action: 'store.order.update',
+              entityType: 'Order',
               entityId: order.id,
               before: { paymentStatus: order.paymentStatus },
               after: { paymentStatus: nextPaymentStatus },
@@ -132,8 +132,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await enqueueAuditOutbox(tx, {
         actorId: user.id,
         actorType: "ADMIN",
-        action: "store.payment.update",
-        entityType: "Payment",
+        action: 'store.payment.update',
+        entityType: 'Payment',
         entityId: payment.id,
         before: {
           orderId: existing.orderId,
