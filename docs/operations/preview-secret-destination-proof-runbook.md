@@ -175,3 +175,56 @@ Do not share connection strings, passwords, tokens, screenshots of credential pa
 - Migrations, seeds, writes, DNS changes, and PR merge: **NOT PERFORMED**.
 
 Next safe step: complete the independent review and access-control design in Phase 5. Do not enable public Version URLs or alter deployment percentages until the route's exposure and rollback behavior are reviewed. If safe access cannot be established, use the local Workerd proof for the code path and keep live Cloudflare Secret destination marked UNPROVEN.
+
+
+## Phase 6 — independent Cloudflare / Prisma metadata recheck (2026-11-07)
+
+This addendum records a read-only API inventory. It does not authorize configuration changes or establish the destination of encrypted Worker secrets.
+
+### Cloudflare account inventory
+
+- The connected Cloudflare identity is the Heavixir account email. The account-list API returned one account visible to this connection.
+- The zone-list API returned **zero zones** for that account. A filtered lookup for `heavix.ir` also returned no zone.
+- Therefore, as of this check, this Cloudflare connection cannot prove that `heavix.ir` is attached to this account, cannot inspect its DNS records, and cannot establish a Worker route for that domain. This is an account/API-visible observation, not proof that the domain is absent from every Cloudflare account or that public DNS is broken.
+- The account exposes one Worker script: `heavix-preview`.
+- The Worker script metadata reports `modified_on=2026-11-06T10:19:45Z`.
+- The script-settings response reports an empty `bindings` array. The separate secrets inventory reports only the names/types `DATABASE_URL` and `STORE_DATABASE_URL` (`secret_text`). Secret values were not read.
+- The deployment inventory reports 14 deployments total. The newest deployment returned by the API is dated 2026-10-29 and assigns 100% to version `57c14554-2a28-4f77-981f-0b1ced6bad80`. This is deployment metadata, not a live request/health check.
+- The R2 bucket API returns Cloudflare error 10042, “Please enable R2 through the Cloudflare Dashboard.” HEAVIX's selected object-storage provider is Backblaze B2; Cloudflare R2 is not a substitute and no R2 activation is proposed here.
+
+### Prisma inventory
+
+- The connected Prisma workspace lists four projects: `heavix-production`, `heavix-app-preview`, `heavix-store-preview`, and `heavix-web-preview`.
+- The Postgres database inventory lists three Ready databases in Frankfurt:
+  - App Preview: `db_ew8d6duermpt125paxaqorr9`
+  - Store Preview: `db_cmtgxfrfwxw5mi77020tcnc3`
+  - Production: `db_rc9ln1df4rwgxducp2zsge2s`
+- The two Preview resources match the independently recorded IDs and identity pairs in Phase 2. Production was not queried.
+- The separate Prisma object-store bucket inventory returned no buckets. This is unrelated to Backblaze B2 and must not be interpreted as a B2 inventory.
+- Preview branches are provisioned in the App and Store projects. No branch, database, bucket, or deployment was created, deleted, promoted, or modified during this audit.
+
+### Backblaze B2 boundary
+
+Backblaze B2 is the designated HEAVIX object-storage and backup provider, separate from Cloudflare and Prisma. No Backblaze account/API connector is available in this session, so bucket inventory, application-key scope, lifecycle rules, retention, encryption settings, object lock, and restore behavior were **not re-verified live** in this phase. Historical project notes report a successful test upload/download/delete cycle; that historical test is not equivalent to a current restore drill or a verified backup policy. Do not claim current B2 readiness until a fresh non-production test object and a restore verification are evidenced through the operator's B2 account or a trusted S3-compatible client.
+
+### Updated release gates
+
+| Area | Current evidence | Decision |
+|---|---|---|
+| GitHub | PRs #224–#227 exact-head CI jobs all completed successfully; all remain Draft and unmerged | PASS for those CI runs only |
+| Cloudflare zone/DNS | No zones visible in the connected account; `heavix.ir` lookup empty | UNVERIFIED / BLOCKED for domain-route claims |
+| Cloudflare Worker | `heavix-preview` exists; two secret names visible; secret destinations not exposed; script-settings bindings array empty | PARTIAL; live DB destination UNPROVEN |
+| Prisma Preview DBs | Both exact Preview database resources Ready; identity pairs previously verified in read-only transactions | PROVEN for direct Prisma resource identity |
+| Prisma Production | Resource listed Ready; no SQL query or mutation performed | NOT TESTED |
+| Backblaze B2 | No live connector available in this session; historical test only | NOT RE-VERIFIED |
+| Cloudflare R2 | API says R2 must be enabled | OUT OF SCOPE; do not enable as a substitute for B2 |
+
+### Next safe actions
+
+1. Identify whether `heavix.ir` is intended to be in this Cloudflare account or a different account. Do not change DNS until account ownership and the authoritative DNS provider are confirmed.
+2. Keep the existing Worker and its encrypted secrets unchanged. Add no binding, secret, route, or deployment until the exact Preview destination is proven by the reviewed identity-probe process.
+3. Perform a fresh Backblaze B2 test in a dedicated non-production prefix/bucket: upload a uniquely named encrypted test object, verify metadata/checksum, download and compare SHA-256, verify retention/lifecycle expectations, and delete only that test object if policy permits. Then perform a separate restore drill from an actual backup artifact.
+4. Do not treat successful GitHub CI as evidence of Cloudflare runtime, Prisma connection routing, or B2 recovery. Each provider has its own independent gate.
+5. Do not query or mutate the Production database as part of these Preview checks.
+
+**No Cloudflare configuration, DNS, Worker version, secret, Prisma resource, database, Backblaze object, or Production state was changed during this recheck.**
