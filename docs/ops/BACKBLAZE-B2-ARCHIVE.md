@@ -194,3 +194,37 @@ The workflow currently checks point-in-time server address and PostgreSQL postma
 - No database SQL was executed as part of this inventory update.
 - No Production operation, database write, archive dispatch, B2 archive upload, Worker deployment, DNS change, or merge was performed.
 - PR #188 remains Draft/Open/unmerged. Keep the archive dispatch blocked until the architecture and every remaining recovery, retention, and identity gate are resolved.
+
+
+## Enforced Prisma credential safety block — 2026-11-06
+
+A code-level fail-closed guard was added to the manual dispatch gate. The archive cannot proceed while `PRISMA_READ_ONLY_CREDENTIALS_IMPLEMENTATION=false`. This is intentionally hard-coded in workflow configuration, not a repository variable, so setting operational attestation variables cannot bypass the provider limitation.
+
+Official Prisma documentation confirms:
+- All generated credentials for a Prisma Postgres database share the same database user and full database access; only the password differs.
+- Prisma Postgres does not support custom PostgreSQL roles or read-only credentials.
+- A credential cannot be restricted to selected tables, schemas, or PostgreSQL roles.
+- The direct connection is the documented path for `pg_dump`, but it does not provide a least-privilege credential.
+
+References:
+- https://www.prisma.io/docs/postgres/database/connecting-to-your-database
+- https://www.prisma.io/docs/postgres/faq
+- https://www.prisma.io/docs/postgres/database/backups
+
+The existing `pg_dump` job therefore must not be run with a Prisma-generated full-access credential. Do not create or populate GitHub Preview database URL secrets, and do not set readiness latches to work around this guard. A replacement export path must be designed and reviewed so that the archive runner never receives a full-access database credential.
+
+### Snapshot availability and zero-cost constraint
+
+- The Prisma connector currently returns no automated backup snapshots for either App Preview or Store Preview.
+- Official Prisma docs state that daily automated snapshots are available on Starter, Pro, and Business plans, only on days with database activity; the Free plan has no automated backups. The workspace metadata endpoint does not expose the current billing plan, so this document does not assert which plan is active.
+- The project constraint remains zero paid spend. Do not upgrade a plan to obtain snapshots.
+- Until an external export path is implemented and restore-tested, neither Preview database has a verified recoverable backup in the inspected Prisma backup inventory.
+
+### Current dispatch status
+
+- Client-side age encryption is implemented and its synthetic round-trip/tamper tests pass in PR CI.
+- The dedicated private B2 bucket and least-privilege B2 application key are operator-confirmed; the public age recipient is operator-confirmed in the repository variable.
+- B2 Keep all versions remains unbounded; retention/cost controls are unresolved.
+- Private-key recovery custody and an isolated end-to-end restore rehearsal remain unverified.
+- The new hard-coded Prisma access-model guard must remain false until a separately reviewed, least-privilege export architecture replaces the direct Prisma `pg_dump` credential path.
+- No database URL secret was created or read, no database was contacted, no archive was dispatched, and no B2 archive object was written by this hardening change.
