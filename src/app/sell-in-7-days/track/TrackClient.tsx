@@ -9,8 +9,6 @@ import {
   ClipboardList,
   Clock,
   Loader2,
-  MapPin,
-  Phone,
   Search,
   ShieldCheck,
   BadgeDollarSign,
@@ -18,7 +16,7 @@ import {
   XCircle,
   Calendar,
 } from "lucide-react";
-import { toFa, formatFullPrice, faDate } from "@/lib/format";
+import { toFa, faDate } from "@/lib/format";
 
 /* ============================================================
    SellIn7TrackClient — enter a tracking code, see status +
@@ -26,28 +24,18 @@ import { toFa, formatFullPrice, faDate } from "@/lib/format";
    ============================================================ */
 
 type App = {
-  id: string;
   trackingCode: string;
   deviceName: string;
-  sellerName: string;
-  sellerMobile: string;
-  sellerEmail: string | null;
   modelName: string | null;
   year: number | null;
   workingHours: number | null;
   condition: string | null;
   province: string | null;
   city: string | null;
-  expectedPrice: string | null;
-  description: string | null;
   prepaymentPaid: boolean;
-  prepaymentAmount: string | null;
   status: string;
   currentStep: number;
   inspectionDate: string | null;
-  valuationPrice: string | null;
-  salePrice: string | null;
-  commissionAmount: string | null;
   soldAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -151,7 +139,7 @@ export default function SellIn7TrackClient({ initialCode }: { initialCode: strin
             پیگیری درخواست فروش
           </h1>
           <p className="mt-3 text-sm leading-7 text-white/55">
-            کد رهگیری ۸ رقمی خود را وارد کنید تا وضعیت دستگاه را ببینید.
+            کد رهگیری خود را وارد کنید تا وضعیت کلی دستگاه را ببینید.
           </p>
         </div>
 
@@ -164,7 +152,8 @@ export default function SellIn7TrackClient({ initialCode }: { initialCode: strin
                 dir="ltr"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="مثال: H7KX9PRQ"
+                placeholder="مثال: H7KX9PRQ2M6N8T4V"
+                maxLength={16}
                 className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.03] pr-10 pl-4 text-center font-mono text-sm tracking-[0.3em] text-white placeholder:tracking-normal placeholder:text-white/30 outline-none transition focus:border-[#F58220]/60 focus:bg-white/[0.05]"
               />
             </div>
@@ -234,7 +223,7 @@ function ResultCard({ app }: { app: App }) {
             <div className="text-[10px] uppercase tracking-wider text-white/40">
               کد رهگیری
             </div>
-            <div dir="ltr" className="font-mono text-lg font-black tracking-[0.2em] text-[#F58220]">
+            <div dir="ltr" className="break-all font-mono text-base font-black tracking-[0.12em] text-[#F58220] sm:text-lg">
               {app.trackingCode}
             </div>
           </div>
@@ -328,7 +317,7 @@ function ResultCard({ app }: { app: App }) {
           />
         </DetailCard>
 
-        <DetailCard title="موقعیت و تماس">
+        <DetailCard title="موقعیت و تاریخ ثبت">
           <DetailRow
             label="موقعیت"
             value={
@@ -337,58 +326,15 @@ function ResultCard({ app }: { app: App }) {
                 : null
             }
           />
-          <DetailRow label="نام فروشنده" value={app.sellerName} />
-          <DetailRow
-            label="موبایل"
-            value={
-              <span dir="ltr" className="inline-flex items-center gap-1">
-                <Phone className="h-3 w-3 text-[#F58220]" />
-                {app.sellerMobile}
-              </span>
-            }
-          />
-          {app.sellerEmail && (
-            <DetailRow label="ایمیل" value={<span dir="ltr">{app.sellerEmail}</span>} />
-          )}
           <DetailRow label="تاریخ ثبت" value={faDate(app.createdAt)} />
         </DetailCard>
 
-        <DetailCard title="مالی">
+        <DetailCard title="وضعیت پیش‌پرداخت">
           <DetailRow
-            label="قیمت پیشنهادی"
-            value={app.expectedPrice ? formatFullPrice(BigInt(app.expectedPrice)) : null}
-          />
-          <DetailRow
-            label="پیش‌پرداخت"
-            value={
-              app.prepaymentPaid && app.prepaymentAmount
-                ? `${formatFullPrice(BigInt(app.prepaymentAmount))} (پرداخت شد)`
-                : "پرداخت نشده"
-            }
-          />
-          <DetailRow
-            label="قیمت کارشناسی"
-            value={app.valuationPrice ? formatFullPrice(BigInt(app.valuationPrice)) : null}
-          />
-          <DetailRow
-            label="قیمت فروش نهایی"
-            value={app.salePrice ? formatFullPrice(BigInt(app.salePrice)) : null}
-          />
-          <DetailRow
-            label="کارمزد ۱٪"
-            value={
-              app.commissionAmount
-                ? formatFullPrice(BigInt(app.commissionAmount))
-                : null
-            }
+            label="وضعیت"
+            value={app.prepaymentPaid ? "تأیید شده" : "در انتظار تأیید"}
           />
         </DetailCard>
-
-        {app.description && (
-          <DetailCard title="توضیحات">
-            <p className="text-xs leading-7 text-white/60">{app.description}</p>
-          </DetailCard>
-        )}
 
         {app.inspectionDate && (
           <DetailCard title="کارشناسی">
@@ -418,6 +364,11 @@ function ResultCard({ app }: { app: App }) {
           </DetailCard>
         )}
       </div>
+
+      <p className="rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4 text-center text-[11px] leading-6 text-white/45">
+        برای حفظ حریم خصوصی، اطلاعات تماس فروشنده، توضیحات خصوصی و جزئیات مالی
+        در صفحهٔ پیگیری عمومی نمایش داده نمی‌شود.
+      </p>
 
       <div className="flex justify-center pt-2">
         <Link
@@ -459,4 +410,3 @@ function DetailRow({
   );
 }
 
-void MapPin;
