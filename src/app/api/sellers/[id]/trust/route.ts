@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const user = await db.user.findFirst({
       where: {
         id,
-        role: "SELLER",
+        userRoles: { some: { role: { key: "SELLER" } } },
         status: "ACTIVE",
         OR: [
           { foundingStatus: null },
