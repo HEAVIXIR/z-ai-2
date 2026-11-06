@@ -1,5 +1,6 @@
 /* ============================================================
    HEAVIX — Request context helpers (P0-6)
+   ------------------------------------------------------------
    Shared client identity extraction for rate-limited API routes.
    ============================================================ */
 
@@ -22,12 +23,19 @@ export function getClientIp(req: Request): string {
     if (trustedEdgeHop) return trustedEdgeHop;
   }
 
+  // Fallback for trusted local reverse proxies that set/overwrite X-Real-IP.
   const realIp = headers.get("x-real-ip")?.trim();
   if (realIp) return realIp;
 
   return "unknown";
 }
 
+/**
+ * Build a rate-limit bucket key.
+ * Caller passes the identity (IP for unauthenticated endpoints, userId for
+ * authenticated ones) plus the endpoint label.
+ */
 export function rateLimitKey(identity: string, label: string): string {
-  return `${identity.replace(/:/g, "_")}:${label}`;
+  const safe = identity.replace(/:/g, "_");
+  return `${safe}:${label}`;
 }
