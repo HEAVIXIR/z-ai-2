@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { getUserRoleWithFallback } from "@/lib/authorization/role-shim";
 import { logAudit } from "@/lib/audit";
 import { toFa, faDate, timeAgo } from "@/lib/format";
 import {
@@ -82,8 +81,11 @@ export default async function AdminSellerDetailPage({ params }: Args) {
   }
 
   // ── 2. Load seller profile (with company + founding + listings) ──
-  const user = await db.user.findUnique({
-    where: { id },
+  const user = await db.user.findFirst({
+    where: {
+      id,
+      userRoles: { some: { role: { key: "SELLER" } } },
+    },
     include: {
       foundingStatus: true,
       company: {
@@ -125,11 +127,9 @@ export default async function AdminSellerDetailPage({ params }: Args) {
 
   if (!user) notFound();
 
-  // STEP 15.40 Phase B (§3.3 display-read migration): resolve the
-  // effective display role via the role-shim. Server component — async OK.
-  // `user` is passed so the shim can read `user.role` for the legacy
-  // fallback without an extra DB round-trip.
-  const displayRole = await getUserRoleWithFallback(user.id, user);
+  // The query above already proves the canonical SELLER role. Do not
+  // re-read a legacy User.role fallback for this seller-only detail page.
+  const displayRole = "SELLER";
 
   // Best-effort audit (view only — never throws).
   await logAudit({
