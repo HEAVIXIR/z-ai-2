@@ -23,11 +23,14 @@ describe("public listing and comparison API privacy contract", () => {
     const collection = read("src/app/api/compare/route.ts");
     const itemMutation = read("src/app/api/compare/[id]/items/route.ts");
     const sessionRead = read("src/app/api/compare/[id]/route.ts");
+    const sharedRead = read("src/app/api/compare/shared/[token]/route.ts");
     expect(collection).toContain("COMPARE_CREATE");
     expect(collection).toContain("COMPARE_READ");
     expect(itemMutation).toContain("COMPARE_ADD_ITEM");
     expect(sessionRead).toContain("COMPARE_READ");
     expect(sessionRead).toContain('Cache-Control": "private, no-store"');
+    expect(sharedRead).toContain("COMPARE_READ");
+    expect(sharedRead).toContain('Cache-Control": "private, no-store"');
   });
 
   it("keeps owned comparison sessions private while preserving anonymous compare capability", () => {
