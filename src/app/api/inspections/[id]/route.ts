@@ -64,9 +64,9 @@ export async function GET(
       }
     }
     return NextResponse.json({ inspection: serialize(inspection) });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
-      { error: e?.message ?? "Server error" },
+      { error: "Unable to load inspection" },
       { status: 500 },
     );
   }
