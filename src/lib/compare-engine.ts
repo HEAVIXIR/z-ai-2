@@ -245,7 +245,7 @@ export async function addItem(
   }
   if (input.modelId) {
     const model = await db.productModel.findFirst({
-      where: { id: input.modelId, status: "ACTIVE", brand: { is: { active: true, status: "ACTIVE" } } },
+      where: { id: input.modelId, status: "ACTIVE", ...(input.brandId ? { brandId: input.brandId } : {}), brand: { is: { active: true, status: "ACTIVE" } } },
       select: { id: true },
     });
     if (!model) throw new Error("Model not found");
@@ -370,7 +370,7 @@ export async function getComparisonData(sessionId: string): Promise<ComparisonDa
           : Promise.resolve(null),
         it.modelId
           ? db.productModel.findFirst({
-              where: { id: it.modelId, status: "ACTIVE", brand: { is: { active: true, status: "ACTIVE" } } },
+              where: { id: it.modelId, status: "ACTIVE", ...(it.brandId ? { brandId: it.brandId } : {}), brand: { is: { active: true, status: "ACTIVE" } } },
               select: { id: true, name: true, nameEn: true, categoryId: true, category: { select: { id: true, name: true } } },
             })
           : Promise.resolve(null),
