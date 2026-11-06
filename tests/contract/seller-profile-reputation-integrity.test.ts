@@ -12,11 +12,17 @@ const source = read("src/app/sellers/[id]/page.tsx");
 
 describe("public seller profile reputation integrity", () => {
   it("exposes only active seller accounts on public profiles", () => {
-    expect(source).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
-    const trust = read("src/app/api/sellers/[id]/trust/route.ts");
-    const reputation = read("src/app/api/sellers/[id]/reputation/route.ts");
-    expect(trust).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
-    expect(reputation).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
+    const publicSources = [
+      source,
+      read("src/app/api/sellers/[id]/trust/route.ts"),
+      read("src/app/api/sellers/[id]/reputation/route.ts"),
+    ];
+    for (const publicSource of publicSources) {
+      expect(publicSource).toContain('role: "SELLER"');
+      expect(publicSource).toContain('status: "ACTIVE"');
+      expect(publicSource).toContain("foundingStatus: null");
+      expect(publicSource).toContain("foundingStatus: { is: { active: true } }");
+    }
   });
 
   it("does not fabricate trust scores or star ratings from listing counts", () => {
