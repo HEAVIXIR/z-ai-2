@@ -49,6 +49,13 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("select: { role: true }");
   });
 
+  it("RBAC permissions and admin role require an ACTIVE account", () => {
+    const legacy = read("src/lib/rbac-legacy.ts");
+    const authz = read("src/lib/authorization/index.ts");
+    expect(legacy).toContain("where: { userId, user: { status: 'ACTIVE' } }");
+    expect(authz).toContain("where: { userId, user: { status: 'ACTIVE' }, role: { key: 'ADMIN' } }");
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
