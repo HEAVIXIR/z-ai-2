@@ -8,6 +8,7 @@ import {
   Crown,
   CheckCircle2,
   Search,
+  Clock,
   PhoneCall,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
