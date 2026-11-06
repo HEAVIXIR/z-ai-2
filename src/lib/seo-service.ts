@@ -88,8 +88,6 @@ export async function updateSEO(
     throw new Error("entityType نامعتبر است.");
   }
 
-  const { robotsIndex, robotsFollow } = parseRobots(input.robots);
-
   const patch: Partial<
     Omit<
       SEOMetadata,
