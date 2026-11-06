@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, 'infra/**']
+    branches: [main, 'infra/**', 'test/opennext-runtime-integration']
   push:
     branches: [main, 'feature/**', 'infra/**', 'test/**']
 
