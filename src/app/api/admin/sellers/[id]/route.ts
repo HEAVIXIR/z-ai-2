@@ -65,8 +65,9 @@ export async function GET(
     if (err instanceof SellerServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    console.error("[admin/sellers] GET failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to load seller" },
       { status: 500 },
     );
   }
@@ -113,10 +114,53 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-    const action = String(body?.action ?? "").toLowerCase();
-    const reason = body?.reason ? String(body.reason) : null;
-    const companyId = body?.companyId ? String(body.companyId) : null;
+    const contentType = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+    if (contentType !== "application/json") {
+      return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+    }
+
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "JSON object required" }, { status: 400 });
+    }
+
+    const payload = body as Record<string, unknown>;
+    const allowedFields = new Set(["action", "reason", "companyId"]);
+    if (Object.keys(payload).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown request field" }, { status: 400 });
+    }
+
+    if (typeof payload.action !== "string" ||
+        !["verify", "suspend", "register"].includes(payload.action)) {
+      return NextResponse.json(
+        { error: "Invalid action. Allowed: verify | suspend | register" },
+        { status: 400 },
+      );
+    }
+    if (payload.reason !== undefined &&
+        (typeof payload.reason !== "string" || payload.reason.length > 2000)) {
+      return NextResponse.json({ error: "reason must be a string of at most 2000 characters" }, { status: 400 });
+    }
+    if (payload.companyId !== undefined &&
+        (typeof payload.companyId !== "string" || payload.companyId.length > 128)) {
+      return NextResponse.json({ error: "companyId must be a string of at most 128 characters" }, { status: 400 });
+    }
+
+    const action = payload.action;
+    const reason = typeof payload.reason === "string" ? payload.reason : null;
+    const companyId = typeof payload.companyId === "string" && payload.companyId.trim()
+      ? payload.companyId.trim()
+      : null;
 
     let result: Record<string, unknown> = {};
 
@@ -150,8 +194,9 @@ export async function PATCH(
     if (err instanceof SellerServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    console.error("[admin/sellers] PATCH failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to update seller" },
       { status: 500 },
     );
   }
