@@ -11,7 +11,7 @@ describe("admin inspection assignee eligibility", () => {
       "utf8",
     );
     expect(source).toContain('status: "ACTIVE"');
-    expect(source).toContain('userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } }');
+    expect(source).toContain('userRoles: { some: { role: { key: { in: "ADMIN" } } } }');
     expect(source).not.toContain('OR: [{ role: "ADMIN" }, { role: "SELLER" }]');
   });
 
@@ -29,13 +29,13 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain('typeof body.listingId !== "string"');
   });
 
-  it("rejects inactive or non-admin/non-seller inspector IDs at the API boundary", () => {
+  it("rejects inactive or non-admin inspector IDs at the API boundary", () => {
     const source = fs.readFileSync(
       path.join(ROOT, "src/app/api/inspections/[id]/route.ts"),
       "utf8",
     );
     expect(source).toContain('status: "ACTIVE"');
-    expect(source).toContain('userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } }');
-    expect(source).toContain('error: "Inspector must be an active admin or seller"');
+    expect(source).toContain('userRoles: { some: { role: { key: { in: "ADMIN" } } } }');
+    expect(source).toContain('error: "Inspector must be an active admin"');
   });
 });
