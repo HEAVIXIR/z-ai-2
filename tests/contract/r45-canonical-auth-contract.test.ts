@@ -48,4 +48,27 @@ describe("R45 canonical authentication contract", () => {
     expect(s).toContain("db.userRole.upsert");
     expect(s).not.toContain('role: "SELLER"');
   });
+
+  it("admin payment PATCH and DELETE commit mutations with their audit rows", () => {
+    const s = read("src/app/api/admin/payments/[id]/route.ts");
+    expect(s).toContain("db.$transaction");
+    expect(s).toContain("tx.payment.update");
+    expect(s).toContain("tx.payment.delete");
+    expect(s.match(/tx\.auditLog\.create/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(s).not.toContain("logAudit");
+  });
+
+  it("manual payment creation, subscription activation and audit are atomic", () => {
+    const s = read("src/app/api/admin/payments/route.ts");
+    const postStart = s.indexOf("export async function POST");
+    expect(postStart).toBeGreaterThanOrEqual(0);
+    const post = s.slice(postStart);
+    expect(post).toContain("db.$transaction");
+    expect(post).toContain("tx.payment.create");
+    expect(post).toContain("tx.premiumSubscription.update");
+    expect(post).toContain("tx.auditLog.create");
+    expect(post).toContain("actorId: sessionUser.id");
+    expect(post).not.toContain("logAudit");
+    expect(post).not.toContain("sub activation failed");
+  });
 });
