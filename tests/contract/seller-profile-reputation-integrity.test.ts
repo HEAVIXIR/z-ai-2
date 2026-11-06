@@ -24,4 +24,14 @@ describe("public seller profile reputation integrity", () => {
   it("aggregates public views from published listings only", () => {
     expect(source).toContain('where: { sellerId: seller.id, status: "PUBLISHED" }');
   });
+
+  it("does not expose draft or hidden listing counts in public trust/reputation APIs", () => {
+    const trust = read("src/app/api/sellers/[id]/trust/route.ts");
+    const reputation = read("src/app/api/sellers/[id]/reputation/route.ts");
+    expect(trust).toContain('where: { sellerId: id, status: "PUBLISHED" }');
+    expect(trust).toContain('where: { sellerId: id, status: "PUBLISHED", verified: true }');
+    expect(reputation).toContain('where: { sellerId: id, status: "PUBLISHED" }');
+    expect(reputation).toContain('where: { sellerId: id, status: "PUBLISHED", verified: true }');
+    expect(reputation).toContain('listing: { sellerId: id, status: "PUBLISHED" }');
+  });
 });
