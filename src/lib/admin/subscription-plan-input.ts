@@ -84,8 +84,8 @@ export function parseSubscriptionPlanInput(
 
   const data: SubscriptionPlanInput = {};
   const stringFields: Array<[string, number, boolean]> = [
-    ["code", 64, mode === "create"],
-    ["nameFa", 160, mode === "create"],
+    ["code", 64, true],
+    ["nameFa", 160, true],
     ["nameEn", 160, false],
     ["description", 2000, false],
     ["currency", 8, false],
@@ -154,6 +154,7 @@ export function parseSubscriptionPlanInput(
   }
 
   if (mode === "create" && (data.currency === undefined || data.currency === null)) data.currency = "IRR";
+  if (mode === "update" && "currency" in body && data.currency === null) data.currency = "IRR";
   return { ok: true, data };
 }
 
