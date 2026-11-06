@@ -68,5 +68,10 @@ describe("admin subscription-plan mutation safety", () => {
       nameFa: "حرفه‌ای",
       priceMonthly: "9223372036854775808",
     }, "create").ok).toBe(false);
+    expect(parseSubscriptionPlanInput({
+      code: "PRO",
+      nameFa: "حرفه‌ای",
+      priceMonthly: Number.MAX_SAFE_INTEGER + 1,
+    }, "create").ok).toBe(false);
   });
 });
