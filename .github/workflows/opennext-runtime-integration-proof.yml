@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - infra/prisma6-cloudflare-runtime
+      - test/opennext-runtime-integration
     paths:
       - "src/app/api/opennext-runtime-proof/**"
       - "src/app/sitemap.ts"
