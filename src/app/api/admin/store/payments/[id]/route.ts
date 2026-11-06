@@ -213,7 +213,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       });
 
       return { kind: "OK" as const, payment };
-    });;
+    });
 
     if (result.kind === "NOT_FOUND") {
       return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
