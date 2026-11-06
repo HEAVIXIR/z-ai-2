@@ -130,7 +130,7 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
-      data.status = status ?? existing.status;
+      if (status !== null) data.status = status;
     }
 
     // type (validated against allowed enum)
@@ -142,7 +142,7 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
-      data.type = type ?? existing.type;
+      if (type !== null) data.type = type;
     }
 
     // gateway (validated against allowed enum)
@@ -172,7 +172,15 @@ export async function PATCH(req: Request, { params }: Args) {
 
     // paidAt (ISO date string or null)
     if ("paidAt" in body) {
-      data.paidAt = body.paidAt === null ? null : new Date(body.paidAt);
+      if (body.paidAt === null) {
+        data.paidAt = null;
+      } else {
+        const paidAt = new Date(body.paidAt);
+        if (!Number.isFinite(paidAt.getTime())) {
+          return NextResponse.json({ error: "paidAt must be a valid date" }, { status: 400 });
+        }
+        data.paidAt = paidAt;
+      }
     }
 
     // If status is being set to PAID and paidAt is not explicitly provided,
@@ -220,7 +228,7 @@ export async function PATCH(req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "PATCH /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
