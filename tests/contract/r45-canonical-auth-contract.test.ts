@@ -60,6 +60,18 @@ describe("R45 canonical authentication contract", () => {
     expect(remove).not.toContain("logAudit");
   });
 
+  it("admin user creation commits user, role and audit together", () => {
+    const s = read("src/app/api/admin/users/route.ts");
+    const postStart = s.indexOf("export async function POST");
+    expect(postStart).toBeGreaterThanOrEqual(0);
+    const post = s.slice(postStart);
+    expect(post).toContain("db.$transaction");
+    expect(post).toContain("tx.user.create");
+    expect(post).toContain("tx.userRole.upsert");
+    expect(post).toContain("tx.auditLog.create");
+    expect(post).not.toContain("logAudit");
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
