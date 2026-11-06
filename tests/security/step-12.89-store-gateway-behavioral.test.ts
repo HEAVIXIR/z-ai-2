@@ -27,6 +27,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock state ──────────────────────────────────────────────
 let mockCurrentUser: { id: string; mobile: string; firstName: string; role: string } | null = null;
 let mockIsAdminResult: boolean = false;
+let mockPaymentRecord: { id: string; status: string; amountIrr: number; refId: string | null } = {
+  id: "pay-1",
+  status: "PENDING",
+  amountIrr: 1000000,
+  refId: null,
+};
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: async () => mockCurrentUser,
@@ -61,10 +67,14 @@ const mockStoreDb = {
   payment: {
     create: vi.fn(async (args: any) => ({ id: "pay-1", ...args.data })),
     findFirst: vi.fn(async () => null),
-    findUnique: vi.fn(async () => ({ id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null })),
+    findUnique: vi.fn(async () => ({ ...mockPaymentRecord })),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
-    updateMany: vi.fn(async () => ({ count: 1 })),
+    updateMany: vi.fn(async ({ where, data }: any) => {
+      if (mockPaymentRecord.id !== where.id || mockPaymentRecord.status !== where.status) return { count: 0 };
+      mockPaymentRecord = { ...mockPaymentRecord, ...data };
+      return { count: 1 };
+    }),
     count: vi.fn(async () => 0),
     aggregate: vi.fn(async () => ({ _sum: { amountIrr: 0 } })),
   },
@@ -123,8 +133,13 @@ beforeEach(() => {
   mockStoreDb.customer.upsert.mockResolvedValue({ id: "cust-1", phone: "09120000000", userId: null });
   mockStoreDb.payment.create.mockResolvedValue({ id: "pay-1" });
   mockStoreDb.payment.findFirst.mockResolvedValue(null);
-  mockStoreDb.payment.findUnique.mockResolvedValue({ id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null });
-  mockStoreDb.payment.updateMany.mockResolvedValue({ count: 1 });
+  mockPaymentRecord = { id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null };
+  mockStoreDb.payment.findUnique.mockImplementation(async () => ({ ...mockPaymentRecord }));
+  mockStoreDb.payment.updateMany.mockImplementation(async ({ where, data }: any) => {
+    if (mockPaymentRecord.id !== where.id || mockPaymentRecord.status !== where.status) return { count: 0 };
+    mockPaymentRecord = { ...mockPaymentRecord, ...data };
+    return { count: 1 };
+  });
   mockStoreDb.payment.count.mockResolvedValue(0);
   mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 0 } });
   mockStoreDb.auditOutbox.create.mockResolvedValue({ id: "outbox-1" });
