@@ -309,11 +309,20 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     expect(res.status).toBe(409);
   });
 
+  it("NEGATIVE: already-paid order → 409", async () => {
+    mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, paymentStatus: "PAID" });
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
+    expect(res.status).toBe(409);
+    expect(mockStoreDb.payment.create).not.toHaveBeenCalled();
+  });
+
   it("NEGATIVE: too many pending payments → 409", async () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
-    mockStoreDb.payment.count.mockResolvedValue(4);
+    mockStoreDb.payment.count.mockResolvedValue(3);
     const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
     expect(res.status).toBe(409);
   });
