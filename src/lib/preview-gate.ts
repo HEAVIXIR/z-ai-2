@@ -257,6 +257,12 @@ export async function handlePreviewGate(
     return unauthorized(request);
   }
 
+  // SameSite cookies alone do not stop every same-site/cross-origin CSRF case.
+  // Require an exact Origin for all unsafe methods before dispatching to Next.
+  if (request.method !== "GET" && request.method !== "HEAD" && !originIsSame(request)) {
+    return response("Forbidden", 403, { "content-type": "text/plain; charset=utf-8" });
+  }
+
   const upstream = await downstream();
   const headers = securityHeaders(upstream.headers);
   headers.set("vary", headers.get("vary") ? `${headers.get("vary")}, Cookie` : "Cookie");
