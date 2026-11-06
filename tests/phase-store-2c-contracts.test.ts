@@ -907,13 +907,13 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
     it('payments/[id] audits the order.update side-effect', () => {
       const content = readRoute(paymentsId);
       expect(content).toContain('action: "store.order.update"');
-      expect(content).toContain("entityType: 'Order'");
+      expect(content).toContain('entityType: "Order"');
     });
 
     it('payments/[id] audits the payment.update', () => {
       const content = readRoute(paymentsId);
       expect(content).toContain('action: "store.payment.update"');
-      expect(content).toContain("entityType: 'Payment'");
+      expect(content).toContain('entityType: "Payment"');
     });
 
     it('payments/[id] has 2 mutations and 2 audits', () => {
