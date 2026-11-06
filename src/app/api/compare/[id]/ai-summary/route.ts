@@ -52,10 +52,13 @@ export async function POST(
     // are written on the session row).
     const session = await db.comparisonSession.findUnique({
       where: { id },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, status: true },
     });
     if (!session) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (session.status === "ARCHIVED") {
+      return NextResponse.json({ error: "Session archived" }, { status: 410 });
     }
     const isOwner = session.userId === user.id;
     const is_admin = await isAdmin(user.id);
