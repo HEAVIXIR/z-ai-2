@@ -22,12 +22,12 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("validateLogin");
     expect(s).not.toContain("createSession");
     expect(s).not.toContain("ADMIN_USERNAME");
-    expect(s).not.toMatch(/\\busername\\b/);
+    expect(s).not.toMatch(/(^|[^A-Za-z])username([^A-Za-z]|$)/);
   });
 
   it("removes the ADMIN sentinel bypass", () => {
     const s = read("src/lib/authorization/index.ts");
-    expect(s).not.toMatch(/userId\\s*===\\s*["']ADMIN["']/);
+    expect(s).not.toMatch(/userId[ ]*===[ ]*["']ADMIN["']/);
   });
 
   it("uses USER_COOKIE at the edge", () => {
@@ -38,7 +38,7 @@ describe("R45 canonical authentication contract", () => {
 
   it("does not authorize AI through User.role fallback", () => {
     const s = read("src/lib/ai-policy.ts");
-    expect(s).not.toMatch(/user\\.role/);
+    expect(s).not.toMatch(/user[.]role/);
     expect(s).not.toContain("select: { role: true }");
   });
 
@@ -52,6 +52,12 @@ describe("R45 canonical authentication contract", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
     expect(s).toContain("db.userRole.upsert");
-    expect(s).not.toContain('role: "SELLER"');
+    expect(s).not.toContain('data: { role: "SELLER"');
+  });
+
+  it("seller detail service rejects users without canonical SELLER UserRole", () => {
+    const s = read("src/lib/seller-service.ts");
+    expect(s).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+    expect(s).toContain('role: "SELLER"');
   });
 });
