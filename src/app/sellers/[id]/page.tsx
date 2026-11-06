@@ -24,7 +24,15 @@ export default async function SellerProfilePage({
 
   const [seller, headerCats] = await Promise.all([
     db.user.findFirst({
-      where: { id, role: "SELLER", status: "ACTIVE" },
+      where: {
+        id,
+        role: "SELLER",
+        status: "ACTIVE",
+        OR: [
+          { foundingStatus: null },
+          { foundingStatus: { is: { active: true } } },
+        ],
+      },
       include: {
         company: { select: { id: true, name: true, slug: true, logoUrl: true, verified: true } },
         _count: {
