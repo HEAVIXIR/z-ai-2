@@ -113,7 +113,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         reviewCount: user.company.reviewCount,
       } : null,
     }, { headers: noStoreHeaders });
-  } catch (err: any) {
+  } catch {
     return NextResponse.json({ error: "Server error" }, { status: 500, headers: noStoreHeaders });
   }
 }
