@@ -11,14 +11,15 @@ function read(relativePath: string): string {
 const source = read("src/app/sellers/[id]/page.tsx");
 
 describe("public seller profile reputation integrity", () => {
-  it("exposes only active seller accounts on public profiles", () => {
+  it("exposes only active users with the canonical SELLER role", () => {
     const publicSources = [
       source,
       read("src/app/api/sellers/[id]/trust/route.ts"),
       read("src/app/api/sellers/[id]/reputation/route.ts"),
     ];
     for (const publicSource of publicSources) {
-      expect(publicSource).toContain('role: "SELLER"');
+      expect(publicSource).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+      expect(publicSource).not.toContain('role: "SELLER"');
       expect(publicSource).toContain('status: "ACTIVE"');
       expect(publicSource).toContain("foundingStatus: null");
       expect(publicSource).toContain("foundingStatus: { is: { active: true } }");
