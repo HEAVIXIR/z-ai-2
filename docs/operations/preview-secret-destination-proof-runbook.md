@@ -247,3 +247,25 @@ The App and Store Preview identity query was repeated directly against the exact
 The exact PR #200 head was also rechecked: b2693496f21a396440814950bb232a97e63ffb13. GitHub reports the CI run 42203629883 and OpenNext runtime integration proof run 42203629863 as completed successfully for that head. This proves the tested code path and CI artifact only; it does not prove live Cloudflare Secret destinations or authorize uploading/deploying a Worker version.
 
 The documentation PR's new CI run 42292288655 was still in progress when this addendum was written. Its final result must be checked on the exact final documentation commit before review.
+
+
+## HEAVIX core-infrastructure boundary (authoritative project rule)
+
+The HEAVIX core infrastructure consists of exactly these four provider domains:
+
+1. **GitHub** — canonical source repository, version history, pull requests, review, automated tests, and CI/CD evidence.
+2. **Cloudflare** — authoritative edge/runtime/network layer, Workers, DNS/domain routing, and public ingress/security controls.
+3. **Prisma** — canonical relational database projects/branches, schema and migration tooling, ORM/runtime database access.
+4. **Backblaze B2** — canonical object storage and backup/restore provider for HEAVIX files and backup artifacts.
+
+**Vercel is an auxiliary Preview surface only.** It is not a HEAVIX core infrastructure dependency, not the authoritative deployment/runtime provider, and not a release-readiness gate. Vercel quota, build, or Preview failures must not block core work or be represented as failures of the HEAVIX infrastructure. It may be used opportunistically for visual review, but it must never become a source of truth for runtime health or release status.
+
+Cloudflare R2 is not Backblaze B2 and is not an approved substitute. Do not enable R2 or migrate storage merely because an R2 endpoint is unavailable. Backblaze B2 health must be proven through B2-specific bucket/key/retention and restore evidence.
+
+Release readiness must be evaluated independently for each core provider:
+- GitHub: exact-head CI, required review, protected branch and artifact provenance.
+- Cloudflare: verified account/zone ownership, DNS/route configuration, Worker version and secret/binding provenance, and public ingress/security behavior.
+- Prisma: exact project/database identity, environment isolation, schema/migration consistency, transaction and backup compatibility.
+- Backblaze B2: bucket and application-key scope, encryption/retention/lifecycle, integrity-checked object retrieval, and a successful restore drill.
+
+A successful check in one provider does not prove the health of another. Never use an auxiliary Preview provider's status to replace any of these four independent gates.
