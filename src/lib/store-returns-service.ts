@@ -109,10 +109,16 @@ export async function createReturn(
     throw new ReturnsServiceError(400, 'سفارش و دلیل مرجوعی الزامی است');
   }
 
-  const initialStatus =
-    options.status && ALLOWED_STATUSES.includes(options.status as (typeof ALLOWED_STATUSES)[number])
-      ? options.status
-      : 'REQUESTED';
+  // New returns must enter the workflow as REQUESTED. Inspection and
+  // resolution are dedicated state-machine actions; accepting them here
+  // would let callers bypass the refund/inspection lifecycle.
+  if (options.status && options.status !== 'REQUESTED') {
+    throw new ReturnsServiceError(400, 'مرجوعی جدید باید با وضعیت REQUESTED ایجاد شود');
+  }
+  if (options.inspection || options.resolution) {
+    throw new ReturnsServiceError(400, 'کارشناسی و حل‌وفصل فقط از مسیرهای اختصاصی مجاز هستند');
+  }
+  const initialStatus = 'REQUESTED';
 
   const ret = await storeDb.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId } });
@@ -188,20 +194,23 @@ export async function updateReturnStatus(
     }
 
     const data: any = {};
+    if (existing.status === 'RESOLVED' || existing.status === 'REJECTED') {
+      throw new ReturnsServiceError(409, 'مرجوعی نهایی شده و قابل ویرایش نیست');
+    }
     if (status !== undefined) {
       if (!ALLOWED_STATUSES.includes(status as (typeof ALLOWED_STATUSES)[number])) {
         throw new ReturnsServiceError(400, 'وضعیت نامعتبر');
       }
+      if (status !== existing.status && status !== 'APPROVED') {
+        throw new ReturnsServiceError(400, 'کارشناسی و حل‌وفصل باید از مسیرهای اختصاصی انجام شوند');
+      }
+      if (status === 'APPROVED' && existing.status !== 'REQUESTED' && existing.status !== 'APPROVED') {
+        throw new ReturnsServiceError(409, 'فقط مرجوعی REQUESTED قابل تأیید است');
+      }
       data.status = status;
     }
-    if (inspection !== undefined) {
-      data.inspection = inspection || null;
-    }
-    if (resolution !== undefined) {
-      if (resolution && !ALLOWED_RESOLUTIONS.includes(resolution as (typeof ALLOWED_RESOLUTIONS)[number])) {
-        throw new ReturnsServiceError(400, 'نوع تصمیم نامعتبر');
-      }
-      data.resolution = resolution || null;
+    if (inspection !== undefined || resolution !== undefined) {
+      throw new ReturnsServiceError(400, 'یادداشت کارشناسی و نتیجه نهایی فقط از مسیرهای اختصاصی مجاز هستند');
     }
     if (options.reason !== undefined) {
       data.reason = options.reason || existing.reason;
