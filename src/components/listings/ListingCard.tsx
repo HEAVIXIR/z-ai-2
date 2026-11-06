@@ -30,7 +30,15 @@ export type ListingCardData = {
   favoriteCount?: number;
 };
 
-export default function ListingCard({ l }: { l: ListingCardData }) {
+export default function ListingCard({
+  l,
+  showPrice = true,
+  showLocation = true,
+}: {
+  l: ListingCardData;
+  showPrice?: boolean;
+  showLocation?: boolean;
+}) {
   const priceLabel =
     l.price != null ? formatCompactPrice(l.price) : PRICE_TYPE_LABELS[l.priceType] ?? "تماس بگیرید";
 
@@ -97,25 +105,29 @@ export default function ListingCard({ l }: { l: ListingCardData }) {
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/55">
-          <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3.5 w-3.5 text-[#F58220]" />
-            {l.city ?? "-"}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5 text-[#F58220]" />
-            {l.year ? toFa(l.year) : "-"}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Gauge className="h-3.5 w-3.5 text-[#F58220]" />
-            {l.workingHours ? toFa(l.workingHours) : "-"}
-          </span>
-        </div>
+        {showLocation && (
+          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/55">
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5 text-[#F58220]" />
+              {l.city ?? "-"}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5 text-[#F58220]" />
+              {l.year ? toFa(l.year) : "-"}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Gauge className="h-3.5 w-3.5 text-[#F58220]" />
+              {l.workingHours ? toFa(l.workingHours) : "-"}
+            </span>
+          </div>
+        )}
 
-        <div className="mt-5 border-t border-white/10 pt-4">
-          <div className="text-xs text-white/50">قیمت</div>
-          <div className="mt-1 text-xl font-black text-[#F58220]">{priceLabel}</div>
-        </div>
+        {showPrice && (
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <div className="text-xs text-white/50">قیمت</div>
+            <div className="mt-1 text-xl font-black text-[#F58220]">{priceLabel}</div>
+          </div>
+        )}
       </div>
     </Link>
   );

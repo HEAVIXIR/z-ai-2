@@ -133,7 +133,7 @@ describe("Phase 4 — /api/listings faceted filters contract", () => {
     expect(exists(R)).toBe(true);
   });
 
-  it("parses priceMin + priceMax + condition + yearMin + yearMax + sort query params", () => {
+  it("parses priceMin + priceMax + condition + yearMin + yearMax + sort + featuredOnly query params", () => {
     const c = read(R);
     expect(c).toMatch(/priceMin/);
     expect(c).toMatch(/priceMax/);
@@ -142,15 +142,17 @@ describe("Phase 4 — /api/listings faceted filters contract", () => {
     expect(c).toMatch(/yearMin/);
     expect(c).toMatch(/yearMax/);
     expect(c).toMatch(/newest|oldest|price-asc|price-desc|featured/);
+    expect(c).toMatch(/featuredOnly/);
   });
 
   it("forwards the new filters to searchListings (fast path) AND applies them locally (slow path)", () => {
     const c = read(R);
     // Fast path — searchListings call receives the new filters.
-    expect(c).toMatch(/searchListings\(\{[\s\S]*?priceMin[\s\S]*?\}\)/);
+    expect(c).toMatch(/searchListings\(\{[\s\S]*?priceMin[\s\S]*?featuredOnly[\s\S]*?\}\)/);
     // Slow path — local where.AND clauses for price/condition/year.
     expect(c).toMatch(/priceFilter/);
     expect(c).toMatch(/where\.AND/);
+    expect(c).toMatch(/if \(featuredOnly\) where\.featured = true/);
   });
 });
 

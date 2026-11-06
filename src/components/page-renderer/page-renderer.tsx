@@ -10,9 +10,12 @@
  * V2.3: Enforces data source permissions server-side.
  */
 
-import { db } from '@/lib/db';
+import { headers } from "next/headers";
+import { db } from "@/lib/db";
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
+import { extractWidgetData } from '@/lib/admin/page-builder/widget-data-response';
 import { can } from '@/lib/authorization';
+import { resolveWidgetDataBaseUrl, resolveWidgetDataPath } from '@/lib/admin/page-builder/widget-data-url';
 import HeroWidget from './widgets/hero-widget';
 import ListingGridWidget from './widgets/listing-grid-widget';
 import CategoryGridWidget from './widgets/category-grid-widget';
@@ -22,6 +25,8 @@ import RichTextWidget from './widgets/rich-text-widget';
 import ImageWidget from './widgets/image-widget';
 import StatsWidget from './widgets/stats-widget';
 import ArticleListWidget from './widgets/article-list-widget';
+import BrandGridWidget from './widgets/brand-grid-widget';
+import ServiceGridWidget from './widgets/service-grid-widget';
 import TrustBadgesWidget from './widgets/trust-badges-widget';
 
 // Widget key → React component mapper
@@ -35,11 +40,13 @@ const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<strin
   image: ImageWidget,
   stats: StatsWidget,
   'article-list': ArticleListWidget,
+  'brand-grid': BrandGridWidget,
+  'service-grid': ServiceGridWidget,
   'trust-badges': TrustBadgesWidget,
 };
 
 // ── Fetch data for a widget from its data source ──────────
-async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
+async function fetchWidgetData(widget: PageWidgetInstance, baseUrl: string): Promise<unknown> {
   const widgetDef = getWidget(widget.key);
   if (!widgetDef?.hasDataSource) return null;
 
@@ -49,22 +56,48 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
   const ds = getDataSource(dataSourceKey);
   if (!ds) return null;
 
-  // Build API path, replacing {param} placeholders from widget props
-  let apiPath = ds.apiPath;
-  for (const [k, v] of Object.entries(widget.props || {})) {
-    apiPath = apiPath.replace(`{${k}}`, String(v));
-  }
+  // Resolve registry placeholders with bounded limits and encoded values.
+  const apiPath = resolveWidgetDataPath(ds.apiPath, widget.props || {});
 
-  // Fetch data (server-side fetch)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+
   try {
-    const deploymentHost = process.env.VERCEL_URL;
-    const base = process.env.NEXT_PUBLIC_BASE_URL || (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000');
-    const res = await fetch(`${base}${apiPath}`, { next: { revalidate: ds.cacheTtl || 60 } });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.data?.items ?? json?.items ?? json?.categories ?? json?.data ?? null;
-  } catch {
+    const url = new URL(apiPath, baseUrl);
+    const res = await fetch(url, {
+      next: { revalidate: ds.cacheTtl || 60 },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      // Do not log headers or response bodies; API errors may contain sensitive details.
+      console.error('[PageRenderer] Widget data source returned non-2xx', {
+        dataSourceKey,
+        apiPath,
+        status: res.status,
+        statusText: res.statusText,
+      });
+      return null;
+    }
+
+    const payload: unknown = await res.json();
+    const data = extractWidgetData(payload);
+    if (data === null) {
+      console.warn('[PageRenderer] Widget data source returned an unsupported response envelope', {
+        dataSourceKey,
+        apiPath,
+      });
+    }
+    return data;
+  } catch (error) {
+    console.error('[PageRenderer] Widget data fetch failed', {
+      dataSourceKey,
+      apiPath,
+      error,
+    });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -86,6 +119,8 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
   }
 
   const pageLayout = layout as PageLayout;
+  const requestHeaders = await headers();
+  const widgetDataBaseUrl = resolveWidgetDataBaseUrl(process.env, requestHeaders);
 
   // 2. Render each section → row → widget
   return (
@@ -107,6 +142,7 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
                     key={wi}
                     widget={widget}
                     userId={userId}
+                    baseUrl={widgetDataBaseUrl}
                   />
                 ))}
               </div>
@@ -119,7 +155,7 @@ export async function PageRenderer({ layout, userId }: PageRendererProps) {
 }
 
 // ── Single widget renderer ─────────────────────────────────
-async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; userId?: string | null }) {
+async function WidgetRenderer({ widget, userId, baseUrl }: { widget: PageWidgetInstance; userId?: string | null; baseUrl: string }) {
   const widgetDef = getWidget(widget.key);
   if (!widgetDef) return null; // unknown widget — silently skip (already validated)
 
@@ -157,7 +193,7 @@ async function WidgetRenderer({ widget, userId }: { widget: PageWidgetInstance; 
         }
       }
     }
-    data = await fetchWidgetData(widget);
+    data = await fetchWidgetData(widget, baseUrl);
   }
 
   // 3. Render using the registered component

@@ -24,6 +24,7 @@ export const dynamic = "force-dynamic";
      ?condition=NEW|USED|REFURBISHED
      ?yearMin=&yearMax=           (Int year range)
      ?sort=newest|oldest|price-asc|price-desc|featured
+     ?featuredOnly=true                         (only featured published listings)
      ?attr.KEY_min=&attr.KEY_max=   (numeric range on attribute value)
      ?attr.KEY=val                  (SELECT optionId OR TEXT exact match;
                                      can repeat for multi-select)
@@ -74,6 +75,9 @@ export async function GET(req: Request) {
       sortRaw === "price-desc" || sortRaw === "featured"
         ? sortRaw
         : null;
+    const featuredOnly = ["1", "true", "yes"].includes(
+      (url.searchParams.get("featuredOnly") ?? "").trim().toLowerCase(),
+    );
 
     /* ── Dynamic attribute filters ──
        Parse `attr.KEY_min`, `attr.KEY_max`, `attr.KEY` (latter may repeat)
@@ -102,6 +106,7 @@ export async function GET(req: Request) {
         yearMin: yearMin !== null && Number.isFinite(yearMin) ? yearMin : null,
         yearMax: yearMax !== null && Number.isFinite(yearMax) ? yearMax : null,
         sort,
+        featuredOnly,
         limit,
         offset: (page - 1) * limit,
       });
@@ -156,9 +161,6 @@ export async function GET(req: Request) {
         });
       }
 
-      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-      try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
-
       return NextResponse.json({ success: true, count: total, data });
     }
 
@@ -167,6 +169,7 @@ export async function GET(req: Request) {
     // composed) but route text/brand/category through the normalized
     // search helpers.
     const where: any = { status: "PUBLISHED" };
+    if (featuredOnly) where.featured = true;
 
     if (q) {
       const textClause = buildSearchWhere(
@@ -320,9 +323,6 @@ export async function GET(req: Request) {
         ip: getClientIp(req),
       });
     }
-
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
 
     return NextResponse.json({ success: true, count: total, data });
   } catch (err: any) {
