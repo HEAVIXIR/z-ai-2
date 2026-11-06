@@ -158,7 +158,21 @@ jobs:
           age -d -i "$TEMP_CRYPTO/identity.txt" -o "$TEMP_CRYPTO/recovered.bin" "$TEMP_CRYPTO/payload.age"
           cmp "$TEMP_CRYPTO/plain.bin" "$TEMP_CRYPTO/recovered.bin"
           cp "$TEMP_CRYPTO/payload.age" "$TEMP_CRYPTO/tampered.age"
-          printf 'x' | dd of="$TEMP_CRYPTO/tampered.age" bs=1 seek=80 conv=notrunc status=none
+          python3 - "$TEMP_CRYPTO/tampered.age" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          data = bytearray(path.read_bytes())
+          if len(data) < 32:
+              raise SystemExit("Ciphertext fixture is unexpectedly short")
+          data[-1] ^= 0x01
+          path.write_bytes(data)
+          PY
+          if cmp -s "$TEMP_CRYPTO/payload.age" "$TEMP_CRYPTO/tampered.age"; then
+            echo "::error::Tamper fixture did not modify ciphertext bytes"
+            exit 1
+          fi
           if age -d -i "$TEMP_CRYPTO/identity.txt" -o "$TEMP_CRYPTO/tampered.bin" "$TEMP_CRYPTO/tampered.age" >/dev/null 2>&1; then
             echo "::error::age accepted a modified ciphertext"
             exit 1
