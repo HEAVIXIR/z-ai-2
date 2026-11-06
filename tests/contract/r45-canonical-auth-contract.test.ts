@@ -62,6 +62,8 @@ describe("R45 canonical authentication contract", () => {
     const s = read("src/app/api/admin/sellers/[id]/route.ts");
     expect(s).toContain('contentType !== "application/json"');
     expect(s).toContain("16 * 1024");
+    expect(s).toContain("req.body?.getReader()");
+    expect(s).toContain('new TextDecoder("utf-8", { fatal: true })');
     expect(s).toContain("Unknown request field");
     expect(s).toContain('typeof payload.action !== "string"');
     expect(s).toContain('{ error: "Unable to update seller" }');
