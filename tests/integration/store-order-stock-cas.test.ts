@@ -11,6 +11,7 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
 
   afterEach(async () => {
     if (partId) {
+      await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: partId } } });
       await storeDb.stockMovement.deleteMany({ where: { partId } });
       await storeDb.inventoryBalance.deleteMany({ where: { partId } });
       await storeDb.part.deleteMany({ where: { id: partId } });
