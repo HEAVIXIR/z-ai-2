@@ -93,6 +93,19 @@ jobs:
           abort("Read-back verification must special-case SHA256SUMS") unless upload_script.include?('if [[ "$file" == "SHA256SUMS" ]]')
           abort("Read-back verification must compare downloaded bytes") unless upload_script.include?('sha256sum "$RUNNER_TEMP/heavix-b2-readback/$file"')
 
+          gate_runtime_step = gate_job.fetch("steps").find { |step| step["name"] == "Fail closed until Preview identity and archive readiness are attested" }
+          abort("Manual dispatch gate runtime test step is missing") unless gate_runtime_step
+          gate_test_env = {
+            "IDENTITY_GATE" => "VERIFIED_PREVIEW_ONLY",
+            "ARCHIVE_READINESS_GATE" => "APPROVED_PREVIEW_ARCHIVE_V1",
+            "ENCRYPTION_IMPLEMENTATION" => "true",
+            "PRISMA_READ_ONLY_CREDENTIALS_IMPLEMENTATION" => "false"
+          }
+          gate_stdout, gate_stderr, gate_status = Open3.capture3(gate_test_env, "bash", "-c", gate_runtime_step.fetch("run"))
+          gate_output = gate_stdout + gate_stderr
+          abort("Dispatch gate did not fail closed for Prisma full-access credentials") unless gate_status.exitstatus == 1 && gate_output.include?("Prisma Postgres credentials are full-access")
+          puts("Manual dispatch gate runtime test passed: full-access Prisma credentials are blocked.")
+
           checked = 0
 
           jobs.each do |job_name, job|
