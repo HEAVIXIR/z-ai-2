@@ -25,10 +25,10 @@ import { toFa, toEnDigits, formatFullPrice } from "@/lib/format";
      condition, location (province/city), sellerName, mobile,
      email, expectedPrice, description.
 
-   Prepayment section explains the configured amount and a
-   "پرداخت پیش‌پرداخت" button (dev: simulated → marks as paid).
-   On submit: POST /api/sell-in-7-days → success message with
-   tracking code.
+   The current Preview flow records an initial request only.
+   No simulated payment is performed and no public submission
+   can mark a prepayment as paid. On submit, the user receives
+   a tracking code for the privacy-limited public status page.
    ============================================================ */
 
 type Category = {
@@ -117,13 +117,10 @@ export default function SellIn7RegisterForm({
 }) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [brandBoxOpen, setBrandBoxOpen] = useState(false);
-  const [paying, setPaying] = useState(false);
-  const [paid, setPaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
     trackingCode: string;
-    prepaymentPaid: boolean;
   } | null>(null);
 
   // Root categories for the select (only CATALOG roots as per spec).
@@ -154,16 +151,6 @@ export default function SellIn7RegisterForm({
     return Number(digits).toLocaleString("en-US");
   };
 
-  const prepay = async () => {
-    setPaying(true);
-    setError(null);
-    // Simulated payment — in production this would redirect to a
-    // payment gateway and return here with a transaction ID.
-    await new Promise((r) => setTimeout(r, 1200));
-    setPaid(true);
-    setPaying(false);
-  };
-
   const submit = async () => {
     setError(null);
     if (!form.deviceName || form.deviceName.trim().length < 3) {
@@ -179,11 +166,6 @@ export default function SellIn7RegisterForm({
       setError("شماره موبایل معتبر نیست. (مثال: 09121234567)");
       return;
     }
-    if (!paid) {
-      setError("برای ثبت نهایی، ابتدا پیش‌پرداخت را پرداخت کنید.");
-      return;
-    }
-
     setSubmitting(true);
     try {
       const payload = {
@@ -203,7 +185,6 @@ export default function SellIn7RegisterForm({
         sellerEmail: form.sellerEmail.trim() || null,
         expectedPrice: toEnDigits(form.expectedPrice).replace(/[^\d]/g, "") || null,
         description: form.description.trim() || null,
-        prepayNow: paid,
       };
       const res = await fetch("/api/sell-in-7-days", {
         method: "POST",
@@ -218,7 +199,6 @@ export default function SellIn7RegisterForm({
       }
       setSuccess({
         trackingCode: json.trackingCode,
-        prepaymentPaid: !!json.prepaymentPaid,
       });
       setSubmitting(false);
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -239,11 +219,11 @@ export default function SellIn7RegisterForm({
               <CheckCircle2 className="h-9 w-9" />
             </div>
             <h1 className="mt-6 text-3xl font-black text-white">
-              درخواست شما ثبت شد!
+              درخواست اولیه شما ثبت شد
             </h1>
             <p className="mt-3 text-sm leading-7 text-white/60">
-              دستگاه شما با موفقیت در کمپین «فروش در ۷ روز» ثبت شد. کارشناسان
-              ما در کمتر از ۲۴ ساعت با شما تماس می‌گیرند.
+              اطلاعات دستگاه ثبت شد و کد رهگیری صادر گردید. در نسخه فعلی پرداخت آنلاین
+              فعال نیست؛ هیچ وجهی دریافت نشده و این ثبت اولیه به معنی رزرو قطعی نیست.
             </p>
 
             <div className="mt-8 rounded-2xl border border-[#F58220]/30 bg-[#F58220]/5 p-6">
@@ -252,7 +232,7 @@ export default function SellIn7RegisterForm({
               </div>
               <div
                 dir="ltr"
-                className="mt-2 font-mono text-3xl font-black tracking-[0.3em] text-white"
+                className="mt-2 break-all font-mono text-xl font-black tracking-[0.12em] text-white sm:text-2xl"
               >
                 {success.trackingCode}
               </div>
@@ -608,64 +588,30 @@ export default function SellIn7RegisterForm({
                 <Lock className="h-4 w-4" />
                 پیش‌پرداخت رزرو
               </div>
-              <div className="mt-3 text-3xl font-black text-white">
-                {formatFullPrice(BigInt(prepaymentAmount))}
+              <div className="mt-3 text-lg font-black text-white">
+                پرداخت آنلاین در این نسخه فعال نیست
               </div>
               <p className="mt-2 text-xs leading-6 text-white/55">
-                هزینهٔ کارشناسی فنی، حقوقی و ارزش‌گذاری توسط تیم HEAVIX. در صورت
-                عدم فروش در ۷ روز، کامل بازگردانده می‌شود.
+                مبلغ تنظیم‌شدهٔ {formatFullPrice(BigInt(prepaymentAmount))} صرفاً
+                اطلاعاتی است. در این فرم هیچ وجهی دریافت نمی‌شود و تا زمان اتصال
+                درگاه پرداخت و اعلام شرایط کتبی، رزرو یا تعهد مالی ایجاد نخواهد شد.
               </p>
-
-              {paid ? (
-                <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-400">
-                  <CheckCircle2 className="h-5 w-5" />
-                  پیش‌پرداخت پرداخت شد
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={paying}
-                  onClick={prepay}
-                  className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-l from-amber-500 to-[#F58220] text-sm font-bold text-white shadow-lg shadow-orange-950/40 transition hover:brightness-110 disabled:opacity-60"
-                >
-                  {paying ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      در حال پرداخت…
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="h-4 w-4" />
-                      پرداخت پیش‌پرداخت
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="mt-5 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs font-bold text-amber-200">
+                <Lock className="h-4 w-4" />
+                درخواست اولیه — بدون دریافت وجه
+              </div>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6">
               <div className="flex items-center gap-2 text-xs font-bold text-white">
                 <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                تضمین هویکس
+                شفافیت فرآیند
               </div>
-              <ul className="mt-3 space-y-2 text-[11px] leading-6 text-white/55">
-                <li className="flex gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                  کارشناسی فنی و حقوقی توسط تیم HEAVIX
-                </li>
-                <li className="flex gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                  ارزش‌گذاری شفاف بر اساس داده بازار
-                </li>
-                <li className="flex gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                  کارمزد فقط ۱٪ در صورت فروش
-                </li>
-                <li className="flex gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                  بازگشت کامل پیش‌پرداخت در صورت عدم فروش
-                </li>
-              </ul>
+              <p className="mt-3 text-[11px] leading-6 text-white/55">
+                ثبت این فرم فقط ایجاد درخواست اولیه است. هرگونه کارشناسی، هزینه،
+                کارمزد، بازپرداخت یا زمان‌بندی فروش، پیش از شروع خدمت و در قرارداد
+                کتبی مشخص می‌شود و بدون تأیید شما تعهدی ایجاد نخواهد شد.
+              </p>
             </div>
 
             {error && (
@@ -676,7 +622,7 @@ export default function SellIn7RegisterForm({
 
             <button
               type="button"
-              disabled={submitting || !paid}
+              disabled={submitting}
               onClick={submit}
               className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-l from-amber-500 to-[#F58220] text-sm font-black text-white shadow-lg shadow-orange-950/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -693,11 +639,10 @@ export default function SellIn7RegisterForm({
                 </>
               )}
             </button>
-            {!paid && (
-              <p className="text-center text-[10px] text-white/40">
-                برای ثبت نهایی، ابتدا پیش‌پرداخت را پرداخت کنید.
-              </p>
-            )}
+            <p className="text-center text-[10px] leading-5 text-white/40">
+              با ثبت درخواست، هیچ پرداختی انجام نمی‌شود و وضعیت پرونده در انتظار بررسی و
+              تأیید مراحل بعدی باقی می‌ماند.
+            </p>
           </aside>
         </div>
       </div>
