@@ -11,7 +11,7 @@ Establish, with independently recorded provenance, that the two Preview-only con
 
 Do not infer destination from the connection-string name alone. Never read, print, paste into chat, commit, screenshot, or log a connection string or bearer token.
 
-## Current known facts (metadata only)
+## Current known facts (metadata and read-only verification)
 
 - Cloudflare Worker `heavix-preview` has secret-text bindings named `DATABASE_URL` and `STORE_DATABASE_URL`. Cloudflare's list-secrets API returns names/types only; it cannot prove destination.
 - The dedicated App Preview and Store Preview Prisma databases are Ready in Frankfurt.
@@ -99,6 +99,31 @@ Expected proof assertions:
 
 A successful test against the two locally supplied connection strings proves those strings' destinations. It does **not** prove that the already-deployed Cloudflare secret values are identical. Do not claim the live Worker secret mapping is proven unless those live values are re-established through a separately controlled, reviewed update of the live Preview Worker and a subsequent protected runtime identity check. That update is not authorized by this runbook.
 
+## Phase 5 — candidate Cloudflare version-only identity probe (NOT EXECUTED)
+
+Cloudflare's current documentation describes a possible path that avoids routing normal traffic to the proof code:
+
+- A Worker Version URL tests an uploaded version before deployment and uses that Worker version's existing configuration/resources: https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/
+- Cloudflare supports an `inherit` binding to copy an existing binding, including a secret, from an earlier Worker version without resending its value. Script uploads inherit from the most recently uploaded version; use strict inheritance so a missing binding fails closed: https://developers.cloudflare.com/workers/observability/errors/#inherit-binding-errors
+- `wrangler versions secret put` creates a new version without deploying it; ordinary `wrangler secret put` deploys immediately and must not be used for this proof: https://developers.cloudflare.com/workers/configuration/secrets/
+
+However, the live account state currently blocks using a Version URL safely:
+
+- The `heavix-preview` Worker reports `workers_dev.enabled=true` but `previews_enabled=false`.
+- Cloudflare Access is not enabled on this account; the Access applications API returned `access.api.error.not_enabled`.
+- Cloudflare Version URLs are publicly reachable when enabled unless protected. Do not enable them merely to run this proof.
+- The proof route in PR #200 is bearer-token-gated and returns no raw error messages or credentials, but PR #200 remains Draft and has not received its required fresh independent review.
+
+Therefore, before any version upload:
+1. Obtain a fresh independent review of the exact PR #200 HEAD and the proof route.
+2. Confirm a protected access path for the version URL (Cloudflare Access or an independently reviewed, token-only route with no other newly exposed functionality).
+3. Upload only the reviewed OpenNext artifact as a new Worker version; inherit `DATABASE_URL` and `STORE_DATABASE_URL` strictly from the verified current version, without reading or replacing their values.
+4. Add only the two verified OID variables and a short-lived proof token to that version. Do not deploy it to normal traffic.
+5. Invoke the proof endpoint with the token, confirm both identity pairs and read-only assertions, then revoke/remove the proof token and delete or retire the temporary version according to Cloudflare's supported lifecycle.
+6. Re-read deployment metadata to prove the 100% traffic deployment remains on the original active version.
+
+This is a candidate plan only. No version upload, secret inheritance, preview URL enablement, Access configuration, deployment, or token creation has occurred. If the access-control condition cannot be met without exposing the Preview app or changing current access, stop and use a trusted local runner instead.
+
 ## Phase 4 — evidence to report
 
 Share only:
@@ -122,4 +147,4 @@ Do not share connection strings, passwords, tokens, screenshots of credential pa
 - Production: **NO-GO**.
 - Migrations, seeds, writes, DNS changes, and PR merge: **NOT PERFORMED**.
 
-Next safe step: inspect whether the existing deployed Preview Worker can execute a protected identity probe without changing its current secrets. If not, prepare a separately reviewed Preview-only proof deployment/secret rotation plan; do not infer that the live secret mapping is correct from the Prisma checks.
+Next safe step: complete the independent review and access-control design in Phase 5. Do not enable public Version URLs or alter deployment percentages until the route's exposure and rollback behavior are reviewed. If safe access cannot be established, use the local Workerd proof for the code path and keep live Cloudflare Secret destination marked UNPROVEN.
