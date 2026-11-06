@@ -188,11 +188,10 @@ function xmlEscape(s: string): string {
  * Build the complete sitemap.xml document as a string.
  *
  * Queries:
- *   • static paths (/, /listings, /brands, /store, /knowledge, /categories)
- *   • all active categories  (slug)
- *   • all active brands      (slug)
- *   • all PUBLISHED listings (slug)
- *   • all published articles (slug)
+ *   • static public paths (including the /knowledge index)
+ *   • active categories and brands
+ *   • PUBLISHED listings and canonical /articles/{slug}
+ *   • ACTIVE companies and brand-scoped ProductModels with published inventory
  * • honors per-entity SEO overrides (robotsIndex / sitemapPriority /
  *   sitemapChangeFreq) — entities with robotsIndex=false are omitted.
  */
