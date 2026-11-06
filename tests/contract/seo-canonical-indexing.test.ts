@@ -62,6 +62,16 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     expect(read("src/app/brands/[slug]/models/[modelSlug]/page.tsx")).toContain('getSEO("ProductModel", model.id)');
   });
 
+  it("validates and safely serializes administrator-authored article JSON-LD", () => {
+    const seo = read("src/lib/seo.ts");
+    const article = read("src/app/articles/[slug]/page.tsx");
+    expect(seo).toContain("JSON.parse(value)");
+    expect(seo).toContain('record["@context"] !== "https://schema.org"');
+    expect(seo).toContain('replace(/</g, "\\\\u003c")');
+    expect(article).toContain("parseStructuredDataOverride(seo?.structuredData, defaultJsonLd)");
+    expect(article).toContain("serializeJsonLd(jsonLd)");
+  });
+
   it("applies the SEO control plane to listing, brand, and category detail metadata", () => {
     expect(read("src/app/listings/[slug]/page.tsx")).toContain('getSEO("Listing", listing.id)');
     expect(read("src/app/brands/[slug]/page.tsx")).toContain('getSEO("Brand", brand.id)');
