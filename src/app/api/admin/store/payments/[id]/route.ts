@@ -51,7 +51,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
       data.status = body.status;
       data.reviewedAt = new Date();
-      data.reviewedById = user.id;
     }
     if (body.note !== undefined) {
       if (body.note !== null && (typeof body.note !== "string" || body.note.length > 2000)) {
