@@ -97,6 +97,38 @@ export const SELL_IN_7_DAYS_TRACK: RateLimitPreset = {
   label: "sell-in-7-days-track",
 };
 
+/** Public comparison session creation — 12 per hour per IP. */
+export const COMPARE_CREATE: RateLimitPreset = {
+  limit: 12,
+  windowMs: HOUR,
+  scope: "ip",
+  label: "compare-create",
+};
+
+/** Public comparison item mutations — 30 per hour per IP. */
+export const COMPARE_ADD_ITEM: RateLimitPreset = {
+  limit: 30,
+  windowMs: HOUR,
+  scope: "ip",
+  label: "compare-add-item",
+};
+
+/** AI comparison summaries — 5 per hour per authenticated user. */
+export const COMPARE_AI_SUMMARY: RateLimitPreset = {
+  limit: 5,
+  windowMs: HOUR,
+  scope: "user",
+  label: "compare-ai-summary",
+};
+
+/** Public comparison reads — 60 per minute per IP. */
+export const COMPARE_READ: RateLimitPreset = {
+  limit: 60,
+  windowMs: MINUTE,
+  scope: "ip",
+  label: "compare-read",
+};
+
 /** Messaging endpoints (offers / messages / contact-seller) — 30/h/user. */
 export const MESSAGING: RateLimitPreset = {
   limit: 30,
@@ -119,6 +151,10 @@ export const RATE_LIMIT_PRESETS = {
   MESSAGING,
   SELL_IN_7_DAYS_CREATE,
   SELL_IN_7_DAYS_TRACK,
+  COMPARE_CREATE,
+  COMPARE_ADD_ITEM,
+  COMPARE_READ,
+  COMPARE_AI_SUMMARY,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;
