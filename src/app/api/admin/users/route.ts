@@ -3,7 +3,6 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
-import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +114,8 @@ export async function GET(req: Request) {
       data: users.map(serialize),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] request failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -222,23 +222,33 @@ export async function POST(req: Request) {
         update: {},
       });
 
-      return u;
-    });
+      // User creation, canonical role assignment and audit are atomic.
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.users.create",
+          entityType: "User",
+          entityId: u.id,
+          afterJson: JSON.stringify({
+            firstName: u.firstName,
+            lastName: u.lastName,
+            email: u.email,
+            mobile: u.mobile,
+            role: u.role,
+            status: u.status,
+            companyName: u.companyName,
+          }),
+          reason: "via admin API",
+        },
+      });
 
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.users.create",
-      entityType: "User",
-      entityId: user.id,
-      after: { firstName: user.firstName, lastName: user.lastName, email: user.email, mobile: user.mobile, role: user.role, status: user.status, companyName: user.companyName },
-      reason: "via admin API",
-    }).catch(() => {
-      /* audit failure does not roll back the mutation */
+      return u;
     });
 
     return NextResponse.json({ success: true, data: serialize(user) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] POST failed:", err);
+    return NextResponse.json({ error: "Unable to create user" }, { status: 500 });
   }
 }
