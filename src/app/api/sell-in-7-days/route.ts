@@ -85,9 +85,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const declaredLength = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 32_768) {
+    return NextResponse.json({ error: "حجم درخواست بیش از حد مجاز است." }, { status: 413 });
+  }
+
   let body: any = {};
   try {
-    body = await req.json();
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 32_768) {
+      return NextResponse.json({ error: "حجم درخواست بیش از حد مجاز است." }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "ساختار درخواست نامعتبر است." }, { status: 400 });
+    }
   } catch {
     return NextResponse.json({ error: "بدنهٔ درخواست نامعتبر است." }, { status: 400 });
   }
@@ -118,6 +130,33 @@ export async function POST(req: NextRequest) {
   }
   if (!deviceName || deviceName.length < 3) {
     return NextResponse.json({ error: "نام دستگاه الزامی است." }, { status: 400 });
+  }
+  if (
+    sellerName.length > 120 ||
+    deviceName.length > 160 ||
+    (modelName && modelName.length > 160) ||
+    (sellerEmail && (sellerEmail.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(sellerEmail))) ||
+    (province && province.length > 100) ||
+    (city && city.length > 100) ||
+    (description && description.length > 4_000) ||
+    (categoryId && categoryId.length > 100) ||
+    (brandId && brandId.length > 100)
+  ) {
+    return NextResponse.json({ error: "یکی از فیلدها بیش از حد مجاز یا نامعتبر است." }, { status: 400 });
+  }
+  const currentYear = new Date().getFullYear();
+  if (year !== null && (!Number.isInteger(year) || year < 1900 || year > currentYear + 1)) {
+    return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
+  }
+  if (workingHours !== null && (!Number.isInteger(workingHours) || workingHours < 0 || workingHours > 2_000_000)) {
+    return NextResponse.json({ error: "ساعت کارکرد معتبر نیست." }, { status: 400 });
+  }
+  if (expectedPrice !== null && (expectedPrice < 0n || expectedPrice > 1_000_000_000_000_000_000n)) {
+    return NextResponse.json({ error: "قیمت مورد انتظار معتبر نیست." }, { status: 400 });
+  }
+  const allowedConditions = new Set(["NEW", "USED", "REFURBISHED", "FOR_PARTS"]);
+  if (condition && !allowedConditions.has(condition)) {
+    return NextResponse.json({ error: "وضعیت دستگاه معتبر نیست." }, { status: 400 });
   }
 
   const sellerMobile = normalizeMobile(sellerMobileRaw);
@@ -210,9 +249,16 @@ export async function GET(req: NextRequest) {
       { status: 400, headers: { "Cache-Control": "private, no-store" } },
     );
   }
+  const normalizedCode = code.toUpperCase();
+  if (!/^[A-HJ-NP-Z2-9]{16}$/.test(normalizedCode)) {
+    return NextResponse.json(
+      { error: "قالب کد رهگیری معتبر نیست." },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
 
   const app = await db.sellIn7DaysApplication.findUnique({
-    where: { trackingCode: code.toUpperCase() },
+    where: { trackingCode: normalizedCode },
     select: {
       trackingCode: true,
       deviceName: true,
