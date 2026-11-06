@@ -1,6 +1,6 @@
 # Preview database Secret destination proof — operator runbook
 
-**Status:** preparation only. This document does not authorize a database connection, Worker upload/deployment, migration, write, or Production access.
+**Status:** active verification record. Phase 2 database identity checks have been completed under the operator's authorization. This document does not authorize Worker upload/deployment, migration, write, or Production access.
 
 ## Objective
 
@@ -20,6 +20,9 @@ Do not infer destination from the connection-string name alone. Never read, prin
   - Store Preview: `7701425043360235551`
 - The verified current database OID is `5` for both Preview resources. Both report `current_database() = postgres`; the same OID across these two independent clusters is valid. A database OID is only unique within its own cluster, so the cluster `system_identifier` and database OID must be checked together.
 - The active Cloudflare Worker does not currently expose `HEAVIX_APP_PREVIEW_DATABASE_OID` or `HEAVIX_STORE_PREVIEW_DATABASE_OID`. Do not modify it to add them as part of this runbook.
+- Active Cloudflare Worker version #14 (`57c14554-2a28-4f77-981f-0b1ced6bad80`) was last uploaded on 2026-10-29. Its active compatibility flags remain only `nodejs_compat`.
+- A read-only download/inspection of the active Worker source (2026-11-06) found no `opennext-runtime-proof` route marker, no `PREVIEW_ONLY` marker, and no App/Store OID binding names. The current deployed Worker therefore cannot be assumed to contain PR #200's protected identity route.
+- Cloudflare's secret inventory confirms only the names/types `DATABASE_URL` and `STORE_DATABASE_URL`; encrypted values are not returned. No secret values were read or modified.
 
 ## Phase 0 — stop conditions
 
@@ -113,8 +116,9 @@ Do not share connection strings, passwords, tokens, screenshots of credential pa
 - App Preview identity pair: `(7701427422680793119, 5)`.
 - Store Preview identity pair: `(7701425043360235551, 5)`.
 - Cloudflare live Secret-to-database destination: **UNPROVEN**. The direct Prisma checks above do not inspect or prove the encrypted values currently bound to the Cloudflare Worker.
+- Active Worker source inspection: **PROVEN NOT TO CONTAIN** the PR #200 identity-probe route/`PREVIEW_ONLY` markers or OID bindings as of 2026-11-06.
 - Preview database contact: **AUTHORIZED AND COMPLETED**, using SELECT-only statements in explicit read-only transactions.
-- Live Worker secret replacement or deployment: **NOT PERFORMED**.
+- Live Worker secret replacement, source upload, or deployment: **NOT PERFORMED**.
 - Production: **NO-GO**.
 - Migrations, seeds, writes, DNS changes, and PR merge: **NOT PERFORMED**.
 
