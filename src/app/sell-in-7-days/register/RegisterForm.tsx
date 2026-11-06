@@ -109,11 +109,9 @@ const EMPTY_FORM = {
 export default function SellIn7RegisterForm({
   categories,
   brands,
-  prepaymentAmount,
 }: {
   categories: Category[];
   brands: Brand[];
-  prepaymentAmount: string;
 }) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [brandBoxOpen, setBrandBoxOpen] = useState(false);
@@ -581,20 +579,20 @@ export default function SellIn7RegisterForm({
             </fieldset>
           </div>
 
-          {/* SIDEBAR — prepayment + submit */}
+          {/* SIDEBAR — payment disclosure + submit */}
           <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
             <div className="rounded-3xl border border-[#F58220]/20 bg-gradient-to-br from-amber-950/30 via-[#141414] to-[#141414] p-6">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#F58220]">
                 <Lock className="h-4 w-4" />
-                پیش‌پرداخت رزرو
+                پرداخت و شرایط ثبت درخواست
               </div>
               <div className="mt-3 text-lg font-black text-white">
                 پرداخت آنلاین در این نسخه فعال نیست
               </div>
               <p className="mt-2 text-xs leading-6 text-white/55">
-                مبلغ تنظیم‌شدهٔ {formatFullPrice(BigInt(prepaymentAmount))} صرفاً
-                اطلاعاتی است. در این فرم هیچ وجهی دریافت نمی‌شود و تا زمان اتصال
-                درگاه پرداخت و اعلام شرایط کتبی، رزرو یا تعهد مالی ایجاد نخواهد شد.
+                در نسخه فعلی هیچ مبلغی برای ثبت اولیه دریافت نمی‌شود. هرگونه
+                هزینه احتمالی، روش پرداخت و شرایط خدمت پیش از شروع به‌صورت کتبی
+                اعلام می‌شود و فقط با تأیید شما قابل انجام است.
               </p>
               <div className="mt-5 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs font-bold text-amber-200">
                 <Lock className="h-4 w-4" />
