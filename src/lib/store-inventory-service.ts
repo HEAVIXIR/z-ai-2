@@ -451,7 +451,7 @@ export async function adjustStock(
     throw new InventoryServiceError(400, 'نوع حرکت نامعتبر');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty === 0) {
+  if (!Number.isSafeInteger(qty) || qty === 0) {
     throw new InventoryServiceError(
       400,
       'تعداد باید عدد صحیح غیر صفر باشد',
