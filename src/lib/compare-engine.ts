@@ -281,6 +281,10 @@ export async function addItem(
     },
     select: { id: true, sessionId: true, sortOrder: true },
   });
+  await db.comparisonSession.update({
+    where: { id: sessionId },
+    data: { aiSummary: null, aiSummaryAt: null },
+  });
   return item;
 }
 
@@ -288,7 +292,13 @@ export async function addItem(
  * Remove an item from a session.
  */
 export async function removeItem(sessionId: string, itemId: string): Promise<void> {
-  await db.comparisonItem.deleteMany({ where: { id: itemId, sessionId } });
+  const deleted = await db.comparisonItem.deleteMany({ where: { id: itemId, sessionId } });
+  if (deleted.count > 0) {
+    await db.comparisonSession.update({
+      where: { id: sessionId },
+      data: { aiSummary: null, aiSummaryAt: null },
+    });
+  }
 }
 
 // ────────────────────────────────────────────────────────────
@@ -778,6 +788,17 @@ export async function getSessionByShareToken(
  * so subsequent reads of the same session don't re-bill the LLM.
  */
 export async function generateAISummary(sessionId: string): Promise<string> {
+  const cached = await db.comparisonSession.findUnique({
+    where: { id: sessionId },
+    select: { aiSummary: true, aiSummaryAt: true },
+  });
+  const cacheAgeMs = cached?.aiSummaryAt
+    ? Date.now() - cached.aiSummaryAt.getTime()
+    : Number.POSITIVE_INFINITY;
+  if (cached?.aiSummary && cacheAgeMs >= 0 && cacheAgeMs < 15 * 60 * 1000) {
+    return cached.aiSummary;
+  }
+
   const data = await getComparisonData(sessionId);
   if (data.items.length < 2) {
     return "حداقل دو مورد برای خلاصه‌سازی لازم است.";
