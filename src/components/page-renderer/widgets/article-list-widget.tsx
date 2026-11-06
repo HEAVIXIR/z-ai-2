@@ -25,7 +25,7 @@ export default function ArticleListWidget({
           {visibleItems.map((item, i) => (
             <Link
               key={item.id || item.slug || i}
-              href={`/knowledge/${encodeURIComponent(String(item.slug || item.id))}`}
+              href={`/articles/${encodeURIComponent(String(item.slug || item.id))}`}
               className="overflow-hidden rounded-lg border border-white/10 bg-[#141414] text-white transition hover:border-[#F58220]/40 hover:shadow-sm"
             >
               {item.coverImage && (

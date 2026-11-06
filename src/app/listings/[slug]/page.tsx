@@ -39,6 +39,7 @@ import {
   Handshake,
 } from "lucide-react";
 import type { Metadata } from "next";
+import { getSEO } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +50,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await db.listing.findUnique({
-    where: { slug },
+  const listing = await db.listing.findFirst({
+    where: { slug, status: "PUBLISHED" },
     select: {
+      id: true,
       title: true,
       shortDesc: true,
       description: true,
@@ -66,24 +68,27 @@ export async function generateMetadata({
     },
   });
   if (!listing) {
-    return { title: "آگهی یافت نشد" };
+    return { title: "آگهی یافت نشد", robots: { index: false, follow: false } };
   }
-  const title = `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
+  const seo = await getSEO("Listing", listing.id);
+  const title = seo?.metaTitle?.trim() || `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
   const description =
+    seo?.metaDescription?.trim() ||
     listing.shortDesc ||
     (listing.description ?? "").slice(0, 155) ||
     `خرید، فروش یا اجاره ${listing.title} در ${listing.city || "ایران"}. وضعیت: ${listing.condition}.`;
   return {
     title,
     description,
-    alternates: { canonical: `/listings/${slug}` },
+    alternates: { canonical: seo?.canonicalUrl?.trim() || `/listings/${encodeURIComponent(slug)}` },
     openGraph: {
-      title,
-      description,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : listing.images[0]?.url ? [{ url: listing.images[0].url }] : undefined,
       type: "website",
       locale: "fa_IR",
-      images: listing.images[0]?.url ? [{ url: listing.images[0].url }] : undefined,
     },
+    robots: { index: seo?.robotsIndex ?? true, follow: seo?.robotsFollow ?? true },
   };
 }
 

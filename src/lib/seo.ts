@@ -101,6 +101,8 @@ export function generateMetaTitle(entityType: string, entity: any): string {
   if (entityType === "Listing") return `${base}${suffix}`;
   if (entityType === "Article") return `${base}${suffix}`;
   if (entityType === "Product") return `${base} — مشخصات فنی${suffix}`;
+  if (entityType === "ProductModel") return `${base} — مدل ماشین‌آلات${suffix}`;
+  if (entityType === "Company") return `${base} — شرکت ماشین‌آلات${suffix}`;
   return `${base}${suffix}`;
 }
 
@@ -140,6 +142,13 @@ export function generateMetaDescription(
   }
   if (entityType === "Product") {
     return base || `مشخصات فنی و کاتالوگ ${name} در ${SITE_NAME}.`;
+  }
+  if (entityType === "ProductModel") {
+    const brand = entity?.brand?.name ? ` ${entity.brand.name}` : "";
+    return base || `مشخصات فنی، نسل‌ها و آگهی‌های مدل ${name}${brand} در ${SITE_NAME}.`;
+  }
+  if (entityType === "Company") {
+    return base || `اطلاعات، محصولات و آگهی‌های شرکت ${name} در بازار صنعتی ${SITE_NAME}.`;
   }
   return base || `صفحهٔ ${name} در ${SITE_NAME}.`;
 }
@@ -217,6 +226,40 @@ export function generateStructuredData(
     });
   }
 
+  if (entityType === "Company") {
+    return JSON.stringify({
+      ...base,
+      "@type": "Organization",
+      name: entity?.name ?? "",
+      url: entity?.slug ? `${SITE_BASE_URL}/companies/${entity.slug}` : undefined,
+      logo: entity?.logoUrl ? absoluteUrl(entity.logoUrl) : undefined,
+      description: entity?.description ?? undefined,
+      address: entity?.address || entity?.city || entity?.province
+        ? {
+            "@type": "PostalAddress",
+            streetAddress: entity?.address ?? undefined,
+            addressLocality: entity?.city ?? undefined,
+            addressRegion: entity?.province ?? undefined,
+          }
+        : undefined,
+    });
+  }
+
+  if (entityType === "ProductModel") {
+    return JSON.stringify({
+      ...base,
+      "@type": "ProductModel",
+      name: entity?.name ?? "",
+      description: entity?.description ?? undefined,
+      brand: entity?.brand?.name
+        ? { "@type": "Brand", name: entity.brand.name }
+        : undefined,
+      url: entity?.slug && entity?.brand?.slug
+        ? `${SITE_BASE_URL}/brands/${entity.brand.slug}/models/${entity.slug}`
+        : undefined,
+    });
+  }
+
   if (entityType === "Article") {
     return JSON.stringify({
       ...base,
@@ -245,6 +288,45 @@ export function generateStructuredData(
     name: entity?.name ?? entity?.title ?? SITE_NAME,
     description: entity?.description ?? undefined,
   });
+}
+
+/**
+ * Parse administrator-authored JSON-LD without allowing malformed JSON or
+ * arbitrary remote contexts to reach the rendered script element.
+ */
+export function parseStructuredDataOverride(
+  value: string | null | undefined,
+  fallback: unknown,
+): unknown {
+  if (!value?.trim()) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fallback;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (
+      record["@context"] !== undefined &&
+      record["@context"] !== "https://schema.org"
+    ) {
+      return fallback;
+    }
+    return { ...record, "@context": "https://schema.org" };
+  } catch {
+    return fallback;
+  }
+}
+
+/** Escape HTML-significant characters before embedding JSON in a script tag. */
+export function serializeJsonLd(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  if (!serialized) return "{}";
+  return serialized
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 /* ── BreadcrumbList helper for nested routes ──────────────── */
@@ -288,6 +370,16 @@ export async function fetchEntity(
         return await db.product.findUnique({
           where: { id: entityId },
         });
+      case "ProductModel":
+        return await db.productModel.findUnique({
+          where: { id: entityId },
+          include: {
+            brand: { select: { name: true, slug: true } },
+            category: { select: { name: true } },
+          },
+        });
+      case "Company":
+        return await db.company.findUnique({ where: { id: entityId } });
       case "Page":
         // Page is a virtual type — return a stub.
         return { id: entityId, name: entityId, title: entityId, description: "" };
@@ -338,6 +430,39 @@ export async function searchEntities(
           take,
           select: { id: true, canonicalName: true, slug: true },
         })) as any;
+      case "ProductModel": {
+        const models = await db.productModel.findMany({
+          where: { name: { contains: q }, status: "ACTIVE" },
+          take,
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            brand: { select: { name: true, active: true } },
+          },
+        });
+        return models
+          .filter((model) => model.brand?.active)
+          .map((model) => ({
+            id: model.id,
+            label: model.brand?.name
+              ? `${model.brand.name} — ${model.name}`
+              : model.name,
+            slug: model.slug,
+          }));
+      }
+      case "Company": {
+        const companies = await db.company.findMany({
+          where: { name: { contains: q }, status: "ACTIVE" },
+          take,
+          select: { id: true, name: true, slug: true },
+        });
+        return companies.map((company) => ({
+          id: company.id,
+          label: company.name,
+          slug: company.slug,
+        }));
+      }
       default:
         return [];
     }
@@ -354,6 +479,8 @@ export const SEO_ENTITY_TYPES = [
   "Category",
   "Brand",
   "Product",
+  "ProductModel",
+  "Company",
   "Listing",
   "Article",
   "Page",

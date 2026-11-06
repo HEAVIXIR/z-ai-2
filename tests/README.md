@@ -69,7 +69,7 @@ Per STEP 12 the project must also have e2e + regression coverage. The plan:
 
 - **Framework**: Playwright (already compatible with Next.js 16 App Router).
 - **Scope**:
-  - Public: home `/`, `/listings`, `/listings/[slug]`, `/knowledge`, `/knowledge/[slug]`, `/brands`, `/brands/[slug]`.
+  - Public: home `/`, `/listings`, `/listings/[slug]`, `/knowledge`, `/articles/[slug] (legacy /knowledge/[slug] redirects here)`, `/brands`, `/brands/[slug]`.
   - Auth: `/login`, `/register`, `/dashboard`, logout flow.
   - Admin: `/admin/dashboard`, `/admin/listings`, `/admin/users`, `/admin/audit-log`, `/admin/jobs`.
   - API: every `POST /api/auth/*`, `POST /api/ai-gateway` (policy deny/allow), `POST /api/admin/upload` (magic-byte rejection).

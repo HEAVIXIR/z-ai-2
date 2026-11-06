@@ -7,6 +7,7 @@ import Footer from "@/components/layout/Footer";
 import ListingCard from "@/components/listings/ListingCard";
 import { ArrowLeft, FolderTree } from "lucide-react";
 import type { Metadata } from "next";
+import { getSEO } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +20,25 @@ export async function generateMetadata({
   const { slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
   const category = await db.category.findFirst({
-    where: { slug },
-    select: { name: true, slug: true },
+    where: { slug, active: true },
+    select: { id: true, name: true, slug: true },
   });
-  if (!category) return { title: "دسته‌بندی یافت نشد" };
-  const title = `${category.name} — خرید و اجاره ماشین‌آلات سنگین`;
-  const description = `لیست آگهی‌های ${category.name} — خرید، فروش و اجاره ماشین‌آلات سنگین ${category.name} در سراسر ایران. مقایسه قیمت و ارتباط مستقیم با فروشنده.`;
+  if (!category) return { title: "دسته‌بندی یافت نشد", robots: { index: false, follow: false } };
+  const seo = await getSEO("Category", category.id);
+  const title = seo?.metaTitle?.trim() || `${category.name} — خرید و اجاره ماشین‌آلات سنگین`;
+  const description = seo?.metaDescription?.trim() || `لیست آگهی‌های ${category.name} — خرید، فروش و اجاره ماشین‌آلات سنگین ${category.name} در سراسر ایران. مقایسه قیمت و ارتباط مستقیم با فروشنده.`;
   return {
     title,
     description,
-    alternates: { canonical: `/categories/${category.slug}` },
-    openGraph: { title, description, type: "website", locale: "fa_IR" },
+    alternates: { canonical: seo?.canonicalUrl?.trim() || `/categories/${encodeURIComponent(category.slug)}` },
+    openGraph: {
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : undefined,
+      type: "website",
+      locale: "fa_IR",
+    },
+    robots: { index: seo?.robotsIndex ?? true, follow: seo?.robotsFollow ?? true },
   };
 }
 
@@ -43,7 +52,7 @@ export default async function CategoryPage({
 
   const [category, headerCats] = await Promise.all([
     db.category.findFirst({
-      where: { slug },
+      where: { slug, active: true },
       include: {
         children: {
           where: { active: true },

@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -8,6 +9,12 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import TransportRequestForm from "./TransportRequestForm";
 import { Truck, ArrowRight } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "ثبت درخواست حمل | هویکس",
+  robots: { index: false, follow: true },
+};
 
 export const dynamic = "force-dynamic";
 
