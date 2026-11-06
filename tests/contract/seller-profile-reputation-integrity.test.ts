@@ -11,6 +11,14 @@ function read(relativePath: string): string {
 const source = read("src/app/sellers/[id]/page.tsx");
 
 describe("public seller profile reputation integrity", () => {
+  it("exposes only active seller accounts on public profiles", () => {
+    expect(source).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
+    const trust = read("src/app/api/sellers/[id]/trust/route.ts");
+    const reputation = read("src/app/api/sellers/[id]/reputation/route.ts");
+    expect(trust).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
+    expect(reputation).toContain('where: { id, role: "SELLER", status: "ACTIVE" }');
+  });
+
   it("does not fabricate trust scores or star ratings from listing counts", () => {
     expect(source).not.toContain("trustScore");
     expect(source).not.toContain("امتیاز اعتماد");
