@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { getSEO } from "@/lib/seo";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -41,28 +42,27 @@ export async function generateMetadata({
   if (!model) {
     return { title: "مدل یافت نشد | هویکس", robots: { index: false, follow: false } };
   }
-  if (
-    !model.description?.trim() &&
-    model._count.listings === 0 &&
-    model._count.generations === 0
-  ) {
-    return {
-      title: `${brand.name} ${model.name} | هویکس`,
-      robots: { index: false, follow: true },
-    };
-  }
-  const title = `${brand.name} ${model.name} | مشخصات فنی و آگهی‌ها | هویکس`;
+  const seo = await getSEO("ProductModel", model.id);
+  const thin = !model.description?.trim() && model._count.listings === 0 && model._count.generations === 0;
+  const title = seo?.metaTitle?.trim() || `${brand.name} ${model.name} | مشخصات فنی و آگهی‌ها | هویکس`;
   const description =
+    seo?.metaDescription?.trim() ||
     model.description?.trim().slice(0, 160) ||
     `مشخصات، نسل‌ها و آگهی‌های ${brand.name} ${model.name} در بازار ماشین‌آلات هویکس.`;
   return {
     title,
     description,
     alternates: {
-      canonical: `/brands/${encodeURIComponent(brand.slug)}/models/${encodeURIComponent(modelSlug)}`,
+      canonical: seo?.canonicalUrl?.trim() || `/brands/${encodeURIComponent(brand.slug)}/models/${encodeURIComponent(modelSlug)}`,
     },
-    openGraph: { title, description, type: "website", locale: "fa_IR" },
-    robots: { index: true, follow: true },
+    openGraph: {
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : undefined,
+      type: "website",
+      locale: "fa_IR",
+    },
+    robots: { index: !thin && (seo?.robotsIndex ?? true), follow: seo?.robotsFollow ?? true },
   };
 }
 
