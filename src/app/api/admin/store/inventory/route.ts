@@ -33,10 +33,9 @@ function toErrorResponse(e: unknown) {
       { status: e.status },
     );
   }
-  const err = e as Error;
-  console.error("[store/inventory] error:", err);
+  console.error("[store/inventory] error:", e);
   return NextResponse.json(
-    { success: false, error: err?.message ?? "Internal error" },
+    { success: false, error: "خطای داخلی سرور" },
     { status: 500 },
   );
 }
@@ -80,8 +79,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires inventory.manage" }, { status: 403 });
   }
   try {
-    const body = await req.json();
-    const { partId, type, quantity, reason, reference, warehouseId } = body;
+    const declaredLength = Number(req.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declaredLength) && declaredLength > 8 * 1024) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست بیش از حد بزرگ است" }, { status: 413 });
+    }
+    const raw = await req.text();
+    if (Buffer.byteLength(raw, "utf8") > 8 * 1024) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست بیش از حد بزرگ است" }, { status: 413 });
+    }
+
+    let body: unknown;
+    try {
+      body = raw.trim() ? JSON.parse(raw) : null;
+    } catch {
+      return NextResponse.json({ success: false, error: "JSON درخواست معتبر نیست" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست باید یک شیء معتبر باشد" }, { status: 400 });
+    }
+    const input = body as Record<string, unknown>;
+    const allowedFields = new Set(["partId", "type", "quantity", "reason", "reference", "warehouseId"]);
+    if (Object.keys(input).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ success: false, error: "فیلد غیرمجاز در درخواست موجودی" }, { status: 400 });
+    }
+
+    const { partId, type, quantity, reason, reference, warehouseId } = input;
+    const qty = Number(quantity);
+    if (
+      typeof partId !== "string" || !partId.trim() || partId.length > 128 ||
+      typeof type !== "string" || !type.trim() ||
+      !Number.isSafeInteger(qty) || qty === 0 ||
+      (warehouseId !== undefined && (typeof warehouseId !== "string" || !warehouseId.trim() || warehouseId.length > 128)) ||
+      (reason !== undefined && reason !== null && (typeof reason !== "string" || reason.length > 500)) ||
+      (reference !== undefined && reference !== null && (typeof reference !== "string" || reference.length > 120))
+    ) {
+      return NextResponse.json({ success: false, error: "اطلاعات حرکت موجودی نامعتبر است" }, { status: 400 });
+    }
 
     // T1-DEEP — when warehouseId is present, use the per-warehouse path
     // (updates InventoryBalance + writes StockMovement with warehouseId
@@ -91,10 +124,10 @@ export async function POST(req: Request) {
       const result = await adjustStock(
         partId,
         warehouseId,
-        quantity,
+        qty,
         type,
-        reason,
-        reference,
+        reason: reason as string | null | undefined,
+        reference: reference as string | null | undefined,
         user.id,
       );
       // P2 (Contract Drift Remediation): Removed the route-scope
@@ -108,9 +141,9 @@ export async function POST(req: Request) {
     const movement = await createMovement(
       partId,
       type,
-      quantity,
-      reason,
-      reference,
+      qty,
+      reason as string | null | undefined,
+      reference as string | null | undefined,
       user.id,
     );
     // P2: Same as above — createMovement() audits as
