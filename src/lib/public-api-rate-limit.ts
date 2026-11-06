@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 
 /**
@@ -7,10 +8,10 @@ import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
  */
 export function getPublicApiClientIdentity(req: Request): string {
   const cloudflareIp = req.headers.get("cf-connecting-ip")?.trim();
-  if (cloudflareIp) return cloudflareIp;
+  if (cloudflareIp && isIP(cloudflareIp)) return cloudflareIp;
 
   const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
+  if (realIp && isIP(realIp)) return realIp;
 
   return "unknown";
 }
