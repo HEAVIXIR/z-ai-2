@@ -24,6 +24,8 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).toContain("dealRoom.listingId !== listingId");
     expect(source).toContain("dealRoom.buyerId !== user.id && dealRoom.sellerId !== user.id");
     expect(source).toContain("notes.length > 1000");
+    expect(source).toContain("MAX_INSPECTION_REQUEST_BYTES = 16 * 1024");
+    expect(source).toContain("reader.cancel()");
   });
 
   it("rejects inactive or non-admin/non-seller inspector IDs at the API boundary", () => {
