@@ -32,6 +32,20 @@ describe("Sell in 7 Days public flow security contract", () => {
     expect(form).toContain("پرداخت آنلاین در این نسخه فعال نیست");
   });
 
+  it("validates that public submissions reference active catalog entities", () => {
+    const api = read("src/app/api/sell-in-7-days/route.ts");
+    expect(api).toContain('active: true, layer: "CATALOG"');
+    expect(api).toContain('active: true, status: "ACTIVE"');
+  });
+
+  it("does not display a configured prepayment amount before a payment flow exists", () => {
+    const form = read("src/app/sell-in-7-days/register/RegisterForm.tsx");
+    const page = read("src/app/sell-in-7-days/register/page.tsx");
+    expect(form).not.toContain("prepaymentAmount");
+    expect(page).not.toContain("getPrepaymentAmount");
+    expect(form).toContain("هیچ مبلغی برای ثبت اولیه دریافت نمی‌شود");
+  });
+
   it("does not expose contact or private financial data in the public tracking UI", () => {
     const client = read("src/app/sell-in-7-days/track/TrackClient.tsx");
     for (const field of [
