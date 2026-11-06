@@ -73,25 +73,122 @@ export async function GET(
 }
 
 /* PATCH /api/inspections/[id] — admin/inspector updates the inspection. */
+const MAX_PATCH_BYTES = 64 * 1024;
+const INSPECTION_STATUSES = new Set([
+  "REQUESTED",
+  "SCHEDULED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "CANCELLED",
+]);
+
+async function readBoundedPatchJson(req: Request): Promise<Record<string, unknown> | null> {
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_PATCH_BYTES) return null;
+
+  const reader = req.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_PATCH_BYTES) {
+      try { await reader.cancel(); } catch { /* request already closed */ }
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  // STEP 11.35 FIX: use RBAC isAdmin (not isAuthenticated).
   const user = await getCurrentUser();
   const admin = user ? await rbacIsAdmin(user.id) : false;
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   const { id } = await ctx.params;
+  if (!id || id.length > 128) {
+    return NextResponse.json({ error: "Invalid inspection ID" }, { status: 400 });
+  }
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const data: any = {};
-    if (typeof body.status === "string") data.status = body.status;
-    if (body.scheduledDate) data.scheduledDate = new Date(body.scheduledDate);
-    if (body.completedAt) data.completedAt = new Date(body.completedAt);
+    const body = await readBoundedPatchJson(req);
+    if (!body) {
+      return NextResponse.json(
+        { error: "Invalid or oversized request body" },
+        { status: 400 },
+      );
+    }
+
+    const data: Record<string, unknown> = {};
+    const allowedKeys = new Set([
+      "status", "scheduledDate", "completedAt", "inspectorId",
+      "notes", "reportUrl", "photos", "checklist", "price",
+    ]);
+    if (Object.keys(body).length === 0 || Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      return NextResponse.json({ error: "Invalid inspection update fields" }, { status: 400 });
+    }
+
+    if (body.status !== undefined) {
+      if (typeof body.status !== "string" || !INSPECTION_STATUSES.has(body.status)) {
+        return NextResponse.json({ error: "Invalid inspection status" }, { status: 400 });
+      }
+      data.status = body.status;
+    }
+
+    for (const field of ["scheduledDate", "completedAt"] as const) {
+      if (body[field] !== undefined) {
+        if (body[field] === null || body[field] === "") {
+          data[field] = null;
+        } else if (typeof body[field] === "string") {
+          const date = new Date(body[field]);
+          if (!Number.isFinite(date.getTime())) {
+            return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+          }
+          data[field] = date;
+        } else {
+          return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+        }
+      }
+    }
+
     if (body.inspectorId !== undefined) {
-      const inspectorId = body.inspectorId ? String(body.inspectorId) : null;
+      if (body.inspectorId !== null && typeof body.inspectorId !== "string") {
+        return NextResponse.json({ error: "Invalid inspector ID" }, { status: 400 });
+      }
+      const inspectorId = typeof body.inspectorId === "string" ? body.inspectorId.trim() : null;
+      if (inspectorId && inspectorId.length > 128) {
+        return NextResponse.json({ error: "Invalid inspector ID" }, { status: 400 });
+      }
       if (inspectorId) {
         const eligibleInspector = await db.user.findFirst({
           where: {
@@ -110,33 +207,86 @@ export async function PATCH(
       }
       data.inspectorId = inspectorId;
     }
-    if (body.notes !== undefined) data.notes = body.notes ? String(body.notes) : null;
-    if (body.reportUrl !== undefined)
-      data.reportUrl = body.reportUrl ? String(body.reportUrl) : null;
+
+    if (body.notes !== undefined) {
+      if (body.notes !== null && typeof body.notes !== "string") {
+        return NextResponse.json({ error: "Invalid notes" }, { status: 400 });
+      }
+      const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+      if (notes && notes.length > 1000) {
+        return NextResponse.json({ error: "Notes are too long" }, { status: 400 });
+      }
+      data.notes = notes || null;
+    }
+
+    if (body.reportUrl !== undefined) {
+      if (body.reportUrl !== null && typeof body.reportUrl !== "string") {
+        return NextResponse.json({ error: "Invalid report URL" }, { status: 400 });
+      }
+      const reportUrl = typeof body.reportUrl === "string" ? body.reportUrl.trim() : "";
+      if (reportUrl && (reportUrl.length > 2048 || !isHttpUrl(reportUrl))) {
+        return NextResponse.json({ error: "Invalid report URL" }, { status: 400 });
+      }
+      data.reportUrl = reportUrl || null;
+    }
+
     if (body.photos !== undefined) {
-      data.photos = Array.isArray(body.photos)
-        ? JSON.stringify(body.photos)
-        : body.photos
-          ? String(body.photos)
-          : null;
+      if (body.photos !== null && !Array.isArray(body.photos)) {
+        return NextResponse.json({ error: "Invalid photos" }, { status: 400 });
+      }
+      const photos = Array.isArray(body.photos) ? body.photos : [];
+      if (
+        photos.length > 20 ||
+        photos.some((photo) => typeof photo !== "string" || photo.length > 2048 || !isHttpUrl(photo))
+      ) {
+        return NextResponse.json({ error: "Invalid photos" }, { status: 400 });
+      }
+      data.photos = photos.length ? JSON.stringify(photos) : null;
     }
+
     if (body.checklist !== undefined) {
-      const checklist = Array.isArray(body.checklist) ? body.checklist : [];
+      if (!Array.isArray(body.checklist) || body.checklist.length > 200) {
+        return NextResponse.json({ error: "Invalid checklist" }, { status: 400 });
+      }
+      const checklist = body.checklist;
+      const validChecklist = checklist.every((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+        const entry = item as Record<string, unknown>;
+        return (
+          typeof entry.item === "string" && entry.item.length <= 128 &&
+          typeof entry.label === "string" && entry.label.length <= 300 &&
+          (entry.passed === null || typeof entry.passed === "boolean") &&
+          (entry.notes === undefined || (typeof entry.notes === "string" && entry.notes.length <= 500))
+        );
+      });
+      if (!validChecklist) {
+        return NextResponse.json({ error: "Invalid checklist" }, { status: 400 });
+      }
       data.checklist = JSON.stringify(checklist);
-      // Auto-compute the score when checklist is provided.
-      data.score = scoreChecklist(checklist);
+      data.score = scoreChecklist(checklist as { passed: boolean | null }[]);
     }
-    if (body.score !== undefined) {
-      const s = parseNumber(body.score);
-      if (s !== null) data.score = s;
-    }
+
     if (body.price !== undefined) {
-      data.price = parseBig(body.price);
+      if (body.price !== null && body.price !== "" && typeof body.price !== "string" && typeof body.price !== "number") {
+        return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+      }
+      try {
+        data.price = body.price === null || body.price === "" ? null : parseBig(body.price);
+        if (data.price !== null && data.price !== undefined && data.price < 0n) {
+          return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
+      }
     }
-    // If status moved to COMPLETED, stamp completedAt.
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "No valid update fields" }, { status: 400 });
+    }
     if (body.status === "COMPLETED" && !data.completedAt) {
       data.completedAt = new Date();
     }
+
     const updated = await db.inspection.update({
       where: { id },
       data,
@@ -144,9 +294,9 @@ export async function PATCH(
     });
     return NextResponse.json({ inspection: serialize(updated) });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message ?? "Server error" },
-      { status: 500 },
-    );
+    if (e?.code === "P2025") {
+      return NextResponse.json({ error: "Inspection not found" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Unable to update inspection" }, { status: 500 });
   }
 }
