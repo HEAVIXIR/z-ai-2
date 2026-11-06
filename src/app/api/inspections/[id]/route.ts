@@ -97,13 +97,13 @@ export async function PATCH(
           where: {
             id: inspectorId,
             status: "ACTIVE",
-            userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } },
+            userRoles: { some: { role: { key: "ADMIN" } } },
           },
           select: { id: true },
         });
         if (!eligibleInspector) {
           return NextResponse.json(
-            { error: "Inspector must be an active admin or seller" },
+            { error: "Inspector must be an active admin" },
             { status: 400 },
           );
         }
