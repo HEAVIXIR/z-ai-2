@@ -84,6 +84,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
       "src/app/login/layout.tsx",
       "src/app/register/layout.tsx",
       "src/app/requests/new/layout.tsx",
+      "src/app/listings/new/layout.tsx",
       "src/app/rfq/[id]/layout.tsx",
       "src/app/auctions/layout.tsx",
       "src/app/sellers/[id]/layout.tsx",
