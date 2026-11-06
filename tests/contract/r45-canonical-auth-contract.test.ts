@@ -42,6 +42,12 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("select: { role: true }");
   });
 
+  it("admin seller directory reads the canonical SELLER UserRole", () => {
+    const s = read("src/app/admin/sellers/page.tsx");
+    expect(s).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+    expect(s).not.toContain('where: { role: "SELLER" }');
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
