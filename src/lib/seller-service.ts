@@ -3,8 +3,8 @@
  * ------------------------------------------------------------
  * Extracted seller lifecycle logic for the marketplace domain.
  *
- * Sellers are MAIN-DB entities (User with role=SELLER + the
- * FoundingSeller optional record — see prisma/schema.prisma).
+ * Sellers are MAIN-DB entities (User with canonical UserRole=SELLER +
+ * the optional FoundingSeller lifecycle record — see prisma/schema.prisma).
  *
  * Schema reality (do NOT change the schema per Wave 2A constraints):
  *   model FoundingSeller {
@@ -35,7 +35,7 @@
  *
  * Responsibilities:
  *   - registerSeller({ userId, companyId?, userId_operator })
- *       Set User.role=SELLER + upsert FoundingSeller (active=false
+ *       Assign canonical UserRole=SELLER + upsert FoundingSeller (active=false
  *       to mark PENDING). Optionally link the User to a Company
  *       (companyId). Audit: marketplace.seller.register.
  *
@@ -82,8 +82,8 @@ export class SellerServiceError extends Error {
 
 // ── registerSeller ───────────────────────────────────────
 /**
- * Register a user as a seller. Sets User.role=SELLER + upserts a
- * FoundingSeller row in the PENDING state (active=false). Optionally
+ * Register a user as a seller. Assigns canonical UserRole=SELLER + upserts
+ * a FoundingSeller row in the PENDING state (active=false). Optionally
  * links the user to a Company (companyId).
  *
  * Idempotent: re-calling registerSeller on an already-SELLER user
@@ -114,7 +114,7 @@ export async function registerSeller(params: {
   // ── Verify user exists ──
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, role: true, status: true, companyId: true },
+    select: { id: true, status: true, companyId: true },
   });
   if (!user) {
     throw new SellerServiceError(404, "کاربر یافت نشد");
@@ -132,7 +132,7 @@ export async function registerSeller(params: {
   const updatedUser = await db.user.update({
     where: { id: userId },
     data: companyId ? { companyId } : {},
-    select: { id: companyId ? true : true, companyId: true },
+    select: { id: true, companyId: true },
   });
 
   await db.userRole.upsert({
