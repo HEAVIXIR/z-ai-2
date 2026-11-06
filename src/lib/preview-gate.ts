@@ -55,7 +55,7 @@ function base64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function signExpiry(expiry: number, signingKey: string): Promise<string> {
+async function signExpiry(expiry: number, signingKey: string, origin: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(signingKey),
@@ -63,13 +63,13 @@ async function signExpiry(expiry: number, signingKey: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`heavix-preview-v1:${expiry}`));
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`heavix-preview-v1:${origin}:${expiry}`));
   return base64Url(new Uint8Array(signature));
 }
 
-async function createSession(signingKey: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<string> {
+async function createSession(signingKey: string, origin: string, nowSeconds = Math.floor(Date.now() / 1000)): Promise<string> {
   const expiry = nowSeconds + SESSION_TTL_SECONDS;
-  return `${expiry}.${await signExpiry(expiry, signingKey)}`;
+  return `${expiry}.${await signExpiry(expiry, signingKey, origin)}`;
 }
 
 function readCookie(request: Request): string | null {
@@ -89,7 +89,7 @@ async function hasValidSession(request: Request, signingKey: string): Promise<bo
   const expiry = Number(expiryText);
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isSafeInteger(expiry) || expiry <= now || expiry > now + SESSION_TTL_SECONDS + 60) return false;
-  const expected = await signExpiry(expiry, signingKey);
+  const expected = await signExpiry(expiry, signingKey, new URL(request.url).origin);
   return constantTimeEqual(encoder.encode(signature), encoder.encode(expected));
 }
 
@@ -234,7 +234,7 @@ export async function handlePreviewGate(
     const supplied = encoder.encode(passwords[0] ?? "");
     const expected = encoder.encode(env.HEAVIX_PREVIEW_GATE_PASSWORD);
     if (!constantTimeEqual(supplied, expected)) return loginPage(true);
-    const session = await createSession(env.HEAVIX_PREVIEW_GATE_SIGNING_KEY);
+    const session = await createSession(env.HEAVIX_PREVIEW_GATE_SIGNING_KEY, url.origin);
     return redirectTo(request, "/", setSessionCookie(session));
   }
 
