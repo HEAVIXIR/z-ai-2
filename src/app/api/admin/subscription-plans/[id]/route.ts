@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
+import {
+  parseSubscriptionPlanInput,
+  readSubscriptionPlanBody,
+} from "@/lib/admin/subscription-plan-input";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,247 +14,144 @@ interface Params {
   params: Promise<{ id: string }>;
 }
 
-/** Serialize a SubscriptionPlan row (BigInt → string) and include subscriber count. */
-async function serialize(p: any) {
-  const count = await db.premiumSubscription.count({
-    where: { plan: p.code },
+function auditSnapshot(value: any) {
+  if (!value) return null;
+  return JSON.stringify(value, (_key, item) =>
+    typeof item === "bigint" ? item.toString() : item,
+  ).slice(0, 4000);
+}
+
+async function serialize(plan: any) {
+  const subscriberCount = await db.premiumSubscription.count({
+    where: { plan: plan.code },
   });
   return {
-    ...p,
-    priceMonthly: p.priceMonthly?.toString() ?? "0",
-    priceYearly: p.priceYearly?.toString() ?? null,
-    subscriberCount: count,
+    ...plan,
+    priceMonthly: plan.priceMonthly?.toString() ?? "0",
+    priceYearly: plan.priceYearly?.toString() ?? null,
+    subscriberCount,
   };
 }
 
-/* GET /api/admin/subscription-plans/[id] */
 export async function GET(_req: Request, { params }: Params) {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
+
   try {
     const { id } = await params;
     const plan = await db.subscriptionPlan.findUnique({ where: { id } });
-    if (!plan) {
-      return NextResponse.json(
-        { success: false, error: "طرح یافت نشد" },
-        { status: 404 },
-      );
-    }
+    if (!plan) return NextResponse.json({ success: false, error: "طرح یافت نشد" }, { status: 404 });
     return NextResponse.json({ success: true, plan: await serialize(plan) });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+  } catch {
+    return NextResponse.json({ success: false, error: "خطای داخلی سرور" }, { status: 500 });
   }
 }
 
-/* PATCH /api/admin/subscription-plans/[id] — update any plan field. */
 export async function PATCH(req: Request, { params }: Params) {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
+
+  const parsedBody = await readSubscriptionPlanBody(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ success: false, error: parsedBody.error }, { status: 400 });
+  }
+  const parsed = parseSubscriptionPlanInput(parsedBody.data, "update");
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, error: parsed.error }, { status: 400 });
+  }
+
   try {
     const { id } = await params;
-    const existing = await db.subscriptionPlan.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "طرح یافت نشد" },
-        { status: 404 },
-      );
-    }
-    const body = await req.json().catch(() => ({}));
+    const outcome = await db.$transaction(async (tx) => {
+      const before = await tx.subscriptionPlan.findUnique({ where: { id } });
+      if (!before) return { kind: "not-found" as const };
 
-    const data: any = {};
-
-    if ("code" in body) {
-      const newCode = String(body.code ?? "").trim();
-      if (!newCode) {
-        return NextResponse.json(
-          { success: false, error: "code نمی‌تواند خالی باشد" },
-          { status: 400 },
-        );
-      }
-      if (newCode !== existing.code) {
-        const conflict = await db.subscriptionPlan.findUnique({
-          where: { code: newCode },
+      if (typeof parsed.data.code === "string" && parsed.data.code !== before.code) {
+        const conflict = await tx.subscriptionPlan.findUnique({
+          where: { code: parsed.data.code },
         });
-        if (conflict) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: `طرح با کد «${newCode}» قبلاً ثبت شده است`,
-            },
-            { status: 409 },
-          );
-        }
+        if (conflict) return { kind: "conflict" as const };
       }
-      data.code = newCode;
-    }
-    if ("nameFa" in body) {
-      const v = String(body.nameFa ?? "").trim();
-      if (!v) {
-        return NextResponse.json(
-          { success: false, error: "nameFa نمی‌تواند خالی باشد" },
-          { status: 400 },
-        );
-      }
-      data.nameFa = v;
-    }
-    if ("nameEn" in body) data.nameEn = body.nameEn ? String(body.nameEn) : null;
-    if ("description" in body)
-      data.description = body.description ? String(body.description) : null;
-    if ("priceMonthly" in body) {
-      const b = parseBig(body.priceMonthly);
-      data.priceMonthly = b ?? BigInt(0);
-    }
-    if ("priceYearly" in body) {
-      data.priceYearly = parseBig(body.priceYearly);
-    }
-    if ("currency" in body)
-      data.currency = body.currency ? String(body.currency) : "IRR";
-    if ("featuredCredits" in body)
-      data.featuredCredits = num(body.featuredCredits, 0);
-    if ("analyticsAccess" in body)
-      data.analyticsAccess = Boolean(body.analyticsAccess);
-    if ("aiAssistantAccess" in body)
-      data.aiAssistantAccess = Boolean(body.aiAssistantAccess);
-    if ("priorityLeads" in body)
-      data.priorityLeads = Boolean(body.priorityLeads);
-    if ("companyPage" in body) data.companyPage = Boolean(body.companyPage);
-    if ("maxListings" in body) data.maxListings = num(body.maxListings, 0);
-    if ("maxImages" in body) data.maxImages = num(body.maxImages, 8);
-    if ("verifiedBadge" in body)
-      data.verifiedBadge = Boolean(body.verifiedBadge);
-    if ("supportLevel" in body)
-      data.supportLevel = body.supportLevel ? String(body.supportLevel) : null;
-    if ("sortOrder" in body) data.sortOrder = num(body.sortOrder, 0);
-    if ("active" in body) data.active = body.active !== false;
-    if ("popular" in body) data.popular = Boolean(body.popular);
-    if ("featuresJson" in body)
-      data.featuresJson = normalizeJson(body.featuresJson);
 
-    const plan = await db.subscriptionPlan.update({
-      where: { id },
-      data,
+      const updated = await tx.subscriptionPlan.update({
+        where: { id },
+        data: parsed.data as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "admin.subscriptionPlans.update",
+          entityType: "SubscriptionPlan",
+          entityId: updated.id,
+          beforeJson: auditSnapshot(before),
+          afterJson: auditSnapshot(updated),
+          reason: "via admin API",
+        },
+      });
+      return { kind: "ok" as const, plan: updated };
     });
 
-    await audit("subscription_plan.update", plan.id, existing, data);
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "admin.subscriptionPlans.update",
-      entityType: "SubscriptionPlan",
-      entityId: plan.id,
-      before: { code: existing.code, nameFa: existing.nameFa, priceMonthly: existing.priceMonthly?.toString() ?? null, active: existing.active },
-      after: { code: plan.code, nameFa: plan.nameFa, priceMonthly: plan.priceMonthly?.toString() ?? null, active: plan.active },
-      reason: "via admin API",
-    });
-
-    return NextResponse.json({
-      success: true,
-      plan: await serialize(plan),
-    });
+    if (outcome.kind === "not-found") {
+      return NextResponse.json({ success: false, error: "طرح یافت نشد" }, { status: 404 });
+    }
+    if (outcome.kind === "conflict") {
+      return NextResponse.json({ success: false, error: "کد این پلن قبلاً ثبت شده است" }, { status: 409 });
+    }
+    return NextResponse.json({ success: true, plan: await serialize(outcome.plan) });
   } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+    if (err?.code === "P2002") {
+      return NextResponse.json({ success: false, error: "کد این پلن قبلاً ثبت شده است" }, { status: 409 });
+    }
+    return NextResponse.json({ success: false, error: "خطای داخلی سرور" }, { status: 500 });
   }
 }
 
-/* DELETE /api/admin/subscription-plans/[id] */
 export async function DELETE(_req: Request, { params }: Params) {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
+
   try {
     const { id } = await params;
-    const existing = await db.subscriptionPlan.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "طرح یافت نشد" },
-        { status: 404 },
-      );
-    }
+    const outcome = await db.$transaction(async (tx) => {
+      const before = await tx.subscriptionPlan.findUnique({ where: { id } });
+      if (!before) return { kind: "not-found" as const };
 
-    // Prevent delete if any PremiumSubscription uses this plan code.
-    const subscribers = await db.premiumSubscription.count({
-      where: { plan: existing.code },
-    });
-    if (subscribers > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `این طرح به ${subscribers} اشتراک فعال اختصاص دارد و قابل حذف نیست. ابتدا طرح اشتراک‌ها را تغییر دهید.`,
+      const subscribers = await tx.premiumSubscription.count({
+        where: { plan: before.code },
+      });
+      if (subscribers > 0) return { kind: "in-use" as const, subscribers };
+
+      await tx.subscriptionPlan.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "admin.subscriptionPlans.delete",
+          entityType: "SubscriptionPlan",
+          entityId: id,
+          beforeJson: auditSnapshot(before),
+          afterJson: null,
+          reason: "via admin API",
         },
-        { status: 409 },
-      );
+      });
+      return { kind: "ok" as const };
+    });
+
+    if (outcome.kind === "not-found") {
+      return NextResponse.json({ success: false, error: "طرح یافت نشد" }, { status: 404 });
     }
-
-    await db.subscriptionPlan.delete({ where: { id } });
-
-    await audit("subscription_plan.delete", id, existing, null);
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "admin.subscriptionPlans.delete",
-      entityType: "SubscriptionPlan",
-      entityId: id,
-      before: { code: existing.code, nameFa: existing.nameFa, priceMonthly: existing.priceMonthly?.toString() ?? null, active: existing.active },
-      reason: "via admin API",
-    });
-
+    if (outcome.kind === "in-use") {
+      return NextResponse.json({
+        success: false,
+        error: `این طرح به ${outcome.subscribers} اشتراک اختصاص دارد و قابل حذف نیست. ابتدا اشتراک‌ها را به طرح دیگری منتقل کنید.`,
+      }, { status: 409 });
+    }
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
-  }
-}
-
-/* ── helpers ── */
-function num(v: any, def: number): number {
-  const n = parseInt(String(v ?? ""), 10);
-  return Number.isFinite(n) ? n : def;
-}
-
-function normalizeJson(v: any): string | null {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "string") return v;
-  try {
-    return JSON.stringify(v);
   } catch {
-    return null;
-  }
-}
-
-async function audit(
-  action: string,
-  entityId: string,
-  before: any,
-  after: any,
-) {
-  try {
-    await db.auditLog.create({
-      data: {
-        actorType: "ADMIN",
-        action,
-        entityType: "SubscriptionPlan",
-        entityId,
-        beforeJson: before ? JSON.stringify(before).slice(0, 4000) : null,
-        afterJson: after ? JSON.stringify(after).slice(0, 4000) : null,
-      },
-    });
-  } catch {
-    /* best-effort */
+    return NextResponse.json({ success: false, error: "خطای داخلی سرور" }, { status: 500 });
   }
 }
