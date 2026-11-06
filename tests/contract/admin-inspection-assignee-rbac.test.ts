@@ -5,13 +5,13 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "..", "..");
 
 describe("admin inspection assignee eligibility", () => {
-  it("uses active users with canonical ADMIN or SELLER roles", () => {
+  it("uses active users with the canonical ADMIN role", () => {
     const source = fs.readFileSync(
       path.join(ROOT, "src/app/admin/inspections/page.tsx"),
       "utf8",
     );
     expect(source).toContain('status: "ACTIVE"');
-    expect(source).toContain('userRoles: { some: { role: { key: { in: "ADMIN" } } } }');
+    expect(source).toContain('userRoles: { some: { role: { key: "ADMIN" } } }');
     expect(source).not.toContain('OR: [{ role: "ADMIN" }, { role: "SELLER" }]');
   });
 
@@ -35,7 +35,7 @@ describe("admin inspection assignee eligibility", () => {
       "utf8",
     );
     expect(source).toContain('status: "ACTIVE"');
-    expect(source).toContain('userRoles: { some: { role: { key: { in: "ADMIN" } } } }');
+    expect(source).toContain('userRoles: { some: { role: { key: "ADMIN" } } }');
     expect(source).toContain('error: "Inspector must be an active admin"');
   });
 });
