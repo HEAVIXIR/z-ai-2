@@ -67,13 +67,18 @@ export async function getCurrentUser() {
         include: { user: true },
       });
       if (session) {
-        await db.session.updateMany({
+        const migration = await db.session.updateMany({
           where: { id: session.id, token },
           data: { token: tokenHash },
-        }).catch(() => {
-          // Keep the session usable if opportunistic migration fails;
-          // the next request will retry while the legacy row still exists.
         });
+        if (migration.count === 0) {
+          // Another concurrent request may have migrated the row first.
+          // Re-read by digest; if no hashed row exists, fail closed.
+          session = await db.session.findUnique({
+            where: { token: tokenHash },
+            include: { user: true },
+          });
+        }
       }
     }
 
