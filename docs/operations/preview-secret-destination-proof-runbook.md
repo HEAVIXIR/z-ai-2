@@ -269,3 +269,77 @@ Release readiness must be evaluated independently for each core provider:
 - Backblaze B2: bucket and application-key scope, encryption/retention/lifecycle, integrity-checked object retrieval, and a successful restore drill.
 
 A successful check in one provider does not prove the health of another. Never use an auxiliary Preview provider's status to replace any of these four independent gates.
+
+
+## Phase 7 — Cloudflare Preview exposure correction and live re-verification (2026-11-07)
+
+This phase supersedes conflicting Cloudflare observations in Phase 5 and Phase 6 where the live API now returns more complete Worker settings and where Preview URL state has changed. All calls below were read-only except the narrowly scoped Preview-URL protection change explicitly recorded below.
+
+### Authoritative Worker endpoint and deployment
+
+- The account Workers subdomain is `heavixir`; the canonical public Worker URL is `https://heavix-preview.heavixir.workers.dev`.
+- Worker `heavix-preview` is still enabled on its workers.dev subdomain.
+- Current active deployment is deployment `d2217c73-0e08-4cee-8a74-3b5ce8dda61e`, with 100% traffic assigned to version 14 (`57c14554-2a28-4f77-981f-0b1ced6bad80`), created 2026-10-29. No traffic split or active deployment was changed.
+- The script settings API now returns these bindings (names/types only):
+  - `ASSETS` — assets binding
+  - `DATABASE_URL` — secret_text
+  - `HEAVIX_ENV` — plain_text
+  - `NODE_ENV` — plain_text
+  - `STORE_DATABASE_URL` — secret_text
+- Secret values were not read, copied, hashed, logged, or changed. The live Worker secret destinations remain **UNPROVEN**.
+- Worker script metadata reports `routes=null`; no custom route was returned. The zone inventory still returns zero zones for this account and no `heavix.ir` match. Therefore this session can verify the workers.dev endpoint, but cannot verify `heavix.ir` DNS or a custom-domain route.
+- The account-level Access APIs return `access.api.error.not_enabled`; Access is not enabled for this account. The account metadata also reports `enforce_twofactor=false`. No account-wide authentication setting was changed.
+
+### Preview URL exposure finding and mitigation
+
+Before mitigation, the Worker script subdomain API returned:
+- `enabled=true`
+- `previews_enabled=true`
+
+The versions API listed 14 versions, each with `has_preview=true`. Because Access is not enabled, version-specific Preview URLs did not have an account-level Access application/policy protecting them. This was a historical-version exposure surface distinct from the canonical public workers.dev Preview endpoint.
+
+**Mitigation performed and verified:**
+- Updated only the Worker subdomain flags to `enabled=true, previews_enabled=false`.
+- A subsequent GET returned the exact same values: `enabled=true, previews_enabled=false`.
+- The canonical `https://heavix-preview.heavixir.workers.dev` endpoint remains enabled; only version-specific Preview URLs are disabled.
+- No Worker code, version upload, deployment, traffic percentage, secret, binding, DNS record, zone, or database was changed.
+
+This is the intended public-Preview boundary while Access remains unavailable: keep the single canonical public Preview endpoint available, but do not expose per-version preview URLs. Re-enable `previews_enabled` only after a reviewed access-control design protects historical/version URLs.
+
+### Cloudflare data services
+
+- D1 database inventory returned zero databases.
+- R2 bucket inventory returned HTTP 403 / error 10042: “Please enable R2 through the Cloudflare Dashboard.” R2 was not enabled; HEAVIX's selected object-storage provider remains Backblaze B2.
+- No D1 database, R2 bucket, DNS zone, Access application, or Access policy was created or modified.
+
+### Prisma and backup inventory
+
+- Four projects remain visible: `heavix-production`, `heavix-app-preview`, `heavix-store-preview`, and `heavix-web-preview`.
+- Three PostgreSQL databases are Ready in Frankfurt: App Preview, Store Preview, and Production. The `heavix-web-preview` project currently has no separate Postgres database in the database inventory.
+- Automated Prisma Postgres backup inventory returned an empty list for each of the three databases. This is not proof that no other backup system exists; it means no Prisma-managed automated backup objects were returned by this API check.
+- Connection-string inventories returned names/metadata only. No connection-string value was generated, retrieved, or exposed.
+- Production was not queried. No database, branch, schema, migration, seed, or data was modified.
+
+### Backblaze B2 and integrated backup boundary
+
+- No Backblaze B2 connector is available in this session; live bucket/key/retention/object inventory and restore execution were not performed.
+- PR #188 remains the source of the archive implementation and its explicit hard gate. Its exact-head archive workflow's synthetic/static checks passed, but the real archive job and Preview identity/readiness job were skipped.
+- The integrated encrypted B2 database archive and restore remains **NOT PROVEN**. The provider's lack of a genuinely read-only Prisma Postgres credential is a documented blocker for the current direct `pg_dump` workflow. Do not bypass the hard gate or use full-access credentials for backup automation.
+- The historical B2 upload/download/delete smoke test is not a retained backup and is not a PostgreSQL restore drill.
+
+### Updated decisions
+
+| Control | Verified state | Decision |
+|---|---|---|
+| Canonical public Preview | workers.dev enabled | KEEP AVAILABLE |
+| Version-specific Preview URLs | disabled and re-read successfully | PROTECTED |
+| Cloudflare Access | not enabled | UNAVAILABLE in current account state |
+| Custom domain / DNS | no zone visible; no Worker route returned | UNVERIFIED |
+| Worker secret destinations | names visible; values inaccessible | UNPROVEN |
+| D1 / R2 | zero D1; R2 disabled | NOT USED |
+| Prisma Preview identities | previously independently proven read-only | PROVEN for direct Preview resources only |
+| Prisma-managed automated backups | empty list for all three DBs | NOT CONFIGURED / NOT RETURNED |
+| Backblaze B2 integrated restore | no live verification | NOT PROVEN |
+| Production DB | not queried or modified | NO-GO |
+
+**Safety record:** the only live Cloudflare mutation in this phase was disabling version-specific Preview URLs while preserving the canonical public workers.dev endpoint. The change was immediately read back and verified. No other Cloudflare, Prisma, Backblaze, GitHub secret, DNS, deployment, or Production state was changed.
