@@ -155,6 +155,45 @@ describe("Heavix preview outer authentication gate", () => {
     expect(downstream).not.toHaveBeenCalled();
   });
 
+  it("blocks cross-origin and origin-less unsafe methods even with a valid session", async () => {
+    const session = await login();
+    const cookie = cookieFrom(session);
+    const downstream = vi.fn(async () => new Response("app"));
+    const crossOrigin = new Request("https://preview.heavix.invalid/api/listings", {
+      method: "POST",
+      headers: {
+        cookie,
+        origin: "https://attacker.heavix.invalid",
+        "sec-fetch-site": "same-site",
+      },
+    });
+    const missingOrigin = new Request("https://preview.heavix.invalid/api/listings", {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect((await handlePreviewGate(crossOrigin, ENV, downstream)).status).toBe(403);
+    expect((await handlePreviewGate(missingOrigin, ENV, downstream)).status).toBe(403);
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
+  it("allows a same-origin unsafe method after successful authentication", async () => {
+    const session = await login();
+    const cookie = cookieFrom(session);
+    const downstream = vi.fn(async () => new Response("saved", { status: 201 }));
+    const request = new Request("https://preview.heavix.invalid/api/listings", {
+      method: "POST",
+      headers: {
+        cookie,
+        origin: "https://preview.heavix.invalid",
+        "sec-fetch-site": "same-origin",
+      },
+    });
+    const response = await handlePreviewGate(request, ENV, downstream);
+    expect(response.status).toBe(201);
+    expect(await response.text()).toBe("saved");
+    expect(downstream).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects tampered session cookies", async () => {
     const session = await login();
     const cookie = cookieFrom(session);
