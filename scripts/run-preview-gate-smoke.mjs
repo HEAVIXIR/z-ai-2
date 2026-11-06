@@ -190,8 +190,11 @@ try {
   assert.equal(logout.status, 303);
   assert.match(logout.headers.get("set-cookie") ?? "", /Max-Age=0/);
 
+  // Model the browser applying the Max-Age=0 Set-Cookie response: the next
+  // request must no longer carry the session cookie. A copied bearer cookie
+  // remains valid until expiry because this gate intentionally has no server store.
   const afterLogout = await fetch(new URL(proofPath, baseUrl), {
-    headers: { accept: "application/json", cookie },
+    headers: { accept: "application/json" },
   });
   assert.equal(afterLogout.status, 401, "Logged-out session must no longer authorize requests.");
 
