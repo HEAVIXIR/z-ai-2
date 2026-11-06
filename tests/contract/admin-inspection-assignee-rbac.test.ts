@@ -15,6 +15,17 @@ describe("admin inspection assignee eligibility", () => {
     expect(source).not.toContain('OR: [{ role: "ADMIN" }, { role: "SELLER" }]');
   });
 
+  it("rate-limits inspection creation and validates related deal-room ownership", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/inspections/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain("enforceRateLimit(user.id, INSPECTION_CREATE)");
+    expect(source).toContain("dealRoom.listingId !== listingId");
+    expect(source).toContain("dealRoom.buyerId !== user.id && dealRoom.sellerId !== user.id");
+    expect(source).toContain("notes.length > 1000");
+  });
+
   it("rejects inactive or non-admin/non-seller inspector IDs at the API boundary", () => {
     const source = fs.readFileSync(
       path.join(ROOT, "src/app/api/inspections/[id]/route.ts"),
