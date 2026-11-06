@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { runModerationBatch } from "@/lib/moderation";
-import type { AIAgent } from "@prisma/client";
+import type { AIAgent } from '@/lib/generated/client/client';
 
 /* ============================================================
    HEAVIX — AI Agents Platform (P2-26)

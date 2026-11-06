@@ -2,12 +2,19 @@
 // SQLite development schema (PostgreSQL for production — switch provider + url for deployment)
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client"
+  output     = "../src/lib/generated/client"
+  runtime    = "cloudflare"
 }
+
+generator nodeClient {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ════════════════════════════════════════════════════════════
