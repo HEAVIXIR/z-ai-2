@@ -259,7 +259,9 @@ export async function GET(req: NextRequest) {
     );
   }
   const normalizedCode = code.toUpperCase();
-  if (!/^[A-HJ-NP-Z2-9]{16}$/.test(normalizedCode)) {
+  const isCurrentTrackingCode = /^[A-HJ-NP-Z2-9]{16}$/.test(normalizedCode);
+  const isLegacyTrackingCode = /^[A-Z0-9]{8}$/.test(normalizedCode);
+  if (!isCurrentTrackingCode && !isLegacyTrackingCode) {
     return NextResponse.json(
       { error: "قالب کد رهگیری معتبر نیست." },
       { status: 400, headers: { "Cache-Control": "private, no-store" } },
