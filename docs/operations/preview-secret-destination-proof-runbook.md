@@ -320,6 +320,20 @@ This is the intended public-Preview boundary while Access remains unavailable: k
 - Connection-string inventories returned names/metadata only. No connection-string value was generated, retrieved, or exposed.
 - Production was not queried. No database, branch, schema, migration, seed, or data was modified.
 
+### Prisma backup and credential policy — official provider documentation
+
+The current Prisma Postgres documentation confirms two constraints relevant to the archive design:
+
+- Every credential for one database uses the same database user and has the same full database access. Credentials cannot be made read-only or restricted to selected tables, schemas, or PostgreSQL roles. Prisma Postgres also does not support custom roles. A credential named `backup-readonly` would therefore not be read-only.
+- Automated snapshots are available on paid Starter/Pro/Business plans, are taken daily only on days with database activity, and have plan-dependent retention (7 days on Starter/Pro; 30 days on Business). The Free plan has no automated backups. The current Prisma API inventory returned no snapshots for any of the three HEAVIX databases. The active plan was not independently verified, so do not infer the plan solely from the empty list.
+
+Official references:
+- https://www.prisma.io/docs/postgres/database/connecting-to-your-database
+- https://www.prisma.io/docs/postgres/database/backups
+- https://www.prisma.io/docs/postgres/faq
+
+Prisma-managed snapshots, if available, are provider recovery points; they are not a separately verified Backblaze B2 copy. They do not satisfy the independent off-site encrypted archive and restore gate.
+
 ### Backblaze B2 and integrated backup boundary
 
 - No Backblaze B2 connector is available in this session; live bucket/key/retention/object inventory and restore execution were not performed.
