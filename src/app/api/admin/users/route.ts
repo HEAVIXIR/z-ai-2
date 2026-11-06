@@ -248,6 +248,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, data: serialize(user) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] POST failed:", err);
+    return NextResponse.json({ error: "Unable to create user" }, { status: 500 });
   }
 }
