@@ -124,11 +124,17 @@ export async function POST(req: NextRequest) {
 
   // Optional validation: categoryId / brandId should exist if provided.
   if (categoryId) {
-    const cat = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+    const cat = await db.category.findFirst({
+      where: { id: categoryId, active: true, layer: "CATALOG" },
+      select: { id: true },
+    });
     if (!cat) return NextResponse.json({ error: "دسته‌بندی نامعتبر است." }, { status: 400 });
   }
   if (brandId) {
-    const brand = await db.brand.findUnique({ where: { id: brandId }, select: { id: true } });
+    const brand = await db.brand.findFirst({
+      where: { id: brandId, active: true, status: "ACTIVE" },
+      select: { id: true },
+    });
     if (!brand) return NextResponse.json({ error: "برند نامعتبر است." }, { status: 400 });
   }
 
