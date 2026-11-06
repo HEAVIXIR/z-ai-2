@@ -32,8 +32,13 @@ describe("public seller profile reputation integrity", () => {
     const reputation = read("src/app/api/sellers/[id]/reputation/route.ts");
     expect(trust).toContain('where: { sellerId: id, status: "PUBLISHED" }');
     expect(trust).toContain('where: { sellerId: id, status: "PUBLISHED", verified: true }');
+    expect(trust).toContain('checkPublicApiRateLimit(req, "seller-trust")');
+    expect(trust).toContain('"Cache-Control": "private, no-store"');
     expect(reputation).toContain('where: { sellerId: id, status: "PUBLISHED" }');
     expect(reputation).toContain('where: { sellerId: id, status: "PUBLISHED", verified: true }');
     expect(reputation).toContain('listing: { sellerId: id, status: "PUBLISHED" }');
+    expect(reputation).toContain('checkPublicApiRateLimit(req, "seller-reputation")');
+    expect(reputation).toContain('"Cache-Control": "private, no-store"');
+    expect(reputation).toContain('error: "Server error"');
   });
 });
