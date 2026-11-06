@@ -24,5 +24,7 @@ describe("public listing and comparison API privacy contract", () => {
     expect(source).toContain('status: "PUBLISHED"');
     expect(source).toContain('status: "ACTIVE"');
     expect(source.split('brand: { is: { active: true, status: "ACTIVE" } }').length - 1).toBe(2);
+    expect(source).toContain("...(input.brandId ? { brandId: input.brandId } : {})");
+    expect(source).toContain("...(it.brandId ? { brandId: it.brandId } : {})");
   });
 });
