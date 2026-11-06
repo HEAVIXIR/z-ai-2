@@ -546,9 +546,10 @@ export async function inspectReturn(
           entityType: 'ReturnItem',
           entityId: itemCondition.itemId,
           before: beforeItem
-            ? { restockable: beforeItem.restockable, condition: beforeItem.condition }
-            : null,
+            ? { returnId, restockable: beforeItem.restockable, condition: beforeItem.condition }
+            : { returnId },
           after: {
+            returnId,
             restockable: updated.restockable,
             condition: updated.condition,
           },
