@@ -329,7 +329,7 @@ export async function POST(req: Request) {
       // update is authoritative under concurrent checkouts; a conflict throws
       // inside the transaction and rolls back the order and all side effects.
       for (const it of orderItemsData) {
-        await decrementOrderStock(tx, it.partId, it.quantity);
+        await decrementOrderStock(tx, it.partId, it.quantity, o.id, sessionUser?.id ?? null);
       }
 
       // bump coupon usage
