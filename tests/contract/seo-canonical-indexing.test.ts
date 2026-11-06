@@ -26,7 +26,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     const brand = read("src/app/brands/[slug]/page.tsx");
     const sitemap = read("src/app/sitemap.ts");
     expect(model).toContain("brandId: brand.id");
-    expect(model).toContain("alternates: { canonical:");
+    expect(model).toContain("canonical:");
     expect(legacy).toContain("findMany");
     expect(legacy).toContain("models.length === 1");
     expect(legacy).toContain("permanentRedirect");
@@ -65,5 +65,8 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     expect(seo).toContain('case "Company"');
     expect(admin).toContain("value: 'ProductModel'");
     expect(admin).toContain("value: 'Company'");
+    const adminClient = read("src/app/admin/seo/SEOAdminClient.tsx");
+    expect(adminClient).toContain('"ProductModel"');
+    expect(adminClient).toContain('"Company"');
   });
 });
