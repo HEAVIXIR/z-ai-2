@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { getComparisonData } from "@/lib/compare-engine";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { COMPARE_READ } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,9 +71,20 @@ async function authorizeMutation(
      }
    ============================================================ */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_READ.label),
+    limit: COMPARE_READ.limit,
+    windowMs: COMPARE_READ.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد درخواست‌های مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const { id } = await params;
     const session = await db.comparisonSession.findUnique({
@@ -112,7 +126,7 @@ export async function GET(
         // The frontend does not use this field.
       },
       data,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
