@@ -233,7 +233,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     trackError(err, { endpoint: "POST /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
