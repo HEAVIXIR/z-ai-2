@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
@@ -80,7 +79,7 @@ export async function GET(_req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
@@ -119,11 +118,6 @@ export async function PATCH(req: Request, { params }: Args) {
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-
-    const existing = await db.payment.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
 
     const data: any = {};
 
@@ -187,30 +181,40 @@ export async function PATCH(req: Request, { params }: Args) {
       data.paidAt = new Date();
     }
 
-    const payment = await db.payment.update({ where: { id }, data });
+    const payment = await db.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({ where: { id } });
+      if (!existing) return null;
 
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.update",
-      entityType: "Payment",
-      entityId: payment.id,
-      before: {
-        status: existing.status,
-        type: existing.type,
-        gateway: existing.gateway,
-        trackingCode: existing.trackingCode,
-        paidAt: existing.paidAt?.toISOString() ?? null,
-      },
-      after: {
-        status: payment.status,
-        type: payment.type,
-        gateway: payment.gateway,
-        trackingCode: payment.trackingCode,
-        paidAt: payment.paidAt?.toISOString() ?? null,
-      },
-      reason: "via admin API",
+      const updated = await tx.payment.update({ where: { id }, data });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.update",
+          entityType: "Payment",
+          entityId: updated.id,
+          beforeJson: JSON.stringify({
+            status: existing.status,
+            type: existing.type,
+            gateway: existing.gateway,
+            trackingCode: existing.trackingCode,
+            paidAt: existing.paidAt?.toISOString() ?? null,
+          }),
+          afterJson: JSON.stringify({
+            status: updated.status,
+            type: updated.type,
+            gateway: updated.gateway,
+            trackingCode: updated.trackingCode,
+            paidAt: updated.paidAt?.toISOString() ?? null,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return updated;
     });
+    if (!payment) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true, payment: serialize(payment) });
   } catch (err: any) {
@@ -231,29 +235,35 @@ export async function DELETE(_req: Request, { params }: Args) {
   await requirePermission(user.id, "payment.manage");
   try {
     const { id } = await params;
-    const before = await db.payment.findUnique({ where: { id } });
-    if (!before) {
+    const deleted = await db.$transaction(async (tx) => {
+      const before = await tx.payment.findUnique({ where: { id } });
+      if (!before) return false;
+
+      await tx.payment.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.delete",
+          entityType: "Payment",
+          entityId: id,
+          beforeJson: JSON.stringify({
+            userId: before.userId,
+            amount: before.amount.toString(),
+            currency: before.currency,
+            type: before.type,
+            status: before.status,
+            gateway: before.gateway,
+            trackingCode: before.trackingCode,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return true;
+    });
+    if (!deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    await db.payment.delete({ where: { id } });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.delete",
-      entityType: "Payment",
-      entityId: id,
-      before: {
-        userId: before.userId,
-        amount: before.amount.toString(),
-        currency: before.currency,
-        type: before.type,
-        status: before.status,
-        gateway: before.gateway,
-        trackingCode: before.trackingCode,
-      },
-      reason: "via admin API",
-    });
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
