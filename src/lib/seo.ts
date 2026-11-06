@@ -290,6 +290,43 @@ export function generateStructuredData(
   });
 }
 
+/**
+ * Parse administrator-authored JSON-LD without allowing malformed JSON or
+ * arbitrary remote contexts to reach the rendered script element.
+ */
+export function parseStructuredDataOverride(
+  value: string | null | undefined,
+  fallback: unknown,
+): unknown {
+  if (!value?.trim()) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fallback;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (
+      record["@context"] !== undefined &&
+      record["@context"] !== "https://schema.org"
+    ) {
+      return fallback;
+    }
+    return { ...record, "@context": "https://schema.org" };
+  } catch {
+    return fallback;
+  }
+}
+
+/** Escape HTML-significant characters before embedding JSON in a script tag. */
+export function serializeJsonLd(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\\u2028/g, "\\u2028")
+    .replace(/\\u2029/g, "\\u2029");
+}
+
 /* ── BreadcrumbList helper for nested routes ──────────────── */
 export function generateBreadcrumbJsonLd(
   items: { name: string; url: string }[],
