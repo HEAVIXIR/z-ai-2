@@ -126,8 +126,8 @@ export async function POST(req: Request) {
         warehouseId,
         qty,
         type,
-        reason: reason as string | null | undefined,
-        reference: reference as string | null | undefined,
+        reason as string | null | undefined,
+        reference as string | null | undefined,
         user.id,
       );
       // P2 (Contract Drift Remediation): Removed the route-scope
