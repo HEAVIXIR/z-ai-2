@@ -82,8 +82,11 @@ export default async function AdminSellerDetailPage({ params }: Args) {
   }
 
   // ── 2. Load seller profile (with company + founding + listings) ──
-  const user = await db.user.findUnique({
-    where: { id },
+  const user = await db.user.findFirst({
+    where: {
+      id,
+      userRoles: { some: { role: { key: "SELLER" } } },
+    },
     include: {
       foundingStatus: true,
       company: {
