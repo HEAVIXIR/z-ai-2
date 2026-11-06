@@ -105,6 +105,19 @@ export async function GET(
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
+    // Owned sessions are private even though anonymous sessions remain
+    // addressable through their high-entropy session-ID capability.
+    if (session.userId !== null) {
+      const user = await getCurrentUser();
+      if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const isOwner = session.userId === user.id;
+      const is_admin = await isAdmin(user.id);
+      if (!isOwner && !is_admin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
     if (session.status === "ARCHIVED") {
       return NextResponse.json({ error: "Session archived" }, { status: 410 });
     }
