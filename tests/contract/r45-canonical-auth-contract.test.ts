@@ -42,6 +42,21 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toContain("select: { role: true }");
   });
 
+  it("seller lifecycle mutations and audit writes share a transaction", () => {
+    const s = read("src/lib/seller-service.ts");
+    expect(s).toContain("async function writeSellerAudit");
+    expect(s).toContain("await tx.auditLog.create");
+    expect(s).not.toContain("logAudit");
+    for (const method of ["registerSeller", "verifySeller", "suspendSeller"]) {
+      const start = s.indexOf(`export async function ${method}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const next = s.indexOf("\nexport async function ", start + 1);
+      const body = s.slice(start, next === -1 ? s.length : next);
+      expect(body).toContain("db.$transaction");
+      expect(body).toContain("writeSellerAudit(tx");
+    }
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
