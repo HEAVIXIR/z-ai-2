@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionByShareToken, getComparisonData } from "@/lib/compare-engine";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { COMPARE_READ } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,9 +17,20 @@ export const dynamic = "force-dynamic";
      }
    ============================================================ */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_READ.label),
+    limit: COMPARE_READ.limit,
+    windowMs: COMPARE_READ.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد درخواست‌های اشتراک مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const { token } = await params;
     const session = await getSessionByShareToken(token);
@@ -33,7 +47,7 @@ export async function GET(
         shareExpiresAt: session.shareExpiresAt,
       },
       data,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
