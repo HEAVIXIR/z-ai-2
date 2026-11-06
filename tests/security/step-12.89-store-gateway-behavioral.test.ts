@@ -57,8 +57,14 @@ const mockStoreDb = {
     findUnique: vi.fn(async () => null),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
-    updateMany: vi.fn(async () => ({ count: 1 })),
+  },
+  payment: {
+    create: vi.fn(async (args: any) => ({ id: "pay-1", ...args.data })),
+    findFirst: vi.fn(async () => null),
     findUnique: vi.fn(async () => ({ id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null })),
+    findMany: vi.fn(async () => []),
+    update: vi.fn(async () => ({})),
+    updateMany: vi.fn(async () => ({ count: 1 })),
     count: vi.fn(async () => 0),
     aggregate: vi.fn(async () => ({ _sum: { amountIrr: 0 } })),
   },
@@ -69,12 +75,6 @@ const mockStoreDb = {
     findUnique: vi.fn(async () => null),
     upsert: vi.fn(async () => ({ id: "cust-1", phone: "09120000000", userId: null })),
   },
-  payment: {
-    create: vi.fn(async (args: any) => ({ id: "pay-1", ...args.data })),
-    findFirst: vi.fn(async () => null),
-    findMany: vi.fn(async () => []),
-    update: vi.fn(async () => ({})),
-  },
   wishlist: {
     findMany: vi.fn(async () => []),
     create: vi.fn(async () => ({})),
@@ -82,7 +82,6 @@ const mockStoreDb = {
   },
   part: { findUnique: vi.fn(async () => ({ id: "part-1" })) },
   $transaction: vi.fn(async (fn: any) => {
-    // Mock transaction: pass a mock tx that has same methods as storeDb
     const tx = {
       payment: mockStoreDb.payment,
       order: mockStoreDb.order,
