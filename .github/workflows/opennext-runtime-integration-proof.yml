@@ -20,6 +20,11 @@ on:
       - "scripts/preview-version-worker.mjs"
       - "src/lib/preview-version-worker-gate.ts"
       - "tests/unit/preview-version-worker-gate.test.ts"
+      - "src/lib/preview-gate.ts"
+      - "scripts/preview-gated-worker.mjs"
+      - "scripts/run-preview-gate-smoke.mjs"
+      - "tests/unit/preview-gate.test.ts"
+      - "docs/operations/preview-gate-runbook.md"
       - "scripts/audit-opennext-worker-bundle.mjs"
       - "docs/architecture/opennext-runtime-integration-proof.md"
       - "wrangler.jsonc"
@@ -30,6 +35,7 @@ on:
   push:
     branches:
       - test/opennext-runtime-integration
+      - security/preview-gate
 
 permissions:
   contents: read
@@ -53,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Run identity guard and OpenNext proof unit tests
-        run: bunx vitest run tests/unit/opennext-runtime-proof-guards.test.ts tests/unit/prisma-worker-identity-guard.test.ts tests/unit/preview-version-worker-gate.test.ts
+        run: bunx vitest run tests/unit/opennext-runtime-proof-guards.test.ts tests/unit/prisma-worker-identity-guard.test.ts tests/unit/preview-version-worker-gate.test.ts tests/unit/preview-gate.test.ts
       - name: Prove PPG adapter module loads in Workerd without database credentials
         env:
           HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
@@ -62,6 +68,9 @@ jobs:
         env:
           CI: "1"
         run: bun scripts/run-opennext-runtime-proof.mjs
+
+      - name: Exercise the Preview gate wrapper in Workerd (no DB credentials)
+        run: bun scripts/run-preview-gate-smoke.mjs
 
       - name: Audit generated Worker bundle (heuristic)
         if: success()

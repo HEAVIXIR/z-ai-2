@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, 'infra/**', 'test/opennext-runtime-integration']
   push:
-    branches: [main, 'feature/**', 'infra/**', 'test/**']
+    branches: [main, 'feature/**', 'infra/**', 'test/**', 'security/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
