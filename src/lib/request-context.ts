@@ -1,46 +1,33 @@
 /* ============================================================
    HEAVIX — Request context helpers (P0-6)
-   ------------------------------------------------------------
-   Small utilities used by rate-limited API routes to extract a
-   stable per-client identity. Lives here so all endpoints share
-   the same definition of "IP" (and don't drift).
+   Shared client identity extraction for rate-limited API routes.
    ============================================================ */
 
 /**
- * Best-effort client-IP extraction.
- *
- * Reads the canonical proxy headers (`x-forwarded-for`,
- * `x-real-ip`, `cf-connecting-ip`) and falls back to a sentinel
- * `"unknown"` when nothing is present (e.g. local dev). The
- * right-most trusted proxy hop is NOT stripped because in this
- * sandbox Caddy sits in front of Next.js and appends the real
- * client IP — the leftmost entry of `x-forwarded-for` is the
- * real client.
+ * Best-effort client-IP extraction behind the documented Cloudflare/Caddy
+ * proxy chain. Prefer Cloudflare's edge-provided address. Caddy appends the
+ * connecting peer to X-Forwarded-For, so use the right-most hop; never trust
+ * the left-most value because it may have been supplied by the caller.
  */
 export function getClientIp(req: Request): string {
-  const h = req.headers;
-  const xff = h.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
+  const headers = req.headers;
+
+  const cloudflareIp = headers.get("cf-connecting-ip")?.trim();
+  if (cloudflareIp) return cloudflareIp;
+
+  const forwardedFor = headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const hops = forwardedFor.split(",").map((value) => value.trim()).filter(Boolean);
+    const trustedEdgeHop = hops[hops.length - 1];
+    if (trustedEdgeHop) return trustedEdgeHop;
   }
-  const xReal = h.get("x-real-ip");
-  if (xReal) return xReal.trim();
-  const cf = h.get("cf-connecting-ip");
-  if (cf) return cf.trim();
+
+  const realIp = headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
   return "unknown";
 }
 
-/**
- * Build a rate-limit bucket key.
- *
- * Caller passes the identity (IP for unauthenticated endpoints,
- * userId for authenticated ones) plus the endpoint label. We
- * combine them with a `:` so two endpoints never share a bucket
- * even if the identity is identical.
- */
 export function rateLimitKey(identity: string, label: string): string {
-  // Strip any `:` from the identity so the key stays unambiguous.
-  const safe = identity.replace(/:/g, "_");
-  return `${safe}:${label}`;
+  return `${identity.replace(/:/g, "_")}:${label}`;
 }
