@@ -138,9 +138,9 @@ export default async function SellIn7DaysLandingPage() {
                 HEAVIX REQUEST
               </span>
               <h1 className="mt-6 text-4xl font-black leading-tight text-white lg:text-6xl">
-                فروش دستگاه شما{" "}
+                ثبت درخواست فروش دستگاه{" "}
                 <span className="bg-gradient-to-l from-amber-400 to-[#F58220] bg-clip-text text-transparent">
-                  در ۷ روز
+                  در بازار هویکس
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-8 text-white/60 lg:text-base">
