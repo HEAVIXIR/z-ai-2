@@ -34,11 +34,11 @@ Do not change the live `heavix-preview` Worker secrets for this proof. The proof
 3. Open **Projects**.
 4. Select the project named **heavix-app-preview**. Confirm the project identity in the page before continuing.
 5. Open its database **heavix-app-preview** and confirm the resource ID is `db_ew8d6duermpt125paxaqorr9`.
-6. In the database's **Connection strings** section, locate the specifically named `heavix-preview-app-worker` entry. Do not use a generic console connection string and do not select a Production resource.
+6. In the database's **Connection strings** section, locate the specifically named `heavix-preview-worker` entry. The App Preview and Store Preview projects both use this same connection-string label; the project and database resource IDs—not a unique label—distinguish the two resources. Do not use a generic console connection string and do not select a Production resource.
 7. Separately, return to **Projects** and select **heavix-store-preview**.
 8. Open database **heavix-store-preview** and confirm resource ID `db_cmtgxfrfwxw5mi77020tcnc3`.
-9. In its **Connection strings** section, locate the specifically named `heavix-preview-worker` entry.
-10. Record locally (not in chat) the source project, database name, resource ID, and connection-string label for each. These labels are provenance clues; the actual runtime identity test remains mandatory.
+9. In its **Connection strings** section, locate the specifically named `heavix-preview-worker` entry. This is the same label used in App Preview, but it belongs to this separately identified Store Preview database.
+10. Record locally (not in chat) the source project, database name, resource ID, and connection-string label for each. The operator has visually confirmed that both entries exist and that both resource IDs match. The shared label is not an error and is not globally unique. These labels and IDs establish resource selection metadata, not the destination of the encrypted Cloudflare Secret values; the actual runtime identity test remains mandatory.
 
 If either specifically named connection string is absent, stop. Do not create or substitute another connection without first reviewing the source and scope.
 
