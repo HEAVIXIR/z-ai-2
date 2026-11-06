@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
+import { enforceRateLimit } from "@/lib/rate-limit-check";
+import { INSPECTION_CREATE } from "@/lib/rate-limit-presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,11 +27,16 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const rateLimit = enforceRateLimit(user.id, INSPECTION_CREATE);
+  if (!rateLimit.ok) return rateLimit.response;
   try {
     const body = await req.json().catch(() => ({}));
     const listingId = String(body.listingId ?? "").trim();
     const dealRoomId = body.dealRoomId ? String(body.dealRoomId) : null;
-    const notes = body.notes ? String(body.notes) : null;
+    const notes = body.notes ? String(body.notes).trim() : null;
+    if (listingId.length > 128 || (dealRoomId && dealRoomId.length > 128) || (notes && notes.length > 1000)) {
+      return NextResponse.json({ error: "Invalid inspection request fields" }, { status: 400 });
+    }
     if (!listingId) {
       return NextResponse.json(
         { error: "listingId الزامی است" },
@@ -42,6 +49,19 @@ export async function POST(req: Request) {
     });
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    }
+    if (dealRoomId) {
+      const dealRoom = await db.dealRoom.findUnique({
+        where: { id: dealRoomId },
+        select: { listingId: true, buyerId: true, sellerId: true },
+      });
+      if (
+        !dealRoom ||
+        dealRoom.listingId !== listingId ||
+        (dealRoom.buyerId !== user.id && dealRoom.sellerId !== user.id)
+      ) {
+        return NextResponse.json({ error: "Invalid deal room for this inspection request" }, { status: 400 });
+      }
     }
     const inspection = await db.inspection.create({
       data: {
