@@ -5,6 +5,46 @@ import { parseBig } from "@/lib/api-helpers";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { INSPECTION_CREATE } from "@/lib/rate-limit-presets";
 
+const MAX_INSPECTION_REQUEST_BYTES = 16 * 1024;
+
+async function readBoundedJson(
+  req: Request,
+): Promise<{ ok: true; value: unknown } | { ok: false; tooLarge: boolean }> {
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_INSPECTION_REQUEST_BYTES) {
+    return { ok: false, tooLarge: true };
+  }
+
+  const reader = req.body?.getReader();
+  if (!reader) return { ok: false, tooLarge: false };
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_INSPECTION_REQUEST_BYTES) {
+      try { await reader.cancel(); } catch { /* request already closed */ }
+      return { ok: false, tooLarge: true };
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { ok: false, tooLarge: false };
+  }
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -30,7 +70,17 @@ export async function POST(req: Request) {
   const rateLimit = enforceRateLimit(user.id, INSPECTION_CREATE);
   if (!rateLimit.ok) return rateLimit.response;
   try {
-    const body = await req.json().catch(() => ({}));
+    const parsed = await readBoundedJson(req);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: parsed.tooLarge ? "Request body too large" : "Invalid JSON body" },
+        { status: parsed.tooLarge ? 413 : 400 },
+      );
+    }
+    if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    const body = parsed.value as Record<string, unknown>;
     const listingId = String(body.listingId ?? "").trim();
     const dealRoomId = body.dealRoomId ? String(body.dealRoomId) : null;
     const notes = body.notes ? String(body.notes).trim() : null;
