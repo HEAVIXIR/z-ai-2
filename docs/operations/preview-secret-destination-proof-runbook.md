@@ -18,7 +18,7 @@ Do not infer destination from the connection-string name alone. Never read, prin
 - Expected cluster identifiers recorded by prior independent inventory:
   - App Preview: `7701427422680793119`
   - Store Preview: `7701425043360235551`
-- Expected database OIDs are not yet recorded in this runbook. They must be obtained from the explicitly selected database resources, then checked against the Workerd proof output.
+- The verified current database OID is `5` for both Preview resources. Both report `current_database() = postgres`; the same OID across these two independent clusters is valid. A database OID is only unique within its own cluster, so the cluster `system_identifier` and database OID must be checked together.
 - The active Cloudflare Worker does not currently expose `HEAVIX_APP_PREVIEW_DATABASE_OID` or `HEAVIX_STORE_PREVIEW_DATABASE_OID`. Do not modify it to add them as part of this runbook.
 
 ## Phase 0 — stop conditions
@@ -42,9 +42,9 @@ Do not change the live `heavix-preview` Worker secrets for this proof. The proof
 
 If either specifically named connection string is absent, stop. Do not create or substitute another connection without first reviewing the source and scope.
 
-## Phase 2 — obtain the trusted database OIDs (requires explicit operator go-ahead)
+## Phase 2 — obtain the trusted database OIDs (COMPLETED)
 
-This phase contacts the selected Preview databases with read-only SELECT statements. It is intentionally separate from Phase 1. Do not perform it until the operator explicitly authorizes Preview database contact.
+The operator explicitly authorized Preview database contact. The assistant executed the following identity query separately against the exact App Preview and Store Preview project/database IDs through Prisma. The query was run inside `BEGIN TRANSACTION READ ONLY ... COMMIT`; both results reported `transaction_read_only = on`. Only SELECT statements were executed; no writes, migrations, or seeds were run.
 
 For each database, open the SQL/query editor from that exact database resource page (not from the Production project) and run only:
 
@@ -60,13 +60,19 @@ SELECT
   current_setting('server_version') AS server_version;
 ```
 
-Expected values:
-- App Preview system identifier must equal `7701427422680793119`.
-- Store Preview system identifier must equal `7701425043360235551`.
-- Both should report PostgreSQL 17.
-- Save each returned `database_oid` locally. Do not post connection strings, usernames, query-editor credentials, or screenshots. If `pg_control_system()` is denied, stop and use an independently trusted Prisma support/metadata path; do not weaken permissions or try another privileged query.
+Verified results (2026-11-06):
 
-The database OID is resource-specific and must not be guessed or copied from the other database. If either system identifier differs, stop immediately.
+| Check | App Preview | Store Preview |
+|---|---|---|
+| Project / database ID | `proj_ixevv7dtzykr8qbj3xdxpcbq` / `db_ew8d6duermpt125paxaqorr9` | `proj_ai0qym0x93siv4oeo11bkmuy` / `db_cmtgxfrfwxw5mi77020tcnc3` |
+| `current_database()` | `postgres` | `postgres` |
+| `current_user` | `prisma_application` | `prisma_application` |
+| Database OID | `5` | `5` |
+| Cluster system identifier | `7701427422680793119` | `7701425043360235551` |
+| PostgreSQL | `17.2` | `17.2` |
+| Explicit read-only transaction | `on` | `on` |
+
+Both cluster identifiers match the independently recorded expected values. OID `5` in both is valid: OIDs are local to a PostgreSQL cluster and are not globally unique. Destination identity is established by the pair `(system_identifier, database_oid)`. No credentials or connection-string values were returned or recorded.
 
 ## Phase 3 — run the local Workerd proof (requires separate explicit operator go-ahead)
 
@@ -103,10 +109,13 @@ Do not share connection strings, passwords, tokens, screenshots of credential pa
 
 ## Current decision
 
-Until Phases 1–3 are completed and their evidence reviewed:
-
-- Secret-to-database destination: **UNPROVEN**.
-- Preview database contact: **NOT AUTHORIZED / NOT PERFORMED**.
-- Live Worker secret replacement: **NOT AUTHORIZED / NOT PERFORMED**.
+- Prisma resource selection and direct Preview database identity: **PROVEN** for both Preview resources.
+- App Preview identity pair: `(7701427422680793119, 5)`.
+- Store Preview identity pair: `(7701425043360235551, 5)`.
+- Cloudflare live Secret-to-database destination: **UNPROVEN**. The direct Prisma checks above do not inspect or prove the encrypted values currently bound to the Cloudflare Worker.
+- Preview database contact: **AUTHORIZED AND COMPLETED**, using SELECT-only statements in explicit read-only transactions.
+- Live Worker secret replacement or deployment: **NOT PERFORMED**.
 - Production: **NO-GO**.
-- Migrations, seeds, writes, deployment, DNS changes, and PR merge: **NOT AUTHORIZED**.
+- Migrations, seeds, writes, DNS changes, and PR merge: **NOT PERFORMED**.
+
+Next safe step: inspect whether the existing deployed Preview Worker can execute a protected identity probe without changing its current secrets. If not, prepare a separately reviewed Preview-only proof deployment/secret rotation plan; do not infer that the live secret mapping is correct from the Prisma checks.
