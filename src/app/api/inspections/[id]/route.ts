@@ -272,7 +272,10 @@ export async function PATCH(
       }
       try {
         const parsedPrice = body.price === null || body.price === "" ? null : parseBig(body.price);
-        if (typeof parsedPrice === "bigint" && parsedPrice < 0n) {
+        if (
+          (body.price !== null && body.price !== "" && parsedPrice === null) ||
+          (typeof parsedPrice === "bigint" && parsedPrice < 0n)
+        ) {
           return NextResponse.json({ error: "Invalid inspection price" }, { status: 400 });
         }
         data.price = parsedPrice;
