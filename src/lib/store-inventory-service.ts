@@ -5,9 +5,9 @@
  *
  * Responsibilities:
  *   - createMovement(): create a StockMovement ledger entry AND adjust
- *     Part.stock atomically, then log both audit entries (movement + side-
- *     effect on Part). Every mutation to Part.stock MUST be recorded as a
- *     StockMovement so the ledger reconstructs the balance at any point.
+ *     Part.stock in one transaction with compare-and-swap protection and
+ *     transactional audit outbox events. Every mutation to Part.stock MUST
+ *     be recorded as a StockMovement so the ledger reconstructs the balance.
  *   - listMovements(): query the ledger with filters (partId, type,
  *     reference, limit).
  *
@@ -77,15 +77,9 @@ function serialize(m: any) {
 
 // ── createMovement ─────────────────────────────────────────
 /**
- * Atomically:
- *   1. Validate inputs (partId, type, quantity).
- *   2. Look up the Part (must exist).
- *   3. Compute balanceAfter = part.stock + qty (must be >= 0).
- *   4. Create the StockMovement ledger entry.
- *   5. Update Part.stock to balanceAfter.
- *   6. Log two audit entries (movement.create + part.update side-effect).
- *
- * Best-effort audit: logAudit never throws (try/catch inside).
+ * Atomically updates Part.stock, creates the StockMovement row, and writes
+ * both audit events to the Store AuditOutbox. A stale stock snapshot fails
+ * closed with 409 instead of overwriting a concurrent movement.
  *
  * @throws InventoryServiceError on validation/lookup failure (400/404).
  */
@@ -634,8 +628,8 @@ export async function adjustStock(
 // ── reserveStock ──────────────────────────────────────────
 /**
  * Soft-reserve stock on a (part, warehouse) pair. The reserved field is
- * incremented; quantity is unchanged. Use case: hold stock for an order
- * that hasn't shipped yet (so the same SKU isn't double-promised).
+ * incremented; quantity is unchanged. Compare-and-swap plus an outbox write
+ * keeps concurrent reservations and their audit event atomic.
  *
  * Refuses if reserved + qty > quantity (over-reservation).
  *
@@ -710,8 +704,8 @@ export async function reserveStock(
 // ── releaseStock ──────────────────────────────────────────
 /**
  * Release previously-reserved stock on a (part, warehouse) pair. Decrements
- * InventoryBalance.reserved without changing quantity. Use case: order
- * shipped (reservation consumed) or order cancelled (reservation reverted).
+ * InventoryBalance.reserved without changing quantity. Conditional mutation
+ * plus an outbox write prevents concurrent releases from underflowing reserve.
  *
  * Refuses if qty > current reserved (would go negative).
  *
