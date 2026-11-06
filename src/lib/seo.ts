@@ -391,18 +391,39 @@ export async function searchEntities(
           take,
           select: { id: true, canonicalName: true, slug: true },
         })) as any;
-      case "ProductModel":
-        return (await db.productModel.findMany({
+      case "ProductModel": {
+        const models = await db.productModel.findMany({
+          where: { name: { contains: q }, status: "ACTIVE" },
+          take,
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            brand: { select: { name: true, active: true } },
+          },
+        });
+        return models
+          .filter((model) => model.brand?.active)
+          .map((model) => ({
+            id: model.id,
+            label: model.brand?.name
+              ? `${model.brand.name} — ${model.name}`
+              : model.name,
+            slug: model.slug,
+          }));
+      }
+      case "Company": {
+        const companies = await db.company.findMany({
           where: { name: { contains: q }, status: "ACTIVE" },
           take,
           select: { id: true, name: true, slug: true },
-        })) as any;
-      case "Company":
-        return (await db.company.findMany({
-          where: { name: { contains: q }, status: "ACTIVE" },
-          take,
-          select: { id: true, name: true, slug: true },
-        })) as any;
+        });
+        return companies.map((company) => ({
+          id: company.id,
+          label: company.name,
+          slug: company.slug,
+        }));
+      }
       default:
         return [];
     }
