@@ -29,8 +29,9 @@ async function reservePort() {
   return address.port;
 }
 
-function start(command, args, options) {
-  const child = spawn(command, args, { ...options, stdio: ["ignore", "inherit", "inherit"] });
+function start(command, args, options, silent = false) {
+  const stdio = silent ? ["ignore", "ignore", "ignore"] : ["ignore", "inherit", "inherit"];
+  const child = spawn(command, args, { ...options, stdio });
   let exit;
   child.once("exit", (code, signal) => { exit = { code, signal }; });
   return { child, get exit() { return exit; } };
@@ -100,7 +101,7 @@ try {
     env: {
       ...childEnv,
     },
-  });
+  }, true);
 
   let ready = false;
   let lastError;
