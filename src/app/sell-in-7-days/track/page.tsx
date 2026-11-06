@@ -1,12 +1,9 @@
 import SellIn7TrackClient from "./TrackClient";
-import type { Metadata } from "next";
-
-
-
 
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "پیگیری درخواست فروش | هویکس",
