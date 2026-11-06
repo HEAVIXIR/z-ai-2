@@ -1,97 +1,63 @@
 /**
- * HEAVIX — Seller Service Layer (Wave 2A / Phase Marketplace-Deep)
- * ------------------------------------------------------------
- * Extracted seller lifecycle logic for the marketplace domain.
+ * HEAVIX — Seller Service Layer
  *
- * Sellers are MAIN-DB entities (User with role=SELLER + the
- * FoundingSeller optional record — see prisma/schema.prisma).
+ * Seller lifecycle mutations are CRITICAL identity changes. Each lifecycle
+ * mutation and its AuditLog entry are committed in one main-database
+ * transaction. An audit failure therefore rolls back the state change.
  *
- * Schema reality (do NOT change the schema per Wave 2A constraints):
- *   model FoundingSeller {
- *     id        String   @id @default(cuid())
- *     userId    String   @unique
- *     badgeType String   @default("FOUNDING")
- *     benefits  String?
- *     active    Boolean  @default(true)
- *     createdAt DateTime @default(now())
- *   }
- *
- *   The task brief names `appliedAt/approvedAt/approvedBy` columns
- *   that do NOT exist on FoundingSeller. We preserve those
- *   semantics ENTIRELY in the audit trail (before/after + reason)
- *   rather than mutating the schema. The `active` flag encodes
- *   lifecycle state:
- *     active=false → PENDING (registered, awaiting verification)
- *     active=true  → VERIFIED (admin has approved)
- *     active=false → SUSPENDED (admin has suspended — only
- *                   distinguishable from PENDING via the audit
- *                   log; the route layer surfaces the audit
- *                   history so the operator can tell them apart)
- *
- *   To make the distinction observable to the admin UI, we
- *   additionally flip User.status to BLOCKED on suspend and
- *   back to ACTIVE on verify (the User model has its own
- *   `status` column independent of FoundingSeller.active).
- *
- * Responsibilities:
- *   - registerSeller({ userId, companyId?, userId_operator })
- *       Set User.role=SELLER + upsert FoundingSeller (active=false
- *       to mark PENDING). Optionally link the User to a Company
- *       (companyId). Audit: marketplace.seller.register.
- *
- *   - verifySeller(userId, verifiedBy)
- *       Flip FoundingSeller.active=true + User.status=ACTIVE (if
- *       currently PENDING). The verifiedBy userId is recorded in
- *       the audit `after.verifiedBy` field (no dedicated schema
- *       column exists). Audit: marketplace.seller.verify.
- *
- *   - suspendSeller(userId, reason, suspendedBy)
- *       Flip FoundingSeller.active=false + User.status=BLOCKED.
- *       The reason + suspendedBy are recorded in the audit
- *       `after` payload. Audit: marketplace.seller.suspend.
- *
- *   - getSellerProfile(userId)
- *       Return the seller's User row with company + foundingStatus
- *       + _count.listings (the marketplace-depth detail view).
- *
- * Audit convention:
- *   - Action keys: marketplace.seller.{register, verify, suspend}.
- *   - entityType: FoundingSeller (primary) for verify/suspend,
- *     and User for register (because the role mutation lives on
- *     the User row; the founding row is created in the same call).
- *   - actorType: ADMIN.
- *   - All audits are best-effort: logAudit never throws.
- *
- * Pattern mirrors src/lib/disputes-service.ts + the
- * store-*-service.ts files.
+ * Schema constraints: FoundingSeller has only the active flag; pending and
+ * suspended are both represented by active=false and distinguished by audit
+ * history. User.status is also updated atomically for verify/suspend.
  */
 
 import { db } from "@/lib/db";
-import { logAudit } from "@/lib/audit";
+import type { Prisma } from "@prisma/client";
 
-// ── Service error (maps to HTTP status in route handler) ──
 export class SellerServiceError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
+  constructor(public status: number, message: string) {
     super(message);
     this.name = "SellerServiceError";
   }
 }
 
-// ── registerSeller ───────────────────────────────────────
+function auditJson(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+async function writeSellerAudit(
+  tx: Prisma.TransactionClient,
+  params: {
+    actorId: string | null;
+    action: string;
+    entityType: string;
+    entityId: string;
+    before?: unknown;
+    after?: unknown;
+    reason: string;
+  },
+): Promise<void> {
+  await tx.auditLog.create({
+    data: {
+      actorId: params.actorId,
+      actorType: "ADMIN",
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId,
+      beforeJson: auditJson(params.before),
+      afterJson: auditJson(params.after),
+      reason: params.reason,
+    },
+  });
+}
+
 /**
- * Register a user as a seller. Sets User.role=SELLER + upserts a
- * FoundingSeller row in the PENDING state (active=false). Optionally
- * links the user to a Company (companyId).
- *
- * Idempotent: re-calling registerSeller on an already-SELLER user
- * resets FoundingSeller.active=false (re-pending), which is the
- * documented admin workflow for re-verification.
- *
- * @throws SellerServiceError(400) when userId is empty.
- * @throws SellerServiceError(404) when the User does not exist.
+ * Register/re-register a seller. Role assignment, optional company link,
+ * FoundingSeller pending state and audit event are atomic.
  */
 export async function registerSeller(params: {
   userId: string;
@@ -106,96 +72,83 @@ export async function registerSeller(params: {
   foundingActive: boolean;
 }> {
   const { userId, companyId = null, userId_operator = null } = params;
-
   if (!userId || !userId.trim()) {
     throw new SellerServiceError(400, "userId الزامی است");
   }
 
-  // ── Verify user exists ──
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, status: true, companyId: true },
-  });
-  if (!user) {
-    throw new SellerServiceError(404, "کاربر یافت نشد");
-  }
+  return db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true, companyId: true },
+    });
+    if (!user) throw new SellerServiceError(404, "کاربر یافت نشد");
 
-  // ── 1. Assign canonical SELLER UserRole (+ optional companyId link) ──
-  const sellerRole = await db.role.findUnique({
-    where: { key: "SELLER" },
-    select: { id: true, key: true },
-  });
-  if (!sellerRole) {
-    throw new SellerServiceError(500, "نقش SELLER در RBAC تعریف نشده است");
-  }
+    const sellerRole = await tx.role.findUnique({
+      where: { key: "SELLER" },
+      select: { id: true, key: true },
+    });
+    if (!sellerRole) {
+      throw new SellerServiceError(500, "نقش SELLER در RBAC تعریف نشده است");
+    }
 
-  const updatedUser = await db.user.update({
-    where: { id: userId },
-    data: companyId ? { companyId } : {},
-    select: { id: companyId ? true : true, companyId: true },
-  });
+    const beforeFounding = await tx.foundingSeller.findUnique({
+      where: { userId },
+      select: { id: true, active: true },
+    });
 
-  await db.userRole.upsert({
-    where: { userId_roleId: { userId, roleId: sellerRole.id } },
-    create: { userId, roleId: sellerRole.id },
-    update: {},
-  });
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: companyId ? { companyId } : {},
+      select: { id: true, companyId: true },
+    });
 
-  // ── 2. Upsert FoundingSeller in PENDING state (active=false) ──
-  // active=false means "awaiting admin verification" per the
-  // Wave 2A active-flag encoding (see file header).
-  const founding = await db.foundingSeller.upsert({
-    where: { userId },
-    create: {
-      userId,
-      badgeType: "FOUNDING",
-      active: false,
-    },
-    update: { active: false },
-    select: { id: true, userId: true, active: true },
-  });
+    await tx.userRole.upsert({
+      where: { userId_roleId: { userId, roleId: sellerRole.id } },
+      create: { userId, roleId: sellerRole.id },
+      update: {},
+    });
 
-  // ── 3. Audit ──
-  await logAudit({
-    actorId: userId_operator ?? null,
-    actorType: "ADMIN",
-    action: "marketplace.seller.register",
-    entityType: "FoundingSeller",
-    entityId: founding.id,
-    after: {
-      userId,
+    const founding = await tx.foundingSeller.upsert({
+      where: { userId },
+      create: { userId, badgeType: "FOUNDING", active: false },
+      update: { active: false },
+      select: { id: true, userId: true, active: true },
+    });
+
+    await writeSellerAudit(tx, {
+      actorId: userId_operator,
+      action: "marketplace.seller.register",
+      entityType: "FoundingSeller",
+      entityId: founding.id,
+      before: {
+        userStatus: user.status,
+        companyId: user.companyId,
+        foundingSeller: beforeFounding,
+      },
+      after: {
+        userId,
+        role: sellerRole.key,
+        companyId: updatedUser.companyId,
+        foundingStatusId: founding.id,
+        foundingActive: founding.active,
+      },
+      reason: `ثبت‌نام فروشنده: ${userId}`,
+    });
+
+    return {
+      id: updatedUser.id,
+      userId: updatedUser.id,
       role: sellerRole.key,
-      companyId: companyId ?? null,
+      companyId: updatedUser.companyId ?? null,
       foundingStatusId: founding.id,
-      foundingActive: false,
-    },
-    reason: `ثبت‌نام فروشنده جدید: ${userId}`,
+      foundingActive: founding.active,
+    };
   });
-
-  return {
-    id: updatedUser.id,
-    userId: updatedUser.id,
-    role: sellerRole.key,
-    companyId: updatedUser.companyId ?? null,
-    foundingStatusId: founding.id,
-    foundingActive: founding.active,
-  };
 }
 
-// ── verifySeller ─────────────────────────────────────────
 /**
- * Verify a seller — flip FoundingSeller.active=true (VERIFIED).
- * If the user's User.status is PENDING, also flip it to ACTIVE
- * (the public-facing status field).
- *
- * The `verifiedBy` actor is captured in the audit `after`
- * payload — there is no dedicated schema column on
- * FoundingSeller for it (per Wave 2A "no schema changes"
- * constraint).
- *
- * @throws SellerServiceError(400) when userId is empty.
- * @throws SellerServiceError(404) when the user has no
- *   FoundingSeller row (registerSeller must be called first).
+ * Verify a seller. FoundingSeller.active and User.status plus audit commit
+ * together; no best-effort partial success is allowed.
  */
 export async function verifySeller(
   userId: string,
@@ -210,84 +163,55 @@ export async function verifySeller(
     throw new SellerServiceError(400, "userId الزامی است");
   }
 
-  // ── 1. Load current FoundingSeller for the before snapshot ──
-  const before = await db.foundingSeller.findUnique({
-    where: { userId },
-    select: { id: true, active: true },
-  });
-  if (!before) {
-    throw new SellerServiceError(
-      404,
-      "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
-    );
-  }
-
-  // ── 2. Flip FoundingSeller.active=true ──
-  const after = await db.foundingSeller.update({
-    where: { userId },
-    data: { active: true },
-    select: { id: true, userId: true, active: true },
-  });
-
-  // ── 3. Best-effort: flip User.status PENDING → ACTIVE ──
-  // Mirrors the public-facing "verified" semantics so the
-  // admin UI's status badge reflects the verification.
-  let userStatus = "UNKNOWN";
-  try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { id: true, status: true },
+  return db.$transaction(async (tx) => {
+    const before = await tx.foundingSeller.findUnique({
+      where: { userId },
+      select: { id: true, active: true, user: { select: { status: true } } },
     });
-    if (user) {
-      if (user.status === "PENDING" || user.status === "BLOCKED") {
-        const updated = await db.user.update({
-          where: { id: userId },
-          data: { status: "ACTIVE" },
-          select: { status: true },
-        });
-        userStatus = updated.status;
-      } else {
-        userStatus = user.status;
-      }
+    if (!before) {
+      throw new SellerServiceError(
+        404,
+        "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
+      );
     }
-  } catch (err) {
-    // Non-fatal — the founding flag is the source of truth.
-    console.error("[seller-service] User.status flip failed:", err);
-  }
 
-  // ── 4. Audit ──
-  await logAudit({
-    actorId: verifiedBy ?? null,
-    actorType: "ADMIN",
-    action: "marketplace.seller.verify",
-    entityType: "FoundingSeller",
-    entityId: after.id,
-    before: { active: before.active },
-    after: {
-      active: true,
-      verifiedBy,
+    const after = await tx.foundingSeller.update({
+      where: { userId },
+      data: { active: true },
+      select: { id: true, userId: true, active: true },
+    });
+
+    const userStatus =
+      before.user.status === "PENDING"
+        ? (await tx.user.update({
+            where: { id: userId },
+            data: { status: "ACTIVE" },
+            select: { status: true },
+          })).status
+        : before.user.status;
+
+    await writeSellerAudit(tx, {
+      actorId: verifiedBy,
+      action: "marketplace.seller.verify",
+      entityType: "FoundingSeller",
+      entityId: after.id,
+      before: { active: before.active, userStatus: before.user.status },
+      after: { active: after.active, verifiedBy, userStatus },
+      reason: `تأیید فروشنده: ${userId}`,
+    });
+
+    return {
+      id: after.id,
+      userId: after.userId,
+      foundingActive: after.active,
       userStatus,
-    },
-    reason: `تأیید فروشنده: ${userId}`,
+    };
   });
-
-  return {
-    id: after.id,
-    userId: after.userId,
-    foundingActive: after.active,
-    userStatus,
-  };
 }
 
-// ── suspendSeller ─────────────────────────────────────────
 /**
- * Suspend a seller — flip FoundingSeller.active=false + User.status
- * =BLOCKED. The reason + suspendedBy are captured in the audit
- * trail.
- *
- * @throws SellerServiceError(400) when userId or reason is empty.
- * @throws SellerServiceError(404) when the user has no
- *   FoundingSeller row.
+ * Suspend a seller. Both account blocking and founding-state change are
+ * atomic with the mandatory audit event.
  */
 export async function suspendSeller(
   userId: string,
@@ -306,65 +230,52 @@ export async function suspendSeller(
     throw new SellerServiceError(400, "دلیل تعلیق الزامی است");
   }
 
-  // ── 1. Load current FoundingSeller for the before snapshot ──
-  const before = await db.foundingSeller.findUnique({
-    where: { userId },
-    select: { id: true, active: true },
-  });
-  if (!before) {
-    throw new SellerServiceError(
-      404,
-      "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
-    );
-  }
+  const trimmedReason = reason.trim().slice(0, 2000);
+  return db.$transaction(async (tx) => {
+    const before = await tx.foundingSeller.findUnique({
+      where: { userId },
+      select: { id: true, active: true, user: { select: { status: true } } },
+    });
+    if (!before) {
+      throw new SellerServiceError(
+        404,
+        "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
+      );
+    }
 
-  // ── 2. Flip FoundingSeller.active=false ──
-  const after = await db.foundingSeller.update({
-    where: { userId },
-    data: { active: false },
-    select: { id: true, userId: true, active: true },
-  });
-
-  // ── 3. Best-effort: flip User.status → BLOCKED ──
-  // The user can no longer log in once blocked (auth.ts checks
-  // session validity, but User.status is the public signal for
-  // admin views + downstream services).
-  let userStatus = "UNKNOWN";
-  try {
-    const updated = await db.user.update({
+    const after = await tx.foundingSeller.update({
+      where: { userId },
+      data: { active: false },
+      select: { id: true, userId: true, active: true },
+    });
+    const updatedUser = await tx.user.update({
       where: { id: userId },
       data: { status: "BLOCKED" },
       select: { status: true },
     });
-    userStatus = updated.status;
-  } catch (err) {
-    console.error("[seller-service] User.status flip failed:", err);
-  }
 
-  // ── 4. Audit ──
-  const trimmedReason = reason.trim().slice(0, 2000);
-  await logAudit({
-    actorId: suspendedBy ?? null,
-    actorType: "ADMIN",
-    action: "marketplace.seller.suspend",
-    entityType: "FoundingSeller",
-    entityId: after.id,
-    before: { active: before.active },
-    after: {
-      active: false,
-      reason: trimmedReason,
-      suspendedBy,
-      userStatus,
-    },
-    reason: `تعلیق فروشنده: ${userId} — ${trimmedReason}`,
+    await writeSellerAudit(tx, {
+      actorId: suspendedBy,
+      action: "marketplace.seller.suspend",
+      entityType: "FoundingSeller",
+      entityId: after.id,
+      before: { active: before.active, userStatus: before.user.status },
+      after: {
+        active: after.active,
+        reason: trimmedReason,
+        suspendedBy,
+        userStatus: updatedUser.status,
+      },
+      reason: `تعلیق فروشنده: ${userId} — ${trimmedReason}`,
+    });
+
+    return {
+      id: after.id,
+      userId: after.userId,
+      foundingActive: after.active,
+      userStatus: updatedUser.status,
+    };
   });
-
-  return {
-    id: after.id,
-    userId: after.userId,
-    foundingActive: after.active,
-    userStatus,
-  };
 }
 
 // ── getSellerProfile ─────────────────────────────────────
