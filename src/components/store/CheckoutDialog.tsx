@@ -415,8 +415,8 @@ export function CheckoutDialog({
                     <Input value={payerName} onChange={(e) => setPayerName(e.target.value)} className="h-9" placeholder={`${name} ${family}`} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">شماره کارت (اختیاری)</Label>
-                    <Input value={payerCard} onChange={(e) => setPayerCard(e.target.value)} className="h-9" dir="ltr" placeholder="6037-xxxx-xxxx-xxxx" />
+                    <Label className="text-xs">۴ رقم پایانی کارت (اختیاری)</Label>
+                    <Input value={payerCard} onChange={(e) => setPayerCard(e.target.value)} className="h-9" dir="ltr" placeholder="مثلاً 1234" />
                   </div>
                 </div>
                 <div className="space-y-1">
