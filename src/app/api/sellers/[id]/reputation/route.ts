@@ -57,14 +57,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const cancelledDeals = await db.deal.count({ where: { sellerId: id, status: "CANCELLED" } }).catch(() => 0);
     const disputedDeals = await db.deal.count({ where: { sellerId: id, status: "DISPUTED" } }).catch(() => 0);
 
-    // Listing stats
-    const totalListings = await db.listing.count({ where: { sellerId: id } });
-    const publishedListings = await db.listing.count({ where: { sellerId: id, status: "PUBLISHED" } });
-    const verifiedListings = await db.listing.count({ where: { sellerId: id, verified: true } });
+    // Public reputation metrics expose only published inventory.
+    const publishedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED" },
+    });
+    const totalListings = publishedListings;
+    const verifiedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED", verified: true },
+    });
 
-    // Offer stats (response metrics)
+    // Offer stats are also scoped to published listings.
     const offersReceived = await db.listingOffer.count({
-      where: { listing: { sellerId: id } },
+      where: { listing: { sellerId: id, status: "PUBLISHED" } },
     }).catch(() => 0);
 
     // Build reputation signals
