@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkPublicApiRateLimit } from "@/lib/public-api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,15 @@ export const dynamic = "force-dynamic";
  * Returns verification signals + listing stats + response metrics.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const rateLimit = checkPublicApiRateLimit(req, "seller-trust");
+  const noStoreHeaders = { "Cache-Control": "private, no-store" };
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { ...noStoreHeaders, "Retry-After": String(rateLimit.retryAfter) } },
+    );
+  }
+
   try {
     const { id } = await params;
 
@@ -29,7 +39,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     if (!user) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+      return NextResponse.json({ error: "Seller not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     // Public reputation responses must not disclose draft, rejected, or
@@ -102,8 +112,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         avgRating: user.company.avgRating,
         reviewCount: user.company.reviewCount,
       } : null,
-    });
+    }, { headers: noStoreHeaders });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500, headers: noStoreHeaders });
   }
 }
