@@ -109,16 +109,6 @@ export async function registerSeller(params: {
     throw new SellerServiceError(400, "userId الزامی است");
   }
 
-  // ── Verify user exists ──
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, status: true, companyId: true },
-  });
-  if (!user) {
-    throw new SellerServiceError(404, "کاربر یافت نشد");
-  }
-
-  // ── 1. Assign canonical SELLER UserRole (+ optional companyId link) ──
   const sellerRole = await db.role.findUnique({
     where: { key: "SELLER" },
     select: { id: true, key: true },
@@ -127,56 +117,65 @@ export async function registerSeller(params: {
     throw new SellerServiceError(500, "نقش SELLER در RBAC تعریف نشده است");
   }
 
-  const updatedUser = await db.user.update({
-    where: { id: userId },
-    data: companyId ? { companyId } : {},
-    select: { id: true, companyId: true },
+  // User, canonical role, and pending founding record are one atomic mutation.
+  const result = await db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new SellerServiceError(404, "کاربر یافت نشد");
+    }
+
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: companyId ? { companyId } : {},
+      select: { id: true, companyId: true },
+    });
+
+    await tx.userRole.upsert({
+      where: { userId_roleId: { userId, roleId: sellerRole.id } },
+      create: { userId, roleId: sellerRole.id },
+      update: {},
+    });
+
+    const founding = await tx.foundingSeller.upsert({
+      where: { userId },
+      create: {
+        userId,
+        badgeType: "FOUNDING",
+        active: false,
+      },
+      update: { active: false },
+      select: { id: true, userId: true, active: true },
+    });
+
+    return { updatedUser, founding };
   });
 
-  await db.userRole.upsert({
-    where: { userId_roleId: { userId, roleId: sellerRole.id } },
-    create: { userId, roleId: sellerRole.id },
-    update: {},
-  });
-
-  // ── 2. Upsert FoundingSeller in PENDING state (active=false) ──
-  // active=false means "awaiting admin verification" per the
-  // Wave 2A active-flag encoding (see file header).
-  const founding = await db.foundingSeller.upsert({
-    where: { userId },
-    create: {
-      userId,
-      badgeType: "FOUNDING",
-      active: false,
-    },
-    update: { active: false },
-    select: { id: true, userId: true, active: true },
-  });
-
-  // ── 3. Audit ──
   await logAudit({
     actorId: userId_operator ?? null,
     actorType: "ADMIN",
     action: "marketplace.seller.register",
     entityType: "FoundingSeller",
-    entityId: founding.id,
+    entityId: result.founding.id,
     after: {
       userId,
       role: sellerRole.key,
       companyId: companyId ?? null,
-      foundingStatusId: founding.id,
+      foundingStatusId: result.founding.id,
       foundingActive: false,
     },
     reason: `ثبت‌نام فروشنده جدید: ${userId}`,
   });
 
   return {
-    id: updatedUser.id,
-    userId: updatedUser.id,
+    id: result.updatedUser.id,
+    userId: result.updatedUser.id,
     role: sellerRole.key,
-    companyId: updatedUser.companyId ?? null,
-    foundingStatusId: founding.id,
-    foundingActive: founding.active,
+    companyId: result.updatedUser.companyId ?? null,
+    foundingStatusId: result.founding.id,
+    foundingActive: result.founding.active,
   };
 }
 
@@ -277,6 +276,82 @@ export async function verifySeller(
   };
 }
 
+export async function verifySeller(
+  userId: string,
+  verifiedBy: string | null,
+): Promise<{
+  id: string;
+  userId: string;
+  foundingActive: boolean;
+  userStatus: string;
+}> {
+  if (!userId || !userId.trim()) {
+    throw new SellerServiceError(400, "userId الزامی است");
+  }
+
+  // Keep founding verification and public account activation atomic.
+  const result = await db.$transaction(async (tx) => {
+    const before = await tx.foundingSeller.findUnique({
+      where: { userId },
+      select: { id: true, active: true },
+    });
+    if (!before) {
+      throw new SellerServiceError(
+        404,
+        "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
+      );
+    }
+
+    const after = await tx.foundingSeller.update({
+      where: { userId },
+      data: { active: true },
+      select: { id: true, userId: true, active: true },
+    });
+
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    });
+    if (!user) {
+      throw new SellerServiceError(404, "کاربر فروشنده یافت نشد");
+    }
+
+    let userStatus = user.status;
+    if (user.status === "PENDING" || user.status === "BLOCKED") {
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { status: "ACTIVE" },
+        select: { status: true },
+      });
+      userStatus = updated.status;
+    }
+
+    return { before, after, userStatus };
+  });
+
+  await logAudit({
+    actorId: verifiedBy ?? null,
+    actorType: "ADMIN",
+    action: "marketplace.seller.verify",
+    entityType: "FoundingSeller",
+    entityId: result.after.id,
+    before: { active: result.before.active },
+    after: {
+      active: true,
+      verifiedBy,
+      userStatus: result.userStatus,
+    },
+    reason: `تأیید فروشنده: ${userId}`,
+  });
+
+  return {
+    id: result.after.id,
+    userId: result.after.userId,
+    foundingActive: result.after.active,
+    userStatus: result.userStatus,
+  };
+}
+
 // ── suspendSeller ─────────────────────────────────────────
 /**
  * Suspend a seller — flip FoundingSeller.active=false + User.status
@@ -362,6 +437,77 @@ export async function suspendSeller(
     userId: after.userId,
     foundingActive: after.active,
     userStatus,
+  };
+}
+
+export async function suspendSeller(
+  userId: string,
+  reason: string,
+  suspendedBy: string | null,
+): Promise<{
+  id: string;
+  userId: string;
+  foundingActive: boolean;
+  userStatus: string;
+}> {
+  if (!userId || !userId.trim()) {
+    throw new SellerServiceError(400, "userId الزامی است");
+  }
+  if (!reason || !reason.trim()) {
+    throw new SellerServiceError(400, "دلیل تعلیق الزامی است");
+  }
+
+  const trimmedReason = reason.trim().slice(0, 2000);
+
+  // Founding suspension and account blocking must commit or roll back together.
+  const result = await db.$transaction(async (tx) => {
+    const before = await tx.foundingSeller.findUnique({
+      where: { userId },
+      select: { id: true, active: true },
+    });
+    if (!before) {
+      throw new SellerServiceError(
+        404,
+        "FoundingSeller یافت نشد — ابتدا registerSeller را فراخوانی کنید",
+      );
+    }
+
+    const after = await tx.foundingSeller.update({
+      where: { userId },
+      data: { active: false },
+      select: { id: true, userId: true, active: true },
+    });
+
+    const user = await tx.user.update({
+      where: { id: userId },
+      data: { status: "BLOCKED" },
+      select: { status: true },
+    });
+
+    return { before, after, userStatus: user.status };
+  });
+
+  await logAudit({
+    actorId: suspendedBy ?? null,
+    actorType: "ADMIN",
+    action: "marketplace.seller.suspend",
+    entityType: "FoundingSeller",
+    entityId: result.after.id,
+    before: { active: result.before.active },
+    after: {
+      active: false,
+      reason: trimmedReason,
+      suspendedBy,
+      userStatus: result.userStatus,
+    },
+    reason: `تعلیق فروشنده: ${userId} — ${trimmedReason}`,
+  });
+
+  return {
+    id: result.after.id,
+    userId: result.after.userId,
+    foundingActive: result.after.active,
+    userStatus: result.userStatus,
   };
 }
 
