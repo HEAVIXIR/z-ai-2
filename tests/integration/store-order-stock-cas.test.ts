@@ -66,15 +66,18 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
     expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
 
-    const [persisted, movements] = await Promise.all([
+    const [persisted, movements, outboxCount] = await Promise.all([
       storeDb.part.findUnique({ where: { id: part.id }, select: { stock: true, soldCount: true } }),
       storeDb.stockMovement.findMany({ where: { partId: part.id } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: part.id } } }),
     ]);
     expect(persisted?.stock).toBe(4);
     expect(persisted?.soldCount).toBe(6);
     expect(movements).toHaveLength(1);
     expect(movements[0]?.quantity).toBe(-6);
     expect(movements[0]?.type).toBe("SALE");
+    expect(movements[0]?.balanceAfter).toBe(4);
+    expect(outboxCount).toBe(2);
   }, 15000);
 
   it("allocates checkout stock across active warehouses without consuming reserved units", async () => {
@@ -93,13 +96,14 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
       decrementOrderStock(tx, part.id, 6, "ORDER-WH", "test-user"),
     );
 
-    const [balances, persisted, movements] = await Promise.all([
+    const [balances, persisted, movements, outboxCount] = await Promise.all([
       storeDb.inventoryBalance.findMany({
         where: { partId: part.id },
         orderBy: { warehouseId: "asc" },
       }),
       storeDb.part.findUnique({ where: { id: part.id }, select: { stock: true, soldCount: true } }),
-      storeDb.stockMovement.findMany({ where: { partId: part.id }, orderBy: { warehouseId: "asc" } }),
+      storeDb.stockMovement.findMany({ where: { partId: part.id } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: part.id } } }),
     ]);
 
     expect(balances.map((balance) => balance.quantity).sort()).toEqual([2, 2]);
@@ -108,7 +112,9 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
     expect(persisted?.soldCount).toBe(6);
     expect(movements).toHaveLength(2);
     expect(movements.map((movement) => movement.quantity).sort()).toEqual([-3, -3]);
+    expect(movements.map((movement) => movement.balanceAfter).sort((a, b) => a - b)).toEqual([4, 7]);
     expect(movements.every((movement) => movement.reference === "ORDER-WH")).toBe(true);
+    expect(outboxCount).toBe(3);
   }, 15000);
 
   it("does not sell reserved units when active warehouse availability is insufficient", async () => {
