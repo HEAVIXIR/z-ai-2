@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkPublicApiRateLimit } from "@/lib/public-api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,15 @@ export const dynamic = "force-dynamic";
  * Per HEAVIX Master Execution Plan V3.0 Phase 10.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const rateLimit = checkPublicApiRateLimit(req, "seller-reputation");
+  const noStoreHeaders = { "Cache-Control": "private, no-store" };
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { ...noStoreHeaders, "Retry-After": String(rateLimit.retryAfter) } },
+    );
+  }
+
   try {
     const { id } = await params;
 
@@ -35,7 +45,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     if (!user) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+      return NextResponse.json({ error: "Seller not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     // Review stats
@@ -142,9 +152,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         offersReceived,
       },
       signals,
-    });
+    }, { headers: noStoreHeaders });
   } catch (err: any) {
     console.error("[reputation] error:", err);
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500, headers: noStoreHeaders });
   }
 }
