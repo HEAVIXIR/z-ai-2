@@ -200,8 +200,9 @@ export async function POST(req: Request) {
     const s = result.subscription;
     return NextResponse.json({ ok: true, subscription: serialize(s) });
   } catch (err: any) {
+    console.error("[admin/subscriptions] request failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process subscription request" },
       { status: 500 },
     );
   }
