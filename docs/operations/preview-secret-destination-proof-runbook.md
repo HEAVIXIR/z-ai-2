@@ -306,6 +306,17 @@ The versions API listed 14 versions, each with `has_preview=true`. Because Acces
 
 This is the intended public-Preview boundary while Access remains unavailable: keep the single canonical public Preview endpoint available, but do not expose per-version preview URLs. Re-enable `previews_enabled` only after a reviewed access-control design protects historical/version URLs.
 
+### Canonical public Preview guard — residual gap
+
+The canonical public Preview remains enabled by design. The version-specific Preview URL surface has been disabled, but this is only a partial public guard:
+
+- Cloudflare Access is not enabled for the account, and no zone for heavix.ir is visible in the connected Cloudflare account. No zone-level WAF or rate-limiting rule could be verified.
+- The main-branch middleware file is src/middleware.ts. Its matcher covers only /admin and /api/admin; all other public paths pass through. Its cookie check is an early UI/API gate, not a replacement for route-level session validation and RBAC.
+- Main does not contain src/lib/public-api-rate-limit.ts. That helper exists only on Draft PR #213, is not imported by middleware or public API routes, and uses node:net. It is not an active global public rate limiter and must not be represented as deployed protection. Its in-process limiter is explicitly per-runtime, not a distributed quota.
+- The current verified protections are therefore: canonical public Preview remains available; version-specific Preview URLs are disabled; application routes retain their own authentication/authorization checks. A global edge/public abuse-control layer is **NOT YET PROVEN**.
+
+Next safe implementation gate: first reconcile the unmerged Cloudflare runtime dependency chain documented below; then choose a Cloudflare-supported rate-limiting mechanism or a tested Worker-compatible implementation, scope exclusions for payment callbacks/health checks, add exact-head behavioral tests, and deploy only after explicit release approval. Do not add an untested global 60/minute limit to every API route; that could disrupt normal traffic without providing distributed protection.
+
 ### GitHub-to-Cloudflare source provenance gap
 
 A fresh exact-path check against `main` returned 404 for all of the following runtime integration files:
