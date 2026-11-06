@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
    the shareToken of ANY session.
 
    Fix model (respects the product contract):
-   - GET: session ID is a capability token (if you know it, you can
-     view). This preserves the anonymous-compare feature. BUT: the
-     `userId` field is redacted from the response (PII protection).
+   - GET: anonymous-created sessions (userId=null) remain accessible
+     through the high-entropy session-ID capability. Owned sessions require
+     the owner or an admin; userId is redacted from every response.
    - PATCH + DELETE: require auth + ownership (or admin). This
      prevents token hijack (refreshShareToken) and unauthorized
      archival. Anonymous-created sessions (userId=null) require
