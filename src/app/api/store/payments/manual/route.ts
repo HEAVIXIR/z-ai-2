@@ -106,6 +106,8 @@ export async function POST(req: Request) {
     }
 
     const outcome = await storeDb.$transaction(async (tx) => {
+      // Shared per-order lock serializes manual and gateway payment attempts.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${orderId}, 0))`;
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: { customer: true },
