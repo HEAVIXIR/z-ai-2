@@ -479,21 +479,37 @@ export async function adjustStock(
     const currentQty = existingBalance?.quantity ?? 0;
 
     if (qty < 0) {
-      // Conditional UPDATE is atomic in PostgreSQL. If another request has
-      // already consumed the available quantity, this request affects zero
-      // rows and the entire transaction is rejected.
+      const currentReserved = existingBalance?.reserved ?? 0;
+      const nextQty = currentQty + qty;
+      if (nextQty < 0) {
+        throw new InventoryServiceError(
+          400,
+          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
+        );
+      }
+      if (nextQty < currentReserved) {
+        throw new InventoryServiceError(
+          409,
+          'کاهش موجودی مجاز نیست؛ بخشی از موجودی برای سفارش‌ها رزرو شده است',
+        );
+      }
+
+      // Compare-and-swap both quantity and reserved. A concurrent reservation
+      // or adjustment changes one of these values and makes this write fail
+      // closed, so the reserved quantity can never exceed on-hand quantity.
       const changed = await tx.inventoryBalance.updateMany({
         where: {
           partId,
           warehouseId,
-          quantity: { gte: -qty },
+          quantity: { equals: currentQty, gte: -qty },
+          reserved: currentReserved,
         },
         data: { quantity: { increment: qty } },
       });
       if (changed.count !== 1) {
         throw new InventoryServiceError(
-          400,
-          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
+          409,
+          'موجودی یا رزرو هم‌زمان تغییر کرده است؛ دوباره تلاش کنید',
         );
       }
     } else {
