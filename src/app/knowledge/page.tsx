@@ -36,7 +36,7 @@ export default async function KnowledgePage({ searchParams }: { searchParams: Pr
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {articles.map((a) => (
-                <Link key={a.id} href={`/knowledge/${a.slug}`} className="group flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#111] transition-all duration-300 hover:-translate-y-1 hover:border-[#F58220]/40">
+                <Link key={a.id} href={`/articles/${a.slug}`} className="group flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#111] transition-all duration-300 hover:-translate-y-1 hover:border-[#F58220]/40">
                   <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
                     {a.coverImage ? <img src={a.coverImage} alt={a.title} className="h-full w-full object-cover opacity-70 transition-opacity group-hover:opacity-90" /> : <div className="flex h-full w-full items-center justify-center"><BookOpen className="h-12 w-12 text-white/10" /></div>}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
