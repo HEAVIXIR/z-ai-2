@@ -375,12 +375,9 @@ export function getRobotsTxt(): string {
   const lines = [
     "User-agent: *",
     "Allow: /",
-    "Disallow: /admin/",
+    // Private UI pages emit noindex metadata; crawlers must be able to
+    // fetch them to observe it. API endpoints remain disallowed.
     "Disallow: /api/",
-    "Disallow: /dashboard/",
-    "Disallow: /seller/",
-    "Disallow: /login",
-    "Disallow: /register",
     "",
     `Host: ${SITE_BASE_URL}`,
   ];
