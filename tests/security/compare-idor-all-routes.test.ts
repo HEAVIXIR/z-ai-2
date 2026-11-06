@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
    - DELETE /api/compare/[id]/items/[itemId] — NO auth, anyone can remove items
 
    Fix model:
-   - GET: capability model (session ID = access). userId redacted.
+   - GET: anonymous sessions use ID capability; owned sessions require owner/admin. userId redacted.
    - PATCH + DELETE: auth + ownership (or admin). Null-userId → admin only.
    - POST/DELETE items: owned sessions require auth + ownership;
      anonymous sessions (null userId) use capability model.
