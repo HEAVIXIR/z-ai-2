@@ -18,7 +18,7 @@ function auditSnapshot(value: any) {
   if (!value) return null;
   return JSON.stringify(value, (_key, item) =>
     typeof item === "bigint" ? item.toString() : item,
-  ).slice(0, 4000);
+  );
 }
 
 async function serialize(plan: any) {
