@@ -231,7 +231,7 @@ export async function handlePreviewGate(
     const form = await readSmallForm(request);
     const passwords = form?.getAll("password") ?? [];
     if (passwords.length !== 1) return loginPage(true);
-    const supplied = encoder.encode(passwords[0]);
+    const supplied = encoder.encode(passwords[0] ?? "");
     const expected = encoder.encode(env.HEAVIX_PREVIEW_GATE_PASSWORD);
     if (!constantTimeEqual(supplied, expected)) return loginPage(true);
     const session = await createSession(env.HEAVIX_PREVIEW_GATE_SIGNING_KEY);
