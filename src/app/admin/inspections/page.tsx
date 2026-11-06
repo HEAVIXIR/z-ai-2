@@ -53,7 +53,10 @@ export default async function AdminInspectionsPage() {
       };
     })(),
     db.user.findMany({
-      where: { OR: [{ role: "ADMIN" }, { role: "SELLER" }] },
+      where: {
+        status: "ACTIVE",
+        userRoles: { some: { role: { key: { in: ["ADMIN", "SELLER"] } } } },
+      },
       select: { id: true, firstName: true, lastName: true, mobile: true },
       take: 50,
     }),
