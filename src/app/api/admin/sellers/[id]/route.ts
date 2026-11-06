@@ -117,10 +117,36 @@ export async function PATCH(
       return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
     }
 
-    const rawBody = await req.text();
-    if (new TextEncoder().encode(rawBody).byteLength > 16 * 1024) {
+    const maxBodyBytes = 16 * 1024;
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
       return NextResponse.json({ error: "Request body too large" }, { status: 413 });
     }
+
+    // Enforce the limit while streaming so chunked requests cannot force
+    // an unbounded req.text() allocation before the size check.
+    const reader = req.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBodyBytes) {
+          await reader.cancel();
+          return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+        }
+        chunks.push(value);
+      }
+    }
+    const bodyBytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bodyBytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
 
     let body: unknown;
     try {
