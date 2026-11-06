@@ -57,6 +57,13 @@ const mockStoreDb = {
     findUnique: vi.fn(async () => null),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    findUnique: vi.fn(async () => ({ id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null })),
+    count: vi.fn(async () => 0),
+    aggregate: vi.fn(async () => ({ _sum: { amountIrr: 0 } })),
+  },
+  auditOutbox: {
+    create: vi.fn(async () => ({ id: "outbox-1" })),
   },
   customer: {
     findUnique: vi.fn(async () => null),
@@ -80,6 +87,8 @@ const mockStoreDb = {
       payment: mockStoreDb.payment,
       order: mockStoreDb.order,
       customer: mockStoreDb.customer,
+      auditOutbox: mockStoreDb.auditOutbox,
+      $queryRaw: vi.fn(async () => []),
     };
     return fn(tx);
   }),
@@ -98,6 +107,7 @@ vi.mock("@/lib/store-zarinpal", () => ({
 
 // Import AFTER mocks
 const storeAuth = await import("@/lib/store-auth");
+const storeZarinpal = await import("@/lib/store-zarinpal");
 const ordersIdRoute = await import("@/app/api/store/orders/[id]/route");
 const wishlistRoute = await import("@/app/api/store/wishlist/route");
 const paymentsManualRoute = await import("@/app/api/store/payments/manual/route");
@@ -113,6 +123,14 @@ beforeEach(() => {
   mockStoreDb.customer.findUnique.mockResolvedValue(null);
   mockStoreDb.customer.upsert.mockResolvedValue({ id: "cust-1", phone: "09120000000", userId: null });
   mockStoreDb.payment.create.mockResolvedValue({ id: "pay-1" });
+  mockStoreDb.payment.findFirst.mockResolvedValue(null);
+  mockStoreDb.payment.findUnique.mockResolvedValue({ id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null });
+  mockStoreDb.payment.updateMany.mockResolvedValue({ count: 1 });
+  mockStoreDb.payment.count.mockResolvedValue(0);
+  mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 0 } });
+  mockStoreDb.auditOutbox.create.mockResolvedValue({ id: "outbox-1" });
+  mockStoreDb.order.update.mockImplementation(async ({ where, data }: any) => ({ ...mockOrder, id: where.id, ...data }));
+  vi.mocked(storeZarinpal.verifyPayment).mockResolvedValue({ success: true, refId: "ref-123" });
   mockStoreDb.wishlist.findMany.mockResolvedValue([]);
 });
 
