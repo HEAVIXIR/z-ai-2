@@ -31,5 +31,6 @@ describe("trusted client IP extraction", () => {
 
   it("keeps rate-limit buckets endpoint-specific", () => {
     expect(rateLimitKey("203.0.113.10", "login")).toBe("203.0.113.10:login");
+    expect(rateLimitKey("203.0.113.10", "compare-create")).toBe("203.0.113.10:compare-create");
   });
 });
