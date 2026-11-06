@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "heavix-preview",
-  "main": ".open-next/worker.js",
+  "main": "scripts/preview-gated-worker.mjs",
   // Keep the established preview runtime date pinned. Populate process.env
   // from Worker bindings for the Prisma 6 PPG adapter path.
   "compatibility_date": "2026-10-28",
@@ -38,7 +38,9 @@
       "DATABASE_URL",
       "STORE_DATABASE_URL",
       "HEAVIX_APP_PREVIEW_DATABASE_OID",
-      "HEAVIX_STORE_PREVIEW_DATABASE_OID"
+      "HEAVIX_STORE_PREVIEW_DATABASE_OID",
+      "HEAVIX_PREVIEW_GATE_PASSWORD",
+      "HEAVIX_PREVIEW_GATE_SIGNING_KEY"
     ]
   }
 }
