@@ -32,6 +32,13 @@ describe("Sell in 7 Days public flow security contract", () => {
     expect(form).toContain("پرداخت آنلاین در این نسخه فعال نیست");
   });
 
+  it("uses the shared trusted proxy IP extractor for public rate limits", () => {
+    const context = read("src/lib/request-context.ts");
+    expect(context).toContain('headers.get("cf-connecting-ip")');
+    expect(context).toContain("hops[hops.length - 1]");
+    expect(context).not.toContain("xff.split(",")[0]");
+  });
+
   it("validates that public submissions reference active catalog entities", () => {
     const api = read("src/app/api/sell-in-7-days/route.ts");
     expect(api).toContain('active: true, layer: "CATALOG"');
