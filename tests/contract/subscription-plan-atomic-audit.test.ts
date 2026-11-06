@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { parseSubscriptionPlanInput } from "../../src/lib/admin/subscription-plan-input";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), "utf8");
@@ -40,9 +41,32 @@ describe("admin subscription-plan mutation safety", () => {
     expect(input).toContain("حداقل یک فیلد");
   });
 
-  it("does not silently coerce strings into booleans or strip invalid money characters", () => {
-    expect(input).toContain('typeof value !== "boolean"');
-    expect(input).toContain("/^\\d+$/");
-    expect(input).not.toContain("replace(/[^\\d-]/g");
+  it("rejects unknown fields, coercive booleans, negative prices, and empty PATCHes", () => {
+    expect(parseSubscriptionPlanInput({ code: "PRO", nameFa: "حرفه‌ای", unexpected: true }, "create").ok).toBe(false);
+    expect(parseSubscriptionPlanInput({ code: "PRO", nameFa: "حرفه‌ای", active: "false" }, "create").ok).toBe(false);
+    expect(parseSubscriptionPlanInput({ code: "PRO", nameFa: "حرفه‌ای", priceMonthly: "-1" }, "create").ok).toBe(false);
+    expect(parseSubscriptionPlanInput({}, "update").ok).toBe(false);
+  });
+
+  it("normalizes valid values and enforces the signed 64-bit money ceiling", () => {
+    const result = parseSubscriptionPlanInput({
+      code: "PRO",
+      nameFa: "حرفه‌ای",
+      priceMonthly: "120000",
+      analyticsAccess: true,
+      featuresJson: ["پشتیبانی", "گزارش"],
+    }, "create");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.currency).toBe("IRR");
+      expect(result.data.maxImages).toBe(8);
+      expect(result.data.priceMonthly).toBe(120000n);
+      expect(result.data.featuresJson).toBe('["پشتیبانی","گزارش"]');
+    }
+    expect(parseSubscriptionPlanInput({
+      code: "PRO",
+      nameFa: "حرفه‌ای",
+      priceMonthly: "9223372036854775808",
+    }, "create").ok).toBe(false);
   });
 });
