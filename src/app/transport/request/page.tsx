@@ -1,10 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "ثبت درخواست حمل | هویکس",
-  robots: { index: false, follow: true },
-};
+
 
 
 import { redirect } from "next/navigation";
@@ -16,6 +13,11 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import TransportRequestForm from "./TransportRequestForm";
 import { Truck, ArrowRight } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "ثبت درخواست حمل | هویکس",
+  robots: { index: false, follow: true },
+};
 
 export const dynamic = "force-dynamic";
 
