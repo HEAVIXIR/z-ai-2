@@ -23,8 +23,8 @@ export default async function SellerProfilePage({
   const { id } = await params;
 
   const [seller, headerCats] = await Promise.all([
-    db.user.findUnique({
-      where: { id },
+    db.user.findFirst({
+      where: { id, role: "SELLER", status: "ACTIVE" },
       include: {
         company: { select: { id: true, name: true, slug: true, logoUrl: true, verified: true } },
         _count: {
