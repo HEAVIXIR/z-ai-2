@@ -105,7 +105,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ success: false, error: "حداقل یک فیلد برای به‌روزرسانی الزامی است" }, { status: 400 });
     }
 
-    const data: Record<string, unknown> = {};
+    const data: any = {};
     if (input.status !== undefined) {
       if (typeof input.status !== "string" || !ALLOWED_STATUSES.includes(input.status)) {
         return NextResponse.json({ success: false, error: "وضعیت سفارش نامعتبر است" }, { status: 400 });
