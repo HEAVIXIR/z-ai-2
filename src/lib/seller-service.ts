@@ -56,9 +56,7 @@
  *
  * Audit convention:
  *   - Action keys: marketplace.seller.{register, verify, suspend}.
- *   - entityType: FoundingSeller (primary) for verify/suspend,
- *     and User for register (because the role mutation lives on
- *     the User row; the founding row is created in the same call).
+ *   - entityType: FoundingSeller for register/verify/suspend.
  *   - actorType: ADMIN.
  *   - All audits are best-effort: logAudit never throws.
  *
