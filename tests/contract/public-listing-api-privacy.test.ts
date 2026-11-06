@@ -45,6 +45,7 @@ describe("public listing and comparison API privacy contract", () => {
     const engine = read("src/lib/compare-engine.ts");
     expect(route).toContain("COMPARE_AI_SUMMARY");
     expect(route).toContain("rateLimit(");
+    expect(route).toContain('session.status === "ARCHIVED"');
     expect(engine).toContain("cacheAgeMs < 15 * 60 * 1000");
     expect(engine).toContain("aiSummary: null, aiSummaryAt: null");
   });
