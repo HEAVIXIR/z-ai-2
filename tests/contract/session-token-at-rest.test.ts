@@ -20,6 +20,12 @@ describe("canonical session persistence security contract", () => {
     expect(auth).toContain("where: { id: session.id, token }");
   });
 
+  it("fails closed if legacy token migration cannot be confirmed", () => {
+    expect(auth).toContain("if (migration.count === 0)");
+    expect(auth).toContain("where: { token: tokenHash }");
+    expect(auth).not.toContain("Keep the session usable if opportunistic migration fails");
+  });
+
   it("revokes both hashed and legacy sessions on logout", () => {
     expect(auth).toContain("token: { in: [tokenHash, token] }");
   });
