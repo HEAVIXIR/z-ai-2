@@ -148,8 +148,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       action: 'store.payment.update',
       entityType: 'Payment',
       entityId: payment.id,
-      before: existing,
-      after: payment,
+      before: {
+        status: existing.status,
+        amountIrr: String(existing.amountIrr ?? 0),
+        amountUsd: String(existing.amountUsd ?? 0),
+        method: existing.method,
+        referenceCode: existing.referenceCode,
+        payerName: existing.payerName,
+        payerCard: maskPayerCard(existing.payerCard),
+        note: existing.note,
+      },
+      after: {
+        status: payment.status,
+        amountIrr: String(payment.amountIrr ?? 0),
+        amountUsd: String(payment.amountUsd ?? 0),
+        method: payment.method,
+        referenceCode: payment.referenceCode,
+        payerName: payment.payerName,
+        payerCard: maskPayerCard(payment.payerCard),
+        note: payment.note,
+      },
     });
 
 
