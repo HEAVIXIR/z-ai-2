@@ -41,6 +41,14 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   });
 
   afterEach(async () => {
+    const fixtureReturnIds = [returnId, ...additionalReturnIds].filter(Boolean) as string[];
+    if (fixtureReturnIds.length > 0) {
+      await storeDb.auditOutbox.deleteMany({
+        where: {
+          OR: fixtureReturnIds.map((id) => ({ payloadJson: { contains: id } })),
+        },
+      });
+    }
     if (outboxIds.length > 0) {
       await storeDb.auditOutbox.deleteMany({ where: { id: { in: outboxIds } } });
       outboxIds = [];
