@@ -114,7 +114,7 @@ describe('Store procurement receiving atomicity (real PostgreSQL)', () => {
       throw new Error('fixture setup incomplete');
     }
 
-    const result = await receivePurchaseOrderItem(poItemId, 5, warehouseId);
+    const result = await receivePurchaseOrderItem(poItemId, 5, warehouseId, null, procurementId!, purchaseOrderId!);
 
     const [item, po, part, balance, movements, outbox] = await Promise.all([
       storeDb.purchaseOrderItem.findUnique({ where: { id: poItemId } }),
@@ -150,7 +150,7 @@ describe('Store procurement receiving atomicity (real PostgreSQL)', () => {
     if (!poItemId || !warehouseId || !partId) throw new Error('fixture setup incomplete');
 
     const outcomes = await Promise.allSettled([
-      receivePurchaseOrderItem(poItemId, 4, warehouseId),
+      receivePurchaseOrderItem(poItemId, 4, warehouseId, null, procurementId!, purchaseOrderId!),
       receivePurchaseOrderItem(poItemId, 4, warehouseId),
     ]);
 
@@ -172,13 +172,33 @@ describe('Store procurement receiving atomicity (real PostgreSQL)', () => {
     expect(movements).toHaveLength(1);
   }, 15000);
 
+  it('rejects a PO item submitted through a different procurement or PO route scope', async () => {
+    if (!poItemId || !warehouseId || !purchaseOrderId) throw new Error('fixture setup incomplete');
+
+    await expect(
+      receivePurchaseOrderItem(poItemId, 1, warehouseId, null, 'another-procurement', purchaseOrderId),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      receivePurchaseOrderItem(poItemId, 1, warehouseId, null, procurementId!, 'another-po'),
+    ).rejects.toMatchObject({ status: 404 });
+
+    const [item, part, movementCount] = await Promise.all([
+      storeDb.purchaseOrderItem.findUnique({ where: { id: poItemId } }),
+      storeDb.part.findUnique({ where: { id: partId! }, select: { stock: true } }),
+      storeDb.stockMovement.count({ where: { partId: partId! } }),
+    ]);
+    expect(item?.received).toBe(0);
+    expect(part?.stock).toBe(10);
+    expect(movementCount).toBe(0);
+  }, 15000);
+
   it('fails closed when no warehouse balance exists and does not create partial receiving side effects', async () => {
     if (!poItemId || !warehouseId || !partId) throw new Error('fixture setup incomplete');
 
     await storeDb.inventoryBalance.deleteMany({ where: { partId } });
 
     await expect(
-      receivePurchaseOrderItem(poItemId, 1, warehouseId),
+      receivePurchaseOrderItem(poItemId, 1, warehouseId, null, procurementId!, purchaseOrderId!),
     ).rejects.toMatchObject({ status: 409 });
 
     const [item, part, movementCount] = await Promise.all([
