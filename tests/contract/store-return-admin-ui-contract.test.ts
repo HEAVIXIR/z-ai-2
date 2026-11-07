@@ -10,6 +10,7 @@ describe("Store return admin lifecycle UI contract", () => {
   const client = read("src/app/admin/store/returns/[id]/return-lifecycle-client.tsx");
   const list = read("src/app/admin/store/returns/page.tsx");
   const route = read("src/app/api/admin/store/returns/[id]/route.ts");
+  const itemsRoute = read("src/app/api/admin/store/returns/[id]/items/route.ts");
 
   it("protects the detail page and only loads active destination warehouses", () => {
     expect(page).toContain('requirePermission(user.id, "returns.read")');
@@ -24,11 +25,13 @@ describe("Store return admin lifecycle UI contract", () => {
 
   it("allows authorized admins to add purchased order lines before inspection", () => {
     expect(page).toContain("items: {");
-    expect(client).toContain('"/api/admin/store/returns/${initialReturn.id}/items"');
+    expect(client).toContain("fetch(`/api/admin/store/returns/${initialReturn.id}/items`");
     expect(client).toContain('method: "POST"');
     expect(client).toContain("orderItemId: selectedOrderItemId");
     expect(client).toContain('["REQUESTED", "APPROVED"].includes(initialReturn.status)');
-    expect(route).toContain("addReturnItem(");
+    expect(itemsRoute).toContain("addReturnItem(");
+    expect(itemsRoute).toContain("requirePermission(user.id, 'returns.manage')");
+    expect(itemsRoute).toContain("checkCsrf(req)");
   });
 
   it("supports approval, item inspection, and all resolution choices", () => {
