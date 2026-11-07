@@ -299,8 +299,6 @@ export default function PaymentsAdminClient() {
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
               >
                 <option value="MANUAL">دستی / آفلاین</option>
-                <option value="ZARINPAL">زرین‌پال</option>
-                <option value="PAYIR">پی‌یار</option>
               </select>
             </div>
           </div>
