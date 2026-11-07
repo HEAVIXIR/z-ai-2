@@ -5,6 +5,8 @@ const procurementCollection = fs.readFileSync('src/app/api/admin/store/procureme
 const supplierCollection = fs.readFileSync('src/app/api/admin/store/suppliers/route.ts', 'utf8');
 const supplierItem = fs.readFileSync('src/app/api/admin/store/suppliers/[id]/route.ts', 'utf8');
 const resourceConfigs = fs.readFileSync('src/lib/admin/resources/store-domain-resources.ts', 'utf8');
+const universalCollection = fs.readFileSync('src/app/api/admin/resources/[resource]/route.ts', 'utf8');
+const universalItem = fs.readFileSync('src/app/api/admin/resources/[resource]/[id]/route.ts', 'utf8');
 
 describe('Procurement and supplier mutation safety', () => {
   it('creates procurement requests with CSRF protection and atomic Store outbox audit', () => {
@@ -56,6 +58,14 @@ describe('Procurement and supplier mutation safety', () => {
     expect(procurement).not.toContain("key: 'bulk-publish'");
     expect(suppliers).not.toContain("key: 'bulk-activate'");
     expect(suppliers).not.toContain("key: 'bulk-deactivate'");
+  });
+
+  it('hard-blocks Universal Resource mutations for dedicated procurement and supplier domains', () => {
+    expect(universalCollection).toContain("new Set(['procurement', 'suppliers'])");
+    expect(universalCollection).toContain('DEDICATED_MUTATION_RESOURCES.has(resourceKey)');
+    expect(universalItem).toContain("new Set(['procurement', 'suppliers'])");
+    expect(universalItem).toContain('DEDICATED_MUTATION_RESOURCES.has(resourceKey)');
+    expect(universalItem.match(/DEDICATED_MUTATION_RESOURCES\.has\(resourceKey\)/g)).toHaveLength(2);
   });
 
   it('prevents deleting suppliers referenced by procurement or purchase orders', () => {
