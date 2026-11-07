@@ -14,6 +14,20 @@ describe("Part catalog stock write boundary", () => {
     expect(patch).not.toContain("data.stock =");
   });
 
+  it("requires CSRF for both Part mutation methods", () => {
+    const deleteRoute = route.slice(deleteStart);
+    expect(patch).toContain("checkCsrf(req)");
+    expect(deleteRoute).toContain("checkCsrf(req)");
+    expect(route).toContain('import { checkCsrf } from "@/lib/csrf"');
+  });
+
+  it("rejects malformed PATCH JSON without attempting a database write", () => {
+    expect(patch).toContain("let parsed: unknown");
+    expect(patch).toContain("بدنه درخواست JSON معتبر نیست");
+    expect(patch).toContain("Array.isArray(parsed)");
+    expect(patch).toContain("{ status: 400 }");
+  });
+
   it("keeps stock editable only as an initial legacy quantity on create", () => {
     expect(page).toContain('...(!editing ? { stock: Number(form.stock) || 0 } : {})');
     expect(page).toContain("موجودی فعلی (فقط خواندنی)");
