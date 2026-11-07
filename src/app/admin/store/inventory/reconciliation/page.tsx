@@ -123,6 +123,9 @@ export default async function InventoryReconciliationPage({
         <Summary label="انبار غیرفعال" value={summary.inactive} tone="amber" />
         <Summary label="همگام" value={summary.consistent} tone="emerald" />
       </div>
+      <p className="text-[11px] text-zinc-400">
+        اعداد خلاصه فقط مربوط به قطعات همین صفحه هستند؛ تعداد کل قطعات در بالای گزارش نمایش داده شده و با صفحه بعد می‌توانید ادامه دهید.
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <Link
