@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -85,6 +85,11 @@ export default function ReturnLifecycleClient({
   canManage: boolean;
 }) {
   const router = useRouter();
+  const availableOrderItems = useMemo(() => {
+    const existingIds = new Set(initialReturn.items.map((item) => item.orderItem.id));
+    return (initialReturn.order?.items ?? []).filter((item) => !existingIds.has(item.id));
+  }, [initialReturn.items, initialReturn.order?.items]);
+
   const [inspection, setInspection] = useState(initialReturn.inspection ?? "");
   const [itemConditions, setItemConditions] = useState(
     initialReturn.items.map((item) => ({
@@ -94,12 +99,18 @@ export default function ReturnLifecycleClient({
     })),
   );
   const [resolution, setResolution] = useState("REFUND");
-  const [selectedOrderItemId, setSelectedOrderItemId] = useState(initialReturn.order?.items[0]?.id ?? "");
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState(availableOrderItems[0]?.id ?? "");
   const [addQuantity, setAddQuantity] = useState(1);
   const [warehouseId, setWarehouseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!availableOrderItems.some((item) => item.id === selectedOrderItemId)) {
+      setSelectedOrderItemId(availableOrderItems[0]?.id ?? "");
+    }
+  }, [availableOrderItems, selectedOrderItemId]);
 
   const hasRestockable = useMemo(
     () => itemConditions.some((item) => item.restockable),
@@ -163,11 +174,6 @@ export default function ReturnLifecycleClient({
       setBusy(false);
     }
   }
-
-  const existingOrderItemIds = new Set(initialReturn.items.map((item) => item.orderItem.id));
-  const availableOrderItems = (initialReturn.order?.items ?? []).filter(
-    (item) => !existingOrderItemIds.has(item.id),
-  );
 
   const isTerminal = ["RESOLVED", "REJECTED"].includes(initialReturn.status);
 
