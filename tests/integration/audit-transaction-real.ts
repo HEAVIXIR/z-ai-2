@@ -7,13 +7,12 @@
  * `db.$transaction`), these tests hit a REAL PostgreSQL database to
  * verify that:
  *
- *   1. When mutation + audit both succeed → BOTH are committed
- *      (payment.status changes to REFUNDED, audit row exists).
+ *   1. When mutation + audit both succeed → BOTH are committed.
  *   2. When mutation fails → payment.status is UNCHANGED (rolled back).
  *   3. When audit insert fails INSIDE the transaction → payment.status
  *      is UNCHANGED (atomicity PROVEN — no mutation without audit).
- *   4. When precondition fails → payment.status is UNCHANGED (no
- *      mutation, no audit row).
+ *   4. The status-only payment refund action is unavailable and rejected
+ *      before a database read or mutation.
  *
  * These tests require a live PostgreSQL database with the HEAVIX schema
  * pushed (run `bun run db:push` first). They use the real `db` client
@@ -212,122 +211,16 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     expect(auditRow).toBeNull();
   });
 
-  /* ────────────────────────────────────────────────────────────────
-     Scenario 4: precondition fails → no mutation, no audit
-     (Verifies the executeAction precondition path)
-     ──────────────────────────────────────────────────────────────── */
-
-  it("scenario 4: precondition fails → executeAction returns PRECONDITION_FAILED, no mutation, no audit", async () => {
-    // STEP 13.49 ROOT CAUSE FIX: The original test used vi.doMock to mock
-    // getPrismaModel, but action-engine.ts uses STATIC imports — vi.doMock
-    // only affects future dynamic imports, so the mock never applied.
-    // executeAction called the REAL getPrismaModel → db.payment.findUnique
-    // → returned null (no payment 'p-test' in DB) → returned
-    // { success: false, message: 'Entity not found' } → result.error was
-    // undefined, NOT 'PRECONDITION_FAILED'.
-    //
-    // FIX: Create a REAL Payment with status='REFUNDED' in PostgreSQL.
-    // executeAction will fetch it, evaluate the refund precondition
-    // (requires status ∈ {PAID, AUTHORIZED}), and return PRECONDITION_FAILED.
-
-    // Create a real Deal + Order + Payment with status=REFUNDED
-    // (Order.dealId is required + @unique — must reference a real Deal)
-    const precondBuyer = await db.user.create({
-      data: { mobile: "09129999001", email: "precond-buyer@test.com", firstName: "P", lastName: "B", passwordHash: "h" },
-    });
-    // STEP 13.49: assign ADMIN role so can(userId, "payment.refund") returns true
-    const adminRole = await db.role.findUnique({ where: { key: "ADMIN" } });
-    if (!adminRole) {
-      throw new Error("ADMIN role not found in DB — seed-rbac may not have run");
-    }
-    // Use upsert to handle idempotency without swallowing errors
-    await db.userRole.upsert({
-      where: { userId_roleId: { userId: precondBuyer.id, roleId: adminRole.id } },
-      create: { userId: precondBuyer.id, roleId: adminRole.id },
-      update: {},
-    });
-    const precondSeller = await db.user.create({
-      data: { mobile: "09129999002", email: "precond-seller@test.com", firstName: "P", lastName: "S", passwordHash: "h" },
+  /* Scenario 4: status-only payment refunds are not exposed. */
+  it("scenario 4: disabled refund action is rejected before any database mutation", async () => {
+    const { executeAction } = await import("@/lib/admin/action-engine");
+    const result = await executeAction("payments", "missing-payment", "refund", {
+      userId: "audit-test-admin",
+      reason: "refund evidence gate test",
     });
 
-    const testDeal = await db.deal.create({
-      data: {
-        dealNumber: "PRECOND-DEAL-" + Date.now().toString(36),
-        sourceType: "LISTING_OFFER",
-        sourceId: "precondition-test",
-        buyerId: precondBuyer.id,
-        sellerId: precondSeller.id,
-        agreedAmount: 1000n,
-        currency: "IRR",
-        transactionType: "SALE",
-        status: "CANCELLED",
-        agreedAt: new Date(),
-      },
-    });
-
-    const testOrder = await db.order.create({
-      data: {
-        orderNumber: "ORD-PRECOND-" + Date.now().toString(36),
-        dealId: testDeal.id,
-        titleSnapshot: "Precondition Test",
-        priceSnapshot: 1000n,
-        currencySnapshot: "IRR",
-        quantity: 1,
-        status: "CANCELLED",
-      },
-    });
-
-    const testPayment = await db.payment.create({
-      data: {
-        userId: precondBuyer.id,  // Payment.userId is required (non-null)
-        orderId: testOrder.id,
-        amount: 1000n,
-        currency: "IRR",
-        type: "ORDER_PAYMENT",
-        status: "REFUNDED", // precondition requires PAID or AUTHORIZED
-        gateway: "test",
-      },
-    });
-
-    try {
-      // Use the REAL executeAction (no mocks)
-      const { executeAction } = await import("@/lib/admin/action-engine");
-
-      const result = await executeAction("payments", testPayment.id, "refund", {
-        userId: precondBuyer.id,  // STEP 13.49: use the user that has ADMIN role
-        reason: "Integration test — precondition scenario",
-      });
-
-      // The precondition should fail (status=REFUNDED, not PAID/AUTHORIZED)
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("PRECONDITION_FAILED");
-
-      // Verify no audit row was created for this scenario
-      const auditRow = await db.auditLog.findFirst({
-        where: {
-          action: "payments.refund",
-          entityId: testPayment.id,
-        },
-      });
-      expect(auditRow).toBeNull();
-
-      // Verify the payment status was NOT changed (no mutation)
-      const paymentAfter = await db.payment.findUnique({
-        where: { id: testPayment.id },
-        select: { status: true },
-      });
-      expect(paymentAfter?.status).toBe("REFUNDED");
-    } finally {
-      // Cleanup — independent, collected errors
-      const cleanupErrors: string[] = [];
-      await db.payment.delete({ where: { id: testPayment.id } }).catch((e) => { cleanupErrors.push(`payment: ${e}`); });
-      await db.order.delete({ where: { id: testOrder.id } }).catch((e) => { cleanupErrors.push(`order: ${e}`); });
-      await db.deal.delete({ where: { id: testDeal.id } }).catch((e) => { cleanupErrors.push(`deal: ${e}`); });
-      await db.user.delete({ where: { id: precondSeller.id } }).catch((e) => { cleanupErrors.push(`seller: ${e}`); });
-      await db.user.delete({ where: { id: precondBuyer.id } }).catch((e) => { cleanupErrors.push(`buyer: ${e}`); });
-      if (cleanupErrors.length > 0) {
-        throw new Error(`Cleanup failed: ${cleanupErrors.join("; ")}`);
-      }
-    }
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Action not defined");
   });
+
 });
