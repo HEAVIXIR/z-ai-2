@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logAudit } from "@/lib/audit";
 
 /* ============================================================
@@ -191,7 +192,7 @@ export async function estimatePrice(
 
   if (params.listingId) {
     const listing = await db.listing.findUnique({
-      where: { id: params.listingId },
+      where: { id: params.listingId, ...getPublicListingWhere() },
       select: {
         id: true ,
         brandId: true,
@@ -244,7 +245,7 @@ export async function estimatePrice(
     workingHours?: { gte: number; lte: number };
     NOT?: { id: string }[];
   } = {
-    status: "PUBLISHED",
+    ...getPublicListingWhere(),
     price: { not: null },
     brandId: target.brandId,
     categoryId: target.categoryId,
@@ -351,7 +352,7 @@ export async function estimatePrice(
   if (rows.length < 2) {
     const broadRows = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         price: { not: null },
         brandId: target.brandId,
         categoryId: target.categoryId,
@@ -613,7 +614,7 @@ export async function getPriceHealth(
   listingId: string,
 ): Promise<PriceHealthResult> {
   const listing = await db.listing.findUnique({
-    where: { id: listingId },
+    where: { id: listingId, ...getPublicListingWhere() },
     select: {
       id: true ,
       price: true,
