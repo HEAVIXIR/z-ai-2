@@ -90,7 +90,8 @@ describe("STEP 12.29 — payment action boundaries", () => {
       reason: "test refund",
     });
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Action not defined");
+    expect(result.error).toBe("ACTION_UNAVAILABLE");
+    expect(result.message).toMatch(/evidence-backed refund workflow/);
 
     const row = await (db as any).payment.findUnique({ where: { id: payment.id } });
     expect(row.status).toBe("PAID");
