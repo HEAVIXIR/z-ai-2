@@ -166,15 +166,13 @@ export default {
       // prove read-only, and a failed one (25006) would have been even
       // less meaningful.
       //
-      // The correct approach is to query the runtime GUC directly:
-      //   SELECT current_setting('transaction_read_only')::boolean
-      // This returns the actual state of the transaction_read_only GUC
-      // for the current transaction. If the Preview database is
-      // configured with transaction_read_only=on (either at the role
-      // level or the session level), this returns true.
+      // The proof explicitly issues SET TRANSACTION READ ONLY as the first
+      // statement inside the interactive transaction, then queries the
+      // transaction_read_only GUC. This proves transaction-scoped read-only
+      // execution without requiring the entire Preview database to be read-only.
       //
-      // We also verify that the SELECT itself succeeded (transactionOk)
-      // to prove the connection works.
+      // We also verify that SELECT 1 succeeds (transactionOk) to prove the
+      // connection works.
       //
       // STEP 18.2.7.3.10 (Finding S-3): verify identity BEFORE opening the
       // transaction. If the secret points at Production, the transaction
