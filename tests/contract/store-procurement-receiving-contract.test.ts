@@ -50,6 +50,8 @@ describe("Procurement receiving inventory contract", () => {
     expect(route).toContain("requirePermission(user.id, 'inventory.manage')");
     expect(route).toContain("checkCsrf(req)");
     expect(route).toContain("warehouseId");
+    expect(route).toContain("Number.isSafeInteger(receivedQty)");
+    expect(route).toContain("typeof poItemId !== \"string\"");
     expect(route).toContain("const { id: procurementId, poId: purchaseOrderId } = await params");
     expect(body).toContain("poItem.purchaseOrderId !== purchaseOrderId");
     expect(body).toContain("poItem.purchaseOrder.procurementId !== procurementId");
