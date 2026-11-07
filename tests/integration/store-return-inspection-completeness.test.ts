@@ -180,7 +180,7 @@ describe('Store return inspection completeness (real PostgreSQL)', () => {
     ]);
     expect(ret?.status).toBe('INSPECTED');
     expect(items).toHaveLength(2);
-    expect(items.every((item) => item.restockable === true || item.restockable === false)).toBe(true);
+    expect(items[0]?.restockable).not.toBe(items[1]?.restockable);
     expect(events).toHaveLength(successes * 3);
   }, 15000);
 });
