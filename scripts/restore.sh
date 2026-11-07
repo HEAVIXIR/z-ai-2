@@ -78,8 +78,15 @@ STORE_DB_CONTAINER="${STORE_DB_CONTAINER:-heavix-store-db-1}"
 
 # Keep SQL identifiers constrained; host/user/password values are never interpolated into SQL.
 for name in "$DB_NAME" "$STORE_DB_NAME"; do
-  if [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    echo "ERROR: Unsafe database identifier; use letters, digits, and underscores only."
+  if [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || (( ${#name} > 63 )); then
+    echo "ERROR: Unsafe database identifier; use 1-63 ASCII letters, digits, and underscores, starting with a letter or underscore."
+    exit 1
+  fi
+done
+
+for port in "$DB_PORT" "$STORE_DB_PORT"; do
+  if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
+    echo "ERROR: Database ports must be integers between 1 and 65535."
     exit 1
   fi
 done
