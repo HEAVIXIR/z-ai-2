@@ -83,6 +83,18 @@ export async function allocateOpeningBalance(input: {
       throw new InventoryServiceError(409, `مجموع تخصیص (${requestedTotal}) باید دقیقاً برابر موجودی فعلی قطعه (${part.stock}) باشد`);
     }
 
+    // Lock destination warehouses in stable ID order after the Part lock.
+    // This prevents a concurrent deactivation from racing the allocation.
+    for (const warehouseId of [...seen].sort()) {
+      const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse"
+        WHERE id = ${warehouseId} AND active = true
+        FOR SHARE
+      `;
+      if (lockedWarehouse.length !== 1) {
+        throw new InventoryServiceError(409, 'یک یا چند انبار انتخاب‌شده وجود ندارد یا غیرفعال است');
+      }
+    }
     const warehouses = await tx.warehouse.findMany({
       where: { id: { in: [...seen] }, active: true },
       select: { id: true, name: true, code: true },
