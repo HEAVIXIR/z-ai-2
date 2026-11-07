@@ -556,8 +556,8 @@ export async function receivePurchaseOrderItem(
         action: 'store.inventory.balance.update',
         entityType: 'InventoryBalance',
         entityId: afterBalance.id,
-        before: { quantity: targetBalance.quantity, reserved: targetBalance.reserved },
-        after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved, warehouseId },
+        before: { partId: part.id, quantity: targetBalance.quantity, reserved: targetBalance.reserved, warehouseId },
+        after: { partId: part.id, quantity: afterBalance.quantity, reserved: afterBalance.reserved, warehouseId },
       });
 
       const allItems = await tx.purchaseOrderItem.findMany({
