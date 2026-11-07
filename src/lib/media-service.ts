@@ -6,11 +6,11 @@
    "Do NOT create a Media model in the schema. Use the filesystem
     + a JSON metadata file or a simple in-memory/DB approach."
 
-   This module implements an asset store on top of the existing
-   /public/uploads/ directory. Each uploaded asset is persisted
-   as a binary file plus a sidecar `<filename>.meta.json` file
-   containing the asset metadata (id, alt, entityType, entityId,
-   uploader, mime, size, timestamps).
+   Public binaries remain under /public/uploads/. Private metadata
+   sidecars are stored outside public/ in .heavix-media-metadata/
+   and are keyed by the same relative asset path. Legacy sidecars
+   beside public binaries remain readable during rollout, but the
+   middleware denies their URLs; mutations privatize or remove them.
 
    Sidecars are intentionally tiny (<1KB) so listing + filtering
    is a fast recursive walk + JSON.parse per sidecar.
