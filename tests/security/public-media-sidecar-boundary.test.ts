@@ -15,6 +15,8 @@ describe("public media sidecar privacy boundary", () => {
     "https://heavix.ir/uploads/asset%2Emeta.json",
     "https://heavix.ir/uploads/asset%252Emeta.json",
     "https://heavix.ir/uploads/asset%25252Emeta.json",
+    "https://heavix.ir/%75ploads/asset%ZZ.meta.json",
+    "https://heavix.ir/%2575ploads/asset%252Emeta.json",
     "https://heavix.ir/uploads/nested/ASSET.META.JSON",
   ])("returns a non-cacheable 404 for sidecar URL %s", (url) => {
     const response = middleware(request(url));
