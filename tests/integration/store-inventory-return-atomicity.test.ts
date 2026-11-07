@@ -392,4 +392,151 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(item.quantity).toBe(2);
   }, 15000);
 
+  it('restocks accepted return items into the explicitly selected warehouse atomically', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 2, lowStockThreshold: 5 },
+    });
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1555' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'Restock',
+        family: 'Atomicity',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'RESTOCK-RETURN-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 5,
+        totalUsd: 5,
+        totalIrr: 500,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+    const orderItem = await storeDb.orderItem.create({
+      data: {
+        orderId: order.id,
+        partId,
+        partNameSnapshot: 'Restockable part',
+        quantity: 2,
+        unitPriceUsd: 2.5,
+        unitPriceIrr: 250,
+        lineTotalUsd: 5,
+        lineTotalIrr: 500,
+      },
+    });
+    orderItemId = orderItem.id;
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'accepted return', status: 'INSPECTED' },
+    });
+    returnId = ret.id;
+    await storeDb.returnItem.create({
+      data: {
+        returnId: ret.id,
+        orderItemId: orderItem.id,
+        quantity: 1,
+        condition: 'UNOPENED',
+        restockable: true,
+      },
+    });
+
+    const resolved = await resolveReturn(ret.id, 'REFUND', null, warehouseId);
+    expect(resolved.status).toBe('RESOLVED');
+    expect(resolved.restockedMovements).toHaveLength(1);
+
+    const [part, balance, movement, outbox] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      }),
+      storeDb.stockMovement.findMany({
+        where: { partId, reference: ret.id, type: 'RETURN' },
+      }),
+      storeDb.auditOutbox.findMany({
+        where: { payloadJson: { contains: ret.id } },
+      }),
+    ]);
+    expect(part?.stock).toBe(11);
+    expect(balance?.quantity).toBe(11);
+    expect(balance?.reserved).toBe(2);
+    expect(movement).toHaveLength(1);
+    expect(movement[0].quantity).toBe(1);
+    expect(movement[0].balanceAfter).toBe(11);
+    expect(movement[0].warehouseId).toBe(warehouseId);
+    expect(outbox).toHaveLength(5);
+    outboxIds = outbox.map((event) => event.id);
+  }, 15000);
+
+  it('refuses restockable resolution without a destination warehouse and rolls back all effects', async () => {
+    if (!partId) throw new Error('fixture setup incomplete');
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1444' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'NoWarehouse',
+        family: 'Atomicity',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'NO-WAREHOUSE-RETURN-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 5,
+        totalUsd: 5,
+        totalIrr: 500,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+    const orderItem = await storeDb.orderItem.create({
+      data: {
+        orderId: order.id,
+        partId,
+        partNameSnapshot: 'Restockable part without warehouse',
+        quantity: 2,
+        unitPriceUsd: 2.5,
+        unitPriceIrr: 250,
+        lineTotalUsd: 5,
+        lineTotalIrr: 500,
+      },
+    });
+    orderItemId = orderItem.id;
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'missing warehouse selection', status: 'INSPECTED' },
+    });
+    returnId = ret.id;
+    await storeDb.returnItem.create({
+      data: {
+        returnId: ret.id,
+        orderItemId: orderItem.id,
+        quantity: 1,
+        condition: 'UNOPENED',
+        restockable: true,
+      },
+    });
+
+    await expect(resolveReturn(ret.id, 'REFUND')).rejects.toThrow('انبار مقصد را صریحاً انتخاب کنید');
+    const [savedReturn, part, wallet, movements, events] = await Promise.all([
+      storeDb.return.findUnique({ where: { id: ret.id }, select: { status: true } }),
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.customer.findUnique({ where: { id: customer.id }, select: { walletBalanceIrr: true } }),
+      storeDb.stockMovement.count({ where: { partId, reference: ret.id } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: ret.id } } }),
+    ]);
+    expect(savedReturn?.status).toBe('INSPECTED');
+    expect(part?.stock).toBe(10);
+    expect(wallet?.walletBalanceIrr).toBe(0);
+    expect(movements).toBe(0);
+    expect(events).toBe(0);
+  }, 15000);
+
 });
