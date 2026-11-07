@@ -19,7 +19,8 @@ describe("admin payment generic PATCH state boundary", () => {
       path.resolve(process.cwd(), "src/app/api/admin/payments/[id]/route.ts"),
       "utf8",
     );
-    expect(source).toContain("use the audited verify/refund action");
+    expect(source).toContain("refunds are currently disabled");
+    expect(source).toContain("audited verify action");
     expect(source).not.toContain("data.status =");
     expect(source).not.toContain("data.paidAt =");
   });
