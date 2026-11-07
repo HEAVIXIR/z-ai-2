@@ -89,6 +89,28 @@ if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/n
   DOCKER_MODE=1
 fi
 
+# Docker contexts may target a remote daemon even when the database container
+# names look local. Refuse remote Docker endpoints; restore is not allowed to
+# bypass the explicit remote-target gate merely by using Docker.
+if [ "$DOCKER_MODE" -eq 1 ]; then
+  if [ -n "${DOCKER_CONTEXT:-}" ]; then
+    DOCKER_ENDPOINT="$(docker context inspect "$DOCKER_CONTEXT" --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || true)"
+  elif [ -n "${DOCKER_HOST:-}" ]; then
+    DOCKER_ENDPOINT="$DOCKER_HOST"
+  else
+    DOCKER_CONTEXT_NAME="$(docker context show 2>/dev/null || true)"
+    DOCKER_ENDPOINT=""
+    if [ -n "$DOCKER_CONTEXT_NAME" ]; then
+      DOCKER_ENDPOINT="$(docker context inspect "$DOCKER_CONTEXT_NAME" --format '{{(index .Endpoints "docker").Host}}' 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ "$DOCKER_ENDPOINT" != unix://* ]]; then
+    echo "BLOCKED: Docker restore requires a local Unix-socket Docker endpoint."
+    exit 1
+  fi
+fi
+
 is_local_host() {
   case "$1" in
     localhost|127.0.0.1|::1) return 0 ;;
