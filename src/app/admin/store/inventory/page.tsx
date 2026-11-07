@@ -30,6 +30,7 @@ import { toFa, faDate, timeAgo } from "@/lib/format";
 import { Boxes, Search, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import InventoryAdjustmentForm from "./inventory-adjustment-form";
+import OpeningBalanceAllocationPanel from "./opening-balance-allocation-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -245,6 +246,7 @@ export default async function StoreInventoryPage({
   return (
     <div className="space-y-6 p-6">
       <Header />
+      {canManageInventory && <OpeningBalanceAllocationPanel />}
       {canManageInventory && (
         <InventoryAdjustmentForm
           parts={adjustmentParts}
