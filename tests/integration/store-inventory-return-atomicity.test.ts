@@ -469,7 +469,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movement[0].quantity).toBe(1);
     expect(movement[0].balanceAfter).toBe(11);
     expect(movement[0].warehouseId).toBe(warehouseId);
-    expect(outbox).toHaveLength(5);
+    expect(outbox).toHaveLength(6);
     outboxIds = outbox.map((event) => event.id);
   }, 15000);
 
