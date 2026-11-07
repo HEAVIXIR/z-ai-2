@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getPublicListingWhere } from "@/lib/listing-visibility";
-import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
