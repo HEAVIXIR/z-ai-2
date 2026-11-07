@@ -5,7 +5,7 @@
  *   51 admin store routes (route.ts files after health filter)
  *   4 service files         (T-A-DEEP-STORE: inventory + returns + shipments
  *     + PHASE1-PROCUREMENT-SHIPPING-DEEP: procurement)
- *   92 requirePermission calls across store routes
+ *   93 requirePermission calls across store routes
  *   57 storeDb mutation calls across routes + services
  *   70 audit calls (logAudit + enqueueAuditOutbox)
  *   51 unique action keys (31 original +
@@ -274,7 +274,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +14 new (services/providers 2,
       //   services/providers/[id] 3, services/requests 2, services/requests/[id]
       //   2, logistics/dashboard 1, shipments/[id]/{assign,pickup,deliver,
-      //   exception} 1+1+1+1) → 92.
+      //   exception} 1+1+1+1) → 92; return restock authorization +1 → 93.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -282,7 +282,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(92);
+      expect(count).toBe(93);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
