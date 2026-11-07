@@ -8,7 +8,7 @@ const read = (file: string) =>
 describe("comparison AI summary policy contract", () => {
   it("requires an active bounded policy before generating an uncached summary", () => {
     const route = read("src/app/api/compare/[id]/ai-summary/route.ts");
-    const preflightIndex = route.indexOf("preflightAIRequest");
+    const preflightIndex = route.indexOf("const preflight = await preflightAIRequest(");
     const generateIndex = route.indexOf("generateAISummary(id, comparisonData)");
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(generateIndex).toBeGreaterThan(preflightIndex);
@@ -21,7 +21,7 @@ describe("comparison AI summary policy contract", () => {
   it("returns a fresh cached summary without another model call", () => {
     const route = read("src/app/api/compare/[id]/ai-summary/route.ts");
     const cacheIndex = route.indexOf("if (cacheFresh)");
-    const preflightIndex = route.indexOf("preflightAIRequest");
+    const preflightIndex = route.indexOf("const preflight = await preflightAIRequest(");
     expect(cacheIndex).toBeGreaterThan(-1);
     expect(cacheIndex).toBeLessThan(preflightIndex);
     expect(route).toContain("60 * 60 * 1000");
