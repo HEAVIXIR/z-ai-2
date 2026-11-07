@@ -401,7 +401,7 @@ export async function getHotProvinces(
   }
 
   const listingWhere = {
-    status: "PUBLISHED" as const,
+    ...getPublicListingWhere()
     createdAt: { gte: cutoff },
     ...(categoryId ? { categoryId } : {}),
   };
