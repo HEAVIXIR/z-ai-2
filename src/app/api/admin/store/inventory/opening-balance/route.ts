@@ -1,15 +1,15 @@
-import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { checkCsrf } from '@/lib/csrf';
-import { requirePermission } from '@/lib/authorization';
-import { InventoryServiceError } from '@/lib/store-inventory-service';
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
+import { requirePermission } from "@/lib/authorization";
+import { InventoryServiceError } from "@/lib/store-inventory-service";
 import {
   allocateOpeningBalance,
   listOpeningBalanceCandidates,
-} from '@/lib/store-opening-balance-service';
+} from "@/lib/store-opening-balance-service";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs";
+export const dynamic = 'force-dynamic";
 
 function errorResponse(error: unknown) {
   if (error instanceof InventoryServiceError) {
