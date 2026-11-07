@@ -6,13 +6,14 @@ import { toFa } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type Issue = "MISMATCH" | "RESERVED_EXCEEDS" | "INACTIVE_STOCK" | "LEGACY_UNALLOCATED" | "CONSISTENT" | "NO_STOCK";
+type Issue = "MISMATCH" | "RESERVED_EXCEEDS" | "INACTIVE_STOCK" | "LEGACY_UNALLOCATED" | "NEGATIVE_STOCK" | "CONSISTENT" | "NO_STOCK";
 
 const LABEL: Record<Issue, string> = {
   MISMATCH: "مغایرت موجودی کل و انبارها",
   RESERVED_EXCEEDS: "رزرو بیشتر از موجودی",
   INACTIVE_STOCK: "موجودی در انبار غیرفعال",
   LEGACY_UNALLOCATED: "موجودی قدیمی بدون تخصیص انبار",
+  NEGATIVE_STOCK: "موجودی منفی",
   CONSISTENT: "همگام",
   NO_STOCK: "بدون موجودی",
 };
@@ -22,6 +23,7 @@ const STYLE: Record<Issue, string> = {
   RESERVED_EXCEEDS: "border-red-200 bg-red-50 text-red-800",
   INACTIVE_STOCK: "border-amber-200 bg-amber-50 text-amber-800",
   LEGACY_UNALLOCATED: "border-amber-200 bg-amber-50 text-amber-800",
+  NEGATIVE_STOCK: "border-red-200 bg-red-50 text-red-800",
   CONSISTENT: "border-emerald-200 bg-emerald-50 text-emerald-800",
   NO_STOCK: "border-zinc-200 bg-zinc-50 text-zinc-600",
 };
@@ -78,8 +80,12 @@ export default async function InventoryReconciliationPage({
     const reservedInvalid = part.inventoryBalances.some((row) => row.reserved < 0 || row.reserved > row.quantity);
     const inactiveStock = part.inventoryBalances.some((row) => !row.warehouse.active && row.quantity > 0);
     const issues: Issue[] = [];
+    if (part.stock < 0 || part.inventoryBalances.some((row) => row.quantity < 0)) {
+      issues.push("NEGATIVE_STOCK");
+    }
     if (part.inventoryBalances.length === 0) {
-      issues.push(part.stock > 0 ? "LEGACY_UNALLOCATED" : "NO_STOCK");
+      if (part.stock > 0) issues.push("LEGACY_UNALLOCATED");
+      else if (part.stock === 0) issues.push("NO_STOCK");
     } else {
       if (warehouseTotal !== part.stock) issues.push("MISMATCH");
       if (reservedInvalid) issues.push("RESERVED_EXCEEDS");
@@ -95,6 +101,7 @@ export default async function InventoryReconciliationPage({
   const summary = {
     mismatch: report.filter((row) => row.issues.includes("MISMATCH")).length,
     legacy: report.filter((row) => row.issues.includes("LEGACY_UNALLOCATED")).length,
+    negative: report.filter((row) => row.issues.includes("NEGATIVE_STOCK")).length,
     reservation: report.filter((row) => row.issues.includes("RESERVED_EXCEEDS")).length,
     inactive: report.filter((row) => row.issues.includes("INACTIVE_STOCK")).length,
     consistent: report.filter((row) => row.issues.includes("CONSISTENT")).length,
@@ -116,9 +123,10 @@ export default async function InventoryReconciliationPage({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Summary label="مغایرت کل" value={summary.mismatch} tone="red" />
         <Summary label="بدون تخصیص انبار" value={summary.legacy} tone="amber" />
+        <Summary label="موجودی منفی" value={summary.negative} tone="red" />
         <Summary label="رزرو نامعتبر" value={summary.reservation} tone="red" />
         <Summary label="انبار غیرفعال" value={summary.inactive} tone="amber" />
         <Summary label="همگام" value={summary.consistent} tone="emerald" />
