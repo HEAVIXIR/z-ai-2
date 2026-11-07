@@ -265,7 +265,8 @@ export const paymentConfig: AdminResourceConfig = {
     read: 'payment.read',
     // Payment creation uses the dedicated audited manual-entry route.
     // Generic Universal Resource create is intentionally disabled.
-    update: 'payment.manage', delete: 'payment.manage',
+    update: 'payment.manage',
+    // Financial ledger rows are immutable; refunds/cancellations are actions.
     export: 'payment.read',
   },
 
