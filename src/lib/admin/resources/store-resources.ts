@@ -377,11 +377,6 @@ export const paymentConfig: AdminResourceConfig = {
     },
   ],
 
-  bulkActions: [
-    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', confirmMessage: 'پرداخت‌های انتخاب‌شده تأیید شوند؟' },
-    { key: 'bulk-refund', label: 'بازگشت وجه گروهی', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه گروهی انجام شود؟ عملیات حساس.' },
-  ],
-
   relations: [
     { label: 'سفارش مرتبط', resource: 'orders', filterField: 'paymentId' },
   ],
