@@ -68,6 +68,8 @@ describe("Explicit opening-balance allocation", () => {
 
   it("previews totals and requires an explicit operator checkbox before submitting", () => {
     expect(panel).toContain("allocated === selectedPart.stock");
+    expect(panel).toContain("!invalidQuantity");
+    expect(panel).toContain("Number.isSafeInteger(quantity) || quantity < 0");
     expect(panel).toContain("checked={confirmed}");
     expect(panel).toContain("confirm: true");
     expect(panel).toContain("!confirmed");
