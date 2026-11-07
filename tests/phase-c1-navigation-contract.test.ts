@@ -32,16 +32,16 @@ describe('Wave C1 — Navigation Contract', () => {
 
     it('does NOT have @ts-nocheck', () => {
       const content = read(NAV_ROUTE);
-      const firstLine = content.split('\\n')[0];
-      expect(firstLine).not.toMatch(/^\\/\\/\\s*@ts-nocheck/);
+      const firstLine = content.split('\n')[0];
+      expect(firstLine).not.toMatch(/^\/\/\s*@ts-nocheck/);
     });
   });
 
   describe('Fail-closed authorization', () => {
     it('requires a canonical authenticated user', () => {
       const content = read(NAV_ROUTE);
-      expect(content).toMatch(/const user = await getCurrentUser\\(\\)/);
-      expect(content).toMatch(/if \\(!user\\)[\\s\\S]*?status: 401/);
+      expect(content).toMatch(/const user = await getCurrentUser\(\)/);
+      expect(content).toMatch(/if \(!user\)[\s\S]*?status: 401/);
     });
 
     it('requires the explicit navigation-read permission', () => {
@@ -51,8 +51,8 @@ describe('Wave C1 — Navigation Contract', () => {
 
     it('returns 403 when the required permission is denied', () => {
       const content = read(NAV_ROUTE);
-      expect(content).toMatch(/catch \\{[\\s\\S]*?status: 403/);
-      expect(content).toMatch(/userPermissions\\.has\\('admin\\.navigation\\.read'\\)/);
+      expect(content).toMatch(/catch \{[\s\S]*?status: 403/);
+      expect(content).toMatch(/userPermissions\.has\('admin\.navigation\.read'\)/);
     });
 
     it('does not grant legacy access to every authenticated user', () => {
@@ -63,8 +63,8 @@ describe('Wave C1 — Navigation Contract', () => {
 
     it('filters each navigation item by its permission key', () => {
       const content = read(NAV_ROUTE);
-      expect(content).toMatch(/item\\.permissionKey === null/);
-      expect(content).toMatch(/userPermissions\\.has\\(item\\.permissionKey\\)/);
+      expect(content).toMatch(/item\.permissionKey === null/);
+      expect(content).toMatch(/userPermissions\.has\(item\.permissionKey\)/);
     });
   });
 
