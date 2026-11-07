@@ -615,4 +615,73 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movements).toHaveLength(0);
   }, 15000);
 
+  it('fails closed when warehouse balances do not reconcile to Part.stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 9, reserved: 0, lowStockThreshold: 5 },
+    });
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1222' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'Mismatch',
+        family: 'Reconciliation',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'MISMATCH-RETURN-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 5,
+        totalUsd: 5,
+        totalIrr: 500,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+    const orderItem = await storeDb.orderItem.create({
+      data: {
+        orderId: order.id,
+        partId,
+        partNameSnapshot: 'Mismatched inventory part',
+        quantity: 1,
+        unitPriceUsd: 5,
+        unitPriceIrr: 500,
+        lineTotalUsd: 5,
+        lineTotalIrr: 500,
+      },
+    });
+    orderItemId = orderItem.id;
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'inventory mismatch', status: 'INSPECTED' },
+    });
+    returnId = ret.id;
+    await storeDb.returnItem.create({
+      data: {
+        returnId: ret.id,
+        orderItemId: orderItem.id,
+        quantity: 1,
+        condition: 'UNOPENED',
+        restockable: true,
+      },
+    });
+
+    await expect(resolveReturn(ret.id, 'REFUND', null, warehouseId)).rejects.toThrow('موجودی کل قطعه با مجموع موجودی انبارها برابر نیست');
+    const [savedReturn, part, balance, wallet, movements] = await Promise.all([
+      storeDb.return.findUnique({ where: { id: ret.id }, select: { status: true } }),
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({ where: { partId_warehouseId: { partId, warehouseId } } }),
+      storeDb.customer.findUnique({ where: { id: customer.id }, select: { walletBalanceIrr: true } }),
+      storeDb.stockMovement.count({ where: { partId, reference: ret.id } }),
+    ]);
+    expect(savedReturn?.status).toBe('INSPECTED');
+    expect(part?.stock).toBe(10);
+    expect(balance?.quantity).toBe(9);
+    expect(wallet?.walletBalanceIrr).toBe(0);
+    expect(movements).toBe(0);
+  }, 15000);
+
 });
