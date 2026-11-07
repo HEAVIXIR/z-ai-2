@@ -79,11 +79,16 @@ describe("Prisma Worker database identity guard", () => {
 
   it("shares one identity check across concurrent model queries", async () => {
     let releaseIdentity!: () => void;
+    let markIdentityStarted!: () => void;
     const identityGate = new Promise<void>((resolve) => {
       releaseIdentity = resolve;
     });
+    const identityStarted = new Promise<void>((resolve) => {
+      markIdentityStarted = resolve;
+    });
     const client = {
       $queryRaw: vi.fn(async () => {
+        markIdentityStarted();
         await identityGate;
         return [{ system_identifier: "preview-store-id" }];
       }),
@@ -101,7 +106,7 @@ describe("Prisma Worker database identity guard", () => {
     const first = guarded.product.findMany();
     const second = guarded.product.count();
 
-    await Promise.resolve();
+    await identityStarted;
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
 
     releaseIdentity();
