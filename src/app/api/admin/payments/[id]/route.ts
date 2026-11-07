@@ -39,9 +39,40 @@ interface Args {
    ============================================================ */
 
 function serialize(p: any) {
+  // Payment rows contain provider references and idempotency keys that are
+  // internal reconciliation data. Never spread a database record into an API
+  // response; expose only the fields required by the admin payment views.
   return {
-    ...p,
-    amount: p.amount ? p.amount.toString() : null,
+    id: p.id,
+    amount: p.amount == null ? null : p.amount.toString(),
+    currency: p.currency,
+    type: p.type,
+    status: p.status,
+    gateway: p.gateway,
+    trackingCode: p.trackingCode,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    ...(p.user
+      ? {
+          user: {
+            id: p.user.id,
+            firstName: p.user.firstName,
+            lastName: p.user.lastName,
+            mobile: p.user.mobile,
+            email: p.user.email,
+          },
+        }
+      : {}),
+    ...(p.order
+      ? {
+          order: {
+            id: p.order.id,
+            orderNumber: p.order.orderNumber,
+            status: p.order.status,
+          },
+        }
+      : {}),
   };
 }
 
