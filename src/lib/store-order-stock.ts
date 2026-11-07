@@ -66,18 +66,6 @@ export async function decrementOrderStock(
       const take = Math.min(available, remaining);
       if (take <= 0) continue;
 
-      const changed = await tx.inventoryBalance.updateMany({
-        where: {
-          id: balance.id,
-          quantity: balance.quantity,
-          reserved: balance.reserved,
-        },
-        data: { quantity: { decrement: take } },
-      });
-      if (changed.count !== 1) {
-        throw new OrderStockConflictError("موجودی انبار هم‌زمان تغییر کرده است؛ سبد خرید را به‌روزرسانی کنید");
-      }
-
       allocations.push({ warehouseId: balance.warehouseId, quantity: take });
       remaining -= take;
     }
@@ -91,8 +79,10 @@ export async function decrementOrderStock(
     allocations.push({ warehouseId: null, quantity });
   }
 
+  // Global inventory lock order: claim the Part snapshot first, then
+  // claim its warehouse balances in deterministic warehouseId order.
   const partChanged = await tx.part.updateMany({
-    where: { id: partId, stock: { gte: quantity } },
+    where: { id: partId, stock: part.stock },
     data: {
       stock: { decrement: quantity },
       soldCount: { increment: quantity },
@@ -113,6 +103,23 @@ export async function decrementOrderStock(
   const stockBeforeThisOrder = updatedPart.stock + quantity;
   let consumedSoFar = 0;
   for (const allocation of allocations) {
+    if (allocation.warehouseId) {
+      const sourceBalance = balances.find((balance) => balance.warehouseId === allocation.warehouseId);
+      if (!sourceBalance) {
+        throw new OrderStockConflictError("ردیف موجودی انبار برای تخصیص سفارش یافت نشد");
+      }
+      const changed = await tx.inventoryBalance.updateMany({
+        where: {
+          id: sourceBalance.id,
+          quantity: sourceBalance.quantity,
+          reserved: sourceBalance.reserved,
+        },
+        data: { quantity: { decrement: allocation.quantity } },
+      });
+      if (changed.count !== 1) {
+        throw new OrderStockConflictError("موجودی انبار هم‌زمان تغییر کرده است؛ سبد خرید را به‌روزرسانی کنید");
+      }
+    }
     consumedSoFar += allocation.quantity;
     const movement = await tx.stockMovement.create({
       data: {
