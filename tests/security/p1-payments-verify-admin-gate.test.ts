@@ -102,10 +102,7 @@ describe("POST /api/payments/[id]/verify", () => {
     expect(mocks.updatePaymentMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "p1", status: "PENDING" },
     }));
-    expect(mocks.updateSubscriptionMany).toHaveBeenCalledWith({
-      where: { id: "sub-1", userId: "seller-1" },
-      data: { status: "ACTIVE", paymentRef: "p1" },
-    });
+    expect(mocks.updateSubscriptionMany).not.toHaveBeenCalled();
     expect(mocks.createAudit).toHaveBeenCalledOnce();
   });
 
@@ -120,15 +117,7 @@ describe("POST /api/payments/[id]/verify", () => {
     expect(mocks.createAudit).not.toHaveBeenCalled();
   });
 
-  it("NEGATIVE: linked subscription owned by another user → 409", async () => {
-    mockCurrentUser = { id: "admin-1" };
-    mocks.updateSubscriptionMany.mockResolvedValue({ count: 0 });
 
-    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
-
-    expect(res.status).toBe(409);
-    expect(mocks.createAudit).not.toHaveBeenCalled();
-  });
 
   it("NEGATIVE: payment not PENDING → 409 without mutation", async () => {
     mockCurrentUser = { id: "admin-1" };
@@ -153,17 +142,14 @@ describe("POST /api/payments/[id]/verify", () => {
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
-  it("NEGATIVE: SUBSCRIPTION payment without a subscription link → 409", async () => {
+  it("NEGATIVE: subscription payment activation is blocked until billing snapshots exist", async () => {
     mockCurrentUser = { id: "admin-1" };
-    mocks.findPayment.mockResolvedValue({
-      id: "p1", status: "PENDING", amount: 1000n, type: "FEATURED_LISTING",
-      subscriptionId: null, userId: "seller-1", paidAt: null,
-    });
-
+    mocks.findPayment.mockResolvedValue({ id: "p1", status: "PENDING", amount: 1000n, type: "SUBSCRIPTION", subscriptionId: "sub-1", userId: "seller-1", paidAt: null });
     const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
-
     expect(res.status).toBe(409);
     expect(mocks.updatePaymentMany).not.toHaveBeenCalled();
+    expect(mocks.updateSubscriptionMany).not.toHaveBeenCalled();
+    expect(mocks.createAudit).not.toHaveBeenCalled();
   });
 
   it("NEGATIVE: audit failure aborts the transaction", async () => {
