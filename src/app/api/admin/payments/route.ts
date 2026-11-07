@@ -172,8 +172,11 @@ export async function POST(req: Request) {
     }
 
     const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
-    if (!["ZARINPAL", "PAYIR", "MANUAL"].includes(gateway)) {
-      return NextResponse.json({ error: "Unsupported payment gateway" }, { status: 400 });
+    if (gateway !== "MANUAL") {
+      return NextResponse.json(
+        { error: "This endpoint records offline/manual payments only; online gateways require verified provider callbacks" },
+        { status: 400 },
+      );
     }
     const trackingCode = body.trackingCode ? String(body.trackingCode).trim() : null;
     if (trackingCode && trackingCode.length > 100) {
