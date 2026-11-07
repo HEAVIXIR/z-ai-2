@@ -59,7 +59,8 @@ describe("Payment action safety boundaries", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Action not defined");
+    expect(result.error).toBe("ACTION_UNAVAILABLE");
+    expect(result.message).toMatch(/evidence-backed refund workflow/);
     expect(spies.can).not.toHaveBeenCalled();
     expect(spies.getPrismaModel).not.toHaveBeenCalled();
     expect(spies.auditMutationTransactional).not.toHaveBeenCalled();
