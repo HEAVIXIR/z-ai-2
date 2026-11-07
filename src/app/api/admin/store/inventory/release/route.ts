@@ -57,14 +57,29 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const body = await req.json();
-    const { partId, warehouseId, quantity, reason } = body;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست آزادسازی نامعتبر است" }, { status: 400 });
+    }
+    const payload = body as Record<string, unknown>;
+    if (typeof payload.partId !== "string" || !payload.partId.trim()
+      || typeof payload.warehouseId !== "string" || !payload.warehouseId.trim()
+      || typeof payload.quantity !== "number" || !Number.isSafeInteger(payload.quantity) || payload.quantity <= 0
+      || (payload.reason != null && typeof payload.reason !== "string")
+      || (typeof payload.reason === "string" && payload.reason.length > 500)) {
+      return NextResponse.json({ success: false, error: "پارامترهای آزادسازی نامعتبر است" }, { status: 400 });
+    }
     const balance = await releaseStock(
-      partId,
-      warehouseId,
-      quantity,
+      payload.partId,
+      payload.warehouseId,
+      payload.quantity,
       user.id,
-      reason ?? null,
+      typeof payload.reason === "string" ? payload.reason : null,
     );
     return NextResponse.json({ success: true, data: balance });
   } catch (e: any) {
