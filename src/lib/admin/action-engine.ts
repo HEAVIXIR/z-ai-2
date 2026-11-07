@@ -455,7 +455,31 @@ export async function executeAction(
             (txBefore as any).__prismaModel = txModel;
             const handler = actionHandlers.get(actionKey);
             if (handler) {
-              return await handler(txBefore, ctx);
+              const actionResult = await handler(txBefore, ctx);
+
+              // Marketplace subscription verification must activate the
+              // linked subscription in the SAME main-DB transaction as
+              // Payment.status=PAID and the AuditLog row. The dedicated
+              // /api/payments/[id]/verify route enforces the same invariant.
+              if (resourceKey === "payments" && actionKey === "verify" &&
+                  String(txBefore.type ?? "") === "SUBSCRIPTION") {
+                const subscriptionId = String(txBefore.subscriptionId ?? "");
+                if (!subscriptionId) {
+                  throw new Error("SUBSCRIPTION_PAYMENT_MISSING_SUBSCRIPTION");
+                }
+                const activation = await (txClient as any).premiumSubscription.updateMany({
+                  where: {
+                    id: subscriptionId,
+                    userId: String(txBefore.userId ?? ""),
+                  },
+                  data: { status: "ACTIVE", paymentRef: entityId },
+                });
+                if (activation.count !== 1) {
+                  throw new Error("SUBSCRIPTION_PAYMENT_LINK_MISMATCH");
+                }
+              }
+
+              return actionResult;
             }
             throw new Error(
               `No handler for action "${actionKey}". Configure a handler via registerActionHandler().`,
