@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, formatCompactPrice, faDate } from "@/lib/format";
 import {
   TrendingUp,
@@ -23,7 +24,7 @@ export default async function MarketIntelligencePage() {
     sevenDayStats,
   ] = await Promise.all([
     db.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
       orderBy: { viewCount: "desc" },
       take: 10,
       include: {
@@ -33,22 +34,22 @@ export default async function MarketIntelligencePage() {
     }),
     db.category.findMany({
       where: { active: true, parentId: null },
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
       orderBy: { sortOrder: "asc" },
       take: 8,
     }),
     db.brand.findMany({
       where: { active: true },
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
       orderBy: { name: "asc" },
       take: 8,
     }),
     db.listing.findMany({
-      where: { status: "PUBLISHED", province: { not: null } },
+      where: { ...getPublicListingWhere(), province: { not: null } },
       select: { province: true },
     }),
     db.listing.aggregate({
-      where: { status: "PUBLISHED", price: { not: null } },
+      where: { ...getPublicListingWhere(), price: { not: null } },
       _avg: { price: true },
       _min: { price: true },
       _max: { price: true },
@@ -57,7 +58,7 @@ export default async function MarketIntelligencePage() {
     (async () => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const [newListings, newOffers, newRequests] = await Promise.all([
-        db.listing.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+        db.listing.count({ where: { ...getPublicListingWhere(), createdAt: { gte: sevenDaysAgo } } }),
         db.listingOffer.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
         db.buyRequest.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
       ]);
