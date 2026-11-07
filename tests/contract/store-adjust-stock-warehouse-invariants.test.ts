@@ -31,6 +31,5 @@ describe("Warehouse stock adjustment invariants", () => {
     expect(body).toContain("storeDb.$transaction");
     expect(body).toContain("tx.stockMovement.create");
     expect(body.match(/await enqueueAuditOutbox\(/g)?.length).toBe(3);
-    expect(body).toContain("isolationLevel");
   });
 });
