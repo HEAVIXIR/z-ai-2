@@ -6,6 +6,9 @@ const route = fs.readFileSync(
   "src/app/api/admin/store/procurement/[id]/purchase-orders/[poId]/receive/route.ts",
   "utf8",
 );
+const page = fs.readFileSync("src/app/admin/store/procurement-orders/page.tsx", "utf8");
+const client = fs.readFileSync("src/app/admin/store/procurement-orders/purchase-order-receiving-client.tsx", "utf8");
+const procurementPage = fs.readFileSync("src/app/admin/procurement/page.tsx", "utf8");
 const start = service.indexOf("export async function receivePurchaseOrderItem(");
 const end = service.indexOf("\n// ── cancelPurchaseOrder", start);
 if (start < 0 || end < 0) throw new Error("receiving service boundaries not found");
@@ -29,6 +32,17 @@ describe("Procurement receiving inventory contract", () => {
     expect(body).toContain("enqueueAuditOutbox");
     expect(body).toContain("isolationLevel: 'Serializable'");
     expect(body).toContain("P2034");
+  });
+
+  it("provides a permission-gated admin receiving page and scoped client action", () => {
+    expect(page).toContain('requirePermission(user.id, "procurement.read")');
+    expect(page).toContain('requirePermission(user.id, "procurement.manage")');
+    expect(page).toContain('requirePermission(user.id, "inventory.manage")');
+    expect(page).toContain("PurchaseOrderReceivingClient");
+    expect(client).toContain("/api/admin/store/procurement/");
+    expect(client).toContain("receivedQty: quantity");
+    expect(client).toContain("warehouseId");
+    expect(procurementPage).toContain("/admin/store/procurement-orders");
   });
 
   it("requires both procurement and inventory management permission at the API boundary", () => {
