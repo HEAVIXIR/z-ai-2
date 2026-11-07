@@ -11,7 +11,7 @@ type PartOption = {
   sku: string;
   inventoryBalances: Array<{ warehouseId: string }>;
 };
-type MovementType = "RECEIVE" | "RETURN" | "SALE" | "DAMAGE" | "ADJUSTMENT";
+type MovementType = "RECEIVE" | "SALE" | "DAMAGE" | "ADJUSTMENT";
 
 export default function InventoryAdjustmentForm({
   parts,
@@ -114,7 +114,6 @@ export default function InventoryAdjustmentForm({
             نوع حرکت
             <select value={type} onChange={(event) => setType(event.target.value as MovementType)} disabled={busy} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm">
               <option value="RECEIVE">دریافت (+)</option>
-              <option value="RETURN">مرجوعی (+)</option>
               <option value="SALE">فروش (−)</option>
               <option value="DAMAGE">ضایعات (−)</option>
               <option value="ADJUSTMENT">تعدیل دستی</option>
