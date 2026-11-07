@@ -594,48 +594,59 @@ export async function reserveStock(
     throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  return storeDb.$transaction(async (tx) => {
-    const balance = await tx.inventoryBalance.findUnique({
-      where: { partId_warehouseId: { partId, warehouseId } },
-    });
-    if (!balance) {
-      throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const warehouse = await tx.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, active: true },
+      });
+      if (!warehouse) throw new InventoryServiceError(404, 'انبار یافت نشد');
+      if (!warehouse.active) {
+        throw new InventoryServiceError(409, 'رزرو موجودی در انبار غیرفعال مجاز نیست');
+      }
+
+      const balance = await tx.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      });
+      if (!balance) {
+        throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+      }
+      if (balance.reserved + qty > balance.quantity) {
+        throw new InventoryServiceError(
+          409,
+          `رزرو بیش از موجودی آزاد. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
+        );
+      }
+
+      const changed = await tx.inventoryBalance.updateMany({
+        where: { id: balance.id, quantity: balance.quantity, reserved: balance.reserved },
+        data: { reserved: { increment: qty } },
+      });
+      if (changed.count !== 1) {
+        throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+      }
+
+      const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
+      if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از رزرو یافت نشد');
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.reserve',
+        entityType: 'InventoryBalance',
+        entityId: balance.id,
+        before: { quantity: balance.quantity, reserved: balance.reserved },
+        after: { quantity: updated.quantity, reserved: updated.reserved },
+        reason: reason ?? null,
+      });
+      return updated;
+    }, { isolationLevel: 'Serializable' });
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'وضعیت انبار یا رزرو هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
     }
-    if (balance.reserved + qty > balance.quantity) {
-      throw new InventoryServiceError(
-        409,
-        `رزرو بیش از موجودی آزاد. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
-      );
-    }
-
-    const changed = await tx.inventoryBalance.updateMany({
-      where: {
-        id: balance.id,
-        quantity: balance.quantity,
-        reserved: balance.reserved,
-      },
-      data: { reserved: { increment: qty } },
-    });
-    if (changed.count !== 1) {
-      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
-    }
-
-    const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
-    if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از رزرو یافت نشد');
-
-    await enqueueAuditOutbox(tx, {
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.inventory.reserve',
-      entityType: 'InventoryBalance',
-      entityId: balance.id,
-      before: { quantity: balance.quantity, reserved: balance.reserved },
-      after: { quantity: updated.quantity, reserved: updated.reserved },
-      reason: reason ?? null,
-    });
-
-    return updated;
-  });
+    throw err;
+  }
 }
 
 export async function releaseStock(
