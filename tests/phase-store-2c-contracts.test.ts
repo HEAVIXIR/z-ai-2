@@ -11,7 +11,7 @@
  *   51 unique action keys (31 original +
  *     9 new in T1+T2-DEEP: warehouse.create/update/delete,
  *     inventory.balance.update, inventory.reserve, inventory.release,
- *     return.item.add, return.inspect, return.resolve
+ *     inventory.restock, return.item.add, return.inspect, return.resolve
  *     + 6 new in PHASE1-PROCUREMENT-SHIPPING-DEEP: procurement.po.create/
  *     submit/approve/receive/cancel, shipment.tracking.add)
  *
@@ -564,7 +564,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
       // invariant is unchanged: every mutation has a corresponding audit
-      // event. The count is now 70 after adding three atomic return-restock audit events.
+      // event. The count is 70 = 61 logAudit + 9 enqueueAuditOutbox, including three new atomic return-restock events.
       //
       // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
@@ -826,7 +826,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // structure is preserved.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: convention widened again to
       // accept submit/approve/receive/cancel (PO lifecycle state-machine
-      // verbs) as the final operation token. These are state-transition
+      // verbs) as the final operation token; restock is the inventory-intake verb. These are state-transition
       // verbs, semantically equivalent to update but explicitly named to
       // make the audit trail self-describing.
       const files = readAllStoreFiles();
