@@ -38,6 +38,14 @@ const files = [
   "src/app/admin/companies/[id]/page.tsx",
   "src/app/admin/taxonomy/brands/page.tsx",
   "src/app/api/admin/launch-phases/route.ts",
+  "src/app/api/admin/companies/route.ts",
+  "src/app/categories/[slug]/page.tsx",
+  "src/app/listings/seo/[category]/[city]/page.tsx",
+  "src/app/rentals/page.tsx",
+  "src/app/sellers/[id]/page.tsx",
+  "src/app/brands/[slug]/page.tsx",
+  "src/app/api/listings/route.ts",
+  "src/app/api/search/filters/route.ts",
   "src/lib/site-stats.ts",
 ];
 
