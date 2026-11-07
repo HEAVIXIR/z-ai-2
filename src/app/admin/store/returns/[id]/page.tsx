@@ -23,6 +23,20 @@ export default async function StoreReturnDetailPage({
   }
 
   const { id } = await params;
+  let canManage = true;
+  try {
+    await requirePermission(user.id, "returns.manage");
+  } catch {
+    canManage = false;
+  }
+
+  let canReadInventory = true;
+  try {
+    await requirePermission(user.id, "inventory.read");
+  } catch {
+    canReadInventory = false;
+  }
+
   const [record, warehouses] = await Promise.all([
     storeDb.return.findUnique({
       where: { id },
@@ -53,11 +67,13 @@ export default async function StoreReturnDetailPage({
         },
       },
     }),
-    storeDb.warehouse.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, code: true },
-    }),
+    canReadInventory
+      ? storeDb.warehouse.findMany({
+          where: { active: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!record) notFound();
@@ -73,6 +89,7 @@ export default async function StoreReturnDetailPage({
       <ReturnLifecycleClient
         initialReturn={initialReturn as any}
         warehouses={warehouses}
+        canManage={canManage}
       />
     </div>
   );
