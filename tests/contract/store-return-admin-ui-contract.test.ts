@@ -37,6 +37,14 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(client).not.toContain('warehouses[0]');
   });
 
+  it("loads and displays refund transactions and RETURN stock movements", () => {
+    expect(page).toContain("store.walletTransaction.findMany");
+    expect(page).toContain('where: { reference: id, type: "RETURN" }');
+    expect(client).toContain("walletTransactions.map");
+    expect(client).toContain("returnMovements.map");
+    expect(client).toContain("balanceAfter");
+  });
+
   it("surfaces API conflicts and preserves server RBAC/CSRF enforcement", () => {
     expect(client).toContain("canManage");
     expect(client).toContain("result?.error");
