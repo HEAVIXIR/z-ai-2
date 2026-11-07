@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { adjustStock } from '@/lib/store-inventory-service';
+import { adjustStock, reserveStock, releaseStock } from '@/lib/store-inventory-service';
 import { resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
@@ -127,6 +127,50 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(balance?.reserved).toBe(5);
     expect(movementCount).toBe(0);
     expect(outboxCount).toBe(0);
+  }, 15000);
+
+  it('serializes concurrent reservations and never reserves more than available stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const balance = await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 0, lowStockThreshold: 5 },
+    });
+
+    const outcomes = await Promise.allSettled([
+      reserveStock(partId, warehouseId, 6),
+      reserveStock(partId, warehouseId, 6),
+    ]);
+    expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
+
+    const [after, outbox] = await Promise.all([
+      storeDb.inventoryBalance.findUnique({ where: { id: balance.id } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: balance.id } } }),
+    ]);
+    expect(after?.quantity).toBe(10);
+    expect(after?.reserved).toBe(6);
+    expect(outbox).toHaveLength(1);
+  }, 15000);
+
+  it('serializes concurrent releases and never releases more than the reserved quantity', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const balance = await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 5, lowStockThreshold: 5 },
+    });
+
+    const outcomes = await Promise.allSettled([
+      releaseStock(partId, warehouseId, 4),
+      releaseStock(partId, warehouseId, 4),
+    ]);
+    expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
+
+    const [after, outbox] = await Promise.all([
+      storeDb.inventoryBalance.findUnique({ where: { id: balance.id } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: balance.id } } }),
+    ]);
+    expect(after?.quantity).toBe(10);
+    expect(after?.reserved).toBe(1);
+    expect(outbox).toHaveLength(1);
   }, 15000);
 
   it('serializes competing stock decrements and keeps balance, snapshot, and ledger consistent', async () => {
