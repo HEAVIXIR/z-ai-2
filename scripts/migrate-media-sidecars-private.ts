@@ -31,6 +31,41 @@ function safeRelativePath(value: unknown): string | null {
   return resolved.startsWith(root + path.sep) ? normalized : null;
 }
 
+async function ensurePrivateDirectory(dir: string, create: boolean): Promise<boolean> {
+  const root = path.resolve(PRIVATE_ROOT);
+  const target = path.resolve(dir);
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("Private metadata directory escaped its root.");
+  }
+
+  const relative = path.relative(root, target);
+  const segments = [root, ...relative.split(path.sep).filter(Boolean)];
+  let current = root;
+  for (const segment of segments) {
+    if (segment !== root) current = path.join(current, segment);
+    if (create) {
+      try {
+        await fs.mkdir(current, { mode: 0o700 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+
+    let stat;
+    try {
+      stat = await fs.lstat(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT" && !create) return false;
+      throw error;
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("Private metadata path contains a non-directory or symlink.");
+    }
+    if (create) await fs.chmod(current, 0o700);
+  }
+  return true;
+}
+
 async function walk(dir: string, base: string, out: string[] = []): Promise<string[]> {
   let entries;
   try {
@@ -107,7 +142,12 @@ async function main() {
     }
 
     try {
-      await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+      const targetDirectoryExists = await ensurePrivateDirectory(path.dirname(target), APPLY);
+      if (!targetDirectoryExists) {
+        process.stdout.write(\`WOULD MOVE \${relativeSidecarPath} -> \${path.relative(ROOT, target)}\\n\`);
+        planned++;
+        continue;
+      }
       let existing: Buffer | null = null;
       try {
         existing = await fs.readFile(target);
