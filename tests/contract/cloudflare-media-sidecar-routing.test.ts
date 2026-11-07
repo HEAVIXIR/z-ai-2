@@ -4,12 +4,9 @@ import { describe, expect, it } from "vitest";
 
 describe("Cloudflare private media sidecar routing", () => {
   it("runs the Worker before static assets for nested media sidecar paths only", () => {
-    const config = readFileSync(resolve(process.cwd(), "wrangler.jsonc"), "utf8");
-    const assets = config.match(/"assets"\\s*:\\s*\\{([\\s\\S]*?)\\n  \\}/)?.[1] ?? "";
-    expect(assets).toContain('"run_worker_first"');
-    expect(assets).toContain('"/uploads/*.meta.json"');
-    expect(assets).not.toContain('"run_worker_first": true');
-    expect(assets).toContain('"directory": ".open-next/assets"');
-    expect(assets).toContain('"binding": "ASSETS"');
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), "wrangler.jsonc"), "utf8"));
+    expect(config.assets.run_worker_first).toEqual(["/uploads/*.meta.json"]);
+    expect(config.assets.directory).toBe(".open-next/assets");
+    expect(config.assets.binding).toBe("ASSETS");
   });
 });
