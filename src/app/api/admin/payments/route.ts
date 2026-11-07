@@ -97,12 +97,12 @@ export async function GET(req: Request) {
 /* POST /api/admin/payments
    --------------------------------
    Admin-only. Creates a MANUAL payment row on behalf of a user
-   (for offline / cash / bank-transfer payments). Body:
+   (for offline / cash / bank-transfer payments). Subscription payment creation is disabled
+   until plan amount, currency, and billing term are server-derived. Body:
      {
        userId:        string  (required)
        amount:        string|number  (required, IRR)
        type:          "FEATURED_LISTING" | "PROMOTION" | "LEAD_FEE" | "INSPECTION_FEE"
-       Subscription manual payments are disabled until server-derived billing terms exist.
        gateway?:      "MANUAL" (default)
        trackingCode?: string  (e.g. bank receipt number)
        markPaid?:     boolean (default true — admin is creating
