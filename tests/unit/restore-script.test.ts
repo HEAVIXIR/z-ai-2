@@ -60,6 +60,7 @@ function runRestore(f: ReturnType<typeof fixture>, overrides: Record<string, str
     STORE_DB_PORT: "5433",
     STORE_DB_USER: "test-user",
     STORE_DB_PASSWORD: "test-store-password",
+    HEAVIX_RESTORE_TRAFFIC_DRAINED: "1",
     ...overrides,
   };
   delete env.DB_NAME;
@@ -104,6 +105,15 @@ describe("paired database restore script", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toMatch(/FAILED|checksum/i);
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks restore until application traffic is explicitly drained", () => {
+    const f = fixture();
+    const result = runRestore(f, { HEAVIX_RESTORE_TRAFFIC_DRAINED: "0" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("stop application traffic");
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
   });
 
