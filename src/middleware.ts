@@ -7,14 +7,22 @@ const PUBLIC_UPLOADS_PREFIX = "/uploads/";
 
 function isPrivateMediaSidecar(pathname: string): boolean {
   let normalized = pathname.toLowerCase();
-  try {
-    normalized = decodeURIComponent(normalized);
-  } catch {
-    // Malformed encoded paths under uploads fail closed below.
-    return normalized.startsWith(PUBLIC_UPLOADS_PREFIX);
+  // Decode repeatedly so nested percent-encoding cannot hide the sidecar suffix.
+  // The bound prevents pathological input from causing unbounded work.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const decoded = decodeURIComponent(normalized);
+      if (decoded === normalized) break;
+      normalized = decoded;
+    } catch {
+      // Malformed encoded paths under uploads fail closed.
+      return normalized.startsWith(PUBLIC_UPLOADS_PREFIX);
+    }
   }
-  return normalized.startsWith(PUBLIC_UPLOADS_PREFIX) &&
-    normalized.endsWith(".meta.json");
+  if (!normalized.startsWith(PUBLIC_UPLOADS_PREFIX)) return false;
+  // Fail closed when excessive encoding remains after the bounded decode loop.
+  if (/%[0-9a-f]{2}/i.test(normalized)) return true;
+  return normalized.endsWith(".meta.json");
 }
 
 export function middleware(req: NextRequest) {
