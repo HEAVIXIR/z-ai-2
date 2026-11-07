@@ -489,7 +489,7 @@ export async function searchBrands(
       status: true,
       verification: true,
       featured: true,
-      _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+      _count: { select: { listings: { where: getPublicListingWhere() } } },
     },
   });
 
