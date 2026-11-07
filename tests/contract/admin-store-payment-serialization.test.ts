@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+
+const collection = fs.readFileSync("src/app/api/admin/store/payments/route.ts", "utf8");
+const detail = fs.readFileSync("src/app/api/admin/store/payments/[id]/route.ts", "utf8");
+
+describe("admin store payment response privacy", () => {
+  it.each([
+    ["collection", collection],
+    ["detail", detail],
+  ])("%s serializer uses an explicit field allowlist", (_name, source) => {
+    const start = source.indexOf("function serialize(p: any)");
+    const end = source.indexOf("\n}\n", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const serializer = source.slice(start, end);
+    expect(serializer).not.toMatch(/\.\.\.p\s*,?/);
+    expect(serializer).toContain("payerCard: maskPayerCard(p.payerCard)");
+    expect(serializer).not.toContain("reviewedById:");
+    expect(serializer).not.toContain("payerCard: p.payerCard");
+    expect(serializer).toContain("statusLabel:");
+    expect(serializer).toContain("methodLabel:");
+  });
+
+  it.each([
+    ["collection", collection],
+    ["detail", detail],
+  ])("%s masks payer card to the final four digits", (_name, source) => {
+    expect(source).toContain(String.raw`const digits = value.replace(/\D/g, "")`);
+    expect(source).toContain('return `•••• ${digits.slice(-4)}`');
+  });
+});
+
+describe("admin store payment refund boundary", () => {
+  it("rejects status-only refund transitions before any payment mutation", () => {
+    expect(detail).toContain('if (body.status === "REFUNDED")');
+    expect(detail).toContain('code: "STORE_REFUND_EVIDENCE_REQUIRED"');
+    expect(detail).toContain("Refunds require an evidence-backed reversal workflow");
+    expect(detail).toContain("{ status: 409 }");
+    expect(detail).not.toContain('"PENDING", "APPROVED", "REJECTED", "REFUNDED"');
+  });
+
+  it("does not render a status-only refund action in the admin UI", () => {
+    const page = fs.readFileSync("src/app/admin/store/payments/page.tsx", "utf8");
+    expect(page).not.toContain('updateStatus(p, "REFUNDED")');
+    expect(page).toContain("بازپرداخت غیرفعال");
+  });
+});
+
+  it("redacts raw payer card data from audit snapshots", () => {
+    expect(detail).toContain("payerCard: maskPayerCard(existing.payerCard)");
+    expect(detail).toContain("payerCard: maskPayerCard(payment.payerCard)");
+    expect(detail).not.toContain("before: existing");
+    expect(detail).not.toContain("after: payment");
+  });

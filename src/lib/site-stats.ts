@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import { METRIC_OPTIONS, type StatMetric } from "@/lib/site-stats-metrics";
 import {
@@ -38,7 +39,7 @@ export type ComputedStat = {
  *
  * STEP 15-B.5.1: Added optional `precomputed` parameter. When the caller
  * has already computed a count for a metric (e.g. the homepage Phase 4
- * already runs `listing.count({ status: "PUBLISHED" })` and
+ * already runs a canonical active-public-listing count and
  * `brand.count({ active: true })`), it can pass those values here to
  * avoid re-firing the same query (eliminating duplicate Q21/Q22).
  *
@@ -71,7 +72,7 @@ export async function computeMetricCount(
       return db.brand.count({ where: { active: true } });
     case "listings":
     case "listings_published":
-      return db.listing.count({ where: { status: "PUBLISHED" } });
+      return db.listing.count({ where: getPublicListingWhere() });
     case "provinces":
       return getCachedProvinceCount();
     case "models":

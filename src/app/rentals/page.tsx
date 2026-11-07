@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   openGraph: { title: "اجاره ماشین‌آلات سنگین | هویکس", description: "آگهی‌های اجاره ماشین‌آلات سنگین.", type: "website", locale: "fa_IR" },
 };
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import {
@@ -79,7 +80,7 @@ export default async function RentalsPage({
     }),
     db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         listingType: "RENT",
         ...(sp.period ? { rentalPeriod: sp.period } : {}),
         ...(sp.province ? { province: sp.province } : {}),

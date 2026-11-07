@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Matching Engine (Phase 7D)
@@ -51,7 +52,7 @@ export async function matchRequestToListings(
 
   // Load all published listings with relations
   const listings = await db.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: getPublicListingWhere(),
     include: {
       brand: { select: { name: true } },
       category: { select: { name: true } },

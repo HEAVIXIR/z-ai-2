@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # Run the full blocking suite for stacked integration PRs as well as main.
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'integration/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
@@ -117,7 +118,7 @@ jobs:
           REPORT_FILE=$(mktemp)
           trap 'rm -f "$REPORT_FILE"' EXIT
           VITEST_EXIT=0
-          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
+          bunx vitest run tests/integration/store-audit-outbox-resilience.test.ts tests/integration/store-inventory-return-atomicity.test.ts --reporter=default --reporter=json --outputFile="$REPORT_FILE" || VITEST_EXIT=$?
           test -s "$REPORT_FILE" || { echo "FAIL: Store/Outbox Vitest report missing"; exit 1; }
           node - "$REPORT_FILE" "$VITEST_EXIT" <<'NODE'
           const fs = require('node:fs');

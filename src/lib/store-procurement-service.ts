@@ -43,6 +43,7 @@
 
 import { storeDb } from '@/lib/store-db';
 import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_PO_STATUSES = [
@@ -389,150 +390,228 @@ export async function approvePurchaseOrder(
 export async function receivePurchaseOrderItem(
   poItemId: string,
   receivedQty: number,
-  userId?: string | null,
+  warehouseId: string,
+  userId: string | null | undefined,
+  procurementId: string,
+  purchaseOrderId: string,
 ): Promise<any> {
-  if (!poItemId || receivedQty === undefined) {
+  if (
+    typeof poItemId !== 'string' || !poItemId.trim() ||
+    typeof warehouseId !== 'string' || !warehouseId.trim() ||
+    typeof procurementId !== 'string' || !procurementId.trim() ||
+    typeof purchaseOrderId !== 'string' || !purchaseOrderId.trim() ||
+    !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+  ) {
     throw new ProcurementServiceError(
       400,
-      'poItemId و تعداد دریافتی الزامی است',
+      'شناسه قلم، شناسه سفارش، شناسه مناقصه، تعداد صحیح مثبت و انبار مقصد الزامی است',
     );
   }
-  const qty = Number(receivedQty);
-  if (!Number.isInteger(qty) || qty <= 0) {
+  const qty = receivedQty;
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
     throw new ProcurementServiceError(
       400,
       'تعداد دریافتی باید عدد صحیح مثبت باشد',
     );
   }
 
-  // Look up the POItem + its PO + Part in one query (include nested).
-  const poItem = await storeDb.purchaseOrderItem.findUnique({
-    where: { id: poItemId },
-    include: {
-      purchaseOrder: true,
-      part: { select: { id: true, name: true, sku: true, stock: true } },
-    },
-  });
-  if (!poItem) {
-    throw new ProcurementServiceError(404, 'آیتم سفارش خرید یافت نشد');
+  try {
+    const result = await storeDb.$transaction(async (tx) => {
+      const poItem = await tx.purchaseOrderItem.findUnique({
+        where: { id: poItemId },
+        include: {
+          purchaseOrder: true,
+          part: { select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true } },
+        },
+      });
+      if (!poItem || poItem.purchaseOrderId !== purchaseOrderId || poItem.purchaseOrder.procurementId !== procurementId) {
+        throw new ProcurementServiceError(404, 'آیتم سفارش خرید در این مسیر یافت نشد');
+      }
+      if (poItem.purchaseOrder.status === 'CANCELLED' || poItem.purchaseOrder.status === 'RECEIVED') {
+        throw new ProcurementServiceError(409, 'سفارش خرید لغوشده یا تکمیل‌شده قابل دریافت نیست');
+      }
+      if (poItem.purchaseOrder.status !== 'APPROVED') {
+        throw new ProcurementServiceError(409, 'دریافت کالا فقط پس از تأیید سفارش خرید مجاز است');
+      }
+
+      const newReceived = poItem.received + qty;
+      if (newReceived > poItem.quantity) {
+        throw new ProcurementServiceError(
+          409,
+          `دریافت بیش از تعداد سفارش. سفارش: ${poItem.quantity}، دریافت‌شده قبلی: ${poItem.received}، درخواست: ${qty}`,
+        );
+      }
+
+      const part = await tx.part.findUnique({
+        where: { id: poItem.partId },
+        select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+      });
+      if (!part) {
+        throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
+      }
+      const warehouse = await tx.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, name: true, active: true },
+      });
+      if (!warehouse || !warehouse.active) {
+        throw new ProcurementServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
+
+      const balances = await tx.inventoryBalance.findMany({
+        where: { partId: part.id },
+        select: { id: true, warehouseId: true, quantity: true, reserved: true },
+        orderBy: [{ warehouseId: 'asc' }, { id: 'asc' }],
+      });
+      if (balances.length === 0) {
+        throw new ProcurementServiceError(
+          409,
+          'موجودی اولیه این قطعه هنوز به انبار تخصیص نیافته است؛ ابتدا موجودی اولیه را در انبار مشخص ثبت کنید',
+        );
+      }
+      const warehouseTotal = balances.reduce((sum, balance) => sum + balance.quantity, 0);
+      if (warehouseTotal !== part.stock) {
+        throw new ProcurementServiceError(
+          409,
+          'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت‌گیری انجام شود',
+        );
+      }
+      const targetBalance = balances.find((balance) => balance.warehouseId === warehouseId);
+      if (!targetBalance) {
+        throw new ProcurementServiceError(
+          409,
+          'برای قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ ابتدا موجودی اولیه انبار را ثبت کنید',
+        );
+      }
+
+      // CAS on the PO line prevents concurrent partial receipts from
+      // exceeding the ordered quantity. Serializable isolation below also
+      // protects the aggregate PO completion decision.
+      const itemChanged = await tx.purchaseOrderItem.updateMany({
+        where: {
+          id: poItemId,
+          received: poItem.received,
+          quantity: { gte: newReceived },
+        },
+        data: { received: { increment: qty } },
+      });
+      if (itemChanged.count !== 1) {
+        throw new ProcurementServiceError(
+          409,
+          'مقدار دریافتی این قلم هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید',
+        );
+      }
+      const updatedItem = await tx.purchaseOrderItem.findUnique({
+        where: { id: poItemId },
+      });
+      if (!updatedItem) {
+        throw new ProcurementServiceError(404, 'آیتم سفارش خرید پس از دریافت یافت نشد');
+      }
+
+      // Global inventory lock order: Part first, then InventoryBalance.
+      // Both increments and the ledger/outbox writes remain in this transaction.
+      const afterPart = await tx.part.update({
+        where: { id: part.id },
+        data: { stock: { increment: qty } },
+        select: { id: true, name: true, sku: true, stock: true },
+      });
+      const afterBalance = await tx.inventoryBalance.update({
+        where: { id: targetBalance.id },
+        data: { quantity: { increment: qty } },
+      });
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          partId: part.id,
+          warehouseId,
+          type: 'RECEIVE',
+          quantity: qty,
+          balanceAfter: afterPart.stock,
+          reason: `دریافت سفارش خرید ${poItem.purchaseOrder.id}`,
+          reference: poItem.purchaseOrder.id,
+          createdBy: userId ?? null,
+        },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.procurement.po.receive',
+        entityType: 'PurchaseOrderItem',
+        entityId: poItemId,
+        before: { received: poItem.received, quantity: poItem.quantity },
+        after: { received: updatedItem.received, quantity: updatedItem.quantity, warehouseId },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.movement.create',
+        entityType: 'StockMovement',
+        entityId: movement.id,
+        after: { partId: part.id, warehouseId, type: 'RECEIVE', quantity: qty, balanceAfter: afterPart.stock, reference: poItem.purchaseOrder.id },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.part.update',
+        entityType: 'Part',
+        entityId: part.id,
+        before: { stock: part.stock },
+        after: { stock: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.balance.update',
+        entityType: 'InventoryBalance',
+        entityId: afterBalance.id,
+        before: { partId: part.id, quantity: targetBalance.quantity, reserved: targetBalance.reserved, warehouseId },
+        after: { partId: part.id, quantity: afterBalance.quantity, reserved: afterBalance.reserved, warehouseId },
+      });
+
+      const allItems = await tx.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: poItem.purchaseOrderId },
+        select: { quantity: true, received: true },
+      });
+      const allReceived = allItems.length > 0 && allItems.every((item) => item.received >= item.quantity);
+      let poUpdate: any = null;
+      if (allReceived) {
+        const changed = await tx.purchaseOrder.updateMany({
+          where: { id: poItem.purchaseOrderId, status: 'APPROVED' },
+          data: { status: 'RECEIVED', receivedAt: new Date() },
+        });
+        if (changed.count === 1) {
+          poUpdate = await tx.purchaseOrder.findUnique({ where: { id: poItem.purchaseOrderId } });
+          if (!poUpdate) throw new ProcurementServiceError(404, 'سفارش خرید پس از تکمیل یافت نشد');
+          await enqueueAuditOutbox(tx, {
+            actorId: userId ?? null,
+            actorType: 'ADMIN',
+            action: 'store.procurement.po.receive',
+            entityType: 'PurchaseOrder',
+            entityId: poItem.purchaseOrderId,
+            before: { status: poItem.purchaseOrder.status, receivedAt: poItem.purchaseOrder.receivedAt },
+            after: { status: poUpdate.status, receivedAt: poUpdate.receivedAt },
+          });
+        } else {
+          throw new ProcurementServiceError(409, 'وضعیت سفارش خرید هم‌زمان تغییر کرده است');
+        }
+      }
+
+      return { updatedItem, movement, afterPart, poUpdate, allReceived };
+    }, { isolationLevel: 'Serializable' });
+
+    return {
+      item: serialize({ ...result.updatedItem, part: result.afterPart }),
+      movement: serialize(result.movement),
+      part: result.afterPart,
+      purchaseOrder: result.poUpdate ? serialize(result.poUpdate) : null,
+      allReceived: result.allReceived,
+    };
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new ProcurementServiceError(409, 'دریافت سفارش خرید هم‌زمان تغییر کرده است؛ اطلاعات را تازه‌سازی و دوباره تلاش کنید');
+    }
+    throw err;
   }
-  if (poItem.purchaseOrder.status === 'CANCELLED') {
-    throw new ProcurementServiceError(
-      400,
-      'سفارش خرید لغوشده است و قابل دریافت نیست',
-    );
-  }
-
-  const newReceived = poItem.received + qty;
-  if (newReceived > poItem.quantity) {
-    throw new ProcurementServiceError(
-      400,
-      `دریافت بیش از تعداد سفارش. سفارش: ${poItem.quantity}، دریافت‌شده قبلی: ${poItem.received}، درخواست: ${qty}`,
-    );
-  }
-
-  // 1. Update the POItem received counter.
-  const beforeItem = { ...poItem };
-  const updatedItem = await storeDb.purchaseOrderItem.update({
-    where: { id: poItemId },
-    data: { received: newReceived },
-  });
-
-  // 2. Create the StockMovement ledger entry (RECEIVE).
-  //    balanceAfter = Part.stock + qty (the public snapshot mirrors the
-  //    inventory ledger, same invariant as createMovement / adjustStock).
-  const part = poItem.part;
-  const balanceAfter = part.stock + qty;
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId: part.id,
-      type: 'RECEIVE',
-      quantity: qty,
-      balanceAfter,
-      reason: `دریافت سفارش خرید ${poItem.purchaseOrder.id}`,
-      reference: poItem.purchaseOrder.id,
-      createdBy: userId ?? null,
-    },
-  });
-
-  // 3. Update Part.stock snapshot (side-effect — mirrors createMovement).
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: part.id },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // Audit a: the POItem receive action (primary audit hook for this op).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.receive',
-    entityType: 'PurchaseOrderItem',
-    entityId: poItemId,
-    before: { received: beforeItem.received, quantity: beforeItem.quantity },
-    after: { received: updatedItem.received, quantity: updatedItem.quantity },
-  });
-
-  // Audit b: the StockMovement create (mirrors createMovement's primary).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId: part.id,
-      type: 'RECEIVE',
-      quantity: qty,
-      balanceAfter,
-      reference: poItem.purchaseOrder.id,
-    },
-  });
-
-  // Audit c: the Part.stock side-effect (mirrors createMovement's secondary).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: part.id,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
-  });
-
-  // 4. Check if ALL items on the PO are fully received; if so, flip PO
-  //    status to RECEIVED + stamp receivedAt (conditional mutation + audit).
-  let poUpdate: any = null;
-  const allItems = await storeDb.purchaseOrderItem.findMany({
-    where: { purchaseOrderId: poItem.purchaseOrderId },
-  });
-  const allReceived = allItems.every((it: any) => it.received >= it.quantity);
-  if (allReceived && poItem.purchaseOrder.status !== 'RECEIVED') {
-    const beforePO = { ...poItem.purchaseOrder };
-    poUpdate = await storeDb.purchaseOrder.update({
-      where: { id: poItem.purchaseOrderId },
-      data: { status: 'RECEIVED', receivedAt: new Date() },
-    });
-    // Audit d: the PO status flip to RECEIVED (conditional).
-    await logAudit({
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.procurement.po.receive',
-      entityType: 'PurchaseOrder',
-      entityId: poItem.purchaseOrderId,
-      before: { status: beforePO.status, receivedAt: beforePO.receivedAt },
-      after: { status: poUpdate.status, receivedAt: poUpdate.receivedAt },
-    });
-  }
-
-  return {
-    item: serialize({ ...updatedItem, part: afterPart }),
-    movement: serialize(movement),
-    part: afterPart,
-    purchaseOrder: poUpdate ? serialize(poUpdate) : null,
-    allReceived,
-  };
 }
 
 // ── cancelPurchaseOrder ───────────────────────────────────

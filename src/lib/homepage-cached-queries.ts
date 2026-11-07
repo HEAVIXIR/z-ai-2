@@ -15,6 +15,7 @@
 
 import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/db';
+import { getPublicListingWhere } from '@/lib/listing-visibility';
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 
 // ═══════════════════════════════════════════════════════════════
@@ -97,7 +98,7 @@ export const getCachedTopBrands = unstable_cache(
     return db.brand.findMany({
       where: { active: true },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
       take: 20,
     });
   },
@@ -111,7 +112,7 @@ export const getCachedCatalogCategories = unstable_cache(
     return db.category.findMany({
       where: { active: true, layer: 'CATALOG' },
       orderBy: [{ sortOrder: 'asc' }],
-      include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
     });
   },
   ['category', 'catalog'],
@@ -160,7 +161,7 @@ export const getCachedL1Children = unstable_cache(
       where: { parentId, active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       take: 12,
-      include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
     });
   },
   ['category', 'l1children'],
@@ -200,7 +201,7 @@ export const getCachedTrustedBrands = unstable_cache(
       where: { id: { in: ids }, active: true },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       take: 20,
-      include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
     });
   },
   ['brand', 'trustedByIds'],

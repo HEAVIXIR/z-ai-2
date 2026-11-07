@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export async function GET(req: Request) {
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         take: limit,
         include: {
-          _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+          _count: { select: { listings: { where: getPublicListingWhere() } } },
         },
       });
       return NextResponse.json({
@@ -65,7 +66,7 @@ export async function GET(req: Request) {
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       take: limit,
       include: {
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
         display: { select: { displayOrder: true } },
       },
     });

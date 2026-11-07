@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import {
-  createMovement,
   listMovements,
   adjustStock,
   InventoryServiceError,
@@ -16,12 +16,8 @@ export const dynamic = "force-dynamic";
    T2-W2-A — Inventory domain (balance + movement ledger).
    T-A-DEEP-STORE — Business logic extracted to
    src/lib/store-inventory-service.ts; route handler stays thin.
-   T1-DEEP — POST now accepts an optional `warehouseId`. When
-   provided, the route calls adjustStock() (per-warehouse path:
-   updates InventoryBalance + writes StockMovement with warehouseId
-   set + syncs Part.stock). When omitted, the legacy createMovement()
-   path runs (Part.stock only — backward-compat for clients that
-   don't know about warehouses).
+   POST requires an explicit warehouseId and uses adjustStock().
+   Legacy Part-only movements are no longer exposed through this route.
    GET  : list recent movements with filters (partId, type, limit)
    POST : record a movement and adjust stock atomically.
    ============================================================ */
@@ -70,6 +66,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ success: false, error: "CSRF check failed" }, { status: 403 });
+  }
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -82,41 +81,22 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { partId, type, quantity, reason, reference, warehouseId } = body;
-
-    // T1-DEEP — when warehouseId is present, use the per-warehouse path
-    // (updates InventoryBalance + writes StockMovement with warehouseId
-    // set + syncs Part.stock). When absent, fall back to the legacy
-    // createMovement() which only touches Part.stock (backward compat).
-    if (warehouseId) {
-      const result = await adjustStock(
-        partId,
-        warehouseId,
-        quantity,
-        type,
-        reason,
-        reference,
-        user.id,
+    if (typeof warehouseId !== "string" || !warehouseId.trim()) {
+      return NextResponse.json(
+        { success: false, error: "برای ثبت حرکت موجودی، انتخاب صریح انبار الزامی است" },
+        { status: 400 },
       );
-      // P2 (Contract Drift Remediation): Removed the route-scope
-      // store.inventory.adjust audit — the service adjustStock() already
-      // audits this operation as store.inventory.balance.update (with
-      // the proper before/after fields). The duplicate route audit was
-      // missing before: and used a non-canonical action key.
-      return NextResponse.json({ success: true, data: result });
     }
-
-    const movement = await createMovement(
+    const result = await adjustStock(
       partId,
-      type,
+      warehouseId,
       quantity,
+      type,
       reason,
       reference,
       user.id,
     );
-    // P2: Same as above — createMovement() audits as
-    // store.inventory.movement.create in the service. Removed the
-    // duplicate route-scope store.inventory.create audit.
-    return NextResponse.json({ success: true, data: movement });
+    return NextResponse.json({ success: true, data: result });
   } catch (e: any) {
     return toErrorResponse(e);
   }

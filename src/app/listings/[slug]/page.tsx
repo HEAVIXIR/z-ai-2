@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { trackEvent } from "@/lib/analytics";
+import { isPublicListingActive } from "@/lib/listing-visibility";
 import {
   toFa,
   formatFullPrice,
@@ -53,6 +54,8 @@ export async function generateMetadata({
     where: { slug },
     select: {
       title: true,
+      status: true,
+      expiresAt: true,
       shortDesc: true,
       description: true,
       price: true,
@@ -65,8 +68,11 @@ export async function generateMetadata({
       images: { take: 1, orderBy: [{ isPrimary: "desc" }] },
     },
   });
-  if (!listing) {
-    return { title: "آگهی یافت نشد" };
+  if (!listing || !isPublicListingActive(listing)) {
+    return {
+      title: "آگهی یافت نشد",
+      robots: { index: false, follow: false },
+    };
   }
   const title = `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
   const description =
@@ -112,7 +118,7 @@ export default async function ListingDetailPage({
     getCurrentUser(),
   ]);
 
-  if (!listing || listing.status !== "PUBLISHED") notFound();
+  if (!listing || !isPublicListingActive(listing)) notFound();
 
   // Seed the favorite button state for the authed user (1 row max).
   const existingFav = currentUser

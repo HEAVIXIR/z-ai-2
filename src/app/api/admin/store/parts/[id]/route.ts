@@ -66,6 +66,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     const body = await req.json();
+    if (Object.prototype.hasOwnProperty.call(body, "stock")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "تغییر مستقیم موجودی از فرم قطعه مجاز نیست؛ از عملیات رسمی انبار استفاده کنید",
+        },
+        { status: 409 },
+      );
+    }
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
@@ -86,7 +95,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.priceUsd !== undefined) data.priceUsd = Number(body.priceUsd) || 0;
     if (body.oldPriceUsd !== undefined) data.oldPriceUsd = body.oldPriceUsd ? Number(body.oldPriceUsd) : null;
     if (body.contactForPrice !== undefined) data.contactForPrice = !!body.contactForPrice;
-    if (body.stock !== undefined) data.stock = Number(body.stock) || 0;
     if (body.lowStockThreshold !== undefined) data.lowStockThreshold = Number(body.lowStockThreshold) || 5;
     if (body.images !== undefined) data.images = JSON.stringify(body.images || []);
     if (body.compatibleCars !== undefined) data.compatibleCars = JSON.stringify(body.compatibleCars || []);

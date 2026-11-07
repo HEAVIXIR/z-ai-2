@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { absoluteUrl } from "@/lib/seo";
 import { SITE_BASE_URL } from "@/lib/site-config";
 
@@ -97,7 +98,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }),
     db.listing
       .findMany({
-        where: { status: "PUBLISHED" },
+        where: getPublicListingWhere(),
         select: { id: true, slug: true, updatedAt: true },
       })
       .catch(() => {

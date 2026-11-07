@@ -11,15 +11,58 @@ export const dynamic = "force-dynamic";
    /api/admin/store/payments/[id] — verify / reject / refund
    ============================================================ */
 
-const ALLOWED_STATUSES = ["PENDING", "APPROVED", "REJECTED", "REFUNDED"];
+const ALLOWED_STATUSES = ["APPROVED", "REJECTED"];
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "در انتظار بررسی",
+  APPROVED: "تأییدشده",
+  REJECTED: "ردشده",
+  REFUNDED: "بازگشت‌خورده",
+};
+const METHOD_LABELS: Record<string, string> = {
+  CARD: "کارت به کارت",
+  WALLET: "کیف پول",
+  CASH: "نقدی",
+  GATEWAY: "درگاه آنلاین",
+};
+
+function maskPayerCard(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return null;
+  return `•••• ${digits.slice(-4)}`;
+}
 
 function serialize(p: any) {
+  // Never spread a payment row: raw card data and internal reviewer/provider
+  // metadata must not leak through admin collection or detail responses.
   return {
-    ...p,
+    id: p.id,
+    orderId: p.orderId,
+    customerId: p.customerId,
     amountIrr: p.amountIrr?.toString?.() ?? String(p.amountIrr ?? 0),
     amountUsd: p.amountUsd?.toString?.() ?? String(p.amountUsd ?? 0),
-    createdAt: p.createdAt?.toISOString?.() ?? null,
+    method: p.method,
+    status: p.status,
+    statusLabel: STATUS_LABELS[p.status] ?? p.status,
+    methodLabel: METHOD_LABELS[p.method] ?? p.method,
+    receiptImageUrl: p.receiptImageUrl,
+    referenceCode: p.referenceCode,
+    payerName: p.payerName,
+    payerCard: maskPayerCard(p.payerCard),
+    note: p.note,
+    gateway: p.gateway,
+    authority: p.authority,
+    refId: p.refId,
+    gatewayUrl: p.gatewayUrl,
     reviewedAt: p.reviewedAt?.toISOString?.() ?? null,
+    createdAt: p.createdAt?.toISOString?.() ?? null,
+    updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.order
+      ? { order: { id: p.order.id, orderNumber: p.order.orderNumber, totalIrr: p.order.totalIrr?.toString?.() ?? String(p.order.totalIrr ?? 0), status: p.order.status } }
+      : {}),
+    ...(p.customer
+      ? { customer: { id: p.customer.id, name: p.customer.name, family: p.customer.family, phone: p.customer.phone } }
+      : {}),
   };
 }
 
@@ -40,6 +83,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
     const data: any = {};
+    if (body.status === "REFUNDED") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Refunds require an evidence-backed reversal workflow and cannot be recorded as a status-only change",
+          code: "STORE_REFUND_EVIDENCE_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
     if (body.status !== undefined) {
       if (!ALLOWED_STATUSES.includes(body.status)) {
         return NextResponse.json({ success: false, error: "وضعیت نامعتبر" }, { status: 400 });
@@ -95,8 +148,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       action: 'store.payment.update',
       entityType: 'Payment',
       entityId: payment.id,
-      before: existing,
-      after: payment,
+      before: {
+        status: existing.status,
+        amountIrr: String(existing.amountIrr ?? 0),
+        amountUsd: String(existing.amountUsd ?? 0),
+        method: existing.method,
+        referenceCode: existing.referenceCode,
+        payerName: existing.payerName,
+        payerCard: maskPayerCard(existing.payerCard),
+        note: existing.note,
+      },
+      after: {
+        status: payment.status,
+        amountIrr: String(payment.amountIrr ?? 0),
+        amountUsd: String(payment.amountUsd ?? 0),
+        method: payment.method,
+        referenceCode: payment.referenceCode,
+        payerName: payment.payerName,
+        payerCard: maskPayerCard(payment.payerCard),
+        note: payment.note,
+      },
     });
 
 

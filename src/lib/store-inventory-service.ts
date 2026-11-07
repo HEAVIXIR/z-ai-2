@@ -89,97 +89,24 @@ function serialize(m: any) {
  *
  * @throws InventoryServiceError on validation/lookup failure (400/404).
  */
+/**
+ * @deprecated Part-only stock movements bypass warehouse balances and are
+ * intentionally disabled. Use adjustStock(partId, warehouseId, ...) for
+ * ordinary movements, resolveReturn(...) for restocking returns, and the
+ * dedicated paired transfer workflow for warehouse transfers.
+ */
 export async function createMovement(
-  partId: string,
-  type: string,
-  quantity: number,
-  reason?: string | null,
-  reference?: string | null,
-  userId?: string | null,
-): Promise<any> {
-  if (!partId || !type || quantity === undefined) {
-    throw new InventoryServiceError(400, 'partId، نوع و تعداد الزامی هستند');
-  }
-  if (!ALLOWED_TYPES.includes(type as (typeof ALLOWED_TYPES)[number])) {
-    throw new InventoryServiceError(400, 'نوع حرکت نامعتبر');
-  }
-  const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty === 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح غیر صفر باشد',
-    );
-  }
-
-  const part = await storeDb.part.findUnique({ where: { id: partId } });
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
-
-  const balanceAfter = part.stock + qty;
-  if (balanceAfter < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`,
-    );
-  }
-
-  // Step 1: create the ledger entry (records intent + balance after).
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
-      },
-    },
-  });
-
-  // Step 2: side-effect — update Part.stock to the new balance.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // Audit 1: the ledger entry is the primary audit hook for this route.
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-    },
-  });
-
-  // Audit 2: the Part.stock update is a side-effect mutation, so it gets
-  // its own audit entry (mirrors payments/[id] side-effect pattern).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
-  });
-
-  return serialize(movement);
+  _partId: string,
+  _type: string,
+  _quantity: number,
+  _reason?: string | null,
+  _reference?: string | null,
+  _userId?: string | null,
+): Promise<never> {
+  throw new InventoryServiceError(
+    409,
+    'ثبت حرکت بدون انبار مقصد غیرفعال است؛ از گردش کار رسمی انبار استفاده کنید',
+  );
 }
 
 // ── listMovements ──────────────────────────────────────────
@@ -442,100 +369,131 @@ export async function adjustStock(
   userId?: string | null,
 ): Promise<any> {
   if (!partId || !warehouseId || !type || quantity === undefined) {
-    throw new InventoryServiceError(
-      400,
-      'partId، warehouseId، نوع و تعداد الزامی است',
-    );
+    throw new InventoryServiceError(400, 'partId، warehouseId، نوع و تعداد الزامی است');
   }
   if (!ALLOWED_TYPES.includes(type as (typeof ALLOWED_TYPES)[number])) {
     throw new InventoryServiceError(400, 'نوع حرکت نامعتبر');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty === 0) {
+  if (!Number.isSafeInteger(qty) || qty === 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح غیر صفر باشد');
+  }
+  if (type === 'TRANSFER' || type === 'RETURN') {
     throw new InventoryServiceError(
       400,
-      'تعداد باید عدد صحیح غیر صفر باشد',
+      type === 'TRANSFER'
+        ? 'انتقال انبار باید با عملیات انتقال مبدأ و مقصد انجام شود'
+        : 'ثبت مرجوعی فقط از گردش کار رسمی مرجوعی مجاز است',
     );
   }
+  if (['RECEIVE', 'RETURN'].includes(type) && qty < 0) {
+    throw new InventoryServiceError(400, 'تعداد دریافت و مرجوعی باید مثبت باشد');
+  }
+  if (['SALE', 'DAMAGE'].includes(type) && qty > 0) {
+    throw new InventoryServiceError(400, 'تعداد فروش و ضایعات باید منفی باشد');
+  }
 
-  // Keep the balance, public stock snapshot, and ledger write in one DB
-  // transaction. Atomic increments + conditional decrements prevent lost
-  // updates and prevent concurrent requests from overselling the same stock.
   const result = await storeDb.$transaction(async (tx) => {
-    const [part, warehouse] = await Promise.all([
-      tx.part.findUnique({ where: { id: partId } }),
-      tx.warehouse.findUnique({ where: { id: warehouseId } }),
-    ]);
+    // Global inventory lock order: Part first, then InventoryBalance.
+    // Procurement receiving and return restocking follow this same order.
+    // A plain findUnique does not lock under PostgreSQL READ COMMITTED.
+    const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+    `;
+    if (lockedParts.length !== 1) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    const part = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+    });
     if (!part) {
       throw new InventoryServiceError(404, 'قطعه یافت نشد');
     }
+
+    const warehouse = await tx.warehouse.findUnique({
+      where: { id: warehouseId },
+      select: { id: true, name: true, code: true, active: true },
+    });
     if (!warehouse) {
       throw new InventoryServiceError(404, 'انبار یافت نشد');
     }
-
-    const existingBalance = await tx.inventoryBalance.findUnique({
-      where: { partId_warehouseId: { partId, warehouseId } },
-    });
-    const currentQty = existingBalance?.quantity ?? 0;
-
-    if (qty < 0) {
-      // Conditional UPDATE is atomic in PostgreSQL. If another request has
-      // already consumed the available quantity, this request affects zero
-      // rows and the entire transaction is rejected.
-      const changed = await tx.inventoryBalance.updateMany({
-        where: {
-          partId,
-          warehouseId,
-          quantity: { gte: -qty },
-        },
-        data: { quantity: { increment: qty } },
-      });
-      if (changed.count !== 1) {
-        throw new InventoryServiceError(
-          400,
-          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
-        );
-      }
-    } else {
-      await tx.inventoryBalance.upsert({
-        where: { partId_warehouseId: { partId, warehouseId } },
-        create: {
-          partId,
-          warehouseId,
-          quantity: qty,
-          reserved: 0,
-          lowStockThreshold: part.lowStockThreshold ?? 5,
-        },
-        update: {
-          quantity: { increment: qty },
-        },
-      });
-    }
-    const balanceRow = await tx.inventoryBalance.findUnique({
-      where: { partId_warehouseId: { partId, warehouseId } },
-    });
-    if (!balanceRow) {
-      throw new InventoryServiceError(500, 'به‌روزرسانی موجودی انبار ناموفق بود');
+    if (!warehouse.active) {
+      throw new InventoryServiceError(409, 'ثبت حرکت در انبار غیرفعال مجاز نیست');
     }
 
-    // Keep the storefront snapshot in sync with the same delta, while
-    // protecting against a negative public stock count under concurrency.
+    const balances = await tx.inventoryBalance.findMany({
+      where: { partId },
+      orderBy: [{ warehouseId: 'asc' }, { id: 'asc' }],
+      select: { id: true, warehouseId: true, quantity: true, reserved: true, lowStockThreshold: true },
+    });
+    if (balances.length === 0) {
+      throw new InventoryServiceError(
+        409,
+        'موجودی اولیه این قطعه هنوز به انبار تخصیص نیافته است؛ ابتدا تخصیص اولیه انبار را به‌صورت صریح انجام دهید',
+      );
+    }
+
+    const warehouseTotal = balances.reduce((sum, balance) => sum + balance.quantity, 0);
+    if (warehouseTotal !== part.stock) {
+      throw new InventoryServiceError(
+        409,
+        'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت‌گیری انجام شود',
+      );
+    }
+
+    const targetBalance = balances.find((balance) => balance.warehouseId === warehouseId);
+    if (!targetBalance) {
+      throw new InventoryServiceError(
+        409,
+        'برای این قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ تخصیص انبار باید جداگانه و صریح انجام شود',
+      );
+    }
+
+    if (qty < 0 && targetBalance.quantity - targetBalance.reserved < -qty) {
+      throw new InventoryServiceError(
+        409,
+        `موجودی آزاد انبار کافی نیست. موجودی: ${targetBalance.quantity}، رزروشده: ${targetBalance.reserved}، درخواست: ${-qty}`,
+      );
+    }
+    if (part.stock + qty < 0) {
+      throw new InventoryServiceError(409, 'موجودی کل قطعه منفی می‌شود');
+    }
+
+    // Global inventory lock order: Part first, then InventoryBalance.
+    // A stale snapshot or concurrent writer fails closed; all later writes
+    // roll back together if the balance compare-and-set does not succeed.
     const partChanged = await tx.part.updateMany({
-      where: {
-        id: partId,
-        ...(qty < 0 ? { stock: { gte: -qty } } : {}),
-      },
+      where: { id: partId, stock: part.stock },
       data: { stock: { increment: qty } },
     });
     if (partChanged.count !== 1) {
-      throw new InventoryServiceError(400, 'موجودی قطعه منفی می‌شود');
+      throw new InventoryServiceError(409, 'موجودی قطعه هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
     }
-    const afterPart = await tx.part.findUnique({
-      where: { id: partId },
-      select: { id: true, name: true, sku: true, stock: true },
+
+    const balanceChanged = await tx.inventoryBalance.updateMany({
+      where: {
+        id: targetBalance.id,
+        quantity: targetBalance.quantity,
+        reserved: targetBalance.reserved,
+      },
+      data: { quantity: { increment: qty } },
     });
-    if (!afterPart) {
-      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    if (balanceChanged.count !== 1) {
+      throw new InventoryServiceError(409, 'موجودی یا رزرو انبار هم‌زمان تغییر کرده است؛ عملیات را دوباره بررسی کنید');
+    }
+
+    const [afterPart, afterBalance] = await Promise.all([
+      tx.part.findUnique({
+        where: { id: partId },
+        select: { id: true, name: true, sku: true, stock: true },
+      }),
+      tx.inventoryBalance.findUnique({
+        where: { id: targetBalance.id },
+      }),
+    ]);
+    if (!afterPart || !afterBalance) {
+      throw new InventoryServiceError(500, 'خواندن موجودی پس از ثبت حرکت ناموفق بود');
     }
 
     const movement = await tx.stockMovement.create({
@@ -559,13 +517,6 @@ export async function adjustStock(
       },
     });
 
-    // STEP 15.95+ — Transactional Audit Outbox. The audit events are written
-    // to the AuditOutbox table INSIDE the same storeDb transaction as the
-    // mutation (atomic). A replay worker drains the outbox to the main
-    // AuditLog table (db.auditLog) with retry + dedup. This guarantees the
-    // audit invariant: every committed mutation has a corresponding audit
-    // event that WILL eventually be delivered, even if the main DB is
-    // temporarily unavailable at commit time.
     await enqueueAuditOutbox(tx, {
       actorId: userId ?? null,
       actorType: 'ADMIN',
@@ -596,26 +547,18 @@ export async function adjustStock(
       actorType: 'ADMIN',
       action: 'store.inventory.balance.update',
       entityType: 'InventoryBalance',
-      entityId: balanceRow.id,
-      before: { quantity: currentQty, reserved: existingBalance?.reserved ?? 0 },
-      after: { quantity: balanceRow.quantity, reserved: balanceRow.reserved },
+      entityId: afterBalance.id,
+      before: { quantity: targetBalance.quantity, reserved: targetBalance.reserved },
+      after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved },
     });
 
     return {
-      partBeforeStock: part.stock,
       part: afterPart,
-      balance: balanceRow,
+      balance: afterBalance,
       movement,
-      lowStock: balanceRow.quantity <= balanceRow.lowStockThreshold,
-      beforeBalance: currentQty,
-      beforeReserved: existingBalance?.reserved ?? 0,
+      lowStock: afterBalance.quantity <= afterBalance.lowStockThreshold,
     };
   });
-
-  // STEP 15.95+: audit events are now delivered via the Transactional Outbox
-  // (enqueued inside the storeDb transaction above). The replay worker
-  // (drainAuditOutbox) drains the outbox to the main AuditLog table. No
-  // post-commit logAudit calls remain — the audit invariant is now atomic.
 
   return {
     movement: serialize(result.movement),
@@ -644,67 +587,57 @@ export async function reserveStock(
   reason?: string | null,
 ): Promise<any> {
   if (!partId || !warehouseId || quantity === undefined) {
-    throw new InventoryServiceError(
-      400,
-      'partId، warehouseId و تعداد الزامی است',
-    );
+    throw new InventoryServiceError(400, 'partId، warehouseId و تعداد الزامی است');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح مثبت باشد',
-    );
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  const balance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
+  return storeDb.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    if (!balance) {
+      throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+    }
+    if (balance.reserved + qty > balance.quantity) {
+      throw new InventoryServiceError(
+        409,
+        `رزرو بیش از موجودی آزاد. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
+      );
+    }
+
+    const changed = await tx.inventoryBalance.updateMany({
+      where: {
+        id: balance.id,
+        quantity: balance.quantity,
+        reserved: balance.reserved,
+      },
+      data: { reserved: { increment: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+    }
+
+    const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
+    if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از رزرو یافت نشد');
+
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.reserve',
+      entityType: 'InventoryBalance',
+      entityId: balance.id,
+      before: { quantity: balance.quantity, reserved: balance.reserved },
+      after: { quantity: updated.quantity, reserved: updated.reserved },
+      reason: reason ?? null,
+    });
+
+    return updated;
   });
-  if (!balance) {
-    throw new InventoryServiceError(
-      404,
-      'موجودی انبار برای این قطعه یافت نشد',
-    );
-  }
-
-  const newReserved = balance.reserved + qty;
-  if (newReserved > balance.quantity) {
-    throw new InventoryServiceError(
-      400,
-      `رزرو بیش از موجودی. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
-    );
-  }
-
-  const before = { ...balance };
-  const updated = await storeDb.inventoryBalance.update({
-    where: { id: balance.id },
-    data: { reserved: newReserved },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.reserve',
-    entityType: 'InventoryBalance',
-    entityId: balance.id,
-    before,
-    after: { reserved: updated.reserved },
-    reason: reason ?? null,
-  });
-
-  return updated;
 }
 
-// ── releaseStock ──────────────────────────────────────────
-/**
- * Release previously-reserved stock on a (part, warehouse) pair. Decrements
- * InventoryBalance.reserved without changing quantity. Use case: order
- * shipped (reservation consumed) or order cancelled (reservation reverted).
- *
- * Refuses if qty > current reserved (would go negative).
- *
- * @throws InventoryServiceError on validation (400) or lookup (404).
- */
 export async function releaseStock(
   partId: string,
   warehouseId: string,
@@ -713,55 +646,55 @@ export async function releaseStock(
   reason?: string | null,
 ): Promise<any> {
   if (!partId || !warehouseId || quantity === undefined) {
-    throw new InventoryServiceError(
-      400,
-      'partId، warehouseId و تعداد الزامی است',
-    );
+    throw new InventoryServiceError(400, 'partId، warehouseId و تعداد الزامی است');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح مثبت باشد',
-    );
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  const balance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
+  return storeDb.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    if (!balance) {
+      throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+    }
+    if (balance.reserved < qty) {
+      throw new InventoryServiceError(
+        409,
+        `رزرو برای آزادسازی کافی نیست. رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
+      );
+    }
+
+    const changed = await tx.inventoryBalance.updateMany({
+      where: {
+        id: balance.id,
+        quantity: balance.quantity,
+        reserved: balance.reserved,
+      },
+      data: { reserved: { decrement: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+    }
+
+    const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
+    if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از آزادسازی یافت نشد');
+
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.release',
+      entityType: 'InventoryBalance',
+      entityId: balance.id,
+      before: { quantity: balance.quantity, reserved: balance.reserved },
+      after: { quantity: updated.quantity, reserved: updated.reserved },
+      reason: reason ?? null,
+    });
+
+    return updated;
   });
-  if (!balance) {
-    throw new InventoryServiceError(
-      404,
-      'موجودی انبار برای این قطعه یافت نشد',
-    );
-  }
-
-  const newReserved = balance.reserved - qty;
-  if (newReserved < 0) {
-    throw new InventoryServiceError(
-      400,
-      `رزرو برای آزادسازی کافی نیست. رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
-    );
-  }
-
-  const before = { ...balance };
-  const updated = await storeDb.inventoryBalance.update({
-    where: { id: balance.id },
-    data: { reserved: newReserved },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.release',
-    entityType: 'InventoryBalance',
-    entityId: balance.id,
-    before,
-    after: { reserved: updated.reserved },
-    reason: reason ?? null,
-  });
-
-  return updated;
 }
 
 // ── getLowStockItems ──────────────────────────────────────

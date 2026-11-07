@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
@@ -58,11 +59,11 @@ export async function POST(req: Request) {
   try {
     // Gather market context
     const totalListings = await db.listing.count();
-    const published = await db.listing.count({ where: { status: "PUBLISHED" } });
+    const published = await db.listing.count({ where: getPublicListingWhere() });
     const sold = await db.listing.count({ where: { status: "SOLD" } });
     const avgPrice = await db.listing.aggregate({
       _avg: { price: true },
-      where: { price: { not: null }, status: "PUBLISHED" },
+      where: { ...getPublicListingWhere(), price: { not: null } },
     });
     const totalRequests = await db.buyRequest.count({ where: { status: "ACTIVE" } });
     const topBrands = await db.brand.findMany({

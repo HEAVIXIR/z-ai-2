@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, formatCompactPrice } from "@/lib/format";
 import {
   Target,
@@ -25,19 +26,19 @@ export default async function OpportunityRadarPage() {
   ] = await Promise.all([
     db.category.findMany({
       where: { active: true, parentId: null },
-      include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+      include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
     }),
     db.listing.findMany({
-      where: { status: "PUBLISHED", price: { not: null } },
+      where: { ...getPublicListingWhere(), price: { not: null } },
       select: { price: true, categoryId: true, province: true },
     }),
     db.listing.groupBy({
       by: ["categoryId"],
-      where: { createdAt: { gte: sevenDaysAgo }, status: "PUBLISHED" },
+      where: { ...getPublicListingWhere(), createdAt: { gte: sevenDaysAgo } },
       _count: true,
     }),
     db.listing.findMany({
-      where: { status: "PUBLISHED", province: { not: null } },
+      where: { ...getPublicListingWhere(), province: { not: null } },
       select: { province: true },
     }),
     db.buyRequest.groupBy({
@@ -106,7 +107,7 @@ export default async function OpportunityRadarPage() {
 
   const priceOpportunities = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       price: { not: null, lt: BigInt(Math.floor(avgPrice * 0.7)) },
     },
     orderBy: { price: "asc" },

@@ -20,6 +20,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock data ──────────────────────────────────────────────
 const mockListing = {
+  status: "PUBLISHED",
+  expiresAt: null,
   title: "بیل مکانیکی کاترپیلار 320",
   shortDesc: "بیل مکانیکی کاترپیلار مدل 320، سال ۲۰۲۱، ساعات کار پایین",
   description: "توضیحات کامل...",

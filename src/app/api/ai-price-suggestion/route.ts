@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { parseNumber } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
 
-    const where: any = { status: "PUBLISHED", price: { not: null } };
+    const where: any = { ...getPublicListingWhere(), price: { not: null } };
     if (body.brandId) where.brandId = body.brandId;
     if (body.categoryId) where.categoryId = body.categoryId;
     if (body.condition) where.condition = body.condition;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { parseNumber } from "@/lib/api-helpers";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     }
 
     const listing = await db.listing.findUnique({
-      where: { id },
+      where: { id, ...getPublicListingWhere() },
       include: { brand: true, category: true },
     });
     if (!listing) {
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
 
     // Find similar listings
     const where: any = {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       id: { not: id },
       price: { not: null },
       OR: [],

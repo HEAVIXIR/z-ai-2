@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
@@ -48,7 +49,7 @@ export async function GET() {
   // Auto-compute current values from DB
   const [totalSellers, totalListings, totalRequests] = await Promise.all([
     db.user.count({ where: { status: "ACTIVE" } }),
-    db.listing.count({ where: { status: "PUBLISHED" } }),
+    db.listing.count({ where: getPublicListingWhere() }),
     db.buyRequest.count({ where: { status: "ACTIVE" } }),
   ]);
 

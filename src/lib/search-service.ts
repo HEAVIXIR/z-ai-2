@@ -5,6 +5,7 @@ import {
   type PrismaWhere,
 } from "@/lib/search";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Search Service (Phase 4 deepening)
@@ -252,7 +253,7 @@ function toBigInt(v: number | string | null | undefined): bigint | null {
  * Prisma `db.listing.findMany({ where })` without friction.
  */
 function buildListingWhere(params: SearchParams): PrismaWhere {
-  const where: PrismaWhere = { status: "PUBLISHED" };
+  const where: PrismaWhere = getPublicListingWhere() as PrismaWhere;
 
   // ── Free text ──
   const q = params.q?.trim();
@@ -568,7 +569,7 @@ export async function getFacets(filters: FacetFilters = {}): Promise<Facets> {
   // caller's filter context. (priceMin/priceMax are NOT applied here
   // — the facet buckets are computed against the unfiltered-by-price
   // set so users can see all available price points.)
-  const where: PrismaWhere = { status: "PUBLISHED" };
+  const where: PrismaWhere = getPublicListingWhere() as PrismaWhere;
 
   if (filters.category) {
     const cat = filters.category.trim();
@@ -821,7 +822,7 @@ export async function compareListings(ids: string[]): Promise<ComparisonResult> 
   let rows: any[] = [];
   try {
     rows = await db.listing.findMany({
-      where: { id: { in: cleaned }, status: "PUBLISHED" },
+      where: { id: { in: cleaned }, ...getPublicListingWhere() },
       include: {
         brand: {
           select: { id: true, name: true, slug: true, nameEn: true },

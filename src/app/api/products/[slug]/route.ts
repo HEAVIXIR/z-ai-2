@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function GET(_req: Request, { params }: Args) {
           take: 20,
         },
         listings: {
-          where: { status: "PUBLISHED" },
+          where: getPublicListingWhere(),
           orderBy: { createdAt: "desc" },
           take: 20,
           select: {

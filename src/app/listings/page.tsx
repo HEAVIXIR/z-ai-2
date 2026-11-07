@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   openGraph: { title: "بازار ماشین‌آلات سنگین — هویکس", description: "جستجوی آگهی‌های ماشین‌آلات سنگین در سراسر ایران.", type: "website", locale: "fa_IR" },
 };
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -201,7 +202,7 @@ export default async function ListingsPage({
     catalogCategories.filter((c) => c.parentId === id);
 
   /* Build where clause */
-  const where: Record<string, unknown> = { status: "PUBLISHED" };
+  const where: Record<string, unknown> = { ...getPublicListingWhere() };
 
   if (sp.q) {
     where.OR = [

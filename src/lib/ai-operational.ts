@@ -1,5 +1,6 @@
 import ZAI from "z-ai-web-dev-sdk";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — imports z-ai-web-dev-sdk + Prisma.
@@ -208,7 +209,7 @@ export async function detectPriceAnomalies(opts?: {
     try {
       listings = await db.listing.findMany({
         where: {
-          status: "PUBLISHED",
+          ...getPublicListingWhere(),
           price: { not: null },
           createdAt: { gte: since },
         },
