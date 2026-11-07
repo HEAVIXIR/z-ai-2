@@ -12,7 +12,6 @@
  *
  * STEP 11.11 added `permissions.export` to:
  *   - payment.trackingCode (AdminColumn + AdminField) → 'payment.manage'
- *   - payment.idempotencyKey (AdminField) → 'payment.manage'
  *   - payment.type (AdminColumn) → 'payment.manage'  ← FIRST visible column
  *   - user.passwordHash (AdminField) → 'system.manage'
  *
@@ -65,10 +64,11 @@ describe("Production config — permissions.export declarations", () => {
     expect(col!.permissions?.export).toBe("payment.manage");
   });
 
-  it("payment.idempotencyKey AdminField declares export: 'payment.manage'", () => {
-    const field = paymentConfig.fields.find(f => f.key === "idempotencyKey");
-    expect(field).toBeDefined();
-    expect(field!.permissions?.export).toBe("payment.manage");
+  it("payment.idempotencyKey is not exposed as a generic admin field", () => {
+    // Idempotency keys are internal payment controls and must not be
+    // editable or exposed through generic Universal Resource forms.
+    expect(paymentConfig.fields.find(f => f.key === "idempotencyKey")).toBeUndefined();
+    expect(paymentConfig.columns.find(c => c.key === "idempotencyKey")).toBeUndefined();
   });
 
   it("payment.type AdminColumn declares export: 'payment.manage' (FIRST visible column)", () => {
@@ -109,10 +109,10 @@ describe("Causal export behavior on production paymentConfig", () => {
 
   it("buildExportPermissionMap finds >= 3 export-restricted fields in paymentConfig", () => {
     const map = buildExportPermissionMap(paymentConfig);
-    // trackingCode (column+field), idempotencyKey (field), type (column)
-    expect(map.size).toBeGreaterThanOrEqual(3);
+    // trackingCode (column+field), type (column); idempotencyKey is
+    // intentionally absent from the generic admin projection entirely.
+    expect(map.size).toBeGreaterThanOrEqual(2);
     expect(map.get("trackingCode")).toBe("payment.manage");
-    expect(map.get("idempotencyKey")).toBe("payment.manage");
     expect(map.get("type")).toBe("payment.manage");
   });
 
@@ -123,7 +123,6 @@ describe("Causal export behavior on production paymentConfig", () => {
     const result = await filterExportableFieldsAsync(paymentConfig, samplePayments, "admin-user");
 
     expect(result[0].trackingCode).toBe("TC-001");
-    expect(result[0].idempotencyKey).toBe("ID-001");
     expect(result[0].type).toBe("ORDER_PAYMENT");
   });
 
@@ -135,7 +134,6 @@ describe("Causal export behavior on production paymentConfig", () => {
     const result = await filterExportableFieldsAsync(paymentConfig, samplePayments, "user-B");
 
     expect(result[0].trackingCode).toBeUndefined();
-    expect(result[0].idempotencyKey).toBeUndefined();
     expect(result[0].type).toBeUndefined();
     // amount has no export perm — always exported
     expect(result[0].amount).toBe(1000);
@@ -181,7 +179,7 @@ describe("user.passwordHash — export policy defense in depth", () => {
 describe("Causal differential — same user, only permission changes", () => {
   it("GRANT payment.manage → type field APPEARS in export; DENY → type DISAPPEARS", async () => {
     const samplePayments = [
-      { id: "p1", amount: 1000, type: "ORDER_PAYMENT", trackingCode: "TC", idempotencyKey: "ID" },
+      { id: "p1", amount: 1000, type: "ORDER_PAYMENT", trackingCode: "TC" },
     ];
 
     // Case 1: DENY payment.manage
