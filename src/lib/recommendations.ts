@@ -336,7 +336,7 @@ export async function generateRecommendations(
   // but without the Listing join (callers wanting the listings
   // should call `getRecommendations`).
   return db.userRecommendation.findMany({
-    where: { userId, dismissed: false },
+    where: { userId, dismissed: false, listing: { is: getPublicListingWhere() } },
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
     take: Math.max(1, limit),
   });
@@ -371,7 +371,7 @@ export async function getRecommendations(
     await generateRecommendations(userId, limit);
   }
   const rows = await db.userRecommendation.findMany({
-    where: { userId, dismissed: false },
+    where: { userId, dismissed: false, listing: { is: getPublicListingWhere() } },
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
     take: Math.max(1, limit),
     include: {
