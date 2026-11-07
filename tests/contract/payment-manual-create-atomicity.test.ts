@@ -47,3 +47,27 @@ describe("dedicated payment API ledger immutability", () => {
     expect(source).not.toMatch(/db\.payment\.delete\s*\(/);
   });
 });
+
+
+describe("manual payment input validation", () => {
+  it("rejects lossy numeric parsing and non-IRR currency", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/admin/payments/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain("amount must be a positive whole number of IRR");
+    expect(source).toContain("Manual payments currently support IRR only");
+    expect(source).toContain("A reason of 5–500 characters is required");
+    expect(source).not.toContain("parseBig(body.amount)");
+  });
+
+  it("requires an offline/manual gateway and records an explicit reason", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/admin/payments/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain('if (gateway !== "MANUAL")');
+    expect(source).toContain("reason,");
+    expect(source).toContain("tx.auditLog.create");
+  });
+});
