@@ -381,7 +381,8 @@ export default async function StoreInventoryPage({
 
 function Header() {
   return (
-    <div>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
       <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
         <Boxes className="h-6 w-6 text-[#F58220]" />
         موجودی انبار
@@ -390,6 +391,10 @@ function Header() {
         دفتر حرکت‌های انبار (Stock Movement Ledger) — ثبت دریافت، فروش،
         مرجوعی، انتقال، تعدیل و ضایعات
       </p>
+      </div>
+      <Link href="/admin/store/inventory/reconciliation" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220]">
+        گزارش مغایرت‌گیری
+      </Link>
     </div>
   );
 }
