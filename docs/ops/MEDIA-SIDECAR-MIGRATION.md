@@ -30,6 +30,9 @@ Before applying:
 4. Run the dry-run command and inspect every reported invalid path, conflict,
    and error. Apply mode must not be used while any of those remain.
 5. Keep the HTTP middleware guard deployed throughout the migration.
+6. After deploying the guard, invalidate any previously cached legacy sidecar
+   URLs at the active CDN. The 404 response prevents future caching, but it
+   cannot retract a copy already cached before the guard was deployed.
 
 ## Commands
 
