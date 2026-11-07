@@ -47,6 +47,8 @@
  *
  * Run:
  *   bunx tsx prisma/seed-phase-catalog.ts
+ *   (requires NODE_ENV=test, HEAVIX_ALLOW_TEST_FIXTURE_SEED=1,
+ *    and a local DATABASE_URL database ending in _test)
  *   or: bun run db:seed-phase-catalog
  */
 import { db } from "../src/lib/db";
