@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
 import { adjustStock } from '@/lib/store-inventory-service';
-import { inspectReturn, resolveReturn } from '@/lib/store-returns-service';
+import { addReturnItem, inspectReturn, resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
 
