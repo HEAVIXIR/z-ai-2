@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
    could view full order details including payment info and PII.
    Now requires:
    - Authenticated session (getStoreUserWithRole)
-   - Ownership: order.userId === sessionUser.id OR order.customer.phone === sessionUser.mobile
+   - Ownership: order.userId === sessionUser.id OR (verified mobile AND matching customer phone)
    - Admin: sessionUser.isAdmin can view any order
 
    No phone-based lookup without session. No synthetic admin.
@@ -81,7 +81,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // P0 FIX: Ownership check — admin can see any order; others only their own.
     if (!sessionUser.isAdmin) {
       const isOwner = order.userId === sessionUser.id ||
-        (order.customer && order.customer.phone === sessionUser.mobile);
+        (sessionUser.mobileVerified && order.customer && order.customer.phone === sessionUser.mobile);
       if (!isOwner) {
         return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
       }
