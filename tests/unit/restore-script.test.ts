@@ -112,6 +112,22 @@ describe("paired database restore script", () => {
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
   });
 
+  it("rejects checksum manifests containing unexpected paths", () => {
+    const f = fixture();
+    const valid = readFileSync(path.join(f.backup, "checksums.txt"), "utf8");
+    writeFileSync(
+      path.join(f.backup, "checksums.txt"),
+      valid + "0000000000000000000000000000000000000000000000000000000000000000  ../outside.sql\\n",
+    );
+    const result = runRestore(f);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "Checksum manifest must contain exactly main.sql and store.sql",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
   it("blocks restore until application traffic is explicitly drained", () => {
     const f = fixture();
     const result = runRestore(f, { HEAVIX_RESTORE_TRAFFIC_DRAINED: "0" });
