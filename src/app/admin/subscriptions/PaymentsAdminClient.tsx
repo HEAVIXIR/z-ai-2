@@ -76,6 +76,7 @@ export default function PaymentsAdminClient() {
     type: "SUBSCRIPTION",
     subscriptionId: "",
     trackingCode: "",
+    reason: "",
     gateway: "MANUAL",
     markPaid: true,
   });
@@ -108,12 +109,22 @@ export default function PaymentsAdminClient() {
   }, [load]);
 
   async function verify(id: string, status: "PAID" | "FAILED") {
+    const reason = window.prompt(
+      status === "PAID"
+        ? "دلیل و مرجع بررسی پرداخت را وارد کنید:"
+        : "دلیل رد پرداخت را وارد کنید:",
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 5 || reason.trim().length > 500) {
+      alert("دلیل باید بین ۵ تا ۵۰۰ نویسه باشد.");
+      return;
+    }
     setBusy(id);
     try {
       const res = await fetch(`/api/payments/${id}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, reason: reason.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -128,8 +139,16 @@ export default function PaymentsAdminClient() {
 
   async function submitManual(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.userId.trim() || !form.amount.trim()) {
-      alert("شناسه کاربر و مبلغ الزامی است.");
+    if (!form.userId.trim() || !form.amount.trim() || form.reason.trim().length < 5) {
+      alert("شناسه کاربر، مبلغ و دلیل ثبت (حداقل ۵ نویسه) الزامی است.");
+      return;
+    }
+    if (form.type === "SUBSCRIPTION" && !form.subscriptionId.trim()) {
+      alert("برای ثبت پرداخت اشتراک، شناسه اشتراک الزامی است.");
+      return;
+    }
+    if (form.type !== "SUBSCRIPTION" && form.subscriptionId.trim()) {
+      alert("شناسه اشتراک فقط برای پرداخت از نوع اشتراک مجاز است.");
       return;
     }
     setSubmitting(true);
@@ -143,7 +162,8 @@ export default function PaymentsAdminClient() {
           type: form.type,
           subscriptionId: form.subscriptionId.trim() || undefined,
           trackingCode: form.trackingCode.trim() || undefined,
-          gateway: form.gateway,
+          reason: form.reason.trim(),
+          gateway: "MANUAL",
           markPaid: form.markPaid,
         }),
       });
@@ -158,6 +178,7 @@ export default function PaymentsAdminClient() {
         type: "SUBSCRIPTION",
         subscriptionId: "",
         trackingCode: "",
+        reason: "",
         gateway: "MANUAL",
         markPaid: true,
       });
@@ -291,8 +312,6 @@ export default function PaymentsAdminClient() {
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
               >
                 <option value="MANUAL">دستی / آفلاین</option>
-                <option value="ZARINPAL">زرین‌پال</option>
-                <option value="PAYIR">پی‌یار</option>
               </select>
             </div>
           </div>
