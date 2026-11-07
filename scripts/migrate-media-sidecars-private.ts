@@ -128,7 +128,7 @@ async function main() {
 
       if (!APPLY) {
         process.stdout.write(`WOULD MOVE ${relativeSidecarPath} -> ${path.relative(ROOT, target)}\n`);
-        migrated++;
+        planned++;
         continue;
       }
 
