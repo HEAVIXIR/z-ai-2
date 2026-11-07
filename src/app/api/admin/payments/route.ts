@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
 
