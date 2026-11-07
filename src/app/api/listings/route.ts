@@ -9,6 +9,7 @@ import {
   buildSearchWhere,
   searchListings,
 } from "@/lib/search";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
@@ -166,7 +167,7 @@ export async function GET(req: Request) {
     // (so the `attributeValues: { some: ... }` AND clauses can be
     // composed) but route text/brand/category through the normalized
     // search helpers.
-    const where: any = { status: "PUBLISHED" };
+    const where: any = getPublicListingWhere();
 
     if (q) {
       const textClause = buildSearchWhere(
