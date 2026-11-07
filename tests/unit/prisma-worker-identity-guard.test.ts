@@ -185,7 +185,8 @@ describe("Prisma Worker database identity guard", () => {
     expect(client.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
-  it("blocks direct raw queries before forwarding them", async () => {
+  it("blocks direct raw query execution before forwarding it to the database", async () => {
+    const rawExecute = vi.fn(() => [{ result: 1 }]);
     const client = {
       $queryRaw: vi.fn((strings: TemplateStringsArray) => {
         if (strings[0].includes("pg_control_system()")) {
@@ -193,7 +194,7 @@ describe("Prisma Worker database identity guard", () => {
             { system_identifier: "production-system-id" },
           ]);
         }
-        return fakePrismaPromise(() => [{ result: 1 }]);
+        return fakePrismaPromise(rawExecute);
       }),
     };
 
@@ -203,6 +204,10 @@ describe("Prisma Worker database identity guard", () => {
     await expect(guarded.$queryRaw(query)).rejects.toMatchObject({
       name: "PreviewIdentityMismatchError",
     });
-    expect(client.$queryRaw).toHaveBeenCalledTimes(1);
+    // Prisma constructs the lazy PrismaPromise before it is consumed; the
+    // identity probe is a second $queryRaw construction. Neither query body
+    // is executed after the mismatched identity check.
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(rawExecute).not.toHaveBeenCalled();
   });
 });
