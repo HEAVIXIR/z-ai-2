@@ -410,19 +410,25 @@ export default function PaymentsAdminClient() {
                     </td>
                     <td className="px-4 py-3">
                       {p.status === "PENDING" ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => verify(p.id, "PAID")}
-                            disabled={busy === p.id}
-                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            {busy === p.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3" />
-                            )}
-                            تأیید پرداخت
-                          </button>
+                        <div className="flex flex-col items-start gap-1">
+                          {p.type === "SUBSCRIPTION" ? (
+                            <span className="text-[10px] font-semibold text-amber-700">
+                              تأیید تا تکمیل صورتحساب غیرفعال است
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => verify(p.id, "PAID")}
+                              disabled={busy === p.id}
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              {busy === p.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3" />
+                              )}
+                              تأیید پرداخت
+                            </button>
+                          )}
                           <button
                             onClick={() => verify(p.id, "FAILED")}
                             disabled={busy === p.id}
