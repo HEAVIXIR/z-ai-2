@@ -40,6 +40,9 @@ describe("private media sidecar storage contract", () => {
     expect(script).toContain('process.env.HEAVIX_CONFIRM_MEDIA_SIDECAR_MIGRATION !== "1"');
     expect(script).toContain("constants.COPYFILE_EXCL");
     expect(script).toContain("copied.equals(raw)");
+    expect(script).toContain("ensurePrivateDirectory(path.dirname(target), APPLY)");
+    expect(script).toContain("fs.lstat(current)");
+    expect(script).not.toContain('fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })');
     expect(script).toMatch(/if \(!APPLY\)[\s\S]*?planned\+\+;/);
     expect(script).toContain('mode: APPLY ? "apply" : "dry-run"');
   });
