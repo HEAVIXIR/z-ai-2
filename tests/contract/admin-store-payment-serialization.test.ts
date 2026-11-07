@@ -3,6 +3,8 @@ import fs from "node:fs";
 
 const collection = fs.readFileSync("src/app/api/admin/store/payments/route.ts", "utf8");
 const detail = fs.readFileSync("src/app/api/admin/store/payments/[id]/route.ts", "utf8");
+const partsCollection = fs.readFileSync("src/app/api/admin/store/parts/route.ts", "utf8");
+const partsDetail = fs.readFileSync("src/app/api/admin/store/parts/[id]/route.ts", "utf8");
 
 describe("admin store payment response privacy", () => {
   it.each([
@@ -53,3 +55,20 @@ describe("admin store payment refund boundary", () => {
     expect(detail).not.toContain("before: existing");
     expect(detail).not.toContain("after: payment");
   });
+
+describe("admin store parts response privacy", () => {
+  it.each([
+    ["collection", partsCollection],
+    ["detail", partsDetail],
+  ])("%s serializer uses an explicit allowlist", (_name, source) => {
+    const start = source.indexOf("function serialize(p: any)");
+    const end = source.indexOf("\n}\n", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const serializer = source.slice(start, end);
+    expect(serializer).not.toMatch(/\.\.\.p\s*,?/);
+    for (const field of ["id", "name", "sku", "priceUsd", "stock", "images", "compatibleCars", "category", "brand"]) {
+      expect(serializer).toContain(field + ":");
+    }
+  });
+});
