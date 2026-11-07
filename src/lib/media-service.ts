@@ -171,54 +171,39 @@ async function readSidecar(
   }
 }
 
-/**
- * Move legacy sidecars out of public/uploads before reading them. Copy-then-
- * unlink is idempotent across interrupted requests; private files win if a
- * previous migration attempt already completed the copy.
- */
-async function migrateLegacyPublicSidecars(): Promise<void> {
-  const legacyFiles = await walkFiles(UPLOAD_ROOT, UPLOAD_ROOT);
-  for (const rel of legacyFiles) {
-    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
-    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
-    const safeRelativePath = normalizeUploadRelativePath(assetRelativePath);
-    if (!safeRelativePath) continue;
-
-    const legacyPath = path.join(UPLOAD_ROOT, ...rel.split("/"));
-    const privatePath = sidecarPathFor(safeRelativePath);
-    await fs.mkdir(path.dirname(privatePath), { recursive: true, mode: 0o700 });
-
-    try {
-      await fs.copyFile(legacyPath, privatePath, fsConstants.COPYFILE_EXCL);
-      await fs.chmod(privatePath, 0o600).catch(() => {});
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EEXIST" && code !== "ENOENT") throw error;
-    }
-
-    // If a private copy already exists, it is authoritative. Remove the
-    // public duplicate so the sidecar cannot continue to be fetched statically.
-    await fs.unlink(legacyPath).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    });
-  }
-}
-
-/** Walk private metadata storage and return all valid assets (newest first). */
+/** Read private sidecars first, then legacy public sidecars for compatibility. */
 async function readAllAssets(): Promise<MediaAsset[]> {
   await fs.mkdir(UPLOAD_ROOT, { recursive: true }).catch(() => {});
   await fs.mkdir(MEDIA_METADATA_ROOT, { recursive: true, mode: 0o700 });
-  await migrateLegacyPublicSidecars();
 
-  const rels = await walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT);
-  const sidecars: AssetSidecar[] = [];
-  for (const rel of rels) {
+  const [privateRels, legacyRels] = await Promise.all([
+    walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT),
+    walkFiles(UPLOAD_ROOT, UPLOAD_ROOT),
+  ]);
+  const sidecarsByPath = new Map<string, AssetSidecar>();
+
+  for (const rel of privateRels) {
     if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
     const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
     const full = path.join(MEDIA_METADATA_ROOT, ...rel.split("/"));
     const sc = await readSidecar(full, assetRelativePath);
-    if (sc) sidecars.push(sc);
+    if (sc) sidecarsByPath.set(assetRelativePath, sc);
   }
+
+  // Legacy sidecars remain readable during rollout, but middleware blocks
+  // their public URLs. A successful attach/delete moves or removes them.
+  // A dedicated migration script handles bulk relocation after old instances
+  // have been drained; listing must never mutate existing media state.
+  for (const rel of legacyRels) {
+    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
+    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
+    if (sidecarsByPath.has(assetRelativePath)) continue;
+    const full = path.join(UPLOAD_ROOT, ...rel.split("/"));
+    const sc = await readSidecar(full, assetRelativePath);
+    if (sc) sidecarsByPath.set(assetRelativePath, sc);
+  }
+
+  const sidecars = [...sidecarsByPath.values()];
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
   return sidecars.map((s) => ({ ...s }));
 }
@@ -436,12 +421,15 @@ export async function deleteAsset(
       return { ok: false, error: `حذف فایل ناموفق بود: ${(err as Error).message}` };
     }
   }
-  // Remove sidecar
-  try {
-    await fs.unlink(sidecarPath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      return { ok: false, error: `حذف متادیتا ناموفق بود: ${(err as Error).message}` };
+  // Remove both private and legacy-public sidecars.
+  const legacySidecarPath = `${binaryPath}${SIDECAR_SUFFIX}`;
+  for (const metadataPath of [sidecarPath, legacySidecarPath]) {
+    try {
+      await fs.unlink(metadataPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        return { ok: false, error: `حذف متادیتا ناموفق بود: ${(err as Error).message}` };
+      }
     }
   }
 
@@ -512,6 +500,10 @@ export async function attachAsset(
       error: `به‌روزرسانی متادیتا ناموفق بود: ${(err as Error).message}`,
     };
   }
+
+  // The private copy is authoritative now. Remove the old public sidecar;
+  // if unlink fails, the HTTP middleware still denies direct access.
+  await fs.unlink(`${binaryPath}${SIDECAR_SUFFIX}`).catch(() => {});
 
   await logAudit({
     actorId: userId ?? null,
