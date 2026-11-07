@@ -12,6 +12,18 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 const ALLOWED_STATUSES = ["PENDING", "APPROVED", "REJECTED", "REFUNDED"];
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "در انتظار بررسی",
+  APPROVED: "تأییدشده",
+  REJECTED: "ردشده",
+  REFUNDED: "بازگشت‌خورده",
+};
+const METHOD_LABELS: Record<string, string> = {
+  CARD: "کارت به کارت",
+  WALLET: "کیف پول",
+  CASH: "نقدی",
+  GATEWAY: "درگاه آنلاین",
+};
 
 function maskPayerCard(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -31,6 +43,8 @@ function serialize(p: any) {
     amountUsd: p.amountUsd?.toString?.() ?? String(p.amountUsd ?? 0),
     method: p.method,
     status: p.status,
+    statusLabel: STATUS_LABELS[p.status] ?? p.status,
+    methodLabel: METHOD_LABELS[p.method] ?? p.method,
     receiptImageUrl: p.receiptImageUrl,
     referenceCode: p.referenceCode,
     payerName: p.payerName,
