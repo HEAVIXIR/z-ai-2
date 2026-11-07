@@ -24,15 +24,42 @@ const METHOD_LABELS: Record<string, string> = {
   GATEWAY: "درگاه آنلاین",
 };
 
+function maskPayerCard(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return null;
+  return `•••• ${digits.slice(-4)}`;
+}
+
 function serialize(p: any) {
+  // Never spread a payment row: raw card data and internal reviewer/provider
+  // metadata must not leak through admin collection or detail responses.
   return {
-    ...p,
+    id: p.id,
+    orderId: p.orderId,
+    customerId: p.customerId,
     amountIrr: p.amountIrr?.toString?.() ?? String(p.amountIrr ?? 0),
     amountUsd: p.amountUsd?.toString?.() ?? String(p.amountUsd ?? 0),
-    statusLabel: STATUS_LABELS[p.status] ?? p.status,
-    methodLabel: METHOD_LABELS[p.method] ?? p.method,
-    createdAt: p.createdAt?.toISOString?.() ?? null,
+    method: p.method,
+    status: p.status,
+    receiptImageUrl: p.receiptImageUrl,
+    referenceCode: p.referenceCode,
+    payerName: p.payerName,
+    payerCard: maskPayerCard(p.payerCard),
+    note: p.note,
+    gateway: p.gateway,
+    authority: p.authority,
+    refId: p.refId,
+    gatewayUrl: p.gatewayUrl,
     reviewedAt: p.reviewedAt?.toISOString?.() ?? null,
+    createdAt: p.createdAt?.toISOString?.() ?? null,
+    updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.order
+      ? { order: { id: p.order.id, orderNumber: p.order.orderNumber, totalIrr: p.order.totalIrr?.toString?.() ?? String(p.order.totalIrr ?? 0), status: p.order.status } }
+      : {}),
+    ...(p.customer
+      ? { customer: { id: p.customer.id, name: p.customer.name, family: p.customer.family, phone: p.customer.phone } }
+      : {}),
   };
 }
 
