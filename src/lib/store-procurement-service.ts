@@ -391,9 +391,11 @@ export async function receivePurchaseOrderItem(
   poItemId: string,
   receivedQty: number,
   warehouseId: string,
-  userId?: string | null,
+  userId: string | null | undefined,
+  procurementId: string,
+  purchaseOrderId: string,
 ): Promise<any> {
-  if (!poItemId || receivedQty === undefined || !warehouseId) {
+  if (!poItemId || receivedQty === undefined || !warehouseId || !procurementId || !purchaseOrderId) {
     throw new ProcurementServiceError(
       400,
       'poItemId، تعداد دریافتی و انبار مقصد الزامی است',
@@ -416,8 +418,8 @@ export async function receivePurchaseOrderItem(
           part: { select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true } },
         },
       });
-      if (!poItem) {
-        throw new ProcurementServiceError(404, 'آیتم سفارش خرید یافت نشد');
+      if (!poItem || poItem.purchaseOrderId !== purchaseOrderId || poItem.purchaseOrder.procurementId !== procurementId) {
+        throw new ProcurementServiceError(404, 'آیتم سفارش خرید در این مسیر یافت نشد');
       }
       if (poItem.purchaseOrder.status === 'CANCELLED' || poItem.purchaseOrder.status === 'RECEIVED') {
         throw new ProcurementServiceError(409, 'سفارش خرید لغوشده یا تکمیل‌شده قابل دریافت نیست');
