@@ -38,7 +38,7 @@ export async function decrementOrderStock(
   const balances = await tx.inventoryBalance.findMany({
     where: { partId },
     include: { warehouse: { select: { active: true } } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [{ warehouseId: "asc" }, { id: "asc" }],
   });
 
   const allocations: Array<{ warehouseId: string | null; quantity: number }> = [];
@@ -77,6 +77,10 @@ export async function decrementOrderStock(
     // Backward-compatible path for parts that have not been assigned to a
     // warehouse yet. The Part.stock compare-and-swap still prevents oversell.
     allocations.push({ warehouseId: null, quantity });
+  }
+
+  if (part.stock < quantity) {
+    throw new OrderStockConflictError();
   }
 
   // Global inventory lock order: claim the Part snapshot first, then
