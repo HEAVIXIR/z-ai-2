@@ -3,9 +3,35 @@ import { NextResponse, type NextRequest } from "next/server";
 const USER_COOKIE_NAME = "heavix-user";
 const ADMIN_PAGE_PREFIX = "/admin";
 const ADMIN_API_PREFIX = "/api/admin";
+const PUBLIC_UPLOADS_PREFIX = "/uploads/";
+
+function isPrivateMediaSidecar(pathname: string): boolean {
+  let normalized = pathname.toLowerCase();
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // Malformed encoded paths under uploads fail closed below.
+    return normalized.startsWith(PUBLIC_UPLOADS_PREFIX);
+  }
+  return normalized.startsWith(PUBLIC_UPLOADS_PREFIX) &&
+    normalized.endsWith(".meta.json");
+}
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Sidecar metadata is an internal implementation detail, not a public
+  // asset. Middleware must intercept it before Next serves files from /public.
+  if (isPrivateMediaSidecar(pathname)) {
+    return new NextResponse(null, {
+      status: 404,
+      headers: {
+        "cache-control": "no-store, max-age=0",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
+
   const isAdminPage = pathname === ADMIN_PAGE_PREFIX || pathname.startsWith(`${ADMIN_PAGE_PREFIX}/`);
   const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`);
 
@@ -30,4 +56,6 @@ export function middleware(req: NextRequest) {
   return NextResponse.redirect(loginUrl, 307);
 }
 
-export const config = { matcher: ["/admin/:path*", "/api/admin/:path*"] };
+export const config = {
+  matcher: ["/admin/:path*", "/api/admin/:path*", "/uploads/:path*"],
+};
