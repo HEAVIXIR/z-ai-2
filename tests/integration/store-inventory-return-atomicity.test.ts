@@ -491,7 +491,8 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movement[0].quantity).toBe(1);
     expect(movement[0].balanceAfter).toBe(11);
     expect(movement[0].warehouseId).toBe(warehouseId);
-    expect(outbox).toHaveLength(6);
+    // Assert the complete event contract directly; Vitest reports the actual
+    // entity list if any transactional audit event is missing.
     const outboxEntities = outbox.map((event) => JSON.parse(event.payloadJson).entityType).sort();
     expect(outboxEntities).toEqual([
       'Customer',
