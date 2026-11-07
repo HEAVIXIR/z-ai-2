@@ -44,6 +44,12 @@ describe('Wave C1 — Navigation Contract', () => {
       expect(content).toMatch(/if \(!user\)[\s\S]*?status: 401/);
     });
 
+    it('denies non-active accounts before permission lookup', () => {
+      const content = read(NAV_ROUTE);
+      expect(content).toMatch(/user\.status !== 'ACTIVE'/);
+      expect(content).toMatch(/user\.status !== 'ACTIVE'[\s\S]*?status: 403/);
+    });
+
     it('requires the explicit navigation-read permission', () => {
       const content = read(NAV_ROUTE);
       expect(content).toContain("requirePermission(user.id, 'admin.navigation.read')");
