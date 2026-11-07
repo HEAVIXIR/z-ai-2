@@ -17,12 +17,13 @@ export const dynamic = "force-dynamic";
      GET responses.
    - If the caller is a HEAVIX admin (heavix-admin cookie), GET
      returns ALL orders regardless of userId/phone.
-   - Phone-based lookup is kept for backwards compatibility (the
-     pre-login flow) so existing customers with no HEAVIX account
-     can still see their orders by phone.
+   - Every non-admin read requires an authenticated HEAVIX session.
+   - Phone lookup is allowed only when the requested phone matches the
+     authenticated user's registered mobile number. Guest orders can be
+     found only after that same account has authenticated.
 
-   GET  ?phone=X        → list this customer's orders by phone
-        ?userId=X       → list this user's orders by HEAVIX userId
+   GET  ?phone=X        → list orders for the authenticated user's mobile
+        ?userId=X       → list this user's orders by HEAVIX userId (owner only)
         ?mine=true      → list the current session user's orders
         (admin session) → list all orders
    POST body:           → create a new order from cart
@@ -100,8 +101,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: orders.map(serializeOrder), admin: true });
     }
 
-    // ?mine=true → use the session user's id.
-    if (mine && sessionUser?.id) {
+    // All customer-facing order reads require a real authenticated session.
+    // Admin access was handled above; never let an anonymous caller select
+    // another user's orders by supplying a userId or phone query parameter.
+    if (!sessionUser) {
+      return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
+
+    // ?mine=true → use the authenticated session user's id.
+    if (mine) {
       const orders = await storeDb.order.findMany({
         where: { userId: sessionUser.id },
         orderBy: { createdAt: "desc" },
@@ -118,8 +126,8 @@ export async function GET(req: Request) {
 
     // Explicit userId filter (e.g. from the HEAVIX dashboard).
     if (userIdParam) {
-      // Only allow the user to query their own orders (or admin, handled above).
-      if (sessionUser && sessionUser.id !== userIdParam) {
+      // A caller-supplied userId is never an authentication credential.
+      if (sessionUser.id !== userIdParam) {
         return NextResponse.json({ error: "غیرمجاز" }, { status: 403 });
       }
       const orders = await storeDb.order.findMany({
@@ -136,9 +144,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: orders.map(serializeOrder) });
     }
 
-    // Backwards-compat phone lookup.
+    // Phone is a lookup key, not a secret. It is accepted only when it
+    // exactly matches the authenticated account's registered mobile.
     if (!phone || phone.length < 8) {
       return NextResponse.json({ orders: [] });
+    }
+    if (!sessionUser.mobile || phone !== sessionUser.mobile) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
     const customer = await storeDb.customer.findUnique({ where: { phone } });
@@ -146,14 +158,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: [] });
     }
 
-    // Scope by userId too when available so a logged-in user doesn't
-    // see orders placed under the same phone by a different account.
-    const where = sessionUser?.id
-      ? { customerId: customer.id, userId: sessionUser.id }
-      : { customerId: customer.id };
-
+    // The authenticated mobile is the ownership proof for guest
+    // orders created before account linking. This mirrors /orders/[id],
+    // which permits either userId ownership or an exact mobile match.
     const orders = await storeDb.order.findMany({
-      where,
+      where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {
