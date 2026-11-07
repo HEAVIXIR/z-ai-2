@@ -89,97 +89,24 @@ function serialize(m: any) {
  *
  * @throws InventoryServiceError on validation/lookup failure (400/404).
  */
+/**
+ * @deprecated Part-only stock movements bypass warehouse balances and are
+ * intentionally disabled. Use adjustStock(partId, warehouseId, ...) for
+ * ordinary movements, resolveReturn(...) for restocking returns, and the
+ * dedicated paired transfer workflow for warehouse transfers.
+ */
 export async function createMovement(
-  partId: string,
-  type: string,
-  quantity: number,
-  reason?: string | null,
-  reference?: string | null,
-  userId?: string | null,
-): Promise<any> {
-  if (!partId || !type || quantity === undefined) {
-    throw new InventoryServiceError(400, 'partId، نوع و تعداد الزامی هستند');
-  }
-  if (!ALLOWED_TYPES.includes(type as (typeof ALLOWED_TYPES)[number])) {
-    throw new InventoryServiceError(400, 'نوع حرکت نامعتبر');
-  }
-  const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty === 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح غیر صفر باشد',
-    );
-  }
-
-  const part = await storeDb.part.findUnique({ where: { id: partId } });
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
-
-  const balanceAfter = part.stock + qty;
-  if (balanceAfter < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`,
-    );
-  }
-
-  // Step 1: create the ledger entry (records intent + balance after).
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
-      },
-    },
-  });
-
-  // Step 2: side-effect — update Part.stock to the new balance.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // Audit 1: the ledger entry is the primary audit hook for this route.
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-    },
-  });
-
-  // Audit 2: the Part.stock update is a side-effect mutation, so it gets
-  // its own audit entry (mirrors payments/[id] side-effect pattern).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
-  });
-
-  return serialize(movement);
+  _partId: string,
+  _type: string,
+  _quantity: number,
+  _reason?: string | null,
+  _reference?: string | null,
+  _userId?: string | null,
+): Promise<never> {
+  throw new InventoryServiceError(
+    409,
+    'ثبت حرکت بدون انبار مقصد غیرفعال است؛ از گردش کار رسمی انبار استفاده کنید',
+  );
 }
 
 // ── listMovements ──────────────────────────────────────────
