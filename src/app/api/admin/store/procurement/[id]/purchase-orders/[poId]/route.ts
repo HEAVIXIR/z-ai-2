@@ -57,7 +57,10 @@ export async function GET(
   try {
     const po = await getPurchaseOrder(poId);
     if (po.procurementId !== procurementId) {
-      return NextResponse.json({ success: false, error: "سفارش خرید یافت نشد" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "سفارش خرید یافت نشد" },
+        { status: 404 },
+      );
     }
     return NextResponse.json({ success: true, data: po });
   } catch (e: any) {
