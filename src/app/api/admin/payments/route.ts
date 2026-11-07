@@ -101,8 +101,8 @@ export async function GET(req: Request) {
      {
        userId:        string  (required)
        amount:        string|number  (required, IRR)
-       type:          "SUBSCRIPTION" | "FEATURED_LISTING" | ...
-       subscriptionId?: string
+       type:          "FEATURED_LISTING" | "PROMOTION" | "LEAD_FEE" | "INSPECTION_FEE"
+       Subscription manual payments are disabled until server-derived billing terms exist.
        gateway?:      "MANUAL" (default)
        trackingCode?: string  (e.g. bank receipt number)
        markPaid?:     boolean (default true — admin is creating
@@ -176,21 +176,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
     }
     const markPaid = body.markPaid !== false;
-    const subscriptionId = body.subscriptionId
-      ? String(body.subscriptionId).trim()
-      : null;
-    if (type === "SUBSCRIPTION" && !subscriptionId) {
-      return NextResponse.json(
-        { error: "subscriptionId is required for subscription payments" },
-        { status: 400 },
-      );
-    }
-    if (type !== "SUBSCRIPTION" && subscriptionId) {
-      return NextResponse.json(
-        { error: "subscriptionId is only valid for subscription payments" },
-        { status: 400 },
-      );
-    }
 
     const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
     if (gateway !== "MANUAL") {
