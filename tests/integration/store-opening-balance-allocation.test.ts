@@ -82,6 +82,22 @@ describe('Explicit opening balance allocation (real PostgreSQL)', () => {
     expect(outbox).toBeGreaterThanOrEqual(5);
   }, 20000);
 
+  it('supports a single-warehouse opening allocation without changing the Part snapshot', async () => {
+    const result = await allocateOpeningBalance({
+      partId, userId: actorId, reason: 'Single warehouse opening count',
+      allocations: [{ warehouseId: warehouseA, quantity: 10 }],
+    });
+    const [part, balance, movement] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({ where: { partId_warehouseId: { partId, warehouseId: warehouseA } } }),
+      storeDb.stockMovement.findFirst({ where: { partId, warehouseId: warehouseA } }),
+    ]);
+    expect(result.allocatedTotal).toBe(10);
+    expect(part?.stock).toBe(10);
+    expect(balance?.quantity).toBe(10);
+    expect(movement?.quantity).toBe(10);
+  }, 15000);
+
   it('rejects a total mismatch without writing balances, movements or outbox events', async () => {
     await expect(allocateOpeningBalance({
       partId, userId: actorId, reason: 'Mismatch test',
@@ -106,6 +122,14 @@ describe('Explicit opening balance allocation (real PostgreSQL)', () => {
     await expect(allocateOpeningBalance({
       partId, userId: actorId, reason: 'Zero quantity',
       allocations: [{ warehouseId: warehouseA, quantity: 0 }],
+    })).rejects.toMatchObject({ status: 400 });
+    await expect(allocateOpeningBalance({
+      partId, userId: actorId, reason: 'Negative quantity',
+      allocations: [{ warehouseId: warehouseA, quantity: -1 }],
+    })).rejects.toMatchObject({ status: 400 });
+    await expect(allocateOpeningBalance({
+      partId, userId: actorId, reason: 'Unsafe quantity',
+      allocations: [{ warehouseId: warehouseA, quantity: Number.MAX_SAFE_INTEGER + 1 }],
     })).rejects.toMatchObject({ status: 400 });
     expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(0);
   }, 15000);
