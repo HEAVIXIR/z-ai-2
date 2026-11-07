@@ -175,7 +175,7 @@ export async function generateRecommendations(
 
       const similar = await db.listing.findMany({
         where: {
-          status: "PUBLISHED",
+          ...getPublicListingWhere()
           id: { notIn: excludeIds },
           OR: [
             ...(wl.categoryId ? [{ categoryId: wl.categoryId }] : []),
@@ -224,7 +224,7 @@ export async function generateRecommendations(
     const newCutoff = new Date(Date.now() - NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const freshInWatchedCats = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere()
         id: { notIn: excludeIds },
         categoryId: { in: Array.from(categoryAffinity.keys()) },
         createdAt: { gte: newCutoff },
@@ -259,7 +259,7 @@ export async function generateRecommendations(
   );
   const trending = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere()
       id: { notIn: excludeIds },
       // Use createdAt as the trending window (older listings with
       // high viewCount aren't really "trending" anymore).
