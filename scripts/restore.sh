@@ -22,7 +22,7 @@ load_env_preserving_process_overrides() {
     DB_HOST DB_PORT DB_USER DB_NAME DB_PASSWORD
     STORE_DB_HOST STORE_DB_PORT STORE_DB_USER STORE_DB_NAME STORE_DB_PASSWORD
     MAIN_DB_CONTAINER STORE_DB_CONTAINER
-    HEAVIX_ENV NODE_ENV HEAVIX_RESTORE_TARGET
+    HEAVIX_ENV NODE_ENV HEAVIX_RESTORE_TARGET HEAVIX_RESTORE_MODE
     HEAVIX_ALLOW_PRODUCTION_RESTORE HEAVIX_ALLOW_REMOTE_RESTORE
     HEAVIX_RESTORE_TRAFFIC_DRAINED
   )
@@ -84,10 +84,27 @@ for name in "$DB_NAME" "$STORE_DB_NAME"; do
   fi
 done
 
+# Restore transport is explicit. Never infer Docker mode from whichever
+# containers happen to be running; that could silently override DB_HOST and
+# redirect a requested remote restore into a local container (or vice versa).
+RESTORE_MODE="${HEAVIX_RESTORE_MODE:-direct}"
 DOCKER_MODE=0
-if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "heavix-db"; then
-  DOCKER_MODE=1
-fi
+case "$RESTORE_MODE" in
+  direct)
+    DOCKER_MODE=0
+    ;;
+  docker)
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "ERROR: HEAVIX_RESTORE_MODE=docker requires the Docker CLI."
+      exit 1
+    fi
+    DOCKER_MODE=1
+    ;;
+  *)
+    echo "ERROR: HEAVIX_RESTORE_MODE must be either direct or docker."
+    exit 1
+    ;;
+esac
 
 # Docker contexts may target a remote daemon even when the database container
 # names look local. Refuse remote Docker endpoints; restore is not allowed to
