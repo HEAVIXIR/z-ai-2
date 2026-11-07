@@ -57,6 +57,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       customerId = undefined;
     }
     if (partId) {
+      await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: partId } } });
       await storeDb.stockMovement.deleteMany({ where: { partId } });
       await storeDb.inventoryBalance.deleteMany({ where: { partId } });
       await storeDb.part.deleteMany({ where: { id: partId } });
@@ -71,6 +72,51 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       categoryId = undefined;
     }
   });
+
+  it('refuses to create a first warehouse balance implicitly from a legacy Part snapshot', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    await expect(
+      adjustStock(partId, warehouseId, 5, 'RECEIVE', 'must initialize explicitly'),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const [part, balanceCount, movementCount, outboxCount] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.count({ where: { partId } }),
+      storeDb.stockMovement.count({ where: { partId } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: partId } } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(balanceCount).toBe(0);
+    expect(movementCount).toBe(0);
+    expect(outboxCount).toBe(0);
+  }, 15000);
+
+  it('does not allow an adjustment to consume reserved warehouse stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 5, lowStockThreshold: 5 },
+    });
+
+    await expect(
+      adjustStock(partId, warehouseId, -6, 'SALE', 'reserved quantity guard'),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const [part, balance, movementCount, outboxCount] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      }),
+      storeDb.stockMovement.count({ where: { partId } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: partId } } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(balance?.quantity).toBe(10);
+    expect(balance?.reserved).toBe(5);
+    expect(movementCount).toBe(0);
+    expect(outboxCount).toBe(0);
+  }, 15000);
 
   it('serializes competing stock decrements and keeps balance, snapshot, and ledger consistent', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
