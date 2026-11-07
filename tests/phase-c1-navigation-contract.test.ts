@@ -1,6 +1,6 @@
 /**
  * HEAVIX — WAVE C1: Navigation Contract Tests
- * Verifies the admin navigation route structure + permission filtering.
+ * Verifies the admin navigation route structure and fail-closed RBAC.
  * No DB dependency — file-content assertions only.
  */
 
@@ -32,21 +32,39 @@ describe('Wave C1 — Navigation Contract', () => {
 
     it('does NOT have @ts-nocheck', () => {
       const content = read(NAV_ROUTE);
-      const firstLine = content.split('\n')[0];
-      expect(firstLine).not.toMatch(/^\/\/\s*@ts-nocheck/);
+      const firstLine = content.split('\\n')[0];
+      expect(firstLine).not.toMatch(/^\\/\\/\\s*@ts-nocheck/);
     });
   });
 
-  describe('Permission filtering', () => {
-    it('uses getUserPermissions for RBAC filtering', () => {
+  describe('Fail-closed authorization', () => {
+    it('requires a canonical authenticated user', () => {
       const content = read(NAV_ROUTE);
-      expect(content).toMatch(/getUserPermissions|permissionKey|can\(/);
+      expect(content).toMatch(/const user = await getCurrentUser\\(\\)/);
+      expect(content).toMatch(/if \\(!user\\)[\\s\\S]*?status: 401/);
     });
 
-    it('references admin cookie or getCurrentUser', () => {
+    it('requires the explicit navigation-read permission', () => {
       const content = read(NAV_ROUTE);
-      // Navigation uses either the admin cookie path or getCurrentUser
-      expect(content).toMatch(/isAuthenticated|getCurrentUser|heavix-admin/);
+      expect(content).toContain("requirePermission(user.id, 'admin.navigation.read')");
+    });
+
+    it('returns 403 when the required permission is denied', () => {
+      const content = read(NAV_ROUTE);
+      expect(content).toMatch(/catch \\{[\\s\\S]*?status: 403/);
+      expect(content).toMatch(/userPermissions\\.has\\('admin\\.navigation\\.read'\\)/);
+    });
+
+    it('does not grant legacy access to every authenticated user', () => {
+      const content = read(NAV_ROUTE);
+      expect(content).not.toMatch(/adminAuthed|mode: ['"]legacy['"]|legacy admin-cookie/i);
+      expect(content).toContain("mode: 'rbac'");
+    });
+
+    it('filters each navigation item by its permission key', () => {
+      const content = read(NAV_ROUTE);
+      expect(content).toMatch(/item\\.permissionKey === null/);
+      expect(content).toMatch(/userPermissions\\.has\\(item\\.permissionKey\\)/);
     });
   });
 
