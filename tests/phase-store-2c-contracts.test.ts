@@ -566,7 +566,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
       // invariant is unchanged: every mutation has a corresponding audit
-      // event. The combined count is 69 after adding procurement receiving (+1) and return-restock events (+3), then disabling the legacy Part-only writer (-2).
+      // event. The combined count is 72 after the integrated inventory stack and explicit opening-balance workflow were added.
       //
       // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
@@ -594,7 +594,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(55);
+      expect(count).toBe(57);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
