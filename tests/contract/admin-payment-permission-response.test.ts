@@ -15,4 +15,20 @@ describe("admin payment route permission responses", () => {
     expect(manageChecks).toHaveLength(2);
     expect(forbiddenResponses).toHaveLength(3);
   });
+  it("serializes payment records through an explicit allowlist", () => {
+    expect(route).toContain("function serialize(p: any)");
+    expect(route).toContain("id: p.id");
+    expect(route).toContain("amount: p.amount == null ? null : p.amount.toString()");
+    expect(route).not.toMatch(/\.\.\.p\s*,?/);
+    expect(route).not.toContain("providerReference: p.providerReference");
+    expect(route).not.toContain("idempotencyKey: p.idempotencyKey");
+  });
+
+  it("does not expose provider references or idempotency keys in the serializer", () => {
+    const serializer = route.slice(route.indexOf("function serialize"), route.indexOf("// ── GET"));
+    for (const field of ["providerReference", "idempotencyKey", "userId", "subscriptionId"]) {
+      expect(serializer).not.toContain(`${field}:`);
+    }
+  });
+
 });
