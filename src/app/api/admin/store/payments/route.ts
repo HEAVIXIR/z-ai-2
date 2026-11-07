@@ -42,6 +42,8 @@ function serialize(p: any) {
     amountUsd: p.amountUsd?.toString?.() ?? String(p.amountUsd ?? 0),
     method: p.method,
     status: p.status,
+    statusLabel: STATUS_LABELS[p.status] ?? p.status,
+    methodLabel: METHOD_LABELS[p.method] ?? p.method,
     receiptImageUrl: p.receiptImageUrl,
     referenceCode: p.referenceCode,
     payerName: p.payerName,
