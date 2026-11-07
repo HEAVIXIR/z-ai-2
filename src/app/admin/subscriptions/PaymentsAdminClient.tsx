@@ -21,7 +21,7 @@ import { toFa, formatCompactPrice, faDate } from "@/lib/format";
    • "رد پرداخت" button per PENDING payment → POST verify
      { status: "FAILED" }
    • "ایجاد پرداخت دستی" form → POST /api/admin/payments
-     { userId, amount, type, subscriptionId?, trackingCode?,
+     { userId, amount, type, trackingCode?,
        markPaid: true }
    ============================================================ */
 
