@@ -30,11 +30,18 @@ type ReturnRecord = {
     status: string;
     paymentStatus: string;
     customer: { id: string; name: string; family: string; phone: string } | null;
+    items: OrderItemOption[];
   } | null;
   items: ReturnItem[];
 };
 
 type Warehouse = { id: string; name: string; code: string };
+type OrderItemOption = {
+  id: string;
+  partNameSnapshot: string;
+  quantity: number;
+  lineTotalIrr: number;
+};
 type WalletTransaction = { id: string; amount: number; type: string; description: string | null; createdAt: string };
 type ReturnMovement = {
   id: string;
@@ -87,6 +94,8 @@ export default function ReturnLifecycleClient({
     })),
   );
   const [resolution, setResolution] = useState("REFUND");
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState(initialReturn.order?.items[0]?.id ?? "");
+  const [addQuantity, setAddQuantity] = useState(1);
   const [warehouseId, setWarehouseId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -120,6 +129,44 @@ export default function ReturnLifecycleClient({
       setBusy(false);
     }
   }
+
+  async function addReturnItem() {
+    if (!selectedOrderItemId || !Number.isSafeInteger(addQuantity) || addQuantity <= 0) {
+      setError("قلم سفارش و تعداد صحیح مثبت را انتخاب کنید");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/store/returns/${initialReturn.id}/items`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderItemId: selectedOrderItemId,
+          quantity: addQuantity,
+          condition: "UNOPENED",
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || `خطا در افزودن قلم (HTTP ${response.status})`);
+      }
+      setNotice("قلم سفارش به مرجوعی افزوده شد.");
+      setAddQuantity(1);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "خطای پیش‌بینی‌نشده");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const existingOrderItemIds = new Set(initialReturn.items.map((item) => item.orderItem.id));
+  const availableOrderItems = (initialReturn.order?.items ?? []).filter(
+    (item) => !existingOrderItemIds.has(item.id),
+  );
 
   const isTerminal = ["RESOLVED", "REJECTED"].includes(initialReturn.status);
 
@@ -178,6 +225,59 @@ export default function ReturnLifecycleClient({
           )}
         </div>
       </section>
+
+      {canManage && !isTerminal && ["REQUESTED", "APPROVED"].includes(initialReturn.status) && (
+        <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5">
+          <div>
+            <h2 className="font-bold text-zinc-900">افزودن قلم از سفارش</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              هر قلم سفارش فقط یک‌بار به این مرجوعی افزوده می‌شود. سقف تجمیعی مرجوعی در سمت سرور کنترل می‌شود.
+            </p>
+          </div>
+          {availableOrderItems.length === 0 ? (
+            <p className="text-sm text-zinc-500">قلم دیگری برای افزودن از این سفارش باقی نمانده است.</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-[1fr_140px_auto] md:items-end">
+              <label className="text-sm text-zinc-700">
+                قلم سفارش
+                <select
+                  value={selectedOrderItemId}
+                  onChange={(event) => setSelectedOrderItemId(event.target.value)}
+                  disabled={busy}
+                  className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3"
+                >
+                  {availableOrderItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.partNameSnapshot} — {item.quantity} عدد — {money(item.lineTotalIrr)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-zinc-700">
+                تعداد
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, availableOrderItems.find((item) => item.id === selectedOrderItemId)?.quantity ?? 1)}
+                  step={1}
+                  value={addQuantity}
+                  onChange={(event) => setAddQuantity(Number(event.target.value))}
+                  disabled={busy}
+                  className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={addReturnItem}
+                disabled={busy || !selectedOrderItemId || addQuantity <= 0}
+                className="h-11 rounded-xl bg-zinc-900 px-5 text-sm font-bold text-white disabled:opacity-50"
+              >
+                افزودن قلم
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         <div className="border-b border-zinc-100 px-5 py-4">
