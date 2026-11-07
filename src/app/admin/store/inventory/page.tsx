@@ -29,6 +29,7 @@ import { storeDb } from "@/lib/store-db";
 import { toFa, faDate, timeAgo } from "@/lib/format";
 import { Boxes, Search, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import InventoryAdjustmentForm from "./inventory-adjustment-form";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,41 @@ export default async function StoreInventoryPage({
       </div>
     );
   }
+
+  let canManageInventory = true;
+  try {
+    await requirePermission(user.id, "inventory.manage");
+  } catch {
+    canManageInventory = false;
+  }
+
+  const [adjustmentWarehouses, adjustmentParts] = canManageInventory
+    ? await Promise.all([
+        storeDb.warehouse.findMany({
+          where: { active: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, code: true },
+        }),
+        storeDb.part.findMany({
+          where: {
+            active: true,
+            inventoryBalances: { some: { warehouse: { active: true } } },
+          },
+          orderBy: { sku: "asc" },
+          take: 500,
+          select: {
+            id: true,
+            name: true,
+            nameFa: true,
+            sku: true,
+            inventoryBalances: {
+              where: { warehouse: { active: true } },
+              select: { warehouseId: true },
+            },
+          },
+        }),
+      ])
+    : [[], []];
 
   // ── 2. Parse filters (URL searchParams) ──
   const sp = await searchParams;
@@ -209,6 +245,12 @@ export default async function StoreInventoryPage({
   return (
     <div className="space-y-6 p-6">
       <Header />
+      {canManageInventory && (
+        <InventoryAdjustmentForm
+          parts={adjustmentParts}
+          warehouses={adjustmentWarehouses}
+        />
+      )}
 
       {/* T1-DEEP — Low-Stock Alert Banner */}
       {lowStockItems.length > 0 && (
@@ -375,6 +417,10 @@ export default async function StoreInventoryPage({
           ? ` · ${toFa(lowStockItems.length)} قلم در وضعیت موجودی کم`
           : ""}
       </p>
+      </div>
+      <Link href="/admin/store/inventory/reconciliation" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220]">
+        گزارش مغایرت‌گیری
+      </Link>
     </div>
   );
 }
@@ -391,10 +437,6 @@ function Header() {
         دفتر حرکت‌های انبار (Stock Movement Ledger) — ثبت دریافت، فروش،
         مرجوعی، انتقال، تعدیل و ضایعات
       </p>
-      </div>
-      <Link href="/admin/store/inventory/reconciliation" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220]">
-        گزارش مغایرت‌گیری
-      </Link>
     </div>
   );
 }
