@@ -394,10 +394,29 @@ export async function addReturnItem(
       if (orderItem.orderId !== ret.orderId) {
         throw new ReturnsServiceError(400, 'آیتم سفارش به سفارش مرجوعی تعلق ندارد');
       }
-      if (qty > orderItem.quantity) {
+      if (ret.status !== 'REQUESTED' && ret.status !== 'APPROVED') {
+        throw new ReturnsServiceError(409, 'افزودن آیتم فقط پیش از کارشناسی و حل‌وفصل مرجوعی مجاز است');
+      }
+
+      // Count every non-rejected return for this purchased line, not just
+      // the current Return. Serializable isolation makes concurrent inserts
+      // conflict rather than allowing two returns to consume the same units.
+      const priorReturnItems = await tx.returnItem.findMany({
+        where: { orderItemId },
+        select: {
+          quantity: true,
+          return: { select: { status: true } },
+        },
+      });
+      const alreadyReturned = priorReturnItems.reduce(
+        (total: number, line: any) =>
+          total + (line.return.status === 'REJECTED' ? 0 : line.quantity),
+        0,
+      );
+      if (alreadyReturned + qty > orderItem.quantity) {
         throw new ReturnsServiceError(
-          400,
-          `تعداد مرجوعی بیش از تعداد سفارش است. سفارش: ${orderItem.quantity}، درخواست: ${qty}`,
+          409,
+          `سقف مرجوعی این قلم سفارش تکمیل می‌شود. خرید: ${orderItem.quantity}، قبلاً ثبت‌شده: ${alreadyReturned}، درخواست: ${qty}`,
         );
       }
 
