@@ -53,8 +53,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires inventory.manage" }, { status: 403 });
   }
   try {
-    const body = await req.json();
-    if (body?.confirm !== true) {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "بدنه درخواست JSON معتبر نیست" },
+        { status: 400 },
+      );
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        { success: false, error: "ساختار درخواست تخصیص نامعتبر است" },
+        { status: 400 },
+      );
+    }
+    if (body.confirm !== true) {
       return NextResponse.json(
         { success: false, error: "تأیید صریح عملیات الزامی است" },
         { status: 400 },
