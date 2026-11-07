@@ -44,6 +44,7 @@ describe("Store return lifecycle transactional audit contract", () => {
   });
 
   it("sorts restock Part locks and acquires Part before InventoryBalance", () => {
+    const resolve = source.slice(source.indexOf("export async function resolveReturn("));
     expect(resolve).toContain(".sort((a, b) => String(a.orderItem?.partId ?? '').localeCompare(String(b.orderItem?.partId ?? '')))");
     const partClaim = resolve.indexOf("tx.part.update(");
     const balanceClaim = resolve.indexOf("tx.inventoryBalance.update(");
