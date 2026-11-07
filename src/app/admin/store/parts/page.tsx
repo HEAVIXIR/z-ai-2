@@ -15,6 +15,7 @@ import {
   Eye,
 } from "lucide-react";
 import { toFa, formatCompactPrice } from "@/lib/format";
+import Link from "next/link";
 
 /* ============================================================
    /admin/store/parts — HEAVIX parts CRUD
@@ -462,6 +463,7 @@ export default function StorePartsPage() {
                   <>
                     <input value={form.stock} readOnly className={INPUT_CLS + " cursor-not-allowed bg-zinc-100 text-zinc-500"} dir="ltr" />
                     <p className="mt-1 text-[11px] text-zinc-500">تغییر موجودی فقط از مسیر رسمی عملیات انبار انجام می‌شود.</p>
+                    <Link href="/admin/store/inventory" className="mt-1 inline-block text-[11px] font-bold text-[#F58220] hover:underline">رفتن به مدیریت انبار</Link>
                   </>
                 ) : (
                   <>
