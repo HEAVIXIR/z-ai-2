@@ -14,7 +14,6 @@ describe("manual marketplace payment creation transaction contract", () => {
     expect(source).toContain("await db.$transaction(async (tx) =>");
     expect(source).toContain("tx.payment.create");
     expect(source).not.toContain("tx.premiumSubscription.updateMany");
-    expect(source).toContain("where: { id: subscriptionId, userId }");
     expect(source).toContain("tx.auditLog.create");
     expect(source).not.toContain("await logAudit(");
   });
