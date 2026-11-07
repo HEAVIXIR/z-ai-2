@@ -18,7 +18,7 @@ const releaseBody = source.slice(releaseStart, nextSection);
 describe("Warehouse stock adjustment invariants", () => {
   it("disables the legacy Part-only movement entry point", () => {
     const start = source.indexOf("export async function createMovement(");
-    const end = source.indexOf("\\n// ── listMovements", start);
+    const end = source.indexOf("\n// ── listMovements", start);
     const legacy = source.slice(start, end);
     expect(legacy).toContain("throw new InventoryServiceError");
     expect(legacy).not.toContain("storeDb.part.update");
