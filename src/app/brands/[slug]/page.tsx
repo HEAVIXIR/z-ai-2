@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
 import {
   BRAND_TYPE_LABELS,
@@ -74,7 +75,7 @@ export default async function BrandPage({
 
   const [listings, models] = await Promise.all([
     db.listing.findMany({
-      where: { status: "PUBLISHED", brandId: brand.id },
+      where: { ...getPublicListingWhere(), brandId: brand.id },
       orderBy: [
         { featured: "desc" },
         { publishedAt: { sort: "desc", nulls: "last" } },
