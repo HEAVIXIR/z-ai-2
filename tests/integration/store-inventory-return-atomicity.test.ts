@@ -472,7 +472,16 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
         where: { partId, reference: ret.id, type: 'RETURN' },
       }),
       storeDb.auditOutbox.findMany({
-        where: { payloadJson: { contains: ret.id } },
+        // The six atomic events span the Return, Customer, WalletTransaction,
+        // StockMovement, Part, and InventoryBalance entities. The Customer
+        // event is keyed by customerId and does not repeat returnId in its
+        // before/after payload, so include both fixture identifiers.
+        where: {
+          OR: [
+            { payloadJson: { contains: ret.id } },
+            { payloadJson: { contains: customer.id } },
+          ],
+        },
       }),
     ]);
     expect(part?.stock).toBe(11);
