@@ -5,32 +5,35 @@
  * and src/app/api/admin/store/returns/[id]/route.ts.
  *
  * Responsibilities:
- *   - createReturn(): create a Return for an order + log audit.
+ *   - createReturn(): create a Return and enqueue its audit event in the same transaction.
  *   - updateReturnStatus(): advance status (REQUESTED → APPROVED →
  *     INSPECTED → RESOLVED | REJECTED) + optionally set inspection/
- *     resolution notes + log audit.
+ *     resolution notes + enqueue an audit event in the same transaction.
  *   - listReturns(): query Returns with filters (orderId, status, limit).
  *
  * T2-DEEP — Returns Deep (ReturnItem + Inspection Workflow):
  *   - addReturnItem(): append a ReturnItem (per-OrderItem line) to a
- *     Return + log audit. Validates that the OrderItem exists and that
+ *     Return + transactional audit outbox event. Validates that the OrderItem exists and that
  *     quantity <= OrderItem.quantity (over-return refused).
  *   - inspectReturn(): admin records inspection notes + per-item
- *     restockable flags. Sets status=INSPECTED. Logs audit. Idempotent
+ *     restockable flags. Sets status=INSPECTED with per-item + parent outbox events. Idempotent
  *     re-inspection is allowed (admin can update flags/notes).
  *   - resolveReturn(): finalizes the return with resolution REFUND |
  *     EXCHANGE | REJECT. For REFUND, computes the refund amount from
  *     the restockable ReturnItem line totals (sum of OrderItem.lineTotal
  *     for the returned quantity) and creates a WalletTransaction
  *     (CREDIT) on the customer's wallet + adjusts Customer.walletBalanceIrr.
- *     Sets status=RESOLVED. Logs audit (with refundAmountIrr if REFUND).
+ *     Sets status=RESOLVED with refund + wallet + outbox events in one transaction.
+ *
+ * All Store return mutations and their AuditOutbox events commit together.
+ * Outbox delivery to the independent main AuditLog database is at-least-once
+ * and idempotent; no cross-database transaction is assumed.
  *
  * The route handlers stay thin: parse request, enforce RBAC, call service,
  * map thrown ServiceError → HTTP response. All DB + audit logic lives here.
  */
 
 import { storeDb } from '@/lib/store-db';
-import { logAudit } from '@/lib/audit';
 import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
@@ -107,58 +110,65 @@ export async function createReturn(
   options: CreateReturnOptions = {},
 ): Promise<any> {
   if (!orderId || !reason) {
-    throw new ReturnsServiceError(
-      400,
-      'سفارش و دلیل مرجوعی الزامی است',
-    );
+    throw new ReturnsServiceError(400, 'سفارش و دلیل مرجوعی الزامی است');
   }
 
-  const order = await storeDb.order.findUnique({ where: { id: orderId } });
-  if (!order) {
-    throw new ReturnsServiceError(404, 'سفارش یافت نشد');
+  // New returns must enter the workflow as REQUESTED. Inspection and
+  // resolution are dedicated state-machine actions; accepting them here
+  // would let callers bypass the refund/inspection lifecycle.
+  if (options.status && options.status !== 'REQUESTED') {
+    throw new ReturnsServiceError(400, 'مرجوعی جدید باید با وضعیت REQUESTED ایجاد شود');
   }
+  if (options.inspection || options.resolution) {
+    throw new ReturnsServiceError(400, 'کارشناسی و حل‌وفصل فقط از مسیرهای اختصاصی مجاز هستند');
+  }
+  const initialStatus = 'REQUESTED';
 
-  const initialStatus =
-    options.status && ALLOWED_STATUSES.includes(options.status as (typeof ALLOWED_STATUSES)[number])
-      ? options.status
-      : 'REQUESTED';
+  const ret = await storeDb.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new ReturnsServiceError(404, 'سفارش یافت نشد');
+    }
 
-  const ret = await storeDb.return.create({
-    data: {
-      orderId,
-      reason,
-      status: initialStatus,
-      inspection: options.inspection || null,
-      resolution: options.resolution || null,
-      createdBy: userId ?? null,
-    },
-    include: {
-      order: {
-        select: {
-          id: true,
-          orderNumber: true,
-          customer: {
-            select: { id: true, name: true, family: true, phone: true },
+    const created = await tx.return.create({
+      data: {
+        orderId,
+        reason,
+        status: initialStatus,
+        inspection: options.inspection || null,
+        resolution: options.resolution || null,
+        createdBy: userId ?? null,
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customer: {
+              select: { id: true, name: true, family: true, phone: true },
+            },
           },
         },
       },
-    },
-  });
+    });
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.create',
-    entityType: 'Return',
-    entityId: ret.id,
-    after: {
-      orderId,
-      reason,
-      status: initialStatus,
-      inspection: ret.inspection,
-      resolution: ret.resolution,
-      reference: options.reference || null,
-    },
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.return.create',
+      entityType: 'Return',
+      entityId: created.id,
+      after: {
+        orderId,
+        reason,
+        status: initialStatus,
+        inspection: created.inspection,
+        resolution: created.resolution,
+        reference: options.reference || null,
+      },
+    });
+
+    return created;
   });
 
   return serialize(ret);
@@ -181,56 +191,77 @@ export async function updateReturnStatus(
   userId?: string | null,
   options: UpdateReturnOptions = {},
 ): Promise<any> {
-  const existing = await storeDb.return.findUnique({ where: { id } });
-  if (!existing) {
-    throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
-  }
-
-  const data: any = {};
-  if (status !== undefined) {
-    if (!ALLOWED_STATUSES.includes(status as (typeof ALLOWED_STATUSES)[number])) {
-      throw new ReturnsServiceError(400, 'وضعیت نامعتبر');
+  const ret = await storeDb.$transaction(async (tx) => {
+    const existing = await tx.return.findUnique({ where: { id } });
+    if (!existing) {
+      throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
     }
-    data.status = status;
-  }
-  if (inspection !== undefined) {
-    data.inspection = inspection || null;
-  }
-  if (resolution !== undefined) {
-    if (resolution && !ALLOWED_RESOLUTIONS.includes(resolution as (typeof ALLOWED_RESOLUTIONS)[number])) {
-      throw new ReturnsServiceError(400, 'نوع تصمیم نامعتبر');
-    }
-    data.resolution = resolution || null;
-  }
-  if (options.reason !== undefined) {
-    data.reason = options.reason || existing.reason;
-  }
 
-  const ret = await storeDb.return.update({
-    where: { id },
-    data,
-    include: {
-      order: {
-        select: {
-          id: true,
-          orderNumber: true,
-          customer: {
-            select: { id: true, name: true, family: true, phone: true },
+    const data: any = {};
+    if (existing.status === 'RESOLVED' || existing.status === 'REJECTED') {
+      throw new ReturnsServiceError(409, 'مرجوعی نهایی شده و قابل ویرایش نیست');
+    }
+    if (status !== undefined) {
+      if (!ALLOWED_STATUSES.includes(status as (typeof ALLOWED_STATUSES)[number])) {
+        throw new ReturnsServiceError(400, 'وضعیت نامعتبر');
+      }
+      if (status !== existing.status && status !== 'APPROVED') {
+        throw new ReturnsServiceError(400, 'کارشناسی و حل‌وفصل باید از مسیرهای اختصاصی انجام شوند');
+      }
+      if (status === 'APPROVED' && existing.status !== 'REQUESTED' && existing.status !== 'APPROVED') {
+        throw new ReturnsServiceError(409, 'فقط مرجوعی REQUESTED قابل تأیید است');
+      }
+      data.status = status;
+    }
+    if (inspection !== undefined || resolution !== undefined) {
+      throw new ReturnsServiceError(400, 'یادداشت کارشناسی و نتیجه نهایی فقط از مسیرهای اختصاصی مجاز هستند');
+    }
+    if (options.reason !== undefined) {
+      data.reason = options.reason || existing.reason;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new ReturnsServiceError(400, 'هیچ تغییری برای ثبت ارسال نشده است');
+    }
+
+    const updated = await tx.return.update({
+      where: { id },
+      data,
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customer: {
+              select: { id: true, name: true, family: true, phone: true },
+            },
           },
         },
       },
-    },
-  });
+    });
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.update',
-    entityType: 'Return',
-    entityId: ret.id,
-    before: existing,
-    after: ret,
-  });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.return.update',
+      entityType: 'Return',
+      entityId: updated.id,
+      before: {
+        status: existing.status,
+        inspection: existing.inspection,
+        resolution: existing.resolution,
+        reason: existing.reason,
+      },
+      after: {
+        status: updated.status,
+        inspection: updated.inspection,
+        resolution: updated.resolution,
+        reason: updated.reason,
+      },
+    });
+
+    return updated;
+  }, { isolationLevel: 'Serializable' });
 
   return serialize(ret);
 }
@@ -335,103 +366,112 @@ export async function addReturnItem(
   userId?: string | null,
 ): Promise<any> {
   if (!returnId || !orderItemId || quantity === undefined) {
-    throw new ReturnsServiceError(
-      400,
-      'returnId، orderItemId و تعداد الزامی است',
-    );
+    throw new ReturnsServiceError(400, 'returnId، orderItemId و تعداد الزامی است');
   }
   const qty = Number(quantity);
   if (!Number.isInteger(qty) || qty <= 0) {
-    throw new ReturnsServiceError(
-      400,
-      'تعداد باید عدد صحیح مثبت باشد',
-    );
+    throw new ReturnsServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
   if (
     condition &&
     !ALLOWED_CONDITIONS.includes(condition as (typeof ALLOWED_CONDITIONS)[number])
   ) {
-    throw new ReturnsServiceError(
-      400,
-      'وضعیت قطعه نامعتبر است (UNOPENED | DAMAGED | WRONG_ITEM | OTHER)',
-    );
+    throw new ReturnsServiceError(400, 'وضعیت قطعه نامعتبر است (UNOPENED | DAMAGED | WRONG_ITEM | OTHER)');
   }
 
-  // Look up the Return + OrderItem in parallel.
-  const [ret, orderItem] = await Promise.all([
-    storeDb.return.findUnique({ where: { id: returnId } }),
-    storeDb.orderItem.findUnique({ where: { id: orderItemId } }),
-  ]);
-  if (!ret) {
-    throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
-  }
-  if (!orderItem) {
-    throw new ReturnsServiceError(404, 'آیتم سفارش یافت نشد');
-  }
-  if (orderItem.orderId !== ret.orderId) {
-    throw new ReturnsServiceError(
-      400,
-      'آیتم سفارش به سفارش مرجوعی تعلق ندارد',
-    );
-  }
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const [ret, orderItem] = await Promise.all([
+        tx.return.findUnique({ where: { id: returnId } }),
+        tx.orderItem.findUnique({ where: { id: orderItemId } }),
+      ]);
+      if (!ret) {
+        throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
+      }
+      if (!orderItem) {
+        throw new ReturnsServiceError(404, 'آیتم سفارش یافت نشد');
+      }
+      if (orderItem.orderId !== ret.orderId) {
+        throw new ReturnsServiceError(400, 'آیتم سفارش به سفارش مرجوعی تعلق ندارد');
+      }
+      if (ret.status !== 'REQUESTED' && ret.status !== 'APPROVED') {
+        throw new ReturnsServiceError(409, 'افزودن آیتم فقط پیش از کارشناسی و حل‌وفصل مرجوعی مجاز است');
+      }
 
-  // Over-return check: returned qty cannot exceed ordered qty.
-  if (qty > orderItem.quantity) {
-    throw new ReturnsServiceError(
-      400,
-      `تعداد مرجوعی بیش از تعداد سفارش است. سفارش: ${orderItem.quantity}، درخواست: ${qty}`,
-    );
-  }
-
-  // Duplicate item check (one ReturnItem per orderItemId per Return).
-  const existing = await storeDb.returnItem.findFirst({
-    where: { returnId, orderItemId },
-  });
-  if (existing) {
-    throw new ReturnsServiceError(
-      409,
-      'این آیتم قبلاً به مرجوعی افزوده شده است',
-    );
-  }
-
-  const item = await storeDb.returnItem.create({
-    data: {
-      returnId,
-      orderItemId,
-      quantity: qty,
-      reason: reason || null,
-      condition: condition || null,
-      restockable: false, // default: not restockable until inspected
-    },
-    include: {
-      orderItem: {
+      // Count every non-rejected return for this purchased line, not just
+      // the current Return. Serializable isolation makes concurrent inserts
+      // conflict rather than allowing two returns to consume the same units.
+      const priorReturnItems = await tx.returnItem.findMany({
+        where: { orderItemId },
         select: {
-          id: true,
-          partNameSnapshot: true,
           quantity: true,
-          lineTotalIrr: true,
+          return: { select: { status: true } },
         },
-      },
-    },
-  });
+      });
+      const alreadyReturned = priorReturnItems.reduce(
+        (total: number, line: any) =>
+          total + (line.return.status === 'REJECTED' ? 0 : line.quantity),
+        0,
+      );
+      if (alreadyReturned + qty > orderItem.quantity) {
+        throw new ReturnsServiceError(
+          409,
+          `سقف مرجوعی این قلم سفارش تکمیل می‌شود. خرید: ${orderItem.quantity}، قبلاً ثبت‌شده: ${alreadyReturned}، درخواست: ${qty}`,
+        );
+      }
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.item.add',
-    entityType: 'ReturnItem',
-    entityId: item.id,
-    after: {
-      returnId,
-      orderItemId,
-      quantity: qty,
-      reason: item.reason,
-      condition: item.condition,
-      restockable: item.restockable,
-    },
-  });
+      const existing = await tx.returnItem.findFirst({
+        where: { returnId, orderItemId },
+      });
+      if (existing) {
+        throw new ReturnsServiceError(409, 'این آیتم قبلاً به مرجوعی افزوده شده است');
+      }
 
-  return item;
+      const item = await tx.returnItem.create({
+        data: {
+          returnId,
+          orderItemId,
+          quantity: qty,
+          reason: reason || null,
+          condition: condition || null,
+          restockable: false,
+        },
+        include: {
+          orderItem: {
+            select: {
+              id: true,
+              partNameSnapshot: true,
+              quantity: true,
+              lineTotalIrr: true,
+            },
+          },
+        },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.return.item.add',
+        entityType: 'ReturnItem',
+        entityId: item.id,
+        after: {
+          returnId,
+          orderItemId,
+          quantity: qty,
+          reason: item.reason,
+          condition: item.condition,
+          restockable: item.restockable,
+        },
+      });
+
+      return item;
+    }, { isolationLevel: 'Serializable' });
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new ReturnsServiceError(409, 'مرجوعی هم‌زمان تغییر کرده است؛ درخواست را دوباره بررسی کنید');
+    }
+    throw err;
+  }
 }
 
 // ── inspectReturn ─────────────────────────────────────────
@@ -457,137 +497,137 @@ export async function inspectReturn(
   itemConditions: ItemConditionInput[],
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.return.findUnique({
-    where: { id: returnId },
-    include: { items: true },
-  });
-  if (!existing) {
-    throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
-  }
-
-  // State-machine: REQUESTED → APPROVED → INSPECTED (this) → RESOLVED.
-  // Reject terminal states + early states.
-  if (existing.status === 'REQUESTED') {
-    throw new ReturnsServiceError(
-      400,
-      'ابتدا مرجوعی را تأیید کنید (status = APPROVED)',
-    );
-  }
-  if (existing.status === 'RESOLVED' || existing.status === 'REJECTED') {
-    throw new ReturnsServiceError(
-      400,
-      `مرجوعی در وضعیت نهایی (${existing.status}) قرار دارد و قابل کارشناسی مجدد نیست`,
-    );
-  }
-  // status === 'APPROVED' or 'INSPECTED' → proceed.
-
-  // Validate itemConditions: every itemId must reference an existing
-  // ReturnItem of this Return.
-  const itemIds = new Set(existing.items.map((i: any) => i.id));
-  for (const ic of itemConditions) {
-    if (!itemIds.has(ic.itemId)) {
-      throw new ReturnsServiceError(
-        400,
-        `آیتم کارشناسی به این مرجوعی تعلق ندارد: ${ic.itemId}`,
-      );
-    }
-    if (ic.condition) {
-      if (
-        !ALLOWED_CONDITIONS.includes(
-          ic.condition as (typeof ALLOWED_CONDITIONS)[number],
-        )
-      ) {
+  try {
+    const ret = await storeDb.$transaction(async (tx) => {
+      const existing = await tx.return.findUnique({
+        where: { id: returnId },
+        include: { items: true },
+      });
+      if (!existing) {
+        throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
+      }
+      if (existing.status === 'REQUESTED') {
+        throw new ReturnsServiceError(400, 'ابتدا مرجوعی را تأیید کنید (status = APPROVED)');
+      }
+      if (existing.status === 'RESOLVED' || existing.status === 'REJECTED') {
         throw new ReturnsServiceError(
           400,
-          'وضعیت قطعه نامعتبر است',
+          `مرجوعی در وضعیت نهایی (${existing.status}) قرار دارد و قابل کارشناسی مجدد نیست`,
         );
       }
-    }
-  }
 
-  // Update the Return + each touched ReturnItem. Wrapping in a tx would
-  // be ideal; for now we sequence updates — partial failure would leave
-  // the status unchanged (audit trail still records intent). The audit
-  // is written AFTER all updates.
-  const beforeItems = existing.items.map((i: any) => ({ ...i }));
+      const itemIds = new Set(existing.items.map((item: any) => item.id));
+      for (const itemCondition of itemConditions) {
+        if (!itemIds.has(itemCondition.itemId)) {
+          throw new ReturnsServiceError(400, `آیتم کارشناسی به این مرجوعی تعلق ندارد: ${itemCondition.itemId}`);
+        }
+        if (
+          itemCondition.condition &&
+          !ALLOWED_CONDITIONS.includes(itemCondition.condition as (typeof ALLOWED_CONDITIONS)[number])
+        ) {
+          throw new ReturnsServiceError(400, 'وضعیت قطعه نامعتبر است');
+        }
+      }
 
-  // Update each touched item. Each update gets its own audit entry so
-  // the per-item restockable flip is independently traceable.
-  for (const ic of itemConditions) {
-    const beforeItem = existing.items.find((i: any) => i.id === ic.itemId);
-    const updated = await storeDb.returnItem.update({
-      where: { id: ic.itemId },
-      data: {
-        restockable: Boolean(ic.restockable),
-        ...(ic.condition ? { condition: ic.condition } : {}),
-      },
-    });
-    await logAudit({
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.return.inspect',
-      entityType: 'ReturnItem',
-      entityId: ic.itemId,
-      before: beforeItem
-        ? { restockable: beforeItem.restockable, condition: beforeItem.condition }
-        : null,
-      after: {
-        restockable: updated.restockable,
-        condition: updated.condition,
-      },
-    });
-  }
+      // Claim/lock the parent lifecycle row before touching child items.
+      // Serializable isolation plus this conditional update prevents an
+      // inspection from racing a concurrent INSPECTED -> RESOLVED transition.
+      const claimed = await tx.return.updateMany({
+        where: { id: returnId, status: existing.status },
+        data: {
+          inspection: inspectionNotes || null,
+          status: 'INSPECTED',
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ReturnsServiceError(409, 'وضعیت مرجوعی هم‌زمان تغییر کرده است');
+      }
 
-  const before = { ...existing };
-  const ret = await storeDb.return.update({
-    where: { id: returnId },
-    data: {
-      inspection: inspectionNotes || null,
-      status: 'INSPECTED',
-    },
-    include: {
-      items: {
+      const beforeItems = existing.items.map((item: any) => ({
+        id: item.id,
+        restockable: item.restockable,
+        condition: item.condition,
+      }));
+
+      for (const itemCondition of itemConditions) {
+        const beforeItem = existing.items.find((item: any) => item.id === itemCondition.itemId);
+        const updated = await tx.returnItem.update({
+          where: { id: itemCondition.itemId },
+          data: {
+            restockable: Boolean(itemCondition.restockable),
+            ...(itemCondition.condition ? { condition: itemCondition.condition } : {}),
+          },
+        });
+        await enqueueAuditOutbox(tx, {
+          actorId: userId ?? null,
+          actorType: 'ADMIN',
+          action: 'store.return.inspect',
+          entityType: 'ReturnItem',
+          entityId: itemCondition.itemId,
+          before: beforeItem
+            ? { returnId, restockable: beforeItem.restockable, condition: beforeItem.condition }
+            : { returnId },
+          after: {
+            returnId,
+            restockable: updated.restockable,
+            condition: updated.condition,
+          },
+        });
+      }
+
+      const updatedReturn = await tx.return.findUnique({
+        where: { id: returnId },
         include: {
-          orderItem: {
-            select: {
-              id: true,
-              partNameSnapshot: true,
-              quantity: true,
-              lineTotalIrr: true,
+          items: {
+            include: {
+              orderItem: {
+                select: {
+                  id: true,
+                  partNameSnapshot: true,
+                  quantity: true,
+                  lineTotalIrr: true,
+                },
+              },
             },
           },
         },
-      },
-    },
-  });
+      });
+      if (!updatedReturn) {
+        throw new ReturnsServiceError(404, 'مرجوعی پس از کارشناسی یافت نشد');
+      }
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.return.inspect',
-    entityType: 'Return',
-    entityId: returnId,
-    before: {
-      status: before.status,
-      inspection: before.inspection,
-      items: beforeItems.map((i: any) => ({
-        id: i.id,
-        restockable: i.restockable,
-        condition: i.condition,
-      })),
-    },
-    after: {
-      status: ret.status,
-      inspection: ret.inspection,
-      items: (ret.items as any[]).map((i: any) => ({
-        id: i.id,
-        restockable: i.restockable,
-        condition: i.condition,
-      })),
-    },
-  });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.return.inspect',
+        entityType: 'Return',
+        entityId: returnId,
+        before: {
+          status: existing.status,
+          inspection: existing.inspection,
+          items: beforeItems,
+        },
+        after: {
+          status: updatedReturn.status,
+          inspection: updatedReturn.inspection,
+          items: (updatedReturn.items as any[]).map((item: any) => ({
+            id: item.id,
+            restockable: item.restockable,
+            condition: item.condition,
+          })),
+        },
+      });
 
-  return serialize(ret);
+      return updatedReturn;
+    }, { isolationLevel: 'Serializable' });
+
+    return serialize(ret);
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new ReturnsServiceError(409, 'مرجوعی هم‌زمان تغییر کرده است؛ وضعیت را دوباره بارگذاری کنید');
+    }
+    throw err;
+  }
 }
 
 // ── resolveReturn ─────────────────────────────────────────
@@ -619,6 +659,7 @@ export async function resolveReturn(
   returnId: string,
   resolution: string,
   userId?: string | null,
+  warehouseId?: string | null,
 ): Promise<any> {
   if (!resolution) {
     throw new ReturnsServiceError(400, 'نوع تصمیم الزامی است');
@@ -646,6 +687,7 @@ export async function resolveReturn(
             orderItem: {
               select: {
                 id: true,
+                partId: true,
                 quantity: true,
                 lineTotalIrr: true,
                 lineTotalUsd: true,
@@ -696,15 +738,108 @@ export async function resolveReturn(
       refundAmountIrr = Math.round(refundAmountIrr * 100) / 100;
     }
 
-    // Claim the transition before side effects. Under concurrent requests,
-    // PostgreSQL rechecks this predicate after waiting on the row lock; only
-    // one transaction can change INSPECTED -> RESOLVED.
+    // Claim the transition before financial side effects. The conditional
+    // status update is the idempotency guard for concurrent resolution.
     const claimed = await tx.return.updateMany({
       where: { id: returnId, status: 'INSPECTED' },
       data: { status: 'RESOLVED', resolution },
     });
     if (claimed.count !== 1) {
       throw new ReturnsServiceError(400, 'مرجوعی هم‌زمان تغییر کرده یا قبلاً حل‌وفصل شده است');
+    }
+
+    // A physically accepted return must be received into an explicit,
+    // active warehouse. Never silently select a warehouse or turn a legacy
+    // Part.stock-only record into a partial warehouse ledger.
+    const restockItems = resolution === 'REJECT'
+      ? []
+      : (existing.items as any[])
+          .filter((item) => item.restockable)
+          .sort((a, b) => String(a.orderItem?.partId ?? '').localeCompare(String(b.orderItem?.partId ?? '')));
+    if (restockItems.length > 0 && !warehouseId) {
+      throw new ReturnsServiceError(409, 'برای بازگرداندن کالای قابل فروش، انبار مقصد را صریحاً انتخاب کنید');
+    }
+
+    const restockedMovements: any[] = [];
+    for (const item of restockItems) {
+      const partId = item.orderItem?.partId;
+      const qty = Number(item.quantity);
+      if (!partId || !Number.isInteger(qty) || qty <= 0) {
+        throw new ReturnsServiceError(409, 'اطلاعات قلم مرجوعی برای ورود به انبار معتبر نیست');
+      }
+      const [part, warehouse, balances] = await Promise.all([
+        tx.part.findUnique({ where: { id: partId }, select: { id: true, stock: true } }),
+        tx.warehouse.findUnique({ where: { id: warehouseId! }, select: { id: true, active: true } }),
+        tx.inventoryBalance.findMany({ where: { partId }, select: { id: true, warehouseId: true, quantity: true, reserved: true } }),
+      ]);
+      if (!part) throw new ReturnsServiceError(404, 'قطعه مرجوعی در کاتالوگ یافت نشد');
+      if (!warehouse || !warehouse.active) {
+        throw new ReturnsServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
+      if (balances.length === 0) {
+        throw new ReturnsServiceError(409, 'این قطعه هنوز به موجودی انبارها منتقل نشده است؛ ابتدا موجودی اولیه را در انبار ثبت کنید');
+      }
+      const warehouseTotal = balances.reduce((sum, balance) => sum + balance.quantity, 0);
+      if (warehouseTotal !== part.stock) {
+        throw new ReturnsServiceError(409, 'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت موجودی را رفع کنید');
+      }
+      const targetBalance = balances.find((balance) => balance.warehouseId === warehouseId);
+      if (!targetBalance) {
+        throw new ReturnsServiceError(409, 'برای قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ ابتدا موجودی اولیه انبار را ثبت کنید');
+      }
+
+      // Atomic increment operations return the committed-after values while
+      // holding the affected rows. Derive exact before snapshots from those
+      // values so concurrent receipts/adjustments cannot corrupt audit data.
+      // Global inventory lock order: Part first, then InventoryBalance.
+      const afterPart = await tx.part.update({
+        where: { id: partId },
+        data: { stock: { increment: qty } },
+        select: { id: true, stock: true },
+      });
+      const afterBalance = await tx.inventoryBalance.update({
+        where: { id: targetBalance.id },
+        data: { quantity: { increment: qty } },
+      });
+      const movement = await tx.stockMovement.create({
+        data: {
+          partId,
+          warehouseId: warehouseId!,
+          type: 'RETURN',
+          quantity: qty,
+          balanceAfter: afterPart.stock,
+          reason: 'Restock from resolved return',
+          reference: returnId,
+          createdBy: userId ?? null,
+        },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.restock',
+        entityType: 'StockMovement',
+        entityId: movement.id,
+        after: { returnId, partId, warehouseId, quantity: qty, balanceAfter: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.restock',
+        entityType: 'Part',
+        entityId: partId,
+        before: { stock: afterPart.stock - qty },
+        after: { stock: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.restock',
+        entityType: 'InventoryBalance',
+        entityId: afterBalance.id,
+        before: { quantity: afterBalance.quantity - qty, reserved: afterBalance.reserved },
+        after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved },
+      });
+      restockedMovements.push(movement);
     }
 
     const customerId = existing.order?.customerId;
@@ -828,6 +963,7 @@ export async function resolveReturn(
       customerId,
       beforeWalletBalance,
       afterWalletBalance,
+      restockedMovements,
     };
   });
 
@@ -839,6 +975,7 @@ export async function resolveReturn(
     ...result.ret,
     refundAmountIrr: resolution === 'REFUND' ? result.refundAmountIrr : null,
     walletTxnId: result.walletTxn?.id ?? null,
+    restockedMovements: result.restockedMovements,
   });
 }
 
