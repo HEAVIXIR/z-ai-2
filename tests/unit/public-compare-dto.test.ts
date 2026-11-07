@@ -66,4 +66,65 @@ describe("toPublicComparisonDTO", () => {
 
     expect(toPublicComparisonDTO(input).rows[0].cells[0].provenance).toBeUndefined();
   });
+
+  it("drops unrecognized fields at every nested public boundary", () => {
+    const input = {
+      items: [{
+        id: "item-1",
+        sortOrder: 0,
+        type: "LISTING",
+        title: "Public listing",
+        internalItemSecret: "must-not-leak",
+      }],
+      rows: [{
+        key: "year",
+        label: "سال",
+        category: "fixed",
+        isDifferent: false,
+        internalRowSecret: "must-not-leak",
+        cells: [{
+          itemId: "item-1",
+          display: "2020",
+          raw: "2020",
+          normalized: "2020",
+          internalCellSecret: "must-not-leak",
+          provenance: {
+            source: "ADMIN_VERIFIED",
+            confidence: 0.9,
+            verifiedAt: "2026-11-07T10:00:00.000Z",
+            sourceReference: "https://internal.example/private",
+            verifiedBy: "internal-user-id",
+            internalProvenanceSecret: "must-not-leak",
+          },
+        }],
+      }],
+      attributes: ["year"],
+      differences: [],
+      crossCategoryWarning: false,
+      categories: [{ id: "cat-1", name: "ماشین‌آلات", internalCategorySecret: "must-not-leak" }],
+      internalRootSecret: "must-not-leak",
+    } as unknown as ComparisonData;
+
+    const result = toPublicComparisonDTO(input);
+    const serialized = JSON.stringify(result);
+
+    for (const secret of [
+      "internalItemSecret",
+      "internalRowSecret",
+      "internalCellSecret",
+      "internalProvenanceSecret",
+      "internalCategorySecret",
+      "internalRootSecret",
+      "sourceReference",
+      "verifiedBy",
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(result.items[0].title).toBe("Public listing");
+    expect(result.rows[0].cells[0].provenance).toEqual({
+      source: "ADMIN_VERIFIED",
+      confidence: 0.9,
+      verifiedAt: "2026-11-07T10:00:00.000Z",
+    });
+  });
 });
