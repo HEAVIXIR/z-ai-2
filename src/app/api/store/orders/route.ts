@@ -180,7 +180,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "ساختار درخواست سفارش نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, any>;
     const phone = String(body.phone || "").trim();
     const name = String(body.name || "").trim();
     const family = String(body.family || "").trim();

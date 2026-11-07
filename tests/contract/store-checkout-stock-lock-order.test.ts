@@ -16,6 +16,20 @@ describe("Checkout stock lock order", () => {
     expect(partClaim).toBeLessThan(balanceClaim);
   });
 
+  it("locks the Part row before reading the stock snapshot and warehouse balances", () => {
+    const rowLock = body.indexOf('SELECT id FROM "Part"');
+    const partRead = body.indexOf("tx.part.findUnique", rowLock);
+    const initialBalanceRead = body.indexOf("tx.inventoryBalance.findMany", partRead);
+    const warehouseLock = body.indexOf('SELECT id FROM "Warehouse"', initialBalanceRead);
+    const authoritativeBalanceRead = body.indexOf("tx.inventoryBalance.findMany", warehouseLock);
+    expect(rowLock).toBeGreaterThan(-1);
+    expect(partRead).toBeGreaterThan(rowLock);
+    expect(initialBalanceRead).toBeGreaterThan(partRead);
+    expect(warehouseLock).toBeGreaterThan(initialBalanceRead);
+    expect(authoritativeBalanceRead).toBeGreaterThan(warehouseLock);
+    expect(body).toContain("FOR SHARE");
+  });
+
   it("uses deterministic warehouse order and exact balance/reservation CAS", () => {
     expect(body).toContain('orderBy: [{ warehouseId: "asc" }, { id: "asc" }]');
     expect(body).toContain("quantity: sourceBalance.quantity");

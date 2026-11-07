@@ -108,14 +108,29 @@ export async function POST(
   }
   const { id: returnId } = await params;
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست قلم مرجوعی نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, unknown>;
     const { orderItemId, quantity, reason, condition } = body;
+    if (typeof orderItemId !== "string" || !orderItemId.trim()
+      || typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0
+      || (reason != null && typeof reason !== "string")
+      || (condition != null && typeof condition !== "string")) {
+      return NextResponse.json({ success: false, error: "پارامترهای قلم مرجوعی نامعتبر است" }, { status: 400 });
+    }
     const item = await addReturnItem(
       returnId,
       orderItemId,
       quantity,
-      reason ?? null,
-      condition ?? null,
+      typeof reason === "string" ? reason : null,
+      typeof condition === "string" ? condition : null,
       user.id,
     );
     return NextResponse.json({ success: true, data: serialize(item) });

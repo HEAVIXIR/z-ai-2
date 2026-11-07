@@ -767,6 +767,20 @@ export async function resolveReturn(
       if (!partId || !Number.isInteger(qty) || qty <= 0) {
         throw new ReturnsServiceError(409, 'اطلاعات قلم مرجوعی برای ورود به انبار معتبر نیست');
       }
+      // Return items are sorted by partId above. Lock each Part before
+      // reading its stock or touching InventoryBalance, matching the global order.
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new ReturnsServiceError(404, 'قطعه مرجوعی در کاتالوگ یافت نشد');
+      }
+      const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse" WHERE id = ${warehouseId!} AND active = true FOR SHARE
+      `;
+      if (lockedWarehouse.length !== 1) {
+        throw new ReturnsServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
       const [part, warehouse, balances] = await Promise.all([
         tx.part.findUnique({ where: { id: partId }, select: { id: true, stock: true } }),
         tx.warehouse.findUnique({ where: { id: warehouseId! }, select: { id: true, active: true } }),

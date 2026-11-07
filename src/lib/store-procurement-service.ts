@@ -442,12 +442,26 @@ export async function receivePurchaseOrderItem(
         );
       }
 
+      // Follow the global inventory lock order before reading the stock snapshot.
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${poItem.partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
+      }
       const part = await tx.part.findUnique({
         where: { id: poItem.partId },
         select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
       });
       if (!part) {
         throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
+      }
+      // Hold the active destination row until the balance and ledger writes commit.
+      const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+      `;
+      if (lockedWarehouse.length !== 1) {
+        throw new ProcurementServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
       }
       const warehouse = await tx.warehouse.findUnique({
         where: { id: warehouseId },

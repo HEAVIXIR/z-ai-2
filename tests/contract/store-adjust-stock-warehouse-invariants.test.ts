@@ -39,11 +39,15 @@ describe("Warehouse stock adjustment invariants", () => {
 
   it("acquires stock mutation locks in the global Part then Balance order", () => {
     const partLock = body.indexOf('SELECT id FROM "Part"');
+    const warehouseLock = body.indexOf('SELECT id FROM "Warehouse"');
     const balanceRead = body.indexOf("tx.inventoryBalance.findMany");
     const partMutation = body.indexOf("tx.part.update");
     const balanceMutation = body.indexOf("tx.inventoryBalance.update");
     expect(partLock).toBeGreaterThan(-1);
     expect(balanceRead).toBeGreaterThan(-1);
+    expect(warehouseLock).toBeGreaterThan(partLock);
+    expect(warehouseLock).toBeLessThan(balanceRead);
+    expect(body).toContain("FOR SHARE");
     expect(partMutation).toBeGreaterThan(-1);
     expect(balanceMutation).toBeGreaterThan(-1);
     expect(partLock).toBeLessThan(balanceRead);
@@ -59,6 +63,24 @@ describe("Warehouse stock adjustment invariants", () => {
       expect(fn).toContain("enqueueAuditOutbox");
       expect(fn).not.toContain("storeDb.inventoryBalance.update(");
     }
+  });
+
+  it("serializes reservation and release on Part before Warehouse and InventoryBalance", () => {
+    const reservePartLock = reserveBody.indexOf('SELECT id FROM "Part"');
+    const reserveWarehouseLock = reserveBody.indexOf('SELECT id FROM "Warehouse"');
+    const reserveBalanceRead = reserveBody.indexOf("tx.inventoryBalance.findUnique");
+    expect(reservePartLock).toBeGreaterThan(-1);
+    expect(reserveWarehouseLock).toBeGreaterThan(reservePartLock);
+    expect(reserveBalanceRead).toBeGreaterThan(reserveWarehouseLock);
+    expect(reserveBody).toContain("active = true FOR SHARE");
+
+    const releasePartLock = releaseBody.indexOf('SELECT id FROM "Part"');
+    const releaseWarehouseLock = releaseBody.indexOf('SELECT id FROM "Warehouse"');
+    const releaseBalanceRead = releaseBody.indexOf("tx.inventoryBalance.findUnique");
+    expect(releasePartLock).toBeGreaterThan(-1);
+    expect(releaseWarehouseLock).toBeGreaterThan(releasePartLock);
+    expect(releaseBalanceRead).toBeGreaterThan(releaseWarehouseLock);
+    expect(releaseBody).toContain('WHERE id = ${warehouseId} FOR SHARE');
   });
 
   it("commits Part, InventoryBalance, StockMovement, and all audit outbox events together", () => {

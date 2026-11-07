@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { storeDb } from "@/lib/store-db";
 import { decrementOrderStock } from "@/lib/store-order-stock";
+import { reserveStock, releaseStock } from "@/lib/store-inventory-service";
 
 const suffix = () => String(Date.now()) + "-" + Math.random().toString(36).slice(2, 10);
 
@@ -141,6 +142,48 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
     expect(persisted?.stock).toBe(5);
     expect(persisted?.soldCount).toBe(0);
     expect(movementCount).toBe(0);
+  }, 15000);
+
+  it("allows only one competing reservation when their combined quantity exceeds free stock", async () => {
+    const part = await createPart(5);
+    const warehouse = await createWarehouse();
+    await storeDb.inventoryBalance.create({
+      data: { partId: part.id, warehouseId: warehouse.id, quantity: 5, reserved: 0 },
+    });
+
+    const outcomes = await Promise.allSettled([
+      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation A " + part.id),
+      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation B " + part.id),
+    ]);
+
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const balance = await storeDb.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId: part.id, warehouseId: warehouse.id } },
+    });
+    expect(balance?.quantity).toBe(5);
+    expect(balance?.reserved).toBe(4);
+  }, 15000);
+
+  it("allows only one competing release when their combined quantity exceeds reserved stock", async () => {
+    const part = await createPart(5);
+    const warehouse = await createWarehouse();
+    await storeDb.inventoryBalance.create({
+      data: { partId: part.id, warehouseId: warehouse.id, quantity: 5, reserved: 5 },
+    });
+
+    const outcomes = await Promise.allSettled([
+      releaseStock(part.id, warehouse.id, 4, "test-user", "release A " + part.id),
+      releaseStock(part.id, warehouse.id, 4, "test-user", "release B " + part.id),
+    ]);
+
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const balance = await storeDb.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId: part.id, warehouseId: warehouse.id } },
+    });
+    expect(balance?.quantity).toBe(5);
+    expect(balance?.reserved).toBe(1);
   }, 15000);
 
   it("rejects a checkout whose quantity exceeds legacy stock without mutation", async () => {

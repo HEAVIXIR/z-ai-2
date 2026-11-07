@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,9 +64,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ success: false, error: "CSRF check failed" }, { status: 403 });
+  }
   const { id } = await params;
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست ویرایش قطعه نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, any>;
     if (Object.prototype.hasOwnProperty.call(body, "stock")) {
       return NextResponse.json(
         {
@@ -142,7 +155,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -151,6 +164,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     await requirePermission(user.id, 'store.manage');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ success: false, error: "CSRF check failed" }, { status: 403 });
   }
   const { id } = await params;
   try {

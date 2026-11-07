@@ -27,12 +27,36 @@ export async function decrementOrderStock(
     throw new Error("مقدار کاهش موجودی نامعتبر است");
   }
 
+  // Serialize checkout against opening-balance allocation and every
+  // canonical inventory writer before observing the Part or warehouse rows.
+  const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+  `;
+  if (lockedParts.length !== 1) {
+    throw new OrderStockConflictError("قطعه دیگر در دسترس نیست");
+  }
   const part = await tx.part.findUnique({
     where: { id: partId },
     select: { id: true, stock: true },
   });
   if (!part) {
     throw new OrderStockConflictError("قطعه دیگر در دسترس نیست");
+  }
+
+  // Pin every currently active destination warehouse before using its
+  // balance. If deactivation wins the race, that warehouse is excluded;
+  // if checkout wins, deactivation waits until the order transaction commits.
+  const warehouseRefs = await tx.inventoryBalance.findMany({
+    where: { partId },
+    select: { warehouseId: true },
+    orderBy: [{ warehouseId: "asc" }, { id: "asc" }],
+  });
+  const activeWarehouseIds = new Set<string>();
+  for (const warehouseId of [...new Set(warehouseRefs.map((row) => row.warehouseId))].sort()) {
+    const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+    `;
+    if (lockedWarehouse.length === 1) activeWarehouseIds.add(warehouseId);
   }
 
   const balances = await tx.inventoryBalance.findMany({
@@ -50,7 +74,7 @@ export async function decrementOrderStock(
     }
 
     const availableTotal = balances.reduce((sum, balance) => {
-      if (!balance.warehouse.active || balance.reserved > balance.quantity) return sum;
+      if (!activeWarehouseIds.has(balance.warehouseId) || !balance.warehouse.active || balance.reserved > balance.quantity) return sum;
       return sum + (balance.quantity - balance.reserved);
     }, 0);
     if (availableTotal < quantity) {
@@ -60,7 +84,7 @@ export async function decrementOrderStock(
     let remaining = quantity;
     for (const balance of balances) {
       if (remaining === 0) break;
-      if (!balance.warehouse.active || balance.reserved > balance.quantity) continue;
+      if (!activeWarehouseIds.has(balance.warehouseId) || !balance.warehouse.active || balance.reserved > balance.quantity) continue;
 
       const available = balance.quantity - balance.reserved;
       const take = Math.min(available, remaining);

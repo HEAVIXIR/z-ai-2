@@ -70,12 +70,21 @@ export async function POST(
   }
   const { id: procurementId, poId: purchaseOrderId } = await params;
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست دریافت کالا نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, unknown>;
     const { poItemId, receivedQty, warehouseId } = body;
     if (
       typeof poItemId !== "string" || !poItemId.trim() ||
       typeof warehouseId !== "string" || !warehouseId.trim() ||
-      !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+      typeof receivedQty !== "number" || !Number.isSafeInteger(receivedQty) || receivedQty <= 0
     ) {
       return NextResponse.json(
         { success: false, error: "شناسه قلم، انبار و تعداد صحیح مثبت الزامی است" },
