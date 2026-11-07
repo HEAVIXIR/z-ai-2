@@ -753,7 +753,9 @@ export async function resolveReturn(
     // Part.stock-only record into a partial warehouse ledger.
     const restockItems = resolution === 'REJECT'
       ? []
-      : (existing.items as any[]).filter((item) => item.restockable);
+      : (existing.items as any[])
+          .filter((item) => item.restockable)
+          .sort((a, b) => String(a.orderItem?.partId ?? '').localeCompare(String(b.orderItem?.partId ?? '')));
     if (restockItems.length > 0 && !warehouseId) {
       throw new ReturnsServiceError(409, 'برای بازگرداندن کالای قابل فروش، انبار مقصد را صریحاً انتخاب کنید');
     }
@@ -789,14 +791,15 @@ export async function resolveReturn(
       // Atomic increment operations return the committed-after values while
       // holding the affected rows. Derive exact before snapshots from those
       // values so concurrent receipts/adjustments cannot corrupt audit data.
-      const afterBalance = await tx.inventoryBalance.update({
-        where: { id: targetBalance.id },
-        data: { quantity: { increment: qty } },
-      });
+      // Global inventory lock order: Part first, then InventoryBalance.
       const afterPart = await tx.part.update({
         where: { id: partId },
         data: { stock: { increment: qty } },
         select: { id: true, stock: true },
+      });
+      const afterBalance = await tx.inventoryBalance.update({
+        where: { id: targetBalance.id },
+        data: { quantity: { increment: qty } },
       });
       const movement = await tx.stockMovement.create({
         data: {
