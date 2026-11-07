@@ -25,6 +25,11 @@ describe("manual marketplace payment creation transaction contract", () => {
     expect(source).toContain("linkedSubscription.userId !== userId");
   });
 
+  it("accepts only the MANUAL gateway on the offline-entry endpoint", () => {
+    expect(source).toContain('if (gateway !== "MANUAL")');
+    expect(source).toContain("online gateways require verified provider callbacks");
+  });
+
   it("fails closed for malformed/non-object request bodies", () => {
     expect(source).toContain("if (!body || typeof body !== \"object\" || Array.isArray(body))");
   });
