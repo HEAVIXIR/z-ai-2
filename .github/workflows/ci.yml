@@ -67,6 +67,9 @@ jobs:
       - name: Seed RBAC
         run: bun run db:seed-rbac
       - name: Seed catalog data
+        env:
+          NODE_ENV: "test"
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bun run db:seed-brands-a
           bun run db:seed-brands-b
