@@ -637,67 +637,57 @@ export async function reserveStock(
   reason?: string | null,
 ): Promise<any> {
   if (!partId || !warehouseId || quantity === undefined) {
-    throw new InventoryServiceError(
-      400,
-      'partId، warehouseId و تعداد الزامی است',
-    );
+    throw new InventoryServiceError(400, 'partId، warehouseId و تعداد الزامی است');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح مثبت باشد',
-    );
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  const balance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
+  return storeDb.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    if (!balance) {
+      throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+    }
+    if (balance.reserved + qty > balance.quantity) {
+      throw new InventoryServiceError(
+        409,
+        `رزرو بیش از موجودی آزاد. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
+      );
+    }
+
+    const changed = await tx.inventoryBalance.updateMany({
+      where: {
+        id: balance.id,
+        quantity: balance.quantity,
+        reserved: balance.reserved,
+      },
+      data: { reserved: { increment: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+    }
+
+    const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
+    if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از رزرو یافت نشد');
+
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.reserve',
+      entityType: 'InventoryBalance',
+      entityId: balance.id,
+      before: { quantity: balance.quantity, reserved: balance.reserved },
+      after: { quantity: updated.quantity, reserved: updated.reserved },
+      reason: reason ?? null,
+    });
+
+    return updated;
   });
-  if (!balance) {
-    throw new InventoryServiceError(
-      404,
-      'موجودی انبار برای این قطعه یافت نشد',
-    );
-  }
-
-  const newReserved = balance.reserved + qty;
-  if (newReserved > balance.quantity) {
-    throw new InventoryServiceError(
-      400,
-      `رزرو بیش از موجودی. موجودی: ${balance.quantity}، رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
-    );
-  }
-
-  const before = { ...balance };
-  const updated = await storeDb.inventoryBalance.update({
-    where: { id: balance.id },
-    data: { reserved: newReserved },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.reserve',
-    entityType: 'InventoryBalance',
-    entityId: balance.id,
-    before,
-    after: { reserved: updated.reserved },
-    reason: reason ?? null,
-  });
-
-  return updated;
 }
 
-// ── releaseStock ──────────────────────────────────────────
-/**
- * Release previously-reserved stock on a (part, warehouse) pair. Decrements
- * InventoryBalance.reserved without changing quantity. Use case: order
- * shipped (reservation consumed) or order cancelled (reservation reverted).
- *
- * Refuses if qty > current reserved (would go negative).
- *
- * @throws InventoryServiceError on validation (400) or lookup (404).
- */
 export async function releaseStock(
   partId: string,
   warehouseId: string,
@@ -706,55 +696,55 @@ export async function releaseStock(
   reason?: string | null,
 ): Promise<any> {
   if (!partId || !warehouseId || quantity === undefined) {
-    throw new InventoryServiceError(
-      400,
-      'partId، warehouseId و تعداد الزامی است',
-    );
+    throw new InventoryServiceError(400, 'partId، warehouseId و تعداد الزامی است');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty <= 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح مثبت باشد',
-    );
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  const balance = await storeDb.inventoryBalance.findUnique({
-    where: { partId_warehouseId: { partId, warehouseId } },
+  return storeDb.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.findUnique({
+      where: { partId_warehouseId: { partId, warehouseId } },
+    });
+    if (!balance) {
+      throw new InventoryServiceError(404, 'موجودی انبار برای این قطعه یافت نشد');
+    }
+    if (balance.reserved < qty) {
+      throw new InventoryServiceError(
+        409,
+        `رزرو برای آزادسازی کافی نیست. رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
+      );
+    }
+
+    const changed = await tx.inventoryBalance.updateMany({
+      where: {
+        id: balance.id,
+        quantity: balance.quantity,
+        reserved: balance.reserved,
+      },
+      data: { reserved: { decrement: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+    }
+
+    const updated = await tx.inventoryBalance.findUnique({ where: { id: balance.id } });
+    if (!updated) throw new InventoryServiceError(404, 'موجودی انبار پس از آزادسازی یافت نشد');
+
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.release',
+      entityType: 'InventoryBalance',
+      entityId: balance.id,
+      before: { quantity: balance.quantity, reserved: balance.reserved },
+      after: { quantity: updated.quantity, reserved: updated.reserved },
+      reason: reason ?? null,
+    });
+
+    return updated;
   });
-  if (!balance) {
-    throw new InventoryServiceError(
-      404,
-      'موجودی انبار برای این قطعه یافت نشد',
-    );
-  }
-
-  const newReserved = balance.reserved - qty;
-  if (newReserved < 0) {
-    throw new InventoryServiceError(
-      400,
-      `رزرو برای آزادسازی کافی نیست. رزرو‌شده: ${balance.reserved}، درخواست: ${qty}`,
-    );
-  }
-
-  const before = { ...balance };
-  const updated = await storeDb.inventoryBalance.update({
-    where: { id: balance.id },
-    data: { reserved: newReserved },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.release',
-    entityType: 'InventoryBalance',
-    entityId: balance.id,
-    before,
-    after: { reserved: updated.reserved },
-    reason: reason ?? null,
-  });
-
-  return updated;
 }
 
 // ── getLowStockItems ──────────────────────────────────────
