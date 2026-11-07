@@ -42,6 +42,8 @@ let mockBudget: Record<string, unknown> = {
   active: true,
 };
 let mockExecuteRawResult = 1; // 1 = success, 0 = budget exceeded
+let mockBudgetUpsertCalls = 0;
+let mockExecuteRawCalls = 0;
 let mockIsAdmin = false;
 let mockHasRole = false;
 let mockCountThrows = false;
@@ -64,7 +66,10 @@ vi.mock("@/lib/db", () => ({
         },
       },
       aIBudget: {
-        upsert: async () => mockBudget,
+        upsert: async () => {
+          mockBudgetUpsertCalls++;
+          return mockBudget;
+        },
         update: async (args: { data: Record<string, unknown> }) => ({
           ...mockBudget,
           ...args.data,
@@ -72,6 +77,7 @@ vi.mock("@/lib/db", () => ({
         findUnique: async () => mockBudget,
       },
       $executeRaw: async () => {
+        mockExecuteRawCalls++;
         if (mockExecuteRawThrows) throw new Error("DB error during UPDATE");
         return mockExecuteRawResult;
       },
@@ -111,6 +117,8 @@ beforeEach(() => {
     active: true,
   };
   mockExecuteRawResult = 1;
+  mockBudgetUpsertCalls = 0;
+  mockExecuteRawCalls = 0;
   mockIsAdmin = false;
   mockHasRole = false;
   mockCountThrows = false;
@@ -633,8 +641,8 @@ describe("preflightAIRequest — gate ordering (defense-in-depth)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.statusCode).toBe(400);
     // The invalid input must be rejected before any quota or budget side effect.
-    expect(mockAIGatewayLogCount).not.toHaveBeenCalled();
-    expect(mockBudgetUpsert).not.toHaveBeenCalled();
-    expect(mockExecuteRaw).not.toHaveBeenCalled();
+    expect(calls).toBe(0);
+    expect(mockBudgetUpsertCalls).toBe(0);
+    expect(mockExecuteRawCalls).toBe(0);
   });
 });
