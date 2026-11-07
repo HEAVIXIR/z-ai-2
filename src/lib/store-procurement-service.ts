@@ -155,30 +155,35 @@ export async function createPurchaseOrder(
 
   try {
     const po = await storeDb.$transaction(async (tx) => {
-      const [procurement, supplier, parts] = await Promise.all([
-        tx.procurementRequest.findUnique({
-          where: { id: procurementId },
-          select: { id: true, status: true, supplierId: true },
-        }),
-        supplierId ? tx.supplier.findUnique({
-          where: { id: supplierId },
-          select: { id: true, active: true },
-        }) : Promise.resolve(null),
+      const procurement = await tx.procurementRequest.findUnique({
+        where: { id: procurementId },
+        select: { id: true, status: true, supplierId: true },
+      });
+      if (!procurement) throw new ProcurementServiceError(404, 'مناقصه یافت نشد');
+      if (procurement.status !== 'AWARDED') {
+        throw new ProcurementServiceError(409, 'ایجاد سفارش خرید فقط برای مناقصه واگذارشده مجاز است');
+      }
+      if (procurement.supplierId && supplierId && procurement.supplierId !== supplierId) {
+        throw new ProcurementServiceError(409, 'تأمین‌کننده سفارش با تأمین‌کننده برنده مناقصه مطابقت ندارد');
+      }
+      const effectiveSupplierId = supplierId || procurement.supplierId || null;
+      const [supplier, parts] = await Promise.all([
+        effectiveSupplierId
+          ? tx.supplier.findUnique({
+              where: { id: effectiveSupplierId },
+              select: { id: true, active: true },
+            })
+          : Promise.resolve(null),
         tx.part.findMany({
           where: { id: { in: normalizedItems.map((item) => item.partId) } },
           select: { id: true },
         }),
       ]);
-      if (!procurement) throw new ProcurementServiceError(404, 'مناقصه یافت نشد');
-      if (procurement.status !== 'AWARDED') {
-        throw new ProcurementServiceError(409, 'ایجاد سفارش خرید فقط برای مناقصه واگذارشده مجاز است');
+      if (effectiveSupplierId && !supplier) {
+        throw new ProcurementServiceError(404, 'تأمین‌کننده یافت نشد');
       }
-      if (supplierId && !supplier) throw new ProcurementServiceError(404, 'تأمین‌کننده یافت نشد');
-      if (supplierId && supplier && !supplier.active) {
+      if (effectiveSupplierId && supplier && !supplier.active) {
         throw new ProcurementServiceError(409, 'تأمین‌کننده غیرفعال قابل انتخاب برای سفارش خرید نیست');
-      }
-      if (procurement.supplierId && supplierId && procurement.supplierId !== supplierId) {
-        throw new ProcurementServiceError(409, 'تأمین‌کننده سفارش با تأمین‌کننده برنده مناقصه مطابقت ندارد');
       }
       const foundPartIds = new Set(parts.map((part) => part.id));
       for (const item of normalizedItems) {
@@ -191,7 +196,7 @@ export async function createPurchaseOrder(
       const created = await tx.purchaseOrder.create({
         data: {
           procurementId,
-          supplierId: supplierId || null,
+          supplierId: effectiveSupplierId,
           status: 'DRAFT',
           totalAmount,
           currency: options.currency || 'USD',
