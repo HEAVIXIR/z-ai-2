@@ -71,3 +71,17 @@ describe("manual payment input validation", () => {
     expect(source).toContain("tx.auditLog.create");
   });
 });
+
+
+describe("payment metadata audit atomicity", () => {
+  it("commits trackingCode changes and AuditLog in one transaction", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/admin/payments/[id]/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain("await db.$transaction(async (tx) =>");
+    expect(source).toContain("tx.payment.update");
+    expect(source).toContain("tx.auditLog.create");
+    expect(source).not.toContain("await logAudit(");
+  });
+});
