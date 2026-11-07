@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Market Heatmap (P2-25)
@@ -188,7 +189,7 @@ export async function getHeatmap(params: {
     // per-view timestamp).
     const listings = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         createdAt: { gte: cutoff },
       },
       select: {
@@ -292,7 +293,7 @@ export async function getHotCategories(
   // searches (global), and views (= sum of viewCount on the same
   // listing set).
   const listingWhere = {
-    status: "PUBLISHED" as const,
+    ...getPublicListingWhere(),
     createdAt: { gte: cutoff },
     ...(provinceId ? { provinceId } : {}),
   };
