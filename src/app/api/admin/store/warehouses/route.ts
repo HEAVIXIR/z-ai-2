@@ -89,7 +89,16 @@ export async function POST(req: Request) {
     );
   }
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست ایجاد انبار نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, any>;
     const { name, code, address } = body;
     const warehouse = await createWarehouse(name, code, address, user.id);
     // P2 (Contract Drift Remediation): Removed the route-scope
