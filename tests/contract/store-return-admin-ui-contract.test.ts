@@ -28,6 +28,8 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(client).toContain("fetch(`/api/admin/store/returns/${initialReturn.id}/items`");
     expect(client).toContain('method: "POST"');
     expect(client).toContain("orderItemId: selectedOrderItemId");
+    expect(client).toContain("useEffect(() => {");
+    expect(client).toContain("availableOrderItems[0]?.id ?? \"\"");
     expect(client).toContain('["REQUESTED", "APPROVED"].includes(initialReturn.status)');
     expect(itemsRoute).toContain("addReturnItem(");
     expect(itemsRoute).toContain("requirePermission(user.id, 'returns.manage')");
