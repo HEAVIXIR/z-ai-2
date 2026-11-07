@@ -50,6 +50,15 @@ export default async function StoreReturnDetailPage({
             customer: {
               select: { id: true, name: true, family: true, phone: true },
             },
+            items: {
+              orderBy: { id: "asc" },
+              select: {
+                id: true,
+                partNameSnapshot: true,
+                quantity: true,
+                lineTotalIrr: true,
+              },
+            },
           },
         },
         items: {
