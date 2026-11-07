@@ -122,7 +122,7 @@ export async function allocateOpeningBalance(input: {
       await enqueueAuditOutbox(tx, {
         actorId: userId,
         actorType: 'ADMIN',
-        action: 'store.inventory.opening_balance.allocate',
+        action: 'store.inventory.opening_balance.create',
         entityType: 'InventoryBalance',
         entityId: balance.id,
         reason: reason.trim(),
@@ -137,7 +137,7 @@ export async function allocateOpeningBalance(input: {
       await enqueueAuditOutbox(tx, {
         actorId: userId,
         actorType: 'ADMIN',
-        action: 'store.inventory.opening_balance.movement',
+        action: 'store.inventory.opening_balance.create',
         entityType: 'StockMovement',
         entityId: movement.id,
         reason: reason.trim(),
@@ -161,7 +161,7 @@ export async function allocateOpeningBalance(input: {
     await enqueueAuditOutbox(tx, {
       actorId: userId,
       actorType: 'ADMIN',
-      action: 'store.inventory.opening_balance.completed',
+      action: 'store.inventory.opening_balance.create',
       entityType: 'Part',
       entityId: partId,
       reason: reason.trim(),
