@@ -67,6 +67,28 @@ describe("Payment action safety boundaries", () => {
     expect(spies.auditMutation).not.toHaveBeenCalled();
   });
 
+  it("blocks subscription payment verification before transaction or audit", async () => {
+    spies.can.mockResolvedValue(true);
+    const findUnique = vi.fn().mockResolvedValue({
+      id: "pay-sub-1",
+      type: "SUBSCRIPTION",
+      status: "PENDING",
+      userId: "user-1",
+    });
+    spies.getPrismaModel.mockReturnValue({ findUnique, updateMany: vi.fn() });
+
+    const result = await executeAction("payments", "pay-sub-1", "verify", {
+      userId: "admin-1",
+      reason: "Subscription billing gate",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("SUBSCRIPTION_BILLING_UNAVAILABLE");
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(spies.auditMutationTransactional).not.toHaveBeenCalled();
+    expect(spies.auditMutation).not.toHaveBeenCalled();
+  });
+
   it("verify precondition passes only for PENDING payments", () => {
     const verifyAction = paymentConfig.actions?.find((action) => action.key === "verify");
     expect(verifyAction?.precondition).toBeDefined();
