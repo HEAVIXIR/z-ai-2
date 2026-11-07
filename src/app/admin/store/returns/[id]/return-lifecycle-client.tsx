@@ -35,6 +35,16 @@ type ReturnRecord = {
 };
 
 type Warehouse = { id: string; name: string; code: string };
+type WalletTransaction = { id: string; amount: number; type: string; description: string | null; createdAt: string };
+type ReturnMovement = {
+  id: string;
+  quantity: number;
+  balanceAfter: number;
+  warehouseId: string | null;
+  createdAt: string;
+  part: { name: string; nameFa: string | null; sku: string } | null;
+  warehouse: { name: string; code: string } | null;
+};
 
 const CONDITIONS = [
   { value: "UNOPENED", label: "بازنشده" },
@@ -57,10 +67,14 @@ const money = (value: number) =>
 export default function ReturnLifecycleClient({
   initialReturn,
   warehouses,
+  walletTransactions,
+  returnMovements,
   canManage,
 }: {
   initialReturn: ReturnRecord;
   warehouses: Warehouse[];
+  walletTransactions: WalletTransaction[];
+  returnMovements: ReturnMovement[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -187,7 +201,7 @@ export default function ReturnLifecycleClient({
                     <input
                       type="checkbox"
                       checked={Boolean(current?.restockable)}
-                      disabled={isTerminal || busy}
+                      disabled={isTerminal || busy || !canManage}
                       onChange={(event) => setItemConditions((prev) => prev.map((entry) =>
                         entry.itemId === item.id ? { ...entry, restockable: event.target.checked } : entry
                       ))}
@@ -199,7 +213,7 @@ export default function ReturnLifecycleClient({
                     وضعیت کالا
                     <select
                       value={current?.condition ?? "UNOPENED"}
-                      disabled={isTerminal || busy}
+                      disabled={isTerminal || busy || !canManage}
                       onChange={(event) => setItemConditions((prev) => prev.map((entry) =>
                         entry.itemId === item.id ? { ...entry, condition: event.target.value } : entry
                       ))}
@@ -326,6 +340,52 @@ export default function ReturnLifecycleClient({
           >
             {busy ? "در حال ثبت…" : "ثبت تصمیم نهایی"}
           </button>
+        </section>
+      )}
+
+      {(isTerminal || walletTransactions.length > 0 || returnMovements.length > 0) && (
+        <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5">
+          <h2 className="font-bold text-zinc-900">نتیجه مالی و گردش انبار</h2>
+          <div>
+            <h3 className="text-sm font-bold text-zinc-700">تراکنش‌های کیف پول / بازپرداخت</h3>
+            {walletTransactions.length === 0 ? (
+              <p className="mt-2 text-xs text-zinc-500">تراکنش بازپرداختی برای این مرجوعی ثبت نشده است.</p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {walletTransactions.map((txn) => (
+                  <div key={txn.id} className="rounded-lg bg-zinc-50 p-3 text-sm">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <span className="font-bold text-zinc-800">{txn.type === "CREDIT" ? "بستانکار / بازپرداخت" : txn.type}</span>
+                      <span className="font-bold text-emerald-700">{money(txn.amount)}</span>
+                    </div>
+                    <p className="mt-1 break-all text-[11px] text-zinc-500" dir="ltr">{txn.id}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{txn.description ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-zinc-700">حرکات ورود کالای مرجوعی</h3>
+            {returnMovements.length === 0 ? (
+              <p className="mt-2 text-xs text-zinc-500">حرکت ورود به انبار برای این مرجوعی ثبت نشده است.</p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {returnMovements.map((movement) => (
+                  <div key={movement.id} className="rounded-lg bg-zinc-50 p-3 text-sm">
+                    <p className="font-bold text-zinc-800">{movement.part?.nameFa || movement.part?.name || "قطعه"}</p>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      تعداد ورودی: {movement.quantity} · موجودی پس از حرکت: {movement.balanceAfter}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      انبار: {movement.warehouse ? `${movement.warehouse.name} (${movement.warehouse.code})` : "انبار مشخص نشده"}
+                    </p>
+                    <p className="mt-1 break-all font-mono text-[10px] text-zinc-400" dir="ltr">{movement.id}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       )}
 
