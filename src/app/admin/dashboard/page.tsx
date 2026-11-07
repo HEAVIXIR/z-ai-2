@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, timeAgo, formatCompactPrice } from "@/lib/format";
 import { ReleaseReadinessPanel } from "@/components/admin/ReleaseReadinessPanel";
 import {
@@ -47,8 +48,8 @@ export default async function DashboardPage() {
     catalogIssues,
   ] = await Promise.all([
     db.listing.count(),
-    db.listing.count({ where: { status: "PUBLISHED" } }),
-    db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
+    db.listing.count({ where: getPublicListingWhere() }),
+    db.listing.count({ where: { ...getPublicListingWhere(), featured: true } }),
     db.brand.count(),
     db.category.count({ where: { parentId: null } }),
     db.listing.aggregate({ _sum: { viewCount: true } }),
@@ -94,13 +95,13 @@ export default async function DashboardPage() {
       _avg: { latencyMs: true },
     }),
     Promise.all([
-      db.listing.count({ where: { status: "PUBLISHED", images: { none: {} } } }),
-      db.listing.count({ where: { status: "PUBLISHED", price: null } }),
-      db.listing.count({ where: { status: "PUBLISHED", brandId: null } }),
-      db.listing.count({ where: { status: "PUBLISHED", categoryId: null } }),
+      db.listing.count({ where: { ...getPublicListingWhere(), images: { none: {} } } }),
+      db.listing.count({ where: { ...getPublicListingWhere(), price: null } }),
+      db.listing.count({ where: { ...getPublicListingWhere(), brandId: null } }),
+      db.listing.count({ where: { ...getPublicListingWhere(), categoryId: null } }),
       db.listing.count({
         where: {
-          status: "PUBLISHED",
+          ...getPublicListingWhere(),
           OR: [{ description: null }, { description: "" }],
         },
       }),
