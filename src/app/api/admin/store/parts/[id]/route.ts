@@ -14,16 +14,40 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 function serialize(p: any) {
+  // Explicit admin DTO: keep the fields consumed by the parts UI and never
+  // leak future/internal database columns through a model spread.
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    nameFa: p.nameFa,
+    sku: p.sku,
+    categoryId: p.categoryId,
+    brandId: p.brandId,
+    description: p.description,
+    priceUsd: p.priceUsd,
+    oldPriceUsd: p.oldPriceUsd,
+    contactForPrice: p.contactForPrice,
+    stock: p.stock,
+    lowStockThreshold: p.lowStockThreshold,
     images: (() => {
       try { return JSON.parse(p.images || "[]"); } catch { return []; }
     })(),
     compatibleCars: (() => {
       try { return JSON.parse(p.compatibleCars || "[]"); } catch { return []; }
     })(),
+    sourceUrl: p.sourceUrl,
+    active: p.active,
+    featured: p.featured,
+    views: p.views,
+    soldCount: p.soldCount,
     createdAt: p.createdAt?.toISOString?.() ?? null,
     updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.category
+      ? { category: { id: p.category.id, name: p.category.name, slug: p.category.slug } }
+      : {}),
+    ...(p.brand
+      ? { brand: { id: p.brand.id, name: p.brand.name, slug: p.brand.slug } }
+      : {}),
   };
 }
 
