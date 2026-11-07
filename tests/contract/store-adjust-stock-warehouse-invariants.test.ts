@@ -29,11 +29,16 @@ describe("Warehouse stock adjustment invariants", () => {
   });
 
   it("acquires stock mutation locks in the global Part then Balance order", () => {
-    const partClaim = body.indexOf("tx.part.updateMany");
-    const balanceClaim = body.indexOf("tx.inventoryBalance.updateMany");
-    expect(partClaim).toBeGreaterThan(-1);
-    expect(balanceClaim).toBeGreaterThan(-1);
-    expect(partClaim).toBeLessThan(balanceClaim);
+    const partLock = body.indexOf('SELECT id FROM "Part"');
+    const balanceRead = body.indexOf("tx.inventoryBalance.findMany");
+    const partMutation = body.indexOf("tx.part.update");
+    const balanceMutation = body.indexOf("tx.inventoryBalance.update");
+    expect(partLock).toBeGreaterThan(-1);
+    expect(balanceRead).toBeGreaterThan(-1);
+    expect(partMutation).toBeGreaterThan(-1);
+    expect(balanceMutation).toBeGreaterThan(-1);
+    expect(partLock).toBeLessThan(balanceRead);
+    expect(partMutation).toBeLessThan(balanceMutation);
   });
 
   it("uses transactional compare-and-set and outbox events for reserve and release", () => {
