@@ -43,6 +43,15 @@ describe("Store return lifecycle transactional audit contract", () => {
     expect(inspect).toContain("where: { id: returnId, status: existing.status }");
   });
 
+  it("sorts restock Part locks and acquires Part before InventoryBalance", () => {
+    expect(resolve).toContain(".sort((a, b) => String(a.orderItem?.partId ?? '').localeCompare(String(b.orderItem?.partId ?? '')))");
+    const partClaim = resolve.indexOf("tx.part.update(");
+    const balanceClaim = resolve.indexOf("tx.inventoryBalance.update(");
+    expect(partClaim).toBeGreaterThan(-1);
+    expect(balanceClaim).toBeGreaterThan(-1);
+    expect(partClaim).toBeLessThan(balanceClaim);
+  });
+
   it("keeps refund resolution on the same Store transaction and outbox boundary", () => {
     const resolve = source.slice(source.indexOf("export async function resolveReturn("));
     expect(resolve).toContain("storeDb.$transaction");
