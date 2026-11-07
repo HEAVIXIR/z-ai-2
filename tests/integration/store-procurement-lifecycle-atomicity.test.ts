@@ -119,6 +119,27 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
     ).rejects.toMatchObject({ status: 409 });
   }, 15000);
 
+  it('blocks approval by the same identity that submitted the purchase order', async () => {
+    if (!procurementId || !partId) throw new Error('fixture setup incomplete');
+    const created = await createPurchaseOrder(procurementId, null, [{ partId, quantity: 1, unitPrice: 12 }]);
+    poIds.push(created.id);
+    const submitted = await submitPurchaseOrder(created.id, 'same-admin');
+    expect(submitted.submittedBy).toBe('same-admin');
+
+    await expect(
+      approvePurchaseOrder(created.id, 'same-admin'),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const unchanged = await storeDb.purchaseOrder.findUnique({ where: { id: created.id } });
+    expect(unchanged?.status).toBe('SUBMITTED');
+    expect(unchanged?.approvedBy).toBeNull();
+
+    const approved = await approvePurchaseOrder(created.id, 'different-admin');
+    expect(approved.status).toBe('APPROVED');
+    expect(approved.approvedBy).toBe('different-admin');
+    expect(approved.submittedBy).toBe('same-admin');
+  }, 15000);
+
   it('creates, submits, approves, and cancels with one outbox event per committed transition', async () => {
     if (!procurementId || !partId) throw new Error('fixture setup incomplete');
     const created = await createPurchaseOrder(procurementId, null, [{ partId, quantity: 2, unitPrice: 12 }], 'admin-test');
