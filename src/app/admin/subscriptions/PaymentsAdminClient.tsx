@@ -109,12 +109,22 @@ export default function PaymentsAdminClient() {
   }, [load]);
 
   async function verify(id: string, status: "PAID" | "FAILED") {
+    const reason = window.prompt(
+      status === "PAID"
+        ? "دلیل و مرجع بررسی پرداخت را وارد کنید:"
+        : "دلیل رد پرداخت را وارد کنید:",
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 5 || reason.trim().length > 500) {
+      alert("دلیل باید بین ۵ تا ۵۰۰ نویسه باشد.");
+      return;
+    }
     setBusy(id);
     try {
       const res = await fetch(`/api/payments/${id}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, reason: reason.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
