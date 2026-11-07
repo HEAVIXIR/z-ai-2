@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { generateAISummary, getComparisonData } from "@/lib/compare-engine";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,9 +125,12 @@ export async function POST(
     }
 
     return NextResponse.json({ summary, cached: false });
-  } catch (err: any) {
-    const msg = err?.message ?? "Server error";
-    const status = msg.includes("not found") ? 404 : msg.includes("حداقل") ? 400 : 500;
-    return NextResponse.json({ error: msg }, { status });
+  } catch (err: unknown) {
+    trackError(err, { endpoint: "POST /api/compare/[id]/ai-summary", userId: user.id });
+    // Internal database/provider details must not be returned to callers.
+    return NextResponse.json(
+      { error: "خلاصه‌سازی در حال حاضر انجام نشد. لطفاً دوباره تلاش کنید." },
+      { status: 500 },
+    );
   }
 }
