@@ -417,7 +417,9 @@ export async function receivePurchaseOrderItem(
       const poItem = await tx.purchaseOrderItem.findUnique({
         where: { id: poItemId },
         include: {
-          purchaseOrder: true,
+          purchaseOrder: {
+            include: { procurement: { select: { status: true } } },
+          },
           part: { select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true } },
         },
       });
@@ -429,6 +431,9 @@ export async function receivePurchaseOrderItem(
       }
       if (poItem.purchaseOrder.status !== 'APPROVED') {
         throw new ProcurementServiceError(409, 'دریافت کالا فقط پس از تأیید سفارش خرید مجاز است');
+      }
+      if (poItem.purchaseOrder.procurement.status !== 'AWARDED') {
+        throw new ProcurementServiceError(409, 'دریافت کالا فقط برای مناقصه واگذارشده مجاز است');
       }
 
       const newReceived = poItem.received + qty;
