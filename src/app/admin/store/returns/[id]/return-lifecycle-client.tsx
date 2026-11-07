@@ -77,12 +77,14 @@ export default function ReturnLifecycleClient({
   walletTransactions,
   returnMovements,
   canManage,
+  canManageInventory,
 }: {
   initialReturn: ReturnRecord;
   warehouses: Warehouse[];
   walletTransactions: WalletTransaction[];
   returnMovements: ReturnMovement[];
   canManage: boolean;
+  canManageInventory: boolean;
 }) {
   const router = useRouter();
   const availableOrderItems = useMemo(() => {
@@ -438,6 +440,11 @@ export default function ReturnLifecycleClient({
               )}
             </label>
           )}
+          {resolution !== "REJECT" && hasRestockable && !canManageInventory && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
+              برای ثبت ورود کالای قابل‌فروش به انبار، مجوز inventory.manage لازم است. این کاربر می‌تواند کارشناسی را ثبت کند، اما حل‌وفصل این اقلام باید توسط مدیر موجودی انجام شود.
+            </div>
+          )}
           <div className="rounded-xl bg-zinc-50 p-3 text-xs leading-6 text-zinc-600">
             {resolution === "REJECT"
               ? "این تصمیم هیچ موجودی قابل‌فروشی را افزایش نمی‌دهد."
@@ -447,7 +454,7 @@ export default function ReturnLifecycleClient({
           </div>
           <button
             type="button"
-            disabled={busy || (resolution !== "REJECT" && hasRestockable && !warehouseId)}
+            disabled={busy || (resolution !== "REJECT" && hasRestockable && (!canManageInventory || !warehouseId))}
             onClick={() => mutate({
               action: "resolve",
               resolution,
