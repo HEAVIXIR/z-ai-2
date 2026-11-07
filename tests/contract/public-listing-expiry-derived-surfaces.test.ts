@@ -25,6 +25,7 @@ describe("public listing expiry across derived discovery surfaces", () => {
     );
     expect(source).toContain("expiresAt: true");
     expect(source).toContain("isPublicListingActive(f.listing)");
+    expect(source).toContain("listing: { is: getPublicListingWhere() }");
   });
 
   it("rechecks visibility while hydrating AI match details", () => {
