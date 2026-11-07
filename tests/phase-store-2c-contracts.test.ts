@@ -677,11 +677,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const updateActionRegex = /action:\s*['"]store\.\w+\.update['"]/g;
         let m;
         while ((m = updateActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
-          expect(window).toMatch(/after:/);
+          // Inspect the complete logAudit call rather than a fixed-size
+          // window: privacy-safe before/after snapshots may legitimately be
+          // longer than 400 characters.
+          const callEnd = content.indexOf("});", m.index);
+          const auditCall = content.substring(m.index, callEnd === -1 ? undefined : callEnd + 3);
+          expect(auditCall).toMatch(/after:/);
           // upsert routes don't have 'before' (no pre-fetch); all others must have it
           if (!isUpsertRoute) {
-            expect(window).toMatch(/before:/);
+            expect(auditCall).toMatch(/before:/);
           }
         }
       }
