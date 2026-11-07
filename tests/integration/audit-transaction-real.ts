@@ -220,7 +220,8 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     });
 
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Action not defined");
+    expect(result.error).toBe("ACTION_UNAVAILABLE");
+    expect(result.message).toMatch(/evidence-backed refund workflow/);
   });
 
 });
