@@ -212,6 +212,26 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(balances.find((balance) => balance.warehouseId === secondWarehouse.id)?.quantity).toBe(7);
   }, 20000);
 
+  it('blocks new reservations in inactive warehouses but still allows release of existing reservations', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const balance = await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 2, lowStockThreshold: 5 },
+    });
+    await storeDb.warehouse.update({ where: { id: warehouseId }, data: { active: false } });
+
+    await expect(reserveStock(partId, warehouseId, 1)).rejects.toMatchObject({ status: 409 });
+    const unchanged = await storeDb.inventoryBalance.findUnique({ where: { id: balance.id } });
+    expect(unchanged?.reserved).toBe(2);
+
+    const released = await releaseStock(partId, warehouseId, 1);
+    expect(released.reserved).toBe(1);
+    const events = await storeDb.auditOutbox.findMany({
+      where: { payloadJson: { contains: balance.id } },
+    });
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(events[0].payloadJson).action).toBe('store.inventory.release');
+  }, 15000);
+
   it('serializes concurrent reservations and never reserves more than available stock', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
     const balance = await storeDb.inventoryBalance.create({
