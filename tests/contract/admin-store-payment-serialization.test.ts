@@ -46,3 +46,10 @@ describe("admin store payment refund boundary", () => {
     expect(page).toContain("بازپرداخت غیرفعال");
   });
 });
+
+  it("redacts raw payer card data from audit snapshots", () => {
+    expect(detail).toContain("payerCard: maskPayerCard(existing.payerCard)");
+    expect(detail).toContain("payerCard: maskPayerCard(payment.payerCard)");
+    expect(detail).not.toContain("before: existing");
+    expect(detail).not.toContain("after: payment");
+  });
