@@ -343,11 +343,10 @@ export const procurementConfig: AdminResourceConfig = {
   apiBase: '/api/admin/store/procurement',
   adminPath: '/admin/resources/procurement',
 
+  // Lifecycle mutations must use the dedicated procurement API; the
+  // Universal Resource API is intentionally read/export-only for this model.
   permissions: {
     read: 'procurement.read',
-    create: 'procurement.manage',
-    update: 'procurement.manage',
-    delete: 'procurement.manage',
     export: 'procurement.read',
   },
 
@@ -403,7 +402,7 @@ export const procurementConfig: AdminResourceConfig = {
       { value: 'AWARDED', label: 'تأمیدشده' },
       { value: 'COMPLETED', label: 'تکمیل‌شده' },
       { value: 'CANCELLED', label: 'لغوشده' },
-    ], permissions: { read: 'procurement.read', write: 'procurement.manage' } },
+    ], permissions: { read: 'procurement.read' } },
     { key: 'supplierId', label: 'تأمین‌کننده', type: 'relation',
       relation: { model: 'supplier', labelField: 'name' } },
   ],
@@ -415,24 +414,25 @@ export const procurementConfig: AdminResourceConfig = {
     { key: 'audit', label: 'ممیزی', type: 'audit' },
   ],
 
-  actions: [
-    { key: 'publish', label: 'انتشار', icon: 'Send',
-      permission: 'procurement.manage', type: 'confirm',
-      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
-    { key: 'award', label: 'تأمید به', icon: 'Award',
-      permission: 'procurement.manage', type: 'modal',
-      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
-    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle2',
-      permission: 'procurement.manage', type: 'confirm',
-      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
-    { key: 'cancel', label: 'لغو', icon: 'XCircle',
-      permission: 'procurement.manage', type: 'confirm', variant: 'destructive',
-      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
-  ],
-
   bulkActions: [
     { key: 'bulk-publish', label: 'انتشار گروهی', icon: 'Send',
       permission: 'procurement.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'procurement.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'ProcurementRequest',
+    actions: ['procurement.manage'] },
+};
+
+// ── 5. Customers (Store customer directory — READ-ONLY) ───────
+// Note: customers are auto-created via the order flow (Store schema
+// Order.customerId backref). The admin route exposes GET only — no
+// POST/PATCH/DELETE handlers — so this resource is read-only in the
+// Universal UI. Editing happens implicitly via order management.
+export const customersConfig: AdminResourceConfig = {
+   // Only export is exposed through the Universal Resource Engine.
+  bulkActions: [
     { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
       permission: 'procurement.read', type: 'confirm' },
   ],
@@ -458,11 +458,10 @@ export const customersConfig: AdminResourceConfig = {
 
   // READ-ONLY: only read + export. No create/update/delete — the
   // /api/admin/store/customers/route.ts only exposes GET.
+  // Supplier mutations use the dedicated CSRF-protected Store API and
+  // transactional Audit Outbox; the Universal Resource API is read/export-only.
   permissions: {
     read: 'store.read',
-    create: 'store.manage',
-    update: 'store.manage',
-    delete: 'store.manage',
     export: 'store.read',
   },
 
@@ -618,7 +617,7 @@ export const mechanicsConfig: AdminResourceConfig = {
       { value: 'INACTIVE', label: 'غیرفعال' },
     ], permissions: { read: 'store.read', write: 'store.manage' } },
     { key: 'verified', label: 'تأییدشده', type: 'boolean', defaultValue: false,
-      permissions: { read: 'store.read', write: 'store.manage' } },
+      permissions: { read: 'store.read' } },
     { key: 'notes', label: 'یادداشت مدیریت', type: 'textarea',
       validation: { maxLength: 2000,
         message: 'یادداشت نباید بیش از ۲۰۰۰ نویسه باشد' } },
@@ -723,26 +722,27 @@ export const suppliersConfig: AdminResourceConfig = {
     { key: 'audit', label: 'ممیزی', type: 'audit' },
   ],
 
-  actions: [
-    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
-      permission: 'store.manage', type: 'confirm',
-      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
-    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
-      permission: 'store.manage', type: 'confirm',
-      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
-    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
-      permission: 'store.manage', type: 'modal',
-      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
-    { key: 'delete', label: 'حذف', icon: 'Trash2',
-      permission: 'store.manage', type: 'confirm', variant: 'destructive',
-      apiPath: '/api/admin/store/suppliers', apiMethod: 'DELETE' },
-  ],
-
   bulkActions: [
     { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
       permission: 'store.manage', type: 'confirm' },
     { key: 'bulk-deactivate', label: 'غیرفعال‌سازی گروهی', icon: 'ToggleLeft',
       permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
+      permission: 'store.read', type: 'confirm' },
+  ],
+
+  audit: { enabled: true, entityType: 'Supplier',
+    actions: ['store.manage'] },
+
+  relations: [
+    { label: 'درخواست‌های تأمین', resource: 'procurement', filterField: 'supplierId' },
+  ],
+};
+
+// ── 8. Car Models (Vehicle selector for parts compatibility) ────
+// Used by the parts catalog to filter compatible vehicles. The admin
+// route at /ap  // Only export is exposed through the Universal Resource Engine.
+  bulkActions: [
     { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
       permission: 'store.read', type: 'confirm' },
   ],
