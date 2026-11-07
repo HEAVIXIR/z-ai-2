@@ -116,6 +116,17 @@ Proposed entities:
 
 The exact relation shape must be validated against the current Prisma client and PostgreSQL migration conventions before implementation. Any main-schema change must be mirrored consistently in the preview schema where required. Do not hand-edit generated Prisma clients.
 
+### 5.3 Existing subscription featured credits are not yet a working redemption flow
+
+The current schema has `SubscriptionPlan.featuredCredits` and `PremiumSubscription.featuredCredits`, and the admin subscription UI displays the balance. A repository call-site audit did not find a seller-facing redemption endpoint or a service that atomically decrements those credits when a listing is featured. The existing `Listing.featured` flag is editorial/admin-controlled.
+
+Therefore:
+- Do not tell sellers that plan-included credits can currently be redeemed unless a separate verified implementation is merged.
+- The target design should unify both entitlements through the same `ListingPromotion` lifecycle: one source is a subscription credit; the other is a verified one-off payment.
+- Credit redemption must atomically decrement the current subscription balance and create the promotion record, with idempotency and audit. A retry must not consume two credits.
+- The promotion source must be explicit (`SUBSCRIPTION_CREDIT` or `ONE_OFF_PAYMENT`) so finance reports can distinguish subscription value from cash revenue.
+- The one-off purchase remains available to standard users with no subscription.
+
 ## 6. Payment and financial safety — launch blocker
 
 The current `POST /api/payments/create` route is a ledger-row creator, not a complete online payment flow. It accepts a client-provided amount/type/currency and explicitly documents that gateway redirect/callback handling is out of scope. It must not be reused as a trusted paid-promotion checkout without redesign.
