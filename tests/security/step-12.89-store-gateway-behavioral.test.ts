@@ -219,6 +219,17 @@ describe("PR #40: GET /api/store/orders/[id] — auth + ownership", () => {
     expect(res.status).toBe(200);
   });
 
+  it("NEGATIVE: matching but unverified phone → 403", async () => {
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: false, firstName: "X", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    const res = await ordersIdRoute.GET(
+      makeReq("http://localhost/api/store/orders/order-1"),
+      { params: Promise.resolve({ id: "order-1" }) },
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("POSITIVE: admin → 200 (any order)", async () => {
     mockCurrentUser = { id: "admin-1", mobile: "09130000000", firstName: "Admin", role: "ADMIN" };
     mockIsAdminResult = true;
