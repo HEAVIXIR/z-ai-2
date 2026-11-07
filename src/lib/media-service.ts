@@ -28,7 +28,7 @@
      • media.attach
    ============================================================ */
 
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import {
@@ -41,6 +41,9 @@ import { logAudit } from "@/lib/audit";
 /* ── Constants ──────────────────────────────────────────────── */
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+// Sidecar metadata is private application state and must never live in public/.
+const MEDIA_METADATA_ROOT = path.join(process.cwd(), ".heavix-media-metadata");
+const SIDECAR_SUFFIX = ".meta.json";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
@@ -90,8 +93,30 @@ interface AssetSidecar {
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
+function normalizeUploadRelativePath(relativePath: string): string | null {
+  if (typeof relativePath !== "string" || relativePath.length === 0) return null;
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (
+    normalized.startsWith("/") ||
+    normalized.split("/").some((segment) =>
+      segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    return null;
+  }
+  const root = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(root, ...normalized.split("/"));
+  if (!resolved.startsWith(root + path.sep)) return null;
+  return normalized;
+}
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
-  return `${assetRelativePathWithExt}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(assetRelativePathWithExt);
+  if (!safeRelativePath) throw new Error("Invalid media asset relative path.");
+  return path.join(
+    MEDIA_METADATA_ROOT,
+    ...safeRelativePath.split("/"),
+  ) + SIDECAR_SUFFIX;
 }
 
 /** Walk a directory recursively, returning every regular file. */
@@ -117,29 +142,81 @@ async function walkFiles(
   return acc;
 }
 
-/** Read a sidecar JSON; returns null if missing/corrupt. */
+/** Read a sidecar JSON and bind it to the path discovered on disk. */
 async function readSidecar(
   sidecarFullPath: string,
+  expectedRelativePath: string,
 ): Promise<AssetSidecar | null> {
   try {
+    const safeExpectedPath = normalizeUploadRelativePath(expectedRelativePath);
+    if (!safeExpectedPath) return null;
     const raw = await fs.readFile(sidecarFullPath, "utf8");
     const parsed = JSON.parse(raw) as AssetSidecar;
-    if (!parsed || typeof parsed.id !== "string") return null;
+    if (
+      !parsed ||
+      typeof parsed.id !== "string" ||
+      !/^[a-f0-9]{24}$/i.test(parsed.id) ||
+      parsed.relativePath !== safeExpectedPath ||
+      parsed.filename !== path.posix.basename(safeExpectedPath) ||
+      parsed.url !== `/uploads/${safeExpectedPath}` ||
+      !Number.isSafeInteger(parsed.size) ||
+      parsed.size <= 0 ||
+      typeof parsed.uploadedAt !== "string"
+    ) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
   }
 }
 
-/** Walk /public/uploads/ and return all assets (newest first). */
+/**
+ * Move legacy sidecars out of public/uploads before reading them. Copy-then-
+ * unlink is idempotent across interrupted requests; private files win if a
+ * previous migration attempt already completed the copy.
+ */
+async function migrateLegacyPublicSidecars(): Promise<void> {
+  const legacyFiles = await walkFiles(UPLOAD_ROOT, UPLOAD_ROOT);
+  for (const rel of legacyFiles) {
+    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
+    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
+    const safeRelativePath = normalizeUploadRelativePath(assetRelativePath);
+    if (!safeRelativePath) continue;
+
+    const legacyPath = path.join(UPLOAD_ROOT, ...rel.split("/"));
+    const privatePath = sidecarPathFor(safeRelativePath);
+    await fs.mkdir(path.dirname(privatePath), { recursive: true, mode: 0o700 });
+
+    try {
+      await fs.copyFile(legacyPath, privatePath, fsConstants.COPYFILE_EXCL);
+      await fs.chmod(privatePath, 0o600).catch(() => {});
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST" && code !== "ENOENT") throw error;
+    }
+
+    // If a private copy already exists, it is authoritative. Remove the
+    // public duplicate so the sidecar cannot continue to be fetched statically.
+    await fs.unlink(legacyPath).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    });
+  }
+}
+
+/** Walk private metadata storage and return all valid assets (newest first). */
 async function readAllAssets(): Promise<MediaAsset[]> {
   await fs.mkdir(UPLOAD_ROOT, { recursive: true }).catch(() => {});
-  const rels = await walkFiles(UPLOAD_ROOT, UPLOAD_ROOT);
+  await fs.mkdir(MEDIA_METADATA_ROOT, { recursive: true, mode: 0o700 });
+  await migrateLegacyPublicSidecars();
+
+  const rels = await walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT);
   const sidecars: AssetSidecar[] = [];
   for (const rel of rels) {
-    if (!rel.endsWith(".meta.json")) continue;
-    const full = path.join(UPLOAD_ROOT, rel);
-    const sc = await readSidecar(full);
+    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
+    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
+    const full = path.join(MEDIA_METADATA_ROOT, ...rel.split("/"));
+    const sc = await readSidecar(full, assetRelativePath);
     if (sc) sidecars.push(sc);
   }
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
@@ -257,10 +334,15 @@ export async function uploadAsset(
     altText: input.altText ?? null,
   };
 
-  // 5. Persist sidecar
-  const sidecarDiskPath = path.join(targetDir, sidecarPathFor(safeName));
+  // 5. Persist private sidecar metadata outside the public asset tree.
+  const sidecarDiskPath = sidecarPathFor(relPath);
   try {
-    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), "utf8");
+    await fs.mkdir(path.dirname(sidecarDiskPath), { recursive: true, mode: 0o700 });
+    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
   } catch (err) {
     // Best-effort cleanup of orphaned binary if sidecar write failed
     await fs.unlink(fullDiskPath).catch(() => {});
@@ -338,8 +420,12 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
-  const sidecarPath = `${binaryPath}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(asset.relativePath);
+  if (!safeRelativePath) {
+    return { ok: false, error: "مسیر رسانه نامعتبر است." };
+  }
+  const binaryPath = path.join(UPLOAD_ROOT, ...safeRelativePath.split("/"));
+  const sidecarPath = sidecarPathFor(safeRelativePath);
 
   // Remove binary file
   try {
@@ -393,8 +479,12 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
-  const sidecarPath = `${binaryPath}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(asset.relativePath);
+  if (!safeRelativePath) {
+    return { ok: false, error: "مسیر رسانه نامعتبر است." };
+  }
+  const binaryPath = path.join(UPLOAD_ROOT, ...safeRelativePath.split("/"));
+  const sidecarPath = sidecarPathFor(safeRelativePath);
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
     id: asset.id,
@@ -411,7 +501,11 @@ export async function attachAsset(
     altText: asset.altText,
   };
   try {
-    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), "utf8");
+    await fs.mkdir(path.dirname(sidecarPath), { recursive: true, mode: 0o700 });
+    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
   } catch (err) {
     return {
       ok: false,
