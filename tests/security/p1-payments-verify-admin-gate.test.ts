@@ -36,7 +36,7 @@ beforeEach(() => {
     id: "p1",
     status: "PENDING",
     amount: 1000n,
-    type: "SUBSCRIPTION",
+    type: "FEATURED_LISTING",
     subscriptionId: "sub-1",
     userId: "seller-1",
     paidAt: null,
@@ -83,15 +83,15 @@ describe("POST /api/payments/[id]/verify", () => {
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
-  it("POSITIVE: admin verifies a pending subscription in one transaction", async () => {
+  it("POSITIVE: admin verifies a pending non-subscription payment in one transaction", async () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.findPayment
       .mockResolvedValueOnce({
-        id: "p1", status: "PENDING", amount: 1000n, type: "SUBSCRIPTION",
+        id: "p1", status: "PENDING", amount: 1000n, type: "FEATURED_LISTING",
         subscriptionId: "sub-1", userId: "seller-1", paidAt: null,
       })
       .mockResolvedValueOnce({
-        id: "p1", status: "PAID", amount: 1000n, type: "SUBSCRIPTION",
+        id: "p1", status: "PAID", amount: 1000n, type: "FEATURED_LISTING",
         subscriptionId: "sub-1", userId: "seller-1", paidAt: new Date(),
       });
 
@@ -133,7 +133,7 @@ describe("POST /api/payments/[id]/verify", () => {
   it("NEGATIVE: payment not PENDING → 409 without mutation", async () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.findPayment.mockResolvedValue({
-      id: "p1", status: "PAID", amount: 1000n, type: "SUBSCRIPTION",
+      id: "p1", status: "PAID", amount: 1000n, type: "FEATURED_LISTING",
       subscriptionId: "sub-1", userId: "seller-1", paidAt: new Date(),
     });
 
@@ -156,7 +156,7 @@ describe("POST /api/payments/[id]/verify", () => {
   it("NEGATIVE: SUBSCRIPTION payment without a subscription link → 409", async () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.findPayment.mockResolvedValue({
-      id: "p1", status: "PENDING", amount: 1000n, type: "SUBSCRIPTION",
+      id: "p1", status: "PENDING", amount: 1000n, type: "FEATURED_LISTING",
       subscriptionId: null, userId: "seller-1", paidAt: null,
     });
 
@@ -170,11 +170,11 @@ describe("POST /api/payments/[id]/verify", () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.findPayment
       .mockResolvedValueOnce({
-        id: "p1", status: "PENDING", amount: 1000n, type: "SUBSCRIPTION",
+        id: "p1", status: "PENDING", amount: 1000n, type: "FEATURED_LISTING",
         subscriptionId: "sub-1", userId: "seller-1", paidAt: null,
       })
       .mockResolvedValueOnce({
-        id: "p1", status: "PAID", amount: 1000n, type: "SUBSCRIPTION",
+        id: "p1", status: "PAID", amount: 1000n, type: "FEATURED_LISTING",
         subscriptionId: "sub-1", userId: "seller-1", paidAt: new Date(),
       });
     mocks.createAudit.mockRejectedValue(new Error("audit unavailable"));
@@ -222,7 +222,7 @@ describe("payment verification source contract", () => {
     expect(source).toContain('requirePermission(user.id, "payment.manage")');
   });
 
-  it("keeps payment, subscription activation and audit inside one transaction", async () => {
+  it("keeps payment state transition and audit inside one transaction", async () => {
     const fs = await import("fs");
     const path = await import("path");
     const source = fs.readFileSync(
@@ -231,7 +231,8 @@ describe("payment verification source contract", () => {
     );
     expect(source).toContain("await db.$transaction(async (tx) =>");
     expect(source).toContain('where: { id, status: "PENDING" }');
-    expect(source).toContain("tx.premiumSubscription.updateMany");
+    expect(source).not.toContain("tx.premiumSubscription.updateMany");
+    expect(source).toContain("SubscriptionBillingUnavailableError");
     expect(source).toContain("tx.auditLog.create");
     expect(source).not.toContain("await logAudit(");
   });
