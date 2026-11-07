@@ -742,7 +742,7 @@ export async function resolveReturn(
     // status update is the idempotency guard for concurrent resolution.
     const claimed = await tx.return.updateMany({
       where: { id: returnId, status: 'INSPECTED' },
-      data: { status: 'RESOLVED', resolution },
+      data: { status: resolution === 'REJECT' ? 'REJECTED' : 'RESOLVED', resolution },
     });
     if (claimed.count !== 1) {
       throw new ReturnsServiceError(400, 'مرجوعی هم‌زمان تغییر کرده یا قبلاً حل‌وفصل شده است');
