@@ -79,7 +79,7 @@ export default function StorePaymentsPage() {
   useEffect(() => { load(); }, [load]);
 
   const updateStatus = async (p: Payment, status: "APPROVED" | "REJECTED") => {
-    if (status !== "REFUNDED" && !confirm(`تأیید پرداخت به وضعیت «${status === "APPROVED" ? "تأییدشده" : "ردشده"}»؟`)) return;
+    if (!confirm(`تغییر وضعیت پرداخت به «${status === "APPROVED" ? "تأییدشده" : "ردشده"}»؟`)) return;
     setBusy(p.id);
     try {
       const res = await fetch(`/api/admin/store/payments/${p.id}`, {
