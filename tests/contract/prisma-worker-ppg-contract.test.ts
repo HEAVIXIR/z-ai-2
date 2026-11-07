@@ -144,6 +144,26 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(ci).toContain("prisma-workerd-smoke:");
     expect(ci).toContain("HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY");
   });
+  it("proves read-only mode per transaction without requiring a read-only Preview database", () => {
+    const worker = read("tests/workerd/worker.ts");
+    const runner = read("scripts/run-prisma-workerd-proof.mjs");
+    const appStart = worker.indexOf('if (path === "/app/transaction")');
+    const storeStart = worker.indexOf('if (path === "/store/transaction")');
+    const appBlock = worker.slice(appStart, storeStart);
+    const storeBlock = worker.slice(storeStart);
+
+    expect(appBlock).toContain("SET TRANSACTION READ ONLY");
+    expect(storeBlock).toContain("SET TRANSACTION READ ONLY");
+    expect(appBlock.indexOf("SET TRANSACTION READ ONLY")).toBeLessThan(
+      appBlock.indexOf("SELECT current_setting('transaction_read_only')"),
+    );
+    expect(storeBlock.indexOf("SET TRANSACTION READ ONLY")).toBeLessThan(
+      storeBlock.indexOf("SELECT current_setting('transaction_read_only')"),
+    );
+    expect(runner).toContain("without requiring the entire Preview database");
+    expect(runner).not.toContain("Preview database must be read-only");
+  });
+
 });
 
 describe("Cloudflare Next build descriptor diagnostics", () => {
