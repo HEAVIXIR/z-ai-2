@@ -77,10 +77,34 @@ if [ "$IS_PRODUCTION" -eq 1 ] && [ "${HEAVIX_ALLOW_PRODUCTION_RESTORE:-}" != "I_
   exit 1
 fi
 
-if [ "$DOCKER_MODE" -eq 0 ] && { ! is_local_host "$DB_HOST" || ! is_local_host "$STORE_DB_HOST"; }; then
-  if [ "${HEAVIX_ALLOW_REMOTE_RESTORE:-}" != "1" ] || [ "${HEAVIX_RESTORE_TARGET:-}" != "NON_PRODUCTION" ]; then
-    echo "BLOCKED: remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1 and HEAVIX_RESTORE_TARGET=NON_PRODUCTION."
+if [ "$DB_HOST" = "$STORE_DB_HOST" ] && [ "$DB_PORT" = "$STORE_DB_PORT" ] && [ "$DB_NAME" = "$STORE_DB_NAME" ]; then
+  echo "ERROR: Main and Store restore targets must be distinct databases."
+  exit 1
+fi
+
+if [ "$DOCKER_MODE" -eq 1 ]; then
+  if [ "$MAIN_DB_CONTAINER" = "$STORE_DB_CONTAINER" ] && [ "$DB_NAME" = "$STORE_DB_NAME" ]; then
+    echo "ERROR: Main and Store Docker restore targets must be distinct."
     exit 1
+  fi
+else
+  if [ -z "$DB_PASSWORD" ] || [ -z "$STORE_DB_PASSWORD" ]; then
+    echo "ERROR: DB_PASSWORD and STORE_DB_PASSWORD are required for non-Docker restore."
+    exit 1
+  fi
+  if { ! is_local_host "$DB_HOST" || ! is_local_host "$STORE_DB_HOST"; }; then
+    if [ "${HEAVIX_ALLOW_REMOTE_RESTORE:-}" != "1" ]; then
+      echo "BLOCKED: remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1."
+      exit 1
+    fi
+    if [ "$IS_PRODUCTION" -eq 0 ] && [ "${HEAVIX_RESTORE_TARGET:-}" != "NON_PRODUCTION" ]; then
+      echo "BLOCKED: remote non-production restore requires HEAVIX_RESTORE_TARGET=NON_PRODUCTION."
+      exit 1
+    fi
+    if [ "$IS_PRODUCTION" -eq 1 ] && [ "${HEAVIX_ALLOW_PRODUCTION_RESTORE:-}" != "I_UNDERSTAND_PRODUCTION_DATA_LOSS" ]; then
+      echo "BLOCKED: remote Production restore requires the explicit Production restore override."
+      exit 1
+    fi
   fi
 fi
 
@@ -129,9 +153,6 @@ if [ "$DOCKER_MODE" -eq 1 ]; then
   docker exec -i "$STORE_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STORE_DB_USER" -d "$STORE_DB_NAME" \
     < "$BACKUP_DIR/store.sql"
 else
-  : "${DB_PASSWORD:?DB_PASSWORD is required for non-Docker restore}"
-  : "${STORE_DB_PASSWORD:?STORE_DB_PASSWORD is required for non-Docker restore}"
-
   PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
     -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE);"
   PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
