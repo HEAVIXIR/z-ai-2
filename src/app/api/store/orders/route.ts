@@ -328,7 +328,11 @@ export async function POST(req: Request) {
       // The preflight stock read above is advisory only. This conditional
       // update is authoritative under concurrent checkouts; a conflict throws
       // inside the transaction and rolls back the order and all side effects.
-      for (const it of orderItemsData) {
+      // Acquire Part locks in one global order for multi-line carts. This
+      // prevents two checkouts containing the same parts in opposite cart
+      // order from deadlocking before the per-Part warehouse allocation.
+      const stockLines = [...orderItemsData].sort((a, b) => a.partId.localeCompare(b.partId));
+      for (const it of stockLines) {
         await decrementOrderStock(tx, it.partId, it.quantity, o.id, sessionUser?.id ?? null);
       }
 
