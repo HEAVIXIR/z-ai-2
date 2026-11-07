@@ -274,7 +274,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +14 new (services/providers 2,
       //   services/providers/[id] 3, services/requests 2, services/requests/[id]
       //   2, logistics/dashboard 1, shipments/[id]/{assign,pickup,deliver,
-      //   exception} 1+1+1+1) → 92; return restock authorization +1 → 93.
+      //   exception} 1+1+1+1) → 92; procurement receiving +1 and return restock authorization +1 → 94.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -282,7 +282,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(93);
+      expect(count).toBe(94);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -378,7 +378,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(15);
     });
 
-    it('should have 22 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 23 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -399,10 +399,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   (shipments/[id]/{assign,pickup,deliver,exception} POST) → total
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
-      //   Total = 6 + 3 + 7 + 6 = 22.
+      //   Procurement receiving adds one inventory.manage gate; total = 7 + 3 + 7 + 6 = 23.
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 6,
+        'inventory.manage': 7,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
@@ -559,12 +559,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 70 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
+    it('should have 69 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
       // STEP 15.95+ — Transactional Outbox: 6 service-scope logAudit calls
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
       // invariant is unchanged: every mutation has a corresponding audit
-      // event. The count is 70 = 61 logAudit + 9 enqueueAuditOutbox, including three new atomic return-restock events.
+      // event. The combined count is 69 after adding procurement receiving (+1) and return-restock events (+3), then disabling the legacy Part-only writer (-2).
       //
       // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
@@ -579,10 +579,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
         count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      expect(count).toBe(70);
+      expect(count).toBe(69);
     });
 
-    it('counts 57 Store DB writes across routes + services, including transactions', () => {
+    it('counts 56 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -592,7 +592,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(57);
+      expect(count).toBe(56);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -763,7 +763,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (70) cover the 57 counted database write calls', () => {
+    it('total audits (69) cover the 56 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -775,8 +775,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(57);
-      expect(totalAudit).toBe(70);
+      expect(totalMut).toBe(56);
+      expect(totalAudit).toBe(69);
     });
   });
 
@@ -1011,12 +1011,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(content).toMatch(/export async function getPurchaseOrder\b/);
     });
 
-    it('inventory route imports createMovement + listMovements from service', () => {
+    it('inventory route imports warehouse-aware adjustStock + listMovements from service', () => {
       const content = readRoute('src/app/api/admin/store/inventory/route.ts');
       expect(content).toContain('import');
-      expect(content).toContain('createMovement');
+      expect(content).toContain('adjustStock');
       expect(content).toContain('listMovements');
       expect(content).toContain('from "@/lib/store-inventory-service"');
+      expect(content).not.toContain('createMovement(');
+      expect(content).toContain('checkCsrf(req)');
+      expect(content).toContain('typeof warehouseId !== "string"');
     });
 
     it('returns route imports createReturn + listReturns from service', () => {
