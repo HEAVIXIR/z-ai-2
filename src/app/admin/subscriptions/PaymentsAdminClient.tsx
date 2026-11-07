@@ -76,6 +76,7 @@ export default function PaymentsAdminClient() {
     type: "SUBSCRIPTION",
     subscriptionId: "",
     trackingCode: "",
+    reason: "",
     gateway: "MANUAL",
     markPaid: true,
   });
@@ -128,8 +129,8 @@ export default function PaymentsAdminClient() {
 
   async function submitManual(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.userId.trim() || !form.amount.trim()) {
-      alert("شناسه کاربر و مبلغ الزامی است.");
+    if (!form.userId.trim() || !form.amount.trim() || form.reason.trim().length < 5) {
+      alert("شناسه کاربر، مبلغ و دلیل ثبت (حداقل ۵ نویسه) الزامی است.");
       return;
     }
     if (form.type === "SUBSCRIPTION" && !form.subscriptionId.trim()) {
@@ -151,7 +152,8 @@ export default function PaymentsAdminClient() {
           type: form.type,
           subscriptionId: form.subscriptionId.trim() || undefined,
           trackingCode: form.trackingCode.trim() || undefined,
-          gateway: form.gateway,
+          reason: form.reason.trim(),
+          gateway: "MANUAL",
           markPaid: form.markPaid,
         }),
       });
@@ -166,6 +168,7 @@ export default function PaymentsAdminClient() {
         type: "SUBSCRIPTION",
         subscriptionId: "",
         trackingCode: "",
+        reason: "",
         gateway: "MANUAL",
         markPaid: true,
       });
