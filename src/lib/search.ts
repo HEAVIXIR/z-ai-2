@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Search normalization + indexing layer (P1-18)
@@ -211,7 +212,7 @@ export async function searchListings(
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
   const offset = Math.max(0, params.offset ?? 0);
 
-  const where: PrismaWhere = { status: "PUBLISHED" };
+  const where: PrismaWhere = getPublicListingWhere() as PrismaWhere;
 
   // Free text
   const q = params.q?.trim();
