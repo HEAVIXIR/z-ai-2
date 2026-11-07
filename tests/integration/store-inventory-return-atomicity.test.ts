@@ -552,4 +552,67 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(events).toBe(0);
   }, 15000);
 
+  it('does not increase inventory for non-restockable returned items', async () => {
+    if (!partId) throw new Error('fixture setup incomplete');
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1333' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'Damaged',
+        family: 'NonRestockable',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'NON-RESTOCKABLE-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 5,
+        totalUsd: 5,
+        totalIrr: 500,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+    const orderItem = await storeDb.orderItem.create({
+      data: {
+        orderId: order.id,
+        partId,
+        partNameSnapshot: 'Damaged returned part',
+        quantity: 1,
+        unitPriceUsd: 5,
+        unitPriceIrr: 500,
+        lineTotalUsd: 5,
+        lineTotalIrr: 500,
+      },
+    });
+    orderItemId = orderItem.id;
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'damaged item', status: 'INSPECTED' },
+    });
+    returnId = ret.id;
+    await storeDb.returnItem.create({
+      data: {
+        returnId: ret.id,
+        orderItemId: orderItem.id,
+        quantity: 1,
+        condition: 'DAMAGED',
+        restockable: false,
+      },
+    });
+
+    const resolved = await resolveReturn(ret.id, 'REFUND');
+    expect(resolved.status).toBe('RESOLVED');
+    const [part, balances, movements] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findMany({ where: { partId } }),
+      storeDb.stockMovement.findMany({ where: { partId, reference: ret.id, type: 'RETURN' } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(balances).toHaveLength(0);
+    expect(movements).toHaveLength(0);
+  }, 15000);
+
 });
