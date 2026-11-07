@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, formatCompactPrice } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -78,14 +79,14 @@ export default async function SeoLandingPage({ params }: Props) {
         ],
       },
       include: {
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
   ]);
 
   /* Build where: city match + (category match OR category children) */
   const where: any = {
-    status: "PUBLISHED",
+    ...getPublicListingWhere(),
     city: { contains: cityRaw },
   };
 
