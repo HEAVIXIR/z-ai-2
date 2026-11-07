@@ -22,6 +22,15 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(list).toContain("/admin/store/returns/${r.id}");
   });
 
+  it("allows authorized admins to add purchased order lines before inspection", () => {
+    expect(page).toContain("items: {");
+    expect(client).toContain('"/api/admin/store/returns/${initialReturn.id}/items"');
+    expect(client).toContain('method: "POST"');
+    expect(client).toContain("orderItemId: selectedOrderItemId");
+    expect(client).toContain('["REQUESTED", "APPROVED"].includes(initialReturn.status)');
+    expect(route).toContain("addReturnItem(");
+  });
+
   it("supports approval, item inspection, and all resolution choices", () => {
     expect(client).toContain('mutate({ status: "APPROVED" })');
     expect(client).toContain('action: "inspect"');
