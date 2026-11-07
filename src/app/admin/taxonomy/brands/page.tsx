@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import {
   Building2,
@@ -76,7 +77,7 @@ export default async function TaxonomyBrandsPage({
           select: {
             categories: true,
             models: { where: { status: "ACTIVE" } },
-            listings: { where: { status: "PUBLISHED" } },
+            listings: { where: getPublicListingWhere() },
           },
         },
       },
