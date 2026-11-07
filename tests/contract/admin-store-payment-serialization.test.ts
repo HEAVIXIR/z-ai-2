@@ -26,7 +26,7 @@ describe("admin store payment response privacy", () => {
     ["collection", collection],
     ["detail", detail],
   ])("%s masks payer card to the final four digits", (_name, source) => {
-    expect(source).toContain('const digits = value.replace(/\\D/g, "")');
+    expect(source).toContain(String.raw`const digits = value.replace(/\D/g, "")`);
     expect(source).toContain('return `•••• ${digits.slice(-4)}`');
   });
 });
