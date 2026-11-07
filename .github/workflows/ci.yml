@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Run the full blocking suite for stacked integration PRs as well as main.
   pull_request:
-    branches: [main]
+    branches: [main, 'integration/**']
   push:
     branches: [main, 'feature/**']
 
