@@ -93,3 +93,9 @@ describe("admin store payment state and audit atomicity", () => {
     expect(detail).toContain("STORE_PAYMENT_STATE_CONFLICT");
   });
 });
+
+  it("does not query raw payer card data through the admin search parameter", () => {
+    expect(collection).not.toContain("payerCard: { contains: q }");
+    expect(collection).toContain("referenceCode: { contains: q }");
+    expect(collection).toContain("payerName: { contains: q }");
+  });
