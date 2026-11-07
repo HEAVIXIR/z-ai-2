@@ -315,6 +315,11 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     });
     orderItemId = orderItem.id;
 
+    if (!warehouseId) throw new Error('fixture setup incomplete');
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 0, lowStockThreshold: 5 },
+    });
+
     const ret = await storeDb.return.create({
       data: { orderId: order.id, reason: 'concurrency test', status: 'INSPECTED' },
     });
@@ -331,8 +336,8 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     });
 
     const outcomes = await Promise.allSettled([
-      resolveReturn(ret.id, 'REFUND'),
-      resolveReturn(ret.id, 'REFUND'),
+      resolveReturn(ret.id, 'REFUND', null, warehouseId),
+      resolveReturn(ret.id, 'REFUND', null, warehouseId),
     ]);
 
     expect(outcomes.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
@@ -349,5 +354,17 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(wallet?.walletBalanceIrr).toBe(500);
     expect(transactions).toHaveLength(1);
     expect(transactions[0]?.amount).toBe(500);
+
+    const [part, balance, movements] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId! }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId: partId!, warehouseId: warehouseId! } },
+      }),
+      storeDb.stockMovement.findMany({ where: { partId: partId!, reference: ret.id, type: 'RETURN' } }),
+    ]);
+    expect(part?.stock).toBe(11);
+    expect(balance?.quantity).toBe(11);
+    expect(movements).toHaveLength(1);
+    expect(movements[0]?.warehouseId).toBe(warehouseId);
   }, 15000);
 });
