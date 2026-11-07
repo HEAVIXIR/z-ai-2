@@ -219,7 +219,9 @@ export async function PATCH(
       }
 
       const effectiveStatus = (data.status as string | undefined) ?? existing.status;
-      const effectiveSupplierId = (data.supplierId as string | null | undefined) ?? existing.supplierId;
+      const effectiveSupplierId = Object.prototype.hasOwnProperty.call(data, 'supplierId')
+        ? (data.supplierId as string | null)
+        : existing.supplierId;
       if (effectiveStatus === 'AWARDED') {
         if (!effectiveSupplierId) {
           return { error: "برای واگذاری مناقصه باید تأمین‌کننده برنده مشخص باشد", status: 409 as const };
