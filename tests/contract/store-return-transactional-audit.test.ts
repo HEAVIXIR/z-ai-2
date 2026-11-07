@@ -50,7 +50,7 @@ describe("Store return lifecycle transactional audit contract", () => {
     expect(resolve).toContain("tx.customer.update");
     expect(resolve).toContain("enqueueAuditOutbox");
     expect(resolve).toContain("tx.inventoryBalance.update({");
-    expect(resolve).toContain("tx.part.updateMany");
+    expect(resolve).toContain("tx.part.update({");
     expect(resolve).toContain("tx.stockMovement.create");
     expect(resolve).toContain("warehouseId");
     expect(resolve).toContain("type: 'RETURN'");
