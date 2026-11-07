@@ -66,6 +66,12 @@ describe("Explicit opening-balance allocation", () => {
     expect(returns).toContain("FOR SHARE");
   });
 
+  it("returns a client error for malformed JSON and non-object request bodies", () => {
+    expect(route).toContain("بدنه درخواست JSON معتبر نیست");
+    expect(route).toContain("typeof body !== \"object\" || Array.isArray(body)");
+    expect(route).toContain("{ status: 400 }");
+  });
+
   it("previews totals and requires an explicit operator checkbox before submitting", () => {
     expect(panel).toContain("allocated === selectedPart.stock");
     expect(panel).toContain("!invalidQuantity");
