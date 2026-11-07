@@ -82,6 +82,7 @@ async function userHasAnyRole(
 ): Promise<boolean> {
   // Try the new RBAC UserRole table first.
   if (await hasRole(userId, roles)) return true;
+  return false;
 }
 
 /**
@@ -428,13 +429,23 @@ export async function preflightAIRequest(params: {
     return { ok: false, statusCode: 403, reason: "دسترسی غیرمجاز." };
   }
 
-  // 3. Per-user quota.
+  // 3. Validate input before any quota/budget side effects. A rejected
+  // oversized or malformed request must not reserve AI budget.
+  if (!Number.isSafeInteger(inputLength) || inputLength < 0 || inputLength > policy.maxInputChars) {
+    return {
+      ok: false,
+      statusCode: 400,
+      reason: "ورودی نامعتبر یا بیش از حد طولانی.",
+    };
+  }
+
+  // 4. Per-user quota.
   const quota = await checkAIQuota(actorId, taskType, policy);
   if (!quota.ok) {
     return { ok: false, statusCode: 429, reason: "سهمیه شما تمام شده." };
   }
 
-  // 4. Global budget (auto-resets windows first).
+  // 5. Global budget (auto-resets windows first).
   const budget = await getAIBudget();
   const budgetCheck = await checkAIBudget(policy.costCeilingUsd, budget);
   if (!budgetCheck.ok) {
@@ -442,15 +453,6 @@ export async function preflightAIRequest(params: {
       ok: false,
       statusCode: 429,
       reason: "بودجه هوش مصنوعی روزانه/ماهانه تمام شده.",
-    };
-  }
-
-  // 5. Input size — enforced here too so the route stays simple.
-  if (inputLength > policy.maxInputChars) {
-    return {
-      ok: false,
-      statusCode: 400,
-      reason: "ورودی بیش از حد طولانی.",
     };
   }
 
