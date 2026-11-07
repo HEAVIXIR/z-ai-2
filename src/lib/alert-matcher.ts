@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { normalizeSearchQuery, buildSearchWhere } from "@/lib/search";
 import { logAudit } from "@/lib/audit";
 
@@ -49,7 +50,7 @@ function buildSavedSearchWhere(
   },
   since: Date | null,
 ): { where: any; hasCriteria: boolean } {
-  const where: any = { status: "PUBLISHED" };
+  const where: any = { ...getPublicListingWhere() };
 
   // Created-after-lastNotifiedAt — only NEW listings.
   if (since) {
