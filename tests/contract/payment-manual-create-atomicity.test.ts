@@ -10,19 +10,20 @@ describe("manual marketplace payment creation transaction contract", () => {
     "utf8",
   );
 
-  it("creates the payment, activates only the linked same-user subscription, and audits in one transaction", () => {
+  it("creates non-subscription payment rows and audits in one transaction", () => {
     expect(source).toContain("await db.$transaction(async (tx) =>");
     expect(source).toContain("tx.payment.create");
-    expect(source).toContain("tx.premiumSubscription.updateMany");
+    expect(source).not.toContain("tx.premiumSubscription.updateMany");
     expect(source).toContain("where: { id: subscriptionId, userId }");
     expect(source).toContain("tx.auditLog.create");
     expect(source).not.toContain("await logAudit(");
   });
 
-  it("requires a subscription reference only for subscription payment types", () => {
-    expect(source).toContain("subscriptionId is required for subscription payments");
-    expect(source).toContain("subscriptionId is only valid for subscription payments");
-    expect(source).toContain("linkedSubscription.userId !== userId");
+  it("rejects manual subscription payment creation until billing snapshots exist", () => {
+    expect(source).toContain('if (type === "SUBSCRIPTION")');
+    expect(source).toContain('"SUBSCRIPTION_BILLING_UNAVAILABLE"');
+    expect(source).not.toContain("subscriptionId is required for subscription payments");
+    expect(source).not.toContain("linkedSubscription.userId !== userId");
   });
 
   it("accepts only the MANUAL gateway on the offline-entry endpoint", () => {
