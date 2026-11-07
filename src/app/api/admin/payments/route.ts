@@ -132,6 +132,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
     }
 
+    const type = String(body.type ?? "").toUpperCase();
+    if (type === "SUBSCRIPTION") {
+      return NextResponse.json(
+        {
+          error: "Manual subscription payments are unavailable until canonical plan amount, currency, and term snapshots are implemented",
+          code: "SUBSCRIPTION_BILLING_UNAVAILABLE",
+        },
+        { status: 409 },
+      );
+    }
+    const ALLOWED = ["FEATURED_LISTING", "PROMOTION", "LEAD_FEE", "INSPECTION_FEE"];
+    if (!ALLOWED.includes(type)) {
+      return NextResponse.json(
+        { error: "type must be one of: " + ALLOWED.join(", ") },
+        { status: 400 },
+      );
+    }
+    if (body.subscriptionId !== undefined && body.subscriptionId !== null && String(body.subscriptionId).trim()) {
+      return NextResponse.json(
+        { error: "subscriptionId cannot be supplied for non-subscription payment types" },
+        { status: 400 },
+      );
+    }
+
     const userId = String(body.userId ?? "").trim();
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
@@ -150,20 +174,6 @@ export async function POST(req: Request) {
     const reason = String(body.reason ?? "").trim();
     if (reason.length < 5 || reason.length > 500) {
       return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
-    }
-    const type = String(body.type ?? "SUBSCRIPTION").toUpperCase();
-    const ALLOWED = [
-      "SUBSCRIPTION",
-      "FEATURED_LISTING",
-      "PROMOTION",
-      "LEAD_FEE",
-      "INSPECTION_FEE",
-    ];
-    if (!ALLOWED.includes(type)) {
-      return NextResponse.json(
-        { error: `type must be one of: ${ALLOWED.join(", ")}` },
-        { status: 400 },
-      );
     }
     const markPaid = body.markPaid !== false;
     const subscriptionId = body.subscriptionId
@@ -198,20 +208,10 @@ export async function POST(req: Request) {
       const targetUser = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
       if (!targetUser) throw new Error("PAYMENT_USER_NOT_FOUND");
 
-      if (subscriptionId) {
-        const linkedSubscription = await tx.premiumSubscription.findUnique({
-          where: { id: subscriptionId },
-          select: { id: true, userId: true },
-        });
-        if (!linkedSubscription || linkedSubscription.userId !== userId) {
-          throw new Error("PAYMENT_SUBSCRIPTION_MISMATCH");
-        }
-      }
-
       const created = await tx.payment.create({
         data: {
           userId,
-          subscriptionId,
+          subscriptionId: null,
           amount,
           currency,
           type,
@@ -221,16 +221,6 @@ export async function POST(req: Request) {
           paidAt: markPaid ? new Date() : null,
         },
       });
-
-      if (markPaid && type === "SUBSCRIPTION" && subscriptionId) {
-        const activation = await tx.premiumSubscription.updateMany({
-          where: { id: subscriptionId, userId },
-          data: { status: "ACTIVE", paymentRef: created.id },
-        });
-        if (activation.count !== 1) {
-          throw new Error("PAYMENT_SUBSCRIPTION_MISMATCH");
-        }
-      }
 
       await tx.auditLog.create({
         data: {
@@ -245,7 +235,7 @@ export async function POST(req: Request) {
             type,
             gateway,
             status: created.status,
-            subscriptionId,
+            subscriptionId: null,
           }),
           reason,
           ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
@@ -261,12 +251,7 @@ export async function POST(req: Request) {
     if (err?.message === "PAYMENT_USER_NOT_FOUND") {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    if (err?.message === "PAYMENT_SUBSCRIPTION_MISMATCH") {
-      return NextResponse.json(
-        { error: "Subscription not found or does not belong to this user" },
-        { status: 409 },
-      );
-    }
+
     trackError(err, { endpoint: "POST /api/admin/payments" });
     return NextResponse.json(
       { error: "Manual payment creation failed" },
