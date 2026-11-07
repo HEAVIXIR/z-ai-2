@@ -813,7 +813,7 @@ export async function resolveReturn(
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null,
         actorType: 'ADMIN',
-        action: 'store.inventory.return.restock',
+        action: 'store.inventory.restock',
         entityType: 'StockMovement',
         entityId: movement.id,
         after: { returnId, partId, warehouseId, quantity: qty, balanceAfter: afterPart.stock },
@@ -821,7 +821,7 @@ export async function resolveReturn(
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null,
         actorType: 'ADMIN',
-        action: 'store.inventory.return.restock',
+        action: 'store.inventory.restock',
         entityType: 'Part',
         entityId: partId,
         before: { stock: afterPart.stock - qty },
@@ -830,7 +830,7 @@ export async function resolveReturn(
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null,
         actorType: 'ADMIN',
-        action: 'store.inventory.return.restock',
+        action: 'store.inventory.restock',
         entityType: 'InventoryBalance',
         entityId: afterBalance.id,
         before: { quantity: afterBalance.quantity - qty, reserved: afterBalance.reserved },
