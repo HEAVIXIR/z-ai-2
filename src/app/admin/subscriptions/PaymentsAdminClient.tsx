@@ -132,6 +132,14 @@ export default function PaymentsAdminClient() {
       alert("شناسه کاربر و مبلغ الزامی است.");
       return;
     }
+    if (form.type === "SUBSCRIPTION" && !form.subscriptionId.trim()) {
+      alert("برای ثبت پرداخت اشتراک، شناسه اشتراک الزامی است.");
+      return;
+    }
+    if (form.type !== "SUBSCRIPTION" && form.subscriptionId.trim()) {
+      alert("شناسه اشتراک فقط برای پرداخت از نوع اشتراک مجاز است.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/admin/payments", {
