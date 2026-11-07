@@ -291,9 +291,10 @@ export async function submitPurchaseOrder(
  * Transition a PO from SUBMITTED → APPROVED. Records approverId +
  * approvedAt. Refuses if the PO is not in SUBMITTED state.
  *
- * Separation of duty: at the data layer we record the approver's userId
- * (which may differ from the submitter's); we do NOT hard-refuse same-user
- * approve — that's a UI policy enforced in the admin page, not here.
+ * Separation of duty: submitPurchaseOrder persists submittedBy and this
+ * function rejects approval when the same user submits and approves. Legacy
+ * rows with submittedBy = NULL remain compatible because their submitter
+ * identity cannot be proven from the Store schema.
  *
  * @throws ProcurementServiceError on lookup (404) or state-machine (400).
  */
