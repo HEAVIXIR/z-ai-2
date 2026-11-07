@@ -91,7 +91,7 @@ fi
 
 is_local_host() {
   case "$1" in
-    localhost|127.0.0.1|::1|db|store-db) return 0 ;;
+    localhost|127.0.0.1|::1) return 0 ;;
     *) return 1 ;;
   esac
 }
