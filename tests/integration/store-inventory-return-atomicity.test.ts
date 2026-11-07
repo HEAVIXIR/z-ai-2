@@ -9,6 +9,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   let categoryId: string | undefined;
   let partId: string | undefined;
   let warehouseId: string | undefined;
+  let secondWarehouseId: string | undefined;
   let customerId: string | undefined;
   let orderId: string | undefined;
   let orderItemId: string | undefined;
@@ -73,6 +74,10 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       await storeDb.inventoryBalance.deleteMany({ where: { partId } });
       await storeDb.part.deleteMany({ where: { id: partId } });
       partId = undefined;
+    }
+    if (secondWarehouseId) {
+      await storeDb.warehouse.deleteMany({ where: { id: secondWarehouseId } });
+      secondWarehouseId = undefined;
     }
     if (warehouseId) {
       await storeDb.warehouse.deleteMany({ where: { id: warehouseId } });
@@ -152,6 +157,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     const secondWarehouse = await storeDb.warehouse.create({
       data: { name: 'Atomicity second warehouse ' + suffix(), code: 'AT2-' + suffix() },
     });
+    secondWarehouseId = secondWarehouse.id;
     await storeDb.inventoryBalance.createMany({
       data: [
         { partId, warehouseId, quantity: 5, reserved: 0, lowStockThreshold: 5 },
