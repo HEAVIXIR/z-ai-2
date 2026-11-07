@@ -157,7 +157,14 @@ export async function PATCH(
     }
 
     if (body.action === "resolve") {
-      const ret = await resolveReturn(id, body.resolution, user.id);
+      // Restockable items require an explicit active destination warehouse.
+      // The service validates the warehouse-managed stock ledger atomically.
+      const ret = await resolveReturn(
+        id,
+        body.resolution,
+        user.id,
+        typeof body.warehouseId === "string" ? body.warehouseId : null,
+      );
       // P2: Same as above — resolveReturn() already audits this in the
       // service as store.return.resolve (with before/after). Removed
       // the redundant route-scope store.returns.update audit.
