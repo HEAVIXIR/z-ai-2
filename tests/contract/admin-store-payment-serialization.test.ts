@@ -30,3 +30,19 @@ describe("admin store payment response privacy", () => {
     expect(source).toContain('return `•••• ${digits.slice(-4)}`');
   });
 });
+
+describe("admin store payment refund boundary", () => {
+  it("rejects status-only refund transitions before any payment mutation", () => {
+    expect(detail).toContain('if (body.status === "REFUNDED")');
+    expect(detail).toContain('code: "STORE_REFUND_EVIDENCE_REQUIRED"');
+    expect(detail).toContain("Refunds require an evidence-backed reversal workflow");
+    expect(detail).toContain("{ status: 409 }");
+    expect(detail).not.toContain('"PENDING", "APPROVED", "REJECTED", "REFUNDED"');
+  });
+
+  it("does not render a status-only refund action in the admin UI", () => {
+    const page = fs.readFileSync("src/app/admin/store/payments/page.tsx", "utf8");
+    expect(page).not.toContain('updateStatus(p, "REFUNDED")');
+    expect(page).toContain("بازپرداخت غیرفعال");
+  });
+});
