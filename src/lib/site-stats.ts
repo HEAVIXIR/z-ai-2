@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import { METRIC_OPTIONS, type StatMetric } from "@/lib/site-stats-metrics";
 import {
@@ -71,7 +72,7 @@ export async function computeMetricCount(
       return db.brand.count({ where: { active: true } });
     case "listings":
     case "listings_published":
-      return db.listing.count({ where: { status: "PUBLISHED" } });
+      return db.listing.count({ where: getPublicListingWhere() });
     case "provinces":
       return getCachedProvinceCount();
     case "models":
