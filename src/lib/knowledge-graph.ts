@@ -698,7 +698,7 @@ async function fetchCategoryLayer(categoryId: string): Promise<FetchedLayer> {
 
 async function fetchListingLayer(listingId: string): Promise<FetchedLayer> {
   const listing = await db.listing.findUnique({
-    where: { id: listingId },
+    where: { id: listingId, ...getPublicListingWhere() },
     select: {
       id: true,
       title: true,
@@ -864,7 +864,7 @@ async function fetchMachineLayer(machineId: string): Promise<FetchedLayer> {
   }
   if (machine.listingId) {
     const l = await db.listing.findUnique({
-      where: { id: machine.listingId },
+      where: { id: machine.listingId, ...getPublicListingWhere() },
       select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     });
     if (l) {
@@ -1044,7 +1044,7 @@ async function loadMinimalNode(
       }
       case "Listing": {
         const l = await db.listing.findUnique({
-          where: { id },
+          where: { id, ...getPublicListingWhere() },
           select: { id: true, title: true, slug: true, price: true, year: true, status: true },
         });
         return l ? listingNode(l) : null;
