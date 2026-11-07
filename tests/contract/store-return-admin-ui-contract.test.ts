@@ -63,6 +63,23 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(client).toContain("balanceAfter");
   });
 
+  it("returns explicit CSRF failures before checking returns permissions", () => {
+    const patchRoute = route.slice(route.indexOf("export async function PATCH"));
+    const itemsPost = fs.readFileSync(
+      "src/app/api/admin/store/returns/[id]/items/route.ts",
+      "utf8",
+    ).slice(fs.readFileSync(
+      "src/app/api/admin/store/returns/[id]/items/route.ts",
+      "utf8",
+    ).indexOf("export async function POST"));
+    expect(patchRoute.indexOf("if (!checkCsrf(req))")).toBeLessThan(
+      patchRoute.indexOf("requirePermission(user.id, 'returns.manage')"),
+    );
+    expect(itemsPost.indexOf("if (!checkCsrf(req))")).toBeLessThan(
+      itemsPost.indexOf("requirePermission(user.id, 'returns.manage')"),
+    );
+  });
+
   it("surfaces API conflicts and preserves server RBAC/CSRF enforcement", () => {
     expect(client).toContain("canManage");
     expect(client).toContain("canManageInventory");
