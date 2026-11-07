@@ -57,9 +57,11 @@ const money = (value: number) =>
 export default function ReturnLifecycleClient({
   initialReturn,
   warehouses,
+  canManage,
 }: {
   initialReturn: ReturnRecord;
   warehouses: Warehouse[];
+  canManage: boolean;
 }) {
   const router = useRouter();
   const [inspection, setInspection] = useState(initialReturn.inspection ?? "");
@@ -215,7 +217,13 @@ export default function ReturnLifecycleClient({
         )}
       </section>
 
-      {!isTerminal && initialReturn.status === "REQUESTED" && (
+      {!canManage && !isTerminal && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          دسترسی مشاهده دارید، اما برای تأیید، کارشناسی یا حل‌وفصل مرجوعی مجوز returns.manage لازم است.
+        </div>
+      )}
+
+      {canManage && !isTerminal && initialReturn.status === "REQUESTED" && (
         <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <h2 className="font-bold text-blue-950">مرحله اول: تأیید درخواست</h2>
           <p className="mt-1 text-sm text-blue-800">پس از تأیید، می‌توانید اقلام را کارشناسی کنید.</p>
@@ -230,7 +238,7 @@ export default function ReturnLifecycleClient({
         </section>
       )}
 
-      {!isTerminal && ["APPROVED", "INSPECTED"].includes(initialReturn.status) && (
+      {canManage && !isTerminal && ["APPROVED", "INSPECTED"].includes(initialReturn.status) && (
         <section className="space-y-4 rounded-2xl border border-amber-200 bg-white p-5">
           <div>
             <h2 className="font-bold text-zinc-900">مرحله دوم: کارشناسی کالا</h2>
@@ -259,7 +267,7 @@ export default function ReturnLifecycleClient({
         </section>
       )}
 
-      {!isTerminal && initialReturn.status === "INSPECTED" && (
+      {canManage && !isTerminal && initialReturn.status === "INSPECTED" && (
         <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5">
           <div>
             <h2 className="font-bold text-zinc-900">مرحله سوم: تصمیم نهایی</h2>
