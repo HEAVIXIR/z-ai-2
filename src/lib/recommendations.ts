@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Listing, UserRecommendation } from "@prisma/client";
+import { getPublicListingWhere, isPublicListingActive } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Recommendation Engine (P2-24)
@@ -109,6 +110,7 @@ export async function generateRecommendations(
           categoryId: true,
           brandId: true,
           status: true,
+          expiresAt: true,
         },
       },
     },
@@ -122,7 +124,7 @@ export async function generateRecommendations(
   const brandAffinity = new Map<string, number>(); // brandId → weight
 
   for (const f of favorites) {
-    if (!f.listing) continue;
+    if (!f.listing || !isPublicListingActive(f.listing)) continue;
     watchedListingIds.add(f.listing.id);
     if (f.listing.categoryId) {
       categoryAffinity.set(
@@ -160,7 +162,7 @@ export async function generateRecommendations(
   if (categoryAffinity.size > 0 || brandAffinity.size > 0) {
     const watchedListings = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         id: { in: Array.from(watchedListingIds) },
       },
       select: { id: true, categoryId: true, brandId: true },
@@ -281,7 +283,7 @@ export async function generateRecommendations(
   // fall back to all-time trending + newest published listings.
   if (candidates.size === 0) {
     const fallback = await db.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
       orderBy: [{ featured: "desc" }, { viewCount: "desc" }],
       take: TRENDING_LIMIT,
       select: { id: true, viewCount: true },
