@@ -738,6 +738,16 @@ export async function resolveReturn(
       refundAmountIrr = Math.round(refundAmountIrr * 100) / 100;
     }
 
+    // Claim the transition before financial side effects. The conditional
+    // status update is the idempotency guard for concurrent resolution.
+    const claimed = await tx.return.updateMany({
+      where: { id: returnId, status: 'INSPECTED' },
+      data: { status: 'RESOLVED', resolution },
+    });
+    if (claimed.count !== 1) {
+      throw new ReturnsServiceError(400, 'مرجوعی هم‌زمان تغییر کرده یا قبلاً حل‌وفصل شده است');
+    }
+
     // A physically accepted return must be received into an explicit,
     // active warehouse. Never silently select a warehouse or turn a legacy
     // Part.stock-only record into a partial warehouse ledger.
@@ -837,16 +847,6 @@ export async function resolveReturn(
         after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved },
       });
       restockedMovements.push(movement);
-    }
-
-    // Claim the transition before financial side effects. The conditional
-    // status update is the idempotency guard for concurrent resolution.
-    const claimed = await tx.return.updateMany({
-      where: { id: returnId, status: 'INSPECTED' },
-      data: { status: 'RESOLVED', resolution },
-    });
-    if (claimed.count !== 1) {
-      throw new ReturnsServiceError(400, 'مرجوعی هم‌زمان تغییر کرده یا قبلاً حل‌وفصل شده است');
     }
 
     const customerId = existing.order?.customerId;
