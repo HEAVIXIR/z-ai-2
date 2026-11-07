@@ -262,8 +262,11 @@ export const paymentConfig: AdminResourceConfig = {
   adminPath: '/admin/resources/payments',
 
   permissions: {
-    read: 'payment.read', create: 'payment.manage',
-    update: 'payment.manage', delete: 'payment.manage',
+    read: 'payment.read',
+    // Payment creation uses the dedicated audited manual-entry route.
+    // Generic Universal Resource create is intentionally disabled.
+    update: 'payment.manage',
+    // Financial ledger rows are immutable; refunds/cancellations are actions.
     export: 'payment.read',
   },
 
@@ -316,31 +319,14 @@ export const paymentConfig: AdminResourceConfig = {
   pageSize: 25, searchable: true, searchFields: ['trackingCode', 'providerReference'],
 
   fields: [
-    { key: 'amount', label: 'مبلغ', type: 'currency', required: true,
-      validation: { min: 1000, message: 'مبلغ پرداخت باید حداقل ۱,۰۰۰ ریال باشد' } },
-    { key: 'currency', label: 'ارز', type: 'text', defaultValue: 'IRR',
-      validation: { pattern: '^(IRR|USD|EUR)$', message: 'ارز باید یکی از IRR، USD یا EUR باشد' } },
-    { key: 'type', label: 'نوع', type: 'select', options: [
-      { value: 'ORDER_PAYMENT', label: 'پرداخت سفارش' },
-      { value: 'COMMISSION', label: 'کارمزد' },
-      { value: 'REFUND', label: 'بازگشت' },
-    ]},
-    { key: 'status', label: 'وضعیت', type: 'select', options: [
-      { value: 'PENDING', label: 'در انتظار' },
-      { value: 'PAID', label: 'پرداخت‌شده' },
-      { value: 'FAILED', label: 'ناموفق' },
-    ]},
-    { key: 'gateway', label: 'درگاه پرداخت', type: 'select', options: [
-      { value: 'ZARINPAL', label: 'زرین‌پال' },
-      { value: 'PAYIR', label: 'Pay.ir' },
-      { value: 'MANUAL', label: 'دستی' },
-    ]},
-    { key: 'trackingCode', label: 'کد پیگیری', type: 'text',
+    // Only non-financial tracking metadata is editable through generic PATCH.
+    // Payment state/type/gateway/amount/currency are immutable here; verify
+    // and refund are dedicated transactional actions.
+    {
+      key: 'trackingCode', label: 'کد پیگیری', type: 'text',
       validation: { maxLength: 100, message: 'کد پیگیری نباید بیش از ۱۰۰ نویسه باشد' },
-      permissions: { read: 'payment.read', write: 'payment.manage', export: 'payment.manage' } },
-    { key: 'idempotencyKey', label: 'کلید Idempotency', type: 'text', visible: false,
-      validation: { maxLength: 64, message: 'کلید Idempotency نباید بیش از ۶۴ نویسه باشد' },
-      permissions: { read: 'payment.manage', write: 'payment.manage', export: 'payment.manage' } },
+      permissions: { read: 'payment.read', write: 'payment.manage', export: 'payment.manage' },
+    },
   ],
 
   detailTabs: [
@@ -349,28 +335,9 @@ export const paymentConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    // STEP 11.6 (Phase C.1) + STEP 11.8 (Audit Transactionality):
-    // refund requires status ∈ {PAID, AUTHORIZED} (precondition) AND
-    // runs inside `db.$transaction` (transactional: true) so the audit
-    // entry commits atomically with the status mutation. This closes the
-    // "audit gap" risk for financial mutations (see ADR-003).
-    {
-      key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund',
-      type: 'confirm', variant: 'destructive',
-      confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.',
-      apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH',
-      transactional: true,
-      precondition: (item) => {
-        const status = String(item.status ?? '');
-        if (!['PAID', 'AUTHORIZED'].includes(status)) {
-          return {
-            ok: false,
-            message: `بازگشت وجه فقط برای پرداخت‌های پرداخت‌شده/تأییدشده امکان‌پذیر است (فعلی: ${status})`,
-          };
-        }
-        return { ok: true };
-      },
-    },
+    // Refunds remain unavailable until a dedicated immutable record captures
+    // externally verified money movement or a verified provider response.
+    // A status-only transition must never be presented as a completed refund.
     // verify requires status === PENDING (precondition) AND runs in a
     // transaction (transactional: true) — audit is critical for
     // financial trust reconciliation.
@@ -391,16 +358,11 @@ export const paymentConfig: AdminResourceConfig = {
     },
   ],
 
-  bulkActions: [
-    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', confirmMessage: 'پرداخت‌های انتخاب‌شده تأیید شوند؟' },
-    { key: 'bulk-refund', label: 'بازگشت وجه گروهی', icon: 'RotateCcw', permission: 'payment.refund', type: 'confirm', variant: 'destructive', confirmMessage: 'بازگشت وجه گروهی انجام شود؟ عملیات حساس.' },
-  ],
-
   relations: [
     { label: 'سفارش مرتبط', resource: 'orders', filterField: 'paymentId' },
   ],
 
-  audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage', 'payment.refund'] },
+  audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage'] },
 };
 
 export const companyConfig: AdminResourceConfig = {
