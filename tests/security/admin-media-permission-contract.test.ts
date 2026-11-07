@@ -52,6 +52,29 @@ describe("/api/admin/media permission separation", () => {
     expect(mocks.requireAdmin).toHaveBeenCalledWith("media.upload");
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
+  it("does not emit a second upload audit event at the route layer", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "image.jpg", {
+      type: "image/jpeg",
+    });
+    const formData = {
+      get: (name: string) => (name === "file" ? file : null),
+    } as FormData;
+    const request = {
+      headers: new Headers(),
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+    mocks.uploadAsset.mockResolvedValue({
+      ok: true,
+      asset: { id: "asset-1", url: "/uploads/asset-1.jpg" },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.uploadAsset).toHaveBeenCalledTimes(1);
+    expect(mocks.logAudit).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized declared bodies before multipart parsing", async () => {
     const formData = vi.fn();
     const request = {
