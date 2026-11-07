@@ -786,28 +786,18 @@ export async function resolveReturn(
         throw new ReturnsServiceError(409, 'برای قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ ابتدا موجودی اولیه انبار را ثبت کنید');
       }
 
-      const changedBalance = await tx.inventoryBalance.updateMany({
+      // Atomic increment operations return the committed-after values while
+      // holding the affected rows. Derive exact before snapshots from those
+      // values so concurrent receipts/adjustments cannot corrupt audit data.
+      const afterBalance = await tx.inventoryBalance.update({
         where: { id: targetBalance.id },
         data: { quantity: { increment: qty } },
       });
-      if (changedBalance.count !== 1) {
-        throw new ReturnsServiceError(409, 'موجودی انبار هنگام ثبت مرجوعی تغییر کرده است؛ دوباره تلاش کنید');
-      }
-      const changedPart = await tx.part.updateMany({
+      const afterPart = await tx.part.update({
         where: { id: partId },
         data: { stock: { increment: qty } },
+        select: { id: true, stock: true },
       });
-      if (changedPart.count !== 1) {
-        throw new ReturnsServiceError(409, 'نمای موجودی قطعه هنگام ثبت مرجوعی تغییر کرده است؛ دوباره تلاش کنید');
-      }
-
-      const [afterPart, afterBalance] = await Promise.all([
-        tx.part.findUnique({ where: { id: partId }, select: { id: true, stock: true } }),
-        tx.inventoryBalance.findUnique({ where: { id: targetBalance.id } }),
-      ]);
-      if (!afterPart || !afterBalance) {
-        throw new ReturnsServiceError(500, 'ثبت موجودی مرجوعی کامل نشد');
-      }
       const movement = await tx.stockMovement.create({
         data: {
           partId,
@@ -834,7 +824,7 @@ export async function resolveReturn(
         action: 'store.inventory.return.restock',
         entityType: 'Part',
         entityId: partId,
-        before: { stock: part.stock },
+        before: { stock: afterPart.stock - qty },
         after: { stock: afterPart.stock },
       });
       await enqueueAuditOutbox(tx, {
@@ -843,7 +833,7 @@ export async function resolveReturn(
         action: 'store.inventory.return.restock',
         entityType: 'InventoryBalance',
         entityId: afterBalance.id,
-        before: { quantity: targetBalance.quantity, reserved: targetBalance.reserved },
+        before: { quantity: afterBalance.quantity - qty, reserved: afterBalance.reserved },
         after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved },
       });
       restockedMovements.push(movement);
