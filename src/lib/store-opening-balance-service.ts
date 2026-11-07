@@ -1,4 +1,5 @@
 import { storeDb } from '@/lib/store-db';
+import type { InventoryBalance, StockMovement } from '@/lib/generated/store-client';
 import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 import { InventoryServiceError } from '@/lib/store-inventory-service';
 
@@ -104,8 +105,8 @@ export async function allocateOpeningBalance(input: {
     }
     const warehouseById = new Map(warehouses.map((warehouse) => [warehouse.id, warehouse]));
 
-    const createdBalances = [];
-    const createdMovements = [];
+    const createdBalances: InventoryBalance[] = [];
+    const createdMovements: StockMovement[] = [];
     let runningBalance = 0;
     for (const allocation of allocations) {
       const warehouse = warehouseById.get(allocation.warehouseId);
