@@ -16,6 +16,7 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(page).toContain('requirePermission(user.id, "returns.read")');
     expect(page).toContain('where: { active: true }');
     expect(page).toContain('requirePermission(user.id, "inventory.read")');
+    expect(page).toContain('requirePermission(user.id, "inventory.manage")');
     expect(page).toContain("ReturnLifecycleClient");
   });
 
@@ -63,6 +64,8 @@ describe("Store return admin lifecycle UI contract", () => {
 
   it("surfaces API conflicts and preserves server RBAC/CSRF enforcement", () => {
     expect(client).toContain("canManage");
+    expect(client).toContain("canManageInventory");
+    expect(client).toContain("!canManageInventory || !warehouseId");
     expect(client).toContain("result?.error");
     expect(client).toContain("response.status");
     expect(route).toContain("requirePermission(user.id, 'returns.manage')");
