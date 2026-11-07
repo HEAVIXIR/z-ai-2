@@ -467,6 +467,15 @@ export async function adjustStock(
   }
 
   const result = await storeDb.$transaction(async (tx) => {
+    // Global inventory lock order: Part first, then InventoryBalance.
+    // Procurement receiving and return restocking follow this same order.
+    // A plain findUnique does not lock under PostgreSQL READ COMMITTED.
+    const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+    `;
+    if (lockedParts.length !== 1) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
     const part = await tx.part.findUnique({
       where: { id: partId },
       select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
