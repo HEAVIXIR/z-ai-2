@@ -39,11 +39,15 @@ describe("Warehouse stock adjustment invariants", () => {
 
   it("acquires stock mutation locks in the global Part then Balance order", () => {
     const partLock = body.indexOf('SELECT id FROM "Part"');
+    const warehouseLock = body.indexOf('SELECT id FROM "Warehouse"');
     const balanceRead = body.indexOf("tx.inventoryBalance.findMany");
     const partMutation = body.indexOf("tx.part.update");
     const balanceMutation = body.indexOf("tx.inventoryBalance.update");
     expect(partLock).toBeGreaterThan(-1);
     expect(balanceRead).toBeGreaterThan(-1);
+    expect(warehouseLock).toBeGreaterThan(partLock);
+    expect(warehouseLock).toBeLessThan(balanceRead);
+    expect(body).toContain("FOR SHARE");
     expect(partMutation).toBeGreaterThan(-1);
     expect(balanceMutation).toBeGreaterThan(-1);
     expect(partLock).toBeLessThan(balanceRead);
