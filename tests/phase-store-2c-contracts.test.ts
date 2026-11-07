@@ -274,7 +274,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +14 new (services/providers 2,
       //   services/providers/[id] 3, services/requests 2, services/requests/[id]
       //   2, logistics/dashboard 1, shipments/[id]/{assign,pickup,deliver,
-      //   exception} 1+1+1+1) → 92.
+      //   exception} 1+1+1+1) → 92; procurement receiving inventory.manage +1 → 93.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -282,7 +282,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(92);
+      expect(count).toBe(93);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -378,7 +378,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(15);
     });
 
-    it('should have 22 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 23 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -399,10 +399,11 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   (shipments/[id]/{assign,pickup,deliver,exception} POST) → total
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
-      //   Total = 6 + 3 + 7 + 6 = 22.
+      //   Procurement receiving additionally requires inventory.manage → 7.
+      //   Total = 7 + 3 + 7 + 6 = 23.
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 6,
+        'inventory.manage': 7,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
