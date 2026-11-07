@@ -36,8 +36,8 @@ describe("admin store payment response privacy", () => {
 describe("admin store payment refund boundary", () => {
   it("rejects status-only refund transitions before any payment mutation", () => {
     expect(detail).toContain('if (body.status === "REFUNDED")');
-    expect(detail).toContain('code: "STORE_REFUND_EVIDENCE_REQUIRED"');
-    expect(detail).toContain("Refunds require an evidence-backed reversal workflow");
+    expect(detail).toContain('code: "STORE_PAYMENT_STATE_CONFLICT"');
+    expect(detail).toContain("بازپرداخت نیز به گردش مستند مستقل نیاز دارد");
     expect(detail).toContain("{ status: 409 }");
     expect(detail).not.toContain('"PENDING", "APPROVED", "REJECTED", "REFUNDED"');
   });
