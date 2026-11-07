@@ -68,7 +68,7 @@ export async function generateMetadata({
       images: { take: 1, orderBy: [{ isPrimary: "desc" }] },
     },
   });
-  if (!isPublicListingActive(listing)) {
+  if (!listing || !isPublicListingActive(listing)) {
     return {
       title: "آگهی یافت نشد",
       robots: { index: false, follow: false },
