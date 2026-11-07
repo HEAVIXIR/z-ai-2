@@ -76,8 +76,9 @@ describe('Wave C1 — Navigation Contract', () => {
 
     it('filters each navigation item by its permission key', () => {
       const content = read(NAV_ROUTE);
-      expect(content).toMatch(/item\.permissionKey === null/);
+      expect(content).toMatch(/if \(item\.permissionKey\)/);
       expect(content).toMatch(/userPermissions\.has\(item\.permissionKey\)/);
+      expect(content).toMatch(/item\.key === 'dashboard' && userPermissions\.has\('admin\.dashboard\.read'\)/);
     });
   });
 
