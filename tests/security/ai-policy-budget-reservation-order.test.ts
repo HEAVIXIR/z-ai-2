@@ -9,11 +9,17 @@ describe("AI policy preflight budget reservation ordering", () => {
       "utf8",
     );
     const start = source.indexOf("export async function preflightAIRequest");
-    const end = source.indexOf("\n}", start);
     expect(start).toBeGreaterThanOrEqual(0);
-    const body = source.slice(start, end + 2);
+
+    // Search the complete function tail instead of stopping at the first
+    // nested closing brace. The previous "\n}" boundary truncated the
+    // function at its first inner block and produced a false negative.
+    const body = source.slice(start);
     const sizeCheck = body.indexOf("inputLength > policy.maxInputChars");
-    const budgetReserve = body.indexOf("checkAIBudget(policy.costCeilingUsd, budget)");
+    const budgetReserve = body.indexOf(
+      "checkAIBudget(policy.costCeilingUsd, budget)",
+    );
+
     expect(sizeCheck).toBeGreaterThanOrEqual(0);
     expect(budgetReserve).toBeGreaterThan(sizeCheck);
     expect(body).toContain("!Number.isSafeInteger(inputLength)");
