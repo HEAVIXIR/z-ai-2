@@ -151,7 +151,7 @@ describe('Store procurement receiving atomicity (real PostgreSQL)', () => {
 
     const outcomes = await Promise.allSettled([
       receivePurchaseOrderItem(poItemId, 4, warehouseId, null, procurementId!, purchaseOrderId!),
-      receivePurchaseOrderItem(poItemId, 4, warehouseId),
+      receivePurchaseOrderItem(poItemId, 4, warehouseId, null, procurementId!, purchaseOrderId!),
     ]);
 
     expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
