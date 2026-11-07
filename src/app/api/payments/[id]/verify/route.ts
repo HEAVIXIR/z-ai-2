@@ -122,7 +122,7 @@ export async function POST(
       if (!after) throw new PaymentNotFoundError("Payment disappeared during verification");
 
       // Critical payment audit is part of the same transaction. If audit
-      // persistence fails, payment state and subscription activation roll back.
+      // persistence fails, payment state and its audit record roll back.
       await tx.auditLog.create({
         data: {
           actorId: user.id,
