@@ -53,7 +53,9 @@ export async function getCurrentUser() {
       await db.session.delete({ where: { id: session.id } }).catch(() => {});
       return null;
     }
-    if (session.user.status === "BLOCKED") {
+    // Authentication is valid only for explicitly ACTIVE accounts.
+    // PENDING, BLOCKED, and any unknown status must not inherit a session.
+    if (session.user.status !== "ACTIVE") {
       await db.session.delete({ where: { id: session.id } }).catch(() => {});
       return null;
     }
