@@ -29,7 +29,7 @@ const STYLE: Record<Issue, string> = {
 export default async function InventoryReconciliationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ limit?: string; onlyIssues?: string }>;
+  searchParams: Promise<{ limit?: string; onlyIssues?: string; cursor?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) return <div className="p-8 text-center text-zinc-500">Unauthorized</div>;
@@ -42,10 +42,12 @@ export default async function InventoryReconciliationPage({
   const sp = await searchParams;
   const limit = Math.max(1, Math.min(500, Number(sp.limit) || 200));
   const onlyIssues = sp.onlyIssues === "1";
+  const cursor = sp.cursor || undefined;
 
-  const [parts, totalParts] = await Promise.all([
+  const [partsPlusOne, totalParts] = await Promise.all([
     storeDb.part.findMany({
-      take: limit,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: [{ sku: "asc" }, { id: "asc" }],
       select: {
         id: true,
@@ -69,6 +71,8 @@ export default async function InventoryReconciliationPage({
     storeDb.part.count(),
   ]);
 
+  const hasMore = partsPlusOne.length > limit;
+  const parts = partsPlusOne.slice(0, limit);
   const report = parts.map((part) => {
     const warehouseTotal = part.inventoryBalances.reduce((sum, row) => sum + row.quantity, 0);
     const reservedInvalid = part.inventoryBalances.some((row) => row.reserved < 0 || row.reserved > row.quantity);
@@ -128,7 +132,7 @@ export default async function InventoryReconciliationPage({
         >
           {onlyIssues ? "نمایش همه قطعات" : "فقط موارد نیازمند بررسی"}
         </Link>
-        <span className="text-xs text-zinc-400">حداکثر ۵۰۰ قطعه در هر نمایش؛ برای گزارش کامل از مقدار limit استفاده کنید.</span>
+        <span className="text-xs text-zinc-400">گزارش صفحه‌ای و فقط‌خواندنی است؛ هر صفحه حداکثر ۵۰۰ قطعه دارد.</span>
       </div>
 
       {visible.length === 0 ? (
@@ -184,6 +188,25 @@ export default async function InventoryReconciliationPage({
           </table>
         </div>
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {cursor ? (
+          <Link
+            href={`/admin/store/inventory/reconciliation?limit=${limit}${onlyIssues ? "&onlyIssues=1" : ""}`}
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-bold text-zinc-700"
+          >
+            بازگشت به صفحه اول
+          </Link>
+        ) : <span />}
+        {hasMore && parts.length > 0 && (
+          <Link
+            href={`/admin/store/inventory/reconciliation?limit=${limit}&cursor=${parts[parts.length - 1].id}${onlyIssues ? "&onlyIssues=1" : ""}`}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white"
+          >
+            صفحه بعد
+          </Link>
+        )}
+      </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-900">
         <strong>قاعده ایمنی:</strong> این گزارش فقط داده‌ها را نشان می‌دهد. برای قطعات قدیمی بدون ردیف انبار،
