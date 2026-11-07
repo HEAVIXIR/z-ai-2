@@ -84,6 +84,24 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     }
   });
 
+  it('keeps RETURN and TRANSFER movements out of the generic one-warehouse adjustment API', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    await expect(
+      adjustStock(partId, warehouseId, 1, 'RETURN', 'must use return lifecycle'),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      adjustStock(partId, warehouseId, 1, 'TRANSFER', 'must use paired transfer'),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const [part, movements] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.count({ where: { partId } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(movements).toBe(0);
+  }, 15000);
+
   it('refuses to create a first warehouse balance implicitly from a legacy Part snapshot', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
 
