@@ -602,6 +602,20 @@ export async function reserveStock(
   }
 
   return storeDb.$transaction(async (tx) => {
+    // Keep reservation mutations in the same global lock order as checkout:
+    // Part -> active Warehouse -> InventoryBalance.
+    const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+    `;
+    if (lockedParts.length !== 1) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+    `;
+    if (lockedWarehouse.length !== 1) {
+      throw new InventoryServiceError(409, 'رزرو در انبار غیرفعال مجاز نیست');
+    }
     const balance = await tx.inventoryBalance.findUnique({
       where: { partId_warehouseId: { partId, warehouseId } },
     });
@@ -661,6 +675,20 @@ export async function releaseStock(
   }
 
   return storeDb.$transaction(async (tx) => {
+    // Release also serializes on Part before touching the balance. Inactive
+    // warehouses remain releasable so deactivation cannot strand reservations.
+    const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+    `;
+    if (lockedParts.length !== 1) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Warehouse" WHERE id = ${warehouseId} FOR SHARE
+    `;
+    if (lockedWarehouse.length !== 1) {
+      throw new InventoryServiceError(404, 'انبار یافت نشد');
+    }
     const balance = await tx.inventoryBalance.findUnique({
       where: { partId_warehouseId: { partId, warehouseId } },
     });
