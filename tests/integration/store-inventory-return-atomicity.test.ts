@@ -463,7 +463,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(resolved.status).toBe('RESOLVED');
     expect(resolved.restockedMovements).toHaveLength(1);
 
-    const [part, balance, movement, outbox] = await Promise.all([
+    const [part, balance, movement] = await Promise.all([
       storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
       storeDb.inventoryBalance.findUnique({
         where: { partId_warehouseId: { partId, warehouseId } },
@@ -471,19 +471,19 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       storeDb.stockMovement.findMany({
         where: { partId, reference: ret.id, type: 'RETURN' },
       }),
-      storeDb.auditOutbox.findMany({
-        // The six atomic events span the Return, Customer, WalletTransaction,
-        // StockMovement, Part, and InventoryBalance entities. The Customer
-        // event is keyed by customerId and does not repeat returnId in its
-        // before/after payload, so include both fixture identifiers.
-        where: {
-          OR: [
-            { payloadJson: { contains: ret.id } },
-            { payloadJson: { contains: customer.id } },
-          ],
-        },
-      }),
     ]);
+    // Outbox payloads identify Part and InventoryBalance events by their own
+    // entity IDs; only the StockMovement/Return/Wallet events repeat returnId.
+    const outbox = await storeDb.auditOutbox.findMany({
+      where: {
+        OR: [
+          { payloadJson: { contains: ret.id } },
+          { payloadJson: { contains: customer.id } },
+          { payloadJson: { contains: partId } },
+          ...(balance ? [{ payloadJson: { contains: balance.id } }] : []),
+        ],
+      },
+    });
     expect(part?.stock).toBe(11);
     expect(balance?.quantity).toBe(11);
     expect(balance?.reserved).toBe(2);
@@ -491,6 +491,8 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movement[0].quantity).toBe(1);
     expect(movement[0].balanceAfter).toBe(11);
     expect(movement[0].warehouseId).toBe(warehouseId);
+    // Capture IDs before assertions so failed tests still clean their fixtures.
+    outboxIds = outbox.map((event) => event.id);
     // Assert entity coverage directly so a missing event is visible in the diff.
     const outboxEntities = outbox.map((event) => JSON.parse(event.payloadJson).entityType).sort();
     expect(outboxEntities).toEqual([
@@ -501,7 +503,6 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       'StockMovement',
       'WalletTransaction',
     ]);
-    outboxIds = outbox.map((event) => event.id);
   }, 15000);
 
   it('refuses restockable resolution without a destination warehouse and rolls back all effects', async () => {
