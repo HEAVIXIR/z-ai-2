@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
    PHASE1-PROCUREMENT-SHIPPING-DEEP — partial receiving endpoint.
 
    POST : receive `receivedQty` units against a single PurchaseOrderItem.
-          Body: { poItemId, receivedQty }
+          Body: { poItemId, receivedQty, warehouseId }
           Side-effects:
             - increments PurchaseOrderItem.received
             - creates StockMovement (RECEIVE) + adjusts Part.stock
@@ -55,6 +55,7 @@ export async function POST(
   }
   try {
     await requirePermission(user.id, 'procurement.manage');
+    await requirePermission(user.id, 'inventory.manage');
     if (!checkCsrf(req)) {
       return NextResponse.json(
         { error: "CSRF check failed" },
@@ -74,10 +75,11 @@ export async function POST(
   await params;
   try {
     const body = await req.json();
-    const { poItemId, receivedQty } = body;
+    const { poItemId, receivedQty, warehouseId } = body;
     const result = await receivePurchaseOrderItem(
       poItemId,
       receivedQty,
+      warehouseId,
       user.id,
     );
     return NextResponse.json({ success: true, data: result });
