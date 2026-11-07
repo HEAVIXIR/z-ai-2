@@ -27,16 +27,18 @@ jobs:
       HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
       HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
     steps:
-      - name: Checkout exact reviewed PR #191 Workerd proof commit
+      - name: Checkout the exact commit selected for this workflow run
         uses: actions/checkout@v4
         with:
-          ref: b94b9d6f3540e8f4467b1d4ac051d5ef050c0994
+          ref: ${{ github.sha }}
 
-      - name: Verify pinned proof commit
+      - name: Verify exact commit and intended proof branch
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994"
+          test "$GITHUB_REF" = "refs/heads/infra/prisma6-cloudflare-runtime"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Running Workerd proof against exact selected commit: $GITHUB_SHA"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
