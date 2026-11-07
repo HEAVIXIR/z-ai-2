@@ -13,6 +13,7 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
   let categoryId: string | undefined;
   let partId: string | undefined;
   let procurementId: string | undefined;
+  let supplierFixtureId: string | undefined;
   const poIds: string[] = [];
 
   beforeEach(async () => {
@@ -50,6 +51,10 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
       await storeDb.procurementRequest.deleteMany({ where: { id: procurementId } });
       procurementId = undefined;
     }
+    if (supplierFixtureId) {
+      await storeDb.supplier.deleteMany({ where: { id: supplierFixtureId } });
+      supplierFixtureId = undefined;
+    }
     if (partId) {
       await storeDb.part.deleteMany({ where: { id: partId } });
       partId = undefined;
@@ -59,6 +64,33 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
       categoryId = undefined;
     }
   });
+
+  it('rejects purchase orders before award and rejects inactive suppliers', async () => {
+    if (!procurementId || !partId) throw new Error('fixture setup incomplete');
+
+    await storeDb.procurementRequest.update({
+      where: { id: procurementId },
+      data: { status: 'QUOTING' },
+    });
+    await expect(
+      createPurchaseOrder(procurementId, null, [{ partId, quantity: 1, unitPrice: 12 }]),
+    ).rejects.toMatchObject({ status: 409 });
+
+    await storeDb.procurementRequest.update({
+      where: { id: procurementId },
+      data: { status: 'AWARDED' },
+    });
+    const supplier = await storeDb.supplier.create({
+      data: { name: 'Inactive supplier ' + suffix(), active: false },
+    });
+    supplierFixtureId = supplier.id;
+    await expect(
+      createPurchaseOrder(procurementId, supplier.id, [{ partId, quantity: 1, unitPrice: 12 }]),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const orders = await storeDb.purchaseOrder.findMany({ where: { procurementId } });
+    expect(orders).toHaveLength(0);
+  }, 15000);
 
   it('creates, submits, approves, and cancels with one outbox event per committed transition', async () => {
     if (!procurementId || !partId) throw new Error('fixture setup incomplete');
