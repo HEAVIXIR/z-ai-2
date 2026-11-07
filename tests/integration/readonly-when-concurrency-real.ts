@@ -140,7 +140,7 @@ async function main() {
     });
 
     assert(result.success === false, 'refund action is rejected');
-    assert(result.message === 'Action not defined', 'refund is not registered until evidence workflow exists');
+    assert(result.error === 'ACTION_UNAVAILABLE' && result.message.includes('evidence-backed refund workflow'), 'refund is not registered until evidence workflow exists');
 
     const unchanged = await db.payment.findUnique({ where: { id: payment.id } });
     assert(unchanged?.status === 'PAID', 'payment remains PAID; no status-only refund');
@@ -154,7 +154,7 @@ async function main() {
       userId: adminUser.id,
       reason: 'Duplicate blocked attempt',
     });
-    assert(duplicate.success === false && duplicate.message === 'Action not defined', 'repeat refund attempt remains blocked');
+    assert(duplicate.success === false && duplicate.error === 'ACTION_UNAVAILABLE' && duplicate.message.includes('evidence-backed refund workflow'), 'repeat refund attempt remains blocked');
   } finally {
     await db.auditLog.deleteMany({ where: { entityId: payment.id } }).catch(() => {});
     await db.payment.delete({ where: { id: payment.id } }).catch(() => {});
@@ -232,7 +232,7 @@ async function main() {
     ]);
 
     assert(!r1.success && !r2.success, 'both concurrent refund attempts are rejected');
-    assert(r1.message === 'Action not defined' && r2.message === 'Action not defined', 'both are rejected before transaction');
+    assert(r1.error === 'ACTION_UNAVAILABLE' && r2.error === 'ACTION_UNAVAILABLE', 'both are rejected before transaction');
     const finalPayment = await db.payment.findUnique({ where: { id: payment3.id } });
     assert(finalPayment?.status === 'PAID', 'concurrent attempts do not change payment status');
 
