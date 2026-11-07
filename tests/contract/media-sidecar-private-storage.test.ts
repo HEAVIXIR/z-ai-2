@@ -15,6 +15,9 @@ describe("private media sidecar storage contract", () => {
     expect(service).toContain("stat.isSymbolicLink()");
     expect(service).toContain("await fs.chmod(directory, 0o700)");
     expect(service).toContain("await fs.chmod(sidecarPath, 0o600)");
+    expect(service).toContain("async function hardenPrivateMetadataTree");
+    expect(service).toContain("await hardenPrivateMetadataTree(MEDIA_METADATA_ROOT)");
+    expect(service).toContain('throw new Error("Private media metadata tree contains a symlink.")');
     expect(service).toContain("const sidecarDiskPath = sidecarPathFor(relPath)");
     expect(service).not.toContain('path.join(targetDir, sidecarPathFor(safeName))');
   });
