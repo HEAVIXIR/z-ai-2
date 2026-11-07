@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const procurementCollection = fs.readFileSync('src/app/api/admin/store/procurement/route.ts', 'utf8');
 const supplierCollection = fs.readFileSync('src/app/api/admin/store/suppliers/route.ts', 'utf8');
 const supplierItem = fs.readFileSync('src/app/api/admin/store/suppliers/[id]/route.ts', 'utf8');
+const resourceConfigs = fs.readFileSync('src/lib/admin/resources/store-domain-resources.ts', 'utf8');
 
 describe('Procurement and supplier mutation safety', () => {
   it('creates procurement requests with CSRF protection and atomic Store outbox audit', () => {
@@ -33,6 +34,25 @@ describe('Procurement and supplier mutation safety', () => {
     expect(remove).toContain('checkCsrf(req)');
     expect(remove).toContain('updatedAt: existing.updatedAt');
     expect(remove).toContain('enqueueAuditOutbox(tx');
+  });
+
+  it('keeps procurement and supplier read-only in the Universal Resource Engine', () => {
+    const procurement = resourceConfigs.slice(
+      resourceConfigs.indexOf('export const procurementConfig: AdminResourceConfig = {'),
+      resourceConfigs.indexOf('// ── 5. Customers'),
+    );
+    const suppliers = resourceConfigs.slice(
+      resourceConfigs.indexOf('export const suppliersConfig: AdminResourceConfig = {'),
+      resourceConfigs.indexOf('// ── 8. Car Models'),
+    );
+    for (const block of [procurement, suppliers]) {
+      expect(block).not.toMatch(/\\n\\s*create:\\s*'/);
+      expect(block).not.toMatch(/\\n\\s*update:\\s*'/);
+      expect(block).not.toMatch(/\\n\\s*delete:\\s*'/);
+    }
+    expect(procurement).not.toContain("key: 'bulk-publish'");
+    expect(suppliers).not.toContain("key: 'bulk-activate'");
+    expect(suppliers).not.toContain("key: 'bulk-deactivate'");
   });
 
   it('prevents deleting suppliers referenced by procurement or purchase orders', () => {
