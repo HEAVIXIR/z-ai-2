@@ -46,6 +46,26 @@ describe("Explicit opening-balance allocation", () => {
     expect(route).toContain("body?.confirm !== true");
   });
 
+  it("keeps procurement receiving and return restocking on the canonical Part-first lock order", () => {
+    const procurement = fs.readFileSync("src/lib/store-procurement-service.ts", "utf8");
+    const returns = fs.readFileSync("src/lib/store-returns-service.ts", "utf8");
+    const procurementLock = procurement.indexOf('SELECT id FROM "Part"');
+    const procurementRead = procurement.indexOf("const part = await tx.part.findUnique", procurementLock);
+    const procurementBalanceRead = procurement.indexOf("tx.inventoryBalance.findMany", procurementRead);
+    expect(procurementLock).toBeGreaterThan(-1);
+    expect(procurementRead).toBeGreaterThan(procurementLock);
+    expect(procurementBalanceRead).toBeGreaterThan(procurementRead);
+    expect(procurement).toContain("FOR SHARE");
+
+    const returnLock = returns.indexOf('SELECT id FROM "Part"');
+    const returnRead = returns.indexOf("tx.part.findUnique", returnLock);
+    const returnBalanceRead = returns.indexOf("tx.inventoryBalance.findMany", returnRead);
+    expect(returnLock).toBeGreaterThan(-1);
+    expect(returnRead).toBeGreaterThan(returnLock);
+    expect(returnBalanceRead).toBeGreaterThan(returnRead);
+    expect(returns).toContain("FOR SHARE");
+  });
+
   it("previews totals and requires an explicit operator checkbox before submitting", () => {
     expect(panel).toContain("allocated === selectedPart.stock");
     expect(panel).toContain("checked={confirmed}");
