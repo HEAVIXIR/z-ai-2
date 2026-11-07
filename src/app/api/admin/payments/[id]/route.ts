@@ -86,30 +86,10 @@ export async function GET(_req: Request, { params }: Args) {
   }
 }
 
-// ── PATCH: update editable fields ─────────────────────────
-// Allowed fields: trackingCode, gateway, status, type, paidAt.
-// NOT allowed (immutable after creation): userId, amount, currency,
-// idempotencyKey, orderId, subscriptionId, providerReference.
-const ALLOWED_STATUSES = [
-  "PENDING",
-  "AUTHORIZED",
-  "PAID",
-  "FAILED",
-  "CANCELLED",
-  "REFUNDED",
-];
-const ALLOWED_TYPES = [
-  "SUBSCRIPTION",
-  "FEATURED_LISTING",
-  "PROMOTION",
-  "LEAD_FEE",
-  "INSPECTION_FEE",
-  "ORDER_PAYMENT",
-  "COMMISSION",
-  "REFUND",
-];
-const ALLOWED_GATEWAYS = ["ZARINPAL", "PAYIR", "MANUAL"];
-
+// ── PATCH: update non-financial metadata only ─────────────
+// Financial status/type/gateway/paidAt are immutable through generic PATCH.
+// Verification/refund transitions must go through the transactional
+// payment action-engine so linked entitlements and audit state stay atomic.
 export async function PATCH(req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
@@ -118,76 +98,50 @@ export async function PATCH(req: Request, { params }: Args) {
   await requirePermission(user.id, "payment.manage");
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    }
+
+    const forbiddenFields = ["status", "type", "gateway", "paidAt"];
+    const attemptedFinancialMutation = forbiddenFields.find((field) =>
+      Object.prototype.hasOwnProperty.call(body, field),
+    );
+    if (attemptedFinancialMutation) {
+      return NextResponse.json(
+        {
+          error: `Payment ${attemptedFinancialMutation} cannot be changed through PATCH; use the audited verify/refund action`,
+          code: "PAYMENT_STATE_ACTION_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(body, "trackingCode")) {
+      return NextResponse.json(
+        { error: "Only trackingCode metadata can be updated through PATCH" },
+        { status: 400 },
+      );
+    }
+
+    const trackingCode =
+      body.trackingCode === null ? null : String(body.trackingCode).trim();
+    if (trackingCode !== null && trackingCode.length > 100) {
+      return NextResponse.json(
+        { error: "trackingCode must not exceed 100 characters" },
+        { status: 400 },
+      );
+    }
 
     const existing = await db.payment.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const data: any = {};
-
-    // status (validated against allowed enum)
-    if ("status" in body) {
-      const status = body.status === null ? null : String(body.status).toUpperCase();
-      if (status !== null && !ALLOWED_STATUSES.includes(status)) {
-        return NextResponse.json(
-          { error: `status must be one of: ${ALLOWED_STATUSES.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.status = status ?? existing.status;
-    }
-
-    // type (validated against allowed enum)
-    if ("type" in body) {
-      const type = body.type === null ? null : String(body.type).toUpperCase();
-      if (type !== null && !ALLOWED_TYPES.includes(type)) {
-        return NextResponse.json(
-          { error: `type must be one of: ${ALLOWED_TYPES.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.type = type ?? existing.type;
-    }
-
-    // gateway (validated against allowed enum)
-    if ("gateway" in body) {
-      const gateway =
-        body.gateway === null ? null : String(body.gateway).toUpperCase();
-      if (gateway !== null && !ALLOWED_GATEWAYS.includes(gateway)) {
-        return NextResponse.json(
-          { error: `gateway must be one of: ${ALLOWED_GATEWAYS.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.gateway = gateway;
-    }
-
-    // trackingCode (maxLength 100 per paymentConfig validation contract)
-    if ("trackingCode" in body) {
-      const tc = body.trackingCode === null ? null : String(body.trackingCode);
-      if (tc !== null && tc.length > 100) {
-        return NextResponse.json(
-          { error: "trackingCode must not exceed 100 characters" },
-          { status: 400 },
-        );
-      }
-      data.trackingCode = tc;
-    }
-
-    // paidAt (ISO date string or null)
-    if ("paidAt" in body) {
-      data.paidAt = body.paidAt === null ? null : new Date(body.paidAt);
-    }
-
-    // If status is being set to PAID and paidAt is not explicitly provided,
-    // auto-set paidAt to now (matches POST /api/admin/payments markPaid semantics).
-    if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
-      data.paidAt = new Date();
-    }
-
-    const payment = await db.payment.update({ where: { id }, data });
+    const payment = await db.payment.update({
+      where: { id },
+      data: { trackingCode },
+    });
 
     await logAudit({
       actorId: user.id,
@@ -195,21 +149,9 @@ export async function PATCH(req: Request, { params }: Args) {
       action: "payment.update",
       entityType: "Payment",
       entityId: payment.id,
-      before: {
-        status: existing.status,
-        type: existing.type,
-        gateway: existing.gateway,
-        trackingCode: existing.trackingCode,
-        paidAt: existing.paidAt?.toISOString() ?? null,
-      },
-      after: {
-        status: payment.status,
-        type: payment.type,
-        gateway: payment.gateway,
-        trackingCode: payment.trackingCode,
-        paidAt: payment.paidAt?.toISOString() ?? null,
-      },
-      reason: "via admin API",
+      before: { trackingCode: existing.trackingCode },
+      after: { trackingCode: payment.trackingCode },
+      reason: "trackingCode metadata update via admin API",
     });
 
     return NextResponse.json({ ok: true, payment: serialize(payment) });
