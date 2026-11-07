@@ -43,7 +43,7 @@ describe("Explicit opening-balance allocation", () => {
     expect(route).toContain("checkCsrf(req)");
     expect(route).toContain("inventory.read");
     expect(route).toContain("inventory.manage");
-    expect(route).toContain("body?.confirm !== true");
+    expect(route).toContain("payload.confirm !== true");
   });
 
   it("keeps procurement receiving and return restocking on the canonical Part-first lock order", () => {
