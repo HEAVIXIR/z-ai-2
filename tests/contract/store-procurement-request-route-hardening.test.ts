@@ -5,6 +5,7 @@ const route = fs.readFileSync(
   'src/app/api/admin/store/procurement/[id]/route.ts',
   'utf8',
 );
+const procurementService = fs.readFileSync('src/lib/store-procurement-service.ts', 'utf8');
 
 describe('ProcurementRequest mutation security and lifecycle', () => {
   it('requires CSRF for both PATCH and DELETE mutations', () => {
@@ -32,6 +33,21 @@ describe('ProcurementRequest mutation security and lifecycle', () => {
   it('prevents completion with open purchase orders and deletion with any linked purchase order', () => {
     expect(route).toContain("status: { notIn: ['RECEIVED', 'CANCELLED'] }");
     expect(route).toContain('existing._count.purchaseOrders > 0');
+  });
+
+  it('prevents closing a tender while purchase orders remain unresolved', () => {
+    expect(route).toContain("body.status === 'COMPLETED' || body.status === 'CANCELLED'");
+    expect(route).toContain("status: { notIn: ['RECEIVED', 'CANCELLED'] }");
+  });
+
+  it('blocks receiving against a tender that is no longer AWARDED', () => {
+    const receive = procurementService.slice(
+      procurementService.indexOf('export async function receivePurchaseOrderItem('),
+      procurementService.indexOf('export async function cancelPurchaseOrder('),
+    );
+    expect(receive).toContain('purchaseOrder: {');
+    expect(receive).toContain("procurement: { select: { status: true } }");
+    expect(receive).toContain("procurement.status !== 'AWARDED'");
   });
 
   it('uses conditional updates and serializable conflict handling', () => {
