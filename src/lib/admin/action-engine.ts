@@ -193,7 +193,7 @@ registerActionHandler('delete', async (item) => {
 //
 // 17 of 18 admin resources use action keys NOT in the original 8-handler
 // registry (publish/unpublish/feature/unfeature/verify/suspend/activate/delete).
-// Marketplace transaction-lifecycle action keys (confirm, cancel, refund,
+// Marketplace transaction-lifecycle action keys (confirm, cancel,
 // close, accept, reject, start, end, schedule, complete, deliver, review,
 // resolve, hide, verify-email) had NO handlers → action-engine.ts:233 threw
 // `Error: No handler for action "..."` at runtime.
@@ -364,7 +364,7 @@ export async function executeAction(
   // 4. STEP 11.6 (Phase C.1): Precondition check.
   //    Evaluated AFTER permission, BEFORE mutation. If the precondition
   //    fails, return PRECONDITION_FAILED (409) — the entity is NOT mutated.
-  //    This catches e.g. refund-on-non-PAID, verify-on-non-PENDING.
+  //    This catches invalid state transitions such as verify-on-non-PENDING.
   if (action.precondition) {
     try {
       const preconditionResult = action.precondition(before, {
@@ -395,8 +395,7 @@ export async function executeAction(
   //    If `action.transactional === true` AND the resource lives in the
   //    main DB (not store), wrap mutation + audit in `db.$transaction`
   //    so both commit atomically or both roll back. This closes the
-  //    "audit gap" risk for CRITICAL operations (payment.refund,
-  //    payment.verify) where an audit failure would otherwise leave the
+  //    "audit gap" risk for CRITICAL operations (payment.verify) where an audit failure would otherwise leave the
   //    mutation committed with no audit trail (see ADR-003).
   //
   //    For store-domain resources, cross-DB transactions aren't supported
@@ -424,7 +423,7 @@ export async function executeAction(
             // STEP 11.18 FIX (Race Condition): Re-fetch the entity INSIDE the
             // transaction and re-check the precondition. Without this, two
             // concurrent requests could both read status=PAID outside the tx,
-            // both pass the precondition, and both execute the refund.
+            // both pass the precondition, and both execute the state transition.
             // By re-fetching inside the tx (which holds a row lock or at least
             // sees the latest committed state), we detect if another request
             // already changed the status.
