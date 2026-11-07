@@ -68,11 +68,7 @@ export async function POST(
       { status: 403 },
     );
   }
-  // The procurementId + poId path params exist to scope the URL; the
-  // service validates the POItem independently. We don't need to read
-  // them beyond the destructure (they're used for route clarity + the
-  // audit trail reconstructs the PO from the POItem).
-  await params;
+  const { id: procurementId, poId: purchaseOrderId } = await params;
   try {
     const body = await req.json();
     const { poItemId, receivedQty, warehouseId } = body;
@@ -81,6 +77,8 @@ export async function POST(
       receivedQty,
       warehouseId,
       user.id,
+      procurementId,
+      purchaseOrderId,
     );
     return NextResponse.json({ success: true, data: result });
   } catch (e: any) {
