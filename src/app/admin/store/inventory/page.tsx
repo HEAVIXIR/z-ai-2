@@ -375,10 +375,6 @@ export default async function StoreInventoryPage({
           ? ` · ${toFa(lowStockItems.length)} قلم در وضعیت موجودی کم`
           : ""}
       </p>
-      </div>
-      <Link href="/admin/store/inventory/reconciliation" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220]">
-        گزارش مغایرت‌گیری
-      </Link>
     </div>
   );
 }
@@ -395,6 +391,10 @@ function Header() {
         دفتر حرکت‌های انبار (Stock Movement Ledger) — ثبت دریافت، فروش،
         مرجوعی، انتقال، تعدیل و ضایعات
       </p>
+      </div>
+      <Link href="/admin/store/inventory/reconciliation" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220]">
+        گزارش مغایرت‌گیری
+      </Link>
     </div>
   );
 }
