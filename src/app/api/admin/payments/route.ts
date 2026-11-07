@@ -9,9 +9,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function serialize(p: any) {
+  // Keep provider references and idempotency keys out of list responses.
   return {
-    ...p,
-    amount: p.amount ? p.amount.toString() : null,
+    id: p.id,
+    amount: p.amount == null ? null : p.amount.toString(),
+    currency: p.currency,
+    type: p.type,
+    status: p.status,
+    gateway: p.gateway,
+    trackingCode: p.trackingCode,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    ...(p.user
+      ? {
+          user: {
+            id: p.user.id,
+            firstName: p.user.firstName,
+            lastName: p.user.lastName,
+            mobile: p.user.mobile,
+            email: p.user.email,
+          },
+        }
+      : {}),
   };
 }
 
