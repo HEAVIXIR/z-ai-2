@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -48,9 +49,9 @@ export default async function CategoryPage({
         children: {
           where: { active: true },
           orderBy: { sortOrder: "asc" },
-          include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+          include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
         },
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
     db.category.findMany({
@@ -64,7 +65,7 @@ export default async function CategoryPage({
 
   const childIds = category.children.map((c) => c.id);
   const listingWhere = {
-    status: "PUBLISHED" as const,
+    ...getPublicListingWhere(),
     OR: [{ categoryId: category.id }, { categoryId: { in: childIds } }],
   };
 
