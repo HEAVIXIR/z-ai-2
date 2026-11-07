@@ -47,12 +47,19 @@ export default function OpeningBalanceAllocationPanel() {
     () => payload.parts.find((part) => part.id === partId),
     [payload.parts, partId],
   );
+  const invalidQuantity = payload.warehouses.some((warehouse) => {
+    const quantity = quantities[warehouse.id] ?? 0;
+    return quantity !== 0 && (!Number.isSafeInteger(quantity) || quantity < 0);
+  });
   const allocated = payload.warehouses.reduce((sum, warehouse) => {
     const quantity = quantities[warehouse.id] ?? 0;
     return sum + (Number.isSafeInteger(quantity) && quantity > 0 ? quantity : 0);
   }, 0);
-  const allocationCount = payload.warehouses.filter((warehouse) => (quantities[warehouse.id] ?? 0) > 0).length;
-  const exact = Boolean(selectedPart && allocated === selectedPart.stock && allocationCount > 0);
+  const allocationCount = payload.warehouses.filter((warehouse) => {
+    const quantity = quantities[warehouse.id] ?? 0;
+    return Number.isSafeInteger(quantity) && quantity > 0;
+  }).length;
+  const exact = Boolean(selectedPart && !invalidQuantity && allocated === selectedPart.stock && allocationCount > 0);
 
   async function submit() {
     if (!selectedPart || !exact || !reason.trim() || !confirmed) return;
@@ -137,7 +144,11 @@ export default function OpeningBalanceAllocationPanel() {
                   <strong dir="ltr">{allocated}</strong>
                 </div>
                 <p className={`mt-2 text-xs ${exact ? "text-emerald-700" : "text-amber-700"}`}>
-                  {exact ? "مجموع تخصیص دقیقاً برابر موجودی قطعه است." : `اختلاف با موجودی قطعه: ${selectedPart.stock - allocated}`}
+                  {invalidQuantity
+                    ? "همه مقادیر باید عدد صحیح امن و غیرمنفی باشند."
+                    : exact
+                      ? "مجموع تخصیص دقیقاً برابر موجودی قطعه است."
+                      : `اختلاف با موجودی قطعه: ${selectedPart.stock - allocated}`}
                 </p>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
