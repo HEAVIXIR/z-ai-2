@@ -63,7 +63,7 @@ export async function POST(
     }
 
     const payload = body as Record<string, unknown>;
-    const status = String(payload.status ?? "PAID").toUpperCase();
+    const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
     if (!ALLOWED_STATUSES.has(status)) {
       return NextResponse.json(
         { error: "status must be PAID or FAILED; refunds use the refund workflow" },
@@ -71,10 +71,17 @@ export async function POST(
       );
     }
 
+    if (
+      payload.trackingCode !== undefined &&
+      payload.trackingCode !== null &&
+      typeof payload.trackingCode !== "string"
+    ) {
+      return NextResponse.json({ error: "trackingCode must be a string" }, { status: 400 });
+    }
     const trackingCode =
       payload.trackingCode === undefined || payload.trackingCode === null
         ? undefined
-        : String(payload.trackingCode).trim();
+        : payload.trackingCode.trim();
     if (trackingCode !== undefined && trackingCode.length > MAX_TRACKING_CODE_LENGTH) {
       return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
     }
