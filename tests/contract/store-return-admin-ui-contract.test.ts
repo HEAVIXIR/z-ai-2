@@ -30,6 +30,8 @@ describe("Store return admin lifecycle UI contract", () => {
     expect(client).toContain("orderItemId: selectedOrderItemId");
     expect(client).toContain("useEffect(() => {");
     expect(client).toContain("availableOrderItems[0]?.id ?? \"\"");
+    expect(client).toContain("setItemConditions(");
+    expect(client).toContain("[initialReturn.items]");
     expect(client).toContain('["REQUESTED", "APPROVED"].includes(initialReturn.status)');
     expect(itemsRoute).toContain("addReturnItem(");
     expect(itemsRoute).toContain("requirePermission(user.id, 'returns.manage')");
