@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, 'integration/**']
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'integration/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
