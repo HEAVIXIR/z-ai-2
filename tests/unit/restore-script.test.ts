@@ -167,6 +167,20 @@ describe("paired database restore script", () => {
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
   });
 
+  it("does not treat Docker service aliases as local hosts without Docker mode", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DB_HOST: "db",
+      STORE_DB_HOST: "store-db",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
   it("blocks remote targets unless the explicit non-production gate is set", () => {
     const f = fixture();
     const result = runRestore(f, {
