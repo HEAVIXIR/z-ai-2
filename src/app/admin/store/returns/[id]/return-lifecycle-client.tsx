@@ -112,6 +112,16 @@ export default function ReturnLifecycleClient({
     }
   }, [availableOrderItems, selectedOrderItemId]);
 
+  useEffect(() => {
+    setItemConditions(
+      initialReturn.items.map((item) => ({
+        itemId: item.id,
+        restockable: item.restockable,
+        condition: item.condition ?? "UNOPENED",
+      })),
+    );
+  }, [initialReturn.items]);
+
   const hasRestockable = useMemo(
     () => itemConditions.some((item) => item.restockable),
     [itemConditions],
