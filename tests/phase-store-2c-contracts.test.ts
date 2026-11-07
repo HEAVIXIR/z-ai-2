@@ -565,14 +565,14 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
       // invariant is unchanged: every mutation has a corresponding audit
-      // event. The count is 67 = 61 logAudit + 6 enqueueAuditOutbox.
+      // event. The count is 68 = 57 logAudit + 11 enqueueAuditOutbox.
       //
       // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
       // T1+T2-DEEP: services grew (+14: 8 in inventory + 6 in returns) → 53.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10) → 63.
       // PHASE-P8-TRANSACTION: +2 in routes → 65.
-      // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.
+      // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.\n      // Atomic PO receiving replaces 4 direct audit hooks with 5 outbox events → 68.
       // STEP 16 inventory-safe procurement receiving: 4 legacy logAudit hooks
       // replaced by 5 transactional outbox events → 68.
       const files = readAllStoreFiles();
