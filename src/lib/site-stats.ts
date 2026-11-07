@@ -39,7 +39,7 @@ export type ComputedStat = {
  *
  * STEP 15-B.5.1: Added optional `precomputed` parameter. When the caller
  * has already computed a count for a metric (e.g. the homepage Phase 4
- * already runs `listing.count({ status: "PUBLISHED" })` and
+ * already runs a canonical active-public-listing count and
  * `brand.count({ active: true })`), it can pass those values here to
  * avoid re-firing the same query (eliminating duplicate Q21/Q22).
  *
