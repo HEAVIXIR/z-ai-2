@@ -77,28 +77,27 @@ export default async function InventoryReconciliationPage({
     const warehouseTotal = part.inventoryBalances.reduce((sum, row) => sum + row.quantity, 0);
     const reservedInvalid = part.inventoryBalances.some((row) => row.reserved < 0 || row.reserved > row.quantity);
     const inactiveStock = part.inventoryBalances.some((row) => !row.warehouse.active && row.quantity > 0);
-    let issue: Issue = "CONSISTENT";
+    const issues: Issue[] = [];
     if (part.inventoryBalances.length === 0) {
-      issue = part.stock > 0 ? "LEGACY_UNALLOCATED" : "NO_STOCK";
-    } else if (warehouseTotal !== part.stock) {
-      issue = "MISMATCH";
-    } else if (reservedInvalid) {
-      issue = "RESERVED_EXCEEDS";
-    } else if (inactiveStock) {
-      issue = "INACTIVE_STOCK";
+      issues.push(part.stock > 0 ? "LEGACY_UNALLOCATED" : "NO_STOCK");
+    } else {
+      if (warehouseTotal !== part.stock) issues.push("MISMATCH");
+      if (reservedInvalid) issues.push("RESERVED_EXCEEDS");
+      if (inactiveStock) issues.push("INACTIVE_STOCK");
+      if (issues.length === 0) issues.push("CONSISTENT");
     }
-    return { ...part, warehouseTotal, delta: part.stock - warehouseTotal, issue };
+    return { ...part, warehouseTotal, delta: part.stock - warehouseTotal, issues };
   });
 
   const visible = onlyIssues
-    ? report.filter((row) => !["CONSISTENT", "NO_STOCK"].includes(row.issue))
+    ? report.filter((row) => row.issues.some((issue) => !["CONSISTENT", "NO_STOCK"].includes(issue)))
     : report;
   const summary = {
-    mismatch: report.filter((row) => row.issue === "MISMATCH").length,
-    legacy: report.filter((row) => row.issue === "LEGACY_UNALLOCATED").length,
-    reservation: report.filter((row) => row.issue === "RESERVED_EXCEEDS").length,
-    inactive: report.filter((row) => row.issue === "INACTIVE_STOCK").length,
-    consistent: report.filter((row) => row.issue === "CONSISTENT").length,
+    mismatch: report.filter((row) => row.issues.includes("MISMATCH")).length,
+    legacy: report.filter((row) => row.issues.includes("LEGACY_UNALLOCATED")).length,
+    reservation: report.filter((row) => row.issues.includes("RESERVED_EXCEEDS")).length,
+    inactive: report.filter((row) => row.issues.includes("INACTIVE_STOCK")).length,
+    consistent: report.filter((row) => row.issues.includes("CONSISTENT")).length,
   };
 
   return (
@@ -178,9 +177,13 @@ export default async function InventoryReconciliationPage({
                     )}
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <span className={`inline-block rounded-full border px-2 py-1 text-[11px] font-bold ${STYLE[part.issue]}`}>
-                      {LABEL[part.issue]}
-                    </span>
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {part.issues.map((issue) => (
+                        <span key={issue} className={`inline-block rounded-full border px-2 py-1 text-[11px] font-bold ${STYLE[issue]}`}>
+                          {LABEL[issue]}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               ))}
