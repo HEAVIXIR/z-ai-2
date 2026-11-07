@@ -6,7 +6,7 @@ on:
     # receive the same blocking verification as PRs targeting main.
     branches: [main, 'infra/cloudflare-opennext-build-recovery']
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'infra/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
@@ -53,6 +53,8 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck Worker-specific Prisma clients
+        run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
           sudo apt-get install -y postgresql-client
@@ -651,4 +653,72 @@ jobs:
           path: ${{ runner.temp }}/legacy-archive-inventory.txt
           if-no-files-found: error
           retention-days: 14
+
+  # Optional, explicit Preview-only PPG runtime proof. It remains skipped until
+  # the repository variable is deliberately enabled and both secrets exist.
+  prisma-workerd-runtime-proof:
+    name: Prisma Workerd runtime proof (Preview-only)
+    if: ${{ vars.HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: PREVIEW_ONLY
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Fail closed unless both Preview inputs are supplied
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HEAVIX_APP_PREVIEW_PPG_URL"
+          test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          echo "Two distinct Preview connection inputs are present; values remain redacted."
+
+      - name: Execute read-only local Workerd runtime proof
+        run: bun run test:workerd
+
+  # Always-on runtime smoke: loads the generated clients and PPG adapter in workerd,
+  # but supplies no database credentials and cannot reach any database.
+  prisma-workerd-smoke:
+    name: Workerd runtime smoke (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Execute no-database Workerd smoke proof
+        run: bun run test:workerd
 

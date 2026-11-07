@@ -145,49 +145,144 @@ secret values are copied into Git or this document.
 A successful adapter build is **not** proof of runtime compatibility and is not
 a production release approval.
 
-## Version-scoped glob dependency repair (PR #183)
+## Pinned Cloudflare build toolchain
 
-The Cloudflare build exposed two incompatible global overrides:
-- `minimatch@^3.1.5` forced the v3 API into modern `glob@10/13` consumers that require the v9/v10 API (`GLOBSTAR` export).
-- `brace-expansion@^1.1.21` forced the v1 API into modern `minimatch@11` consumers that require `brace-expansion@^5.0.12` (`expand` export).
+The Cloudflare adapter and Wrangler CLI are pinned in `package.json` to the exact versions used by the successful OpenNext build command: `@opennextjs/cloudflare@1.20.14` and `wrangler@4.156.0`. The `build:cloudflare` script runs that local, lockfile-resolved adapter directly with `--noMinify`; it does not dynamically install a second toolchain during the build. Bun is pinned to `1.4.4` in `packageManager` and in the Cloudflare Build environment.
 
-This branch now uses version-scoped overrides matching the dependency-declared ranges: legacy minimatch v3 and brace-expansion v1 remain pinned to patched versions; modern minimatch consumers resolve to 11.0.4 and modern brace-expansion consumers to 5.0.12. No global `glob` override is introduced.
+The non-production Cloudflare Workers Build trigger now runs `bun run build:cloudflare` directly from the pinned Bun lockfile. It no longer performs a second, non-lockfile `npm install` during the build. The trigger's deploy command remains the explicit no-op safety marker, so a successful build still cannot publish a Worker.
 
-A dedicated Bun 1.4.4 lock-refresh workflow regenerates `bun.lock` after this package manifest change. The lockfile must be refreshed and exact-head CI rerun before this branch is considered dependency-clean. This repair does not imply a successful Cloudflare build or authorize deployment.
 
-## Pin OpenNext adapter in the manifest
+## Scoped glob/minimatch compatibility and security override
 
-The Cloudflare adapter and Wrangler are now declared as exact dev dependencies (`@opennextjs/cloudflare@1.20.14`, `wrangler@4.156.0`) rather than being installed opportunistically during the Cloudflare Build. This ensures the lockfile captures the adapter's transitive `glob` / `minimatch` / `brace-expansion` graph and makes the scoped override contract reproducible. The lock-refresh workflow will regenerate `bun.lock`; the contract test checks both the scoped manifest rules and the resulting nested lock paths.
+The Cloudflare build log proved the failure path: `@node-minify/core@9.0.2` loads `glob@10.3.3`, whose declared `minimatch` range is `^9.0.1`. A root-wide `minimatch@^3.1.5` override forced the old API into this package; `glob/dist/mjs/pattern.js` then failed to import the named export `GLOBSTAR`. The second toolchain path, `@opennextjs/cloudflare@1.20.14`, brings `glob@13.0.6` with a `minimatch@^10.2.2` dependency.
 
-### Lockfile refresh verified — PR #183 branch
+Do not fix this by deleting security overrides or by globally replacing every `glob` package with a different major. The package manifest now uses Bun version-scoped overrides:
+- `minimatch@^3.1.2` and `minimatch@^3.1.5` stay pinned to `3.1.5` for legacy consumers.
+- `minimatch@^9.0.1`, `minimatch@^10.2.2`, and `minimatch@^11.0.2` resolve to `11.0.4`, which provides the modern named API and is newer than the GHSA-g3hv-75wg-m249 fixed release `11.0.1`.
+- No global `glob` override remains; each consumer keeps its declared compatible glob major.
+- `brace-expansion@^1.1.7` remains pinned to security-fixed `1.1.21`; `brace-expansion@^5.0.12` resolves to security-fixed `5.0.12`, which supplies the named `expand` export required by `minimatch@11`.
 
-Bun 1.4.4 lock refresh completed successfully at commit `c593a627decc168b16c95d2f93e043b8936d3495`. The resulting `bun.lock` contains the nested modern API resolutions required by the pinned Cloudflare adapter:
-- `@node-minify/core/glob/minimatch` and `glob/minimatch` resolve to `minimatch@11.0.4`.
-- Their nested `brace-expansion` entries resolve to `5.0.12`.
-- Legacy top-level consumers remain on `minimatch@3.1.5` and `brace-expansion@1.1.21`.
+Bun `1.4.4` is pinned because version-scoped overrides require the lockfile v3 format. The branch's lock-refresh workflow regenerated `bun.lock` in commit `9a15bfbddfdc5e20d52c9bdf0aad63894d10c2f7`. Independent inspection confirmed the root `minimatch@3.1.5` entry plus nested `minimatch@11.0.4` entries at `@node-minify/core/glob/minimatch` and `glob/minimatch`; a contract test now guards these exact resolutions.  The first build after the minimatch correction exposed a second global-override collision: `minimatch@11.0.4` imported the named `expand` export from `brace-expansion`, but the global `brace-expansion@^1.1.21` override supplied the v1 API. This is now handled with version-scoped rules for `^1.1.7 → 1.1.21` and `^5.0.12 → 5.0.12`; both versions are on their fixed security releases. Lock-refresh commit `ed0f14c858f7d9cd289c48868084707b4d430523` has now been generated; the lock retains root `brace-expansion@1.1.21` and nests `brace-expansion@5.0.12` beneath the modern minimatch paths. The contract test now asserts these exact lockfile paths. Acceptance requires the full Cloudflare build and GitHub CI to pass, then passing GitHub CI and a fresh Cloudflare Workers Build. Until then, this is a targeted dependency correction under verification, not a completed build fix.
 
-The contract test now checks these lock paths as well as the manifest overrides. Exact-head CI and a Cloudflare Build on the refreshed lockfile are required before declaring the dependency recovery complete.
+References: [Bun version-scoped overrides](https://bun.com/docs/pm/overrides), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
 
-## CI Bun version aligned with lockfile writer
+## Prisma Worker WebAssembly build requirement
 
-The exact-head CI run `41917522190` revealed that the workflow used Bun `1.3.14` while the dependency lockfile and lock-refresh workflow use Bun `1.4.4`. The log showed Bun 1.3.14 rejecting the lockfile as an unknown version, discarding it, resolving 4,570 packages again, and warning that it does not support nested overrides. The resulting install did not exercise the checked-in lockfile or its scoped dependency graph, and the lock-contract test failed because the generated lock differed.
+A controlled Cloudflare Build against commit `79917afc...` reached Next.js 16.4.5 Webpack compilation and identified the Worker-client build blocker: both generated clients import `internal/query_compiler_bg.wasm?module`. Webpack 5 rejects those modules unless `experiments.asyncWebAssembly` is enabled. The import traces pass through the Main and Store Worker clients and their respective Worker database entrypoints.
 
-All six `oven-sh/setup-bun@v2` steps in this branch's CI workflow are now explicitly pinned to `1.4.4`. A contract test asserts that every setup-bun occurrence has the same version pin and rejects the old `1.3.14` value. This aligns CI with the lockfile refresh workflow and makes the dependency API contract reproducible.
+The Cloudflare-only Next configuration enables `asyncWebAssembly` and the OpenNext `buildCommand` uses `bunx next build --webpack`. This does not alter the Node/Vercel build path. Acceptance remains blocked until a fresh Cloudflare Workers Build passes, including OpenNext bundling, and the Worker-specific typecheck passes.
 
-## Docker image Bun version aligned with CI and lockfile
+The blocking GitHub CI workflow now runs `bun run typecheck:worker` after generating both Prisma clients. Static source-contract assertions are supplementary and do not replace the compiler or real `workerd` tests.
 
-The `docker-build-proof` job on PR #183 failed because the Dockerfile still used `oven/bun:1.3.14-slim` in its builder/runtime stages. The build log showed `bun install --frozen-lockfile` failing with `Unknown lockfile version` against the Bun 1.4.4-generated lockfile. This is the same toolchain mismatch previously observed in the GitHub-hosted CI runner.
+## Cloudflare build file-descriptor limit
 
-Both Docker stages now use `oven/bun:1.4.4` / `oven/bun:1.4.4-slim`. Docker Hub's official `oven/bun` tag listing confirms the `1.4.4-slim` tag exists. A contract test checks both Docker tags and rejects the old 1.3.14 tag. This aligns CI, Docker, and lockfile refresh to Bun 1.4.4.
+Cloudflare Build `974c0be4-8dac-4912-b413-b11bf16534a8` on commit `77b8e415...` passed Next.js 16.4.5 Webpack compilation (75s), Worker TypeScript (55s), and generation of all 14 static pages. It then failed while opening `.next/server/pages-manifest.json` with `EMFILE: too many open files`. The Next log showed seven static-generation workers.
+
+The Cloudflare-only Next configuration now caps `experimental.cpus` at 1 to reduce concurrent worker file descriptors. The Node/Vercel path is unchanged. The next Workers Build must verify manifest generation, OpenNext bundling, and the final artifact before this change is accepted.
+
+## Cloudflare file-descriptor limit diagnostic
+
+Build `b474f8df-4ac9-4dca-853f-12ec1549af16` showed that `experimental.cpus: 1` is effective for static generation (14/14 pages completed with one worker) but does not prevent the final Next standalone-output copy from exhausting file descriptors. The build failed copying `.next/server/app/_global-error.html` to `.next/server/pages/500.html` with `EMFILE`.
+
+The Cloudflare-only OpenNext build command now attempts to raise the shell soft `RLIMIT_NOFILE` to 4096 and prints both soft and hard limits before invoking `next build --webpack`. This is diagnostic and fail-open only for the limit-setting operation; the build itself still fails normally if the platform limit cannot support Next's file-copy phase. Do not remove standalone output or suppress this error: OpenNext's Cloudflare adapter expects a standalone Next build.
+
+## Cloudflare build file-operation concurrency
+
+The Cloudflare Build shell reports `RLIMIT_NOFILE` soft=1024 and hard=1024; attempting to raise the soft limit to 4096 does not change the hard ceiling. The subsequent build still reached 14/14 static pages with one Next worker, then failed on a single `copyFile` with `EMFILE`.
+
+The next diagnostic keeps Next's Cloudflare-only worker count at 1, caps Webpack module parallelism at 4, and sets `UV_THREADPOOL_SIZE=1` before starting the Next process. The OpenNext build command continues to log the soft/hard file-descriptor limits. If this still fails, the Cloudflare Build hard limit is a platform constraint; do not suppress the error or remove the standalone output required by OpenNext.
+
+## Cloudflare standalone output tracing scope
+
+Build `99876ca1-9d35-4a7c-8703-b9c286c6e73d` passed Webpack compilation (74s), Worker TypeScript (59s), and static generation (14/14 pages with one worker), but still exhausted the hard 1024 file-descriptor limit while opening `.next/server/pages-manifest.json`. Reducing Next/webpack/libuv concurrency alone was insufficient.
+
+The Cloudflare-only configuration now narrows standalone output tracing:
+- Excludes Worker-client TypeScript sources already compiled into Next server chunks.
+- Excludes the unused Store Node client and build-only Prisma CLI/engine files.
+- Excludes repository-only docs, tests, scripts, VCS metadata, and build caches from runtime tracing.
+- Explicitly includes the Main and Store Worker `query_compiler_bg.wasm` assets.
+
+The OpenNext command retains the nofile soft/hard diagnostic and restores the default-size libuv thread pool (4). This is a targeted trace reduction experiment; a successful Next standalone build and OpenNext Worker bundle are required before acceptance. Node/Vercel tracing remains unchanged.
+
+## Preview crawler protection — CI regression repaired
+
+The exact-head CI run `41914626205` failed one of 1,912 contract/unit assertions: `tests/contract/preview-indexing-policy.test.ts` expected `X-Robots-Tag: noindex, nofollow, noarchive`, but `next.config.ts` did not emit that response header. The other 1,911 assertions passed; the independent phase, database, TLS, backup/restore, and runtime-contract jobs were green.
+
+The Next config now imports the canonical `IS_PREVIEW_DEPLOYMENT` flag from `src/lib/site-config.ts` and adds the global `X-Robots-Tag` header only for preview/development. Production retains the existing security header set without the preview noindex directive. The existing test remains strict; it was not weakened.
+
+## Current Cloudflare build limitation — nofile
+
+Cloudflare Build `3d9359c6-3cb1-49c1-b226-995a6eb9e561` compiled successfully (72s), completed TypeScript (51s), and generated all 14 static pages with one worker, but failed when Next attempted to open `.next/trace-build` and `.next/server/pages-manifest.json` with `EMFILE`. The build container reports both soft and hard `RLIMIT_NOFILE=1024`; raising the soft limit is not permitted.
+
+Important distinction: Next 16.4.5 applies `outputFileTracingIncludes/Excludes` after the Node File Trace operation has already run. Therefore these patterns can reduce the final standalone trace contents but cannot be assumed to fix the earlier `.next/trace-build` file-descriptor exhaustion. Do not treat trace exclusions or worker count as a proven fix. Next work must isolate the build trace file-descriptor pressure (or establish a Cloudflare Builds platform limitation) before further config changes. Keep standalone output and deployment gates unchanged.
+
+## File-descriptor pressure instrumentation
+
+Three consecutive Cloudflare builds reached the same Next.js finalization failure under a hard/soft descriptor limit of 1024. The observed errors include an attempted write of `.next/trace-build` (Next's diagnostic trace reporter catches/logs its own write error) followed by a fatal open of `.next/server/pages-manifest.json`. Build compilation, TypeScript, and all 14 static pages had already succeeded.
+
+The next build now invokes the same Next.js CLI through a thin Node diagnostic wrapper. It samples the Next process and descendant process descriptor counts from `/proc/<pid>/fd`, records per-process peaks, and prints `HEAVIX_FD_PEAK` at exit. It does not raise limits, change Next configuration, suppress errors, remove standalone output, or deploy anything. This will distinguish a real process-local descriptor exhaustion from an unrelated Cloudflare build-environment issue before another mitigation is selected.
+
+## PR #183 base dependency-lock synchronization
+
+PR #183's updated base branch has now completed the scoped dependency repair and Bun 1.4.4 lock refresh at `b1a99f07e8bf1fe048511a1dc71e32704512f06a`. This PR branch carries the same exact OpenNext/Wrangler pins and version-scoped overrides, and its lockfile contains the equivalent modern nested `minimatch@11.0.4` / `brace-expansion@5.0.12` resolutions alongside the additional Prisma Worker dependencies.
+
+The base synchronization also brings in the dedicated `tests/contract/cloudflare-modern-glob-overrides.test.ts` regression guard. The Worker adapter refresh workflow remains scoped to this PR's branch. This merge commit synchronizes source history; it is not a merge of either pull request into `main`.
+
+## Root cause confirmed — Next's vendored Node File Trace concurrency
+
+The descriptor sampler on Cloudflare Build `dc37cdba-e3c6-4f32-8601-d956a2dab6fd` measured the main Next process at 208 open descriptors before static generation, 277 during generation, 732 immediately after all 14 static pages, and exactly 1,024 while Next entered `Collecting build traces`. The fatal open was a server App Router `route.js`; child processes peaked at only 29 descriptors.
+
+Inspection of the exact Next.js 16.4.5 source shows `collect-build-traces.ts` imports `nodeFileTrace` from `next/dist/compiled/@vercel/nft`. The vendored `@vercel/nft` implementation defaults `fileIOConcurrency` to **1024**, and passes that value to its cached filesystem semaphore. This matches the observed hard limit exactly. The earlier `outputFileTracingExcludes` rules are applied after this trace operation and therefore cannot prevent this failure.
+
+A Cloudflare-build-only, version-guarded patcher now changes the vendored default from 1024 to 64 before the Next CLI starts. It:
+- Requires Next.js exactly `16.4.5`.
+- Resolves the exact vendored module used by Next's build trace.
+- Requires exactly one occurrence of `fileIOConcurrency:w=1024`.
+- Replaces it with `fileIOConcurrency:w=64`; if the expected source shape differs, it fails closed rather than silently building with the unsafe default.
+- Leaves the installed package manifest/lockfile and all non-Cloudflare build paths unchanged.
+
+The FD diagnostic wrapper remains enabled to verify the observed peak falls below the 1024 hard limit. A successful Next standalone build, OpenNext Worker bundle, and later real `workerd` tests are still required; this patch is not deployment approval.
+
+## NFT trace concurrency retest — 64 is insufficient
+
+Cloudflare Build `6b681988-3ed3-4c94-a6a6-875e291e3c43` proved the `fileIOConcurrency=64` patch was applied and allowed:
+- Webpack compilation to pass (62s).
+- Worker TypeScript to pass (46s).
+- All 14 static pages to generate successfully.
+
+However, the descriptor sampler measured a main-process peak of 954 (down from 1,024) and the build still failed during the final standalone `copyfile` operation. The 64-operation cap therefore reduces but does not eliminate descriptor pressure under the 1,024 hard limit.
+
+The guarded patch target is now reduced from 64 to **16**. The same exact-version and exact-token checks remain in force; FD sampling remains enabled. The next build must prove a materially lower peak and complete standalone/OpenNext output before this is accepted.
+
+## Base branch synchronization — Bun and Cloudflare FD guards
+
+The PR #183 base branch now pins all six CI Bun setup steps to `1.4.4`, matching the lockfile writer. It also includes the same Cloudflare-only Next 16.4.5 vendored NFT patch (`fileIOConcurrency=16`) and FD sampling wrapper. This PR branch already carried Bun 1.4.4 and the PPG-specific Next settings; the synchronized contract test now verifies the shared dependency, toolchain, and Cloudflare FD guard invariants across both branches.
+
+The merge commit records base history only. PR #183 and PR #191 remain Draft/unmerged; no production branch or Worker deployment was changed.
+
+## Docker/CI Bun pin synchronization
+
+PR #183's Docker proof found one remaining toolchain mismatch: the Docker builder/runtime images were still `oven/bun:1.3.14`, so `bun install --frozen-lockfile` rejected the Bun 1.4.4 lockfile. Both Docker stages are now pinned to the published `oven/bun:1.4.4` and `oven/bun:1.4.4-slim` tags. This PR branch already carries those exact Docker tags and pins all CI Bun setup steps to 1.4.4. The synchronized dependency contract test now checks the Docker tags as well.
+
+## Root-cause refinement — Next's custom NFT readFile bypassed the semaphore
+
+The second descriptor run on exact PR #191 head `a9ff26ce` applied `fileIOConcurrency=16`, yet the Next main process still peaked at 1,010 FDs and failed opening `.next/trace-build` / `.next/routes-manifest.json`. The 16-worker cap alone did not constrain the dominant operation.
+
+Inspection of the exact vendored Next 16.4.5 NFT implementation and its caller established why: `collect-build-traces.ts` supplies a custom `readFile` callback to `nodeFileTrace`. In the NFT constructor, `if(t.readFile)s.readFile=t.readFile` replaces the cached filesystem reader directly. That bypasses `CachedFileSystem.executeFileIO()`, the semaphore controlled by `fileIOConcurrency`. The previous patch changed the default semaphore size but left the custom read path unbounded.
+
+The next guarded Cloudflare-only patch now makes two exact changes in the same vendored NFT bundle:
+1. Keep `fileIOConcurrency` at 16.
+2. Wrap the custom `readFile` callback with `s.cachedFileSystem.executeFileIO(p,()=>t.readFile(p))`, so the caller-provided filesystem read uses the same semaphore.
+
+The patcher requires Next.js exactly 16.4.5, exactly one original concurrency token and exactly one original custom-read hook, and verifies both replacements for idempotency. Any version or source-shape drift fails closed. The regression contract checks both tokens. This is a source-derived correction to the actual unbounded path, not another speculative numeric reduction.
+
+The exact-head Build `19d8e78e-7ce3-49da-9117-7d2565ec845b` is the evidence for the 16-only failure: webpack 66s, TypeScript 58s, 14/14 static pages passed, then `EMFILE` at `.next/trace-build` and `.next/routes-manifest.json`; sampled peak was 1,010. The next build must prove a lower peak and complete trace collection, standalone output, and OpenNext bundling.
+
 
 ## Next patcher version allowlist clarified
 
-The first PR #183 Cloudflare attempt failed closed because its lock resolves Next.js `16.4.3`, while the PR #191 branch resolves `16.4.5`. Inspection of both exact Next.js vendored NFT bundles confirms each contains exactly one `fileIOConcurrency:w=1024` token. The patcher now explicitly allowlists only `16.4.3` and `16.4.5`, then still requires exactly one matching token before changing it to 16. Unsupported versions or bundle drift remain blocked. This avoids an unnecessary Next upgrade solely to satisfy the patcher guard.
+The first PR #183 Cloudflare attempt failed closed because its lock resolves Next.js `16.4.3`, while the PR #191 branch resolves `16.4.5`. Inspection of both exact Next.js vendored NFT bundles confirms each contains exactly one `fileIOConcurrency:w=1024` token and the same custom `readFile` hook. The shared patcher now explicitly allowlists only `16.4.3` and `16.4.5`, then requires exactly one matching concurrency token and one custom-read hook before patching. Unsupported versions or bundle drift remain blocked. This avoids an unnecessary Next upgrade solely to satisfy the patcher guard.
 
-## Next NFT custom readFile semaphore fix — verified source parity
+## Base synchronization note
 
-The failed Next 16.4.3 build on this branch applied `fileIOConcurrency=16` but still peaked at 960 descriptors and failed during the App Router global-error copy. The matching Next 16.4.5 run on the PR #191 branch exposed the same bypass: Next supplies a custom `readFile` callback to `nodeFileTrace`, and NFT directly assigns it (`if(t.readFile)s.readFile=t.readFile`), bypassing the `CachedFileSystem.executeFileIO()` semaphore.
-
-The vendored NFT bundles for both Next 16.4.3 and 16.4.5 were inspected directly. Both contain exactly one `fileIOConcurrency:w=1024` token and exactly one identical custom-read hook. This branch's guarded patcher now wraps that callback through the existing semaphore while retaining the 16-operation cap. The patch remains exact-version allowlisted for 16.4.3/16.4.5, checks unique original tokens, verifies idempotent replacements, and fails closed on source drift.
-
-The next Cloudflare Build must prove that the descriptor peak is materially lower and that trace collection, standalone output, and OpenNext bundling complete. This remains a build-only change; Preview and Production deployment guards remain fail-closed.
+PR #191 now carries the latest PR #183 build-recovery base history through `f78800aa52c2a929a8625a48ae0b3c686ca4f695`, including the shared Next NFT patcher allowlist. This merge is branch synchronization only; neither PR was merged into `main`.

@@ -16,6 +16,8 @@ describe("preview indexing safety", () => {
   it("sets a global noindex response header for preview deployments", () => {
     const config = read("next.config.ts");
     expect(config).toMatch(/X-Robots-Tag/);
+    expect(config).toMatch(/key: "X-Robots-Tag"/);
+    expect(config).toMatch(/headers: \[/);
     expect(config).toMatch(/noindex, nofollow, noarchive/);
     expect(config).toMatch(/IS_PREVIEW_DEPLOYMENT/);
   });
