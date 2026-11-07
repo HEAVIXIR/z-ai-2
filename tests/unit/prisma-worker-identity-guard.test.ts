@@ -105,15 +105,13 @@ describe("Prisma Worker database identity guard", () => {
     const guarded = withIdentityGuard(client, "preview-store-id", "Store");
     const first = guarded.product.findMany();
     const second = guarded.product.count();
+    const combined = Promise.all([first, second]);
 
     await identityStarted;
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
 
     releaseIdentity();
-    await expect(Promise.all([first, second])).resolves.toEqual([
-      ["products"],
-      3,
-    ]);
+    await expect(combined).resolves.toEqual([["products"], 3]);
     expect(client.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
