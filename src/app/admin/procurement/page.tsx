@@ -39,6 +39,8 @@ type Procurement = {
   company: { id: string; name: string; slug: string } | null;
 };
 
+type SupplierOption = { id: string; name: string; nameFa: string | null };
+
 const STATUS_CLS: Record<string, string> = {
   DRAFT: "bg-zinc-100 text-zinc-600",
   PUBLISHED: "bg-emerald-100 text-emerald-700",
@@ -516,12 +518,36 @@ function EditProcurementModal({
   const [budgetMax, setBudgetMax] = useState(procurement.budgetMax ?? "");
   const [deadline, setDeadline] = useState(toLocalInputValue(procurement.deadline));
   const [status, setStatus] = useState(procurement.status);
+  const [supplierId, setSupplierId] = useState(procurement.company?.id ?? "");
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [supplierLoadError, setSupplierLoadError] = useState<string | null>(null);
   const availableStatuses = [
     procurement.status,
     ...(PROCUREMENT_STATUS_TRANSITIONS[procurement.status] ?? []),
-  ].filter((value) => value !== "AWARDED" || procurement.company !== null);
+  ].filter((value) => value !== "AWARDED" || Boolean(supplierId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingSuppliers(true);
+    fetch("/api/admin/store/suppliers?active=true", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || payload.success !== true) {
+          throw new Error(payload.error ?? "دریافت فهرست تأمین‌کنندگان ناموفق بود");
+        }
+        if (active) setSuppliers(payload.data ?? []);
+      })
+      .catch((cause) => {
+        if (active) setSupplierLoadError(cause instanceof Error ? cause.message : "خطا در دریافت تأمین‌کنندگان");
+      })
+      .finally(() => {
+        if (active) setLoadingSuppliers(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const save = async () => {
     setError(null);
@@ -547,6 +573,7 @@ function EditProcurementModal({
           budgetMax: budgetMax ? onlyDigits(budgetMax) : null,
           deadline: deadline ? new Date(deadline).toISOString() : null,
           status,
+          supplierId: supplierId || null,
         }),
       });
       const json = await res.json();
@@ -608,6 +635,23 @@ function EditProcurementModal({
             <div>
               <label className={LABEL_CLS}>مهلت نهایی</label>
               <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} dir="ltr" className={INPUT_CLS} />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>تأمین‌کننده برنده</label>
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                disabled={loadingSuppliers || procurement.status === "AWARDED" || procurement.status === "COMPLETED"}
+                className={INPUT_CLS}
+              >
+                <option value="">بدون تأمین‌کننده</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.nameFa || supplier.name}
+                  </option>
+                ))}
+              </select>
+              {supplierLoadError && <p className="mt-1 text-xs text-red-600">{supplierLoadError}</p>}
             </div>
             <div>
               <label className={LABEL_CLS}>وضعیت</label>
