@@ -118,7 +118,7 @@ export default async function ListingDetailPage({
     getCurrentUser(),
   ]);
 
-  if (!isPublicListingActive(listing)) notFound();
+  if (!listing || !isPublicListingActive(listing)) notFound();
 
   // Seed the favorite button state for the authed user (1 row max).
   const existingFav = currentUser
