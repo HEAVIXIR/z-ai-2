@@ -9,7 +9,6 @@ import {
   X,
   CheckCircle2,
   XCircle,
-  RotateCcw,
   Eye,
 } from "lucide-react";
 import { toFa, formatCompactPrice, timeAgo } from "@/lib/format";
@@ -79,7 +78,7 @@ export default function StorePaymentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const updateStatus = async (p: Payment, status: "APPROVED" | "REJECTED" | "REFUNDED") => {
+  const updateStatus = async (p: Payment, status: "APPROVED" | "REJECTED") => {
     if (status !== "REFUNDED" && !confirm(`تأیید پرداخت به وضعیت «${status === "APPROVED" ? "تأییدشده" : "ردشده"}»؟`)) return;
     setBusy(p.id);
     try {
@@ -234,14 +233,9 @@ export default function StorePaymentsPage() {
                           </>
                         )}
                         {p.status === "APPROVED" && (
-                          <button
-                            onClick={() => updateStatus(p, "REFUNDED")}
-                            disabled={busy === p.id}
-                            title="بازگشت وجه"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50"
-                          >
-                            <RotateCcw size={14} />
-                          </button>
+                          <span className="text-[10px] text-zinc-400" title="بازپرداخت تا تکمیل گردش مستند غیرفعال است">
+                            بازپرداخت غیرفعال
+                          </span>
                         )}
                         {p.receiptImageUrl && (
                           <a
