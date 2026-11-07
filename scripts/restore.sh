@@ -15,11 +15,40 @@ fi
 
 # Load local operator configuration before reading or displaying DB settings.
 # Exported environment variables take precedence over values from .env.
-if [ -f .env ]; then
+load_env_preserving_process_overrides() {
+  local name
+  local -A saved=()
+  local -a names=(
+    DB_HOST DB_PORT DB_USER DB_NAME DB_PASSWORD
+    STORE_DB_HOST STORE_DB_PORT STORE_DB_USER STORE_DB_NAME STORE_DB_PASSWORD
+    MAIN_DB_CONTAINER STORE_DB_CONTAINER
+    HEAVIX_ENV NODE_ENV HEAVIX_RESTORE_TARGET
+    HEAVIX_ALLOW_PRODUCTION_RESTORE HEAVIX_ALLOW_REMOTE_RESTORE
+    HEAVIX_RESTORE_TRAFFIC_DRAINED
+  )
+
+  # Capture explicitly supplied process environment before sourcing .env.
+  # A local file must never silently redirect an operator's explicit target
+  # or clear a destructive-operation safety gate.
+  for name in "${names[@]}"; do
+    if [[ -v "$name" ]]; then
+      saved["$name"]="${!name}"
+    fi
+  done
+
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
+
+  for name in "${!saved[@]}"; do
+    printf -v "$name" '%s' "${saved[$name]}"
+    export "$name"
+  done
+}
+
+if [ -f .env ]; then
+  load_env_preserving_process_overrides
 fi
 
 BACKUP_DIR="$1"
