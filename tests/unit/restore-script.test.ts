@@ -37,7 +37,10 @@ function fixture() {
 
   const docker = [
     "#!/usr/bin/env bash",
-    "if [[ ${1:-} == ps ]]; then exit 0; fi",
+    "if [[ ${1:-} == ps ]]; then if [[ ${DOCKER_TEST_MODE:-0} == 1 ]]; then echo heavix-db-1; fi; exit 0; fi",
+    "if [[ ${1:-} == context && ${2:-} == show ]]; then echo default; exit 0; fi",
+    "if [[ ${1:-} == context && ${2:-} == inspect ]]; then echo ${DOCKER_CONTEXT_ENDPOINT:-unix:///var/run/docker.sock}; exit 0; fi",
+    "if [[ ${1:-} == inspect ]]; then exit 0; fi",
     "exit 1",
     "",
   ].join("\n");
@@ -193,6 +196,20 @@ describe("paired database restore script", () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toContain(
       "remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks Docker contexts that point to a remote daemon", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DOCKER_TEST_MODE: "1",
+      DOCKER_CONTEXT_ENDPOINT: "ssh://production.example.invalid",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "Docker restore requires a local Unix-socket Docker endpoint",
     );
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
   });
