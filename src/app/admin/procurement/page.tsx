@@ -191,6 +191,13 @@ export default function AdminProcurementPage() {
             مشاهده و مدیریت مناقصات خرید ثبت‌شده توسط سازمان‌ها
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/admin/store/procurement-orders"
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220] hover:text-[#F58220]"
+        >
+          دریافت سفارش‌های خرید
+        </Link>
         <button
           onClick={load}
           className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600 hover:border-[#F58220] hover:text-[#F58220]"
@@ -198,6 +205,7 @@ export default function AdminProcurementPage() {
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           به‌روزرسانی
         </button>
+        </div>
       </div>
 
       {/* Stats */}
