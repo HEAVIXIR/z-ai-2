@@ -183,10 +183,15 @@ export default {
         const client = getAppClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
         const result = await client.$transaction(async (tx) => {
-          const [selectRows, settingRows] = await Promise.all([
-            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
-          ]);
+          // Explicitly mark this one proof transaction read-only. The Preview
+          // application database itself remains writable for normal app use;
+          // this test proves the Worker/adapter can execute a read-only
+          // transaction without relying on a database-wide read-only setting.
+          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+          const settingRows = await tx.$queryRaw<
+            Array<{ transaction_read_only: boolean | string }>
+          >`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
+          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
@@ -219,10 +224,13 @@ export default {
         const client = getStoreClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
         const result = await client.$transaction(async (tx) => {
-          const [selectRows, settingRows] = await Promise.all([
-            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
-          ]);
+          // Explicitly mark this one proof transaction read-only. The Store
+          // Preview database remains writable for normal app use.
+          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+          const settingRows = await tx.$queryRaw<
+            Array<{ transaction_read_only: boolean | string }>
+          >`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
+          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
