@@ -70,7 +70,7 @@ const ARGS = { params: Promise.resolve({ id: "p1" }) };
 
 describe("POST /api/payments/[id]/verify", () => {
   it("NEGATIVE: anonymous → 401", async () => {
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
     expect(res.status).toBe(401);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
@@ -78,7 +78,7 @@ describe("POST /api/payments/[id]/verify", () => {
   it("NEGATIVE: user without payment.manage → 403", async () => {
     mockCurrentUser = { id: "buyer-1" };
     mockRequirePermissionThrows = true;
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
     expect(res.status).toBe(403);
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
@@ -113,7 +113,7 @@ describe("POST /api/payments/[id]/verify", () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.updatePaymentMany.mockResolvedValue({ count: 0 });
 
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
 
     expect(res.status).toBe(409);
     expect(mocks.updateSubscriptionMany).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe("POST /api/payments/[id]/verify", () => {
     mockCurrentUser = { id: "admin-1" };
     mocks.updateSubscriptionMany.mockResolvedValue({ count: 0 });
 
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
 
     expect(res.status).toBe(409);
     expect(mocks.createAudit).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe("POST /api/payments/[id]/verify", () => {
       subscriptionId: "sub-1", userId: "seller-1", paidAt: new Date(),
     });
 
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
 
     expect(res.status).toBe(409);
     expect(mocks.updatePaymentMany).not.toHaveBeenCalled();
@@ -160,7 +160,7 @@ describe("POST /api/payments/[id]/verify", () => {
       subscriptionId: null, userId: "seller-1", paidAt: null,
     });
 
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
 
     expect(res.status).toBe(409);
     expect(mocks.updatePaymentMany).not.toHaveBeenCalled();
@@ -179,10 +179,19 @@ describe("POST /api/payments/[id]/verify", () => {
       });
     mocks.createAudit.mockRejectedValue(new Error("audit unavailable"));
 
-    const res = await POST(makeReq({ status: "PAID" }), ARGS);
+    const res = await POST(makeReq({ status: "PAID", reason: "reviewed bank evidence" }), ARGS);
 
     expect(res.status).toBe(500);
     expect(mocks.createAudit).toHaveBeenCalledOnce();
+  });
+
+  it("NEGATIVE: missing or too-short audit reason is rejected", async () => {
+    mockCurrentUser = { id: "admin-1" };
+    const missing = await POST(makeReq({ status: "PAID" }), ARGS);
+    expect(missing.status).toBe(400);
+    const short = await POST(makeReq({ status: "PAID", reason: "ok" }), ARGS);
+    expect(short.status).toBe(400);
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("NEGATIVE: malformed/non-object payloads are rejected", async () => {
