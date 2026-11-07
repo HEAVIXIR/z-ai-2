@@ -61,6 +61,13 @@ describe('Wave C1 — Navigation Contract', () => {
       expect(content).toContain("mode: 'rbac'");
     });
 
+    it('requires dashboard navigation to have its own read permission', () => {
+      const seed = read(NAV_SEED);
+      expect(seed).toContain("permissionKey: 'admin.dashboard.read'");
+      expect(seed).toMatch(/type Item = \{[^}]*permissionKey: string;/);
+      expect(seed).toMatch(/type Standalone = \{[^}]*permissionKey: string/);
+    });
+
     it('filters each navigation item by its permission key', () => {
       const content = read(NAV_ROUTE);
       expect(content).toMatch(/item\.permissionKey === null/);
