@@ -50,7 +50,7 @@ describe("Store return admin lifecycle UI contract", () => {
   });
 
   it("loads and displays refund transactions and RETURN stock movements", () => {
-    expect(page).toContain("store.walletTransaction.findMany");
+    expect(page).toContain("storeDb.walletTransaction.findMany");
     expect(page).toContain('where: { reference: id, type: "RETURN" }');
     expect(client).toContain("walletTransactions.map");
     expect(client).toContain("returnMovements.map");
