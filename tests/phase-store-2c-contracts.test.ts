@@ -764,7 +764,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (67) cover the 54 counted database write calls', () => {
+    it('total audits (68) cover the 55 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -776,8 +776,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(54);
-      expect(totalAudit).toBe(67);
+      expect(totalMut).toBe(55);
+      expect(totalAudit).toBe(68);
     });
   });
 
