@@ -110,6 +110,35 @@ function normalizeUploadRelativePath(relativePath: string): string | null {
   return normalized;
 }
 
+async function ensurePrivateMetadataDirectory(dir: string): Promise<void> {
+  const root = path.resolve(MEDIA_METADATA_ROOT);
+  const target = path.resolve(dir);
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("Private media metadata directory escaped its root.");
+  }
+
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const relative = path.relative(root, target);
+  let current = root;
+  const directories = [root, ...relative.split(path.sep).filter(Boolean).map((part) => {
+    current = path.join(current, part);
+    return current;
+  })];
+
+  for (const directory of directories) {
+    try {
+      await fs.mkdir(directory, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const stat = await fs.lstat(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("Private media metadata path contains a non-directory or symlink.");
+    }
+    await fs.chmod(directory, 0o700);
+  }
+}
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
   const safeRelativePath = normalizeUploadRelativePath(assetRelativePathWithExt);
   if (!safeRelativePath) throw new Error("Invalid media asset relative path.");
@@ -174,7 +203,7 @@ async function readSidecar(
 /** Read private sidecars first, then legacy public sidecars for compatibility. */
 async function readAllAssets(): Promise<MediaAsset[]> {
   await fs.mkdir(UPLOAD_ROOT, { recursive: true }).catch(() => {});
-  await fs.mkdir(MEDIA_METADATA_ROOT, { recursive: true, mode: 0o700 });
+  await ensurePrivateMetadataDirectory(MEDIA_METADATA_ROOT);
 
   const [privateRels, legacyRels] = await Promise.all([
     walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT),
@@ -322,7 +351,7 @@ export async function uploadAsset(
   // 5. Persist private sidecar metadata outside the public asset tree.
   const sidecarDiskPath = sidecarPathFor(relPath);
   try {
-    await fs.mkdir(path.dirname(sidecarDiskPath), { recursive: true, mode: 0o700 });
+    await ensurePrivateMetadataDirectory(path.dirname(sidecarDiskPath));
     await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), {
       encoding: "utf8",
       mode: 0o600,
@@ -489,11 +518,12 @@ export async function attachAsset(
     altText: asset.altText,
   };
   try {
-    await fs.mkdir(path.dirname(sidecarPath), { recursive: true, mode: 0o700 });
+    await ensurePrivateMetadataDirectory(path.dirname(sidecarPath));
     await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), {
       encoding: "utf8",
       mode: 0o600,
     });
+    await fs.chmod(sidecarPath, 0o600);
   } catch (err) {
     return {
       ok: false,
