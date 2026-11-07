@@ -105,6 +105,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (body.referenceCode !== undefined) data.referenceCode = body.referenceCode || null;
       if (body.gateway !== undefined) data.gateway = body.gateway || null;
       if (body.refId !== undefined) data.refId = body.refId || null;
+      if (Object.keys(data).length === 0) return { noChanges: true as const };
 
       const payment = await tx.payment.update({
         where: { id },
@@ -179,6 +180,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     if ("invalidStatus" in result) {
       return NextResponse.json({ success: false, error: "وضعیت نامعتبر" }, { status: 400 });
+    }
+    if ("noChanges" in result) {
+      return NextResponse.json({ success: false, error: "هیچ تغییری برای ثبت ارسال نشده است" }, { status: 400 });
     }
     if ("conflict" in result) {
       return NextResponse.json(
