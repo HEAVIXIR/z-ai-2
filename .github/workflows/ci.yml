@@ -31,8 +31,6 @@ jobs:
       STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
       ADMIN_USERNAME: "ci-admin"
       ADMIN_PASSWORD: "ci-password-not-real"
-      NODE_ENV: "test"
-      HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -326,6 +324,8 @@ jobs:
       STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
       ADMIN_USERNAME: "ci-admin"
       ADMIN_PASSWORD: "ci-password-not-real"
+      NODE_ENV: "test"
+      HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
