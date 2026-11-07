@@ -157,6 +157,18 @@ export async function PATCH(
     }
 
     if (body.action === "resolve") {
+      // Restocking mutates inventory, so an explicitly supplied destination
+      // requires the inventory-management permission in addition to returns.manage.
+      if (typeof body.warehouseId === "string" && body.warehouseId.trim()) {
+        try {
+          await requirePermission(user.id, "inventory.manage");
+        } catch {
+          return NextResponse.json(
+            { error: "Forbidden: restocking requires inventory.manage" },
+            { status: 403 },
+          );
+        }
+      }
       // Restockable items require an explicit active destination warehouse.
       // The service validates the warehouse-managed stock ledger atomically.
       const ret = await resolveReturn(
