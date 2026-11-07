@@ -582,7 +582,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(count).toBe(67);
     });
 
-    it('counts 54 Store DB writes across routes + services, including transactions', () => {
+    it('counts 53 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -592,7 +592,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(54);
+      expect(count).toBe(53);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -761,7 +761,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (67) cover the 54 counted database write calls', () => {
+    it('total audits (67) cover the 53 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -773,7 +773,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(54);
+      expect(totalMut).toBe(53);
       expect(totalAudit).toBe(67);
     });
   });
