@@ -335,28 +335,9 @@ export const paymentConfig: AdminResourceConfig = {
   ],
 
   actions: [
-    // STEP 11.6 (Phase C.1) + STEP 11.8 (Audit Transactionality):
-    // refund requires status ∈ {PAID, AUTHORIZED} (precondition) AND
-    // runs inside `db.$transaction` (transactional: true) so the audit
-    // entry commits atomically with the status mutation. This closes the
-    // "audit gap" risk for financial mutations (see ADR-003).
-    {
-      key: 'refund', label: 'بازگشت وجه', icon: 'RotateCcw', permission: 'payment.refund',
-      type: 'confirm', variant: 'destructive',
-      confirmMessage: 'بازگشت وجه انجام شود؟ این عملیات حساس است.',
-      apiPath: '/api/admin/resources/payments', apiMethod: 'PATCH',
-      transactional: true,
-      precondition: (item) => {
-        const status = String(item.status ?? '');
-        if (!['PAID', 'AUTHORIZED'].includes(status)) {
-          return {
-            ok: false,
-            message: `بازگشت وجه فقط برای پرداخت‌های پرداخت‌شده/تأییدشده امکان‌پذیر است (فعلی: ${status})`,
-          };
-        }
-        return { ok: true };
-      },
-    },
+    // Refunds remain unavailable until a dedicated immutable record captures
+    // externally verified money movement or a verified provider response.
+    // A status-only transition must never be presented as a completed refund.
     // verify requires status === PENDING (precondition) AND runs in a
     // transaction (transactional: true) — audit is critical for
     // financial trust reconciliation.
@@ -381,7 +362,7 @@ export const paymentConfig: AdminResourceConfig = {
     { label: 'سفارش مرتبط', resource: 'orders', filterField: 'paymentId' },
   ],
 
-  audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage', 'payment.refund'] },
+  audit: { enabled: true, entityType: 'Payment', actions: ['payment.manage'] },
 };
 
 export const companyConfig: AdminResourceConfig = {
