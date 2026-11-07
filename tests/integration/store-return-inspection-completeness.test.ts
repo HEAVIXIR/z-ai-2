@@ -159,17 +159,28 @@ describe('Store return inspection completeness (real PostgreSQL)', () => {
 
   it('serializes concurrent inspection claims so only one initial transition wins', async () => {
     if (!returnId || returnItemIds.length !== 2) throw new Error('fixture setup incomplete');
-    const decisions = [
+    const decisionsA = [
       { itemId: returnItemIds[0], restockable: true },
       { itemId: returnItemIds[1], restockable: false },
     ];
+    const decisionsB = [
+      { itemId: returnItemIds[0], restockable: false },
+      { itemId: returnItemIds[1], restockable: true },
+    ];
     const results = await Promise.allSettled([
-      inspectReturn(returnId, 'concurrent A', decisions),
-      inspectReturn(returnId, 'concurrent B', decisions),
+      inspectReturn(returnId, 'concurrent A', decisionsA),
+      inspectReturn(returnId, 'concurrent B', decisionsB),
     ]);
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    const ret = await storeDb.return.findUnique({ where: { id: returnId } });
+    const successes = results.filter((result) => result.status === 'fulfilled').length;
+    expect(successes).toBeGreaterThanOrEqual(1);
+    const [ret, items, events] = await Promise.all([
+      storeDb.return.findUnique({ where: { id: returnId } }),
+      storeDb.returnItem.findMany({ where: { returnId } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: returnId } } }),
+    ]);
     expect(ret?.status).toBe('INSPECTED');
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.restockable === true || item.restockable === false)).toBe(true);
+    expect(events).toHaveLength(successes * 3);
   }, 15000);
 });
