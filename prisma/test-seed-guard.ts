@@ -29,11 +29,15 @@ export function assertTestSeedTarget(scriptName: string): void {
     throw new Error(`[${scriptName}] DATABASE_URL is not a valid URL.`);
   }
 
-  const host = parsed.hostname.toLowerCase();
-  const allowedHosts = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
+  // URL.hostname retains brackets around IPv6 literals in WHATWG URL
+  // implementations. Normalize them before comparing loopback addresses.
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // Do not allow Docker/service aliases such as "postgres": they are not
+  // guaranteed to resolve to loopback and could point at a remote database.
+  const allowedHosts = new Set(["localhost", "127.0.0.1", "::1"]);
   if (!allowedHosts.has(host)) {
     throw new Error(
-      `[${scriptName}] Refusing non-local database host "${host}" for test fixtures.`,
+      `[${scriptName}] Refusing non-loopback database host "${host}" for test fixtures.`,
     );
   }
 
