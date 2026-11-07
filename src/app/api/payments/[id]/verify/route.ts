@@ -13,7 +13,7 @@ const MAX_REASON_LENGTH = 500;
 
 class PaymentNotFoundError extends Error {}
 class PaymentStateConflictError extends Error {}
-class PaymentSubscriptionMismatchError extends Error {}
+class SubscriptionBillingUnavailableError extends Error {}
 
 /**
  * POST /api/payments/[id]/verify
@@ -23,10 +23,10 @@ class PaymentSubscriptionMismatchError extends Error {}
  *
  * Financial invariants:
  * - Only PENDING payments may transition through this endpoint.
- * - PAID + subscription activation + audit record commit atomically.
- * - The linked subscription must belong to the same user as the payment.
+ * - PAID + audit record commit atomically for non-subscription payments.
+ * - Subscription payments fail closed until canonical amount/term snapshots exist.
  * - Conditional updateMany is the authoritative concurrency/CAS guard.
- * - Refunds use the dedicated transactional refund action, not this route.
+ * - Refunds are unavailable until an evidence-backed refund workflow exists.
  */
 export async function POST(
   req: Request,
@@ -100,9 +100,9 @@ export async function POST(
         );
       }
 
-      if (status === "PAID" && before.type === "SUBSCRIPTION" && !before.subscriptionId) {
-        throw new PaymentSubscriptionMismatchError(
-          "Subscription payment has no linked subscription",
+      if (status === "PAID" && before.type === "SUBSCRIPTION") {
+        throw new SubscriptionBillingUnavailableError(
+          "Subscription payment verification is unavailable until canonical billing and term snapshots are implemented",
         );
       }
 
@@ -116,18 +116,6 @@ export async function POST(
       });
       if (transition.count !== 1) {
         throw new PaymentStateConflictError("Payment was changed by another request");
-      }
-
-      if (status === "PAID" && before.type === "SUBSCRIPTION" && before.subscriptionId) {
-        const activation = await tx.premiumSubscription.updateMany({
-          where: { id: before.subscriptionId, userId: before.userId },
-          data: { status: "ACTIVE", paymentRef: id },
-        });
-        if (activation.count !== 1) {
-          throw new PaymentSubscriptionMismatchError(
-            "Linked subscription is missing or belongs to a different user",
-          );
-        }
       }
 
       const after = await tx.payment.findUnique({ where: { id } });
@@ -176,7 +164,7 @@ export async function POST(
     }
     if (
       err instanceof PaymentStateConflictError ||
-      err instanceof PaymentSubscriptionMismatchError
+      err instanceof SubscriptionBillingUnavailableError
     ) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }
