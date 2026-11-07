@@ -1009,12 +1009,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(content).toMatch(/export async function getPurchaseOrder\b/);
     });
 
-    it('inventory route imports createMovement + listMovements from service', () => {
+    it('inventory route imports warehouse-aware adjustStock + listMovements from service', () => {
       const content = readRoute('src/app/api/admin/store/inventory/route.ts');
       expect(content).toContain('import');
-      expect(content).toContain('createMovement');
+      expect(content).toContain('adjustStock');
       expect(content).toContain('listMovements');
       expect(content).toContain('from "@/lib/store-inventory-service"');
+      expect(content).not.toContain('createMovement(');
+      expect(content).toContain('checkCsrf(req)');
+      expect(content).toContain('typeof warehouseId !== "string"');
     });
 
     it('returns route imports createReturn + listReturns from service', () => {
