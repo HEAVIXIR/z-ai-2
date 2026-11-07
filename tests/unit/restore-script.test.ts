@@ -67,10 +67,14 @@ function runRestore(f: ReturnType<typeof fixture>, overrides: Record<string, str
   if (!Object.prototype.hasOwnProperty.call(overrides, "STORE_DB_NAME")) delete env.STORE_DB_NAME;
   if (!Object.prototype.hasOwnProperty.call(overrides, "HEAVIX_ENV")) delete env.HEAVIX_ENV;
   if (!Object.prototype.hasOwnProperty.call(overrides, "NODE_ENV")) delete env.NODE_ENV;
+  const dbHost = overrides.DB_HOST ?? "localhost";
+  const storeDbHost = overrides.STORE_DB_HOST ?? "localhost";
+  const dbName = overrides.DB_NAME ?? "heavix";
+  const storeDbName = overrides.STORE_DB_NAME ?? "heavix_store";
   const result = spawnSync("bash", [scriptPath, f.backup], {
     cwd: f.root,
     encoding: "utf8",
-    input: "RESTORE localhost/heavix AND localhost/heavix_store\n",
+    input: `RESTORE ${dbHost}/${dbName} AND ${storeDbHost}/${storeDbName}\n`,
     env,
   });
   return result;
@@ -136,7 +140,10 @@ describe("paired database restore script", () => {
     expect(readFileSync(unsafe.psqlLog, "utf8")).toBe("");
 
     const duplicate = fixture();
-    const duplicateResult = runRestore(duplicate, { STORE_DB_NAME: "heavix" });
+    const duplicateResult = runRestore(duplicate, {
+      STORE_DB_NAME: "heavix",
+      STORE_DB_PORT: "5432",
+    });
     expect(duplicateResult.status).not.toBe(0);
     expect(duplicateResult.stdout + duplicateResult.stderr).toContain("must be distinct");
     expect(readFileSync(duplicate.psqlLog, "utf8")).toBe("");
