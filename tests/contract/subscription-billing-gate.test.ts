@@ -33,5 +33,7 @@ describe("subscription billing release gate", () => {
     expect(source).not.toContain('<option value="SUBSCRIPTION">');
     expect(source).not.toContain("subscriptionId: form.subscriptionId");
     expect(source).toContain("FEATURED_LISTING");
+    expect(source).toContain('p.type === "SUBSCRIPTION"');
+    expect(source).toContain("تأیید تا تکمیل صورتحساب غیرفعال است");
   });
 });
