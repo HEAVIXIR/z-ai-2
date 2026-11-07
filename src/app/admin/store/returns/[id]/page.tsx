@@ -88,14 +88,16 @@ export default async function StoreReturnDetailPage({
       orderBy: { createdAt: "desc" },
       select: { id: true, amount: true, type: true, description: true, createdAt: true },
     }),
-    storeDb.stockMovement.findMany({
-      where: { reference: id, type: "RETURN" },
-      orderBy: { createdAt: "desc" },
-      include: {
-        part: { select: { name: true, nameFa: true, sku: true } },
-        warehouse: { select: { name: true, code: true } },
-      },
-    }),
+    canReadInventory
+      ? storeDb.stockMovement.findMany({
+          where: { reference: id, type: "RETURN" },
+          orderBy: { createdAt: "desc" },
+          include: {
+            part: { select: { name: true, nameFa: true, sku: true } },
+            warehouse: { select: { name: true, code: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!record) notFound();
