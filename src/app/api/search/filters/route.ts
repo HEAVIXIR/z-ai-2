@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
     const categorySlug = url.searchParams.get("category")?.trim() || undefined;
 
     // Build base where clause for published listings only
-    const where: any = { status: "PUBLISHED" };
+    const where: any = getPublicListingWhere();
     if (categorySlug) {
       const cat = await db.category.findFirst({ where: { slug: categorySlug }, select: { id: true } });
       if (cat) where.categoryId = cat.id;
