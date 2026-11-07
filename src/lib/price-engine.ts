@@ -237,6 +237,7 @@ export async function estimatePrice(
 
   const where: {
     status: string;
+    AND?: ReturnType<typeof getPublicListingWhere>["AND"];
     price: { not: null };
     brandId: string;
     categoryId: string;
