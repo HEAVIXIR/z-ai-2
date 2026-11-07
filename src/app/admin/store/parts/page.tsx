@@ -191,7 +191,7 @@ export default function StorePartsPage() {
         priceUsd: Number(form.priceUsd) || 0,
         oldPriceUsd: form.oldPriceUsd ? Number(form.oldPriceUsd) : null,
         contactForPrice: form.contactForPrice,
-        stock: Number(form.stock) || 0,
+        ...(!editing ? { stock: Number(form.stock) || 0 } : {}),
         lowStockThreshold: Number(form.lowStockThreshold) || 5,
         sourceUrl: form.sourceUrl || null,
         active: form.active,
@@ -457,8 +457,18 @@ export default function StorePartsPage() {
                 />
               </div>
               <div>
-                <label className={LABEL_CLS}>موجودی</label>
-                <input value={form.stock} onChange={(e) => setForm({ ...form, stock: onlyDigits(e.target.value) })} className={INPUT_CLS} dir="ltr" />
+                <label className={LABEL_CLS}>{editing ? "موجودی فعلی (فقط خواندنی)" : "موجودی اولیه (بدون تخصیص انبار)"}</label>
+                {editing ? (
+                  <>
+                    <input value={form.stock} readOnly className={INPUT_CLS + " cursor-not-allowed bg-zinc-100 text-zinc-500"} dir="ltr" />
+                    <p className="mt-1 text-[11px] text-zinc-500">تغییر موجودی فقط از مسیر رسمی عملیات انبار انجام می‌شود.</p>
+                  </>
+                ) : (
+                  <>
+                    <input value={form.stock} onChange={(e) => setForm({ ...form, stock: onlyDigits(e.target.value) })} className={INPUT_CLS} dir="ltr" />
+                    <p className="mt-1 text-[11px] text-amber-700">این مقدار اولیه هنوز به انبار مشخصی تخصیص ندارد.</p>
+                  </>
+                )}
               </div>
               <div>
                 <label className={LABEL_CLS}>آستانه موجودی کم</label>
