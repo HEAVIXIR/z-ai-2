@@ -25,7 +25,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock state ──────────────────────────────────────────────
-let mockCurrentUser: { id: string; mobile: string; firstName: string; role: string } | null = null;
+let mockCurrentUser: { id: string; mobile: string; mobileVerified?: boolean; firstName: string; role: string } | null = null;
 let mockIsAdminResult: boolean = false;
 
 vi.mock("@/lib/auth", () => ({
@@ -209,7 +209,7 @@ describe("PR #40: GET /api/store/orders/[id] — auth + ownership", () => {
   });
 
   it("POSITIVE: owner (by phone) → 200", async () => {
-    mockCurrentUser = { id: "user-X", mobile: "09120000000", firstName: "X", role: "BUYER" };
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: true, firstName: "X", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
     const res = await ordersIdRoute.GET(
