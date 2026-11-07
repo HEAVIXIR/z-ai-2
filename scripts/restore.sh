@@ -108,6 +108,12 @@ else
   fi
 fi
 
+# The operator must stop/drain app traffic before databases are dropped.
+if [ "${HEAVIX_RESTORE_TRAFFIC_DRAINED:-}" != "1" ]; then
+  echo "BLOCKED: stop application traffic, then set HEAVIX_RESTORE_TRAFFIC_DRAINED=1."
+  exit 1
+fi
+
 # Verify the complete paired backup before asking for destructive confirmation.
 (
   cd "$BACKUP_DIR"
