@@ -72,6 +72,7 @@ async function main() {
   const files = await walk(UPLOAD_ROOT, UPLOAD_ROOT);
   const legacySidecars = files.filter((file) => file.endsWith(SUFFIX));
   let migrated = 0;
+  let planned = 0;
   let alreadyPrivate = 0;
   let invalid = 0;
   let conflicts = 0;
@@ -163,6 +164,7 @@ async function main() {
     mode: APPLY ? "apply" : "dry-run",
     scanned: legacySidecars.length,
     migrated,
+    planned,
     alreadyPrivate,
     invalid,
     conflicts,
