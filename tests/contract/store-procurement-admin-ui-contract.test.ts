@@ -21,6 +21,13 @@ describe('Admin procurement lifecycle controls', () => {
     expect(page).toContain('item.company !== null');
   });
 
+  it('loads active suppliers and binds the selected supplier before awarding a tender', () => {
+    expect(page).toContain('/api/admin/store/suppliers?active=true');
+    expect(page).toContain('supplierId: supplierId || null');
+    expect(page).toContain('value={supplierId}');
+    expect(page).toContain('Boolean(supplierId)');
+  });
+
   it('reports partial bulk failures and retains failed selections for retry', () => {
     expect(page).toContain('response.ok && payload.success === true');
     expect(page).toContain('setSelected(new Set(failedIds))');
