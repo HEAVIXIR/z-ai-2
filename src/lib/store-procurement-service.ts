@@ -590,6 +590,9 @@ export async function cancelPurchaseOrder(
       if (!existing) throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
       if (existing.status === 'CANCELLED') throw new ProcurementServiceError(409, 'سفارش خرید قبلاً لغو شده است');
       if (existing.status === 'RECEIVED') throw new ProcurementServiceError(409, 'سفارش خرید تحویل‌شده قابل لغو نیست');
+      if (!['DRAFT', 'SUBMITTED', 'APPROVED'].includes(existing.status)) {
+        throw new ProcurementServiceError(409, 'وضعیت سفارش برای لغو معتبر نیست');
+      }
       const changed = await tx.purchaseOrder.updateMany({
         where: { id, status: existing.status },
         data: { status: 'CANCELLED', notes: reason ? `CANCELLED: ${reason}` : existing.notes },
