@@ -143,6 +143,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
 
   if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
     return NextResponse.json(
       { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
       { status: 409 },
