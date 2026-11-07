@@ -16,6 +16,15 @@ const reserveBody = source.slice(reserveStart, releaseStart);
 const releaseBody = source.slice(releaseStart, nextSection);
 
 describe("Warehouse stock adjustment invariants", () => {
+  it("disables the legacy Part-only movement entry point", () => {
+    const start = source.indexOf("export async function createMovement(");
+    const end = source.indexOf("\\n// ── listMovements", start);
+    const legacy = source.slice(start, end);
+    expect(legacy).toContain("throw new InventoryServiceError");
+    expect(legacy).not.toContain("storeDb.part.update");
+    expect(legacy).not.toContain("tx.part.update");
+  });
+
   it("fails closed instead of implicitly creating a first or missing warehouse balance", () => {
     expect(body).toContain("balances.length === 0");
     expect(body).toContain("!targetBalance");
