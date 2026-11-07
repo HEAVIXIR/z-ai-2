@@ -152,8 +152,8 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
     });
 
     const outcomes = await Promise.allSettled([
-      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation A"),
-      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation B"),
+      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation A " + part.id),
+      reserveStock(part.id, warehouse.id, 4, "test-user", "reservation B " + part.id),
     ]);
 
     expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -173,8 +173,8 @@ describe("Store checkout stock allocation and compare-and-swap (real PostgreSQL)
     });
 
     const outcomes = await Promise.allSettled([
-      releaseStock(part.id, warehouse.id, 4, "test-user", "release A"),
-      releaseStock(part.id, warehouse.id, 4, "test-user", "release B"),
+      releaseStock(part.id, warehouse.id, 4, "test-user", "release A " + part.id),
+      releaseStock(part.id, warehouse.id, 4, "test-user", "release B " + part.id),
     ]);
 
     expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
