@@ -27,6 +27,14 @@ export async function decrementOrderStock(
     throw new Error("مقدار کاهش موجودی نامعتبر است");
   }
 
+  // Serialize checkout against opening-balance allocation and every
+  // canonical inventory writer before observing the Part or warehouse rows.
+  const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+  `;
+  if (lockedParts.length !== 1) {
+    throw new OrderStockConflictError("قطعه دیگر در دسترس نیست");
+  }
   const part = await tx.part.findUnique({
     where: { id: partId },
     select: { id: true, stock: true },
