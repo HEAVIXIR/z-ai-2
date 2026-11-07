@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionByShareToken, getComparisonData } from "@/lib/compare-engine";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { toPublicComparisonDTO } from "@/lib/public-compare-dto";
 import { COMPARE_READ } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
@@ -38,7 +39,7 @@ export async function GET(
       return NextResponse.json({ error: "لینک اشتراک‌گذاری نامعتبر یا منقضی است" }, { status: 404 });
     }
 
-    const data = await getComparisonData(session.id);
+    const data = toPublicComparisonDTO(await getComparisonData(session.id));
 
     return NextResponse.json({
       session: {
