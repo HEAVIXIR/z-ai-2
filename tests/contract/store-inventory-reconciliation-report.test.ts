@@ -21,6 +21,8 @@ describe("Read-only inventory reconciliation report", () => {
     expect(page).toContain('"MISMATCH"');
     expect(page).toContain('"RESERVED_EXCEEDS"');
     expect(page).toContain('"INACTIVE_STOCK"');
+    expect(page).toContain('"NEGATIVE_STOCK"');
+    expect(page).toContain("part.stock < 0");
   });
 
   it("is strictly read-only and explicitly refuses automatic reconciliation", () => {
