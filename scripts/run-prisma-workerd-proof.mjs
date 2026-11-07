@@ -185,14 +185,12 @@ try {
   ]);
   assert.equal(appTx.transactionOk, true, "App transaction failed (connection check SELECT 1).");
   assert.equal(storeTx.transactionOk, true, "Store transaction failed (connection check SELECT 1).");
-  // STEP 18.2.7.3.10 (Finding T-1, revised per review #6657226686):
-  // The previous approach attempted CREATE TEMP TABLE and expected SQLSTATE
-  // 25006. Per PostgreSQL docs, CREATE TEMP TABLE is ALLOWED in read-only
-  // transactions, so that test was invalid. The correct approach is to read
-  // the runtime GUC directly via current_setting('transaction_read_only')::boolean.
-  // No write is attempted. readOnlyProven=true means the GUC returned true.
-  assert.equal(appTx.readOnlyProven, true, `App transaction_read_only is NOT on (setting=${appTx.transactionReadOnlySetting}). Preview database must be read-only.`);
-  assert.equal(storeTx.readOnlyProven, true, `Store transaction_read_only is NOT on (setting=${storeTx.transactionReadOnlySetting}). Preview database must be read-only.`);
+  // Each endpoint explicitly issues SET TRANSACTION READ ONLY before its
+  // SELECT statements, then checks the transaction GUC. This proves that the
+  // Worker/adapter can execute a read-only transaction without requiring the
+  // entire Preview database (which the app must write to) to be read-only.
+  assert.equal(appTx.readOnlyProven, true, `App transaction did not enter read-only mode (setting=${appTx.transactionReadOnlySetting}).`);
+  assert.equal(storeTx.readOnlyProven, true, `Store transaction did not enter read-only mode (setting=${storeTx.transactionReadOnlySetting}).`);
   assert.equal(appTx.writesPerformed, false, "App transaction must not perform any writes.");
   assert.equal(storeTx.writesPerformed, false, "Store transaction must not perform any writes.");
 
