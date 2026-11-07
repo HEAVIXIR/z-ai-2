@@ -49,7 +49,8 @@ describe("Store return admin lifecycle UI contract", () => {
   });
 
   it("requires explicit warehouse selection for restockable REFUND/EXCHANGE", () => {
-    expect(client).toContain('resolution !== "REJECT" && hasRestockable && !warehouseId');
+    expect(client).toContain('resolution !== "REJECT" && hasRestockable && (');
+    expect(client).toContain('!canManageInventory || !warehouseId');
     expect(client).toContain('{ warehouseId }');
     expect(client).not.toContain('warehouses[0]');
   });
