@@ -451,6 +451,15 @@ export async function adjustStock(
   if (!Number.isSafeInteger(qty) || qty === 0) {
     throw new InventoryServiceError(400, 'تعداد باید عدد صحیح غیر صفر باشد');
   }
+  if (type === 'TRANSFER') {
+    throw new InventoryServiceError(400, 'انتقال انبار باید با عملیات انتقال مبدأ و مقصد انجام شود');
+  }
+  if (['RECEIVE', 'RETURN'].includes(type) && qty < 0) {
+    throw new InventoryServiceError(400, 'تعداد دریافت و مرجوعی باید مثبت باشد');
+  }
+  if (['SALE', 'DAMAGE'].includes(type) && qty > 0) {
+    throw new InventoryServiceError(400, 'تعداد فروش و ضایعات باید منفی باشد');
+  }
 
   const result = await storeDb.$transaction(async (tx) => {
     const part = await tx.part.findUnique({
