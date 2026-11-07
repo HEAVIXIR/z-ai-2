@@ -139,6 +139,22 @@ async function ensurePrivateMetadataDirectory(dir: string): Promise<void> {
   }
 }
 
+async function hardenPrivateMetadataTree(dir: string): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error("Private media metadata tree contains a symlink.");
+    }
+    if (entry.isDirectory()) {
+      await fs.chmod(full, 0o700);
+      await hardenPrivateMetadataTree(full);
+    } else if (entry.isFile()) {
+      await fs.chmod(full, 0o600);
+    }
+  }
+}
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
   const safeRelativePath = normalizeUploadRelativePath(assetRelativePathWithExt);
   if (!safeRelativePath) throw new Error("Invalid media asset relative path.");
@@ -204,6 +220,7 @@ async function readSidecar(
 async function readAllAssets(): Promise<MediaAsset[]> {
   await fs.mkdir(UPLOAD_ROOT, { recursive: true }).catch(() => {});
   await ensurePrivateMetadataDirectory(MEDIA_METADATA_ROOT);
+  await hardenPrivateMetadataTree(MEDIA_METADATA_ROOT);
 
   const [privateRels, legacyRels] = await Promise.all([
     walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT),
