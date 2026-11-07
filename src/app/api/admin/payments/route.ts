@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
+import { parseManualPaymentAmount } from "@/lib/payments/manual-payment-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,19 +136,13 @@ export async function POST(req: Request) {
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
-    const rawAmount = typeof body.amount === "number" && Number.isSafeInteger(body.amount)
-      ? String(body.amount)
-      : typeof body.amount === "string" ? body.amount.trim() : "";
-    // Accept plain integer IRR or correctly grouped thousands separators;
-    // reject parseBig-style lossy inputs such as "1.5", "12abc", or "-10".
-    if (!/^(?:\\d+|\\d{1,3}(?:,\\d{3})+)$/.test(rawAmount)) {
-      return NextResponse.json({ error: "amount must be a positive whole number of IRR" }, { status: 400 });
+    const amount = parseManualPaymentAmount(body.amount);
+    if (amount === null) {
+      return NextResponse.json(
+        { error: "amount must be a positive whole number of IRR within the supported range" },
+        { status: 400 },
+      );
     }
-    const normalizedAmount = rawAmount.replace(/,/g, "");
-    if (normalizedAmount.length > 15 || /^0+$/.test(normalizedAmount)) {
-      return NextResponse.json({ error: "amount is outside the supported range" }, { status: 400 });
-    }
-    const amount = BigInt(normalizedAmount);
     const currency = String(body.currency ?? "IRR").toUpperCase();
     if (currency !== "IRR") {
       return NextResponse.json({ error: "Manual payments currently support IRR only" }, { status: 400 });
