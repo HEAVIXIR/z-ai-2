@@ -161,6 +161,33 @@ export async function isAdmin(
 
 // ── Resource Policy ─────────────────────────────────────────
 /**
+ * SQL identifier allowlist for canAccessResource.
+ *
+ * STEP 18.2.7.3.5 (Finding R-1): `resource` (table name) and
+ * `options.ownerField` (column name) are interpolated into a raw
+ * SQL query via `db.$queryRawUnsafe`. PostgreSQL double-quoting
+ * (`"${name}"`) turns the value into a quoted identifier, which
+ * provides partial protection, but is NOT sufficient against inputs
+ * like `foo"; DROP TABLE x; --` if a caller ever passes unvalidated
+ * user input.
+ *
+ * This allowlist enforces that BOTH identifiers match the PostgreSQL
+ * identifier production rule: `^[a-zA-Z_][a-zA-Z0-9_]*$`. Any input
+ * that fails the check causes the authorization to FAIL CLOSED
+ * (return false) — it never reaches the database.
+ *
+ * This is defense-in-depth: even though no production caller currently
+ * passes user-controlled input to canAccessResource, the function is
+ * a PUBLIC exported API, and a future caller must not be able to
+ * introduce a SQL injection by accident.
+ */
+const SQL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+function isValidSqlIdentifier(name: string): boolean {
+  return typeof name === 'string' && SQL_IDENTIFIER_PATTERN.test(name);
+}
+
+/**
  * Object-level authorization: check if user can access a specific resource.
  *
  * Example: user can only edit their own listings (unless they have
@@ -170,6 +197,11 @@ export async function isAdmin(
  *     ownerField: 'sellerId',
  *     moderatePermission: 'listing.moderate',
  *   });
+ *
+ * STEP 18.2.7.3.5: `resource` and `options.ownerField` are validated
+ * against a strict SQL-identifier allowlist BEFORE the raw query is
+ * constructed. Invalid identifiers cause the function to fail closed
+ * (return false) — they never reach the database.
  */
 export async function canAccessResource(
   userId: string,
@@ -180,12 +212,23 @@ export async function canAccessResource(
     moderatePermission?: string;
   },
 ): Promise<boolean> {
+  // STEP 18.2.7.3.5 (Finding R-1): Validate SQL identifiers BEFORE
+  // constructing the query. Fail closed on any invalid input — never
+  // pass a malformed identifier to $queryRawUnsafe.
+  if (!isValidSqlIdentifier(resource)) {
+    return false;
+  }
+  if (!options || !isValidSqlIdentifier(options.ownerField)) {
+    return false;
+  }
+
   // If user has the moderate permission, they can access any resource
   if (options.moderatePermission && await can(userId, options.moderatePermission)) {
     return true;
   }
 
-  // Otherwise, check if they own the resource
+  // Otherwise, check if they own the resource.
+  // Identifiers are already allowlisted above, so $queryRawUnsafe is safe here.
   try {
     const row = await db.$queryRawUnsafe(
       `SELECT "${options.ownerField}" as owner_id FROM "${resource}" WHERE id = $1`,
