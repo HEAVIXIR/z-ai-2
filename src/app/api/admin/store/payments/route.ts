@@ -89,7 +89,6 @@ export async function GET(req: Request) {
       where.OR = [
         { referenceCode: { contains: q } },
         { payerName: { contains: q } },
-        { payerCard: { contains: q } },
         { order: { orderNumber: { contains: q } } },
         { customer: { phone: { contains: q } } },
       ];
