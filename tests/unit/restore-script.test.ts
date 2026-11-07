@@ -149,6 +149,24 @@ describe("paired database restore script", () => {
     expect(readFileSync(duplicate.psqlLog, "utf8")).toBe("");
   });
 
+  it("preserves explicit process target overrides over values in .env", () => {
+    const f = fixture();
+    writeFileSync(
+      path.join(f.root, ".env"),
+      "DB_HOST=localhost\\nSTORE_DB_HOST=localhost\\n",
+    );
+    const result = runRestore(f, {
+      DB_HOST: "app-preview.example.invalid",
+      STORE_DB_HOST: "store-preview.example.invalid",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
   it("blocks remote targets unless the explicit non-production gate is set", () => {
     const f = fixture();
     const result = runRestore(f, {
