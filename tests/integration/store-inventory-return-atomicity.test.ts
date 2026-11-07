@@ -463,7 +463,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(resolved.status).toBe('RESOLVED');
     expect(resolved.restockedMovements).toHaveLength(1);
 
-    const [part, balance, movement, outbox] = await Promise.all([
+    const [part, balance, movement] = await Promise.all([
       storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
       storeDb.inventoryBalance.findUnique({
         where: { partId_warehouseId: { partId, warehouseId } },
@@ -471,10 +471,19 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       storeDb.stockMovement.findMany({
         where: { partId, reference: ret.id, type: 'RETURN' },
       }),
-      storeDb.auditOutbox.findMany({
-        where: { payloadJson: { contains: ret.id } },
-      }),
     ]);
+    // Outbox payloads identify Part and InventoryBalance events by their own
+    // entity IDs; only the StockMovement/Return/Wallet events repeat returnId.
+    const outbox = await storeDb.auditOutbox.findMany({
+      where: {
+        OR: [
+          { payloadJson: { contains: ret.id } },
+          { payloadJson: { contains: customer.id } },
+          { payloadJson: { contains: partId } },
+          ...(balance ? [{ payloadJson: { contains: balance.id } }] : []),
+        ],
+      },
+    });
     expect(part?.stock).toBe(11);
     expect(balance?.quantity).toBe(11);
     expect(balance?.reserved).toBe(2);
@@ -482,8 +491,19 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movement[0].quantity).toBe(1);
     expect(movement[0].balanceAfter).toBe(11);
     expect(movement[0].warehouseId).toBe(warehouseId);
-    expect(outbox).toHaveLength(6);
+    // Capture IDs before assertions so failed tests still clean their fixtures.
     outboxIds = outbox.map((event) => event.id);
+    // Assert the complete event contract directly; Vitest reports the actual
+    // entity list if any transactional audit event is missing.
+    const outboxEntities = outbox.map((event) => JSON.parse(event.payloadJson).entityType).sort();
+    expect(outboxEntities).toEqual([
+      'Customer',
+      'InventoryBalance',
+      'Part',
+      'Return',
+      'StockMovement',
+      'WalletTransaction',
+    ]);
   }, 15000);
 
   it('refuses restockable resolution without a destination warehouse and rolls back all effects', async () => {
