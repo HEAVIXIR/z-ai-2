@@ -76,7 +76,7 @@ export function normalizeSearchQuery(q: string): string {
  * it cleanly:
  *
  *     const where = {
- *       status: "PUBLISHED",
+ *       ...getPublicListingWhere(),
  *       ...(buildSearchWhere(["title","shortDesc","description"], q) ?? {}),
  *     };
  *
