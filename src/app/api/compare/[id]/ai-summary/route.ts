@@ -68,22 +68,11 @@ export async function POST(
       );
     }
 
-    const inputLength = JSON.stringify({
-      items: comparisonData.items.map((item) => ({
-        title: item.title,
-        type: item.type,
-        brand: item.brandName ?? null,
-        model: item.modelName ?? null,
-        category: item.categoryName ?? null,
-        year: item.year ?? null,
-      })),
-      rows: comparisonData.rows.map((row) => ({
-        label: row.label,
-        isDifferent: row.isDifferent,
-        values: row.cells.map((cell) => cell.display),
-      })),
-      differences: comparisonData.differences,
-    }).length;
+    // Bound the complete server-derived comparison payload, not a
+    // partial projection. generateAISummary includes price ranges and
+    // cross-category metadata; omitting those here undercounted the
+    // actual model input and could bypass the configured size ceiling.
+    const inputLength = JSON.stringify(comparisonData).length;
 
     const preflight = await preflightAIRequest({
       taskType: "COMPARE_SUMMARY",
