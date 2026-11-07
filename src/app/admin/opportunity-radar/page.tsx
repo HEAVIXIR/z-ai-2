@@ -34,7 +34,7 @@ export default async function OpportunityRadarPage() {
     }),
     db.listing.groupBy({
       by: ["categoryId"],
-      where: { createdAt: { gte: sevenDaysAgo }, status: "PUBLISHED" },
+      where: { ...getPublicListingWhere(), createdAt: { gte: sevenDaysAgo } },
       _count: true,
     }),
     db.listing.findMany({
