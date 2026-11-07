@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { getComparisonData } from "@/lib/compare-engine";
+import { toPublicComparisonDTO } from "@/lib/public-compare-dto";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { COMPARE_READ } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -122,7 +123,7 @@ export async function GET(
       return NextResponse.json({ error: "Session archived" }, { status: 410 });
     }
 
-    const data = await getComparisonData(id);
+    const data = toPublicComparisonDTO(await getComparisonData(id));
 
     return NextResponse.json({
       session: {
