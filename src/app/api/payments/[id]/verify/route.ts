@@ -66,7 +66,7 @@ export async function POST(
     const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
     if (!ALLOWED_STATUSES.has(status)) {
       return NextResponse.json(
-        { error: "status must be PAID or FAILED; refunds use the refund workflow" },
+        { error: "status must be PAID or FAILED; refunds are currently unavailable pending evidence-backed reconciliation" },
         { status: 400 },
       );
     }
