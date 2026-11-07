@@ -20,7 +20,7 @@ describe("Legacy inventory movement safety contract", () => {
     expect(body).toContain("tx.inventoryBalance.count");
     expect(body).toContain("warehouseBalanceCount > 0");
     expect(body).toContain("warehouseId: null");
-    expect(body).toContain("status: 409");
+    expect(body).toMatch(/new InventoryServiceError\(\s*409,/);
   });
 
   it("uses a compare-and-set predicate instead of stale absolute stock replacement", () => {
