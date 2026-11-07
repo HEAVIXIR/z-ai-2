@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logAudit } from "@/lib/audit";
 import { runModerationBatch } from "@/lib/moderation";
 import type { AIAgent } from "@prisma/client";
@@ -289,7 +290,7 @@ async function listingEnricherRunner(agent: AIAgent): Promise<AgentRunResult> {
   // Find PUBLISHED listings that have a description but no attribute values.
   const listings = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       description: { not: null },
       attributeValues: { none: {} },
     },
@@ -773,7 +774,7 @@ async function staleListingDetectorRunner(
   const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
   const stale = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       updatedAt: { lt: cutoff },
     },
     select: {
