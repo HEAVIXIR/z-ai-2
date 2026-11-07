@@ -572,7 +572,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // T1+T2-DEEP: services grew (+14: 8 in inventory + 6 in returns) → 53.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10) → 63.
       // PHASE-P8-TRANSACTION: +2 in routes → 65.
-      // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.\n      // Atomic PO receiving replaces 4 direct audit hooks with 5 outbox events → 68.
+      // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.
+      // Atomic PO receiving replaces 4 direct audit hooks with 5 outbox events → 68.
       const files = readAllStoreFiles();
       let count = 0;
       for (const { content } of files) {
