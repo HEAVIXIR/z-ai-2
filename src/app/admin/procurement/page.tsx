@@ -57,6 +57,15 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: "لغوشده",
 };
 
+const PROCUREMENT_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["PUBLISHED", "CANCELLED"],
+  PUBLISHED: ["QUOTING", "CANCELLED"],
+  QUOTING: ["AWARDED", "CANCELLED"],
+  AWARDED: ["COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
 const INPUT_CLS =
   "h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none transition focus:border-[#F58220]";
 const LABEL_CLS = "mb-1.5 block text-xs font-bold text-zinc-500";
@@ -507,6 +516,10 @@ function EditProcurementModal({
   const [budgetMax, setBudgetMax] = useState(procurement.budgetMax ?? "");
   const [deadline, setDeadline] = useState(toLocalInputValue(procurement.deadline));
   const [status, setStatus] = useState(procurement.status);
+  const availableStatuses = [
+    procurement.status,
+    ...(PROCUREMENT_STATUS_TRANSITIONS[procurement.status] ?? []),
+  ].filter((value) => value !== "AWARDED" || procurement.company !== null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -599,9 +612,9 @@ function EditProcurementModal({
             <div>
               <label className={LABEL_CLS}>وضعیت</label>
               <select value={status} onChange={(e) => setStatus(e.target.value)} className={INPUT_CLS}>
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
+                {availableStatuses.map((value) => (
+                  <option key={value} value={value}>
+                    {STATUS_LABELS[value] ?? value}
                   </option>
                 ))}
               </select>
