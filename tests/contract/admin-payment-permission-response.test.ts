@@ -31,4 +31,12 @@ describe("admin payment route permission responses", () => {
     }
   });
 
+  it("uses an explicit allowlist for the admin payment collection response", () => {
+    const collectionRoute = fs.readFileSync("src/app/api/admin/payments/route.ts", "utf8");
+    expect(collectionRoute).not.toMatch(/\.\.\.p\s*,?/);
+    expect(collectionRoute).toContain("amount: p.amount == null ? null : p.amount.toString()");
+    expect(collectionRoute).not.toContain("providerReference: p.providerReference");
+    expect(collectionRoute).not.toContain("idempotencyKey: p.idempotencyKey");
+  });
+
 });
