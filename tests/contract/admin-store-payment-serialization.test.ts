@@ -72,3 +72,24 @@ describe("admin store parts response privacy", () => {
     }
   });
 });
+
+describe("admin store payment state and audit atomicity", () => {
+  it("commits payment decision, order balance state, and audit outbox in one transaction", () => {
+    expect(detail).toContain("storeDb.$transaction(async (tx)");
+    expect(detail).toContain("await enqueueAuditOutbox(tx");
+    expect(detail).toContain("{ isolationLevel: 'Serializable' }");
+    expect(detail).not.toContain("await logAudit(");
+  });
+
+  it("allows decisions only from PENDING and prevents replay double-counting", () => {
+    expect(detail).toContain('existing.status !== "PENDING"');
+    expect(detail).toContain('body.status === "APPROVED" && existing.orderId');
+    expect(detail).toContain('where: { orderId: order.id, status: "APPROVED" }');
+    expect(detail).not.toContain("Number(approvedSum._sum.amountIrr ?? 0) + Number(existing.amountIrr ?? 0)");
+  });
+
+  it("rejects status-only refunds", () => {
+    expect(detail).toContain('body.status === "REFUNDED"');
+    expect(detail).toContain("STORE_PAYMENT_STATE_CONFLICT");
+  });
+});
