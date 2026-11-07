@@ -49,6 +49,11 @@ describe("Store return lifecycle transactional audit contract", () => {
     expect(resolve).toContain("tx.walletTransaction.create");
     expect(resolve).toContain("tx.customer.update");
     expect(resolve).toContain("enqueueAuditOutbox");
+    expect(resolve).toContain("tx.inventoryBalance.updateMany");
+    expect(resolve).toContain("tx.part.updateMany");
+    expect(resolve).toContain("tx.stockMovement.create");
+    expect(resolve).toContain("warehouseId");
+    expect(resolve).toContain("type: 'RETURN'");
     expect(resolve).not.toContain("logAudit(");
   });
 });
