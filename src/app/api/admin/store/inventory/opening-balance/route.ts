@@ -7,6 +7,7 @@ import {
   allocateOpeningBalance,
   listOpeningBalanceCandidates,
 } from "@/lib/store-opening-balance-service";
+import type { OpeningBalanceAllocation } from "@/lib/store-opening-balance-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires inventory.manage" }, { status: 403 });
   }
   try {
-    let body: any;
+    let body: unknown;
     try {
       body = await req.json();
     } catch {
@@ -68,26 +69,27 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (body.confirm !== true) {
+    const payload = body as Record<string, unknown>;
+    if (payload.confirm !== true) {
       return NextResponse.json(
         { success: false, error: "تأیید صریح عملیات الزامی است" },
         { status: 400 },
       );
     }
-    if (typeof body?.partId !== "string"
-      || typeof body?.reason !== "string"
-      || (body?.reference != null && typeof body.reference !== "string")
-      || !Array.isArray(body?.allocations)) {
+    if (typeof payload.partId !== "string"
+      || typeof payload.reason !== "string"
+      || (payload.reference != null && typeof payload.reference !== "string")
+      || !Array.isArray(payload.allocations)) {
       return NextResponse.json({ success: false, error: "ساختار درخواست تخصیص نامعتبر است" }, { status: 400 });
     }
-    if (body.reason.length > 500 || (body.reference?.length ?? 0) > 160) {
+    if (payload.reason.length > 500 || (typeof payload.reference === "string" && payload.reference.length > 160)) {
       return NextResponse.json({ success: false, error: "طول دلیل یا مرجع بیش از حد مجاز است" }, { status: 400 });
     }
     const data = await allocateOpeningBalance({
-      partId: body.partId,
-      allocations: body.allocations,
-      reason: body.reason,
-      reference: body.reference ?? null,
+      partId: payload.partId,
+      allocations: payload.allocations as OpeningBalanceAllocation[],
+      reason: payload.reason,
+      reference: typeof payload.reference === "string" ? payload.reference : null,
       userId: user.id,
     });
     return NextResponse.json({ success: true, data });
