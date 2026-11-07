@@ -35,3 +35,26 @@ describe("store guest order detail ownership", () => {
     expect(detailRoute).toContain('order.userId === sessionUser.id');
   });
 });
+
+describe("store order response privacy boundary", () => {
+  const listRoute = fs.readFileSync("src/app/api/store/orders/route.ts", "utf8");
+  const detailRoute = fs.readFileSync("src/app/api/store/orders/[id]/route.ts", "utf8");
+
+  it("uses explicit response fields instead of spreading database order records", () => {
+    for (const source of [listRoute, detailRoute]) {
+      expect(source).toContain("function serializeOrder(o: any)");
+      expect(source).not.toContain("...o,");
+      expect(source).not.toContain("...p,");
+      expect(source).not.toContain("...it,");
+    }
+  });
+
+  it("does not expose payment card, reviewer identity, customer national code, or shipment proof fields", () => {
+    for (const source of [listRoute, detailRoute]) {
+      expect(source).not.toContain("payerCard:");
+      expect(source).not.toContain("reviewedById:");
+      expect(source).not.toContain("nationalCode:");
+      expect(source).not.toContain("proofUrl:");
+    }
+  });
+});
