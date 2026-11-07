@@ -23,11 +23,15 @@ bunx prisma generate --schema=prisma/store/schema.prisma
 bun run test:workerd
 ```
 
-The proof uses read-only SQL only. It checks exact Preview migration
-fingerprints, PostgreSQL 17/public schema, per-request client reuse,
-sequential/concurrent request isolation, read-only transactions, and
-missing-secret fail-closed behavior. It performs no schema changes, seeds,
-business-row reads, or writes.
+The proof uses read-only SQL only. Its transaction checks explicitly issue
+`SET TRANSACTION READ ONLY` inside a disposable interactive transaction and
+verify `transaction_read_only` for that transaction. This does not require or
+claim that the whole Preview database is read-only; the application Preview
+databases remain writable for normal app workflows. It also checks exact
+Preview migration fingerprints, PostgreSQL 17/public schema, per-request
+client reuse, sequential/concurrent request isolation, and missing-secret
+fail-closed behavior. It performs no schema changes, seeds, business-row
+reads, or writes.
 
 A successful local proof does not establish which databases the deployed
 Cloudflare secrets target and does not authorize deployment.
