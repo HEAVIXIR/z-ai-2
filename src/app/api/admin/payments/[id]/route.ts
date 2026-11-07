@@ -33,10 +33,9 @@ interface Args {
 
    Audit contract (matches paymentConfig.audit):
      entityType = "Payment"
-     actions    = payment.manage, payment.refund
-   (This route logs payment.update / payment.delete; the `refund` and
-   `verify` actions are handled by the action-engine via the Universal
-   action endpoint, NOT here.)
+     actions    = payment.manage
+   (This route logs payment.update / payment.delete; `verify` is handled by
+   the action engine. Refund is unavailable pending evidence-backed reconciliation.)
    ============================================================ */
 
 function serialize(p: any) {
@@ -87,8 +86,8 @@ export async function GET(_req: Request, { params }: Args) {
 
 // ── PATCH: update non-financial metadata only ─────────────
 // Financial status/type/gateway/paidAt are immutable through generic PATCH.
-// Verification/refund transitions must go through the transactional
-// payment action-engine so linked entitlements and audit state stay atomic.
+// Verification must go through the transactional payment action-engine.
+// Refunds are disabled until an evidence-backed reconciliation workflow exists.
 export async function PATCH(req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
@@ -109,7 +108,7 @@ export async function PATCH(req: Request, { params }: Args) {
     if (attemptedFinancialMutation) {
       return NextResponse.json(
         {
-          error: `Payment ${attemptedFinancialMutation} cannot be changed through PATCH; use the audited verify/refund action`,
+          error: `Payment ${attemptedFinancialMutation} cannot be changed through PATCH; use the audited verify action where available; refunds are currently disabled`,
           code: "PAYMENT_STATE_ACTION_REQUIRED",
         },
         { status: 409 },
@@ -176,8 +175,8 @@ export async function PATCH(req: Request, { params }: Args) {
 // ── DELETE: financial ledger rows are immutable ─────────────
 // Payment rows are financial evidence. Deleting even a FAILED or
 // PENDING row would destroy reconciliation history; deleting PAID
-// rows could conceal captured funds. Use audited state transitions
-// and refund/reversal records instead. No role may hard-delete them.
+// rows could conceal captured funds. A future refund/reversal must use an
+// evidence-backed immutable record. No role may hard-delete payment rows.
 export async function DELETE(_req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
