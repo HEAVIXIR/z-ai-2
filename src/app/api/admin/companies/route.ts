@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
@@ -59,7 +60,7 @@ export async function GET(req: Request) {
       include: {
         _count: {
           select: {
-            listings: { where: { status: "PUBLISHED" } },
+            listings: { where: getPublicListingWhere() },
             documents: true,
             branches: true,
             verifications: true,
