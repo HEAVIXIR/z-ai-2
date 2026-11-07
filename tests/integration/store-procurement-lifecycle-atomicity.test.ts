@@ -13,7 +13,7 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
   let categoryId: string | undefined;
   let partId: string | undefined;
   let procurementId: string | undefined;
-  let supplierFixtureId: string | undefined;
+  const supplierFixtureIds: string[] = [];
   const poIds: string[] = [];
 
   beforeEach(async () => {
@@ -51,9 +51,9 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
       await storeDb.procurementRequest.deleteMany({ where: { id: procurementId } });
       procurementId = undefined;
     }
-    if (supplierFixtureId) {
-      await storeDb.supplier.deleteMany({ where: { id: supplierFixtureId } });
-      supplierFixtureId = undefined;
+    if (supplierFixtureIds.length) {
+      await storeDb.supplier.deleteMany({ where: { id: { in: supplierFixtureIds } } });
+      supplierFixtureIds.length = 0;
     }
     if (partId) {
       await storeDb.part.deleteMany({ where: { id: partId } });
@@ -83,13 +83,40 @@ describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)',
     const supplier = await storeDb.supplier.create({
       data: { name: 'Inactive supplier ' + suffix(), active: false },
     });
-    supplierFixtureId = supplier.id;
+    supplierFixtureIds.push(supplier.id);
     await expect(
       createPurchaseOrder(procurementId, supplier.id, [{ partId, quantity: 1, unitPrice: 12 }]),
     ).rejects.toMatchObject({ status: 409 });
 
     const orders = await storeDb.purchaseOrder.findMany({ where: { procurementId } });
     expect(orders).toHaveLength(0);
+  }, 15000);
+
+  it('inherits the awarded supplier and rejects a different supplier on the purchase order', async () => {
+    if (!procurementId || !partId) throw new Error('fixture setup incomplete');
+    const awardedSupplier = await storeDb.supplier.create({
+      data: { name: 'Awarded supplier ' + suffix(), active: true },
+    });
+    const otherSupplier = await storeDb.supplier.create({
+      data: { name: 'Other supplier ' + suffix(), active: true },
+    });
+    supplierFixtureIds.push(awardedSupplier.id, otherSupplier.id);
+    await storeDb.procurementRequest.update({
+      where: { id: procurementId },
+      data: { supplierId: awardedSupplier.id },
+    });
+
+    const created = await createPurchaseOrder(
+      procurementId,
+      null,
+      [{ partId, quantity: 1, unitPrice: 12 }],
+    );
+    poIds.push(created.id);
+    expect(created.supplierId).toBe(awardedSupplier.id);
+
+    await expect(
+      createPurchaseOrder(procurementId, otherSupplier.id, [{ partId, quantity: 1, unitPrice: 12 }]),
+    ).rejects.toMatchObject({ status: 409 });
   }, 15000);
 
   it('creates, submits, approves, and cancels with one outbox event per committed transition', async () => {
