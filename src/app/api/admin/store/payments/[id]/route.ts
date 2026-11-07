@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
    /api/admin/store/payments/[id] — verify / reject / refund
    ============================================================ */
 
-const ALLOWED_STATUSES = ["PENDING", "APPROVED", "REJECTED", "REFUNDED"];
+const ALLOWED_STATUSES = ["APPROVED", "REJECTED"];
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "در انتظار بررسی",
   APPROVED: "تأییدشده",
@@ -83,6 +83,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
     const data: any = {};
+    if (body.status === "REFUNDED") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Refunds require an evidence-backed reversal workflow and cannot be recorded as a status-only change",
+          code: "STORE_REFUND_EVIDENCE_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
     if (body.status !== undefined) {
       if (!ALLOWED_STATUSES.includes(body.status)) {
         return NextResponse.json({ success: false, error: "وضعیت نامعتبر" }, { status: 400 });
