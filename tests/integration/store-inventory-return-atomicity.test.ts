@@ -491,7 +491,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movement[0].quantity).toBe(1);
     expect(movement[0].balanceAfter).toBe(11);
     expect(movement[0].warehouseId).toBe(warehouseId);
-    expect(outbox).toHaveLength(6);
+    // Assert entity coverage directly so a missing event is visible in the diff.
     const outboxEntities = outbox.map((event) => JSON.parse(event.payloadJson).entityType).sort();
     expect(outboxEntities).toEqual([
       'Customer',
