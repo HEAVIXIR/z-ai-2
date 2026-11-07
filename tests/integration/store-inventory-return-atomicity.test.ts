@@ -872,4 +872,44 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(movements).toBe(0);
   }, 15000);
 
+
+  it('marks an explicitly rejected return as REJECTED rather than RESOLVED', async () => {
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1999' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'Rejected',
+        family: 'Lifecycle',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'REJECT-STATUS-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 0,
+        totalUsd: 0,
+        totalIrr: 0,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'rejection lifecycle test', status: 'INSPECTED' },
+    });
+    returnId = ret.id;
+
+    const resolved = await resolveReturn(ret.id, 'REJECT');
+    const saved = await storeDb.return.findUnique({
+      where: { id: ret.id },
+      select: { status: true, resolution: true },
+    });
+
+    expect(resolved.status).toBe('REJECTED');
+    expect(saved?.status).toBe('REJECTED');
+    expect(saved?.resolution).toBe('REJECT');
+  }, 15000);
+
 });
