@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — AI Matching: BuyRequest ↔ Listing (FIX-GAPS-1)
@@ -199,7 +200,7 @@ export async function matchRequestToListings(
 
   // Load PUBLISHED listings with their brand + category names.
   const listings = await db.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: getPublicListingWhere(),
     select: {
       id: true,
       price: true,
@@ -330,7 +331,7 @@ export async function getMatchesForRequest(requestId: string): Promise<{
   // Hydrate listing detail in one round-trip.
   const listingIds = matches.map((m) => m.listingId);
   const listings = await db.listing.findMany({
-    where: { id: { in: listingIds } },
+    where: { ...getPublicListingWhere(), id: { in: listingIds } },
     select: {
       id: true,
       title: true,
