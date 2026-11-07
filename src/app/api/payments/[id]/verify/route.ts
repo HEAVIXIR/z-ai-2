@@ -79,12 +79,9 @@ export async function POST(
       return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
     }
 
-    const reason =
-      payload.reason === undefined || payload.reason === null
-        ? `Manually marked ${status}`
-        : String(payload.reason).trim();
-    if (!reason || reason.length > MAX_REASON_LENGTH) {
-      return NextResponse.json({ error: "A reason of 1–500 characters is required" }, { status: 400 });
+    const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+    if (reason.length < 5 || reason.length > MAX_REASON_LENGTH) {
+      return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
     }
 
     const result = await db.$transaction(async (tx) => {
