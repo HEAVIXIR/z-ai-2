@@ -65,6 +65,24 @@ describe("Warehouse stock adjustment invariants", () => {
     }
   });
 
+  it("serializes reservation and release on Part before Warehouse and InventoryBalance", () => {
+    const reservePartLock = reserveBody.indexOf('SELECT id FROM "Part"');
+    const reserveWarehouseLock = reserveBody.indexOf('SELECT id FROM "Warehouse"');
+    const reserveBalanceRead = reserveBody.indexOf("tx.inventoryBalance.findUnique");
+    expect(reservePartLock).toBeGreaterThan(-1);
+    expect(reserveWarehouseLock).toBeGreaterThan(reservePartLock);
+    expect(reserveBalanceRead).toBeGreaterThan(reserveWarehouseLock);
+    expect(reserveBody).toContain("active = true FOR SHARE");
+
+    const releasePartLock = releaseBody.indexOf('SELECT id FROM "Part"');
+    const releaseWarehouseLock = releaseBody.indexOf('SELECT id FROM "Warehouse"');
+    const releaseBalanceRead = releaseBody.indexOf("tx.inventoryBalance.findUnique");
+    expect(releasePartLock).toBeGreaterThan(-1);
+    expect(releaseWarehouseLock).toBeGreaterThan(releasePartLock);
+    expect(releaseBalanceRead).toBeGreaterThan(releaseWarehouseLock);
+    expect(releaseBody).toContain('WHERE id = ${warehouseId} FOR SHARE');
+  });
+
   it("commits Part, InventoryBalance, StockMovement, and all audit outbox events together", () => {
     expect(body).toContain("storeDb.$transaction");
     expect(body).toContain("tx.stockMovement.create");
