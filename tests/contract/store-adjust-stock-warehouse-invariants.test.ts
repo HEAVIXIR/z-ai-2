@@ -6,6 +6,14 @@ const start = source.indexOf("export async function adjustStock(");
 const end = source.indexOf("\n// ── reserveStock", start);
 if (start < 0 || end < 0) throw new Error("adjustStock function boundaries not found");
 const body = source.slice(start, end);
+const reserveStart = source.indexOf("export async function reserveStock(");
+const releaseStart = source.indexOf("export async function releaseStock(", reserveStart);
+const nextSection = source.indexOf("\n// ── ", releaseStart);
+if (reserveStart < 0 || releaseStart < 0 || nextSection < 0) {
+  throw new Error("reserve/release function boundaries not found");
+}
+const reserveBody = source.slice(reserveStart, releaseStart);
+const releaseBody = source.slice(releaseStart, nextSection);
 
 describe("Warehouse stock adjustment invariants", () => {
   it("fails closed instead of implicitly creating a first or missing warehouse balance", () => {
@@ -25,6 +33,17 @@ describe("Warehouse stock adjustment invariants", () => {
     expect(partClaim).toBeGreaterThan(-1);
     expect(balanceClaim).toBeGreaterThan(-1);
     expect(partClaim).toBeLessThan(balanceClaim);
+  });
+
+  it("uses transactional compare-and-set and outbox events for reserve and release", () => {
+    for (const fn of [reserveBody, releaseBody]) {
+      expect(fn).toContain("storeDb.$transaction");
+      expect(fn).toContain("tx.inventoryBalance.updateMany");
+      expect(fn).toContain("quantity: balance.quantity");
+      expect(fn).toContain("reserved: balance.reserved");
+      expect(fn).toContain("enqueueAuditOutbox");
+      expect(fn).not.toContain("storeDb.inventoryBalance.update(");
+    }
   });
 
   it("commits Part, InventoryBalance, StockMovement, and all audit outbox events together", () => {
