@@ -99,3 +99,9 @@ describe("admin store payment state and audit atomicity", () => {
     expect(collection).toContain("referenceCode: { contains: q }");
     expect(collection).toContain("payerName: { contains: q }");
   });
+
+  it("rejects empty PATCH payloads without writing a payment or audit event", () => {
+    expect(detail).toContain("if (Object.keys(data).length === 0) return { noChanges: true as const }");
+    expect(detail).toContain('if ("noChanges" in result)');
+    expect(detail).toContain("{ status: 400 }");
+  });
