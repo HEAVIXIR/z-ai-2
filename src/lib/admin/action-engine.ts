@@ -239,32 +239,6 @@ function makeStatusHandler(
 registerActionHandler('confirm', makeStatusHandler('CONFIRMED', 'confirmedAt'));
 registerActionHandler('cancel',  makeStatusHandler('CANCELLED', 'cancelledAt'));
 
-// Payment lifecycle (R7 payments): refund
-// STEP 11.19: Uses ATOMIC CONDITIONAL UPDATE (updateMany with expected status)
-// instead of plain update. This prevents race conditions where two concurrent
-// requests both pass the precondition check and both execute the refund.
-// updateMany with { id, status: expectedStatus } in the WHERE clause ensures
-// exactly one request succeeds — the other gets count=0 and we throw.
-registerActionHandler('refund', async (item) => {
-  const model = (item as any).__prismaModel;
-  const currentStatus = String(item.status ?? '');
-
-  // Conditional update: only succeeds if status is still what we expect
-  const result = await model.updateMany({
-    where: { id: item.id, status: currentStatus },
-    data: { status: 'REFUNDED' },
-  });
-
-  if (result.count === 0) {
-    throw new Error(
-      `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
-    );
-  }
-
-  // Return the updated item (re-fetch to get the full record)
-  return await model.findUnique({ where: { id: item.id } });
-});
-
 // Closure lifecycle (R12 rfqs, R18 buy-requests): close
 registerActionHandler('close', makeStatusHandler('CLOSED', 'closedAt'));
 
@@ -309,6 +283,20 @@ export async function executeAction(
   const config = registry.get(resourceKey);
   if (!config) {
     return { success: false, action: actionKey, entityId, message: 'Resource not found' };
+  }
+
+  // Marketplace refunds are deliberately fail-closed until an immutable
+  // refund record can prove money movement (provider confirmation or
+  // externally reconciled reference). This guard remains even if a future
+  // resource config accidentally re-adds a generic status-only action.
+  if (resourceKey === 'payments' && actionKey === 'refund') {
+    return {
+      success: false,
+      action: actionKey,
+      entityId,
+      message: 'Refunds are unavailable until an evidence-backed refund workflow is implemented',
+      error: 'ACTION_UNAVAILABLE',
+    };
   }
 
   // 1. Find action definition in config
