@@ -64,6 +64,7 @@ function runRestore(f: ReturnType<typeof fixture>, overrides: Record<string, str
     STORE_DB_USER: "test-user",
     STORE_DB_PASSWORD: "test-store-password",
     HEAVIX_RESTORE_TRAFFIC_DRAINED: "1",
+    HEAVIX_RESTORE_MODE: "direct",
     ...overrides,
   };
   if (!Object.prototype.hasOwnProperty.call(overrides, "DB_NAME")) delete env.DB_NAME;
@@ -200,9 +201,22 @@ describe("paired database restore script", () => {
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
   });
 
+  it("does not auto-switch to Docker merely because a database container is running", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DOCKER_TEST_MODE: "1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Main:  localhost:5432 / database heavix");
+    expect(result.stdout).not.toContain("Docker container");
+    expect(readFileSync(f.psqlLog, "utf8")).toContain('DROP DATABASE IF EXISTS "heavix" WITH (FORCE)');
+  });
+
   it("blocks Docker contexts that point to a remote daemon", () => {
     const f = fixture();
     const result = runRestore(f, {
+      HEAVIX_RESTORE_MODE: "docker",
       DOCKER_TEST_MODE: "1",
       DOCKER_CONTEXT_ENDPOINT: "ssh://production.example.invalid",
     });
