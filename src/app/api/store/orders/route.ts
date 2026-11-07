@@ -149,7 +149,7 @@ export async function GET(req: Request) {
     if (!phone || phone.length < 8) {
       return NextResponse.json({ orders: [] });
     }
-    if (!sessionUser.mobile || phone !== sessionUser.mobile) {
+    if (!sessionUser.mobileVerified || !sessionUser.mobile || phone !== sessionUser.mobile) {
       return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
@@ -158,9 +158,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: [] });
     }
 
-    // The authenticated mobile is the ownership proof for guest
-    // orders created before account linking. This mirrors /orders/[id],
-    // which permits either userId ownership or an exact mobile match.
+    // A verified authenticated mobile is the ownership proof for guest
+    // orders created before account linking. An unverified profile value
+    // must never authorize access to phone-linked customer records.
     const orders = await storeDb.order.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
