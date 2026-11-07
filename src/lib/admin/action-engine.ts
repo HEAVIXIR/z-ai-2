@@ -332,6 +332,19 @@ export async function executeAction(
     return { success: false, action: actionKey, entityId, message: 'Entity not found' };
   }
 
+  // Subscription checkout is blocked until amount, currency, term and
+  // entitlement expiry are server-derived and snapshotted on the payment.
+  // Admin must use the separate audited subscription override workflow.
+  if (resourceKey === 'payments' && actionKey === 'verify' && String(before.type ?? '') === 'SUBSCRIPTION') {
+    return {
+      success: false,
+      action: actionKey,
+      entityId,
+      message: 'Subscription payment verification is unavailable until canonical billing and term snapshots are implemented',
+      error: 'SUBSCRIPTION_BILLING_UNAVAILABLE',
+    };
+  }
+
   // PR-SC-00: row-level ownership check. If the resource declares ownership
   // and a tenantCtx was provided, verify the user owns this record (or is
   // admin / moderator). Non-owners get "not found" — fail-closed, no leak.
@@ -444,28 +457,6 @@ export async function executeAction(
             const handler = actionHandlers.get(actionKey);
             if (handler) {
               const actionResult = await handler(txBefore, ctx);
-
-              // Marketplace subscription verification must activate the
-              // linked subscription in the SAME main-DB transaction as
-              // Payment.status=PAID and the AuditLog row. The dedicated
-              // /api/payments/[id]/verify route enforces the same invariant.
-              if (resourceKey === "payments" && actionKey === "verify" &&
-                  String(txBefore.type ?? "") === "SUBSCRIPTION") {
-                const subscriptionId = String(txBefore.subscriptionId ?? "");
-                if (!subscriptionId) {
-                  throw new Error("SUBSCRIPTION_PAYMENT_MISSING_SUBSCRIPTION");
-                }
-                const activation = await (txClient as any).premiumSubscription.updateMany({
-                  where: {
-                    id: subscriptionId,
-                    userId: String(txBefore.userId ?? ""),
-                  },
-                  data: { status: "ACTIVE", paymentRef: entityId },
-                });
-                if (activation.count !== 1) {
-                  throw new Error("SUBSCRIPTION_PAYMENT_LINK_MISMATCH");
-                }
-              }
 
               return actionResult;
             }
