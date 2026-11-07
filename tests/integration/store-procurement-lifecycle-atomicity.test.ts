@@ -1,0 +1,111 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { storeDb } from '@/lib/store-db';
+import {
+  approvePurchaseOrder,
+  cancelPurchaseOrder,
+  createPurchaseOrder,
+  submitPurchaseOrder,
+} from '@/lib/store-procurement-service';
+
+const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+
+describe('Store purchase-order lifecycle and audit atomicity (real PostgreSQL)', () => {
+  let categoryId: string | undefined;
+  let partId: string | undefined;
+  let procurementId: string | undefined;
+  const poIds: string[] = [];
+
+  beforeEach(async () => {
+    const tag = suffix();
+    const category = await storeDb.category.create({
+      data: { name: 'PO lifecycle ' + tag, slug: 'po-lifecycle-' + tag },
+    });
+    categoryId = category.id;
+    const part = await storeDb.part.create({
+      data: {
+        name: 'PO lifecycle part ' + tag,
+        sku: 'PO-LIFECYCLE-' + tag,
+        categoryId: category.id,
+        priceUsd: 12,
+        stock: 0,
+      },
+    });
+    partId = part.id;
+    const procurement = await storeDb.procurementRequest.create({
+      data: { title: 'PO lifecycle ' + tag, quantity: 2, status: 'AWARDED' },
+    });
+    procurementId = procurement.id;
+  });
+
+  afterEach(async () => {
+    if (poIds.length) {
+      await storeDb.auditOutbox.deleteMany({
+        where: { OR: poIds.map((id) => ({ payloadJson: { contains: id } })) },
+      });
+      await storeDb.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: { in: poIds } } });
+      await storeDb.purchaseOrder.deleteMany({ where: { id: { in: poIds } } });
+      poIds.length = 0;
+    }
+    if (procurementId) {
+      await storeDb.procurementRequest.deleteMany({ where: { id: procurementId } });
+      procurementId = undefined;
+    }
+    if (partId) {
+      await storeDb.part.deleteMany({ where: { id: partId } });
+      partId = undefined;
+    }
+    if (categoryId) {
+      await storeDb.category.deleteMany({ where: { id: categoryId } });
+      categoryId = undefined;
+    }
+  });
+
+  it('creates, submits, approves, and cancels with one outbox event per committed transition', async () => {
+    if (!procurementId || !partId) throw new Error('fixture setup incomplete');
+    const created = await createPurchaseOrder(procurementId, null, [{ partId, quantity: 2, unitPrice: 12 }], 'admin-test');
+    poIds.push(created.id);
+    expect(created.status).toBe('DRAFT');
+
+    const submitted = await submitPurchaseOrder(created.id, 'admin-submit');
+    expect(submitted.status).toBe('SUBMITTED');
+    const approved = await approvePurchaseOrder(created.id, 'admin-approve');
+    expect(approved.status).toBe('APPROVED');
+    const cancelled = await cancelPurchaseOrder(created.id, 'test cancellation', 'admin-cancel');
+    expect(cancelled.status).toBe('CANCELLED');
+
+    const events = await storeDb.auditOutbox.findMany({
+      where: { payloadJson: { contains: created.id } },
+    });
+    const actions = events.map((event) => JSON.parse(event.payloadJson).action).sort();
+    expect(actions).toEqual([
+      'store.procurement.po.approve',
+      'store.procurement.po.cancel',
+      'store.procurement.po.create',
+      'store.procurement.po.submit',
+    ]);
+    expect(events).toHaveLength(4);
+  }, 20000);
+
+  it('allows only one concurrent DRAFT to SUBMITTED claim and emits one audit event', async () => {
+    if (!procurementId || !partId) throw new Error('fixture setup incomplete');
+    const created = await createPurchaseOrder(procurementId, null, [{ partId, quantity: 1, unitPrice: 12 }]);
+    poIds.push(created.id);
+
+    const results = await Promise.allSettled([
+      submitPurchaseOrder(created.id, 'admin-a'),
+      submitPurchaseOrder(created.id, 'admin-b'),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+
+    const [po, events] = await Promise.all([
+      storeDb.purchaseOrder.findUnique({ where: { id: created.id } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: created.id } } }),
+    ]);
+    expect(po?.status).toBe('SUBMITTED');
+    expect(events.map((event) => JSON.parse(event.payloadJson).action).sort()).toEqual([
+      'store.procurement.po.create',
+      'store.procurement.po.submit',
+    ]);
+  }, 20000);
+});
