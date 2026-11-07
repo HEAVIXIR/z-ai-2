@@ -8,6 +8,10 @@ const files = [
   "src/lib/market-heatmap.ts",
   "src/lib/opportunity-engine.ts",
   "src/lib/knowledge-graph.ts",
+  "src/lib/price-engine.ts",
+  "src/lib/price-history-engine.ts",
+  "src/lib/ai-operational.ts",
+  "src/lib/ai-agents/index.ts",
 ];
 
 describe("public listing expiry across derived discovery surfaces", () => {
