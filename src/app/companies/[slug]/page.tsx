@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -82,7 +83,7 @@ export default async function CompanyPage({
     .catch(() => {});
 
   const listings = await db.listing.findMany({
-    where: { companyId: company.id, status: "PUBLISHED" },
+    where: { ...getPublicListingWhere(), companyId: company.id },
     orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
     take: 24,
     include: {
