@@ -801,7 +801,7 @@ export async function resolveReturn(
       const movement = await tx.stockMovement.create({
         data: {
           partId,
-          warehouseId,
+          warehouseId: warehouseId!,
           type: 'RETURN',
           quantity: qty,
           balanceAfter: afterPart.stock,
