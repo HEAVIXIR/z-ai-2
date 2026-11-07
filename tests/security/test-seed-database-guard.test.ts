@@ -30,7 +30,17 @@ describe("test fixture seed database guard", () => {
     vi.stubEnv("HEAVIX_ALLOW_TEST_FIXTURE_SEED", "1");
 
     expect(() => assertTestSeedTarget("seed-phase-catalog.ts")).toThrow(
-      /non-local database host/,
+      /non-loopback database host/,
+    );
+  });
+
+  it("blocks non-loopback service aliases even when the database name ends in _test", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/heavix_test");
+    vi.stubEnv("HEAVIX_ALLOW_TEST_FIXTURE_SEED", "1");
+
+    expect(() => assertTestSeedTarget("seed-test-fixtures.ts")).toThrow(
+      /non-loopback database host/,
     );
   });
 
@@ -47,6 +57,14 @@ describe("test fixture seed database guard", () => {
   it("allows explicit fixture seeding only against a local _test database", () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public");
+    vi.stubEnv("HEAVIX_ALLOW_TEST_FIXTURE_SEED", "1");
+
+    expect(() => assertTestSeedTarget("seed-phase-catalog.ts")).not.toThrow();
+  });
+
+  it("accepts the IPv6 loopback literal", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("DATABASE_URL", "postgresql://postgres:postgres@[::1]:5432/heavix_test");
     vi.stubEnv("HEAVIX_ALLOW_TEST_FIXTURE_SEED", "1");
 
     expect(() => assertTestSeedTarget("seed-phase-catalog.ts")).not.toThrow();
