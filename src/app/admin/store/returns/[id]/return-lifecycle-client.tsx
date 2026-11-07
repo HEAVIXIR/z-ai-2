@@ -154,6 +154,7 @@ export default function ReturnLifecycleClient({
         throw new Error(result?.error || `خطا در افزودن قلم (HTTP ${response.status})`);
       }
       setNotice("قلم سفارش به مرجوعی افزوده شد.");
+      setSelectedOrderItemId(availableOrderItems.find((item) => item.id !== selectedOrderItemId)?.id ?? "");
       setAddQuantity(1);
       router.refresh();
     } catch (err) {
