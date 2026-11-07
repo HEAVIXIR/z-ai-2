@@ -96,12 +96,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
   try {
-    const body = await req.json();
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست ایجاد قطعه نامعتبر است" }, { status: 400 });
+    }
+    const body = parsed as Record<string, any>;
     const { name, nameFa, sku, categoryId, brandId, description, priceUsd, oldPriceUsd, contactForPrice, stock, lowStockThreshold, images, compatibleCars, sourceUrl, active, featured } = body;
 
     if (!name || !sku || !categoryId || priceUsd === undefined) {
       return NextResponse.json(
         { success: false, error: "نام، SKU، دسته‌بندی و قیمت الزامی هستند" },
+        { status: 400 },
+      );
+    }
+
+    if (stock !== undefined && (!Number.isSafeInteger(stock) || stock < 0)) {
+      return NextResponse.json(
+        { success: false, error: "موجودی اولیه باید عدد صحیح امن و غیرمنفی باشد" },
         { status: 400 },
       );
     }
