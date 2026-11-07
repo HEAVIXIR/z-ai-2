@@ -19,10 +19,12 @@ export function getPublicListingWhere(now: Date = new Date()) {
   };
 }
 
-export function isPublicListingActive(
-  listing: { status?: string | null; expiresAt?: Date | null } | null | undefined,
+export function isPublicListingActive<
+  T extends { status?: string | null; expiresAt?: Date | null },
+>(
+  listing: T | null | undefined,
   now: Date = new Date(),
-): boolean {
+): listing is T {
   return Boolean(
     listing &&
       listing.status === "PUBLISHED" &&
