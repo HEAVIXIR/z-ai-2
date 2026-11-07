@@ -79,8 +79,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires inventory.manage" }, { status: 403 });
   }
   try {
-    const body = await req.json();
-    const { partId, type, quantity, reason, reference, warehouseId } = body;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, error: "بدنه درخواست JSON معتبر نیست" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "ساختار درخواست حرکت موجودی نامعتبر است" }, { status: 400 });
+    }
+    const payload = body as Record<string, unknown>;
+    const { partId, type, quantity, reason, reference, warehouseId } = payload;
+    if (typeof partId !== "string" || !partId.trim()
+      || typeof type !== "string"
+      || typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity === 0
+      || (reason != null && typeof reason !== "string")
+      || (reference != null && typeof reference !== "string")) {
+      return NextResponse.json({ success: false, error: "پارامترهای حرکت موجودی نامعتبر است" }, { status: 400 });
+    }
     if (typeof warehouseId !== "string" || !warehouseId.trim()) {
       return NextResponse.json(
         { success: false, error: "برای ثبت حرکت موجودی، انتخاب صریح انبار الزامی است" },
