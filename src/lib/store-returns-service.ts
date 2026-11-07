@@ -659,6 +659,7 @@ export async function resolveReturn(
   returnId: string,
   resolution: string,
   userId?: string | null,
+  warehouseId?: string | null,
 ): Promise<any> {
   if (!resolution) {
     throw new ReturnsServiceError(400, 'نوع تصمیم الزامی است');
@@ -686,6 +687,7 @@ export async function resolveReturn(
             orderItem: {
               select: {
                 id: true,
+                partId: true,
                 quantity: true,
                 lineTotalIrr: true,
                 lineTotalUsd: true,
@@ -736,9 +738,109 @@ export async function resolveReturn(
       refundAmountIrr = Math.round(refundAmountIrr * 100) / 100;
     }
 
-    // Claim the transition before side effects. Under concurrent requests,
-    // PostgreSQL rechecks this predicate after waiting on the row lock; only
-    // one transaction can change INSPECTED -> RESOLVED.
+    // A physically accepted return must be received into an explicit,
+    // active warehouse. Never silently select a warehouse or turn a legacy
+    // Part.stock-only record into a partial warehouse ledger.
+    const restockItems = resolution === 'REJECT'
+      ? []
+      : (existing.items as any[]).filter((item) => item.restockable);
+    if (restockItems.length > 0 && !warehouseId) {
+      throw new ReturnsServiceError(409, 'برای بازگرداندن کالای قابل فروش، انبار مقصد را صریحاً انتخاب کنید');
+    }
+
+    const restockedMovements: any[] = [];
+    for (const item of restockItems) {
+      const partId = item.orderItem?.partId;
+      const qty = Number(item.quantity);
+      if (!partId || !Number.isInteger(qty) || qty <= 0) {
+        throw new ReturnsServiceError(409, 'اطلاعات قلم مرجوعی برای ورود به انبار معتبر نیست');
+      }
+      const [part, warehouse, balances] = await Promise.all([
+        tx.part.findUnique({ where: { id: partId }, select: { id: true, stock: true } }),
+        tx.warehouse.findUnique({ where: { id: warehouseId! }, select: { id: true, active: true } }),
+        tx.inventoryBalance.findMany({ where: { partId }, select: { id: true, warehouseId: true, quantity: true, reserved: true } }),
+      ]);
+      if (!part) throw new ReturnsServiceError(404, 'قطعه مرجوعی در کاتالوگ یافت نشد');
+      if (!warehouse || !warehouse.active) {
+        throw new ReturnsServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
+      if (balances.length === 0) {
+        throw new ReturnsServiceError(409, 'این قطعه هنوز به موجودی انبارها منتقل نشده است؛ ابتدا موجودی اولیه را در انبار ثبت کنید');
+      }
+      const warehouseTotal = balances.reduce((sum, balance) => sum + balance.quantity, 0);
+      if (warehouseTotal !== part.stock) {
+        throw new ReturnsServiceError(409, 'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت موجودی را رفع کنید');
+      }
+      const targetBalance = balances.find((balance) => balance.warehouseId === warehouseId);
+      if (!targetBalance) {
+        throw new ReturnsServiceError(409, 'برای قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ ابتدا موجودی اولیه انبار را ثبت کنید');
+      }
+
+      const changedBalance = await tx.inventoryBalance.updateMany({
+        where: { id: targetBalance.id },
+        data: { quantity: { increment: qty } },
+      });
+      if (changedBalance.count !== 1) {
+        throw new ReturnsServiceError(409, 'موجودی انبار هنگام ثبت مرجوعی تغییر کرده است؛ دوباره تلاش کنید');
+      }
+      const changedPart = await tx.part.updateMany({
+        where: { id: partId },
+        data: { stock: { increment: qty } },
+      });
+      if (changedPart.count !== 1) {
+        throw new ReturnsServiceError(409, 'نمای موجودی قطعه هنگام ثبت مرجوعی تغییر کرده است؛ دوباره تلاش کنید');
+      }
+
+      const [afterPart, afterBalance] = await Promise.all([
+        tx.part.findUnique({ where: { id: partId }, select: { id: true, stock: true } }),
+        tx.inventoryBalance.findUnique({ where: { id: targetBalance.id } }),
+      ]);
+      if (!afterPart || !afterBalance) {
+        throw new ReturnsServiceError(500, 'ثبت موجودی مرجوعی کامل نشد');
+      }
+      const movement = await tx.stockMovement.create({
+        data: {
+          partId,
+          warehouseId,
+          type: 'RETURN',
+          quantity: qty,
+          balanceAfter: afterPart.stock,
+          reason: 'Restock from resolved return',
+          reference: returnId,
+          createdBy: userId ?? null,
+        },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.return.restock',
+        entityType: 'StockMovement',
+        entityId: movement.id,
+        after: { returnId, partId, warehouseId, quantity: qty, balanceAfter: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.return.restock',
+        entityType: 'Part',
+        entityId: partId,
+        before: { stock: part.stock },
+        after: { stock: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.return.restock',
+        entityType: 'InventoryBalance',
+        entityId: afterBalance.id,
+        before: { quantity: targetBalance.quantity, reserved: targetBalance.reserved },
+        after: { quantity: afterBalance.quantity, reserved: afterBalance.reserved },
+      });
+      restockedMovements.push(movement);
+    }
+
+    // Claim the transition before financial side effects. The conditional
+    // status update is the idempotency guard for concurrent resolution.
     const claimed = await tx.return.updateMany({
       where: { id: returnId, status: 'INSPECTED' },
       data: { status: 'RESOLVED', resolution },
@@ -868,6 +970,7 @@ export async function resolveReturn(
       customerId,
       beforeWalletBalance,
       afterWalletBalance,
+      restockedMovements,
     };
   });
 
@@ -879,6 +982,7 @@ export async function resolveReturn(
     ...result.ret,
     refundAmountIrr: resolution === 'REFUND' ? result.refundAmountIrr : null,
     walletTxnId: result.walletTxn?.id ?? null,
+    restockedMovements: result.restockedMovements,
   });
 }
 
