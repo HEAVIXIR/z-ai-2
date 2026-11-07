@@ -276,7 +276,7 @@ export async function detectPriceDrops(): Promise<NewOpportunityInput[]> {
   // current price and a prior observation — where current < prior * 0.9.
   const listingsWithObs = await db.listing.findMany({
     where: {
-      ...getPublicListingWhere()
+      ...getPublicListingWhere(),
       price: { not: null },
       priceObservations: { some: {} },
     },
