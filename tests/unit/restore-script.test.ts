@@ -63,10 +63,10 @@ function runRestore(f: ReturnType<typeof fixture>, overrides: Record<string, str
     HEAVIX_RESTORE_TRAFFIC_DRAINED: "1",
     ...overrides,
   };
-  delete env.DB_NAME;
-  delete env.STORE_DB_NAME;
-  delete env.HEAVIX_ENV;
-  delete env.NODE_ENV;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "DB_NAME")) delete env.DB_NAME;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "STORE_DB_NAME")) delete env.STORE_DB_NAME;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "HEAVIX_ENV")) delete env.HEAVIX_ENV;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "NODE_ENV")) delete env.NODE_ENV;
   const result = spawnSync("bash", [scriptPath, f.backup], {
     cwd: f.root,
     encoding: "utf8",
@@ -115,6 +115,31 @@ describe("paired database restore script", () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toContain("stop application traffic");
     expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks Production restore without the separate destructive opt-in", () => {
+    const f = fixture();
+    const result = runRestore(f, { HEAVIX_ENV: "production" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("Production restore requires");
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("rejects unsafe SQL identifiers and duplicate Main/Store targets", () => {
+    const unsafe = fixture();
+    const unsafeResult = runRestore(unsafe, {
+      DB_NAME: 'heavix"; DROP DATABASE postgres;--',
+    });
+    expect(unsafeResult.status).not.toBe(0);
+    expect(unsafeResult.stdout + unsafeResult.stderr).toContain("Unsafe database identifier");
+    expect(readFileSync(unsafe.psqlLog, "utf8")).toBe("");
+
+    const duplicate = fixture();
+    const duplicateResult = runRestore(duplicate, { STORE_DB_NAME: "heavix" });
+    expect(duplicateResult.status).not.toBe(0);
+    expect(duplicateResult.stdout + duplicateResult.stderr).toContain("must be distinct");
+    expect(readFileSync(duplicate.psqlLog, "utf8")).toBe("");
   });
 
   it("blocks remote targets unless the explicit non-production gate is set", () => {
