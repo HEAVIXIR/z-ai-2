@@ -121,16 +121,19 @@ export async function PATCH(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json(
+      { error: "CSRF check failed" },
+      { status: 403 },
+    );
+  }
   try {
     await requirePermission(user.id, 'returns.manage');
-    if (!checkCsrf(req)) {
-      return NextResponse.json(
-        { error: "CSRF check failed" },
-        { status: 403 },
-      );
-    }
   } catch {
-    return NextResponse.json({ error: "Forbidden: requires returns.manage" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Forbidden: requires returns.manage" },
+      { status: 403 },
+    );
   }
   const { id } = await params;
   try {
