@@ -147,6 +147,34 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(outboxCount).toBe(0);
   }, 15000);
 
+  it('serializes concurrent receipts across warehouses using the global Part-first lock order', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const secondWarehouse = await storeDb.warehouse.create({
+      data: { name: 'Atomicity second warehouse ' + suffix(), code: 'AT2-' + suffix() },
+    });
+    await storeDb.inventoryBalance.createMany({
+      data: [
+        { partId, warehouseId, quantity: 5, reserved: 0, lowStockThreshold: 5 },
+        { partId, warehouseId: secondWarehouse.id, quantity: 5, reserved: 0, lowStockThreshold: 5 },
+      ],
+    });
+
+    const outcomes = await Promise.allSettled([
+      adjustStock(partId, warehouseId, 3, 'RECEIVE', 'concurrent receipt A'),
+      adjustStock(partId, secondWarehouse.id, 2, 'RECEIVE', 'concurrent receipt B'),
+    ]);
+    expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(2);
+
+    const [part, balances] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findMany({ where: { partId } }),
+    ]);
+    expect(part?.stock).toBe(15);
+    expect(balances.reduce((sum, balance) => sum + balance.quantity, 0)).toBe(15);
+    expect(balances.find((balance) => balance.warehouseId === warehouseId)?.quantity).toBe(8);
+    expect(balances.find((balance) => balance.warehouseId === secondWarehouse.id)?.quantity).toBe(7);
+  }, 20000);
+
   it('serializes concurrent reservations and never reserves more than available stock', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
     const balance = await storeDb.inventoryBalance.create({
