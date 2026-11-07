@@ -618,20 +618,23 @@ describe("preflightAIRequest — gate ordering (defense-in-depth)", () => {
     if (!result.ok) expect(result.statusCode).toBe(429);
   });
 
-  it("checks budget BEFORE input size (budget exceeded → 429 before 400)", async () => {
+  it("rejects oversized input BEFORE quota reads and budget reservation", async () => {
     mockTaskPolicy = { ...validPolicy };
     mockIsAdmin = true;
     mockHourlyCount = 0;
     mockDailyCount = 0;
-    mockExecuteRawResult = 0; // budget exceeded
+    mockExecuteRawResult = 0; // budget would also fail
     mockBudget = { ...mockBudget, dailySpendUsd: 9.99, dailyLimitUsd: 10.0 };
     const result = await preflightAIRequest({
       taskType: "MODERATION",
       user: { id: "admin-1" },
-      inputLength: 99999, // also over limit
+      inputLength: 99999, // over the policy limit
     });
     expect(result.ok).toBe(false);
-    // Budget (429) is checked before input size (400).
-    if (!result.ok) expect(result.statusCode).toBe(429);
+    if (!result.ok) expect(result.statusCode).toBe(400);
+    // The invalid input must be rejected before any quota or budget side effect.
+    expect(mockAIGatewayLogCount).not.toHaveBeenCalled();
+    expect(mockBudgetUpsert).not.toHaveBeenCalled();
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
   });
 });
