@@ -143,6 +143,36 @@ if [ "${HEAVIX_RESTORE_TRAFFIC_DRAINED:-}" != "1" ]; then
   exit 1
 fi
 
+# The manifest must describe exactly the two expected dumps. sha256sum
+# validates file bytes, but by itself it would also accept extra paths.
+if ! awk '
+  BEGIN {
+    expected["main.sql"] = 0
+    expected["store.sql"] = 0
+    count = 0
+    invalid = 0
+  }
+  NF != 2 { invalid = 1; next }
+  {
+    filename = $2
+    sub(/^\*/, "", filename)
+    if (!(filename in expected) || expected[filename] != 0) {
+      invalid = 1
+    } else {
+      expected[filename] = 1
+    }
+    count++
+  }
+  END {
+    if (invalid || count != 2 || expected["main.sql"] != 1 || expected["store.sql"] != 1) {
+      exit 1
+    }
+  }
+' "$BACKUP_DIR/checksums.txt"; then
+  echo "Checksum manifest must contain exactly main.sql and store.sql"
+  exit 1
+fi
+
 # Verify the complete paired backup before asking for destructive confirmation.
 (
   cd "$BACKUP_DIR"
