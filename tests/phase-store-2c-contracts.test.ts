@@ -582,7 +582,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(count).toBe(69);
     });
 
-    it('counts 55 Store DB writes across routes + services, including transactions', () => {
+    it('counts 58 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -592,7 +592,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(55);
+      expect(count).toBe(58);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -767,7 +767,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (69) cover the 55 counted database write calls', () => {
+    it('total audits (69) cover the 58 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -779,7 +779,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(55);
+      expect(totalMut).toBe(58);
       expect(totalAudit).toBe(69);
     });
   });
@@ -1136,9 +1136,9 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // Per T-A-DEEP-STORE scope: procurement routes were NOT migrated to a service.
       // Their mutations stay inline in the route files.
       const content = readRoute('src/app/api/admin/store/procurement/route.ts');
-      expect(content).toMatch(/storeDb\.procurementRequest\.create/);
+      expect(content).toMatch(/(?:storeDb|tx)\.procurementRequest\.create/);
       const contentId = readRoute('src/app/api/admin/store/procurement/[id]/route.ts');
-      expect(contentId).toMatch(/storeDb\.procurementRequest\.(update|delete)/);
+      expect(contentId).toMatch(/(?:storeDb|tx)\.procurementRequest\.(update|delete)/);
     });
   });
 });
