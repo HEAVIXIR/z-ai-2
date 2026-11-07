@@ -73,8 +73,7 @@ export default function PaymentsAdminClient() {
   const [form, setForm] = useState({
     userId: "",
     amount: "",
-    type: "SUBSCRIPTION",
-    subscriptionId: "",
+    type: "FEATURED_LISTING",
     trackingCode: "",
     reason: "",
     gateway: "MANUAL",
@@ -143,14 +142,6 @@ export default function PaymentsAdminClient() {
       alert("شناسه کاربر، مبلغ و دلیل ثبت (حداقل ۵ نویسه) الزامی است.");
       return;
     }
-    if (form.type === "SUBSCRIPTION" && !form.subscriptionId.trim()) {
-      alert("برای ثبت پرداخت اشتراک، شناسه اشتراک الزامی است.");
-      return;
-    }
-    if (form.type !== "SUBSCRIPTION" && form.subscriptionId.trim()) {
-      alert("شناسه اشتراک فقط برای پرداخت از نوع اشتراک مجاز است.");
-      return;
-    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/admin/payments", {
@@ -160,7 +151,6 @@ export default function PaymentsAdminClient() {
           userId: form.userId.trim(),
           amount: form.amount.replace(/[^\d]/g, ""),
           type: form.type,
-          subscriptionId: form.subscriptionId.trim() || undefined,
           trackingCode: form.trackingCode.trim() || undefined,
           reason: form.reason.trim(),
           gateway: "MANUAL",
@@ -175,9 +165,8 @@ export default function PaymentsAdminClient() {
       setForm({
         userId: "",
         amount: "",
-        type: "SUBSCRIPTION",
-        subscriptionId: "",
-        trackingCode: "",
+        type: "FEATURED_LISTING",
+            trackingCode: "",
         reason: "",
         gateway: "MANUAL",
         markPaid: true,
@@ -267,26 +256,12 @@ export default function PaymentsAdminClient() {
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
               >
-                <option value="SUBSCRIPTION">اشتراک</option>
                 <option value="FEATURED_LISTING">آگهی ویژه</option>
                 <option value="PROMOTION">پیشنهاد ویژه</option>
                 <option value="LEAD_FEE">کمیسیون سرنخ</option>
                 <option value="INSPECTION_FEE">هزینه بازرسی</option>
               </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-bold text-zinc-700">
-                شناسه اشتراک (اختیاری)
-              </label>
-              <input
-                value={form.subscriptionId}
-                onChange={(e) =>
-                  setForm({ ...form, subscriptionId: e.target.value })
-                }
-                placeholder="cuid..."
-                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
-                dir="ltr"
-              />
+              <p className="mt-1 text-[10px] text-amber-700">ثبت دستی پرداخت اشتراک تا تکمیل واحد پول، مبلغ سروری و دوره‌ی صورتحساب غیرفعال است.</p>
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-bold text-zinc-700">
