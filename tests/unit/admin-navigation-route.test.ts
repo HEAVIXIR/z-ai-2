@@ -96,7 +96,7 @@ beforeEach(() => {
       titleEn: null,
       href: "/admin/dashboard",
       icon: null,
-      permissionKey: "admin.dashboard.read",
+      permissionKey: null,
     },
     {
       key: "listings",
@@ -153,6 +153,20 @@ describe("GET /api/admin/navigation authorization boundary", () => {
     expect(mocks.findStandalone).not.toHaveBeenCalled();
   });
 
+  it("shows a legacy permissionless dashboard row only with admin.dashboard.read", async () => {
+    mocks.getUserPermissions.mockResolvedValue([
+      "admin.navigation.read",
+      "admin.dashboard.read",
+    ]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.standalone.map((item: { key: string }) => item.key))
+      .toContain("dashboard");
+  });
+
   it("returns only items allowed by the user's permissions", async () => {
     const response = await GET();
     const body = await response.json();
@@ -165,7 +179,7 @@ describe("GET /api/admin/navigation authorization boundary", () => {
     expect(body.data.mode).toBe("rbac");
     expect(body.data.groups).toHaveLength(1);
     expect(body.data.groups[0].items.map((item: { key: string }) => item.key))
-      .toEqual(["listings", "general"]);
+      .toEqual(["listings"]);
     expect(body.data.standalone.map((item: { key: string }) => item.key))
       .toEqual(["listings"]);
     expect(JSON.stringify(body)).not.toContain("/admin/payments");
