@@ -37,6 +37,13 @@ export default async function StoreReturnDetailPage({
     canReadInventory = false;
   }
 
+  let canManageInventory = true;
+  try {
+    await requirePermission(user.id, "inventory.manage");
+  } catch {
+    canManageInventory = false;
+  }
+
   const [record, warehouses, walletTransactions, returnMovements] = await Promise.all([
     storeDb.return.findUnique({
       where: { id },
@@ -76,7 +83,7 @@ export default async function StoreReturnDetailPage({
         },
       },
     }),
-    canReadInventory
+    canManageInventory
       ? storeDb.warehouse.findMany({
           where: { active: true },
           orderBy: { name: "asc" },
@@ -116,6 +123,7 @@ export default async function StoreReturnDetailPage({
         walletTransactions={walletTransactions.map((txn) => ({ ...txn, createdAt: txn.createdAt.toISOString() }))}
         returnMovements={returnMovements.map((movement) => ({ ...movement, createdAt: movement.createdAt.toISOString() }))}
         canManage={canManage}
+        canManageInventory={canManageInventory}
       />
     </div>
   );
