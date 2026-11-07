@@ -72,6 +72,16 @@ export async function POST(
   try {
     const body = await req.json();
     const { poItemId, receivedQty, warehouseId } = body;
+    if (
+      typeof poItemId !== "string" || !poItemId.trim() ||
+      typeof warehouseId !== "string" || !warehouseId.trim() ||
+      !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+    ) {
+      return NextResponse.json(
+        { success: false, error: "شناسه قلم، انبار و تعداد صحیح مثبت الزامی است" },
+        { status: 400 },
+      );
+    }
     const result = await receivePurchaseOrderItem(
       poItemId,
       receivedQty,
