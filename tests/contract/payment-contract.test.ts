@@ -39,18 +39,15 @@ describe("Payment Resource Contract — immutable financial ledger", () => {
     }
   });
 
-  it("defines transactional, preconditioned verify and refund actions", () => {
+  it("defines transactional verify and keeps unsupported refunds unavailable", () => {
     const actions = new Map((cfg?.actions ?? []).map((action) => [action.key, action]));
     const verify = actions.get("verify");
-    const refund = actions.get("refund");
 
     expect(verify?.permission).toBe("payment.manage");
     expect(verify?.transactional).toBe(true);
     expect(verify?.precondition).toBeTypeOf("function");
 
-    expect(refund?.permission).toBe("payment.refund");
-    expect(refund?.transactional).toBe(true);
-    expect(refund?.precondition).toBeTypeOf("function");
+    expect(actions.has("refund")).toBe(false);
   });
 
   it("does not advertise unsupported bulk financial actions", () => {
@@ -62,6 +59,6 @@ describe("Payment Resource Contract — immutable financial ledger", () => {
     expect(cfg?.audit?.enabled).toBe(true);
     expect(cfg?.audit?.entityType).toBe("Payment");
     expect(cfg?.audit?.actions).toContain("payment.manage");
-    expect(cfg?.audit?.actions).toContain("payment.refund");
+    expect(cfg?.audit?.actions).not.toContain("payment.refund");
   });
 });
