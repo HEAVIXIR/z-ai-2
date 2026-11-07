@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 
@@ -32,7 +33,7 @@ export async function GET() {
     const listingsByCat = await db.listing.groupBy({
       by: ["categoryId"],
       _count: true,
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
     });
     const highDemandLowSupply = requests
       .map((r) => {
@@ -78,7 +79,7 @@ export async function GET() {
     const listingsByProvince = await db.listing.groupBy({
       by: ["province"],
       _count: true,
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
     });
     const underservedRegions = reqsByProvince
       .map((r) => {
@@ -103,7 +104,7 @@ export async function GET() {
     const cheapListings = await db.listing.findMany({
       where: {
         price: { not: null, lt: avgPrice ? BigInt(Math.floor(avgPrice * 0.7)) : undefined },
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
       },
       orderBy: { price: "asc" },
       take: 10,
