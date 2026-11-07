@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
    ------------------------------------------------------------
    GET     — fetch a single asset by id
    DELETE  — remove asset (binary + sidecar) and audit 'media.delete'
-   Permission: media.manage
+   Permission: media.read (GET) / media.manage (DELETE)
    ============================================================ */
 
 interface Params {
@@ -18,7 +18,7 @@ interface Params {
 }
 
 export async function GET(_req: Request, { params }: Params) {
-  const [, error] = await requireAdmin("media.manage");
+  const [, error] = await requireAdmin("media.read");
   if (error) return error;
   try {
     const { id } = await params;
