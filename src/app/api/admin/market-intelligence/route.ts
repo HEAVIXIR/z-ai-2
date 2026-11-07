@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 
@@ -58,7 +59,7 @@ export async function GET() {
 
     // Regions distribution
     const all = await db.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
       select: { province: true },
     });
     const regionMap: Record<string, number> = {};
