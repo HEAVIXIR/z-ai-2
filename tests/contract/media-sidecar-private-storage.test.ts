@@ -11,6 +11,10 @@ describe("private media sidecar storage contract", () => {
     expect(service).toContain('const MEDIA_METADATA_ROOT = path.join(process.cwd(), ".heavix-media-metadata")');
     expect(service).toContain('mode: 0o700');
     expect(service).toContain('mode: 0o600');
+    expect(service).toContain("async function ensurePrivateMetadataDirectory");
+    expect(service).toContain("stat.isSymbolicLink()");
+    expect(service).toContain("await fs.chmod(directory, 0o700)");
+    expect(service).toContain("await fs.chmod(sidecarPath, 0o600)");
     expect(service).toContain("const sidecarDiskPath = sidecarPathFor(relPath)");
     expect(service).not.toContain('path.join(targetDir, sidecarPathFor(safeName))');
   });
