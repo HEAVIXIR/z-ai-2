@@ -35,11 +35,10 @@ describe("Universal Resource payment mutation boundaries", () => {
     expect(fields).not.toContain("key: 'amount'");
   });
 
-  it("activates a same-user subscription inside the universal verify transaction", () => {
+  it("blocks subscription verification until canonical billing snapshots exist", () => {
     const engine = read("src/lib/admin/action-engine.ts");
-    expect(engine).toContain('resourceKey === "payments" && actionKey === "verify"');
-    expect(engine).toContain("txClient as any).premiumSubscription.updateMany");
-    expect(engine).toContain("userId: String(txBefore.userId ?? \"\")");
-    expect(engine).toContain("SUBSCRIPTION_PAYMENT_LINK_MISMATCH");
+    expect(engine).toContain("SUBSCRIPTION_BILLING_UNAVAILABLE");
+    expect(engine).toContain("String(before.type ?? '') === 'SUBSCRIPTION'");
+    expect(engine).not.toContain("txClient as any).premiumSubscription.updateMany");
   });
 });
