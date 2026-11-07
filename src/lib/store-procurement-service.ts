@@ -395,13 +395,19 @@ export async function receivePurchaseOrderItem(
   procurementId: string,
   purchaseOrderId: string,
 ): Promise<any> {
-  if (!poItemId || receivedQty === undefined || !warehouseId || !procurementId || !purchaseOrderId) {
+  if (
+    typeof poItemId !== 'string' || !poItemId.trim() ||
+    typeof warehouseId !== 'string' || !warehouseId.trim() ||
+    typeof procurementId !== 'string' || !procurementId.trim() ||
+    typeof purchaseOrderId !== 'string' || !purchaseOrderId.trim() ||
+    !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+  ) {
     throw new ProcurementServiceError(
       400,
-      'poItemId، تعداد دریافتی و انبار مقصد الزامی است',
+      'شناسه قلم، شناسه سفارش، شناسه مناقصه، تعداد صحیح مثبت و انبار مقصد الزامی است',
     );
   }
-  const qty = Number(receivedQty);
+  const qty = receivedQty;
   if (!Number.isSafeInteger(qty) || qty <= 0) {
     throw new ProcurementServiceError(
       400,
