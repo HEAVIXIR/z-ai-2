@@ -482,8 +482,8 @@ export async function addReturnItem(
  *      INSPECTED — idempotent re-inspection allowed).
  *   2. Set Return.inspection = inspectionNotes (overrides existing notes).
  *   3. Set Return.status = INSPECTED.
- *   4. For each entry in itemConditions: update ReturnItem.restockable
- *      (and optionally condition). Items not in the map are left untouched.
+ *   4. Require exactly one unique decision for every current ReturnItem;
+ *      partial, duplicate, foreign, and empty-item inspections are rejected.
  *
  * Refuses if status is REQUESTED (must approve first) or RESOLVED/REJECTED
  * (terminal states — cannot re-inspect).
@@ -497,47 +497,65 @@ export async function inspectReturn(
   itemConditions: ItemConditionInput[],
   userId?: string | null,
 ): Promise<any> {
+  if (!Array.isArray(itemConditions)) {
+    throw new ReturnsServiceError(400, 'فهرست کارشناسی اقلام الزامی است');
+  }
+
   try {
     const ret = await storeDb.$transaction(async (tx) => {
       const existing = await tx.return.findUnique({
         where: { id: returnId },
         include: { items: true },
       });
-      if (!existing) {
-        throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
-      }
+      if (!existing) throw new ReturnsServiceError(404, 'مرجوعی یافت نشد');
       if (existing.status === 'REQUESTED') {
-        throw new ReturnsServiceError(400, 'ابتدا مرجوعی را تأیید کنید (status = APPROVED)');
+        throw new ReturnsServiceError(409, 'ابتدا مرجوعی را تأیید کنید (status = APPROVED)');
       }
       if (existing.status === 'RESOLVED' || existing.status === 'REJECTED') {
-        throw new ReturnsServiceError(
-          400,
-          `مرجوعی در وضعیت نهایی (${existing.status}) قرار دارد و قابل کارشناسی مجدد نیست`,
-        );
+        throw new ReturnsServiceError(409, `مرجوعی در وضعیت نهایی (${existing.status}) قرار دارد و قابل کارشناسی مجدد نیست`);
+      }
+      if (existing.status !== 'APPROVED' && existing.status !== 'INSPECTED') {
+        throw new ReturnsServiceError(409, 'وضعیت مرجوعی برای کارشناسی معتبر نیست');
+      }
+      if (existing.items.length === 0) {
+        throw new ReturnsServiceError(409, 'مرجوعی بدون قلم قابل کارشناسی نیست؛ ابتدا اقلام مرجوعی را ثبت کنید');
       }
 
-      const itemIds = new Set(existing.items.map((item: any) => item.id));
+      const expectedIds = new Set(existing.items.map((item: any) => item.id));
+      const receivedIds = new Set<string>();
       for (const itemCondition of itemConditions) {
-        if (!itemIds.has(itemCondition.itemId)) {
+        if (!itemCondition || typeof itemCondition.itemId !== 'string' || !itemCondition.itemId.trim()) {
+          throw new ReturnsServiceError(400, 'شناسه قلم کارشناسی نامعتبر است');
+        }
+        if (receivedIds.has(itemCondition.itemId)) {
+          throw new ReturnsServiceError(400, `قلم تکراری در فهرست کارشناسی: ${itemCondition.itemId}`);
+        }
+        receivedIds.add(itemCondition.itemId);
+        if (!expectedIds.has(itemCondition.itemId)) {
           throw new ReturnsServiceError(400, `آیتم کارشناسی به این مرجوعی تعلق ندارد: ${itemCondition.itemId}`);
         }
+        if (typeof itemCondition.restockable !== 'boolean') {
+          throw new ReturnsServiceError(400, `تصمیم قابلیت بازگشت به انبار برای قلم ${itemCondition.itemId} الزامی است`);
+        }
         if (
-          itemCondition.condition &&
+          itemCondition.condition !== undefined &&
           !ALLOWED_CONDITIONS.includes(itemCondition.condition as (typeof ALLOWED_CONDITIONS)[number])
         ) {
           throw new ReturnsServiceError(400, 'وضعیت قطعه نامعتبر است');
         }
       }
 
-      // Claim/lock the parent lifecycle row before touching child items.
-      // Serializable isolation plus this conditional update prevents an
-      // inspection from racing a concurrent INSPECTED -> RESOLVED transition.
+      if (receivedIds.size !== expectedIds.size) {
+        const missingIds = [...expectedIds].filter((id) => !receivedIds.has(id));
+        throw new ReturnsServiceError(
+          409,
+          `کارشناسی ناقص است؛ برای تمام اقلام تصمیم ثبت کنید. اقلام باقی‌مانده: ${missingIds.length}`,
+        );
+      }
+
       const claimed = await tx.return.updateMany({
         where: { id: returnId, status: existing.status },
-        data: {
-          inspection: inspectionNotes || null,
-          status: 'INSPECTED',
-        },
+        data: { inspection: inspectionNotes || null, status: 'INSPECTED' },
       });
       if (claimed.count !== 1) {
         throw new ReturnsServiceError(409, 'وضعیت مرجوعی هم‌زمان تغییر کرده است');
@@ -554,8 +572,8 @@ export async function inspectReturn(
         const updated = await tx.returnItem.update({
           where: { id: itemCondition.itemId },
           data: {
-            restockable: Boolean(itemCondition.restockable),
-            ...(itemCondition.condition ? { condition: itemCondition.condition } : {}),
+            restockable: itemCondition.restockable,
+            ...(itemCondition.condition !== undefined ? { condition: itemCondition.condition } : {}),
           },
         });
         await enqueueAuditOutbox(tx, {
@@ -567,11 +585,7 @@ export async function inspectReturn(
           before: beforeItem
             ? { returnId, restockable: beforeItem.restockable, condition: beforeItem.condition }
             : { returnId },
-          after: {
-            returnId,
-            restockable: updated.restockable,
-            condition: updated.condition,
-          },
+          after: { returnId, restockable: updated.restockable, condition: updated.condition },
         });
       }
 
@@ -581,20 +595,13 @@ export async function inspectReturn(
           items: {
             include: {
               orderItem: {
-                select: {
-                  id: true,
-                  partNameSnapshot: true,
-                  quantity: true,
-                  lineTotalIrr: true,
-                },
+                select: { id: true, partNameSnapshot: true, quantity: true, lineTotalIrr: true },
               },
             },
           },
         },
       });
-      if (!updatedReturn) {
-        throw new ReturnsServiceError(404, 'مرجوعی پس از کارشناسی یافت نشد');
-      }
+      if (!updatedReturn) throw new ReturnsServiceError(404, 'مرجوعی پس از کارشناسی یافت نشد');
 
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null,
@@ -617,7 +624,6 @@ export async function inspectReturn(
           })),
         },
       });
-
       return updatedReturn;
     }, { isolationLevel: 'Serializable' });
 
