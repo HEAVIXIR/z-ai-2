@@ -14,9 +14,9 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-type Item = { titleFa: string; href: string; permissionKey?: string; icon?: string };
+type Item = { titleFa: string; href: string; permissionKey: string; icon?: string };
 type Group = { key: string; titleFa: string; icon: string; sortOrder: number; items: Item[] };
-type Standalone = { key: string; titleFa: string; href: string; icon: string; sortOrder: number; permissionKey?: string };
+type Standalone = { key: string; titleFa: string; href: string; icon: string; sortOrder: number; permissionKey: string };
 
 // ── Groups (with children) ──────────────────────────────────
 const GROUPS: Group[] = [
@@ -146,7 +146,7 @@ const GROUPS: Group[] = [
 
 // ── Standalone items (no group) ─────────────────────────────
 const STANDALONES: Standalone[] = [
-  { key: 'dashboard', titleFa: 'داشبورد', href: '/admin/dashboard', icon: 'LayoutDashboard', sortOrder: 0 },
+  { key: 'dashboard', titleFa: 'داشبورد', href: '/admin/dashboard', icon: 'LayoutDashboard', sortOrder: 0, permissionKey: 'admin.dashboard.read' },
   { key: 'listings', titleFa: 'آگهی‌ها', href: '/admin/listings', icon: 'Megaphone', sortOrder: 2, permissionKey: 'listing.read' },
   { key: 'companies', titleFa: 'شرکت‌ها', href: '/admin/companies', icon: 'Building2', sortOrder: 3, permissionKey: 'company.read' },
   { key: 'subscriptions', titleFa: 'اشتراک‌ها', href: '/admin/subscriptions', icon: 'Crown', sortOrder: 9, permissionKey: 'subscription.read' },
