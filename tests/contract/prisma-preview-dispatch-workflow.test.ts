@@ -15,10 +15,11 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
     expect(workflow).toContain("PREVIEW_ONLY");
   });
 
-  it("checks out and verifies the exact reviewed Prisma Workerd commit", () => {
-    const reviewedSha = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994";
-    expect(workflow).toContain(`ref: ${reviewedSha}`);
-    expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${reviewedSha}"`);
+  it("checks out and verifies the exact commit selected for this workflow run", () => {
+    expect(workflow).toContain("ref: ${{ github.sha }}");
+    expect(workflow).toContain('test "$GITHUB_REF" = "refs/heads/infra/prisma6-cloudflare-runtime"');
+    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"');
+    expect(workflow).not.toContain("b94b9d6f3540e8f4467b1d4ac051d5ef050c0994");
     expect(workflow).not.toContain("a5b62a41a94b41ea5d09ffb27ec02cadec51fc64");
   });
 
