@@ -34,3 +34,16 @@ describe("manual marketplace payment creation transaction contract", () => {
     expect(source).toContain("if (!body || typeof body !== \"object\" || Array.isArray(body))");
   });
 });
+
+
+describe("dedicated payment API ledger immutability", () => {
+  it("never hard-deletes payment ledger rows", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, "src/app/api/admin/payments/[id]/route.ts"),
+      "utf8",
+    );
+    expect(source).toContain("PAYMENT_LEDGER_IMMUTABLE");
+    expect(source).toContain("Payment ledger entries are immutable");
+    expect(source).not.toMatch(/db\.payment\.delete\s*\(/);
+  });
+});
