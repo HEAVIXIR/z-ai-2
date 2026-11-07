@@ -235,7 +235,10 @@ export async function PATCH(
         }
       }
 
-      if (body.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+      if (
+        (body.status === 'COMPLETED' || body.status === 'CANCELLED') &&
+        body.status !== existing.status
+      ) {
         const openPurchaseOrders = await tx.purchaseOrder.count({
           where: {
             procurementId: id,
@@ -244,7 +247,9 @@ export async function PATCH(
         });
         if (openPurchaseOrders > 0) {
           return {
-            error: "تا زمان دریافت یا لغو تمام سفارش‌های خرید، تکمیل مناقصه مجاز نیست",
+            error: body.status === 'COMPLETED'
+              ? "تا زمان دریافت یا لغو تمام سفارش‌های خرید، تکمیل مناقصه مجاز نیست"
+              : "تا زمان تعیین تکلیف تمام سفارش‌های خرید باز، لغو مناقصه مجاز نیست",
             status: 409 as const,
           };
         }
