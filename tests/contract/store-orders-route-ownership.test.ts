@@ -13,6 +13,7 @@ describe("store order list ownership boundary", () => {
 
   it("does not treat a phone number as an authentication credential", () => {
     expect(route).toContain('phone !== sessionUser.mobile');
+    expect(route).toContain('!sessionUser.mobileVerified');
     expect(route).toContain('{ status: 403 }');
     expect(route).not.toContain(': { customerId: customer.id };');
     expect(route).toContain('where: { customerId: customer.id }');
@@ -21,5 +22,16 @@ describe("store order list ownership boundary", () => {
   it("keeps the admin all-orders path behind the canonical session role", () => {
     expect(route).toContain('if (sessionUser?.isAdmin)');
     expect(route.indexOf('if (sessionUser?.isAdmin)')).toBeLessThan(route.indexOf('if (!sessionUser)'));
+  });
+});
+
+const detailRoute = fs.readFileSync("src/app/api/store/orders/[id]/route.ts", "utf8");
+
+describe("store guest order detail ownership", () => {
+  it("requires verified mobile before phone-based guest ownership", () => {
+    expect(detailRoute).toContain('sessionUser.mobileVerified && order.customer && order.customer.phone === sessionUser.mobile');
+  });
+  it("preserves direct userId ownership independently of phone verification", () => {
+    expect(detailRoute).toContain('order.userId === sessionUser.id');
   });
 });
