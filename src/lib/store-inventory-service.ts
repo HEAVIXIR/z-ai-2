@@ -451,8 +451,13 @@ export async function adjustStock(
   if (!Number.isSafeInteger(qty) || qty === 0) {
     throw new InventoryServiceError(400, 'تعداد باید عدد صحیح غیر صفر باشد');
   }
-  if (type === 'TRANSFER') {
-    throw new InventoryServiceError(400, 'انتقال انبار باید با عملیات انتقال مبدأ و مقصد انجام شود');
+  if (type === 'TRANSFER' || type === 'RETURN') {
+    throw new InventoryServiceError(
+      400,
+      type === 'TRANSFER'
+        ? 'انتقال انبار باید با عملیات انتقال مبدأ و مقصد انجام شود'
+        : 'ثبت مرجوعی فقط از گردش کار رسمی مرجوعی مجاز است',
+    );
   }
   if (['RECEIVE', 'RETURN'].includes(type) && qty < 0) {
     throw new InventoryServiceError(400, 'تعداد دریافت و مرجوعی باید مثبت باشد');
