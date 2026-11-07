@@ -248,6 +248,9 @@ export async function submitPurchaseOrder(
   id: string,
   userId?: string | null,
 ): Promise<any> {
+  if (!userId || !userId.trim()) {
+    throw new ProcurementServiceError(400, 'شناسه کاربر ارسال‌کننده سفارش الزامی است');
+  }
   try {
     const po = await storeDb.$transaction(async (tx) => {
       const existing = await tx.purchaseOrder.findUnique({ where: { id } });
@@ -257,7 +260,7 @@ export async function submitPurchaseOrder(
       }
       const changed = await tx.purchaseOrder.updateMany({
         where: { id, status: 'DRAFT' },
-        data: { status: 'SUBMITTED' },
+        data: { status: 'SUBMITTED', submittedBy: userId },
       });
       if (changed.count !== 1) throw new ProcurementServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده است');
       const updated = await tx.purchaseOrder.findUnique({
@@ -271,7 +274,8 @@ export async function submitPurchaseOrder(
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null, actorType: 'ADMIN',
         action: 'store.procurement.po.submit', entityType: 'PurchaseOrder', entityId: id,
-        before: { status: existing.status }, after: { status: updated.status },
+        before: { status: existing.status, submittedBy: existing.submittedBy },
+        after: { status: updated.status, submittedBy: updated.submittedBy },
       });
       return updated;
     }, { isolationLevel: 'Serializable' });
@@ -297,12 +301,18 @@ export async function approvePurchaseOrder(
   id: string,
   userId?: string | null,
 ): Promise<any> {
+  if (!userId || !userId.trim()) {
+    throw new ProcurementServiceError(400, 'شناسه کاربر تأییدکننده سفارش الزامی است');
+  }
   try {
     const po = await storeDb.$transaction(async (tx) => {
       const existing = await tx.purchaseOrder.findUnique({ where: { id } });
       if (!existing) throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
       if (existing.status !== 'SUBMITTED') {
         throw new ProcurementServiceError(409, `سفارش خرید در وضعیت ${existing.status} قرار دارد و قابل تأیید نیست`);
+      }
+      if (existing.submittedBy && existing.submittedBy === userId) {
+        throw new ProcurementServiceError(409, 'تأیید سفارش خرید توسط همان کاربری که آن را ارسال کرده مجاز نیست');
       }
       const approvedAt = new Date();
       const changed = await tx.purchaseOrder.updateMany({
@@ -321,8 +331,18 @@ export async function approvePurchaseOrder(
       await enqueueAuditOutbox(tx, {
         actorId: userId ?? null, actorType: 'ADMIN',
         action: 'store.procurement.po.approve', entityType: 'PurchaseOrder', entityId: id,
-        before: { status: existing.status, approvedBy: existing.approvedBy, approvedAt: existing.approvedAt },
-        after: { status: updated.status, approvedBy: updated.approvedBy, approvedAt: updated.approvedAt },
+        before: {
+          status: existing.status,
+          submittedBy: existing.submittedBy,
+          approvedBy: existing.approvedBy,
+          approvedAt: existing.approvedAt,
+        },
+        after: {
+          status: updated.status,
+          submittedBy: updated.submittedBy,
+          approvedBy: updated.approvedBy,
+          approvedAt: updated.approvedAt,
+        },
       });
       return updated;
     }, { isolationLevel: 'Serializable' });
