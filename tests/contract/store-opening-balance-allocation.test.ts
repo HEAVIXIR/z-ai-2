@@ -9,6 +9,7 @@ const page = fs.readFileSync("src/app/admin/store/inventory/page.tsx", "utf8");
 describe("Explicit opening-balance allocation", () => {
   it("only lists active positive-stock parts without any inventory balances", () => {
     expect(service).toContain("active: true");
+    expect(service).toContain("FOR SHARE");
     expect(service).toContain("stock: { gt: 0 }");
     expect(service).toContain("inventoryBalances: { none: {} }");
   });
