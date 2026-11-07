@@ -13,6 +13,7 @@ import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
+import { toPublicListingDTO } from "@/lib/public-listing-dto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -294,10 +295,7 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    const data = rows.map((l) => ({
-      ...l,
-      price: l.price ? l.price.toString() : null,
-    }));
+    const data = rows.map(toPublicListingDTO);
 
     // P2-23 Demand Engine — log the search (fire-and-forget).
     if (q) {
