@@ -55,7 +55,20 @@ function wrapPrismaPromise<T>(
 
       if (property === "then" && typeof value === "function") {
         return (...args: unknown[]) =>
-          ensureIdentity().then(() => Reflect.apply(value, target, args));
+          ensureIdentity().then(
+            () => Reflect.apply(value, target, args),
+            (error: unknown) => {
+              // Promise/thenable assimilation ignores the return value of
+              // its then method. Forward identity failures to the supplied
+              // rejection callback or an awaiting consumer would remain
+              // pending forever even though the identity check had rejected.
+              const onRejected = args[1];
+              if (typeof onRejected === "function") {
+                return Reflect.apply(onRejected, undefined, [error]);
+              }
+              throw error;
+            },
+          );
       }
 
       if (property === "requestTransaction" && typeof value === "function") {
