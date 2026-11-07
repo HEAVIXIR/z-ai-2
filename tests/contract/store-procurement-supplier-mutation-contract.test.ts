@@ -46,9 +46,12 @@ describe('Procurement and supplier mutation safety', () => {
       resourceConfigs.indexOf('// ── 8. Car Models'),
     );
     for (const block of [procurement, suppliers]) {
-      expect(block).not.toMatch(/\\n\\s*create:\\s*'/);
-      expect(block).not.toMatch(/\\n\\s*update:\\s*'/);
-      expect(block).not.toMatch(/\\n\\s*delete:\\s*'/);
+      expect(block).not.toContain("create: 'procurement.manage'");
+      expect(block).not.toContain("update: 'procurement.manage'");
+      expect(block).not.toContain("delete: 'procurement.manage'");
+      expect(block).not.toContain("create: 'store.manage'");
+      expect(block).not.toContain("update: 'store.manage'");
+      expect(block).not.toContain("delete: 'store.manage'");
     }
     expect(procurement).not.toContain("key: 'bulk-publish'");
     expect(suppliers).not.toContain("key: 'bulk-activate'");
