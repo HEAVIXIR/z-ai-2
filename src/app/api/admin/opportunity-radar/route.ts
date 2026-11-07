@@ -98,7 +98,7 @@ export async function GET() {
     // 4. Price opportunities (below market avg)
     const avg = await db.listing.aggregate({
       _avg: { price: true },
-      where: { price: { not: null }, status: "PUBLISHED" },
+      where: { ...getPublicListingWhere(), price: { not: null } },
     });
     const avgPrice = avg._avg.price ? Number(avg._avg.price) : 0;
     const cheapListings = await db.listing.findMany({
