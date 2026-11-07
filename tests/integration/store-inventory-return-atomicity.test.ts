@@ -57,7 +57,18 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       customerId = undefined;
     }
     if (partId) {
-      await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: partId } } });
+      const balanceRows = await storeDb.inventoryBalance.findMany({
+        where: { partId },
+        select: { id: true },
+      });
+      await storeDb.auditOutbox.deleteMany({
+        where: {
+          OR: [
+            { payloadJson: { contains: partId } },
+            ...balanceRows.map((balance) => ({ payloadJson: { contains: balance.id } })),
+          ],
+        },
+      });
       await storeDb.stockMovement.deleteMany({ where: { partId } });
       await storeDb.inventoryBalance.deleteMany({ where: { partId } });
       await storeDb.part.deleteMany({ where: { id: partId } });
