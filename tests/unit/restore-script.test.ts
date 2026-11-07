@@ -24,6 +24,7 @@ function fixture() {
   writeFileSync(path.join(backup, "checksums.txt"), checksum.stdout);
 
   const psqlLog = path.join(root, "psql.log");
+  writeFileSync(psqlLog, "");
   const psql = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
