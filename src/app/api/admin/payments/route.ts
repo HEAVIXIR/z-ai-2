@@ -37,18 +37,40 @@ export async function GET(req: Request) {
   }
   try {
     const url = new URL(req.url);
-    const take = Math.min(
-      500,
-      Math.max(1, Number(url.searchParams.get("take") ?? 100)),
-    );
-    const status = url.searchParams.get("status");
-    const type = url.searchParams.get("type");
-    const userId = url.searchParams.get("userId");
+    const rawTake = url.searchParams.get("take");
+    const take = rawTake === null ? 100 : Number(rawTake);
+    if (!Number.isSafeInteger(take) || take < 1 || take > 500) {
+      return NextResponse.json(
+        { error: "take must be an integer between 1 and 500" },
+        { status: 400 },
+      );
+    }
+
+    const status = url.searchParams.get("status")?.trim().toUpperCase() || null;
+    const type = url.searchParams.get("type")?.trim().toUpperCase() || null;
+    const userId = url.searchParams.get("userId")?.trim() || null;
+    const allowedStatuses = new Set(["PENDING", "PAID", "FAILED", "REFUNDED"]);
+    const allowedTypes = new Set([
+      "SUBSCRIPTION",
+      "FEATURED_LISTING",
+      "PROMOTION",
+      "LEAD_FEE",
+      "INSPECTION_FEE",
+    ]);
+    if (status && !allowedStatuses.has(status)) {
+      return NextResponse.json({ error: "Invalid payment status filter" }, { status: 400 });
+    }
+    if (type && !allowedTypes.has(type)) {
+      return NextResponse.json({ error: "Invalid payment type filter" }, { status: 400 });
+    }
+    if (userId && userId.length > 128) {
+      return NextResponse.json({ error: "userId filter is too long" }, { status: 400 });
+    }
 
     const where: any = {};
-    if (status) where.status = String(status).toUpperCase();
-    if (type) where.type = String(type).toUpperCase();
-    if (userId) where.userId = String(userId);
+    if (status) where.status = status;
+    if (type) where.type = type;
+    if (userId) where.userId = userId;
 
     const [items, total, stats] = await Promise.all([
       db.payment.findMany({
@@ -88,7 +110,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to load payments" },
       { status: 500 },
     );
   }
