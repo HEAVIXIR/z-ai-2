@@ -169,6 +169,20 @@ describe("paired database restore script", () => {
     expect(readFileSync(duplicate.psqlLog, "utf8")).toBe("");
   });
 
+  it("rejects database identifiers over PostgreSQL's 63-byte limit and invalid ports", () => {
+    const longName = fixture();
+    const longNameResult = runRestore(longName, { DB_NAME: "a".repeat(64) });
+    expect(longNameResult.status).not.toBe(0);
+    expect(longNameResult.stdout + longNameResult.stderr).toContain("1-63 ASCII letters");
+    expect(readFileSync(longName.psqlLog, "utf8")).toBe("");
+
+    const invalidPort = fixture();
+    const invalidPortResult = runRestore(invalidPort, { STORE_DB_PORT: "65536" });
+    expect(invalidPortResult.status).not.toBe(0);
+    expect(invalidPortResult.stdout + invalidPortResult.stderr).toContain("ports must be integers");
+    expect(readFileSync(invalidPort.psqlLog, "utf8")).toBe("");
+  });
+
   it("preserves explicit process target overrides over values in .env", () => {
     const f = fixture();
     writeFileSync(
