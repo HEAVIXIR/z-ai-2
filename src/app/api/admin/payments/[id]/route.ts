@@ -51,7 +51,11 @@ export async function GET(_req: Request, { params }: Args) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.read");
+  try {
+    await requirePermission(user.id, "payment.read");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const payment = await db.payment.findUnique({
@@ -93,7 +97,11 @@ export async function PATCH(req: Request, { params }: Args) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.manage");
+  try {
+    await requirePermission(user.id, "payment.manage");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const body = await req.json().catch(() => null);
@@ -182,7 +190,11 @@ export async function DELETE(_req: Request, { params }: Args) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.manage");
+  try {
+    await requirePermission(user.id, "payment.manage");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { id } = await params;
   if (!id || id.length > 128) {
