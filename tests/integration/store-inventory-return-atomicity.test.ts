@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { adjustStock, reserveStock, releaseStock } from '@/lib/store-inventory-service';
+import { adjustStock, reserveStock, releaseStock, createMovement } from '@/lib/store-inventory-service';
 import { resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
@@ -88,6 +88,22 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       categoryId = undefined;
     }
   });
+
+  it('rejects the deprecated Part-only movement API without changing inventory', async () => {
+    if (!partId) throw new Error('fixture setup incomplete');
+    await expect(
+      createMovement(partId, 'ADJUSTMENT', 2, 'legacy path must be disabled'),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const [part, movements, balances] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.count({ where: { partId } }),
+      storeDb.inventoryBalance.count({ where: { partId } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(movements).toBe(0);
+    expect(balances).toBe(0);
+  }, 15000);
 
   it('keeps RETURN and TRANSFER movements out of the generic one-warehouse adjustment API', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
