@@ -154,11 +154,11 @@ describe("Prisma Postgres workerd client contract", () => {
 
     expect(appBlock).toContain("SET TRANSACTION READ ONLY");
     expect(storeBlock).toContain("SET TRANSACTION READ ONLY");
-    expect(appBlock.indexOf("SET TRANSACTION READ ONLY")).toBeLessThan(
-      appBlock.indexOf("SELECT current_setting('transaction_read_only')"),
+    expect(appBlock.indexOf("await tx.$executeRaw")).toBeLessThan(
+      appBlock.indexOf("const settingRows = await tx.$queryRaw"),
     );
-    expect(storeBlock.indexOf("SET TRANSACTION READ ONLY")).toBeLessThan(
-      storeBlock.indexOf("SELECT current_setting('transaction_read_only')"),
+    expect(storeBlock.indexOf("await tx.$executeRaw")).toBeLessThan(
+      storeBlock.indexOf("const settingRows = await tx.$queryRaw"),
     );
     expect(runner).toContain("without requiring the entire Preview database");
     expect(runner).not.toContain("Preview database must be read-only");
