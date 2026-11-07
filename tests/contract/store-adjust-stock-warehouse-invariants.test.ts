@@ -24,6 +24,7 @@ describe("Warehouse stock adjustment invariants", () => {
 
   it("prevents a negative adjustment from consuming reserved units", () => {
     expect(body).toContain("targetBalance.quantity - targetBalance.reserved < -qty");
+    expect(body).toContain("type === 'TRANSFER' || type === 'RETURN'");
     expect(body).toContain("reserved: targetBalance.reserved");
   });
 
