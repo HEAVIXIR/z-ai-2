@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
@@ -133,28 +132,38 @@ export async function PATCH(req: Request, { params }: Args) {
       );
     }
 
-    const existing = await db.payment.findUnique({ where: { id } });
-    if (!existing) {
+    const result = await db.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      const payment = await tx.payment.update({
+        where: { id },
+        data: { trackingCode },
+      });
+
+      // Keep the metadata mutation and its audit evidence atomic too.
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.update",
+          entityType: "Payment",
+          entityId: payment.id,
+          beforeJson: JSON.stringify({ trackingCode: existing.trackingCode }),
+          afterJson: JSON.stringify({ trackingCode: payment.trackingCode }),
+          reason: "trackingCode metadata update via admin API",
+          ip: _req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: _req.headers.get("user-agent"),
+        },
+      });
+
+      return payment;
+    });
+
+    if (!result) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-
-    const payment = await db.payment.update({
-      where: { id },
-      data: { trackingCode },
-    });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.update",
-      entityType: "Payment",
-      entityId: payment.id,
-      before: { trackingCode: existing.trackingCode },
-      after: { trackingCode: payment.trackingCode },
-      reason: "trackingCode metadata update via admin API",
-    });
-
-    return NextResponse.json({ ok: true, payment: serialize(payment) });
+    return NextResponse.json({ ok: true, payment: serialize(result) });
   } catch (err: any) {
     trackError(err, { endpoint: "PATCH /api/admin/payments/[id]" });
     return NextResponse.json(
