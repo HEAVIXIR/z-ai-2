@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import type { Opportunity } from "@prisma/client";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Opportunity Engine (P2-27)
@@ -74,7 +75,7 @@ export async function detectUnderpricedListings(): Promise<
   // window-function limitations.
   const listings = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       price: { not: null },
     },
     select: {
@@ -167,7 +168,7 @@ export async function detectHighDemandLowSupply(): Promise<
   // Get listing counts per category slug.
   const cats = await db.category.findMany({
     where: { active: true, slug: { in: Array.from(demandBySlug.keys()) } },
-    select: { id: true, name: true, slug: true, _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+    select: { id: true, name: true, slug: true, _count: { select: { listings: { where: getPublicListingWhere() } } } },
   });
 
   const out: NewOpportunityInput[] = [];
