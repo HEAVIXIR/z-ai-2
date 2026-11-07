@@ -23,6 +23,12 @@ export async function GET() {
       { status: 401 },
     );
   }
+  if (user.status !== 'ACTIVE') {
+    return NextResponse.json(
+      { ok: false, error: 'Account is not active' },
+      { status: 403 },
+    );
+  }
 
   // The navigation endpoint itself is privileged. A valid user session
   // is not an admin grant and must never activate a legacy bypass.
