@@ -559,7 +559,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 67 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
+    it('should have 68 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
       // STEP 15.95+ — Transactional Outbox: 6 service-scope logAudit calls
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
@@ -572,6 +572,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: services grew (+10) → 63.
       // PHASE-P8-TRANSACTION: +2 in routes → 65.
       // PHASE-P9-SERVICES-LOGISTICS: +2 route-scope → 67.
+      // STEP 16 inventory-safe procurement receiving: 4 legacy logAudit hooks
+      // replaced by 5 transactional outbox events → 68.
       const files = readAllStoreFiles();
       let count = 0;
       for (const { content } of files) {
@@ -579,10 +581,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
         count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      expect(count).toBe(67);
+      expect(count).toBe(68);
     });
 
-    it('counts 54 Store DB writes across routes + services, including transactions', () => {
+    it('counts 55 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -592,7 +594,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(54);
+      expect(count).toBe(55);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
