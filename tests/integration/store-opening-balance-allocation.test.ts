@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
 import { allocateOpeningBalance } from '@/lib/store-opening-balance-service';
+import { decrementOrderStock } from '@/lib/store-order-stock';
 
 const tag = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -97,6 +98,33 @@ describe('Explicit opening balance allocation (real PostgreSQL)', () => {
     expect(balance?.quantity).toBe(10);
     expect(movement?.quantity).toBe(10);
   }, 15000);
+
+  it('serializes checkout against opening allocation so the warehouse total can never diverge', async () => {
+    const allocation = allocateOpeningBalance({
+      partId, userId: actorId, reason: 'Concurrent opening allocation',
+      allocations: [{ warehouseId: warehouseA, quantity: 10 }],
+    });
+    const checkout = storeDb.$transaction((tx) =>
+      decrementOrderStock(tx, partId, 6, 'ORDER-OPENING-RACE', actorId),
+    );
+    const [allocationOutcome, checkoutOutcome] = await Promise.allSettled([allocation, checkout]);
+    expect(checkoutOutcome.status).toBe('fulfilled');
+
+    const [part, balances, movements] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findMany({ where: { partId } }),
+      storeDb.stockMovement.findMany({ where: { partId } }),
+    ]);
+    expect(part?.stock).toBe(4);
+    if (allocationOutcome.status === 'fulfilled') {
+      expect(balances.reduce((sum, balance) => sum + balance.quantity, 0)).toBe(4);
+      expect(balances).toHaveLength(1);
+    } else {
+      expect((allocationOutcome.reason as { status?: number }).status).toBe(409);
+      expect(balances).toHaveLength(0);
+    }
+    expect(movements.some((movement) => movement.type === 'SALE' && movement.quantity === -6)).toBe(true);
+  }, 20000);
 
   it('rejects a total mismatch without writing balances, movements or outbox events', async () => {
     await expect(allocateOpeningBalance({
