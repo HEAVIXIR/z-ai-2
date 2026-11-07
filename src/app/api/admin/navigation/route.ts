@@ -69,14 +69,17 @@ export async function GET() {
     orderBy: { sortOrder: 'asc' },
   });
 
-  const filterItems = <T extends { permissionKey: string | null }>(
+  const filterItems = <T extends { key: string; permissionKey: string | null }>(
     items: T[],
   ): T[] =>
-    items.filter(
-      (item) =>
-        item.permissionKey === null ||
-        userPermissions.has(item.permissionKey),
-    );
+    items.filter((item) => {
+      if (item.permissionKey) {
+        return userPermissions.has(item.permissionKey);
+      }
+      // Compatibility for an older persisted dashboard row that may not
+      // have been reseeded yet. All other permissionless items fail closed.
+      return item.key === 'dashboard' && userPermissions.has('admin.dashboard.read');
+    });
 
   const resultGroups = groups
     .map((group) => ({
