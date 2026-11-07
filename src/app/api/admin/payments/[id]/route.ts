@@ -79,7 +79,7 @@ export async function GET(_req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
@@ -152,8 +152,8 @@ export async function PATCH(req: Request, { params }: Args) {
           beforeJson: JSON.stringify({ trackingCode: existing.trackingCode }),
           afterJson: JSON.stringify({ trackingCode: payment.trackingCode }),
           reason: "trackingCode metadata update via admin API",
-          ip: _req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-          userAgent: _req.headers.get("user-agent"),
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: req.headers.get("user-agent"),
         },
       });
 
