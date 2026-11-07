@@ -1,0 +1,30 @@
+path,category,decision,reason,action
+prisma/migrations/0_init/migration.sql,prisma,REJECT,SQLite migration incompatible with PostgreSQL,no-action
+prisma/store-schema.prisma,prisma,REJECT,SQLite store schema incompatible with PostgreSQL,no-action
+scripts/start-dev.sh,scripts,REJECT,Hardcoded paths /home/z/my-project,no-action
+scripts/phase5a-audit.ts,scripts,ADAPT,Trust domain audit - needs model adaptation,rewrite-with-current-schema
+scripts/phase6a-audit.ts,scripts,ADAPT,Price audit - depends on obsolete PriceRecord,rewrite-with-PriceObservation
+scripts/phase7a-audit.ts,scripts,ADAPT,RFQ audit - needs model and API adaptation,rewrite-with-current-schema
+scripts/phase8a-audit.ts,scripts,ADAPT,Messaging audit - needs model adaptation,rewrite-with-current-schema
+scripts/phase9a-audit.ts,scripts,ADAPT,Transactions audit - old Deal/Order assumptions,rewrite-with-current-schema
+scripts/phase10a-audit.ts,scripts,ADAPT,Reviews audit - static claims need verification,rewrite-with-current-schema
+scripts/phase11a-audit.ts,scripts,ADAPT,Notifications audit - static claims need verification,rewrite-with-current-schema
+scripts/security-check.ts,scripts,ADAPT,Security audit - regex checks insufficient,rewrite-with-comprehensive-checks
+scripts/seed-articles.ts,scripts,ADAPT,Seed script - needs dual-schema adaptation,rewrite-with-data-protection
+scripts/seed-brands-300.ts,scripts,ADAPT,Seed script - needs dual-schema adaptation,rewrite-with-data-protection
+scripts/seed-essential.ts,scripts,ADAPT,Seed script - modifies site settings,rewrite-with-data-protection
+scripts/seed-kill-switch.ts,scripts,ADAPT,Seed script - modifies feature flags,rewrite-with-data-protection
+scripts/seed-plans.ts,scripts,ADAPT,Seed script - modifies subscription plans,rewrite-with-data-protection
+scripts/seed-store-comprehensive.ts,scripts,ADAPT,Seed script - modifies prices and inventory,rewrite-with-data-protection
+scripts/rebuild-taxonomy.ts,scripts,ADAPT,Taxonomy rebuild - deleteMany is dangerous,rewrite-with-safe-approach
+scripts/clear-logo.ts,scripts,REJECT,Modifies operational SiteSettings (logoUrl/footerLogoUrl) — not an image tool,no-action
+scripts/make-logos-dark.cjs,scripts,ADAPT,Logo dark variant generator,evaluate-when-assets-available
+scripts/orange-ix.cjs,scripts,ADAPT,Logo orange tint tool,evaluate-when-assets-available
+scripts/process-logos-v2.cjs,scripts,ADAPT,Logo processor v2,evaluate-when-assets-available
+scripts/process-logos.cjs,scripts,ADAPT,Logo processor v1,evaluate-when-assets-available
+src/components/compare/ComparePageClient.tsx,source,ADAPT,Compare UI - API contract mismatch,rewrite-with-current-api
+src/components/listings/PriceIntelligence.tsx,source,ADAPT,Price intelligence UI - field mismatch (sampleSize vs similarCount),rewrite-with-current-api
+src/lib/ai-gateway-service.ts,source,ADAPT,AI Gateway - bypasses policy/audit/auth,redesign-with-current-architecture
+src/lib/price-intelligence.ts,source,ADAPT,Price intelligence - uses obsolete PriceRecord,extract-algorithms-adapt-to-PriceObservation
+public/robots.txt,public,REJECT,Trivial robots.txt — should be created fresh in main if needed,no-action
+.zscripts/dev.pid,.zscripts,REJECT,Dev server PID file — runtime artifact, no value,no-action
