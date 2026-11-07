@@ -8,7 +8,7 @@
  * - After A commits (with price rejected), B can proceed
  * - B sees the updated state
  *
- * Also tests the payment handler via real executeAction path.
+ * Also tests that status-only refund actions are blocked and payment verification remains transactional.
  *
  * Run: bunx tsx tests/integration/readonly-when-concurrency-real.ts
  */
@@ -118,9 +118,9 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // TEST 2: Payment refund via real executeAction path
+  // TEST 2: Status-only refund is disabled until evidence exists
   // ═══════════════════════════════════════════════════════════
-  console.log('\n── 2. Payment refund via real executeAction ──');
+  console.log("\n── 2. Refund evidence gate via real executeAction ──");
 
   const payment = await db.payment.create({
     data: {
@@ -134,50 +134,27 @@ async function main() {
   });
 
   try {
-    // Execute refund via the REAL production path (executeAction)
     const result = await executeAction('payments', payment.id, 'refund', {
       userId: adminUser.id,
-      reason: 'Integration test',
+      reason: 'Integration test — refund evidence gate',
     });
 
-    console.log(`  success: ${result.success}`);
-    console.log(`  message: ${result.message}`);
+    assert(result.success === false, 'refund action is rejected');
+    assert(result.message === 'Action not defined', 'refund is not registered until evidence workflow exists');
 
-    assert(result.success === true, 'refund via executeAction succeeds');
+    const unchanged = await db.payment.findUnique({ where: { id: payment.id } });
+    assert(unchanged?.status === 'PAID', 'payment remains PAID; no status-only refund');
 
-    // Verify actual DB state
-    const finalPayment = await db.payment.findUnique({ where: { id: payment.id } });
-    assert(finalPayment?.status === 'REFUNDED', `payment status is REFUNDED in DB`);
-
-    // Verify audit was created by the REAL handler (not manually)
     const auditCount = await db.auditLog.count({
       where: { entityId: payment.id, action: 'payments.refund' },
     });
-    assert(auditCount === 1, `exactly 1 audit entry created by handler (got ${auditCount})`);
+    assert(auditCount === 0, 'no refund audit is written without verified money movement');
 
-    // ── Try duplicate refund ──
-    console.log('\n  -- Duplicate refund --');
-    const result2 = await executeAction('payments', payment.id, 'refund', {
+    const duplicate = await executeAction('payments', payment.id, 'refund', {
       userId: adminUser.id,
-      reason: 'Duplicate attempt',
+      reason: 'Duplicate blocked attempt',
     });
-
-    console.log(`  success: ${result2.success}`);
-    console.log(`  error: ${result2.error}`);
-
-    assert(result2.success === false, 'duplicate refund fails');
-    assert(result2.error === 'PRECONDITION_FAILED', `duplicate returns PRECONDITION_FAILED`);
-
-    // Verify status unchanged
-    const stillRefunded = await db.payment.findUnique({ where: { id: payment.id } });
-    assert(stillRefunded?.status === 'REFUNDED', 'status still REFUNDED (no double-mutation)');
-
-    // Verify only 1 success audit (not 2)
-    const auditAfterDup = await db.auditLog.count({
-      where: { entityId: payment.id, action: 'payments.refund' },
-    });
-    assert(auditAfterDup === 1, `still exactly 1 success audit (got ${auditAfterDup})`);
-
+    assert(duplicate.success === false && duplicate.message === 'Action not defined', 'repeat refund attempt remains blocked');
   } finally {
     await db.auditLog.deleteMany({ where: { entityId: payment.id } }).catch(() => {});
     await db.payment.delete({ where: { id: payment.id } }).catch(() => {});
@@ -233,9 +210,9 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // TEST 4: Concurrent refund via real executeAction
+  // TEST 4: Concurrent refund attempts remain blocked
   // ═══════════════════════════════════════════════════════════
-  console.log('\n── 4. Concurrent refund via real executeAction ──');
+  console.log('\n── 4. Concurrent refund attempts are fail-closed ──');
 
   const payment3 = await db.payment.create({
     data: {
@@ -249,29 +226,20 @@ async function main() {
   });
 
   try {
-    // Two concurrent executeAction calls
     const [r1, r2] = await Promise.all([
-      executeAction('payments', payment3.id, 'refund', { userId: adminUser.id, reason: 'Concurrent 1' }),
-      executeAction('payments', payment3.id, 'refund', { userId: adminUser.id, reason: 'Concurrent 2' }),
+      executeAction('payments', payment3.id, 'refund', { userId: adminUser.id, reason: 'Concurrent blocked 1' }),
+      executeAction('payments', payment3.id, 'refund', { userId: adminUser.id, reason: 'Concurrent blocked 2' }),
     ]);
 
-    console.log(`  Result 1: success=${r1.success}, error=${r1.error || 'none'}`);
-    console.log(`  Result 2: success=${r2.success}, error=${r2.error || 'none'}`);
-
-    // Exactly one should succeed
-    const successes = (r1.success ? 1 : 0) + (r2.success ? 1 : 0);
-    assert(successes === 1, `exactly 1 concurrent refund succeeds (got ${successes})`);
-
-    // Final status
+    assert(!r1.success && !r2.success, 'both concurrent refund attempts are rejected');
+    assert(r1.message === 'Action not defined' && r2.message === 'Action not defined', 'both are rejected before transaction');
     const finalPayment = await db.payment.findUnique({ where: { id: payment3.id } });
-    assert(finalPayment?.status === 'REFUNDED', 'final status is REFUNDED');
+    assert(finalPayment?.status === 'PAID', 'concurrent attempts do not change payment status');
 
-    // Audit: exactly 1 success audit (from the winning request)
-    const successAudits = await db.auditLog.count({
+    const refundAudits = await db.auditLog.count({
       where: { entityId: payment3.id, action: 'payments.refund' },
     });
-    assert(successAudits === 1, `exactly 1 success audit (got ${successAudits})`);
-
+    assert(refundAudits === 0, 'no refund audit exists for blocked attempts');
   } finally {
     await db.auditLog.deleteMany({ where: { entityId: payment3.id } }).catch(() => {});
     await db.payment.delete({ where: { id: payment3.id } }).catch(() => {});
