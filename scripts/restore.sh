@@ -1,105 +1,156 @@
 #!/usr/bin/env bash
-# HEAVIX — Restore databases from a backup directory
-# Usage: bash scripts/restore.sh ./backups/20251010_143000
+# HEAVIX — Restore paired Main + Store PostgreSQL backups.
+# Usage: bash scripts/restore.sh ./backups/<timestamp>
 #
-# WARNING: This will DROP and recreate the databases.
-# Do NOT run on production without explicit authorization.
+# Destructive operation. Defaults to local/non-production targets only.
+# Remote and Production restores require separate explicit opt-in gates.
 
 set -euo pipefail
+umask 077
 
 if [ $# -lt 1 ]; then
   echo "Usage: bash scripts/restore.sh <backup-dir>"
-  echo "Example: bash scripts/restore.sh ./backups/20251010_143000"
   exit 1
+fi
+
+# Load local operator configuration before reading or displaying DB settings.
+# Exported environment variables take precedence over values from .env.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 fi
 
 BACKUP_DIR="$1"
-
 if [ ! -d "$BACKUP_DIR" ]; then
-  echo "ERROR: Backup directory not found: $BACKUP_DIR"
+  echo "ERROR: Backup directory not found."
   exit 1
 fi
-
-if [ ! -f "$BACKUP_DIR/main.sql" ] || [ ! -f "$BACKUP_DIR/store.sql" ]; then
-  echo "ERROR: Backup files not found in $BACKUP_DIR"
-  echo "Expected: main.sql, store.sql"
-  exit 1
-fi
-
-echo "→ Restoring from $BACKUP_DIR"
-echo ""
-echo "⚠️  WARNING: This will DROP and recreate both databases!"
-echo "    Main DB:  $DB_NAME"
-echo "    Store DB: $STORE_DB_NAME"
-echo ""
-
-# STEP 11.50 FIX: require explicit confirmation before destructive operation
-read -p "Type 'CONFIRM' to proceed with database restore: " CONFIRMATION
-if [ "$CONFIRMATION" != "CONFIRM" ]; then
-  echo "Aborted. Database restore cancelled."
-  exit 0
-fi
-echo ""
-
-# Load env
-if [ -f .env ]; then
-  source .env
-fi
+for file in main.sql store.sql checksums.txt; do
+  if [ ! -s "$BACKUP_DIR/$file" ]; then
+    echo "ERROR: Required backup file is missing or empty: $file"
+    exit 1
+  fi
+done
 
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 DB_USER="${DB_USER:-heavix}"
 DB_NAME="${DB_NAME:-heavix}"
-DB_PASSWORD="${DB_PASSWORD:-heavix}"
-
+DB_PASSWORD="${DB_PASSWORD:-}"
 STORE_DB_HOST="${STORE_DB_HOST:-localhost}"
 STORE_DB_PORT="${STORE_DB_PORT:-5433}"
 STORE_DB_USER="${STORE_DB_USER:-heavix}"
 STORE_DB_NAME="${STORE_DB_NAME:-heavix_store}"
-STORE_DB_PASSWORD="${STORE_DB_PASSWORD:-heavix}"
+STORE_DB_PASSWORD="${STORE_DB_PASSWORD:-}"
+MAIN_DB_CONTAINER="${MAIN_DB_CONTAINER:-heavix-db-1}"
+STORE_DB_CONTAINER="${STORE_DB_CONTAINER:-heavix-store-db-1}"
 
-# Verify checksums
-echo "  Verifying checksums..."
-cd "$BACKUP_DIR"
-if [ -f checksums.txt ]; then
-  sha256sum -c checksums.txt || {
-    echo "ERROR: Checksum verification failed!"
+# Keep SQL identifiers constrained; host/user/password values are never interpolated into SQL.
+for name in "$DB_NAME" "$STORE_DB_NAME"; do
+  if [[ ! "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "ERROR: Unsafe database identifier; use letters, digits, and underscores only."
     exit 1
-  }
-fi
-cd - > /dev/null
+  fi
+done
 
-# Check if running in Docker
-if docker ps --format '{{.Names}}' | grep -q "heavix-db"; then
-  echo "  (Docker mode — using docker exec)"
-  
-  echo "  Restoring main database..."
-  docker exec heavix-db-1 psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$DB_NAME\";"
-  docker exec heavix-db-1 psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$DB_NAME\";"
-  docker exec -i heavix-db-1 psql -U "$DB_USER" -d "$DB_NAME" < "$BACKUP_DIR/main.sql"
-  
-  echo "  Restoring store database..."
-  docker exec heavix-store-db-1 psql -U "$STORE_DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$STORE_DB_NAME\";"
-  docker exec heavix-store-db-1 psql -U "$STORE_DB_USER" -d postgres -c "CREATE DATABASE \"$STORE_DB_NAME\";"
-  docker exec -i heavix-store-db-1 psql -U "$STORE_DB_USER" -d "$STORE_DB_NAME" < "$BACKUP_DIR/store.sql"
+DOCKER_MODE=0
+if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "heavix-db"; then
+  DOCKER_MODE=1
+fi
+
+is_local_host() {
+  case "$1" in
+    localhost|127.0.0.1|::1|db|store-db) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+IS_PRODUCTION=0
+if [[ "${HEAVIX_ENV:-}" == "production" || "${NODE_ENV:-}" == "production" || "${HEAVIX_RESTORE_TARGET:-}" == "PRODUCTION" ]]; then
+  IS_PRODUCTION=1
+fi
+
+if [ "$IS_PRODUCTION" -eq 1 ] && [ "${HEAVIX_ALLOW_PRODUCTION_RESTORE:-}" != "I_UNDERSTAND_PRODUCTION_DATA_LOSS" ]; then
+  echo "BLOCKED: Production restore requires HEAVIX_ALLOW_PRODUCTION_RESTORE=I_UNDERSTAND_PRODUCTION_DATA_LOSS."
+  exit 1
+fi
+
+if [ "$DOCKER_MODE" -eq 0 ] && { ! is_local_host "$DB_HOST" || ! is_local_host "$STORE_DB_HOST"; }; then
+  if [ "${HEAVIX_ALLOW_REMOTE_RESTORE:-}" != "1" ] || [ "${HEAVIX_RESTORE_TARGET:-}" != "NON_PRODUCTION" ]; then
+    echo "BLOCKED: remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1 and HEAVIX_RESTORE_TARGET=NON_PRODUCTION."
+    exit 1
+  fi
+fi
+
+# Verify the complete paired backup before asking for destructive confirmation.
+(
+  cd "$BACKUP_DIR"
+  sha256sum --strict -c checksums.txt
+)
+
+EXPECTED_CONFIRMATION="RESTORE $DB_HOST/$DB_NAME AND $STORE_DB_HOST/$STORE_DB_NAME"
+if [ "$DOCKER_MODE" -eq 1 ]; then
+  EXPECTED_CONFIRMATION="RESTORE docker:$MAIN_DB_CONTAINER/$DB_NAME AND docker:$STORE_DB_CONTAINER/$STORE_DB_NAME"
+fi
+
+echo "Restore target:"
+if [ "$DOCKER_MODE" -eq 1 ]; then
+  echo "  Main:  Docker container $MAIN_DB_CONTAINER / database $DB_NAME"
+  echo "  Store: Docker container $STORE_DB_CONTAINER / database $STORE_DB_NAME"
 else
-  echo "  (Local mode — using psql)"
-  
-  echo "  Restoring main database..."
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$DB_NAME\";"
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$DB_NAME\";"
-  PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" < "$BACKUP_DIR/main.sql"
-  
-  echo "  Restoring store database..."
-  PGPASSWORD="$STORE_DB_PASSWORD" psql -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$STORE_DB_NAME\";"
-  PGPASSWORD="$STORE_DB_PASSWORD" psql -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d postgres -c "CREATE DATABASE \"$STORE_DB_NAME\";"
-  PGPASSWORD="$STORE_DB_PASSWORD" psql -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d "$STORE_DB_NAME" < "$BACKUP_DIR/store.sql"
+  echo "  Main:  $DB_HOST:$DB_PORT / database $DB_NAME"
+  echo "  Store: $STORE_DB_HOST:$STORE_DB_PORT / database $STORE_DB_NAME"
+fi
+echo "Backup: $BACKUP_DIR"
+echo "WARNING: Both target databases will be dropped and recreated."
+read -r -p "Type exactly '$EXPECTED_CONFIRMATION' to proceed: " CONFIRMATION
+if [ "$CONFIRMATION" != "$EXPECTED_CONFIRMATION" ]; then
+  echo "Aborted. Database restore cancelled."
+  exit 1
 fi
 
-echo "✓ Restore complete from $BACKUP_DIR"
-echo ""
-echo "Next steps:"
-echo "  1. Run Prisma migrations: bunx prisma db push --schema=prisma/schema.prisma"
-echo "  2. Run Prisma store migrations: bunx prisma db push --schema=prisma/store/schema.prisma"
-echo "  3. Seed RBAC: bun run db:seed-rbac"
-echo "  4. Start the application: bun run dev"
+if [ "$DOCKER_MODE" -eq 1 ]; then
+  docker inspect "$MAIN_DB_CONTAINER" >/dev/null
+  docker inspect "$STORE_DB_CONTAINER" >/dev/null
+
+  docker exec "$MAIN_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE);"
+  docker exec "$MAIN_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d postgres \
+    -c "CREATE DATABASE \"$DB_NAME\";"
+  docker exec -i "$MAIN_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
+    < "$BACKUP_DIR/main.sql"
+
+  docker exec "$STORE_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STORE_DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"$STORE_DB_NAME\" WITH (FORCE);"
+  docker exec "$STORE_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STORE_DB_USER" -d postgres \
+    -c "CREATE DATABASE \"$STORE_DB_NAME\";"
+  docker exec -i "$STORE_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$STORE_DB_USER" -d "$STORE_DB_NAME" \
+    < "$BACKUP_DIR/store.sql"
+else
+  : "${DB_PASSWORD:?DB_PASSWORD is required for non-Docker restore}"
+  : "${STORE_DB_PASSWORD:?STORE_DB_PASSWORD is required for non-Docker restore}"
+
+  PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE);"
+  PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+    -c "CREATE DATABASE \"$DB_NAME\";"
+  PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+    < "$BACKUP_DIR/main.sql"
+
+  PGPASSWORD="$STORE_DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS \"$STORE_DB_NAME\" WITH (FORCE);"
+  PGPASSWORD="$STORE_DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d postgres \
+    -c "CREATE DATABASE \"$STORE_DB_NAME\";"
+  PGPASSWORD="$STORE_DB_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" -d "$STORE_DB_NAME" \
+    < "$BACKUP_DIR/store.sql"
+fi
+
+echo "Restore complete from $BACKUP_DIR"
+echo "Next steps (review before executing):"
+echo "  1. Verify both restored database identities and critical row counts."
+echo "  2. Run: bunx prisma migrate status --schema=prisma/schema.prisma"
+echo "  3. Run: bunx prisma migrate status --schema=prisma/store/schema.prisma"
+echo "  4. Apply only reviewed pending migrations with prisma migrate deploy."
+echo "  5. Run application smoke tests before allowing traffic."
