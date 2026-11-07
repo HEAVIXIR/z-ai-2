@@ -2,13 +2,13 @@
  * HEAVIX — PHASE STORE-2C: Store Control Plane Contract Tests
  *
  * Evidence-anchored on the STORE-1A/2A/2B inventory:
- *   51 admin store routes (route.ts files after health filter)
- *   4 service files         (T-A-DEEP-STORE: inventory + returns + shipments
+ *   52 admin store routes (route.ts files after health filter)
+ *   5 service files         (T-A-DEEP-STORE: inventory + returns + shipments
  *     + PHASE1-PROCUREMENT-SHIPPING-DEEP: procurement)
- *   93 requirePermission calls across store routes
+ *   96 requirePermission calls across store routes
  *   57 storeDb mutation calls across routes + services
- *   70 audit calls (logAudit + enqueueAuditOutbox)
- *   51 unique action keys (31 original +
+ *   72 audit calls (logAudit + enqueueAuditOutbox)
+ *   52 unique action keys (31 original +
  *     9 new in T1+T2-DEEP: warehouse.create/update/delete,
  *     inventory.balance.update, inventory.reserve, inventory.release,
  *     inventory.restock, return.item.add, return.inspect, return.resolve
