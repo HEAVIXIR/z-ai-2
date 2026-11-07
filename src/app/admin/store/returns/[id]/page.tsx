@@ -37,7 +37,7 @@ export default async function StoreReturnDetailPage({
     canReadInventory = false;
   }
 
-  const [record, warehouses] = await Promise.all([
+  const [record, warehouses, walletTransactions, returnMovements] = await Promise.all([
     storeDb.return.findUnique({
       where: { id },
       include: {
@@ -74,6 +74,19 @@ export default async function StoreReturnDetailPage({
           select: { id: true, name: true, code: true },
         })
       : Promise.resolve([]),
+    storeDb.walletTransaction.findMany({
+      where: { description: { contains: id } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, amount: true, type: true, description: true, createdAt: true },
+    }),
+    storeDb.stockMovement.findMany({
+      where: { reference: id, type: "RETURN" },
+      orderBy: { createdAt: "desc" },
+      include: {
+        part: { select: { name: true, nameFa: true, sku: true } },
+        warehouse: { select: { name: true, code: true } },
+      },
+    }),
   ]);
 
   if (!record) notFound();
@@ -89,6 +102,8 @@ export default async function StoreReturnDetailPage({
       <ReturnLifecycleClient
         initialReturn={initialReturn as any}
         warehouses={warehouses}
+        walletTransactions={walletTransactions.map((txn) => ({ ...txn, createdAt: txn.createdAt.toISOString() }))}
+        returnMovements={returnMovements.map((movement) => ({ ...movement, createdAt: movement.createdAt.toISOString() }))}
         canManage={canManage}
       />
     </div>
