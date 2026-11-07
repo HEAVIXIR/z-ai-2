@@ -6,6 +6,20 @@ const ADMIN_API_PREFIX = "/api/admin";
 const PUBLIC_UPLOADS_PREFIX = "/uploads/";
 
 function isPrivateMediaSidecar(pathname: string): boolean {
+  // Resolve the first path segment independently. This recognizes encoded
+  // /uploads prefixes even when a later segment contains malformed encoding.
+  let firstSegment = pathname.split("/")[1]?.toLowerCase() ?? "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const decoded = decodeURIComponent(firstSegment);
+      if (decoded === firstSegment) break;
+      firstSegment = decoded;
+    } catch {
+      return false;
+    }
+  }
+  if (firstSegment !== "uploads") return false;
+
   let normalized = pathname.toLowerCase();
   // Decode repeatedly so nested percent-encoding cannot hide the sidecar suffix.
   // The bound prevents pathological input from causing unbounded work.
@@ -15,11 +29,11 @@ function isPrivateMediaSidecar(pathname: string): boolean {
       if (decoded === normalized) break;
       normalized = decoded;
     } catch {
-      // Malformed encoded paths under uploads fail closed.
-      return normalized.startsWith(PUBLIC_UPLOADS_PREFIX);
+      // Once the uploads prefix is established, malformed paths fail closed.
+      return true;
     }
   }
-  if (!normalized.startsWith(PUBLIC_UPLOADS_PREFIX)) return false;
+  if (!normalized.startsWith(PUBLIC_UPLOADS_PREFIX)) return true;
   // Fail closed when excessive encoding remains after the bounded decode loop.
   if (/%[0-9a-f]{2}/i.test(normalized)) return true;
   return normalized.endsWith(".meta.json");
