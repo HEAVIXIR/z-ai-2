@@ -57,6 +57,7 @@ describe("Cloudflare Preview canonical origin", () => {
   });
 
   it("does not recognize Vercel hostnames as HEAVIX Preview infrastructure", async () => {
+    process.env.HEAVIX_ENV = "production";
     const { isPreviewDeployment } = await import("@/lib/site-config");
     expect(isPreviewDeployment("heavix-pr-123.vercel.app")).toBe(false);
     expect(isPreviewDeployment("heavix-preview.heavixir.workers.dev")).toBe(true);
