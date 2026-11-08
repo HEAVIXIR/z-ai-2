@@ -88,6 +88,11 @@ export default async function InventoryTransfersPage() {
         </div>
       ) : (
         <>
+          {parts.length === 1000 && (
+            <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-900">
+              برای حفظ سرعت صفحه، این فهرست حداکثر ۱۰۰۰ قطعهٔ فعال را بارگذاری کرده است. جست‌وجو فقط در همین مجموعه انجام می‌شود؛ اگر قطعهٔ موردنظر را نمی‌بینید، فهرست کامل هنوز در این صفحه قابل جست‌وجو نیست.
+            </div>
+          )}
           <WarehouseTransferForm parts={parts} warehouses={warehouses} />
           <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs leading-6 text-zinc-600">
             <strong className="text-zinc-900">قواعد انتقال:</strong>
