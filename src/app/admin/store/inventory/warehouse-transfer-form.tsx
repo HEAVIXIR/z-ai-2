@@ -228,7 +228,7 @@ export default function WarehouseTransferForm({
           برای انتقال، حداقل یک قطعه و دو انبار فعال لازم است.
         </div>
       ) : (
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4" aria-busy={searching || loadingMore}>
           <div className="grid gap-3 lg:grid-cols-2">
             <label className="space-y-1.5 text-xs font-bold text-zinc-700">
               جستجوی قطعه در کل فهرست فعال
