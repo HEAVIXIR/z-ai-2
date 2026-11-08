@@ -25,7 +25,7 @@ import {
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
 import { logAudit } from "@/lib/audit";
-import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL, SITE_NAME, isPreviewDeployment } from "@/lib/site-config";
 
 /* STEP 13.00: SITE_BASE_URL / SITE_NAME now imported from the single
    source of truth (@/lib/site-config). The previous local fallback
@@ -325,7 +325,8 @@ export async function generateSitemap(): Promise<string> {
  * returns the plain-text body so any HTTP route (the Wave 3B
  * /api/robots-txt or any other future consumer) can serve it.
  */
-export function getRobotsTxt(): string {
+export function getRobotsTxt(hostname?: string): string {
+  const preview = IS_PREVIEW_DEPLOYMENT || isPreviewDeployment(hostname);
   const lines = [
     "User-agent: *",
     "Allow: /",
@@ -335,14 +336,15 @@ export function getRobotsTxt(): string {
     "Disallow: /seller/",
     "Disallow: /login",
     "Disallow: /register",
-    "",
-    `Host: ${SITE_BASE_URL}`,
   ];
-  if (!IS_PREVIEW_DEPLOYMENT) {
-    lines.push(`Sitemap: ${absoluteUrl("/sitemap.xml")}`);
+
+  // Preview must remain crawlable for X-Robots-Tag to be observed, while
+  // withholding the production canonical host and sitemap directives.
+  if (!preview) {
+    lines.push("", `Host: ${SITE_BASE_URL}`, `Sitemap: ${absoluteUrl("/sitemap.xml")}`);
   }
-  lines.push("");
-  return lines.join("\n");
+
+  return lines.join("\n") + "\n";
 }
 
 /* ── helpers ──────────────────────────────────────────────── */
