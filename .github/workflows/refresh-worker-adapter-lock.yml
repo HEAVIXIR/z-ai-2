@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - infra/cloudflare-opennext-build-recovery
+      - security/active-session-hardening-2026-11-08
 
 permissions:
   contents: write
