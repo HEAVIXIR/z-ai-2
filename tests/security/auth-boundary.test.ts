@@ -65,6 +65,7 @@ const inScopeRoutes = allAdminRoutes.filter((p) => !isOutOfScope(p));
 describe("Auth boundary — Next.js Proxy", () => {
   it("src/proxy.ts exists", () => {
     expect(fs.existsSync(PROXY_PATH)).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, "src", "middleware.ts"))).toBe(false);
   });
 
   it("exports the Next.js Proxy entry point", () => {
@@ -95,7 +96,7 @@ describe("Auth boundary — Next.js Proxy", () => {
 
   it("proxy reads the heavix-user cookie (canonical session path)", () => {
     // R45-16: legacy `heavix-admin` cookie path REMOVED.
-    // Middleware must read the canonical `heavix-user` cookie
+    // Proxy must read the canonical `heavix-user` cookie
     // (USER_COOKIE in src/lib/auth.ts). Any reference to
     // `heavix-admin` here would indicate a regression.
     const proxySource = read(PROXY_PATH);
