@@ -119,11 +119,15 @@ test.describe("HEAVIX public browser smoke", () => {
     expect(Array.isArray(brands.brands)).toBe(true);
   });
 
-  test("anonymous users cannot read or mutate protected admin APIs", async ({ request }) => {
+  test("anonymous users cannot read or mutate protected admin inventory APIs", async ({ request }) => {
     const protectedRequests = [
       { method: "GET", path: "/api/admin/users" },
       { method: "GET", path: "/api/admin/store/inventory" },
       { method: "POST", path: "/api/admin/store/inventory" },
+      { method: "GET", path: "/api/admin/store/inventory/low-stock" },
+      { method: "GET", path: "/api/admin/store/inventory/__anonymous_probe__" },
+      { method: "POST", path: "/api/admin/store/inventory/reserve" },
+      { method: "POST", path: "/api/admin/store/inventory/release" },
     ] as const;
 
     for (const { method, path } of protectedRequests) {
