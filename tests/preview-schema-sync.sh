@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP_SCHEMA="$(mktemp)"
-trap 'rm -f "$TMP_SCHEMA"' EXIT
+TMP_MAIN_SCHEMA="$(mktemp)"
+trap 'rm -f "$TMP_SCHEMA" "$TMP_MAIN_SCHEMA"' EXIT
 
 # The Preview schema is an exact mirror of Main except for its datasource
 # provider/URL and a separate generated-client output path. Fail CI on drift.
@@ -15,5 +16,14 @@ sed \
   -e 's/url      = env("PREVIEW_DATABASE_URL")/url      = env("DATABASE_URL")/' \
   "$ROOT/prisma/preview-schema.prisma" > "$TMP_SCHEMA"
 
-diff -u "$ROOT/prisma/schema.prisma" "$TMP_SCHEMA"
-echo "Preview schema matches Main schema (only datasource/client-output differences)."
+# The Workerd-only generator is intentionally absent from the SQLite Preview
+# schema: it targets the PostgreSQL Prisma Postgres Worker runtime, not SQLite.
+# Compare the shared data model after removing only that dedicated generator.
+awk '
+  /^generator workerClient \{/ { skip = 1; next }
+  skip && /^}/ { skip = 0; next }
+  !skip { print }
+' "$ROOT/prisma/schema.prisma" > "$TMP_MAIN_SCHEMA"
+
+diff -u "$TMP_MAIN_SCHEMA" "$TMP_SCHEMA"
+echo "Preview schema matches Main data model (only datasource/client-output and Worker-generator differences)."
