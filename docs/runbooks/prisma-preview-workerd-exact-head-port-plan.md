@@ -13,9 +13,17 @@ This document is a plan, not evidence of a passing database proof. No dependenci
 
 ## Current compatibility boundary
 
-The current branch's `package.json` uses Prisma and `@prisma/client` `^6.11.1`; it does not define `test:workerd` or `typecheck:worker`. The historical harness commit `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994` defines those scripts and pins Prisma/`@prisma/client` `6.19.3`, while also carrying `@prisma/adapter-ppg` `7.10.1` and `@prisma/ppg` `1.0.1`. The historical worker imports `src/lib/prisma-worker-clients`, a module absent from current HEAD.
+The current branch's `package.json` declares Prisma and `@prisma/client` `^6.11.1`; the committed `bun.lock` resolves both to `6.19.3`. The current lockfile does not contain `@prisma/adapter-ppg` or `@prisma/ppg`, and the current package scripts do not define `test:workerd` or `typecheck:worker`. The historical harness commit `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994` uses the same resolved Prisma/Client `6.19.3` core versions, but also carries `@prisma/adapter-ppg` `7.10.1` and `@prisma/ppg` `1.0.1`. Its worker imports `src/lib/prisma-worker-clients`, a module absent from current HEAD. The core Prisma version is therefore not itself the observed incompatibility; the missing adapter/runtime integration, worker-client module, and proof scripts are the concrete porting gaps.
 
-Do not transplant the historical package manifest, lockfile, adapter stack, or worker source as a unit. The historical dependency set is not a compatible drop-in for the current branch. First establish a supported adapter/client combination for the exact Prisma version and Cloudflare Workerd runtime used by this branch.
+Do not transplant the historical package manifest, lockfile, adapter stack, or worker source as a unit. Although the resolved Prisma core versions match, the historical adapter packages and worker integration are absent from current HEAD. First establish a supported adapter/client combination for the exact Prisma version and Cloudflare Workerd runtime used by this branch.
+
+## Follow-up audit on exact HEAD `b6971fec14bb1ec95e212e2c258f1f031ee8488e`
+
+- The committed lockfile resolves both `prisma` and `@prisma/client` to `6.19.3`; this corrects the earlier assumption that the resolved client was still at `6.11.x` based only on the manifest range.
+- The current lockfile contains no `@prisma/adapter-ppg` or `@prisma/ppg` entries. The package manifest and scripts still lack the Prisma Workerd harness.
+- `.github/workflows/prisma-preview-workerd-proof.yml` remains a manual workflow that checks out fixed historical commit `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994`. Its contract test explicitly asserts that pin. It has not been dispatched, and it is not exact-HEAD evidence.
+- The separate `.github/workflows/open-next-middleware-workerd.yml` did run on `b6971fec14bb1ec95e212e2c258f1f031ee8488e` and passed. This is local OpenNext Edge Middleware Workerd proof only; it does not execute the Prisma App/Store database harness.
+- The CI workflow also passed on this exact commit, including disposable local PostgreSQL integration and paired backup/restore checks. Those checks do not attest to Preview DB roles, Preview DB destinations, Cloudflare secret destinations, or B2 object storage.
 
 ## Required implementation sequence
 
