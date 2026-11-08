@@ -320,8 +320,8 @@ export async function generateSitemap(): Promise<string> {
  * returns the plain-text body so any HTTP route (the Wave 3B
  * /api/robots-txt or any other future consumer) can serve it.
  */
-export function getRobotsTxt(): string {
-  const preview = isPreviewDeployment();
+export function getRobotsTxt(hostname?: string): string {
+  const preview = isPreviewDeployment(hostname);
   const lines = [
     "User-agent: *",
     "Allow: /",
