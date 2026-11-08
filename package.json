@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:open-next-proxy-workerd": "bun scripts/test-open-next-proxy-workerd.mjs",
     "test:security": "vitest run --config vitest.security.config.ts",
     "db:validate": "prisma validate",
     "db:push": "prisma db push --accept-data-loss --schema=prisma/schema.prisma",
