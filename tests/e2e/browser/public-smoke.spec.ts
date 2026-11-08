@@ -54,7 +54,7 @@ test.describe("HEAVIX public browser smoke", () => {
     await rentalLink.focus();
     await expect(rentalLink).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/rentals\/?$/);
+    await expect(page).toHaveURL(/\\/rentals\\/?$/);
   });
 
   test("mobile menu opens from the keyboard", async ({ page }, testInfo) => {
@@ -72,7 +72,6 @@ test.describe("HEAVIX public browser smoke", () => {
       page.getByTestId("mobile-navigation-drawer").getByRole("navigation"),
     ).toBeVisible();
   });
-
 
   test("login and registration fields expose accessible names without submitting data", async ({ page }, testInfo) => {
     test.skip(
@@ -92,7 +91,6 @@ test.describe("HEAVIX public browser smoke", () => {
     await expect(page.getByLabel("رمز عبور", { exact: true })).toHaveAttribute("type", "password");
     await expect(page.getByLabel("نام شرکت", { exact: true })).toBeVisible();
   });
-
 
   test("anonymous Store catalog APIs provide read-only search and filter envelopes", async ({ request }, testInfo) => {
     test.skip(
@@ -121,8 +119,19 @@ test.describe("HEAVIX public browser smoke", () => {
     expect(Array.isArray(brands.brands)).toBe(true);
   });
 
-  test("anonymous users cannot access the admin API", async ({ request }) => {
-    const response = await request.get("/api/admin/users");
-    expect(response.status()).toBe(401);
+  test("anonymous users cannot read or mutate protected admin APIs", async ({ request }) => {
+    const protectedRequests = [
+      { method: "GET", path: "/api/admin/users" },
+      { method: "GET", path: "/api/admin/store/inventory" },
+      { method: "POST", path: "/api/admin/store/inventory" },
+    ] as const;
+
+    for (const { method, path } of protectedRequests) {
+      const response = await request.fetch(path, { method });
+      expect(
+        response.status(),
+        `Anonymous ${method} ${path} must be rejected before data access or mutation`,
+      ).toBe(401);
+    }
   });
 });
