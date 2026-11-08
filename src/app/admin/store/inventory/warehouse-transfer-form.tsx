@@ -223,7 +223,7 @@ export default function WarehouseTransferForm({
         </span>
       </div>
 
-      {parts.length === 0 && warehouses.length < 2 ? (
+      {parts.length === 0 || warehouses.length < 2 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           برای انتقال، حداقل یک قطعه و دو انبار فعال لازم است.
         </div>
