@@ -7,7 +7,6 @@ describe("Preview crawler middleware", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.HEAVIX_ENV;
-    delete process.env.VERCEL_ENV;
   });
 
   afterEach(() => {
@@ -26,7 +25,7 @@ describe("Preview crawler middleware", () => {
   it("adds noindex to provider Preview hosts without an environment binding", async () => {
     const { middleware } = await import("@/middleware");
     const response = middleware(
-      new NextRequest("https://heavix-preview.vercel.app/categories"),
+      new NextRequest("https://heavix-preview.heavixir.workers.dev/categories"),
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
   });
