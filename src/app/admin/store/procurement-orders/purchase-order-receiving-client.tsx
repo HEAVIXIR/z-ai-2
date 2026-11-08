@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Warehouse = { id: string; name: string; code: string };
 type POItem = {
@@ -156,7 +157,7 @@ function ReceiveLine({
         {remaining > 0 && canReceive ? (
           <>
             {availableWarehouses.length === 0 ? (
-              <p className="text-xs text-amber-700">برای این قطعه در انبار فعال ردیف موجودی وجود ندارد؛ ابتدا تخصیص اولیه صریح لازم است.</p>
+              <div className="space-y-1"><p className="text-xs text-amber-700">برای این قطعه در انبار فعال ردیف موجودی وجود ندارد؛ ابتدا تخصیص اولیه صریح لازم است.</p><Link href="/admin/store/inventory/reconciliation" className="inline-block text-xs font-bold text-amber-900 underline">رفتن به گزارش مغایرت‌گیری و تخصیص اولیه</Link></div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
                 <select value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} disabled={busy} className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-xs">
