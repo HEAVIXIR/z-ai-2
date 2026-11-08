@@ -31,3 +31,24 @@ describe("Preview-safe canonical URL resolution", () => {
     expect(sitemap).toContain('{ url: "/categories"');
   });
 });
+
+describe("Preview database-unavailable public route safeguards", () => {
+  it("keeps listing, rental and brand pages readable while Preview DB URL is unconfigured", () => {
+    for (const file of [
+      "src/app/listings/page.tsx",
+      "src/app/rentals/page.tsx",
+      "src/app/brands/page.tsx",
+    ]) {
+      const source = read(file);
+      expect(source).toContain('process.env.VERCEL_ENV === "preview"');
+      expect(source).toContain("PreviewDataUnavailable");
+      expect(source).toContain("process.env.DATABASE_URL");
+    }
+  });
+
+  it("returns an explicit 503 contract for listing API when Preview DB URL is not PostgreSQL", () => {
+    const source = read("src/app/api/listings/route.ts");
+    expect(source).toContain('"PREVIEW_DATABASE_UNAVAILABLE"');
+    expect(source).toContain("{ status: 503 }");
+  });
+});

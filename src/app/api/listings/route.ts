@@ -49,6 +49,20 @@ export const dynamic = "force-dynamic";
 */
 export async function GET(req: Request) {
   try {
+    if (
+      process.env.VERCEL_ENV === "preview" &&
+      !/^postgres(?:ql)?:\\/\\//i.test(process.env.DATABASE_URL ?? "")
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PREVIEW_DATABASE_UNAVAILABLE",
+          error: "اتصال دیتابیس محیط پیش‌نمایش هنوز تکمیل نشده است",
+        },
+        { status: 503 },
+      );
+    }
+
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
     const page = Math.max(1, Number(url.searchParams.get("page")) || 1);

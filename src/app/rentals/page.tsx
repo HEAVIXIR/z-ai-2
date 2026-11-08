@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import PreviewDataUnavailable from "@/components/preview/PreviewDataUnavailable";
 
 export const metadata: Metadata = {
   title: "اجاره ماشین‌آلات سنگین — اجاره بیل، لودر، جرثقیل",
@@ -62,6 +63,20 @@ export default async function RentalsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+
+  if (
+    process.env.VERCEL_ENV === "preview" &&
+    !/^postgres(?:ql)?:\\/\\//i.test(process.env.DATABASE_URL ?? "")
+  ) {
+    return (
+      <PreviewDataUnavailable
+        title="آگهی‌های اجاره فعلاً در دسترس نیستند"
+        description="اتصال دیتابیس محیط پیش‌نمایش هنوز تکمیل نشده است. صفحه و مسیرهای اصلی سایت در حال بررسی هستند و داده‌های این بخش پس از تنظیم اتصال امن Preview نمایش داده می‌شوند."
+        retryHref="/rentals"
+      />
+    );
+  }
+
 
   const [headerCats, provinces, categories, listings] = await Promise.all([
     db.category.findMany({
