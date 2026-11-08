@@ -6,7 +6,6 @@ const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice
 
 describe('Store warehouse lifecycle and transactional audit outbox (real PostgreSQL)', () => {
   let warehouseId: string | undefined;
-  const outboxIds: string[] = [];
 
   beforeEach(async () => {
     const tag = suffix();
@@ -26,10 +25,6 @@ describe('Store warehouse lifecycle and transactional audit outbox (real Postgre
         where: { payloadJson: { contains: warehouseId } },
       });
       warehouseId = undefined;
-    }
-    if (outboxIds.length) {
-      await storeDb.auditOutbox.deleteMany({ where: { id: { in: outboxIds } } });
-      outboxIds.length = 0;
     }
   });
 
