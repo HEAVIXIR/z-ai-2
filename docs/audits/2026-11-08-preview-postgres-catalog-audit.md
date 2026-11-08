@@ -37,20 +37,39 @@ full definition and both update/delete action codes.
 
 ## Interpretation and limitations
 
-This is a live catalog integrity snapshot, not yet a complete Prisma-to-PostgreSQL
-definition-parity proof. Earlier checks on this branch established:
+This live catalog pass was followed by normalized comparisons against the checked-in
+Prisma schemas at `a1d6fb2ac28421056a87fbb5feafdc0121efc65a`. The results below strengthen
+the parity evidence, while retaining explicit limits on the remaining edge cases.
+Earlier checks on this branch established:
 
 - Main: 120/120 Prisma models have corresponding live tables; zero column-name,
   scalar-type, or nullability differences.
 - Store: 34/34 Prisma models have corresponding live tables; zero column-name,
   scalar-type, or nullability differences.
 
-The current catalog pass establishes that indexes are valid/ready and foreign keys are
-validated. It does **not** by itself prove that every live index expression, ordering,
-partial predicate, included column, collation/opclass, unique constraint, database
-default expression, or FK action exactly matches the checked-in Prisma schema and its
-migration history. Those definitions still require an explicit normalized comparison
-against the schema/migration SQL before release approval.
+The additional normalized comparisons found:
+
+- Database defaults: 355 Main and 93 Store schema-declared literal/server defaults were
+  compared to live catalog values; zero mismatches. Non-literal/default-function cases
+  (116 Main, 32 Store) were excluded from this comparison and remain unverified.
+- Index signatures: all 288 Main and 83 Store Prisma-declared primary/unique/ordinary
+  index signatures matched live indexes by table, ordered column list, uniqueness, and
+  primary-key role. The live inventory has one additional Main index and three additional
+  Store indexes: migration bookkeeping and the Store implicit many-to-many join table
+  account for the extra inventory. PostgreSQL's 63-byte identifier truncation explains
+  why two long generated index names differ textually from Prisma's untruncated expected
+  names; their table/column/uniqueness signatures match.
+- Foreign keys: all 124 Main and 34 Store explicit Prisma relation definitions matched
+  live foreign keys by source columns, referenced table/columns, and ON DELETE/ON UPDATE
+  actions. Store has two additional live FKs for the implicit many-to-many join table.
+  Every observed FK is validated.
+
+These are normalized structural comparisons, not a proof of every physical index detail.
+Expression indexes, partial predicates, INCLUDE columns, collation/opclass, unusual
+native annotations, and the 148 excluded non-literal/default-function cases were not
+fully reconciled. Migration-history equivalence also remains separate from live catalog
+parity. Release approval still requires resolving those remaining edge cases and the
+independent database-destination/backup gates.
 
 ## Exact-HEAD workflow validation
 
