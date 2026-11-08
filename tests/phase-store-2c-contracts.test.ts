@@ -380,7 +380,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(16);
     });
 
-    it('should have 26 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 27 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -402,7 +402,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
       //   Procurement receiving adds one inventory.manage gate, opening stock allocation adds one,
-      //   and return restocking authorization adds one and paired warehouse transfer adds one; inventory.manage = 10.
+      //   and return restocking authorization adds one and paired warehouse transfer adds one; transfer-part search adds one; inventory.manage = 11.
       //   Total = 11 + 3 + 7 + 6 = 27 domain-manage checks (the global baseline is tracked separately).
       const files = listRouteFiles();
       const expected: Record<string, number> = {
