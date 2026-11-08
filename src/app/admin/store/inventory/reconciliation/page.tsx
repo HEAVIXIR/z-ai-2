@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { storeDb } from "@/lib/store-db";
 import { toFa } from "@/lib/format";
+import InitialStockAllocation from "../initial-stock-allocation";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,21 @@ export default async function InventoryReconciliationPage({
     await requirePermission(user.id, "inventory.read");
   } catch {
     return <div className="p-8 text-center text-zinc-500">Forbidden: requires inventory.read</div>;
+  }
+
+  let canManageInventory = false;
+  let activeWarehouses: Array<{ id: string; name: string; code: string }> = [];
+  try {
+    await requirePermission(user.id, "inventory.manage");
+    canManageInventory = true;
+    activeWarehouses = await storeDb.warehouse.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, code: true },
+    });
+  } catch {
+    canManageInventory = false;
+    activeWarehouses = [];
   }
 
   const sp = await searchParams;
@@ -195,6 +211,18 @@ export default async function InventoryReconciliationPage({
                         </span>
                       ))}
                     </div>
+                    {canManageInventory && part.inventoryBalances.length === 0 && part.stock >= 0 && (
+                      <InitialStockAllocation
+                        part={{
+                          id: part.id,
+                          name: part.name,
+                          nameFa: part.nameFa,
+                          sku: part.sku,
+                          stock: part.stock,
+                        }}
+                        warehouses={activeWarehouses}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
