@@ -170,3 +170,51 @@ control-plane recheck.
 Release remains **NO-GO**. No secret values, connection-string values, application rows,
 database writes, schema changes, backup/restore operations, Cloudflare settings,
 deployments, DNS, or Production resources were accessed or modified.
+
+
+## Follow-up effective-role privilege audit — 2026-11-09
+
+A separate read-only PostgreSQL role-catalog audit was run against both dedicated
+Preview resources. It used SELECT-only queries against `pg_roles`,
+`pg_auth_members`, `pg_default_acl`, and `information_schema`; no application
+rows were read.
+
+| Effective role property | Main Preview | Store Preview |
+|---|---:|---:|
+| Current role | `prisma_application` | `prisma_application` |
+| Superuser | false | false |
+| Create role / create DB | false / false | false / false |
+| Replication attribute | **true** | **true** |
+| Bypass RLS | false | false |
+| Inherited role memberships | `pg_read_all_data`, `pg_write_all_data` | `pg_read_all_data`, `pg_write_all_data` |
+| Membership INHERIT / SET | true / true for both | true / true for both |
+| Role-level config | `idle_session_timeout=300000` | `idle_session_timeout=300000` |
+| Public tables with effective INSERT/UPDATE/DELETE | 121/121 | 36/36 |
+
+The direct `information_schema.table_privileges` count for explicit grants to
+`prisma_application` is zero in both databases; this does **not** mean the role
+is read-only. Effective DML is inherited from the predefined PostgreSQL role
+`pg_write_all_data`, and the role also has the `REPLICATION` attribute.
+The role is therefore unsuitable as a least-privilege read-only proof identity.
+
+This audit does not establish that GitHub Actions secrets or Cloudflare Worker
+bindings use the same role; their secret values were not read. The result applies
+to the Prisma SQL tool's current role on the selected Preview resources.
+
+### Required remediation and gate
+
+Before a read-only runtime proof, provision dedicated Preview-only roles with
+no `pg_write_all_data` membership, no replication attribute, no inherited
+write-capable memberships, and SELECT-only effective grants. Verify exact
+system identifiers and effective privileges for each role before placing its
+connection string in the protected GitHub Environment. Separately review
+whether the existing application role needs `pg_write_all_data` and
+`REPLICATION`; do not revoke either privilege without a reviewed application
+impact assessment.
+
+No role attributes, memberships, grants, database settings, connection strings,
+secrets, Worker bindings, deployments, DNS, or Production resources were changed.
+The existing Workerd read-only assertion remains intact. Preview release remains
+**NO-GO** pending least-privilege credentials, scoped runtime proof, independent
+Cloudflare binding destination attestation, and paired encrypted Backblaze B2
+read-back/restore evidence.
