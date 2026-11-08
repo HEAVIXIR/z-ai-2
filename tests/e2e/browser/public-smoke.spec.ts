@@ -82,15 +82,15 @@ test.describe("HEAVIX public browser smoke", () => {
 
     await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("textbox", { name: "موبایل / ایمیل" })).toBeVisible();
-    await expect(page.getByLabel("رمز عبور")).toHaveAttribute("autocomplete", "current-password");
+    await expect(page.getByLabel("رمز عبور", { exact: true })).toHaveAttribute("autocomplete", "current-password");
 
     await page.goto("/register", { waitUntil: "domcontentloaded" });
-    await expect(page.getByLabel("نام")).toBeVisible();
-    await expect(page.getByLabel("نام خانوادگی")).toBeVisible();
-    await expect(page.getByLabel("شماره موبایل")).toHaveAttribute("required", "");
-    await expect(page.getByLabel("ایمیل")).toHaveAttribute("type", "email");
-    await expect(page.getByLabel("رمز عبور")).toHaveAttribute("type", "password");
-    await expect(page.getByLabel("نام شرکت")).toBeVisible();
+    await expect(page.getByLabel("نام", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("نام خانوادگی", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("شماره موبایل", { exact: true })).toHaveAttribute("required", "");
+    await expect(page.getByLabel("ایمیل", { exact: true })).toHaveAttribute("type", "email");
+    await expect(page.getByLabel("رمز عبور", { exact: true })).toHaveAttribute("type", "password");
+    await expect(page.getByLabel("نام شرکت", { exact: true })).toBeVisible();
   });
 
   test("anonymous users cannot access the admin API", async ({ request }) => {
