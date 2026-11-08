@@ -14,7 +14,7 @@ export async function loginAction(formData: FormData): Promise<void> {
   const user = await db.user.findFirst({
     where: { OR: [{ email: identifier.toLowerCase() }, { mobile: identifier }] },
   });
-  if (!user || user.status === "BLOCKED") redirect("/login?error=1");
+  if (!user || user.status !== "ACTIVE") redirect("/login?error=1");
 
   if (!(await verifyPassword(password, user.passwordHash))) redirect("/login?error=1");
 
