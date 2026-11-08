@@ -1,9 +1,9 @@
 # Prisma Preview Workerd exact-HEAD port plan
 
 Date: 2026-11-09
-Status: Worker client implementation and no-secret Workerd smoke pass; least-privilege gate validates against both Preview DBs and correctly rejects current credentials; latest full CI/OpenNext reruns pending; Preview DB proof not dispatched
+Status: Worker client implementation and no-secret Workerd smoke pass; least-privilege gate SQL validated on both Preview DBs and correctly rejects current credentials; role-default assertion fixed after CI regression test; latest full CI/OpenNext reruns pending; Preview DB proof not dispatched
 Branch: `security/active-session-hardening-2026-11-08`
-Reviewed HEAD: `9800c215a7864c11c272ce9ea25d4f3510228b62`
+Reviewed code HEAD: `37c2905e9e839eba997ce77f72b16dbde2b74dc8`
 
 ## Purpose
 
@@ -60,6 +60,16 @@ The checks are SELECT-only. The exact `inspectReadOnlyRole()` SQL was executed s
 - Exact-head OpenNext Workerd passed on the same code commit: [run 42526090782](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090782).
 - General CI on that code commit: [run 42526090799](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090799), overall success, including full `verify`, Docker image/Caddy/Compose proof, TLS, phase tests, transaction audit, and report-only Cloudflare compatibility.
 - The follow-up role-default config change and contract assertion are in commits `e706beeb7226c4183f86ad047be9f97a59951f93` and `9800c215a7864c11c272ce9ea25d4f3510228b62`; their exact-head CI/Workerd reruns are in progress. The latest smoke run is [42526400657](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526400657) and latest OpenNext run is [42526400701](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526400701).
+
+## Latest role-default assertion correction — exact code HEAD `37c2905e9e839eba997ce77f72b16dbde2b74dc8`
+
+The contract test on commit `9800c215a7864c11c272ce9ea25d4f3510228b62` caught an omission: `default_transaction_read_only_on` was selected and returned in role evidence but was not yet included in the computed `proven` boolean. The failed assertion was retained; the implementation was corrected in `37c2905e9e839eba997ce77f72b16dbde2b74dc8` so absence of the role-level setting makes the proof fail.
+
+Exact-head no-secret Workerd smoke passed on the corrected code:
+[run 42526779324](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526779324).
+This validates generated clients, Worker typecheck, module loading, and fail-closed smoke without database credentials. It does not execute the DB role query.
+
+General CI [run 42526779234](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526779234) and OpenNext [run 42526779226](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526779226) are still in progress at this update. Earlier implementation commit `d6828bca6d3755253d3f7d8802054b3593fbb69a` passed full CI and OpenNext, but that pass does not replace the rerun after the role-default enforcement fix.
 
 ## Upstream-supported Prisma Postgres Worker architecture (research update)
 
