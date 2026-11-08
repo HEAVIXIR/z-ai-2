@@ -104,6 +104,7 @@ type ReadOnlyRoleEvidence = {
   memberPgExecuteServerProgram: boolean;
   hasEffectiveTableWrite: boolean;
   hasEffectiveSequenceWrite: boolean;
+  canExecuteSecurityDefinerFunction: boolean;
   canCreateInUserSchemas: boolean;
   canCreateDatabaseObjects: boolean;
   proven: boolean;
@@ -131,6 +132,7 @@ async function inspectReadOnlyRole(
     member_pg_execute_server_program: boolean;
     has_effective_table_write: boolean;
     has_effective_sequence_write: boolean;
+    can_execute_security_definer_function: boolean;
     can_create_in_user_schemas: boolean;
     can_create_database_objects: boolean;
   }>>`
@@ -177,6 +179,15 @@ async function inspectReadOnlyRole(
       ) AS has_effective_sequence_write,
       EXISTS (
         SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname NOT IN ('information_schema')
+          AND n.nspname NOT LIKE 'pg_%'
+          AND p.prosecdef
+          AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+      ) AS can_execute_security_definer_function,
+      EXISTS (
+        SELECT 1
         FROM pg_namespace n
         WHERE n.nspname NOT IN ('information_schema')
           AND n.nspname NOT LIKE 'pg_%'
@@ -201,6 +212,7 @@ async function inspectReadOnlyRole(
     row.member_pg_execute_server_program ||
     row.has_effective_table_write ||
     row.has_effective_sequence_write ||
+    row.can_execute_security_definer_function ||
     row.can_create_in_user_schemas ||
     row.can_create_database_objects
   );
@@ -218,6 +230,7 @@ async function inspectReadOnlyRole(
     memberPgExecuteServerProgram: row.member_pg_execute_server_program,
     hasEffectiveTableWrite: row.has_effective_table_write,
     hasEffectiveSequenceWrite: row.has_effective_sequence_write,
+    canExecuteSecurityDefinerFunction: row.can_execute_security_definer_function,
     canCreateInUserSchemas: row.can_create_in_user_schemas,
     canCreateDatabaseObjects: row.can_create_database_objects,
     proven,
