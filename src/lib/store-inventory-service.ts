@@ -111,75 +111,95 @@ export async function createMovement(
     );
   }
 
-  const part = await storeDb.part.findUnique({ where: { id: partId } });
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
+  // Keep the ledger entry and Part.stock snapshot in one Store DB
+  // transaction. A failure in either write must roll back both. Conditional
+  // increments/decrements also prevent concurrent requests from losing stock
+  // updates or driving the public stock snapshot below zero.
+  const result = await storeDb.$transaction(async (tx) => {
+    const part = await tx.part.findUnique({ where: { id: partId } });
+    if (!part) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
 
-  const balanceAfter = part.stock + qty;
-  if (balanceAfter < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`,
-    );
-  }
-
-  // Step 1: create the ledger entry (records intent + balance after).
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+    const changed = await tx.part.updateMany({
+      where: {
+        id: partId,
+        ...(qty < 0 ? { stock: { gte: -qty } } : {}),
       },
-    },
+      data: { stock: { increment: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(
+        qty < 0 ? 400 : 404,
+        qty < 0
+          ? `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`
+          : 'قطعه یافت نشد',
+      );
+    }
+
+    const afterPart = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+    if (!afterPart) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        partId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+        createdBy: userId ?? null,
+      },
+      include: {
+        part: {
+          select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+        },
+      },
+    });
+
+    return {
+      movement,
+      beforeStock: part.stock,
+      afterStock: afterPart.stock,
+      balanceAfter: afterPart.stock,
+    };
   });
 
-  // Step 2: side-effect — update Part.stock to the new balance.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // Audit 1: the ledger entry is the primary audit hook for this route.
+  // The main DB audit sink is separate from Store DB. Emit best-effort audit
+  // events only after the Store transaction commits; the inventory ledger
+  // and stock snapshot themselves are already atomic.
   await logAudit({
     actorId: userId ?? null,
     actorType: 'ADMIN',
     action: 'store.inventory.movement.create',
     entityType: 'StockMovement',
-    entityId: movement.id,
+    entityId: result.movement.id,
     after: {
       partId,
       type,
       quantity: qty,
-      balanceAfter,
+      balanceAfter: result.balanceAfter,
       reason: reason || null,
       reference: reference || null,
     },
   });
 
-  // Audit 2: the Part.stock update is a side-effect mutation, so it gets
-  // its own audit entry (mirrors payments/[id] side-effect pattern).
   await logAudit({
     actorId: userId ?? null,
     actorType: 'ADMIN',
     action: 'store.part.update',
     entityType: 'Part',
     entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
+    before: { stock: result.beforeStock },
+    after: { stock: result.afterStock },
   });
 
-  return serialize(movement);
+  return serialize(result.movement);
 }
 
 // ── listMovements ──────────────────────────────────────────
