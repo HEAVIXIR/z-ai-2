@@ -21,7 +21,9 @@ sed \
 # Compare the shared data model after removing only that dedicated generator.
 awk '
   /^generator workerClient \{/ { skip = 1; next }
-  skip && /^}/ { skip = 0; next }
+  skip && /^}/ { skip = 0; drop_next_blank = 1; next }
+  drop_next_blank && /^[[:space:]]*$/ { drop_next_blank = 0; next }
+  { drop_next_blank = 0 }
   !skip { print }
 ' "$ROOT/prisma/schema.prisma" > "$TMP_MAIN_SCHEMA"
 
