@@ -797,7 +797,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 6. ACTION KEY COVERAGE (50 unique keys across routes + services)
+  // 6. ACTION KEY COVERAGE (53 unique keys across routes + services)
   //   T-A-DEEP-STORE: 31 keys originally.
   //   T1+T2-DEEP: +9 new keys (warehouse.create/update/delete,
   //     inventory.balance.update, inventory.reserve, inventory.release,
