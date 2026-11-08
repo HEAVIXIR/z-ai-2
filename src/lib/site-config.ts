@@ -1,77 +1,79 @@
 /* ============================================================
    HEAVIX — Canonical Site URL (single source of truth)
    ------------------------------------------------------------
-   STEP 13.00 — Canonical Domain Hotfix
-
-   All URL-emitting code (metadataBase, sitemap, robots, canonical,
-   Open Graph, JSON-LD, absoluteUrl helpers) MUST consume the
-   constants and helpers exported from this module. Repeating the
-   domain string — or reading `process.env.NEXT_PUBLIC_SITE_URL`
-   with different fallbacks — in multiple files is what caused the
-   STEP 12.99 split-brain (heavix.ir vs havix.ir).
-
-   Resolution order:
-     1. `process.env.NEXT_PUBLIC_SITE_URL` (set per-environment in
-        production; trailing slashes are stripped).
-     2. Hardcoded fallback `https://heavix.ir` — the official
-        HEAVIX domain per owner decision (STEP 13.00).
-
-   Local dev:  env unset → falls back to `https://heavix.ir`
-               (safe for metadataBase; no real crawling in dev).
-   Production: MUST be set explicitly via the hosting platform's
-               environment variables. A one-time console.warn is
-               emitted at module load when unset in production so
-               operators notice, but the code still works via the
-               hardcoded fallback.
+   Production canonical URLs are emitted only outside Preview.
+   Cloudflare Preview must receive an explicit non-secret origin via
+   HEAVIX_PREVIEW_URL or a safe NEXT_PUBLIC_SITE_URL. A Preview build
+   must fail closed rather than silently emit the production domain.
    ============================================================ */
 
-const RAW_SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
-  "https://heavix.ir";
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const heavixEnvironment = process.env.HEAVIX_ENV?.trim().toLowerCase();
+const isCloudflarePreview = heavixEnvironment === "preview";
+
+function normalizePreviewOrigin(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const candidate = value.includes("://") ? value : `https://${value}`;
+    const url = new URL(candidate);
+    if (url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (hostname === "heavix.ir" || hostname.endsWith(".heavix.ir")) return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+const previewOrigin = isCloudflarePreview
+  ? normalizePreviewOrigin(process.env.HEAVIX_PREVIEW_URL) ??
+    normalizePreviewOrigin(configuredSiteUrl)
+  : undefined;
 
 if (
+  isCloudflarePreview &&
   process.env.NODE_ENV === "production" &&
-  !process.env.NEXT_PUBLIC_SITE_URL
+  !previewOrigin
 ) {
-  // Non-fatal: the hardcoded fallback keeps the app functional, but
-  // the operator should set NEXT_PUBLIC_SITE_URL explicitly to match
-  // the deployment's real public URL (especially for preview deploys
-  // where the URL differs from the canonical production domain).
-  console.warn(
-    "[site-config] NEXT_PUBLIC_SITE_URL is not set in production — falling back to https://heavix.ir. " +
-      "Set it explicitly in your hosting environment to avoid canonical/sitemap mismatches.",
+  throw new Error(
+    "[site-config] Cloudflare Preview requires a non-production HTTPS HEAVIX_PREVIEW_URL or NEXT_PUBLIC_SITE_URL; refusing to emit production canonical URLs.",
   );
 }
 
-/**
- * Canonical base URL of the site, without a trailing slash.
- * Example: `"https://heavix.ir"`.
- */
+const RAW_SITE_URL = (
+  isCloudflarePreview && previewOrigin
+    ? previewOrigin
+    : configuredSiteUrl || "https://heavix.ir"
+).replace(/\/+$/, "");
+
+if (
+  process.env.NODE_ENV === "production" &&
+  !configuredSiteUrl &&
+  !isCloudflarePreview
+) {
+  console.warn(
+    "[site-config] NEXT_PUBLIC_SITE_URL is not set in production — falling back to https://heavix.ir. Set it explicitly in the deployment environment to avoid canonical/sitemap mismatches.",
+  );
+}
+
+/** Canonical base URL of the site, without a trailing slash. */
 export const SITE_BASE_URL: string = RAW_SITE_URL;
 
-/**
- * Preview and local deployments must never be indexed as the public site.
- * Cloudflare sets HEAVIX_ENV=preview; Worker hostnames provide a request-time fallback.
- */
+/** Preview and local deployments must never be indexed as the public site. */
 export const IS_PREVIEW_DEPLOYMENT =
-  process.env.NODE_ENV === "development" ||
-  process.env.HEAVIX_ENV?.toLowerCase() === "preview";
+  process.env.NODE_ENV === "development" || isCloudflarePreview;
 
 /**
- * Detect Preview at request time as well as from provider runtime bindings.
- * Hostname matching is a fallback for Cloudflare Workers/Pages when a binding
- * is not exposed to the request module. Local development remains covered
- * by IS_PREVIEW_DEPLOYMENT for build-time metadata and response headers.
+ * Detect Preview at request time as well as from Cloudflare runtime bindings.
+ * Hostname matching is a fallback when HEAVIX_ENV is not exposed to the request.
  */
 export function isPreviewDeployment(hostname?: string): boolean {
   const heavixEnv = process.env.HEAVIX_ENV?.trim().toLowerCase();
   const host = (hostname ?? "").split(":")[0].trim().toLowerCase().replace(/\.$/, "");
 
   if (heavixEnv === "preview") return true;
-  return (
-    host.endsWith(".workers.dev") ||
-    host.endsWith(".pages.dev")
-  );
+  return host.endsWith(".workers.dev") || host.endsWith(".pages.dev");
 }
 
 /** Site display name (Persian). */
@@ -79,12 +81,7 @@ export const SITE_NAME = "هویکس";
 
 /**
  * Resolve a possibly-relative URL against the canonical site base.
- *
- * - Absolute `http(s)://` URLs are returned unchanged.
- * - Protocol-relative `//host/path` URLs are upgraded to `https:`.
- * - Leading-slash paths (`/listings`) are appended to `SITE_BASE_URL`.
- * - Bare path segments (`listings`) are appended with a `/` separator.
- * - Empty input returns `SITE_BASE_URL` (useful for the homepage canonical).
+ * Absolute URLs pass through; relative paths are resolved against SITE_BASE_URL.
  */
 export function absoluteUrl(maybeRelative: string): string {
   if (!maybeRelative) return SITE_BASE_URL;
