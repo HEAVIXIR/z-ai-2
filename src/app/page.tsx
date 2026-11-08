@@ -19,7 +19,6 @@ export const dynamic = "force-dynamic";
 const DEFAULT_HOME_LAYOUT = {
   sections: [
     {
-      title: "Hero",
       rows: [{
         widgets: [{
           key: "hero",
@@ -49,7 +48,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Search",
       rows: [{
         widgets: [{
           key: "search-box",
@@ -61,7 +59,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Featured Listings",
       rows: [{
         widgets: [{
           key: "listing-grid",
@@ -71,7 +68,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Categories",
       rows: [{
         widgets: [{
           key: "category-grid",
@@ -81,7 +77,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Trust",
       rows: [{
         widgets: [{
           key: "trust-badges",
