@@ -36,7 +36,6 @@
  */
 
 import { storeDb } from '@/lib/store-db';
-import { logAudit } from '@/lib/audit';
 import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
@@ -174,30 +173,40 @@ export async function createWarehouse(
   if (!name || !code) {
     throw new InventoryServiceError(400, 'نام و کد انبار الزامی است');
   }
-  // Pre-check for duplicate code to give a clean 409 instead of P2002.
-  const existing = await storeDb.warehouse.findUnique({ where: { code } });
-  if (existing) {
-    throw new InventoryServiceError(409, `کد انبار تکراری است: ${code}`);
+
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      // Keep the uniqueness pre-check and the audit event in the same
+      // transaction as the directory mutation. The DB unique constraint
+      // remains authoritative for concurrent creators.
+      const existing = await tx.warehouse.findUnique({ where: { code } });
+      if (existing) {
+        throw new InventoryServiceError(409, `کد انبار تکراری است: ${code}`);
+      }
+
+      const warehouse = await tx.warehouse.create({
+        data: { name, code, address: address || null },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.warehouse.create',
+        entityType: 'Warehouse',
+        entityId: warehouse.id,
+        after: warehouse,
+      });
+      return warehouse;
+    }, { isolationLevel: 'Serializable' });
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      throw new InventoryServiceError(409, `کد انبار تکراری است: ${code}`);
+    }
+    if (err?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'اطلاعات انبار هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+    }
+    throw err;
   }
-
-  const warehouse = await storeDb.warehouse.create({
-    data: {
-      name,
-      code,
-      address: address || null,
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.warehouse.create',
-    entityType: 'Warehouse',
-    entityId: warehouse.id,
-    after: warehouse,
-  });
-
-  return warehouse;
 }
 
 // ── updateWarehouse ───────────────────────────────────────
@@ -217,40 +226,46 @@ export async function updateWarehouse(
   },
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.warehouse.findUnique({ where: { id } });
-  if (!existing) {
-    throw new InventoryServiceError(404, 'انبار یافت نشد');
-  }
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const existing = await tx.warehouse.findUnique({ where: { id } });
+      if (!existing) {
+        throw new InventoryServiceError(404, 'انبار یافت نشد');
+      }
 
-  const data: any = {};
-  if (fields.name !== undefined) data.name = fields.name;
-  if (fields.code !== undefined && fields.code !== existing.code) {
-    // Check for duplicate code on rename.
-    const clash = await storeDb.warehouse.findUnique({ where: { code: fields.code } });
-    if (clash && clash.id !== id) {
-      throw new InventoryServiceError(409, `کد انبار تکراری است: ${fields.code}`);
+      const data: any = {};
+      if (fields.name !== undefined) data.name = fields.name;
+      if (fields.code !== undefined && fields.code !== existing.code) {
+        const clash = await tx.warehouse.findUnique({ where: { code: fields.code } });
+        if (clash && clash.id !== id) {
+          throw new InventoryServiceError(409, `کد انبار تکراری است: ${fields.code}`);
+        }
+        data.code = fields.code;
+      }
+      if (fields.address !== undefined) data.address = fields.address || null;
+      if (fields.active !== undefined) data.active = Boolean(fields.active);
+
+      const warehouse = await tx.warehouse.update({ where: { id }, data });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.warehouse.update',
+        entityType: 'Warehouse',
+        entityId: id,
+        before: existing,
+        after: warehouse,
+      });
+      return warehouse;
+    }, { isolationLevel: 'Serializable' });
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      throw new InventoryServiceError(409, 'کد انبار تکراری است');
     }
-    data.code = fields.code;
+    if (err?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'اطلاعات انبار هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+    }
+    throw err;
   }
-  if (fields.address !== undefined) data.address = fields.address || null;
-  if (fields.active !== undefined) data.active = Boolean(fields.active);
-
-  const warehouse = await storeDb.warehouse.update({
-    where: { id },
-    data,
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.warehouse.update',
-    entityType: 'Warehouse',
-    entityId: id,
-    before: existing,
-    after: warehouse,
-  });
-
-  return warehouse;
 }
 
 // ── deleteWarehouse ───────────────────────────────────────
@@ -267,33 +282,33 @@ export async function deleteWarehouse(
   id: string,
   userId?: string | null,
 ): Promise<{ id: string; deleted: true }> {
-  const existing = await storeDb.warehouse.findUnique({ where: { id } });
-  if (!existing) {
-    throw new InventoryServiceError(404, 'انبار یافت نشد');
-  }
+  return storeDb.$transaction(async (tx) => {
+    const existing = await tx.warehouse.findUnique({ where: { id } });
+    if (!existing) {
+      throw new InventoryServiceError(404, 'انبار یافت نشد');
+    }
 
-  const balanceCount = await storeDb.inventoryBalance.count({
-    where: { warehouseId: id },
-  });
-  if (balanceCount > 0) {
-    throw new InventoryServiceError(
-      400,
-      `انبار خالی نیست — ${balanceCount} ردیف موجودی مرتبط است. ابتدا موجودی‌ها را منتقل یا حذف کنید.`,
-    );
-  }
+    const balanceCount = await tx.inventoryBalance.count({
+      where: { warehouseId: id },
+    });
+    if (balanceCount > 0) {
+      throw new InventoryServiceError(
+        400,
+        `انبار خالی نیست — ${balanceCount} ردیف موجودی مرتبط است. ابتدا موجودی‌ها را منتقل یا حذف کنید.`,
+      );
+    }
 
-  await storeDb.warehouse.delete({ where: { id } });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.warehouse.delete',
-    entityType: 'Warehouse',
-    entityId: id,
-    before: existing,
-  });
-
-  return { id, deleted: true };
+    await tx.warehouse.delete({ where: { id } });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.warehouse.delete',
+      entityType: 'Warehouse',
+      entityId: id,
+      before: existing,
+    });
+    return { id, deleted: true };
+  }, { isolationLevel: 'Serializable' });
 }
 
 // ── listWarehouses ───────────────────────────────────────
