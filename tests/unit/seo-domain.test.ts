@@ -56,6 +56,8 @@ describe("robots.ts (official Next.js metadata route)", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "test";
   });
 
@@ -102,12 +104,31 @@ describe("robots.ts (official Next.js metadata route)", () => {
     expect(result.host).toBe("https://staging.heavix.ir");
     expect(result.sitemap).toBe("https://staging.heavix.ir/sitemap.xml");
   });
+
+  it("omits the production host and sitemap in Cloudflare Preview mode", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    const mod = await import("@/app/robots");
+    const result = mod.default();
+    expect(result.host).toBeUndefined();
+    expect(result.sitemap).toBeUndefined();
+    expect(result.rules?.[0]?.allow).toBe("/");
+  });
+
+  it("omits the production host and sitemap for a provider Preview hostname", async () => {
+    const mod = await import("@/app/robots");
+    const result = mod.buildRobots("heavix-preview.heavixir.workers.dev");
+    expect(result.host).toBeUndefined();
+    expect(result.sitemap).toBeUndefined();
+  });
+
 });
 
 describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "test";
   });
 
@@ -140,12 +161,23 @@ describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
     expect(txt).toContain("User-agent: *");
     expect(txt).toContain("Allow: /");
   });
+
+  it("omits production Host and Sitemap lines for a Preview hostname", async () => {
+    const mod = await import("@/lib/seo-service");
+    const txt = mod.getRobotsTxt("heavix-preview.heavixir.workers.dev");
+    expect(txt).toContain("Allow: /");
+    expect(txt).not.toContain("Host:");
+    expect(txt).not.toContain("Sitemap:");
+  });
+
 });
 
 describe("sitemap.ts (official Next.js metadata route) — static paths domain", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "test";
   });
 
@@ -209,6 +241,8 @@ describe("seo-service.generateSitemap() (legacy Wave 3B producer) — static pat
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "test";
   });
 
@@ -268,6 +302,8 @@ describe("cross-producer consistency — official vs legacy output the same doma
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
     process.env.NODE_ENV = "test";
   });
 
