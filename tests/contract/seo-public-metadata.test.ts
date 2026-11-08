@@ -41,8 +41,13 @@ describe("public SEO metadata safety", () => {
     const middleware = read("src/middleware.ts");
     const nextConfig = read("next.config.ts");
     expect(layout).not.toContain("robots:");
-    expect(nextConfig).not.toContain("X-Robots-Tag");
     expect(middleware).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
+    // next.config retains only a development-only header; it does not emit
+    // Preview noindex at build time, so production Preview gets one runtime header.
+    expect(nextConfig).toMatch(
+      /\.\.\.\(process\.env\.NODE_ENV === "development"[\s\S]*?key: "X-Robots-Tag"/,
+    );
+    expect(nextConfig).not.toMatch(/IS_PREVIEW_DEPLOYMENT|HEAVIX_ENV/);
   });
 
   it("does not advertise production host or sitemap from Preview robots.txt", () => {
@@ -62,5 +67,4 @@ describe("public SEO metadata safety", () => {
     expect(source).toContain("Sitemap:");
     expect(source).toContain("Host:");
   });
-
 });
