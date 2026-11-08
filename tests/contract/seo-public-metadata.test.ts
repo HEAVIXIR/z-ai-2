@@ -30,7 +30,7 @@ describe("public SEO metadata safety", () => {
   });
 
   it("applies a runtime noindex header to public Preview responses", () => {
-    const source = read("src/proxy.ts");
+    const source = read("src/middleware.ts");
     expect(source).toContain("isPreviewDeployment(req.nextUrl.hostname)");
     expect(source).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
     expect(source).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
@@ -38,11 +38,11 @@ describe("public SEO metadata safety", () => {
 
   it("keeps Preview noindex at the request boundary without duplicate root metadata", () => {
     const layout = read("src/app/layout.tsx");
-    const proxy = read("src/proxy.ts");
+    const middleware = read("src/middleware.ts");
     const nextConfig = read("next.config.ts");
     expect(layout).not.toContain("robots:");
     expect(nextConfig).not.toContain("X-Robots-Tag");
-    expect(proxy).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
+    expect(middleware).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
   });
 
   it("does not advertise production host or sitemap from Preview robots.txt", () => {
