@@ -1,9 +1,9 @@
 # Prisma Preview Workerd exact-HEAD port plan
 
 Date: 2026-11-09
-Status: Worker client implementation and no-secret Workerd smoke pass; least-privilege gate SQL validated on both Preview DBs and correctly rejects current credentials; role-default assertion fixed after CI regression test; latest full CI/OpenNext reruns pending; Preview DB proof not dispatched
+Status: Worker client implementation and no-secret Workerd smoke pass; least-privilege gate SQL validated on both Preview DBs and correctly rejects current credentials; role-default assertion fixed; executable SECURITY DEFINER and server-file privilege checks added; latest full CI/OpenNext reruns pending; Preview DB proof not dispatched
 Branch: `security/active-session-hardening-2026-11-08`
-Reviewed code HEAD: `37c2905e9e839eba997ce77f72b16dbde2b74dc8`
+Reviewed code HEAD: `d02a6d3b8691d07a68c83be5c15c592b04978591`
 
 ## Purpose
 
@@ -46,14 +46,17 @@ The original runtime check of `current_setting('transaction_read_only')::boolean
 The new `inspectReadOnlyRole()` query rejects:
 - superuser, CREATEROLE, CREATEDB, REPLICATION, and BYPASSRLS role attributes;
 - membership or inherited use of `pg_write_all_data`;
-- membership in `pg_write_server_files` and `pg_execute_server_program`;
+- membership in `pg_read_server_files`, `pg_write_server_files`, and `pg_execute_server_program`;
+- executable SECURITY DEFINER functions in user schemas;
 - effective INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN privileges on user-schema relations;
 - effective sequence USAGE/UPDATE privileges;
 - CREATE on user schemas or the current database.
 
 The manual proof runner now requires this role evidence to be proven for **both** App and Store in addition to `transaction_read_only=true`. It also requires the role's own `rolconfig` to contain `default_transaction_read_only=on`, so the safe default is attached to the credential rather than relying only on one transaction's state. This closes the specific false-acceptance path identified in the earlier catalog audit, where `prisma_application` inherited `pg_write_all_data`, had `rolreplication=true`, and lacked a read-only role default.
 
-The checks are SELECT-only. The exact `inspectReadOnlyRole()` SQL was executed successfully against both allowlisted Preview resources. Both returned `rolreplication=true`, `default_transaction_read_only_on=false`, membership/inherited use of `pg_write_all_data`, and effective table-write privileges; both were therefore correctly rejected. Neither had superuser, CREATEROLE, CREATEDB, BYPASSRLS, write-server-files membership, execute-server-program membership, sequence write privileges, schema CREATE, or database CREATE. No DDL, DML, role changes, grants, revokes, or database settings were applied. The existing `prisma_application` role remains unsuitable; the intended next step is a separately provisioned Preview-only credential with no effective write privileges, not weakening the proof.
+The checks are SELECT-only.
+The gate was extended on commits `85953e2672f351728cf61f230e20814ea6e16027` and `071b76f168c8f7f846b301ce9ae723da9b19e0ad` to reject executable SECURITY DEFINER functions and `pg_read_server_files` membership. SELECT-only Preview catalog checks found zero executable SECURITY DEFINER functions and false membership for `pg_read_server_files`, `pg_write_server_files`, and `pg_execute_server_program` on both resources. The full CI and Workerd reruns for the newest code commit `d02a6d3b8691d07a68c83be5c15c592b04978591` are in progress; its no-secret Workerd smoke passed.
+ The exact `inspectReadOnlyRole()` SQL was executed successfully against both allowlisted Preview resources. Both returned `rolreplication=true`, `default_transaction_read_only_on=false`, membership/inherited use of `pg_write_all_data`, and effective table-write privileges; both were therefore correctly rejected. Neither had superuser, CREATEROLE, CREATEDB, BYPASSRLS, read/write server-file membership, execute-server-program membership, executable SECURITY DEFINER functions, sequence write privileges, schema CREATE, or database CREATE. No DDL, DML, role changes, grants, revokes, or database settings were applied. The existing `prisma_application` role remains unsuitable; the intended next step is a separately provisioned Preview-only credential with no effective write privileges, not weakening the proof.
 
 - Contract coverage added in `tests/contract/prisma-preview-dispatch-workflow.test.ts` for role attributes, default read-only config, inherited write-role memberships, and effective object privileges.
 - Exact-head no-secret Workerd smoke passed on the role-gate code commit: [run 42526090697](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090697). It proves module loading, client generation, Worker typecheck, and missing-secret/request lifecycle behavior, but it does not connect to a database or execute the role-inspection query.
