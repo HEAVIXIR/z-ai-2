@@ -134,9 +134,19 @@ export default async function InventoryReconciliationPage({
             این صفحه هیچ اصلاح یا تخصیص خودکاری انجام نمی‌دهد.
           </p>
         </div>
-        <span className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600">
-          نمایش {toFa(report.length)} از {toFa(totalParts)} قطعه
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManageInventory && (
+            <Link
+              href="/admin/store/inventory/transfers"
+              className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800 hover:bg-violet-100"
+            >
+              انتقال بین انبارها
+            </Link>
+          )}
+          <span className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600">
+            نمایش {toFa(report.length)} از {toFa(totalParts)} قطعه
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
