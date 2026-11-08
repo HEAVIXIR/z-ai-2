@@ -72,6 +72,51 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     }
   });
 
+  it('never reduces on-hand quantity below already-reserved stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    await storeDb.inventoryBalance.create({
+      data: {
+        partId,
+        warehouseId,
+        quantity: 10,
+        reserved: 8,
+        lowStockThreshold: 5,
+      },
+    });
+
+    await expect(
+      adjustStock(partId, warehouseId, -3, 'SALE', 'reserved stock protection'),
+    ).rejects.toThrow(/رزروهای فعال/);
+
+    const [afterRejected, partAfterRejected, rejectedMovements] = await Promise.all([
+      storeDb.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      }),
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.count({ where: { partId, warehouseId } }),
+    ]);
+    expect(afterRejected?.quantity).toBe(10);
+    expect(afterRejected?.reserved).toBe(8);
+    expect(partAfterRejected?.stock).toBe(10);
+    expect(rejectedMovements).toBe(0);
+
+    await adjustStock(partId, warehouseId, -2, 'SALE', 'consume unreserved stock');
+
+    const [afterAllowed, partAfterAllowed, movements] = await Promise.all([
+      storeDb.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId } },
+      }),
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.findMany({ where: { partId, warehouseId } }),
+    ]);
+    expect(afterAllowed?.quantity).toBe(8);
+    expect(afterAllowed?.reserved).toBe(8);
+    expect(partAfterAllowed?.stock).toBe(8);
+    expect(movements).toHaveLength(1);
+    expect(movements[0]?.balanceAfter).toBe(8);
+  }, 15000);
+
   it('serializes competing stock decrements and keeps balance, snapshot, and ledger consistent', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
 
