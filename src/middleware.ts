@@ -18,8 +18,8 @@ export function middleware(req: NextRequest) {
   const isAdminPage = pathname === ADMIN_PAGE_PREFIX || pathname.startsWith(`${ADMIN_PAGE_PREFIX}/`);
   const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`);
 
-  // Prevent crawler discovery and production-canonical sitemap leakage on
-  // public Preview hosts even when Worker bindings are not exposed to process.env.
+  // Keep Preview crawlable so crawlers can observe X-Robots-Tag noindex,
+  // while preventing sitemap leakage even without Worker env bindings.
   if (isPreview && pathname === "/robots.txt") {
     return withPreviewRobotsHeader(
       new NextResponse(
