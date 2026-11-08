@@ -29,6 +29,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import crypto from "node:crypto";
+import { hashSessionToken } from "@/lib/session-token";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
 
@@ -144,11 +145,11 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
     if (setupError) {
       const cleanupErrors = await finalizeCollecting([
         () => (setupIds.dealId ? db.order.deleteMany({ where: { dealId: setupIds.dealId } }) : Promise.resolve()),
-        () => (setupIds.dealId ? db.deal.delete({ where: { id: setupIds.dealId } }) : Promise.resolve()),
-        () => (setupIds.listingId ? db.listing.delete({ where: { id: setupIds.listingId } }) : Promise.resolve()),
-        () => (setupIds.sessionId ? db.session.delete({ where: { id: setupIds.sessionId } }) : Promise.resolve()),
-        () => (setupIds.buyerId ? db.user.delete({ where: { id: setupIds.buyerId } }) : Promise.resolve()),
-        () => (setupIds.sellerId ? db.user.delete({ where: { id: setupIds.sellerId } }) : Promise.resolve()),
+        () => (setupIds.dealId ? db.deal.deleteMany({ where: { id: setupIds.dealId } }) : Promise.resolve()),
+        () => (setupIds.listingId ? db.listing.deleteMany({ where: { id: setupIds.listingId } }) : Promise.resolve()),
+        () => (setupIds.sessionId ? db.session.deleteMany({ where: { id: setupIds.sessionId } }) : Promise.resolve()),
+        () => (setupIds.buyerId ? db.user.deleteMany({ where: { id: setupIds.buyerId } }) : Promise.resolve()),
+        () => (setupIds.sellerId ? db.user.deleteMany({ where: { id: setupIds.sellerId } }) : Promise.resolve()),
       ]);
       // Report BOTH setup + cleanup errors (no silent discard of cleanup failures).
       throwCombined(setupError, cleanupErrors, "beforeAll setup + cleanup");
@@ -205,11 +206,11 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
     // Independent cleanup — NO .catch(()=>{}); uses finalizeCollecting.
     const errors = await finalizeCollecting([
       () => (dealId ? db.order.deleteMany({ where: { dealId } }) : Promise.resolve()),
-      () => (dealId ? db.deal.delete({ where: { id: dealId } }) : Promise.resolve()),
-      () => (listingId ? db.listing.delete({ where: { id: listingId } }) : Promise.resolve()),
+      () => (dealId ? db.deal.deleteMany({ where: { id: dealId } }) : Promise.resolve()),
+      () => (listingId ? db.listing.deleteMany({ where: { id: listingId } }) : Promise.resolve()),
       () => db.session.deleteMany({ where: { userId: buyerId } }),
-      () => (buyerId ? db.user.delete({ where: { id: buyerId } }) : Promise.resolve()),
-      () => (sellerId ? db.user.delete({ where: { id: sellerId } }) : Promise.resolve()),
+      () => (buyerId ? db.user.deleteMany({ where: { id: buyerId } }) : Promise.resolve()),
+      () => (sellerId ? db.user.deleteMany({ where: { id: sellerId } }) : Promise.resolve()),
     ]);
     throwCombined(null, errors, "afterAll cleanup");
   });
@@ -291,7 +292,7 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
     } finally {
       const errs = await finalizeCollecting([
         () => db.order.deleteMany({ where: { dealId: freshDeal.id } }),
-        () => db.deal.delete({ where: { id: freshDeal.id } }),
+        () => db.deal.deleteMany({ where: { id: freshDeal.id } }),
       ]);
       throwCombined(primaryError, errs, "S3 cleanup");
     }
