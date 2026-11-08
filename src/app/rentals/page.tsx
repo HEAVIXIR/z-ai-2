@@ -66,7 +66,7 @@ export default async function RentalsPage({
 
   if (
     process.env.VERCEL_ENV === "preview" &&
-    !/^postgres(?:ql)?:\\/\\//i.test(process.env.DATABASE_URL ?? "")
+    !/^postgres(?:ql)?:\/\//i.test(process.env.DATABASE_URL ?? "")
   ) {
     return (
       <PreviewDataUnavailable
