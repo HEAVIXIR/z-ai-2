@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy } from "@/proxy";
+import { middleware } from "@/middleware";
 
 const originalHeavixEnv = process.env.HEAVIX_ENV;
 const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
@@ -17,9 +17,9 @@ afterEach(() => {
   else process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
 });
 
-describe("Next.js Proxy request boundary", () => {
+describe("Next.js Edge Middleware request boundary", () => {
   it("adds noindex headers to public Preview responses", () => {
-    const response = proxy(new NextRequest("https://preview.example.workers.dev/"));
+    const response = middleware(new NextRequest("https://preview.example.workers.dev/"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Robots-Tag")).toBe(
@@ -28,7 +28,7 @@ describe("Next.js Proxy request boundary", () => {
   });
 
   it("returns 401 JSON for anonymous admin API requests", async () => {
-    const response = proxy(
+    const response = middleware(
       new NextRequest("https://preview.example.workers.dev/api/admin/users"),
     );
 
@@ -42,7 +42,7 @@ describe("Next.js Proxy request boundary", () => {
   });
 
   it("redirects anonymous admin page requests while preserving the requested URL", () => {
-    const response = proxy(
+    const response = middleware(
       new NextRequest(
         "https://preview.example.workers.dev/admin/users?tab=roles",
       ),
@@ -59,7 +59,7 @@ describe("Next.js Proxy request boundary", () => {
   });
 
   it("keeps health endpoints public", () => {
-    const response = proxy(
+    const response = middleware(
       new NextRequest("https://preview.example.workers.dev/api/health"),
     );
 
@@ -70,7 +70,7 @@ describe("Next.js Proxy request boundary", () => {
   });
 
   it("allows the canonical session cookie through the optimistic proxy check", () => {
-    const response = proxy(
+    const response = middleware(
       new NextRequest("https://preview.example.workers.dev/admin/users", {
         headers: { cookie: "heavix-user=synthetic-token" },
       }),
