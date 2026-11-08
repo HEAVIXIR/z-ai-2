@@ -118,12 +118,16 @@ try {
   assert.equal(ready, true, "Local Workerd Worker did not become ready within 45 seconds.");
 
   if (smokeOnly) {
-    const [missingApp, missingStore] = await Promise.all([
+    const [missingApp, missingStore, lifecycle] = await Promise.all([
       getJson(baseUrl, "/failure/missing-app-secret"),
       getJson(baseUrl, "/failure/missing-store-secret"),
+      getJson(baseUrl, "/resolver/lifecycle"),
     ]);
     assert.equal(missingApp.expectedFailure, true, "App client did not fail closed without its secret.");
     assert.equal(missingStore.expectedFailure, true, "Store client did not fail closed without its secret.");
+    assert.equal(lifecycle.sameRequestClientReused, true, "Worker client was not reused within one request.");
+    assert.equal(lifecycle.isolatedAcrossRequests, true, "Worker client was shared across requests.");
+    assert.equal(lifecycle.distinctClientIds, true, "Different requests received the same synthetic client.");
     console.log(JSON.stringify({
       result: "PASS",
       mode: "SMOKE_ONLY",
@@ -133,6 +137,7 @@ try {
         "App and Store generated Prisma clients imported",
         "PPG adapter imported in workerd",
         "missing App/Store secrets fail closed",
+        "request-scoped client reuse and cross-request isolation",
       ],
       databaseConnectionsAttempted: false,
       writesPerformed: false,
