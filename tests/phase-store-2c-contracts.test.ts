@@ -1074,6 +1074,27 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(receiveContent).toContain('from "@/lib/store-procurement-service"');
     });
 
+    it('legacy inventory movement commits stock and ledger in one transaction', () => {
+      const source = readService('src/lib/store-inventory-service.ts');
+      const start = source.indexOf('export async function createMovement(');
+      const end = source.indexOf('// ── listMovements', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+
+      const implementation = source.slice(start, end);
+      const transactionStart = implementation.indexOf('storeDb.$transaction(async (tx) =>');
+      const transactionEnd = implementation.indexOf('\\n  });', transactionStart);
+      const auditStart = implementation.indexOf('await logAudit(', transactionEnd);
+
+      expect(transactionStart).toBeGreaterThanOrEqual(0);
+      expect(transactionEnd).toBeGreaterThan(transactionStart);
+      expect(implementation).toContain('tx.part.updateMany(');
+      expect(implementation).toContain('tx.stockMovement.create(');
+      expect(implementation).toContain('stock: { gte: -qty }');
+      expect(auditStart).toBeGreaterThan(transactionEnd);
+      expect(implementation).not.toMatch(/await storeDb\\.(part|stockMovement)\\.(create|update)\\(/);
+    });
+
     it('every service file imports storeDb + logAudit', () => {
       // Service files use single quotes (audit.ts convention); route files use double.
       for (const f of listServiceFiles()) {
