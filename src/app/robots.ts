@@ -1,5 +1,4 @@
 import type { MetadataRoute } from "next";
-import { headers } from "next/headers";
 import { absoluteUrl } from "@/lib/seo";
 import { isPreviewDeployment } from "@/lib/site-config";
 
@@ -14,10 +13,9 @@ import { isPreviewDeployment } from "@/lib/site-config";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export default async function robots(): Promise<MetadataRoute.Robots> {
-  const requestHeaders = await headers();
-  const preview = isPreviewDeployment(requestHeaders.get("host") ?? "");
-
+/** Pure policy builder, exported so host-based Preview behavior is testable. */
+export function buildRobots(hostname?: string): MetadataRoute.Robots {
+  const preview = isPreviewDeployment(hostname);
   const rules: MetadataRoute.Robots["rules"] = [
     {
       userAgent: "*",
@@ -37,4 +35,10 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     sitemap: absoluteUrl("/sitemap.xml"),
     host: absoluteUrl(""),
   };
+}
+
+export default function robots(): MetadataRoute.Robots {
+  // Cloudflare supplies HEAVIX_ENV=preview and Vercel supplies VERCEL_ENV.
+  // The middleware also uses the request hostname as a defensive fallback.
+  return buildRobots();
 }
