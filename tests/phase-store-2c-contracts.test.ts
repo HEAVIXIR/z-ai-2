@@ -1083,7 +1083,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
 
       const implementation = source.slice(start, end);
       const transactionStart = implementation.indexOf('storeDb.$transaction(async (tx) =>');
-      const transactionEnd = implementation.indexOf('\\n  });', transactionStart);
+      const transactionEnd = implementation.indexOf('\n  });', transactionStart);
       const auditStart = implementation.indexOf('await logAudit(', transactionEnd);
 
       expect(transactionStart).toBeGreaterThanOrEqual(0);
@@ -1092,7 +1092,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(implementation).toContain('tx.stockMovement.create(');
       expect(implementation).toContain('stock: { gte: -qty }');
       expect(auditStart).toBeGreaterThan(transactionEnd);
-      expect(implementation).not.toMatch(/await storeDb\\.(part|stockMovement)\\.(create|update)\\(/);
+      expect(implementation).not.toMatch(/await storeDb\.(part|stockMovement)\.(create|update)\(/);
     });
 
     it('every service file imports storeDb + logAudit', () => {
