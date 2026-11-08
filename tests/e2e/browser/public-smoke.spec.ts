@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const publicRoutes = [
   "/",
-  "/categories",
+  "/community",
   "/listings",
   "/rentals",
   "/brands",
