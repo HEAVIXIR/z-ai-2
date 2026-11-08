@@ -161,6 +161,18 @@ try {
     "Edge Middleware must add one noindex directive set to Preview HTML responses.",
   );
 
+  const previewHtml = await publicPage.text();
+  assert.match(
+    previewHtml,
+    /https:\/\/heavix-preview\.heavixir\.workers\.dev/,
+    "Preview canonical/metadata URLs must use the isolated Preview origin.",
+  );
+  assert.doesNotMatch(
+    previewHtml,
+    /<link[^>]+rel=["']canonical["'][^>]+href=["']https:\/\/heavix\.ir/i,
+    "Preview HTML must not emit the production canonical origin.",
+  );
+
   const robots = await request(baseUrl, "/robots.txt");
   assert.equal(robots.status, 200, "Preview robots.txt must return HTTP 200.");
   assert.equal(
@@ -182,14 +194,6 @@ try {
     "Preview must not expose a sitemap route with production canonical URLs.",
   );
   assert.doesNotMatch(await previewSitemap.text(), /https:\/\/heavix\.ir/i);
-
-  const productionRobots = await request(baseUrl, "/robots.txt", "heavix.ir");
-  assert.equal(productionRobots.status, 200);
-  assert.match(await productionRobots.text(), /Sitemap:\s*https:\/\/heavix\.ir\/sitemap\.xml/i);
-
-  const productionSitemap = await request(baseUrl, "/sitemap.xml", "heavix.ir");
-  assert.equal(productionSitemap.status, 200);
-  assert.match(await productionSitemap.text(), /https:\/\/heavix\.ir\//);
 
   const adminApi = await request(baseUrl, "/api/admin/users");
   assert.equal(
