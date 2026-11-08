@@ -4,6 +4,7 @@ import fs from "node:fs";
 const siteConfig = fs.readFileSync("src/lib/site-config.ts", "utf8");
 const homepage = fs.readFileSync("src/app/page.tsx", "utf8");
 const categoriesPage = fs.readFileSync("src/app/categories/page.tsx", "utf8");
+const brandsPage = fs.readFileSync("src/app/brands/page.tsx", "utf8");
 const sitemap = fs.readFileSync("src/app/sitemap.ts", "utf8");
 
 describe("Preview-safe canonical URL resolution", () => {
@@ -21,6 +22,10 @@ describe("Preview-safe canonical URL resolution", () => {
   });
 
   it("implements the categories index that the sitemap advertises", () => {
+    expect(categoriesPage).toContain('title: "دسته‌بندی‌های صنعتی و ماشین‌آلات"');
+    expect(categoriesPage).not.toContain('title: "دسته‌بندی‌های صنعتی و ماشین‌آلات | هویکس"');
+    expect(brandsPage).toContain('title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو"');
+    expect(brandsPage).not.toContain('title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو | هویکس"');
     expect(categoriesPage).toContain('alternates: { canonical: "/categories" }');
     expect(categoriesPage).toContain("getPublicListingWhere()");
     expect(sitemap).toContain('{ url: "/categories"');
