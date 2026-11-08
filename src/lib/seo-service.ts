@@ -25,7 +25,7 @@ import {
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
 import { logAudit } from "@/lib/audit";
-import { SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
+import { SITE_BASE_URL, SITE_NAME, isPreviewDeployment } from "@/lib/site-config";
 
 /* STEP 13.00: SITE_BASE_URL / SITE_NAME now imported from the single
    source of truth (@/lib/site-config). The previous local fallback
@@ -321,8 +321,8 @@ export async function generateSitemap(): Promise<string> {
  * /api/robots-txt or any other future consumer) can serve it.
  */
 export function getRobotsTxt(): string {
-  const sitemapUrl = absoluteUrl("/sitemap.xml");
-  return [
+  const preview = isPreviewDeployment();
+  const lines = [
     "User-agent: *",
     "Allow: /",
     "Disallow: /admin/",
@@ -331,11 +331,15 @@ export function getRobotsTxt(): string {
     "Disallow: /seller/",
     "Disallow: /login",
     "Disallow: /register",
-    "",
-    `Host: ${SITE_BASE_URL}`,
-    `Sitemap: ${sitemapUrl}`,
-    "",
-  ].join("\n");
+  ];
+
+  // Preview must stay crawlable for the X-Robots-Tag noindex header to be
+  // observed, but must not advertise production canonical host/sitemap URLs.
+  if (!preview) {
+    lines.push("", `Host: ${SITE_BASE_URL}`, `Sitemap: ${absoluteUrl("/sitemap.xml")}`);
+  }
+
+  return lines.join("\n") + "\n";
 }
 
 /* ── helpers ──────────────────────────────────────────────── */
