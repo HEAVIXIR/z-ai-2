@@ -8,7 +8,7 @@ import {
 } from "@/lib/store-inventory-service";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic;
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   if (!checkCsrf(req)) {
