@@ -117,3 +117,31 @@ The source wiring agrees with the intended two-database split: `src/lib/db.ts` u
 - No Backblaze B2 account/bucket integration was available through the connected tools in this session. No B2 credentials were requested or handled. The approved B2 path remains unprovisioned/unverified from this audit.
 
 **Decision:** retain the existing paired dump/restore scripts as a CI-validated local mechanism only. Do not claim off-site backup coverage, and do not create an object-store bucket in Prisma as a substitute for the approved Backblaze B2 infrastructure. B2 integration remains a separate gated implementation once the B2 bucket endpoint, least-privilege key, encryption key-management, retention policy, and Preview database destination attestation are available.
+
+
+## Follow-up: Preview column and PostgreSQL catalog integrity
+
+A second, deeper read-only comparison parsed scalar Prisma model fields (including `@map` and model `@@map`) and compared them with live database column names:
+
+| Database | Prisma models | Models found | Missing tables | Model-column name differences |
+|---|---:|---:|---:|---:|
+| Main app Preview | 120 | 120 | 0 | 0 |
+| Store Preview | 34 | 34 | 0 | 0 |
+
+This proves model/table/column-name parity only. It does not yet prove SQL type, nullability, default, collation, index definition, or constraint-definition parity.
+
+PostgreSQL catalog integrity snapshot:
+
+| Metric | Main app Preview | Store Preview |
+|---|---:|---:|
+| Public tables (including migration table) | 121 | 36 |
+| Constraints total | 245 | 72 |
+| Foreign keys | 124 | 36 |
+| Unvalidated foreign keys | 0 | 0 |
+| Indexes | 289 | 86 |
+| Invalid/not-ready indexes | 0 | 0 |
+| Primary-key constraints | 121 | 36 |
+
+The catalog query returned zero standalone unique constraints in both databases; unique indexes/column annotations were not exhaustively reconciled in this pass. Do not interpret the zero count as proof that no unique indexes exist.
+
+**Next schema gate:** compare each live column's PostgreSQL type, nullability, default expression, and each Prisma-declared unique/index/foreign-key definition. Do not run `db push`, `migrate deploy`, `migrate reset`, or schema updates against either remote Preview or Production during this audit.
