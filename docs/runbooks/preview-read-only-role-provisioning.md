@@ -62,7 +62,7 @@ ALTER ROLE heavix_preview_store_ro
   SET idle_session_timeout = '5min';
 ```
 
-`pg_read_all_data` is the read-only predefined role. Do not grant `pg_write_all_data`, `pg_write_server_files`, or `pg_execute_server_program`. Do not add custom write grants, schema CREATE, database CREATE, replication, or RLS bypass.
+`pg_read_all_data` is the only predefined capability role intended for this proof. Do not grant `pg_write_all_data`, `pg_read_all_settings`, `pg_read_all_stats`, `pg_stat_scan_tables`, `pg_monitor`, `pg_database_owner`, `pg_signal_backend`, `pg_read_server_files`, `pg_write_server_files`, `pg_execute_server_program`, `pg_checkpoint`, `pg_maintain`, `pg_use_reserved_connections`, or `pg_create_subscription`. Do not add custom write grants, schema CREATE, database CREATE, replication, RLS bypass, backend signaling, checkpoint, or maintenance capabilities.
 
 Set each login password through the provider's approved secure role/credential interface. Do not place passwords in SQL files, GitHub comments, issue text, chat, shell history, or repository variables. If the provider does not permit creating a custom login role or setting its password, stop and use the provider's supported role-management process; do not fall back to `prisma_application`.
 
@@ -73,13 +73,13 @@ Run the following SELECT-only checks while connected as the new role in each mat
 1. Confirm `current_user` is the expected role name.
 2. Confirm `rolsuper`, `rolcreaterole`, `rolcreatedb`, `rolreplication`, and `rolbypassrls` are all false.
 3. Confirm `rolconfig` contains `default_transaction_read_only=on`.
-4. Confirm the role is not a member of or inheriting `pg_write_all_data`, `pg_read_server_files`, `pg_write_server_files`, or `pg_execute_server_program`.
+4. Confirm the role has no membership in any privileged predefined role other than the intended `pg_read_all_data`: `pg_write_all_data`, `pg_read_all_settings`, `pg_read_all_stats`, `pg_stat_scan_tables`, `pg_monitor`, `pg_database_owner`, `pg_signal_backend`, `pg_read_server_files`, `pg_write_server_files`, `pg_execute_server_program`, `pg_checkpoint`, `pg_maintain`, `pg_use_reserved_connections`, or `pg_create_subscription`.
 5. Confirm there are no effective INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN privileges on user-schema relations.
 6. Confirm there are no effective sequence USAGE/UPDATE privileges, no executable SECURITY DEFINER functions in user schemas, no CREATE on user schemas, and no CREATE on the database.
 7. Confirm `pg_control_system()` returns the exact system identifier in the resource table above.
 8. Confirm a transaction reports `current_setting('transaction_read_only')::boolean = true`.
 
-The canonical implementation of these checks is `inspectReadOnlyRole()` in `tests/workerd/worker.ts`. It also rejects executable SECURITY DEFINER functions and the predefined `pg_read_server_files` role. SELECT-only checks against both current Preview credentials found zero executable SECURITY DEFINER functions and no membership in the server-file/program roles; the current role still fails because of replication, `pg_write_all_data`, effective table-write privileges, and missing role-level read-only default. The current role is not an acceptable credential.
+The canonical implementation of these checks is `inspectReadOnlyRole()` in `tests/workerd/worker.ts`. It also rejects executable SECURITY DEFINER functions, server-file/program roles, and privileged predefined roles that can expose server metadata, signal other sessions, checkpoint, perform maintenance, or create subscriptions. SELECT-only checks against both current Preview credentials found zero executable SECURITY DEFINER functions and no membership in the server-file/program roles; the current role still fails because of replication, `pg_write_all_data`, effective table-write privileges, and missing role-level read-only default. The current role is not an acceptable credential.
 
 ## GitHub Environment wiring
 
