@@ -124,7 +124,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
 
 5. **Require a least-privilege role and actual read-only transaction proof**
    - Both App and Store transactions must read `current_setting('transaction_read_only')::boolean`; the value must be `true` for both.
-   - Independently inspect role attributes, inherited privileged memberships, effective table/sequence write privileges, schema CREATE, and database CREATE using SELECT-only catalog queries.
+   - Independently inspect role attributes, inherited privileged memberships, effective table/sequence write privileges, schema CREATE, and database CREATE using SELECT-only catalog queries. Reject membership in PostgreSQL 17 privileged predefined roles beyond the intended `pg_read_all_data`, including `pg_signal_backend`, `pg_checkpoint`, `pg_maintain`, `pg_create_subscription`, `pg_use_reserved_connections`, `pg_database_owner`, and monitoring roles.
    - Both checks must pass. A read-only transaction flag alone is not an acceptable least-privilege proof.
    - Do not weaken the assertion, attempt writes, use temporary-table creation as a write probe, or treat “no writes were attempted” as proof that the connection is read-only.
    - The current Preview Prisma role audit found inherited `pg_write_all_data`, `rolreplication=true`, no role-level `default_transaction_read_only=on`, and effective table-write privileges. It is not an acceptable proof credential.
