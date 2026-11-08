@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -95,9 +94,6 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: cspDirectives,
   },
-  ...(IS_PREVIEW_DEPLOYMENT
-    ? [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }]
-    : []),
 ];
 
 const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";

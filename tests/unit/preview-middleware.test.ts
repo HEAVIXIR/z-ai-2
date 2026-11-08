@@ -3,11 +3,12 @@ import { NextRequest } from "next/server";
 
 const ORIGINAL_ENV = { ...process.env };
 
-describe("Preview crawler middleware", () => {
+describe("Preview crawler Edge Middleware", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix-preview.heavixir.workers.dev";
   });
 
   afterEach(() => {

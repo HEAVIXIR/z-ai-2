@@ -62,74 +62,81 @@ function isOutOfScope(absPath: string): boolean {
 const allAdminRoutes = listRouteFiles(ADMIN_API_DIR);
 const inScopeRoutes = allAdminRoutes.filter((p) => !isOutOfScope(p));
 
-describe("Auth boundary — edge middleware", () => {
+describe("Auth boundary — Next.js Edge Middleware", () => {
   it("src/middleware.ts exists", () => {
     expect(fs.existsSync(MIDDLEWARE_PATH)).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, "src", "proxy.ts"))).toBe(false);
+  });
+
+  it("exports the Next.js Edge Middleware entry point", () => {
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    expect(middlewareSource).toContain("export function middleware(");
+    expect(middlewareSource).not.toContain("export function proxy(");
   });
 
   it("middleware matcher covers public pages while preserving the admin auth boundary", () => {
-    const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
-    expect(mw).toContain("const isAdminPage = pathname === ADMIN_PAGE_PREFIX");
-    expect(mw).toContain('const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`)');
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    expect(middlewareSource).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
+    expect(middlewareSource).toContain("const isAdminPage = pathname === ADMIN_PAGE_PREFIX");
+    expect(middlewareSource).toContain('const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`)');
   });
 
   it("middleware returns 401 JSON for unauthenticated /api/admin/* calls", () => {
-    const mw = read(MIDDLEWARE_PATH);
+    const middlewareSource = read(MIDDLEWARE_PATH);
     // The unauthenticated branch must produce a 401 response.
-    expect(mw).toMatch(/status:\s*401/);
-    expect(mw).toMatch(/Unauthorized/);
+    expect(middlewareSource).toMatch(/status:\s*401/);
+    expect(middlewareSource).toMatch(/Unauthorized/);
   });
 
   it("middleware redirects unauthenticated /admin/* page calls to /login", () => {
-    const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/\/login/);
-    expect(mw).toMatch(/NextResponse\.redirect/);
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    expect(middlewareSource).toMatch(/\/login/);
+    expect(middlewareSource).toMatch(/NextResponse\.redirect/);
   });
 
   it("middleware reads the heavix-user cookie (canonical session path)", () => {
     // R45-16: legacy `heavix-admin` cookie path REMOVED.
-    // Middleware must read the canonical `heavix-user` cookie
+    // Edge Middleware must read the canonical `heavix-user` cookie
     // (USER_COOKIE in src/lib/auth.ts). Any reference to
     // `heavix-admin` here would indicate a regression.
-    const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/heavix-user/);
-    expect(mw).not.toMatch(/heavix-admin/);
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    expect(middlewareSource).toMatch(/heavix-user/);
+    expect(middlewareSource).not.toMatch(/heavix-admin/);
   });
 });
 
 describe("Auth boundary — health endpoints are public", () => {
   it("middleware excludes /health paths from the admin auth boundary", () => {
-    const mw = read(MIDDLEWARE_PATH);
-    const healthIndex = mw.indexOf('if (pathname.endsWith("/health"))');
-    const cookieIndex = mw.indexOf("const userCookie");
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    const healthIndex = middlewareSource.indexOf('if (pathname.endsWith("/health"))');
+    const cookieIndex = middlewareSource.indexOf("const userCookie");
     expect(healthIndex).toBeGreaterThan(-1);
     expect(cookieIndex).toBeGreaterThan(healthIndex);
-    expect(mw.slice(healthIndex, cookieIndex)).toContain(
+    expect(middlewareSource.slice(healthIndex, cookieIndex)).toContain(
       "withPreviewRobotsHeader(NextResponse.next(), isPreview)",
     );
   });
 
   it("health endpoints short-circuit before the auth check (R45-16 canonical)", () => {
-    const mw = read(MIDDLEWARE_PATH);
-    const healthIndex = mw.indexOf('if (pathname.endsWith("/health"))');
-    const cookieIndex = mw.indexOf("const userCookie");
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    const healthIndex = middlewareSource.indexOf('if (pathname.endsWith("/health"))');
+    const cookieIndex = middlewareSource.indexOf("const userCookie");
     expect(healthIndex).toBeGreaterThan(-1);
     expect(cookieIndex).toBeGreaterThan(healthIndex);
-    expect(mw.slice(healthIndex, cookieIndex)).toContain("NextResponse.next()");
+    expect(middlewareSource.slice(healthIndex, cookieIndex)).toContain("NextResponse.next()");
   });
 
   it("/api/health remains unauthenticated under the canonical contract", () => {
     // Indirect coverage: `endsWith('/health')` matches both
     // `/health` and `/api/health` because both end with the
     // suffix. This is the R45-16 canonical pattern.
-    const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/endsWith\(['"]\/health['"]\)/);
+    const middlewareSource = read(MIDDLEWARE_PATH);
+    expect(middlewareSource).toMatch(/endsWith\(['"]\/health['"]\)/);
   });
 });
 
 describe("Auth boundary — in-scope admin API routes guard with an auth helper", () => {
-  // The middleware is the FIRST boundary; route handlers are the
+  // The Edge Middleware is the FIRST boundary; route handlers are the
   // second (defense-in-depth). Every in-scope admin route should
   // import one of the canonical auth helpers. We sample rather than
   // exhaustively asserting on every file to keep the failure message

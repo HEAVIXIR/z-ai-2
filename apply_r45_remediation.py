@@ -5,6 +5,11 @@ import re, sys
 
 ROOT = Path.cwd()
 
+# This one-time legacy remediation predates Cloudflare Edge Middleware boundary.
+# Refuse to run once the canonical Edge Middleware boundary exists; this one-time legacy script must not overwrite it.
+if (ROOT / "src/middleware.ts").exists():
+    raise SystemExit("ABORT: legacy R45 remediation is obsolete after Cloudflare Edge Middleware")
+
 def read(rel):
     p = ROOT / rel
     if not p.exists():
