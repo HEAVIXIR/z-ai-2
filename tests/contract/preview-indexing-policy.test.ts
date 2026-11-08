@@ -6,10 +6,9 @@ const root = process.cwd();
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 
 describe("preview indexing safety", () => {
-  it("detects both Cloudflare and Vercel preview deployments", () => {
+  it("detects Cloudflare Preview and local development deployments", () => {
     const config = read("src/lib/site-config.ts");
     expect(config).toMatch(/HEAVIX_ENV\?\.toLowerCase\(\) === "preview"/);
-    expect(config).toMatch(/VERCEL_ENV\?\.toLowerCase\(\) === "preview"/);
     expect(config).toMatch(/NODE_ENV === "development"/);
   });
 
