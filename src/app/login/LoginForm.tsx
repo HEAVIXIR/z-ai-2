@@ -53,9 +53,9 @@ export default function LoginForm() {
       <h1 className="text-center text-2xl font-black text-white">ورود</h1>
       {error && <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-400">{error}</div>}
       <div className="mt-6 space-y-4">
-        <input name="identifier" type="text" autoComplete="username" placeholder="موبایل / ایمیل"
+        <input name="identifier" type="text" autoComplete="username" aria-label="موبایل / ایمیل" placeholder="موبایل / ایمیل"
           className="h-12 w-full rounded-xl border border-white/10 bg-black/50 px-4 text-sm text-white" />
-        <input name="password" type="password" autoComplete="current-password" placeholder="••••••••"
+        <input name="password" type="password" autoComplete="current-password" aria-label="رمز عبور" placeholder="••••••••"
           className="h-12 w-full rounded-xl border border-white/10 bg-black/50 px-4 text-sm text-white" />
       </div>
       <button type="submit" disabled={loading} className="mt-6 flex h-12 w-full items-center justify-center rounded-xl bg-[#F58220] text-sm font-bold text-white">
