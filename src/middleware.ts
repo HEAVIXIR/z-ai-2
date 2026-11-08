@@ -22,7 +22,7 @@ export function middleware(req: NextRequest) {
   // public Preview hosts even when Worker bindings are not exposed to process.env.
   if (isPreview && pathname === "/robots.txt") {
     return withPreviewRobotsHeader(
-      new NextResponse("User-agent: *\\nDisallow: /\\n", {
+      new NextResponse("User-agent: *\nDisallow: /\n", {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       }),
       true,
