@@ -25,6 +25,26 @@ Do not transplant the historical package manifest, lockfile, adapter stack, or w
 - The separate `.github/workflows/open-next-middleware-workerd.yml` did run on `b6971fec14bb1ec95e212e2c258f1f031ee8488e` and passed. This is local OpenNext Edge Middleware Workerd proof only; it does not execute the Prisma App/Store database harness.
 - The CI workflow also passed on this exact commit, including disposable local PostgreSQL integration and paired backup/restore checks. Those checks do not attest to Preview DB roles, Preview DB destinations, Cloudflare secret destinations, or B2 object storage.
 
+## Upstream-supported Prisma Postgres Worker architecture (research update)
+
+The current Prisma ORM v6 documentation describes a supported Prisma Postgres serverless-driver path for Prisma 6.19: use `@prisma/adapter-ppg` with `@prisma/ppg`, generate an engine-less client with `provider = "prisma-client"` and `engineType = "client"`, and set the generator runtime to `workerd` for Cloudflare Workers. This is a better-fit candidate for the two Prisma Postgres resources than assuming a generic TCP `pg` adapter. See:
+- Prisma ORM v6 Cloudflare deployment guide: https://www.prisma.io/docs/orm/v6/prisma-client/deployment/edge/deploy-to-cloudflare
+- Prisma Postgres driver / 6.19 setup: https://www.prisma.io/docs/postgres/database/switch-from-accelerate
+- Prisma ORM v6 serverless driver overview: https://www.prisma.io/docs/orm/v6/overview/databases/database-drivers
+
+The current App schema and Store schema each define only the Node-oriented `prisma-client-js` generator. The historical harness adds a second, Worker-specific generator to each schema while retaining the existing Node generator:
+- App output: `src/lib/generated/worker-client`
+- Store output: `src/lib/generated/store-worker-client`
+- Worker generator: `provider = "prisma-client"`, `engineType = "client"`, `runtime = "workerd"`
+
+That additive dual-generator pattern is the preferred port candidate because it avoids replacing the existing Node client used by the application. It still requires generation, typecheck, OpenNext build, and Workerd tests on the current HEAD before acceptance.
+
+**Version rule:** current lock resolves Prisma CLI and `@prisma/client` to `6.19.3`. Do not reuse the historical `@prisma/adapter-ppg@7.10.1` / `@prisma/ppg@1.0.1` pair solely because it appears in the old commit. Confirm adapter/driver peer compatibility against Prisma 6.19.3 and lock the verified versions together before adding dependencies. Do not alter existing runtime Prisma dependencies until the dual-client build proves the current Node path remains intact.
+
+The separate `db.worker.ts`, `store-db.worker.ts`, and request-scoped resolver/proxy in the historical harness are useful reference implementations, not drop-in proof. Re-review them against current OpenNext context APIs, client lifecycle semantics, and the exact worker bundle before porting. In particular, keep the two database clients separate and preserve request-scope isolation.
+
+Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` for traditional PostgreSQL over Hyperdrive, but that is a different connection architecture. Do not introduce Hyperdrive resources or bindings as a substitute for the existing Prisma Postgres serverless connection without a separate architecture decision. Reference: https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-drivers-and-libraries/prisma-orm/
+
 ## Required implementation sequence
 
 1. **Inventory current generated clients**
