@@ -24,6 +24,9 @@
  *   - reserveStock() / releaseStock(): soft-reserve / release stock on
  *     a (part, warehouse) pair without changing the on-hand quantity —
  *     increments/decrements InventoryBalance.reserved.
+ *   - transferStock(): atomically moves unreserved stock between two active
+ *     warehouses using paired TRANSFER ledger rows with one shared reference;
+ *     the global Part.stock snapshot is unchanged.
  *   - getLowStockItems(): returns InventoryBalance rows where
  *     quantity <= lowStockThreshold (the warehouse-segmented low-stock
  *     report). Used by the admin UI to surface reorder alerts.
