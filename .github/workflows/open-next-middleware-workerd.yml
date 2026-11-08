@@ -9,6 +9,13 @@ on:
       - "src/lib/site-config.ts"
       - "src/app/robots.ts"
       - "src/app/sitemap.ts"
+      - "src/app/layout.tsx"
+      - "apply_r45_remediation.py"
+      - "tests/contract/r45-canonical-auth-contract.test.ts"
+      - "tests/contract/seo-public-metadata.test.ts"
+      - "tests/security/auth-boundary.test.ts"
+      - "tests/unit/proxy.test.ts"
+      - "tests/unit/seo-preview-policy.test.ts"
       - "tests/unit/preview-middleware.test.ts"
       - "tests/unit/site-config.test.ts"
       - ".github/workflows/open-next-middleware-workerd.yml"
@@ -28,7 +35,7 @@ concurrency:
 jobs:
   middleware-workerd:
     name: OpenNext Edge Middleware request-path proof (local Workerd only)
-    if: startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-')
+    if: startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-') || github.event.pull_request.head.ref == 'integration/cloudflare-preview-r45-auth-2026-11-08'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
