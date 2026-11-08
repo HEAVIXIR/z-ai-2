@@ -379,7 +379,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(15);
     });
 
-    it('should have 23 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 24 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -400,10 +400,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   (shipments/[id]/{assign,pickup,deliver,exception} POST) → total
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
-      //   Procurement receiving adds one inventory.manage gate; total = 7 + 3 + 7 + 6 = 23.
+      //   Procurement receiving adds one inventory.manage gate, and opening stock allocation adds one more; total = 8 + 3 + 7 + 6 = 24.
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 7,
+        'inventory.manage': 8,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
@@ -413,12 +413,18 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const f of files) {
         const content = readRoute(f);
         for (const key of Object.keys(expected)) {
+          // Accept either quote style so the contract validates the permission
+          // key rather than imposing a source-formatting convention.
+          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\        for (const key of Object.keys(expected)) {
           const target = `requirePermission(user.id, '${key}')`;
           let idx = 0;
           while ((idx = content.indexOf(target, idx)) !== -1) {
             counts[key]++;
             idx += target.length;
           }
+        }');
+          const matches = content.match(new RegExp(`requirePermission\\(user\\.id,\\s*(['"])\\${escapedKey}\\1\\)`, 'g')) || [];
+          counts[key] += matches.length;
         }
       }
       for (const key of Object.keys(expected)) {
