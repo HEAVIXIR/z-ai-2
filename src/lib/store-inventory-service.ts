@@ -163,7 +163,9 @@ export async function createMovement(
 
     return {
       movement,
-      beforeStock: part.stock,
+      // Derive the true pre-update value from the atomic increment result;
+      // the earlier read may be stale if another positive movement committed.
+      beforeStock: afterPart.stock - qty,
       afterStock: afterPart.stock,
       balanceAfter: afterPart.stock,
     };
