@@ -58,6 +58,25 @@ export const IS_PREVIEW_DEPLOYMENT =
   process.env.HEAVIX_ENV?.toLowerCase() === "preview" ||
   process.env.VERCEL_ENV?.toLowerCase() === "preview";
 
+/**
+ * Detect Preview at request time as well as from provider runtime bindings.
+ * Hostname matching is a fallback for Workers/Vercel/Pages when a binding
+ * is not exposed to the request module. Local development remains covered
+ * by IS_PREVIEW_DEPLOYMENT for build-time metadata and response headers.
+ */
+export function isPreviewDeployment(hostname?: string): boolean {
+  const heavixEnv = process.env.HEAVIX_ENV?.trim().toLowerCase();
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
+  const host = (hostname ?? "").split(":")[0].trim().toLowerCase().replace(/\.$/, "");
+
+  if (heavixEnv === "preview" || vercelEnv === "preview") return true;
+  return (
+    host.endsWith(".workers.dev") ||
+    host.endsWith(".vercel.app") ||
+    host.endsWith(".pages.dev")
+  );
+}
+
 /** Site display name (Persian). */
 export const SITE_NAME = "هویکس";
 
