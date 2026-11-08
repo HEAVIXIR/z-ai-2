@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   }
 
   try {
-    await requirePermission(user.id, "inventory.read");
-    await requirePermission(user.id, "inventory.manage");
+    await requirePermission(user.id, 'inventory.read');
+    await requirePermission(user.id, 'inventory.manage');
   } catch {
     return NextResponse.json(
       { success: false, error: "Forbidden: requires inventory.manage" },
