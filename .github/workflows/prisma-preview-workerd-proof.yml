@@ -20,6 +20,7 @@ concurrency:
 jobs:
   runtime-proof:
     name: Read-only App + Store Workerd proof
+    environment: preview-proof
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,16 +28,16 @@ jobs:
       HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
       HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
     steps:
-      - name: Checkout exact reviewed PR #191 Workerd proof commit
+      - name: Checkout exact triggering commit
         uses: actions/checkout@v4
         with:
-          ref: b94b9d6f3540e8f4467b1d4ac051d5ef050c0994
+          ref: ${{ github.sha }}
 
-      - name: Verify pinned proof commit
+      - name: Verify exact triggering commit
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -45,6 +46,9 @@ jobs:
 
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
+
+      - name: Typecheck Worker-specific application graph
+        run: bun run typecheck:worker
 
       - name: Generate isolated App and Store Worker clients
         run: |
