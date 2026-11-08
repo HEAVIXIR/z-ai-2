@@ -108,6 +108,7 @@ type ReadOnlyRoleEvidence = {
   canExecuteSecurityDefinerFunction: boolean;
   canCreateInUserSchemas: boolean;
   canCreateDatabaseObjects: boolean;
+  hasUnsafePredefinedRole: boolean;
   proven: boolean;
 };
 
@@ -137,6 +138,7 @@ async function inspectReadOnlyRole(
     can_execute_security_definer_function: boolean;
     can_create_in_user_schemas: boolean;
     can_create_database_objects: boolean;
+    has_unsafe_predefined_role: boolean;
   }>>`
     SELECT
       r.rolname::text AS role_name,
@@ -196,7 +198,23 @@ async function inspectReadOnlyRole(
           AND n.nspname NOT LIKE 'pg_%'
           AND has_schema_privilege(current_user, n.oid, 'CREATE')
       ) AS can_create_in_user_schemas,
-      has_database_privilege(current_user, current_database(), 'CREATE') AS can_create_database_objects
+      has_database_privilege(current_user, current_database(), 'CREATE') AS can_create_database_objects,
+      EXISTS (
+        SELECT 1
+        FROM unnest(ARRAY[
+          'pg_read_all_settings',
+          'pg_read_all_stats',
+          'pg_stat_scan_tables',
+          'pg_monitor',
+          'pg_database_owner',
+          'pg_signal_backend',
+          'pg_checkpoint',
+          'pg_maintain',
+          'pg_use_reserved_connections',
+          'pg_create_subscription'
+        ]::text[]) AS unsafe_role(role_name)
+        WHERE pg_has_role(current_user, unsafe_role.role_name, 'MEMBER')
+      ) AS has_unsafe_predefined_role
     FROM pg_roles r
     WHERE r.rolname = current_user
   `;
@@ -218,7 +236,8 @@ async function inspectReadOnlyRole(
     row.has_effective_sequence_write ||
     row.can_execute_security_definer_function ||
     row.can_create_in_user_schemas ||
-    row.can_create_database_objects
+    row.can_create_database_objects ||
+    row.has_unsafe_predefined_role
   );
   return {
     roleName: row.role_name,
@@ -238,6 +257,7 @@ async function inspectReadOnlyRole(
     canExecuteSecurityDefinerFunction: row.can_execute_security_definer_function,
     canCreateInUserSchemas: row.can_create_in_user_schemas,
     canCreateDatabaseObjects: row.can_create_database_objects,
+    hasUnsafePredefinedRole: row.has_unsafe_predefined_role,
     proven,
   };
 }
