@@ -69,7 +69,7 @@ describe("Next.js Edge Middleware request boundary", () => {
     );
   });
 
-  it("allows the canonical session cookie through the optimistic proxy check", () => {
+  it("allows the canonical session cookie through the optimistic middleware check", () => {
     const response = middleware(
       new NextRequest("https://preview.example.workers.dev/admin/users", {
         headers: { cookie: "heavix-user=synthetic-token" },
