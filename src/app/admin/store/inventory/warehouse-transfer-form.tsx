@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, Loader2, Package, Warehouse } from "lucide-react";
 
@@ -47,7 +47,7 @@ export default function WarehouseTransferForm({
     );
   }, [parts, search]);
 
-  const selectedPart = parts.find((part) => part.id === partId);
+  const selectedPart = filteredParts.find((part) => part.id === partId);
   const sourceBalance = selectedPart?.inventoryBalances.find(
     (balance) => balance.warehouseId === sourceWarehouseId,
   );
@@ -56,6 +56,7 @@ export default function WarehouseTransferForm({
     : 0;
   const qty = Number(quantity);
   const valid = Boolean(
+    selectedPart &&
     partId &&
     sourceWarehouseId &&
     destinationWarehouseId &&
@@ -66,7 +67,7 @@ export default function WarehouseTransferForm({
     reason.trim(),
   );
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSuccess("");
@@ -144,7 +145,9 @@ export default function WarehouseTransferForm({
             <label className="space-y-1.5 text-xs font-bold text-zinc-700">
               قطعه
               <select value={partId} onChange={(event) => setPartId(event.target.value)} className={INPUT}>
-                {filteredParts.map((part) => (
+                {filteredParts.length === 0 ? (
+                  <option value="">نتیجه‌ای پیدا نشد</option>
+                ) : filteredParts.map((part) => (
                   <option key={part.id} value={part.id}>
                     {(part.nameFa || part.name)} · {part.sku}
                   </option>
