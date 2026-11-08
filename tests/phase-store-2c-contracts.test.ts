@@ -1158,7 +1158,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
     it("rejects coerced non-numeric quantities at the route boundary", () => {
       const content = readRoute("src/app/api/admin/store/inventory/transfers/route.ts");
       expect(content).toMatch(/typeof quantity !== "number"/);
-      expect(content).toMatch(/!Number\\.isSafeInteger\\(quantity\\)/);
+      expect(content).toMatch(/!Number\.isSafeInteger\(quantity\)/);
       expect(content).toMatch(/quantity <= 0/);
     });
   });
