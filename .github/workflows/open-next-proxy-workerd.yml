@@ -1,0 +1,56 @@
+name: Cloudflare OpenNext Proxy Workerd Proof
+
+on:
+  pull_request:
+    branches:
+      - "integration/**"
+    paths:
+      - "src/proxy.ts"
+      - "src/middleware.ts"
+      - "tests/unit/proxy.test.ts"
+      - "tests/unit/preview-middleware.test.ts"
+      - "tests/contract/seo-public-metadata.test.ts"
+      - "scripts/test-open-next-proxy-workerd.mjs"
+      - "open-next.config.ts"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "bun.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-open-next-proxy-workerd-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  proxy-workerd:
+    name: OpenNext Proxy request-path proof (local Workerd only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEAVIX_ENV: preview
+      NODE_ENV: production
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Main and Store Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Build OpenNext Worker artifact
+        run: bunx opennextjs-cloudflare build --noMinify
+
+      - name: Exercise Proxy through local Workerd
+        run: bun scripts/test-open-next-proxy-workerd.mjs
