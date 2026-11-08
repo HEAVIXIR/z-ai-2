@@ -1095,6 +1095,35 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(implementation).not.toMatch(/await storeDb\.(part|stockMovement)\.(create|update)\(/);
     });
 
+    it('purchase-order lifecycle and receiving serialize on the parent PO row', () => {
+      const source = readService('src/lib/store-procurement-service.ts');
+      const ranges = [
+        ['submitPurchaseOrder', 'approvePurchaseOrder'],
+        ['approvePurchaseOrder', 'receivePurchaseOrderItem'],
+        ['receivePurchaseOrderItem', 'cancelPurchaseOrder'],
+        ['cancelPurchaseOrder', 'listPurchaseOrders'],
+      ] as const;
+
+      for (const [name, next] of ranges) {
+        const start = source.indexOf(`export async function ${name}(`);
+        const end = source.indexOf(`export async function ${next}(`, start);
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        const implementation = source.slice(start, end);
+        expect(implementation).toContain('storeDb.$transaction(async (tx) =>');
+        expect(implementation).toContain('tx.$queryRaw');
+        expect(implementation).toContain('FOR UPDATE');
+      }
+
+      const receiveStart = source.indexOf('export async function receivePurchaseOrderItem(');
+      const receiveEnd = source.indexOf('export async function cancelPurchaseOrder(', receiveStart);
+      const receive = source.slice(receiveStart, receiveEnd);
+      expect(receive).toContain('tx.purchaseOrderItem.updateMany(');
+      expect(receive).toContain('tx.part.updateMany(');
+      expect(receive).toContain('tx.stockMovement.create(');
+      expect(receive).toContain('tx.purchaseOrderItem.findMany(');
+    });
+
     it('warehouse stock decrements preserve existing reservations with compare-and-set', () => {
       const source = readService('src/lib/store-inventory-service.ts');
       const start = source.indexOf('export async function adjustStock(');
