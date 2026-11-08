@@ -218,3 +218,41 @@ The existing Workerd read-only assertion remains intact. Preview release remains
 **NO-GO** pending least-privilege credentials, scoped runtime proof, independent
 Cloudflare binding destination attestation, and paired encrypted Backblaze B2
 read-back/restore evidence.
+
+## Follow-up Workerd proof-path verification — 2026-11-09
+
+A read-only review of the manually dispatched Workerd workflow and its pinned
+harness was paired with SELECT-only privilege probes on both Preview databases.
+
+- The harness's first database-identity query calls
+  `pg_catalog.pg_control_system()`. The current Prisma SQL-tool role,
+  `prisma_application`, can execute that function on both Preview resources
+  (`has_function_privilege(..., 'EXECUTE') = true`). It is not a member of
+  `pg_monitor`; the observed function privilege is independently effective.
+  No role grant or membership was changed.
+- The transaction read-only gate remains unsatisfied by the audited role:
+  the previously observed role/database defaults leave
+  `transaction_read_only=false`, and `pg_write_all_data` membership grants
+  effective DML on every public table. A passing identity probe therefore does
+  not imply a passing read-only transaction proof.
+- The manually dispatched workflow
+  `.github/workflows/prisma-preview-workerd-proof.yml` checks out the fixed
+  historical proof commit
+  `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994`, rather than the current security
+  branch HEAD. At the current audited HEAD
+  `76e6a45c02b4e250399d686cba12a1ba45bfedec`, the checked-in
+  `package.json` does not define `test:workerd`, and the
+  `tests/workerd/worker.ts` path is absent. Those files do exist at the pinned
+  historical commit. Consequently, that manual workflow tests the historical
+  harness, not the current HEAD code.
+- The workflow was not dispatched. No exact-HEAD Workerd result is claimed.
+  The current HEAD combined status contains only the external Vercel context
+  (success); it contains no accepted HEAVIX CI or Workerd check.
+
+The correct next step is to restore or deliberately rebase the proof harness
+into the current reviewed branch, update the workflow to check out the exact
+reviewed commit (not a fixed historical SHA), and provision separate
+least-privilege Preview proof identities before running it. The existing
+read-only assertions must remain strict. No workflow, role, grant, secret,
+database setting, Worker binding, deployment, DNS, or Production resource was
+changed by this verification. Preview remains **NO-GO**.
