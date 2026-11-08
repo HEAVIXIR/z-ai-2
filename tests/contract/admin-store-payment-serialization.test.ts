@@ -105,3 +105,15 @@ describe("admin store payment state and audit atomicity", () => {
     expect(detail).toContain('if ("noChanges" in result)');
     expect(detail).toContain("{ status: 400 }");
   });
+
+
+describe("admin store payment mutation CSRF protection", () => {
+  it("requires CSRF validation before payment decisions", () => {
+    const patchStart = detail.indexOf("export async function PATCH(");
+    const getStart = detail.indexOf("export async function GET(", patchStart);
+    const patchHandler = detail.slice(patchStart, getStart);
+    expect(detail).toContain('import { checkCsrf } from "@/lib/csrf"');
+    expect(patchHandler).toContain("checkCsrf(req)");
+    expect(patchHandler.indexOf("checkCsrf(req)")).toBeLessThan(patchHandler.indexOf("const body = await req.json()"));
+  });
+});
