@@ -379,7 +379,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(15);
     });
 
-    it('should have 24 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 25 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -543,7 +543,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function DELETE\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
