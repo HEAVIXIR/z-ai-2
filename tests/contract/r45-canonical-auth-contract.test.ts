@@ -25,6 +25,20 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toMatch(/\busername\b/);
   });
 
+  it("refuses to mint sessions for any account not explicitly ACTIVE", () => {
+    const s = read("src/app/api/auth/login/route.ts");
+    expect(s).toContain('if (user.status !== "ACTIVE")');
+    expect(s).toContain("await createUserSession(user.id)");
+    expect(s.indexOf('if (user.status !== "ACTIVE")')).toBeLessThan(s.indexOf("await createUserSession(user.id)"));
+  });
+
+  it("limits permission resolution and admin role checks to ACTIVE accounts", () => {
+    const legacy = read("src/lib/rbac-legacy.ts");
+    const authz = read("src/lib/authorization/index.ts");
+    expect(legacy).toContain("user: { status: 'ACTIVE' }");
+    expect(authz).toContain("user: { status: 'ACTIVE' }");
+  });
+
   it("removes the ADMIN sentinel bypass", () => {
     const s = read("src/lib/authorization/index.ts");
     expect(s).not.toMatch(/userId\s*===\s*["']ADMIN["']/);
