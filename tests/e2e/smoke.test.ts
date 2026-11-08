@@ -8,7 +8,7 @@
  * pipeline; here we assert that the configuration that drives them
  * is present and consistent.
  *
- * These run under `bun run test:e2e`
+ * These run under `bun run test:e2e:smoke`
  * (config: vitest.e2e.config.ts → includes tests/e2e/**).
  */
 
