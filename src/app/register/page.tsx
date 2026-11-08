@@ -120,18 +120,18 @@ export default function RegisterPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-bold text-white/60">نام *</label>
-                  <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required className={inputCls} placeholder="نام" />
+                  <input aria-label="نام" value={firstName} onChange={(e) => setFirstName(e.target.value)} required className={inputCls} placeholder="نام" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold text-white/60">نام خانوادگی *</label>
-                  <input value={lastName} onChange={(e) => setLastName(e.target.value)} required className={inputCls} placeholder="نام خانوادگی" />
+                  <input aria-label="نام خانوادگی" value={lastName} onChange={(e) => setLastName(e.target.value)} required className={inputCls} placeholder="نام خانوادگی" />
                 </div>
               </div>
 
               <div>
                 <label className="mb-1 block text-xs font-bold text-white/60">شماره موبایل *</label>
                 <input
-                  value={mobile}
+                  aria-label="شماره موبایل" value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   required
                   dir="ltr"
@@ -144,7 +144,7 @@ export default function RegisterPage() {
                 <label className="mb-1 block text-xs font-bold text-white/60">ایمیل *</label>
                 <input
                   type="email"
-                  value={email}
+                  aria-label="ایمیل" value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   dir="ltr"
@@ -156,7 +156,7 @@ export default function RegisterPage() {
               <div>
                 <label className="mb-1 block text-xs font-bold text-white/60">رمز عبور *</label>
                 <input
-                  type="password"
+                  aria-label="رمز عبور" type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -167,7 +167,7 @@ export default function RegisterPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-bold text-white/60">نام شرکت (اختیاری)</label>
-                <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className={inputCls} placeholder="نام شرکت" />
+                <input aria-label="نام شرکت" value={companyName} onChange={(e) => setCompanyName(e.target.value)} className={inputCls} placeholder="نام شرکت" />
               </div>
             </div>
 
@@ -222,7 +222,7 @@ export default function RegisterPage() {
 
             <div className="mt-5">
               <input
-                value={code}
+                aria-label="کد تأیید ایمیل" value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
                 dir="ltr"
