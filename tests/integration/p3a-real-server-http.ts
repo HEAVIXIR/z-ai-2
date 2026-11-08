@@ -102,12 +102,12 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
     let setupError: Error | null = null;
     try {
       const buyer = await db.user.create({
-        data: { mobile: "09129992001", email: "p3a-server-buyer@test.com", firstName: "P3S", lastName: "Buyer", passwordHash: "hash" },
+        data: { mobile: "09129992001", email: "p3a-server-buyer@test.com", firstName: "P3S", lastName: "Buyer", passwordHash: "hash", status: "ACTIVE" },
       });
       setupIds.buyerId = buyer.id;
       buyerId = buyer.id;
       const seller = await db.user.create({
-        data: { mobile: "09129992002", email: "p3a-server-seller@test.com", firstName: "P3S", lastName: "Seller", passwordHash: "hash" },
+        data: { mobile: "09129992002", email: "p3a-server-seller@test.com", firstName: "P3S", lastName: "Seller", passwordHash: "hash", status: "ACTIVE" },
       });
       setupIds.sellerId = seller.id;
       sellerId = seller.id;
@@ -130,7 +130,7 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
       // Create a real session for the buyer
       validSessionToken = crypto.randomBytes(32).toString("base64url");
       const session = await db.session.create({
-        data: { userId: buyerId, token: validSessionToken, expiresAt: new Date(Date.now() + 3600000) },
+        data: { userId: buyerId, token: hashSessionToken(validSessionToken), expiresAt: new Date(Date.now() + 3600000) },
       });
       setupIds.sessionId = session.id;
     } catch (e) {
