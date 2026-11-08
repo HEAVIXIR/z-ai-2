@@ -17,10 +17,10 @@ const form = fs.readFileSync(
 describe("Warehouse transfer server-side part search", () => {
   it("protects the read endpoint with authentication and both inventory permissions", () => {
     expect(route).toContain("getCurrentUser()");
-    expect(route).toContain('requirePermission(user.id, 'inventory.read')');
-    expect(route).toContain('requirePermission(user.id, 'inventory.manage')');
-    expect(route).toContain('{ status: 401 }');
-    expect(route).toContain('{ status: 403 }');
+    expect(route).toContain("requirePermission(user.id, 'inventory.read')");
+    expect(route).toContain("requirePermission(user.id, 'inventory.manage')");
+    expect(route).toContain("{ status: 401 }");
+    expect(route).toContain("{ status: 403 }");
   });
 
   it("searches the complete active catalog with bounded case-insensitive database filters", () => {
