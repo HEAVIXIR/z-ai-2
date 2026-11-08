@@ -73,6 +73,26 @@ test.describe("HEAVIX public browser smoke", () => {
     ).toBeVisible();
   });
 
+
+  test("login and registration fields expose accessible names without submitting data", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium-mobile-320",
+      "Form accessibility smoke runs once on the mobile project.",
+    );
+
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("textbox", { name: "موبایل / ایمیل" })).toBeVisible();
+    await expect(page.getByLabel("رمز عبور")).toHaveAttribute("autocomplete", "current-password");
+
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
+    await expect(page.getByLabel("نام")).toBeVisible();
+    await expect(page.getByLabel("نام خانوادگی")).toBeVisible();
+    await expect(page.getByLabel("شماره موبایل")).toHaveAttribute("required", "");
+    await expect(page.getByLabel("ایمیل")).toHaveAttribute("type", "email");
+    await expect(page.getByLabel("رمز عبور")).toHaveAttribute("type", "password");
+    await expect(page.getByLabel("نام شرکت")).toBeVisible();
+  });
+
   test("anonymous users cannot access the admin API", async ({ request }) => {
     const response = await request.get("/api/admin/users");
     expect(response.status()).toBe(401);
