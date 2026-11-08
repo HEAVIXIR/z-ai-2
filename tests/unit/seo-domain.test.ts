@@ -65,6 +65,7 @@ describe("site-config Preview canonical origin", () => {
   it("uses VERCEL_URL for Vercel Preview instead of the production fallback", async () => {
     process.env.VERCEL_ENV = "preview";
     process.env.VERCEL_URL = "heavix-pr-123.vercel.app";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     const mod = await import("@/lib/site-config");
     expect(mod.SITE_BASE_URL).toBe("https://heavix-pr-123.vercel.app");
     expect(mod.IS_PREVIEW_DEPLOYMENT).toBe(true);
@@ -156,6 +157,7 @@ describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
     process.env.NODE_ENV = "test";
   });
 
@@ -204,6 +206,7 @@ describe("sitemap.ts (official Next.js metadata route) — static paths domain",
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
     process.env.NODE_ENV = "test";
   });
 
@@ -269,6 +272,7 @@ describe("seo-service.generateSitemap() (legacy Wave 3B producer) — static pat
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
     process.env.NODE_ENV = "test";
   });
 
@@ -330,6 +334,7 @@ describe("cross-producer consistency — official vs legacy output the same doma
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
     process.env.NODE_ENV = "test";
   });
 
