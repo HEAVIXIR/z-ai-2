@@ -106,3 +106,14 @@ The source wiring agrees with the intended two-database split: `src/lib/db.ts` u
 - Consequently, the existing admin backup route must not be treated as a working Cloudflare Workers backup mechanism. The current local filesystem output also does not establish durable off-site backup storage.
 
 **Recommended implementation direction (not executed):** move paired `pg_dump` execution to a controlled GitHub Actions runner or another supported job runtime, upload encrypted/checksummed artifacts to the approved Backblaze B2 bucket through its S3-compatible API, enforce retention, and prove restore from B2 into a disposable database. Keep credentials in repository/environment secrets and never print them. Do not add a workflow that targets live databases until authorized backup credentials, target identities, retention, and restore gates are confirmed.
+
+
+## Follow-up: automated backup inventory and CI restore proof
+
+- Prisma Postgres automated backup inventory returned zero backup records for Main app Preview, Store Preview, and the selected Production resource.
+- Prisma workspace object-store bucket inventory returned zero buckets. No bucket or access key was created.
+- The exact-HEAD CI run `42516759411` passed both `Store backup/restore proof (disposable PostgreSQL 17)` and `Paired Main + Store backup/restore proof (disposable PostgreSQL 17)`. These are disposable local CI databases, not backups of HEAVIX Preview or Production.
+- The same run passed fresh-database migration deployment and existing-schema adoption proofs for Main and Store. This is CI fixture evidence, not evidence that remote Preview/Production were changed.
+- No Backblaze B2 account/bucket integration was available through the connected tools in this session. No B2 credentials were requested or handled. The approved B2 path remains unprovisioned/unverified from this audit.
+
+**Decision:** retain the existing paired dump/restore scripts as a CI-validated local mechanism only. Do not claim off-site backup coverage, and do not create an object-store bucket in Prisma as a substitute for the approved Backblaze B2 infrastructure. B2 integration remains a separate gated implementation once the B2 bucket endpoint, least-privilege key, encryption key-management, retention policy, and Preview database destination attestation are available.
