@@ -121,7 +121,6 @@ try {
         // This proof must identify Preview solely from the incoming Host.
         delete env.HEAVIX_ENV;
         delete env.NEXT_PUBLIC_SITE_URL;
-        delete env.VERCEL_ENV;
         return env;
       })(),
       stdio: ["ignore", "pipe", "pipe"],
