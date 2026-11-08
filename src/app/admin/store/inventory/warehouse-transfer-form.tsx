@@ -66,42 +66,47 @@ export default function WarehouseTransferForm({
     setLoadingMore(false);
     setSearchError("");
 
-    const params = new URLSearchParams({ limit: String(pageSize) });
-    if (search.trim()) params.set("q", search.trim());
+    const debounceTimer = window.setTimeout(() => {
+      const params = new URLSearchParams({ limit: String(pageSize) });
+      if (search.trim()) params.set("q", search.trim());
 
-    fetch(`/api/admin/store/inventory/transfer-parts?${params.toString()}`, {
-      method: "GET",
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
-          throw new Error(payload?.error || "جستجوی قطعات انجام نشد");
-        }
-        setLoadedParts(payload.data);
-        setHasMore(payload.hasMore === true);
-        setNextCursor(typeof payload.nextCursor === "string" ? payload.nextCursor : null);
-        setPartId((current) =>
-          payload.data.some((part: PartOption) => part.id === current)
-            ? current
-            : payload.data[0]?.id ?? "",
-        );
+      fetch(`/api/admin/store/inventory/transfer-parts?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
       })
-      .catch((err: unknown) => {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setSearchError(err instanceof Error ? err.message : "خطای نامشخص در جستجوی قطعات");
-        setLoadedParts([]);
-        setHasMore(false);
-        setNextCursor(null);
-        setPartId("");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setSearching(false);
-      });
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
+            throw new Error(payload?.error || "جستجوی قطعات انجام نشد");
+          }
+          setLoadedParts(payload.data);
+          setHasMore(payload.hasMore === true);
+          setNextCursor(typeof payload.nextCursor === "string" ? payload.nextCursor : null);
+          setPartId((current) =>
+            payload.data.some((part: PartOption) => part.id === current)
+              ? current
+              : payload.data[0]?.id ?? "",
+          );
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          setSearchError(err instanceof Error ? err.message : "خطای نامشخص در جستجوی قطعات");
+          setLoadedParts([]);
+          setHasMore(false);
+          setNextCursor(null);
+          setPartId("");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 250);
 
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(debounceTimer);
+      controller.abort();
+    };
   }, [search, pageSize]);
 
   async function loadMore() {
