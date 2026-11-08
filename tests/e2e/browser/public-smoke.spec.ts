@@ -93,6 +93,34 @@ test.describe("HEAVIX public browser smoke", () => {
     await expect(page.getByLabel("نام شرکت", { exact: true })).toBeVisible();
   });
 
+
+  test("anonymous Store catalog APIs provide read-only search and filter envelopes", async ({ request }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium-mobile-320",
+      "Store catalog API smoke runs once against the isolated CI Store database.",
+    );
+
+    const partsResponse = await request.get(
+      "/api/store/parts?q=__heavix_e2e_no_matching_part__",
+    );
+    expect(partsResponse.status()).toBe(200);
+    expect(partsResponse.headers()["content-type"]).toContain("application/json");
+    const parts = await partsResponse.json();
+    expect(Array.isArray(parts.parts)).toBe(true);
+    expect(typeof parts.total).toBe("number");
+    expect(parts.currency).toBeTruthy();
+
+    const categoriesResponse = await request.get("/api/store/categories");
+    expect(categoriesResponse.status()).toBe(200);
+    const categories = await categoriesResponse.json();
+    expect(Array.isArray(categories.categories)).toBe(true);
+
+    const brandsResponse = await request.get("/api/store/brands");
+    expect(brandsResponse.status()).toBe(200);
+    const brands = await brandsResponse.json();
+    expect(Array.isArray(brands.brands)).toBe(true);
+  });
+
   test("anonymous users cannot access the admin API", async ({ request }) => {
     const response = await request.get("/api/admin/users");
     expect(response.status()).toBe(401);
