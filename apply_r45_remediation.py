@@ -5,10 +5,10 @@ import re, sys
 
 ROOT = Path.cwd()
 
-# This one-time legacy remediation predates Next.js 16 Proxy migration.
-# Refuse to run after src/proxy.ts exists so it cannot recreate middleware.ts.
-if (ROOT / "src/proxy.ts").exists():
-    raise SystemExit("ABORT: legacy R45 remediation is obsolete after Next.js Proxy migration")
+# This one-time legacy remediation predates Cloudflare Edge Middleware boundary.
+# Refuse to run after src/middleware.ts exists so it cannot recreate middleware.ts.
+if (ROOT / "src/middleware.ts").exists():
+    raise SystemExit("ABORT: legacy R45 remediation is obsolete after Cloudflare Edge Middleware")
 
 def read(rel):
     p = ROOT / rel
