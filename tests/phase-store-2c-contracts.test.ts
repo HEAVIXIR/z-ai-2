@@ -851,7 +851,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         for (const m of matches) {
           const key = m[1];
           expect(key).toMatch(
-            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel|restock|initial_allocation)$/,
+            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel|restock|initial_allocation|transfer)$/,
           );
         }
       }
