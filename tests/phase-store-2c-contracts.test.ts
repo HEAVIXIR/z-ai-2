@@ -415,16 +415,14 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         for (const key of Object.keys(expected)) {
           // Accept either quote style so the contract validates the permission
           // key rather than imposing a source-formatting convention.
-          const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\        for (const key of Object.keys(expected)) {
-          const target = `requirePermission(user.id, '${key}')`;
-          let idx = 0;
-          while ((idx = content.indexOf(target, idx)) !== -1) {
-            counts[key]++;
-            idx += target.length;
+          for (const quote of ["'", '"']) {
+            const target = `requirePermission(user.id, ${quote}${key}${quote})`;
+            let idx = 0;
+            while ((idx = content.indexOf(target, idx)) !== -1) {
+              counts[key]++;
+              idx += target.length;
+            }
           }
-        }');
-          const matches = content.match(new RegExp(`requirePermission\\(user\\.id,\\s*(['"])\\${escapedKey}\\1\\)`, 'g')) || [];
-          counts[key] += matches.length;
         }
       }
       for (const key of Object.keys(expected)) {
