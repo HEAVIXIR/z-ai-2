@@ -256,11 +256,13 @@ least-privilege Preview proof identities before running it. The existing
 read-only assertions must remain strict. No workflow, role, grant, secret,
 database setting, Worker binding, deployment, DNS, or Production resource was
 changed by this verification. Preview remains **NO-GO**.
-- A compatibility check also shows that the historical harness is not a
-  drop-in file restore: its pinned `package.json` uses Prisma
-  `6.19.3` plus `@prisma/adapter-ppg`/`@prisma/ppg`, while the current
-  security branch uses Prisma `^6.11.1` and has no
-  `src/lib/prisma-worker-clients.ts`, `scripts/run-prisma-workerd-proof.mjs`,
-  or `tsconfig.worker.json`. Porting the proof therefore requires a reviewed
-  dependency/runtime compatibility change, not copying the historical worker
-  file alone. No dependency or lockfile change was attempted.
+### Harness compatibility note
+
+The historical harness is not a drop-in file restore: its pinned
+`package.json` uses Prisma `6.19.3` plus
+`@prisma/adapter-ppg`/`@prisma/ppg`, while the current security branch uses
+Prisma `^6.11.1` and has no `src/lib/prisma-worker-clients.ts`,
+`scripts/run-prisma-workerd-proof.mjs`, or `tsconfig.worker.json`.
+Porting the proof therefore requires a reviewed dependency/runtime
+compatibility change, not copying the historical worker file alone. No
+dependency or lockfile change was attempted.
