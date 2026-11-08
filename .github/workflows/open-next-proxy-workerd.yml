@@ -53,4 +53,4 @@ jobs:
         run: bunx opennextjs-cloudflare build --noMinify
 
       - name: Exercise Proxy through local Workerd
-        run: bun scripts/test-open-next-proxy-workerd.mjs
+        run: bun run test:open-next-proxy-workerd
