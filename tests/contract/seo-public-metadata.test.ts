@@ -39,7 +39,8 @@ describe("public SEO metadata safety", () => {
   it("does not advertise the production sitemap from Preview robots.txt", () => {
     const source = read("src/app/robots.ts");
     expect(source).toContain('export const dynamic = "force-dynamic"');
-    expect(source).toContain('isPreviewDeployment(requestHeaders.get("host") ?? "")');
+    expect(source).toContain("export function buildRobots(hostname?: string)");
+    expect(source).toContain("const preview = isPreviewDeployment(hostname)");
     expect(source).toContain("if (preview)");
     expect(source).toContain("return { rules }");
   });
