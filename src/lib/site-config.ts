@@ -55,7 +55,6 @@ export const SITE_BASE_URL: string = RAW_SITE_URL;
  */
 export const IS_PREVIEW_DEPLOYMENT =
   process.env.NODE_ENV === "development" ||
-  process.env.HEAVIX_ENV?.toLowerCase() === "preview" ||
   process.env.HEAVIX_ENV?.toLowerCase() === "preview";
 
 /**
