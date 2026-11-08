@@ -145,3 +145,6 @@ PostgreSQL catalog integrity snapshot:
 The catalog query returned zero standalone unique constraints in both databases; unique indexes/column annotations were not exhaustively reconciled in this pass. Do not interpret the zero count as proof that no unique indexes exist.
 
 **Next schema gate:** compare each live column's PostgreSQL type, nullability, default expression, and each Prisma-declared unique/index/foreign-key definition. Do not run `db push`, `migrate deploy`, `migrate reset`, or schema updates against either remote Preview or Production during this audit.
+
+
+A further metadata comparison of all scalar model fields found **zero PostgreSQL type or nullability differences** across the 120 Main and 34 Store Prisma models. This check normalized common Prisma-to-PostgreSQL scalar mappings and explicit native annotations. It does not yet reconcile default expressions, index/unique definitions, collations, generated expressions, or every foreign-key action.
