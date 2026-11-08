@@ -56,8 +56,13 @@ export async function POST(req: Request) {
     const passwordValid = await verifyPassword(String(password), user.passwordHash);
     if (!passwordValid) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
 
-    if (user.status === "BLOCKED") {
-      return NextResponse.json({ error: "حساب کاربری شما مسدود شده است" }, { status: 403 });
+    // Do not mint sessions for pending, suspended, blocked, or unknown states.
+    // The canonical session resolver accepts ACTIVE accounts only.
+    if (user.status !== "ACTIVE") {
+      const message = user.status === "BLOCKED"
+        ? "حساب کاربری شما مسدود شده است"
+        : "حساب کاربری شما هنوز فعال نیست";
+      return NextResponse.json({ error: message }, { status: 403 });
     }
 
     await db.user.update({
