@@ -89,8 +89,7 @@ of a completed backup of either Preview database or Production.
 ## Release gate
 
 Preview remains **NO-GO for deployment** until database destination attestation,
-supported runtime backup-to-Backblaze-B2 implementation, restore validation, and the
-remaining full schema-definition reconciliation are complete. Vercel remains excluded
+supported runtime backup-to-Backblaze-B2 implementation, and restore validation are complete. Vercel remains excluded
 from HEAVIX infrastructure; no PR is opened while the Vercel GitHub App restriction
 remains. No Production, DNS, secrets, live migration, or deployment action is authorized
 by this audit.
