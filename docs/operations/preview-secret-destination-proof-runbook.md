@@ -386,3 +386,57 @@ Prisma-managed snapshots, if available, are provider recovery points; they are n
 | Production DB | not queried or modified | NO-GO |
 
 **Safety record:** the only live Cloudflare mutation in this phase was disabling version-specific Preview URLs while preserving the canonical public workers.dev endpoint. The change was immediately read back and verified. No other Cloudflare, Prisma, Backblaze, GitHub secret, DNS, deployment, or Production state was changed.
+
+
+## Phase 8 — current project recheck (2026-11-08)
+
+This addendum distinguishes historical direct database identity proof from the metadata-only checks performed on 2026-11-08. It does not authorize new database contact, Worker upload/deployment, migrations, writes, or Production access.
+
+### Prisma metadata recheck — 2026-11-08
+
+The Prisma workspace inventory was re-read without retrieving connection-string values:
+
+| Project | Database | Resource ID | State | Region |
+|---|---|---|---|---|
+| `heavix-app-preview` | `heavix-app-preview` | `db_ew8d6duermpt125paxaqorr9` | Ready | Frankfurt |
+| `heavix-store-preview` | `heavix-store-preview` | `db_cmtgxfrfwxw5mi77020tcnc3` | Ready | Frankfurt |
+| `heavix-production` | `heavix-production` | `db_rc9ln1df4rwgxducp2zsge2s` | Ready | Frankfurt |
+| `heavix-web-preview` | no separate database listed | — | — | — |
+
+The App and Store Preview connection-string metadata both include the label `heavix-preview-worker`; labels are scoped to their owning project/database and are not globally unique. No connection-string values, passwords, tokens, or secret values were read.
+
+**Identity interpretation:** Phase 2 (2026-11-06) and Phase 6.1 (2026-11-07) record prior operator-authorized, explicit read-only SQL verification for the two Preview databases. The recorded identity pairs remain:
+- App Preview: `(7701427422680793119, 5)`
+- Store Preview: `(7701425043360235551, 5)`
+
+The 2026-11-08 activity only re-confirmed Prisma project/database ownership and Ready metadata. It did **not** repeat SQL identity queries or contact either database. Treat the direct identity pairs as historical documented proof, not as a fresh 2026-11-08 runtime check.
+
+The encrypted Cloudflare Worker destinations for `DATABASE_URL` and `STORE_DATABASE_URL` remain **UNPROVEN**. Matching Prisma resource metadata and historical direct Preview identity checks do not prove which destinations the active Worker secrets use.
+
+### Current GitHub validation — 2026-11-08
+
+The following are branch-specific CI/build proofs only. Every PR listed remains Draft/unmerged.
+
+| PR | Exact head | Validation | Result |
+|---|---|---|---|
+| #288 OpenNext Preview build recovery | `9ad74273ec20dae6e6380cf17d963f3c53d1c026` | CI `42480825496` | All blocking jobs PASS |
+| #289 Browser E2E | `c15213102b31da9151a51825ffee09495b675c59` | CI `42481175707` | All blocking jobs PASS; 31 Playwright assertions passed, 8 project-specific skips intentional |
+| #290 Preview noindex Edge Middleware | `3b3562e2683d6178fcc73e5a2271781b95f54f21` | CI `42481030079`; local Workerd `42481030076` | All blocking CI jobs and Edge Middleware Workerd proof PASS |
+| #291 Dynamic sitemap | `59db3772d0a4a54c8cb5c48e2deec8da64136912` | CI `42477603535`; OpenNext build `9380caca-ce59-4d88-88dc-028bff3b5ae0` | PASS; sitemap is request-time dynamic on that branch |
+| #292 Preview canonical origin | `7528ac8b579ac7f83cf26f71a90ab54a45387915` | CI `42478204127`; OpenNext build `2ecf5ac9-5955-401f-94f9-1c4f02eb413c` | PASS; deploy no-op |
+
+PR #290's architecture was deliberately changed after checking current official support matrices: Next.js 16 `proxy.ts` is Node.js-only, while Cloudflare OpenNext currently supports Edge Middleware and lists Node.js Middleware as not yet supported. The Draft PR therefore retains `src/middleware.ts` / `middleware()` and accepts the Next.js deprecation warning. Its Workerd proof validates the generated Edge Middleware Worker locally; it is not a live Worker deployment.
+
+The old Workerd check on PR #292 (`42478227562`) failed before starting Workerd because that unrelated branch did not contain the Proxy smoke script. The shared workflow has since been renamed to an Edge Middleware proof and scoped to the dedicated migration branch family. Treat the old check as a historical workflow-scope false failure, not an application runtime result.
+
+### Safety and release state — 2026-11-08
+
+- No Preview database was contacted during the 2026-11-08 metadata recheck.
+- No connection-string or Worker secret value was read, copied, hashed, or changed.
+- No schema migration, seed, write, or restore was executed.
+- No Worker version was uploaded or deployed; the successful Workerd proof is local only.
+- No Production database was queried.
+- No merge, DNS, nameserver, main-domain, or paid-plan change occurred.
+- Cloudflare Worker version 14 and the `previews_enabled=false` setting are last recorded as verified on 2026-11-07; they were not re-read in this 2026-11-08 check.
+
+**Current decision remains:** direct Preview database identities have prior documented read-only proof; live Worker Secret destinations remain **UNPROVEN**; Production remains **NO-GO**; main-domain release remains blocked pending complete Preview validation and explicit release authorization.
