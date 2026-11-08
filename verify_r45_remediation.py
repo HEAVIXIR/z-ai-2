@@ -8,7 +8,7 @@ checks={
 "src/lib/auth.ts":[r"ADMIN_COOKIE",r"AdminSession",r'(?<![A-Za-z])id:\s*"ADMIN"',r"validateLogin",r"createSession"],
 "src/lib/authorization/index.ts":[r"userId\s*===\s*['\"]ADMIN['\"]"],
 "src/app/api/auth/login/route.ts":[r"validateLogin",r"createSession",r"ADMIN_USERNAME",r"\busername\b"],
-"src/middleware.ts":[r"heavix-admin",r"ADMIN_COOKIE"],
+"src/proxy.ts":[r"heavix-admin",r"ADMIN_COOKIE"],
 "src/lib/ai-policy.ts":[r"user\.role",r"select:\s*\{\s*role:\s*true\s*\}"],
 "src/lib/seller-service.ts":[r'role:\s*"SELLER"'],
 }
