@@ -8,8 +8,11 @@ const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 describe("preview indexing safety", () => {
   it("detects Cloudflare Preview and local development deployments", () => {
     const config = read("src/lib/site-config.ts");
-    expect(config).toMatch(/HEAVIX_ENV\?\.toLowerCase\(\) === "preview"/);
+    expect(config).toMatch(/HEAVIX_ENV\?\.trim\(\)\.toLowerCase\(\)/);
+    expect(config).toMatch(/heavixEnvironment === "preview"/);
     expect(config).toMatch(/NODE_ENV === "development"/);
+    expect(config).toContain('host.endsWith(".workers.dev")');
+    expect(config).toContain('host.endsWith(".pages.dev")');
   });
 
   it("sets one request-time noindex response header for Preview deployments", () => {
@@ -18,18 +21,20 @@ describe("preview indexing safety", () => {
     expect(middleware).toContain("X-Robots-Tag");
     expect(middleware).toContain("noindex, nofollow, noarchive");
     expect(middleware).toContain("isPreviewDeployment(req.nextUrl.hostname)");
-    // The only build-config noindex header is for local development. Preview
-    // noindex must remain request-time middleware-owned to avoid duplication.
+    // Build-time noindex is limited to local development; Preview is detected
+    // from the request hostname/runtime and must remain middleware-owned.
     expect(nextConfig).toMatch(
       /\.\.\.\(process\.env\.NODE_ENV === "development"[\s\S]*?key: "X-Robots-Tag"/,
     );
-    expect(nextConfig).not.toContain("IS_PREVIEW_DEPLOYMENT");
+    expect(nextConfig).not.toMatch(/IS_PREVIEW_DEPLOYMENT|HEAVIX_ENV/);
   });
 
-  it("sets root metadata to noindex on preview", () => {
+  it("keeps root metadata canonical and delegates Preview noindex to middleware", () => {
     const layout = read("src/app/layout.tsx");
-    expect(layout).toMatch(/robots: IS_PREVIEW_DEPLOYMENT/);
-    expect(layout).toMatch(/index: false, follow: false, noarchive: true/);
+    const middleware = read("src/middleware.ts");
+    expect(layout).toContain("metadataBase: new URL(SITE_BASE_URL)");
+    expect(layout).not.toContain("robots:");
+    expect(middleware).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
   });
 
   it("does not publish a sitemap URL or sitemap entries for preview", () => {
