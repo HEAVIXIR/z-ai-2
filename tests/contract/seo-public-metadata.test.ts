@@ -46,7 +46,10 @@ describe("public SEO metadata safety", () => {
 
   it("keeps the secondary robots API aligned with the Preview policy", () => {
     const source = read("src/lib/seo-service.ts");
-    expect(source).toContain("const preview = isPreviewDeployment()");
+    expect(source).toContain("const preview = isPreviewDeployment(hostname)");
+    const route = read("src/app/api/robots-txt/route.ts");
+    expect(route).toContain("const requestHeaders = await headers()");
+    expect(route).toContain('getRobotsTxt(requestHeaders.get("host") ?? "")');
     expect(source).toContain("if (!preview)");
     expect(source).toContain("Sitemap:");
     expect(source).toContain("Host:");
