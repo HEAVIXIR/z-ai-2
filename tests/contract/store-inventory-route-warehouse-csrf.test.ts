@@ -17,7 +17,7 @@ describe("Universal inventory resource form safety", () => {
     // Historical ledger filters remain searchable without exposing invalid writes.
     expect(resourceConfig).toContain("{ value: 'RETURN', label: 'مرجوعی' }");
     expect(resourceConfig).toContain("{ value: 'TRANSFER', label: 'انتقال' }");
-    expect(createFields).toContain("type: 'relation', required: true");
+    expect(createFields).toContain("{ key: 'warehouseId', label: 'انبار', type: 'relation', required: true");
   });
 });
 
