@@ -25,21 +25,51 @@
                hardcoded fallback.
    ============================================================ */
 
-const RAW_SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
-  "https://heavix.ir";
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const heavixEnvironment = process.env.HEAVIX_ENV?.trim().toLowerCase();
+const vercelEnvironment = process.env.VERCEL_ENV?.trim().toLowerCase();
+const isProviderPreview =
+  heavixEnvironment === "preview" || vercelEnvironment === "preview";
+
+function isProductionCanonicalUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "heavix.ir" || hostname === "www.heavix.ir";
+  } catch {
+    return false;
+  }
+}
+
+const vercelPreviewUrl =
+  vercelEnvironment === "preview" && process.env.VERCEL_URL?.trim()
+    ? `https://${process.env.VERCEL_URL.trim()}`
+    : undefined;
+
+// A Preview build must never silently inherit the production canonical host.
+// Prefer an explicit non-production URL; otherwise use Vercel's deployment URL.
+const safePreviewUrl = isProviderPreview
+  ? (configuredSiteUrl && !isProductionCanonicalUrl(configuredSiteUrl)
+      ? configuredSiteUrl
+      : vercelPreviewUrl)
+  : undefined;
+
+if (isProviderPreview && !safePreviewUrl) {
+  throw new Error(
+    "[site-config] Preview deployment requires a non-production NEXT_PUBLIC_SITE_URL or VERCEL_URL; refusing to emit production canonical URLs.",
+  );
+}
+
+const RAW_SITE_URL = (safePreviewUrl ?? configuredSiteUrl ?? "https://heavix.ir")
+  .replace(/\\/+$/, "");
 
 if (
   process.env.NODE_ENV === "production" &&
-  !process.env.NEXT_PUBLIC_SITE_URL
+  !configuredSiteUrl &&
+  !vercelPreviewUrl &&
+  !isProviderPreview
 ) {
-  // Non-fatal: the hardcoded fallback keeps the app functional, but
-  // the operator should set NEXT_PUBLIC_SITE_URL explicitly to match
-  // the deployment's real public URL (especially for preview deploys
-  // where the URL differs from the canonical production domain).
   console.warn(
-    "[site-config] NEXT_PUBLIC_SITE_URL is not set in production — falling back to https://heavix.ir. " +
-      "Set it explicitly in your hosting environment to avoid canonical/sitemap mismatches.",
+    "[site-config] NEXT_PUBLIC_SITE_URL is not set in production — falling back to https://heavix.ir. Set it explicitly in your hosting environment to avoid canonical/sitemap mismatches.",
   );
 }
 
