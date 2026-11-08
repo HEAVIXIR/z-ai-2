@@ -1,6 +1,11 @@
 name: Cloudflare OpenNext Edge Middleware Workerd Proof
 
 on:
+  # Run the isolated Workerd proof directly on the integration branch.
+  # This avoids opening a PR (and therefore avoids the excluded Vercel App hook).
+  push:
+    branches:
+      - "integration/cloudflare-preview-r45-auth-2026-11-08"
   pull_request:
     branches:
       - "integration/**"
@@ -29,13 +34,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: heavix-open-next-middleware-workerd-${{ github.event.pull_request.number }}
+  group: heavix-open-next-middleware-workerd-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
   middleware-workerd:
     name: OpenNext Edge Middleware request-path proof (local Workerd only)
-    if: startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-') || github.event.pull_request.head.ref == 'integration/cloudflare-preview-r45-auth-2026-11-08'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/integration/cloudflare-preview-r45-auth-2026-11-08') || (github.event_name == 'pull_request' && (startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-') || github.event.pull_request.head.ref == 'integration/cloudflare-preview-r45-auth-2026-11-08'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
