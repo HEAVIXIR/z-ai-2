@@ -36,6 +36,15 @@ describe("public SEO metadata safety", () => {
     expect(source).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
   });
 
+  it("keeps Preview noindex at the request boundary without duplicate root metadata", () => {
+    const layout = read("src/app/layout.tsx");
+    const middleware = read("src/middleware.ts");
+    const nextConfig = read("next.config.ts");
+    expect(layout).not.toContain("robots:");
+    expect(nextConfig).not.toContain("X-Robots-Tag");
+    expect(middleware).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
+  });
+
   it("does not advertise production host or sitemap from Preview robots.txt", () => {
     const source = read("src/app/robots.ts");
     expect(source).toContain('export const dynamic = "force-dynamic"');
