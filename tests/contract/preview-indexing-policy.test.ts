@@ -19,9 +19,12 @@ describe("preview indexing safety", () => {
     expect(middleware).toContain("X-Robots-Tag");
     expect(middleware).toContain("noindex, nofollow, noarchive");
     expect(middleware).toContain("isPreviewDeployment(req.nextUrl.hostname)");
-    // Preview noindex is owned by request-time middleware. Keeping a second
-    // production-build header in next.config duplicates the response header.
-    expect(nextConfig).not.toContain("X-Robots-Tag");
+    // The only build-config noindex header is for local development. Preview
+    // noindex must remain request-time middleware-owned to avoid duplication.
+    expect(nextConfig).toMatch(
+      /\.\.\.\(process\.env\.NODE_ENV === "development"[\s\S]*?key: "X-Robots-Tag"/,
+    );
+    expect(nextConfig).not.toContain("IS_PREVIEW_DEPLOYMENT");
   });
 
   it("sets root metadata to noindex on preview", () => {
