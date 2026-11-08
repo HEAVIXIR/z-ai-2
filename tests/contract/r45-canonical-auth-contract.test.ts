@@ -30,10 +30,10 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toMatch(/userId\s*===\s*["']ADMIN["']/);
   });
 
-  it("uses USER_COOKIE in the Next.js Proxy boundary", () => {
-    const s = read("src/proxy.ts");
+  it("uses USER_COOKIE in the Next.js Edge Middleware boundary", () => {
+    const s = read("src/middleware.ts");
     expect(s).toContain('USER_COOKIE_NAME = "heavix-user"');
-    expect(s).toContain("export function proxy(");
+    expect(s).toContain("export function middleware(");
     expect(s).not.toContain("heavix-admin");
   });
 
