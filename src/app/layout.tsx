@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     locale: "fa_IR",
     siteName: "هویکس",
   },
-  // Preview noindex is enforced by src/proxy.ts at the request boundary.
+  // Preview noindex is enforced by src/middleware.ts at the request boundary.
   // Keep one source for X-Robots-Tag to avoid duplicate directives.
 };
 
