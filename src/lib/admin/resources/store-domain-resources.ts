@@ -92,19 +92,21 @@ export const inventoryConfig: AdminResourceConfig = {
     { key: 'partId', label: 'قطعه', type: 'relation', required: true,
       relation: { model: 'part', labelField: 'canonicalName' },
       validation: { message: 'انتخاب قطعه الزامی است' } },
+    // The generic adjustment endpoint deliberately rejects RETURN and TRANSFER.
+    // Keep those values in filters for historical ledger inspection only;
+    // return restocking and paired warehouse transfers have dedicated workflows.
     { key: 'type', label: 'نوع حرکت', type: 'select', required: true, options: [
       { value: 'RECEIVE', label: 'ورود' },
       { value: 'SALE', label: 'فروش' },
-      { value: 'RETURN', label: 'مرجوعی' },
-      { value: 'TRANSFER', label: 'انتقال' },
       { value: 'ADJUSTMENT', label: 'تعدیل' },
       { value: 'DAMAGE', label: 'خرابی' },
     ], validation: { message: 'نوع حرکت الزامی است' } },
     { key: 'quantity', label: 'تعداد', type: 'number', required: true,
       helpText: 'مثبت برای ورود، منفی برای خروج',
       validation: { message: 'تعداد باید عدد صحیح غیرصفر باشد' } },
-    { key: 'warehouseId', label: 'انبار', type: 'relation',
-      relation: { model: 'warehouse', labelField: 'name' } },
+    { key: 'warehouseId', label: 'انبار', type: 'relation', required: true,
+      relation: { model: 'warehouse', labelField: 'name' },
+      validation: { message: 'انتخاب انبار الزامی است' } },
     { key: 'reason', label: 'علت', type: 'textarea',
       validation: { maxLength: 500, message: 'علت نباید بیش از ۵۰۰ نویسه باشد' } },
     { key: 'reference', label: 'مرجع', type: 'text',
