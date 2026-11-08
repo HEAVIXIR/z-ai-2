@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await requirePermission(user.id, "inventory.manage");
+    await requirePermission(user.id, 'inventory.manage');
   } catch {
     return NextResponse.json({ success: false, error: "Forbidden: requires inventory.manage" }, { status: 403 });
   }
