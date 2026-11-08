@@ -119,6 +119,18 @@ test.describe("HEAVIX public browser smoke", () => {
     expect(Array.isArray(brands.brands)).toBe(true);
   });
 
+  test("anonymous visitors are redirected before the Store admin page renders", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium-mobile-320",
+      "The anonymous admin-page redirect is checked once per browser run.",
+    );
+
+    await page.goto("/admin/store/inventory", { waitUntil: "domcontentloaded" });
+    const currentUrl = new URL(page.url());
+    expect(currentUrl.pathname).toBe("/login");
+    expect(currentUrl.searchParams.get("redirect")).toBe("/admin/store/inventory");
+  });
+
   test("anonymous users cannot read or mutate protected admin inventory APIs", async ({ request }) => {
     const protectedRequests = [
       { method: "GET", path: "/api/admin/users" },
