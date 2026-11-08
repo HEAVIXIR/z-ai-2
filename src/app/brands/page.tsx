@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو | هویکس",
+  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو",
   description: "فهرست کامل برندهای ماشین‌آلات سنگین: کاترپیلار، کوماتسو، ولوو، هیوندای، جی‌سی‌بی و دیگران. آگهی‌های هر برند را مرور کنید.",
   alternates: { canonical: "/brands" },
   openGraph: { title: "برندهای ماشین‌آلات سنگین | هویکس", description: "فهرست کامل برندهای ماشین‌آلات سنگین.", type: "website", locale: "fa_IR" },
