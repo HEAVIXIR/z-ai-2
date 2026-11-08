@@ -29,7 +29,9 @@ describe("preview indexing safety", () => {
   it("does not publish a sitemap URL or sitemap entries for preview", () => {
     const robots = read("src/app/robots.ts");
     const sitemap = read("src/app/sitemap.ts");
-    expect(robots).toMatch(/IS_PREVIEW_DEPLOYMENT \? \{\} : \{ sitemap:/);
+    expect(robots).toContain('export const dynamic = "force-dynamic"');
+    expect(robots).toContain("if (preview) return { rules }");
+    expect(robots).toContain('sitemap: absoluteUrl("/sitemap.xml")');
     expect(sitemap).toMatch(/if \(IS_PREVIEW_DEPLOYMENT\) return \[\]/);
   });
 });

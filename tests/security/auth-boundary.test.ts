@@ -67,10 +67,11 @@ describe("Auth boundary — edge middleware", () => {
     expect(fs.existsSync(MIDDLEWARE_PATH)).toBe(true);
   });
 
-  it("middleware matcher intercepts /admin/* AND /api/admin/*", () => {
+  it("middleware matcher covers public pages while preserving the admin auth boundary", () => {
     const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/\/admin\/:path\*/);
-    expect(mw).toMatch(/\/api\/admin\/:path\*/);
+    expect(mw).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
+    expect(mw).toContain("const isAdminPage = pathname === ADMIN_PAGE_PREFIX");
+    expect(mw).toContain('const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`)');
   });
 
   it("middleware returns 401 JSON for unauthenticated /api/admin/* calls", () => {
@@ -100,20 +101,22 @@ describe("Auth boundary — edge middleware", () => {
 describe("Auth boundary — health endpoints are public", () => {
   it("middleware excludes /health paths from the admin auth boundary", () => {
     const mw = read(MIDDLEWARE_PATH);
-    // The health-exclusion short-circuits to NextResponse.next()
-    // before the cookie check, so monitoring tools can probe health
-    // without an admin session.
-    expect(mw).toMatch(/endsWith\(['"]\/health['"]\)/);
-    expect(mw).toMatch(/return NextResponse\.next\(\)/);
+    const healthIndex = mw.indexOf('if (pathname.endsWith("/health"))');
+    const cookieIndex = mw.indexOf("const userCookie");
+    expect(healthIndex).toBeGreaterThan(-1);
+    expect(cookieIndex).toBeGreaterThan(healthIndex);
+    expect(mw.slice(healthIndex, cookieIndex)).toContain(
+      "withPreviewRobotsHeader(NextResponse.next(), isPreview)",
+    );
   });
 
   it("health endpoints short-circuit before the auth check (R45-16 canonical)", () => {
-    // R45-16: the old PUBLIC_ROUTES block was removed; middleware
-    // now short-circuits any path ending in `/health` to
-    // NextResponse.next() before the cookie check.
     const mw = read(MIDDLEWARE_PATH);
-    expect(mw).toMatch(/endsWith\(['"]\/health['"]\)/);
-    expect(mw).toMatch(/return NextResponse\.next\(\)/);
+    const healthIndex = mw.indexOf('if (pathname.endsWith("/health"))');
+    const cookieIndex = mw.indexOf("const userCookie");
+    expect(healthIndex).toBeGreaterThan(-1);
+    expect(cookieIndex).toBeGreaterThan(healthIndex);
+    expect(mw.slice(healthIndex, cookieIndex)).toContain("NextResponse.next()");
   });
 
   it("/api/health remains unauthenticated under the canonical contract", () => {
