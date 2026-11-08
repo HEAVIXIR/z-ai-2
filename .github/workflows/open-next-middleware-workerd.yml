@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - "integration/cloudflare-preview-r45-auth-2026-11-08"
+      - "security/active-session-hardening-2026-11-08"
   pull_request:
     branches:
       - "integration/**"
@@ -40,7 +41,7 @@ concurrency:
 jobs:
   middleware-workerd:
     name: OpenNext Edge Middleware request-path proof (local Workerd only)
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/integration/cloudflare-preview-r45-auth-2026-11-08') || (github.event_name == 'pull_request' && (startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-') || github.event.pull_request.head.ref == 'integration/cloudflare-preview-r45-auth-2026-11-08'))
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/integration/cloudflare-preview-r45-auth-2026-11-08' || github.ref == 'refs/heads/security/active-session-hardening-2026-11-08')) || (github.event_name == 'pull_request' && (startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-') || github.event.pull_request.head.ref == 'integration/cloudflare-preview-r45-auth-2026-11-08'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
