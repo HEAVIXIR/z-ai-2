@@ -100,6 +100,7 @@ type ReadOnlyRoleEvidence = {
   defaultTransactionReadOnlyOn: boolean;
   memberPgWriteAllData: boolean;
   inheritsPgWriteAllData: boolean;
+  memberPgReadServerFiles: boolean;
   memberPgWriteServerFiles: boolean;
   memberPgExecuteServerProgram: boolean;
   hasEffectiveTableWrite: boolean;
@@ -128,6 +129,7 @@ async function inspectReadOnlyRole(
     default_transaction_read_only_on: boolean;
     member_pg_write_all_data: boolean;
     inherits_pg_write_all_data: boolean;
+    member_pg_read_server_files: boolean;
     member_pg_write_server_files: boolean;
     member_pg_execute_server_program: boolean;
     has_effective_table_write: boolean;
@@ -146,6 +148,7 @@ async function inspectReadOnlyRole(
       COALESCE('default_transaction_read_only=on' = ANY(r.rolconfig), false) AS default_transaction_read_only_on,
       pg_has_role(current_user, 'pg_write_all_data', 'MEMBER') AS member_pg_write_all_data,
       pg_has_role(current_user, 'pg_write_all_data', 'USAGE') AS inherits_pg_write_all_data,
+      pg_has_role(current_user, 'pg_read_server_files', 'MEMBER') AS member_pg_read_server_files,
       pg_has_role(current_user, 'pg_write_server_files', 'MEMBER') AS member_pg_write_server_files,
       pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER') AS member_pg_execute_server_program,
       EXISTS (
@@ -208,6 +211,7 @@ async function inspectReadOnlyRole(
     !row.default_transaction_read_only_on ||
     row.member_pg_write_all_data ||
     row.inherits_pg_write_all_data ||
+    row.member_pg_read_server_files ||
     row.member_pg_write_server_files ||
     row.member_pg_execute_server_program ||
     row.has_effective_table_write ||
@@ -226,6 +230,7 @@ async function inspectReadOnlyRole(
     defaultTransactionReadOnlyOn: row.default_transaction_read_only_on,
     memberPgWriteAllData: row.member_pg_write_all_data,
     inheritsPgWriteAllData: row.inherits_pg_write_all_data,
+    memberPgReadServerFiles: row.member_pg_read_server_files,
     memberPgWriteServerFiles: row.member_pg_write_server_files,
     memberPgExecuteServerProgram: row.member_pg_execute_server_program,
     hasEffectiveTableWrite: row.has_effective_table_write,
