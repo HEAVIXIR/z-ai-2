@@ -79,13 +79,12 @@ function serialize(m: any) {
 /**
  * Atomically:
  *   1. Validate inputs (partId, type, quantity).
- *   2. Look up the Part (must exist).
- *   3. Compute balanceAfter = part.stock + qty (must be >= 0).
- *   4. Create the StockMovement ledger entry.
- *   5. Update Part.stock to balanceAfter.
- *   6. Log two audit entries (movement.create + part.update side-effect).
- *
- * Best-effort audit: logAudit never throws (try/catch inside).
+ *   2. In one Store DB transaction, look up the Part and conditionally
+ *      increment/decrement Part.stock (rejecting negative stock).
+ *   3. Read the committed-in-transaction balance and create its matching
+ *      StockMovement ledger entry. Either write failing rolls back both.
+ *   4. After commit, emit the two best-effort audit entries
+ *      (movement.create + part.update side-effect) to the main DB.
  *
  * @throws InventoryServiceError on validation/lookup failure (400/404).
  */
