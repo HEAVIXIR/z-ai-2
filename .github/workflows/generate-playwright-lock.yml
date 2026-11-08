@@ -1,0 +1,40 @@
+name: Generate pinned Playwright lockfile
+
+on:
+  push:
+    branches:
+      - feature/playwright-browser-e2e-2026-11-08
+    paths:
+      - .github/workflows/generate-playwright-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the dedicated feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Add the exact Playwright Test version and regenerate bun.lock
+        run: bun add --dev --exact @playwright/test@1.65.0
+      - name: Commit only the manifest and generated lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json bun.lock
+          if git diff --cached --quiet; then
+            echo "No lockfile changes were produced."
+            exit 0
+          fi
+          git commit -m "chore: pin Playwright Test 1.65.0 [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
