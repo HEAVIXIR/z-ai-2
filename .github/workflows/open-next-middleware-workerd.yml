@@ -43,6 +43,7 @@ jobs:
       NODE_ENV: production
       HEAVIX_ENV: preview
       HEAVIX_PREVIEW_URL: https://heavix-preview.heavixir.workers.dev
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
