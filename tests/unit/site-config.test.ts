@@ -21,6 +21,8 @@ describe("site-config — SITE_BASE_URL resolution", () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_ENV;
     delete process.env.VERCEL_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     // Ensure the production-warning branch does not fire in tests.
     process.env.NODE_ENV = "test";
   });
@@ -40,6 +42,21 @@ describe("site-config — SITE_BASE_URL resolution", () => {
     process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     const mod = await import("@/lib/site-config");
     expect(mod.SITE_BASE_URL).toBe("https://preview-branch-123.vercel.app");
+  });
+
+  it("uses the explicit Cloudflare preview origin instead of the production URL", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_URL = "https://preview.heavix.workers.dev/";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
+    const mod = await import("@/lib/site-config");
+    expect(mod.SITE_BASE_URL).toBe("https://preview.heavix.workers.dev");
+  });
+
+  it("fails closed to localhost when Cloudflare preview origin is missing", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
+    const mod = await import("@/lib/site-config");
+    expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
   });
 
   it("respects NEXT_PUBLIC_SITE_URL when set (no trailing slash)", async () => {
@@ -78,6 +95,8 @@ describe("site-config — absoluteUrl helper", () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_ENV;
     delete process.env.VERCEL_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
   });
 
@@ -159,6 +178,8 @@ describe("site-config — backward compatibility re-export from @/lib/seo", () =
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_ENV;
     delete process.env.VERCEL_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
   });
 
