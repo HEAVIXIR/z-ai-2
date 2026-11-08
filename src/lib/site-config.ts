@@ -12,8 +12,8 @@
 
    Resolution order:
      1. Cloudflare Preview: explicit `HEAVIX_PREVIEW_URL` when `HEAVIX_ENV=preview`.\n     2. Vercel Preview fallback: deployment-specific `VERCEL_URL` (never production).
-     2. `NEXT_PUBLIC_SITE_URL` for explicit non-preview environments.
-     3. Production fallback `https://heavix.ir`; local fallback localhost.
+     3. `NEXT_PUBLIC_SITE_URL` for explicit non-preview environments.
+     4. Production fallback `https://heavix.ir`; local fallback localhost.
 
    Preview URLs are deployment-specific so metadata, sitemap and robots
    never point at the primary domain while testing. Production still warns
