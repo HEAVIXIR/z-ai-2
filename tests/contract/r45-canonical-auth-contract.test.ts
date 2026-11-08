@@ -32,6 +32,14 @@ describe("R45 canonical authentication contract", () => {
     expect(s.indexOf('if (user.status !== "ACTIVE")')).toBeLessThan(s.indexOf("await createUserSession(user.id)"));
   });
 
+  it("enforces ACTIVE status in every login entry point", () => {
+    const api = read("src/app/api/auth/login/route.ts");
+    const action = read("src/app/login/actions.ts");
+    expect(api).toContain('if (user.status !== "ACTIVE")');
+    expect(action).toContain('if (!user || user.status !== "ACTIVE")');
+    expect(action.indexOf('user.status !== "ACTIVE"')).toBeLessThan(action.indexOf("await createUserSession(user.id)"));
+  });
+
   it("limits permission resolution and admin role checks to ACTIVE accounts", () => {
     const legacy = read("src/lib/rbac-legacy.ts");
     const authz = read("src/lib/authorization/index.ts");
