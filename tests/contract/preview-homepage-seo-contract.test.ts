@@ -39,7 +39,7 @@ describe("Preview database-unavailable public route safeguards", () => {
       "src/app/rentals/page.tsx",
       "src/app/brands/page.tsx",
     ]) {
-      const source = read(file);
+      const source = fs.readFileSync(file, "utf8");
       expect(source).toContain('process.env.VERCEL_ENV === "preview"');
       expect(source).toContain("PreviewDataUnavailable");
       expect(source).toContain("process.env.DATABASE_URL");
@@ -47,7 +47,7 @@ describe("Preview database-unavailable public route safeguards", () => {
   });
 
   it("returns an explicit 503 contract for listing API when Preview DB URL is not PostgreSQL", () => {
-    const source = read("src/app/api/listings/route.ts");
+    const source = fs.readFileSync("src/app/api/listings/route.ts", "utf8");
     expect(source).toContain('"PREVIEW_DATABASE_UNAVAILABLE"');
     expect(source).toContain("{ status: 503 }");
   });
