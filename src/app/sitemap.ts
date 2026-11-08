@@ -22,6 +22,7 @@ import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
    "https://havix.ir" is removed.
    ============================================================ */
 
+// Do not prerender DB-backed sitemap URLs when build-time DB access is unavailable.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
