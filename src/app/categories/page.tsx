@@ -1,13 +1,22 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { ArrowLeft, FolderTree } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+// Keep this public-visibility predicate local to the main-branch PR.
+// The consolidated inventory branch introduces a shared helper; once that
+// branch lands, this can be deduplicated without making this PR depend on it.
+function getPublicListingWhere() {
+  return {
+    status: "PUBLISHED",
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  };
+}
 
 export const metadata: Metadata = {
   title: "دسته‌بندی‌های صنعتی و ماشین‌آلات | هویکس",
