@@ -753,3 +753,95 @@ export async function getLowStockItems(
 
   return { items: filtered, total: filtered.length };
 }
+
+
+/**
+ * Establish the opening warehouse balance for a legacy or newly-created Part.
+ * This does not change Part.stock: it explicitly assigns the already-recorded
+ * snapshot to one active warehouse exactly once. The Part row lock serializes
+ * competing allocation attempts across warehouses.
+ */
+export async function allocateInitialStock(
+  partId: string,
+  warehouseId: string,
+  reason: string,
+  userId?: string | null,
+): Promise<any> {
+  if (!partId || !warehouseId || !reason?.trim()) {
+    throw new InventoryServiceError(400, 'قطعه، انبار و دلیل تخصیص الزامی است');
+  }
+  if (reason.trim().length > 500) {
+    throw new InventoryServiceError(400, 'دلیل تخصیص نباید بیش از ۵۰۰ نویسه باشد');
+  }
+
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new InventoryServiceError(404, 'قطعه یافت نشد');
+      }
+
+      const part = await tx.part.findUnique({
+        where: { id: partId },
+        select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+      });
+      if (!part) throw new InventoryServiceError(404, 'قطعه یافت نشد');
+      if (!Number.isSafeInteger(part.stock) || part.stock < 0) {
+        throw new InventoryServiceError(409, 'موجودی کل قطعه منفی یا نامعتبر است؛ ابتدا مغایرت را بررسی کنید');
+      }
+
+      const warehouse = await tx.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, name: true, code: true, active: true },
+      });
+      if (!warehouse) throw new InventoryServiceError(404, 'انبار یافت نشد');
+      if (!warehouse.active) {
+        throw new InventoryServiceError(409, 'تخصیص موجودی به انبار غیرفعال مجاز نیست');
+      }
+
+      const existingCount = await tx.inventoryBalance.count({ where: { partId } });
+      if (existingCount > 0) {
+        throw new InventoryServiceError(409, 'این قطعه قبلاً به یک یا چند انبار تخصیص یافته است');
+      }
+
+      const balance = await tx.inventoryBalance.create({
+        data: {
+          partId,
+          warehouseId,
+          quantity: part.stock,
+          reserved: 0,
+          lowStockThreshold: part.lowStockThreshold,
+        },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.initial_allocation',
+        entityType: 'InventoryBalance',
+        entityId: balance.id,
+        before: { partId, partStock: part.stock, warehouseBalance: null },
+        after: {
+          partId,
+          warehouseId,
+          warehouseName: warehouse.name,
+          warehouseCode: warehouse.code,
+          quantity: balance.quantity,
+          reserved: balance.reserved,
+          lowStockThreshold: balance.lowStockThreshold,
+          reason: reason.trim(),
+        },
+      });
+
+      return { part, warehouse, balance };
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error instanceof InventoryServiceError) throw error;
+    if (error?.code === 'P2002' || error?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'تخصیص اولیه هم‌زمان انجام شده است؛ صفحه را تازه‌سازی و وضعیت را بررسی کنید');
+    }
+    throw error;
+  }
+}
