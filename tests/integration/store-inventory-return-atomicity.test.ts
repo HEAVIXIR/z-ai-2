@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
 import { adjustStock, createMovement, reserveStock, releaseStock } from '@/lib/store-inventory-service';
 import { resolveReturn } from '@/lib/store-returns-service';
-import { receivePurchaseOrderItem, cancelPurchaseOrder } from '@/lib/store-procurement-service';
+import { receivePurchaseOrderItem, cancelPurchaseOrder, submitPurchaseOrder, approvePurchaseOrder } from '@/lib/store-procurement-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
 
@@ -140,9 +140,11 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     procurementId = procurement.id;
 
     const po = await storeDb.purchaseOrder.create({
-      data: { procurementId: procurement.id, status: 'APPROVED' },
+      data: { procurementId: procurement.id },
     });
     purchaseOrderId = po.id;
+    await submitPurchaseOrder(po.id);
+    await approvePurchaseOrder(po.id);
 
     const item = await storeDb.purchaseOrderItem.create({
       data: {
