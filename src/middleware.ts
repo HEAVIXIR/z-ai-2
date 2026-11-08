@@ -1,4 +1,4 @@
-// Keep this Edge Middleware boundary DB-free and compatible with Cloudflare OpenNext.
+// Next.js 16 deprecates this filename, but Cloudflare OpenNext supports Edge Middleware; keep it until Node.js Proxy is supported.\n// Keep this request boundary DB-free and compatible with Cloudflare OpenNext.
 import { NextResponse, type NextRequest } from "next/server";
 import { isPreviewDeployment } from "@/lib/site-config";
 
