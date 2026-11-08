@@ -6,18 +6,24 @@ const root = process.cwd();
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 
 describe("preview indexing safety", () => {
-  it("detects both Cloudflare and Vercel preview deployments", () => {
+  it("detects Cloudflare Preview and local development deployments", () => {
     const config = read("src/lib/site-config.ts");
     expect(config).toMatch(/HEAVIX_ENV\?\.toLowerCase\(\) === "preview"/);
-    expect(config).toMatch(/VERCEL_ENV\?\.toLowerCase\(\) === "preview"/);
     expect(config).toMatch(/NODE_ENV === "development"/);
   });
 
-  it("sets a global noindex response header for preview deployments", () => {
-    const config = read("next.config.ts");
-    expect(config).toMatch(/X-Robots-Tag/);
-    expect(config).toMatch(/noindex, nofollow, noarchive/);
-    expect(config).toMatch(/IS_PREVIEW_DEPLOYMENT/);
+  it("sets one request-time noindex response header for Preview deployments", () => {
+    const middleware = read("src/middleware.ts");
+    const nextConfig = read("next.config.ts");
+    expect(middleware).toContain("X-Robots-Tag");
+    expect(middleware).toContain("noindex, nofollow, noarchive");
+    expect(middleware).toContain("isPreviewDeployment(req.nextUrl.hostname)");
+    // The only build-config noindex header is for local development. Preview
+    // noindex must remain request-time middleware-owned to avoid duplication.
+    expect(nextConfig).toMatch(
+      /\.\.\.\(process\.env\.NODE_ENV === "development"[\s\S]*?key: "X-Robots-Tag"/,
+    );
+    expect(nextConfig).not.toContain("IS_PREVIEW_DEPLOYMENT");
   });
 
   it("sets root metadata to noindex on preview", () => {

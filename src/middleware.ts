@@ -18,6 +18,31 @@ export function middleware(req: NextRequest) {
   const isAdminPage = pathname === ADMIN_PAGE_PREFIX || pathname.startsWith(`${ADMIN_PAGE_PREFIX}/`);
   const isAdminApi = pathname.startsWith(`${ADMIN_API_PREFIX}/`);
 
+  // Keep Preview crawlable so crawlers can observe X-Robots-Tag noindex,
+  // while preventing sitemap leakage even without Worker env bindings.
+  if (isPreview && pathname === "/robots.txt") {
+    return withPreviewRobotsHeader(
+      new NextResponse(
+        [
+          "User-agent: *",
+          "Allow: /",
+          "Disallow: /admin/",
+          "Disallow: /api/",
+          "Disallow: /dashboard/",
+          "Disallow: /seller/",
+          "Disallow: /login",
+          "Disallow: /register",
+          "",
+        ].join(String.fromCharCode(10)),
+        { headers: { "Content-Type": "text/plain; charset=utf-8" } },
+      ),
+      true,
+    );
+  }
+  if (isPreview && pathname === "/sitemap.xml") {
+    return withPreviewRobotsHeader(new NextResponse(null, { status: 404 }), true);
+  }
+
   // Apply the noindex header to every Preview response at request time.
   if (!isAdminPage && !isAdminApi) {
     return withPreviewRobotsHeader(NextResponse.next(), isPreview);

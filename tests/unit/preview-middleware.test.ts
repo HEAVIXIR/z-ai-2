@@ -7,7 +7,6 @@ describe("Preview crawler middleware", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.HEAVIX_ENV;
-    delete process.env.VERCEL_ENV;
   });
 
   afterEach(() => {
@@ -26,9 +25,27 @@ describe("Preview crawler middleware", () => {
   it("adds noindex to provider Preview hosts without an environment binding", async () => {
     const { middleware } = await import("@/middleware");
     const response = middleware(
-      new NextRequest("https://heavix-preview.vercel.app/categories"),
+      new NextRequest("https://heavix-preview.heavixir.workers.dev/categories"),
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
+  });
+
+  it("isolates Preview robots and sitemap routes using only the request hostname", async () => {
+    const { middleware } = await import("@/middleware");
+    const previewHost = "https://heavix-preview.heavixir.workers.dev";
+
+    const robots = middleware(new NextRequest(`${previewHost}/robots.txt`));
+    expect(robots.status).toBe(200);
+    expect(robots.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
+    const robotsBody = await robots.text();
+    expect(robotsBody).toContain("Allow: /");
+    expect(robotsBody).toContain("Disallow: /admin/");
+    expect(robotsBody).not.toMatch(/^Disallow: \/$/m);
+    expect(robotsBody).not.toMatch(/Sitemap:/i);
+
+    const sitemap = middleware(new NextRequest(`${previewHost}/sitemap.xml`));
+    expect(sitemap.status).toBe(404);
+    expect(sitemap.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
   });
 
   it("does not add noindex to the official production host", async () => {
