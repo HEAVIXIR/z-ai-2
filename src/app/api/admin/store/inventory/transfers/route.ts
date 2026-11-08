@@ -8,7 +8,7 @@ import {
 } from "@/lib/store-inventory-service";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic;
 
 export async function POST(req: Request) {
   if (!checkCsrf(req)) {
@@ -42,12 +42,12 @@ export async function POST(req: Request) {
       typeof partId !== "string" || !partId.trim() ||
       typeof sourceWarehouseId !== "string" || !sourceWarehouseId.trim() ||
       typeof destinationWarehouseId !== "string" || !destinationWarehouseId.trim() ||
-      !Number.isSafeInteger(Number(quantity)) ||
+      typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0 ||
       typeof reason !== "string" || !reason.trim()
     ) {
       return NextResponse.json({
         success: false,
-        error: "قطعه، انبار مبدأ، انبار مقصد، تعداد صحیح و دلیل انتقال الزامی هستند",
+        error: "قطعه، انبار مبدأ، انبار مقصد، تعداد صحیح مثبت و دلیل انتقال الزامی هستند",
       }, { status: 400 });
     }
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       partId.trim(),
       sourceWarehouseId.trim(),
       destinationWarehouseId.trim(),
-      Number(quantity),
+      quantity,
       reason,
       user.id,
     );
