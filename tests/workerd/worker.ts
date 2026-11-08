@@ -90,6 +90,135 @@ async function storeFingerprint(client: StorePrismaClient): Promise<{
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
 
+type ReadOnlyRoleEvidence = {
+  roleName: string;
+  isSuperuser: boolean;
+  canCreateRole: boolean;
+  canCreateDatabase: boolean;
+  canReplicate: boolean;
+  canBypassRls: boolean;
+  memberPgWriteAllData: boolean;
+  inheritsPgWriteAllData: boolean;
+  memberPgWriteServerFiles: boolean;
+  memberPgExecuteServerProgram: boolean;
+  hasEffectiveTableWrite: boolean;
+  hasEffectiveSequenceWrite: boolean;
+  canCreateInUserSchemas: boolean;
+  canCreateDatabaseObjects: boolean;
+  proven: boolean;
+};
+
+/**
+ * transaction_read_only=true alone is not a least-privilege proof: a writable
+ * role can set it for one transaction. Inspect role attributes, inherited
+ * predefined write roles, and effective object privileges using SELECT only.
+ */
+async function inspectReadOnlyRole(
+  client: AppPrismaClient | StorePrismaClient,
+): Promise<ReadOnlyRoleEvidence> {
+  const rows = await client.$queryRaw<Array<{
+    role_name: string;
+    is_superuser: boolean;
+    can_create_role: boolean;
+    can_create_database: boolean;
+    can_replicate: boolean;
+    can_bypass_rls: boolean;
+    member_pg_write_all_data: boolean;
+    inherits_pg_write_all_data: boolean;
+    member_pg_write_server_files: boolean;
+    member_pg_execute_server_program: boolean;
+    has_effective_table_write: boolean;
+    has_effective_sequence_write: boolean;
+    can_create_in_user_schemas: boolean;
+    can_create_database_objects: boolean;
+  }>>`
+    SELECT
+      r.rolname::text AS role_name,
+      r.rolsuper AS is_superuser,
+      r.rolcreaterole AS can_create_role,
+      r.rolcreatedb AS can_create_database,
+      r.rolreplication AS can_replicate,
+      r.rolbypassrls AS can_bypass_rls,
+      pg_has_role(current_user, 'pg_write_all_data', 'MEMBER') AS member_pg_write_all_data,
+      pg_has_role(current_user, 'pg_write_all_data', 'USAGE') AS inherits_pg_write_all_data,
+      pg_has_role(current_user, 'pg_write_server_files', 'MEMBER') AS member_pg_write_server_files,
+      pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER') AS member_pg_execute_server_program,
+      EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname NOT IN ('information_schema')
+          AND n.nspname NOT LIKE 'pg_%'
+          AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+          AND (
+            has_table_privilege(current_user, c.oid, 'INSERT')
+            OR has_table_privilege(current_user, c.oid, 'UPDATE')
+            OR has_table_privilege(current_user, c.oid, 'DELETE')
+            OR has_table_privilege(current_user, c.oid, 'TRUNCATE')
+            OR has_table_privilege(current_user, c.oid, 'REFERENCES')
+            OR has_table_privilege(current_user, c.oid, 'TRIGGER')
+            OR has_table_privilege(current_user, c.oid, 'MAINTAIN')
+          )
+      ) AS has_effective_table_write,
+      EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname NOT IN ('information_schema')
+          AND n.nspname NOT LIKE 'pg_%'
+          AND c.relkind = 'S'
+          AND (
+            has_sequence_privilege(current_user, c.oid, 'USAGE')
+            OR has_sequence_privilege(current_user, c.oid, 'UPDATE')
+          )
+      ) AS has_effective_sequence_write,
+      EXISTS (
+        SELECT 1
+        FROM pg_namespace n
+        WHERE n.nspname NOT IN ('information_schema')
+          AND n.nspname NOT LIKE 'pg_%'
+          AND has_schema_privilege(current_user, n.oid, 'CREATE')
+      ) AS can_create_in_user_schemas,
+      has_database_privilege(current_user, current_database(), 'CREATE') AS can_create_database_objects
+    FROM pg_roles r
+    WHERE r.rolname = current_user
+  `;
+  const row = rows[0];
+  if (!row) throw new Error("Could not inspect the active PostgreSQL role.");
+  const proven = !(
+    row.is_superuser ||
+    row.can_create_role ||
+    row.can_create_database ||
+    row.can_replicate ||
+    row.can_bypass_rls ||
+    row.member_pg_write_all_data ||
+    row.inherits_pg_write_all_data ||
+    row.member_pg_write_server_files ||
+    row.member_pg_execute_server_program ||
+    row.has_effective_table_write ||
+    row.has_effective_sequence_write ||
+    row.can_create_in_user_schemas ||
+    row.can_create_database_objects
+  );
+  return {
+    roleName: row.role_name,
+    isSuperuser: row.is_superuser,
+    canCreateRole: row.can_create_role,
+    canCreateDatabase: row.can_create_database,
+    canReplicate: row.can_replicate,
+    canBypassRls: row.can_bypass_rls,
+    memberPgWriteAllData: row.member_pg_write_all_data,
+    inheritsPgWriteAllData: row.inherits_pg_write_all_data,
+    memberPgWriteServerFiles: row.member_pg_write_server_files,
+    memberPgExecuteServerProgram: row.member_pg_execute_server_program,
+    hasEffectiveTableWrite: row.has_effective_table_write,
+    hasEffectiveSequenceWrite: row.has_effective_sequence_write,
+    canCreateInUserSchemas: row.can_create_in_user_schemas,
+    canCreateDatabaseObjects: row.can_create_database_objects,
+    proven,
+  };
+}
+
 function safeDiagnostic(error: unknown, env: WorkerDatabaseEnv) {
   const name = error instanceof Error ? error.name : "UnknownError";
   const code = error && typeof error === "object" && "code" in error &&
@@ -200,6 +329,7 @@ export default {
       try {
         const client = getAppClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+        const roleEvidence = await inspectReadOnlyRole(client);
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
@@ -217,8 +347,9 @@ export default {
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,
-          readOnlyProven,
+          readOnlyProven: readOnlyProven && roleEvidence.proven,
           readOnlyCheckMethod: "current_setting('transaction_read_only')::boolean",
+          readOnlyRoleEvidence: roleEvidence,
           transactionReadOnlySetting: result.transactionReadOnlySetting,
           writesPerformed: false,
         });
@@ -236,6 +367,7 @@ export default {
       try {
         const client = getStoreClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+        const roleEvidence = await inspectReadOnlyRole(client);
         const result = await client.$transaction(async (tx) => {
           const [selectRows, settingRows] = await Promise.all([
             tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
@@ -253,8 +385,9 @@ export default {
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,
-          readOnlyProven,
+          readOnlyProven: readOnlyProven && roleEvidence.proven,
           readOnlyCheckMethod: "current_setting('transaction_read_only')::boolean",
+          readOnlyRoleEvidence: roleEvidence,
           transactionReadOnlySetting: result.transactionReadOnlySetting,
           writesPerformed: false,
         });
