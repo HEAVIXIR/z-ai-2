@@ -3,14 +3,18 @@ import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 
 const originalHeavixEnv = process.env.HEAVIX_ENV;
+const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 beforeEach(() => {
   process.env.HEAVIX_ENV = "preview";
+  process.env.NEXT_PUBLIC_SITE_URL = "https://heavix-preview.heavixir.workers.dev";
 });
 
 afterEach(() => {
   if (originalHeavixEnv === undefined) delete process.env.HEAVIX_ENV;
   else process.env.HEAVIX_ENV = originalHeavixEnv;
+  if (originalSiteUrl === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+  else process.env.NEXT_PUBLIC_SITE_URL = originalSiteUrl;
 });
 
 describe("Next.js Proxy request boundary", () => {
