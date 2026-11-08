@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { adjustStock, reserveStock, releaseStock, createMovement, allocateInitialStock } from '@/lib/store-inventory-service';
+import { adjustStock, reserveStock, releaseStock, createMovement, allocateInitialStock, transferStock } from '@/lib/store-inventory-service';
 import { addReturnItem, inspectReturn, resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
@@ -103,6 +103,109 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       categoryId = undefined;
     }
   });
+
+  it('moves available stock atomically with paired ledger movements and one audit event', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const destination = await storeDb.warehouse.create({
+      data: { name: 'Transfer destination ' + suffix(), code: 'TR-DST-' + suffix() },
+    });
+    secondWarehouseId = destination.id;
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 2, lowStockThreshold: 5 },
+    });
+
+    const result = await transferStock(
+      partId,
+      warehouseId,
+      destination.id,
+      5,
+      'verified inter-warehouse relocation',
+      'inventory-admin',
+    );
+
+    expect(result.transferReference).toMatch(/^TRF-/);
+    expect(result.part.stock).toBe(10);
+    expect(result.sourceBalance.quantity).toBe(5);
+    expect(result.sourceBalance.reserved).toBe(2);
+    expect(result.destinationBalance.quantity).toBe(5);
+    expect(result.destinationBalance.reserved).toBe(0);
+
+    const [part, balances, movements, events] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findMany({ where: { partId } }),
+      storeDb.stockMovement.findMany({
+        where: { partId, reference: result.transferReference, type: 'TRANSFER' },
+        orderBy: { quantity: 'asc' },
+      }),
+      storeDb.auditOutbox.findMany({
+        where: { payloadJson: { contains: result.transferReference } },
+      }),
+    ]);
+
+    expect(part?.stock).toBe(10);
+    expect(balances.reduce((sum, balance) => sum + balance.quantity, 0)).toBe(10);
+    expect(movements).toHaveLength(2);
+    expect(movements.map((movement) => movement.quantity)).toEqual([-5, 5]);
+    expect(movements.map((movement) => movement.warehouseId).sort()).toEqual([warehouseId, destination.id].sort());
+    expect(movements.every((movement) => movement.balanceAfter === 10)).toBe(true);
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(events[0].payloadJson).action).toBe('store.inventory.transfer');
+  }, 20000);
+
+  it('serializes competing transfers and never moves reserved or oversold stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const destination = await storeDb.warehouse.create({
+      data: { name: 'Concurrent transfer destination ' + suffix(), code: 'TR-C-' + suffix() },
+    });
+    secondWarehouseId = destination.id;
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 0, lowStockThreshold: 5 },
+    });
+
+    const outcomes = await Promise.allSettled([
+      transferStock(partId, warehouseId, destination.id, 6, 'concurrent transfer A', 'inventory-admin'),
+      transferStock(partId, warehouseId, destination.id, 6, 'concurrent transfer B', 'inventory-admin'),
+    ]);
+    expect(outcomes.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
+
+    const [part, balances, movements, events] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findMany({ where: { partId } }),
+      storeDb.stockMovement.findMany({ where: { partId, type: 'TRANSFER' } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: partId } } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(balances.reduce((sum, balance) => sum + balance.quantity, 0)).toBe(10);
+    expect(balances.find((balance) => balance.warehouseId === warehouseId)?.quantity).toBe(4);
+    expect(balances.find((balance) => balance.warehouseId === destination.id)?.quantity).toBe(6);
+    expect(movements).toHaveLength(2);
+    expect(events.filter((event) => JSON.parse(event.payloadJson).action === 'store.inventory.transfer')).toHaveLength(1);
+  }, 20000);
+
+  it('rolls back destination balance creation when source availability or warehouse state is invalid', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    const destination = await storeDb.warehouse.create({
+      data: { name: 'Invalid transfer destination ' + suffix(), code: 'TR-I-' + suffix() },
+    });
+    secondWarehouseId = destination.id;
+    await storeDb.inventoryBalance.create({
+      data: { partId, warehouseId, quantity: 10, reserved: 5, lowStockThreshold: 5 },
+    });
+
+    await expect(
+      transferStock(partId, warehouseId, destination.id, 6, 'cannot transfer reserved stock', 'inventory-admin'),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(1);
+    expect(await storeDb.stockMovement.count({ where: { partId } })).toBe(0);
+    expect(await storeDb.auditOutbox.count({ where: { payloadJson: { contains: partId } } })).toBe(0);
+
+    await storeDb.warehouse.update({ where: { id: destination.id }, data: { active: false } });
+    await expect(
+      transferStock(partId, warehouseId, destination.id, 1, 'inactive destination', 'inventory-admin'),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(1);
+  }, 20000);
 
   it('rejects the deprecated Part-only movement API without changing inventory', async () => {
     if (!partId) throw new Error('fixture setup incomplete');
