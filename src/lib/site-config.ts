@@ -12,7 +12,6 @@
 
    Resolution order:
      1. Cloudflare Preview: explicit `HEAVIX_PREVIEW_URL` when `HEAVIX_ENV=preview`. 
-     2. Vercel Preview fallback: deployment-specific `VERCEL_URL` (never production).
      3. `NEXT_PUBLIC_SITE_URL` for explicit non-preview environments.
      4. Production fallback `https://heavix.ir`; local fallback localhost.
 
@@ -22,23 +21,15 @@
    ============================================================ */
 
 const IS_CLOUDFLARE_PREVIEW = process.env.HEAVIX_ENV === "preview";
-const IS_VERCEL_PREVIEW = process.env.VERCEL_ENV === "preview";
 
 // Cloudflare Worker preview uses an explicit, non-secret URL binding.
 // Never infer a public host from the production domain. If an operator has
 // not configured the preview origin yet, fail closed to localhost.
 const CLOUDFLARE_PREVIEW_URL = process.env.HEAVIX_PREVIEW_URL
   ?.replace(/\/+$/, "");
-const VERCEL_PREVIEW_HOST = process.env.VERCEL_URL
-  ?.replace(/^https?:\/\//, "")
-  .replace(/\/+$/, "");
 const PREVIEW_SITE_URL = IS_CLOUDFLARE_PREVIEW
   ? CLOUDFLARE_PREVIEW_URL || "http://localhost:3000"
-  : IS_VERCEL_PREVIEW
-    ? VERCEL_PREVIEW_HOST
-      ? `https://${VERCEL_PREVIEW_HOST}`
-      : "http://localhost:3000"
-    : null;
+  : null;
 
 // Preview URLs are deployment-specific and must never inherit the
 // production canonical host. Production keeps the explicit owner-configured
