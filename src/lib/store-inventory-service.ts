@@ -500,21 +500,30 @@ export async function adjustStock(
     const currentQty = existingBalance?.quantity ?? 0;
 
     if (qty < 0) {
-      // Conditional UPDATE is atomic in PostgreSQL. If another request has
-      // already consumed the available quantity, this request affects zero
-      // rows and the entire transaction is rejected.
+      // A stock decrement must preserve already-reserved units. Compare-and-set
+      // the exact observed balance so a concurrent reserve/adjustment cannot
+      // invalidate this check between the read and the write.
+      const currentReserved = existingBalance?.reserved ?? 0;
+      if (!existingBalance || currentQty + qty < currentReserved) {
+        throw new InventoryServiceError(
+          400,
+          'کاهش موجودی مجاز نیست؛ ابتدا رزروهای فعال را آزاد کنید',
+        );
+      }
+
       const changed = await tx.inventoryBalance.updateMany({
         where: {
           partId,
           warehouseId,
-          quantity: { gte: -qty },
+          quantity: currentQty,
+          reserved: currentReserved,
         },
         data: { quantity: { increment: qty } },
       });
       if (changed.count !== 1) {
         throw new InventoryServiceError(
-          400,
-          'موجودی ناکافی در انبار. فعلی: ' + currentQty + '، درخواست: ' + qty,
+          409,
+          'موجودی انبار هم‌زمان تغییر کرده است؛ عملیات تعدیل را دوباره انجام دهید',
         );
       }
     } else {
