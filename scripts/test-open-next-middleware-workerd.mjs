@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { request as httpRequest } from "node:http";
 import { rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -30,10 +31,39 @@ async function reservePort() {
   return address.port;
 }
 
-async function request(baseUrl, path) {
-  return fetch(new URL(path, baseUrl), {
-    redirect: "manual",
-    signal: AbortSignal.timeout(10_000),
+async function request(baseUrl, path, host = "heavix-preview.heavixir.workers.dev") {
+  const target = new URL(path, baseUrl);
+  return new Promise((resolveRequest, rejectRequest) => {
+    const req = httpRequest(
+      {
+        hostname: "127.0.0.1",
+        port: Number(target.port),
+        path: target.pathname + target.search,
+        method: "GET",
+        headers: { host },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(res.headers)) {
+            if (value !== undefined) {
+              headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+            }
+          }
+          resolveRequest(
+            new Response(Buffer.concat(chunks), {
+              status: res.statusCode ?? 500,
+              headers,
+            }),
+          );
+        });
+      },
+    );
+    req.once("error", rejectRequest);
+    req.setTimeout(10_000, () => req.destroy(new Error("Workerd request timed out.")));
+    req.end();
   });
 }
 
@@ -53,18 +83,13 @@ try {
         name: `heavix-middleware-workerd-smoke-${process.pid}`,
         main: ".open-next/worker.js",
         compatibility_date: "2026-10-28",
-        compatibility_flags: [
-          "nodejs_compat",
-          "nodejs_compat_populate_process_env",
-        ],
+        compatibility_flags: ["nodejs_compat"],
         assets: { directory: ".open-next/assets", binding: "ASSETS" },
         workers_dev: false,
         observability: { enabled: false },
         vars: {
-          HEAVIX_ENV: "preview",
           NODE_ENV: "production",
-          NEXT_PUBLIC_SITE_URL:
-            "https://heavix-preview.heavixir.workers.dev",
+          NEXT_PUBLIC_SITE_URL: "https://heavix.ir",
           HEAVIX_BACKUP_EXECUTION_ENABLED: "false",
         },
       },
@@ -133,6 +158,26 @@ try {
     "noindex, nofollow, noarchive",
     "Edge Middleware must add noindex to public Preview responses.",
   );
+  const previewRobotsBody = await robots.text();
+  assert.match(previewRobotsBody, /User-agent: \\*/);
+  assert.match(previewRobotsBody, /Disallow: \\//);
+  assert.doesNotMatch(previewRobotsBody, /Sitemap:/i);
+
+  const previewSitemap = await request(baseUrl, "/sitemap.xml");
+  assert.equal(
+    previewSitemap.status,
+    404,
+    "Preview must not expose a sitemap route with production canonical URLs.",
+  );
+  assert.doesNotMatch(await previewSitemap.text(), /https:\\/\\/heavix\\.ir/i);
+
+  const productionRobots = await request(baseUrl, "/robots.txt", "heavix.ir");
+  assert.equal(productionRobots.status, 200);
+  assert.match(await productionRobots.text(), /Sitemap:\\s*https:\\/\\/heavix\\.ir\\/sitemap\\.xml/i);
+
+  const productionSitemap = await request(baseUrl, "/sitemap.xml", "heavix.ir");
+  assert.equal(productionSitemap.status, 200);
+  assert.match(await productionSitemap.text(), /https:\\/\\/heavix\\.ir\\//);
 
   const adminApi = await request(baseUrl, "/api/admin/users");
   assert.equal(
