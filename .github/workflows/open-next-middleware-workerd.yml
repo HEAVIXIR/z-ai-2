@@ -6,6 +6,12 @@ on:
       - "integration/**"
     paths:
       - "src/middleware.ts"
+      - "src/lib/site-config.ts"
+      - "src/app/robots.ts"
+      - "src/app/sitemap.ts"
+      - "tests/unit/preview-middleware.test.ts"
+      - "tests/unit/site-config.test.ts"
+      - ".github/workflows/open-next-middleware-workerd.yml"
       - "scripts/test-open-next-middleware-workerd.mjs"
       - "open-next.config.ts"
       - "wrangler.jsonc"
@@ -26,10 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HEAVIX_ENV: preview
       HEAVIX_BUILD_TARGET: cloudflare
       NODE_ENV: production
-      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v4
