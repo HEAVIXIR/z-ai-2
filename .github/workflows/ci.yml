@@ -4,7 +4,7 @@ on:
   pull_request:
     # Include the infrastructure branch so stacked security/SEO PRs
     # receive the same blocking verification as PRs targeting main.
-    branches: [main, 'infra/cloudflare-opennext-build-recovery']
+    branches: [main, 'infra/cloudflare-opennext-build-recovery', 'integration/**']
   push:
     branches: [main, 'feature/**']
 
