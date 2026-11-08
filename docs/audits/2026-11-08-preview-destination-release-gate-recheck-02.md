@@ -80,3 +80,29 @@ A read-only database-level check was added after the control-plane audit:
 **Interpretation:** both Preview databases have a non-empty live schema and two completed baseline-era migrations in their PostgreSQL migration tables. Production currently appears to have no public tables in the selected Prisma database resource. This is a high-severity environment/target-attestation issue, not authorization to initialize, migrate, or otherwise modify Production. Confirm that this Production resource is the intended one before any future Production work.
 
 The Preview schemas and migration tables are not yet proven to match the exact current repository schema. A dedicated schema-diff/compatibility gate remains required before any Preview deployment.
+
+
+## Follow-up: repository schema parity and backup-runtime audit
+
+### Live schema parity (name-level)
+
+Compared the active repository Prisma model declarations with live PostgreSQL table names:
+
+| Database | Prisma models | Live tables | Missing model tables | Unexpected non-system tables |
+|---|---:|---:|---:|---:|
+| Main app Preview | 120 | 121 | 0 | 0 |
+| Store Preview | 34 | 36 | 0 | 0 |
+
+The Main app Preview table count includes `_prisma_migrations`. Store includes `_prisma_migrations` and the expected implicit many-to-many join table `_CarModelToPart`. This is name-level parity only; column types, indexes, constraints, defaults, and full SQL drift still need a separate diff.
+
+The source wiring agrees with the intended two-database split: `src/lib/db.ts` uses the main generated Prisma client; `src/lib/store-db.ts` uses the separately generated Store client; `prisma/schema.prisma` reads `DATABASE_URL`; and `prisma/store/schema.prisma` reads `STORE_DATABASE_URL`.
+
+### Backup and Backblaze B2 gap
+
+- The current admin backup route imports `node:child_process.execFile`, invokes `bash scripts/backup.sh`, and writes paired dumps under local `./backups`.
+- `scripts/backup.sh` requires `pg_dump` and produces local `main.sql`, `store.sql`, and `checksums.txt`. It does not upload to remote object storage.
+- Repository code and `.env.example` contain no Backblaze B2/S3 endpoint, bucket, or credential integration. The approved B2 infrastructure is therefore not yet wired into this backup path.
+- Cloudflare documents `node:child_process` as a non-functional stub module in Workers; importing the stub does not provide a working process-spawning implementation. The current Worker runtime configuration has `nodejs_compat`, but that does not make `execFile`/shell execution available. See [Cloudflare Node.js compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/).
+- Consequently, the existing admin backup route must not be treated as a working Cloudflare Workers backup mechanism. The current local filesystem output also does not establish durable off-site backup storage.
+
+**Recommended implementation direction (not executed):** move paired `pg_dump` execution to a controlled GitHub Actions runner or another supported job runtime, upload encrypted/checksummed artifacts to the approved Backblaze B2 bucket through its S3-compatible API, enforce retention, and prove restore from B2 into a disposable database. Keep credentials in repository/environment secrets and never print them. Do not add a workflow that targets live databases until authorized backup credentials, target identities, retention, and restore gates are confirmed.
