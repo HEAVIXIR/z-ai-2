@@ -11,7 +11,7 @@ vi.mock("@/lib/db", () => ({
 const original = {
   nodeEnv: process.env.NODE_ENV,
   heavixEnv: process.env.HEAVIX_ENV,
-  vercelEnv: process.env.VERCEL_ENV,
+  previewUrl: process.env.HEAVIX_PREVIEW_URL,
 };
 
 describe("legacy SEO producers on Preview", () => {
@@ -19,7 +19,7 @@ describe("legacy SEO producers on Preview", () => {
     vi.resetModules();
     process.env.NODE_ENV = "production";
     process.env.HEAVIX_ENV = "preview";
-    delete process.env.VERCEL_ENV;
+    process.env.HEAVIX_PREVIEW_URL = "https://heavix-preview.heavixir.workers.dev";
   });
 
   afterEach(() => {
@@ -27,8 +27,8 @@ describe("legacy SEO producers on Preview", () => {
     else process.env.NODE_ENV = original.nodeEnv;
     if (original.heavixEnv === undefined) delete process.env.HEAVIX_ENV;
     else process.env.HEAVIX_ENV = original.heavixEnv;
-    if (original.vercelEnv === undefined) delete process.env.VERCEL_ENV;
-    else process.env.VERCEL_ENV = original.vercelEnv;
+    if (original.previewUrl === undefined) delete process.env.HEAVIX_PREVIEW_URL;
+    else process.env.HEAVIX_PREVIEW_URL = original.previewUrl;
   });
 
   it("omits the sitemap directive from the legacy robots endpoint", async () => {
