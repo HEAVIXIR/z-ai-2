@@ -50,8 +50,9 @@ Earlier checks on this branch established:
 The additional normalized comparisons found:
 
 - Database defaults: 355 Main and 93 Store schema-declared literal/server defaults were
-  compared to live catalog values; zero mismatches. Non-literal/default-function cases
-  (116 Main, 32 Store) were excluded from this comparison and remain unverified.
+  compared to live catalog values; zero mismatches. The remaining 116 Main and 32 Store
+  `cuid()` defaults are Prisma Client-side ID generators, not PostgreSQL column defaults,
+  and are intentionally excluded from database-default comparison.
 - Index signatures: all 288 Main and 83 Store Prisma-declared primary/unique/ordinary
   index signatures matched live indexes by table, ordered column list, uniqueness, and
   primary-key role. The live inventory has one additional Main index and three additional
