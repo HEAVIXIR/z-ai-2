@@ -164,6 +164,8 @@ describe("site-config — request-time Preview deployment detection", () => {
     vi.resetModules();
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix-preview.heavixir.workers.dev";
     process.env.NODE_ENV = "test";
   });
 
