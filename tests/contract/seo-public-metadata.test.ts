@@ -30,7 +30,7 @@ describe("public SEO metadata safety", () => {
   });
 
   it("applies a runtime noindex header to public Preview responses", () => {
-    const source = read("src/middleware.ts");
+    const source = read("src/proxy.ts");
     expect(source).toContain("isPreviewDeployment(req.nextUrl.hostname)");
     expect(source).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
     expect(source).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
