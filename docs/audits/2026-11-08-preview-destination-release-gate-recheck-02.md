@@ -65,3 +65,18 @@ The Store Preview database includes `heavix-preview-worker`: `con_deqygs8illafyr
 The next safe step is an authorized operator-side attestation performed locally in the Cloudflare/Prisma consoles: compare each secret's destination without copying or disclosing the value, then record only the matching Prisma database ID and a boolean match result. If the values do not match, correct them only through an explicitly authorized secret-rotation/change procedure with rollback planning.
 
 Until those gates are evidenced: do not enable Preview builds, change bindings/secrets, deploy, run migrations, alter DNS, merge, open a PR, or touch Production.
+
+## Follow-up: live schema and migration metadata
+
+A read-only database-level check was added after the control-plane audit:
+
+- Main app Preview has 121 public tables, including `_prisma_migrations`.
+- Store Preview has 36 public tables, including `_prisma_migrations`.
+- The Main app Preview migration table contains two completed, non-rolled-back entries: `20261025081255_init_postgresql_baseline` and `20261025193000_add_auditlog_idempotency_key`.
+- The Store Preview migration table contains two completed, non-rolled-back entries: `0001_init_store_baseline` and `0002_add_audit_outbox`.
+- The Production database has zero public base tables in the returned `information_schema.tables` inventory; `to_regclass('public."_prisma_migrations"')` returned false.
+- The Prisma recorded-schema endpoint reports no Prisma 8 migration contract for all three resources. That result is distinct from the live PostgreSQL `_prisma_migrations` table and must not be interpreted as proof that Preview has no Prisma 6 migration history.
+
+**Interpretation:** both Preview databases have a non-empty live schema and two completed baseline-era migrations in their PostgreSQL migration tables. Production currently appears to have no public tables in the selected Prisma database resource. This is a high-severity environment/target-attestation issue, not authorization to initialize, migrate, or otherwise modify Production. Confirm that this Production resource is the intended one before any future Production work.
+
+The Preview schemas and migration tables are not yet proven to match the exact current repository schema. A dedicated schema-diff/compatibility gate remains required before any Preview deployment.
