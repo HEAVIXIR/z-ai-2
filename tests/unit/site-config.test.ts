@@ -155,3 +155,51 @@ describe("site-config — backward compatibility re-export from @/lib/seo", () =
     expect(seo.absoluteUrl("/listings")).toBe("https://heavix.ir/listings");
   });
 });
+
+describe("site-config — preview deployment detection", () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "test";
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("recognizes the Cloudflare HEAVIX_ENV=preview runtime binding", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    const { isPreviewDeployment } = await import("@/lib/site-config");
+    expect(isPreviewDeployment("heavix-preview.heavixir.workers.dev")).toBe(true);
+  });
+
+  it("recognizes Vercel preview deployments", async () => {
+    process.env.VERCEL_ENV = "preview";
+    const { isPreviewDeployment } = await import("@/lib/site-config");
+    expect(isPreviewDeployment("heavix-preview.vercel.app")).toBe(true);
+  });
+
+  it.each([
+    "heavix-preview.heavixir.workers.dev",
+    "heavix-git-feature.pages.dev",
+    "heavix-preview.vercel.app",
+  ])("recognizes provider preview hostname %s", async (hostname) => {
+    const { isPreviewDeployment } = await import("@/lib/site-config");
+    expect(isPreviewDeployment(hostname)).toBe(true);
+  });
+
+  it("does not classify the official production host as Preview", async () => {
+    process.env.HEAVIX_ENV = "production";
+    process.env.VERCEL_ENV = "production";
+    const { isPreviewDeployment } = await import("@/lib/site-config");
+    expect(isPreviewDeployment("heavix.ir")).toBe(false);
+  });
+
+  it("does not classify local development as Preview", async () => {
+    const { isPreviewDeployment } = await import("@/lib/site-config");
+    expect(isPreviewDeployment("localhost:3000")).toBe(false);
+  });
+});
