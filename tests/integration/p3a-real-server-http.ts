@@ -208,7 +208,7 @@ describe.skipIf(!RUN)("STEP 13.57 P3-A — Real Next.js HTTP server (no mocks)",
       () => (dealId ? db.order.deleteMany({ where: { dealId } }) : Promise.resolve()),
       () => (dealId ? db.deal.deleteMany({ where: { id: dealId } }) : Promise.resolve()),
       () => (listingId ? db.listing.deleteMany({ where: { id: listingId } }) : Promise.resolve()),
-      () => db.session.deleteMany({ where: { userId: buyerId } }),
+      () => (buyerId ? db.session.deleteMany({ where: { userId: buyerId } }) : Promise.resolve()),
       () => (buyerId ? db.user.deleteMany({ where: { id: buyerId } }) : Promise.resolve()),
       () => (sellerId ? db.user.deleteMany({ where: { id: sellerId } }) : Promise.resolve()),
     ]);
