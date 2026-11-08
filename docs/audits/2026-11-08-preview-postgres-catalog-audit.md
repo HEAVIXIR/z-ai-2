@@ -122,3 +122,52 @@ No Cloudflare settings, Preview enablement, Worker bindings, secrets, deployment
 database resources, DNS, or Production resources were changed. The release gate remains
 **NO-GO** pending independent destination attestation for both Preview database bindings
 and a complete paired encrypted Backblaze B2 backup/read-back/restore proof.
+
+
+## Follow-up resource and backup inventory — 2026-11-08 23:57 +03:30
+
+A further read-only Prisma workspace inventory was performed after the Cloudflare
+control-plane recheck.
+
+- The workspace currently lists three Prisma Postgres databases: Main Preview
+  `heavix-app-preview` (`db_ew8d6duermpt125paxaqorr9`), Store Preview
+  `heavix-store-preview` (`db_cmtgxfrfwxw5mi77020tcnc3`), and the separately named
+  `heavix-production` resource (`db_rc9ln1df4rwgxducp2zsge2s`). All three report
+  `ready` in Europe/Frankfurt. The Production-named resource remains out of scope for
+  application access or modification.
+- The Main Preview connection-string inventory includes the metadata record
+  `con_qy93tzb532xw4rc2za0x18qq` named `heavix-preview-worker`, created
+  2026-10-28T14:12:18.817Z. It also includes a separate
+  `heavix-preview-app-worker` metadata record and several generic console records.
+- The Store Preview connection-string inventory includes
+  `con_deqygs8illafyr5bcw2mzkbn` named `heavix-preview-worker`, created
+  2026-10-28T14:12:20.513Z, plus generic console records.
+- The names and database-scoped listing establish that these records belong to the
+  respective Preview database resources. They do not prove which connection string
+  values are currently held by Cloudflare secret bindings. No connection-string values
+  were fetched or inspected.
+- Prisma automated-backup inventory remains empty for both Preview databases (zero
+  records each). This does not replace the required Backblaze B2 backup workflow.
+- Current security branch HEAD is the audit update commit
+  `b190fcd2e29257a573359af43344fa0d4c8f3959`. Its combined commit status contains only
+  the external Vercel failure (build-rate-limit); Vercel is not an accepted HEAVIX CI
+  signal. No exact-HEAD GitHub Actions CI or Workerd success is claimed.
+
+## Next release-gate actions
+
+1. Obtain an independently verifiable runtime or operator attestation mapping each
+   Cloudflare secret binding to the exact Preview database identity without disclosing
+   credentials. The current Cloudflare API exposes binding names/types but not secret
+   destinations or values; Prisma exposes named connection metadata but not the secret
+   binding's selected connection.
+2. Implement the paired encrypted backup/read-back/restore workflow specifically for
+   the two Preview databases and Backblaze B2. Do not use Prisma Object Storage as a
+   substitute. No B2 bucket, application key, GitHub Environment, or workflow secrets
+   have been provisioned in this session.
+3. Obtain CI and Workerd evidence for the exact updated HEAD using an accepted
+   GitHub Actions execution path. The available commit workflow wrapper only returns
+   pull-request-triggered runs, so its empty result is not proof that no other run exists.
+
+Release remains **NO-GO**. No secret values, connection-string values, application rows,
+database writes, schema changes, backup/restore operations, Cloudflare settings,
+deployments, DNS, or Production resources were accessed or modified.
