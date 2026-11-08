@@ -13,19 +13,19 @@ describe("preview indexing safety", () => {
     expect(config).toMatch(/NODE_ENV === "development"/);
   });
 
-  it("sets a global noindex response header through the request Proxy", () => {
-    const proxy = read("src/proxy.ts");
+  it("sets a global noindex response header through the request Edge Middleware", () => {
+    const middleware = read("src/middleware.ts");
     const config = read("next.config.ts");
-    expect(proxy).toMatch(/X-Robots-Tag/);
-    expect(proxy).toMatch(/noindex, nofollow, noarchive/);
+    expect(middleware).toMatch(/X-Robots-Tag/);
+    expect(middleware).toMatch(/noindex, nofollow, noarchive/);
     expect(config).not.toMatch(/X-Robots-Tag/);
   });
 
   it("keeps Preview noindex at the request boundary without duplicate root metadata", () => {
     const layout = read("src/app/layout.tsx");
-    const proxy = read("src/proxy.ts");
+    const middleware = read("src/middleware.ts");
     expect(layout).not.toMatch(/robots:/);
-    expect(proxy).toMatch(/response\.headers\.set\("X-Robots-Tag"/);
+    expect(middleware).toMatch(/response\.headers\.set\("X-Robots-Tag"/);
   });
 
   it("does not publish a sitemap URL or sitemap entries for preview", () => {
