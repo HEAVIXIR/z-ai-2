@@ -148,8 +148,7 @@ control-plane recheck.
   were fetched or inspected.
 - Prisma automated-backup inventory remains empty for both Preview databases (zero
   records each). This does not replace the required Backblaze B2 backup workflow.
-- Current security branch HEAD is the audit update commit
-  `b190fcd2e29257a573359af43344fa0d4c8f3959`. Its combined commit status contains only
+- The preceding audit snapshot was `b190fcd2e29257a573359af43344fa0d4c8f3959`; this follow-up inventory is committed in the current update. Its combined commit status contains only
   the external Vercel failure (build-rate-limit); Vercel is not an accepted HEAVIX CI
   signal. No exact-HEAD GitHub Actions CI or Workerd success is claimed.
 
