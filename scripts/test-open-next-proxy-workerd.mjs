@@ -30,7 +30,6 @@ async function request(baseUrl, path) {
   return fetch(new URL(path, baseUrl), {
     redirect: "manual",
     signal: AbortSignal.timeout(10_000),
-    headers: { host: "heavix-preview.heavixir.workers.dev" },
   });
 }
 
