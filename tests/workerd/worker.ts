@@ -1,3 +1,4 @@
+import { createRequestScopedClientResolver } from "../../src/lib/prisma-worker-proxy";
 import {
   createAppWorkerClientResolver,
   createStoreWorkerClientResolver,
@@ -113,6 +114,23 @@ export default {
   async fetch(request: Request, env: WorkerDatabaseEnv, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/health") return json({ ok: true, runtime: "workerd" });
+
+    if (path === "/resolver/lifecycle") {
+      let syntheticClientId = 0;
+      const resolve = createRequestScopedClientResolver<
+        { id: number },
+        WorkerDatabaseEnv
+      >(() => ({ id: ++syntheticClientId }));
+      const requestKey = {};
+      const first = resolve(requestKey, env);
+      const sameRequest = resolve(requestKey, env);
+      const otherRequest = resolve({}, env);
+      return json({
+        sameRequestClientReused: first === sameRequest,
+        isolatedAcrossRequests: first !== otherRequest,
+        distinctClientIds: first.id !== otherRequest.id,
+      });
+    }
 
     if (path === "/failure/missing-app-secret") {
       try {
