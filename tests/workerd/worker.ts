@@ -97,6 +97,7 @@ type ReadOnlyRoleEvidence = {
   canCreateDatabase: boolean;
   canReplicate: boolean;
   canBypassRls: boolean;
+  defaultTransactionReadOnlyOn: boolean;
   memberPgWriteAllData: boolean;
   inheritsPgWriteAllData: boolean;
   memberPgWriteServerFiles: boolean;
@@ -123,6 +124,7 @@ async function inspectReadOnlyRole(
     can_create_database: boolean;
     can_replicate: boolean;
     can_bypass_rls: boolean;
+    default_transaction_read_only_on: boolean;
     member_pg_write_all_data: boolean;
     inherits_pg_write_all_data: boolean;
     member_pg_write_server_files: boolean;
@@ -139,6 +141,7 @@ async function inspectReadOnlyRole(
       r.rolcreatedb AS can_create_database,
       r.rolreplication AS can_replicate,
       r.rolbypassrls AS can_bypass_rls,
+      COALESCE('default_transaction_read_only=on' = ANY(r.rolconfig), false) AS default_transaction_read_only_on,
       pg_has_role(current_user, 'pg_write_all_data', 'MEMBER') AS member_pg_write_all_data,
       pg_has_role(current_user, 'pg_write_all_data', 'USAGE') AS inherits_pg_write_all_data,
       pg_has_role(current_user, 'pg_write_server_files', 'MEMBER') AS member_pg_write_server_files,
@@ -207,6 +210,7 @@ async function inspectReadOnlyRole(
     canCreateDatabase: row.can_create_database,
     canReplicate: row.can_replicate,
     canBypassRls: row.can_bypass_rls,
+    defaultTransactionReadOnlyOn: row.default_transaction_read_only_on,
     memberPgWriteAllData: row.member_pg_write_all_data,
     inheritsPgWriteAllData: row.inherits_pg_write_all_data,
     memberPgWriteServerFiles: row.member_pg_write_server_files,
