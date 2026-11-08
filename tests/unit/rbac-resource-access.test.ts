@@ -3,16 +3,15 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 let queryRawCalls: { sql: string; params: unknown[] }[] = [];
 let mockPermissions: string[] = [];
 let mockQueryResult: { owner_id: string }[] = [];
+const mockQueryRaw = vi.fn(async (sql: string, ...params: unknown[]) => {
+  queryRawCalls.push({ sql, params });
+  return mockQueryResult;
+});
 
 vi.mock("@/lib/db", () => ({
-  get db() {
-    return {
-      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
-        queryRawCalls.push({ sql, params });
-        return mockQueryResult;
-      },
-      userRole: { findFirst: async () => null },
-    };
+  db: {
+    $queryRawUnsafe: mockQueryRaw,
+    userRole: { findFirst: vi.fn().mockResolvedValue(null) },
   },
 }));
 
@@ -33,6 +32,11 @@ beforeEach(() => {
   queryRawCalls = [];
   mockPermissions = [];
   mockQueryResult = [];
+  mockQueryRaw.mockReset();
+  mockQueryRaw.mockImplementation(async (sql: string, ...params: unknown[]) => {
+    queryRawCalls.push({ sql, params });
+    return mockQueryResult;
+  });
 });
 
 describe("canAccessResource — SQL identifier allowlist", () => {
@@ -83,8 +87,7 @@ describe("canAccessResource — SQL identifier allowlist", () => {
   });
 
   it("fails closed when the database query throws", async () => {
-    const dbModule = await import("@/lib/db");
-    vi.spyOn(dbModule.db, "$queryRawUnsafe").mockRejectedValueOnce(new Error("database unavailable"));
+    mockQueryRaw.mockRejectedValueOnce(new Error("database unavailable"));
     const result = await canAccessResource("user-1", "listing", "rec-1", { ownerField: "sellerId" });
     expect(result).toBe(false);
   });
