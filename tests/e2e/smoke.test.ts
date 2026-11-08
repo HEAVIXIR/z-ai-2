@@ -8,7 +8,7 @@
  * pipeline; here we assert that the configuration that drives them
  * is present and consistent.
  *
- * These run under `bun run test:e2e`
+ * These run under `bun run test:e2e:smoke`
  * (config: vitest.e2e.config.ts → includes tests/e2e/**).
  */
 
@@ -110,11 +110,16 @@ describe("Smoke — E2E + security vitest configs exist", () => {
     expect(read(cfgPath)).toMatch(/tests\/security\/\*\*\/\*\.test\.\{ts,tsx\}/);
   });
 
-  it("package.json wires test:e2e + test:security scripts", () => {
-    const pkg = read(path.join(ROOT, "package.json"));
-    expect(pkg).toMatch(/"test:e2e"\s*:\s*"vitest run --config vitest\.e2e\.config\.ts"/);
-    expect(pkg).toMatch(
-      /"test:security"\s*:\s*"vitest run --config vitest\.security\.config\.ts"/,
+  it("package.json wires Playwright E2E and Vitest smoke + security scripts", () => {
+    const pkg = JSON.parse(read(path.join(ROOT, "package.json"))) as {
+      scripts?: Record<string, string>;
+    };
+    expect(pkg.scripts?.["test:e2e"]).toBe("playwright test");
+    expect(pkg.scripts?.["test:e2e:smoke"]).toBe(
+      "vitest run --config vitest.e2e.config.ts",
+    );
+    expect(pkg.scripts?.["test:security"]).toBe(
+      "vitest run --config vitest.security.config.ts",
     );
   });
 });

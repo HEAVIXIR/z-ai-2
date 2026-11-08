@@ -1074,6 +1074,93 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(receiveContent).toContain('from "@/lib/store-procurement-service"');
     });
 
+    it('legacy inventory movement commits stock and ledger in one transaction', () => {
+      const source = readService('src/lib/store-inventory-service.ts');
+      const start = source.indexOf('export async function createMovement(');
+      const end = source.indexOf('// ── listMovements', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+
+      const implementation = source.slice(start, end);
+      const transactionStart = implementation.indexOf('storeDb.$transaction(async (tx) =>');
+      const transactionEnd = implementation.indexOf('\n  });', transactionStart);
+      const auditStart = implementation.indexOf('await logAudit(', transactionEnd);
+
+      expect(transactionStart).toBeGreaterThanOrEqual(0);
+      expect(transactionEnd).toBeGreaterThan(transactionStart);
+      expect(implementation).toContain('tx.part.updateMany(');
+      expect(implementation).toContain('tx.stockMovement.create(');
+      expect(implementation).toContain('stock: { gte: -qty }');
+      expect(auditStart).toBeGreaterThan(transactionEnd);
+      expect(implementation).not.toMatch(/await storeDb\.(part|stockMovement)\.(create|update)\(/);
+    });
+
+    it('purchase-order lifecycle and receiving serialize on the parent PO row', () => {
+      const source = readService('src/lib/store-procurement-service.ts');
+      const ranges = [
+        ['submitPurchaseOrder', 'approvePurchaseOrder'],
+        ['approvePurchaseOrder', 'receivePurchaseOrderItem'],
+        ['receivePurchaseOrderItem', 'cancelPurchaseOrder'],
+        ['cancelPurchaseOrder', 'listPurchaseOrders'],
+      ] as const;
+
+      for (const [name, next] of ranges) {
+        const start = source.indexOf(`export async function ${name}(`);
+        const end = source.indexOf(`export async function ${next}(`, start);
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        const implementation = source.slice(start, end);
+        expect(implementation).toContain('storeDb.$transaction(async (tx) =>');
+        expect(implementation).toContain('tx.$queryRaw');
+        expect(implementation).toContain('FOR UPDATE');
+      }
+
+      const receiveStart = source.indexOf('export async function receivePurchaseOrderItem(');
+      const receiveEnd = source.indexOf('export async function cancelPurchaseOrder(', receiveStart);
+      const receive = source.slice(receiveStart, receiveEnd);
+      expect(receive).toContain('tx.purchaseOrderItem.updateMany(');
+      expect(receive).toContain('tx.part.updateMany(');
+      expect(receive).toContain('tx.stockMovement.create(');
+      expect(receive).toContain('tx.purchaseOrderItem.findMany(');
+    });
+
+    it('warehouse stock decrements preserve existing reservations with compare-and-set', () => {
+      const source = readService('src/lib/store-inventory-service.ts');
+      const start = source.indexOf('export async function adjustStock(');
+      const end = source.indexOf('// ── reserveStock', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const implementation = source.slice(start, end);
+
+      expect(implementation).toContain('currentQty + qty < currentReserved');
+      expect(implementation).toContain('quantity: currentQty');
+      expect(implementation).toContain('reserved: currentReserved');
+      expect(implementation).toContain('changed.count !== 1');
+      expect(implementation).toContain('409');
+    });
+
+    it('inventory reservation and release use compare-and-set transactions', () => {
+      const source = readService('src/lib/store-inventory-service.ts');
+
+      for (const [name, next] of [
+        ['reserveStock', 'releaseStock'],
+        ['releaseStock', 'getLowStockItems'],
+      ] as const) {
+        const start = source.indexOf(`export async function ${name}(`);
+        const end = source.indexOf(`export async function ${next}(`, start);
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        const implementation = source.slice(start, end);
+
+        expect(implementation).toContain('storeDb.$transaction(async (tx) =>');
+        expect(implementation).toContain('tx.inventoryBalance.updateMany(');
+        expect(implementation).toContain('quantity: balance.quantity');
+        expect(implementation).toContain('reserved: balance.reserved');
+        expect(implementation).toContain('changed.count !== 1');
+        expect(implementation).toContain('409');
+      }
+    });
+
     it('every service file imports storeDb + logAudit', () => {
       // Service files use single quotes (audit.ts convention); route files use double.
       for (const f of listServiceFiles()) {

@@ -299,7 +299,7 @@ function MobileDrawer({ roots, onClose }: { roots: TaxRoot[]; onClose: () => voi
   const otherRoots = roots.filter((r) => r.slug !== "machinery");
 
   return (
-    <div className="mt-2 rounded-3xl border border-white/10 bg-[#0b0b0b]/98 p-5 shadow-[0_25px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl lg:hidden">
+    <div data-testid="mobile-navigation-drawer" className="mt-2 rounded-3xl border border-white/10 bg-[#0b0b0b]/98 p-5 shadow-[0_25px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl lg:hidden">
       <nav className="flex flex-col gap-1">
         {/* Machinery root with 16 L1 groups, each expandable */}
         {machinery && (

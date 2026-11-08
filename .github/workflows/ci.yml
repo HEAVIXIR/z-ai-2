@@ -2,9 +2,13 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'ci/**']
   push:
     branches: [main, 'feature/**']
+
+concurrency:
+  group: heavix-ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
@@ -202,7 +206,7 @@ jobs:
           --exclude tests/integration/store-inventory-return-atomicity.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
-      - name: E2E smoke tests
+      - name: E2E configuration smoke tests
         run: bunx vitest run tests/e2e/
       - name: "PostgreSQL migration proof: migrate deploy on fresh DBs (Main + Store)"
         env:
@@ -241,6 +245,20 @@ jobs:
           bash scripts/test-migration-baseline-adoption.sh
       - name: Production build
         run: bun run build
+      - name: Install pinned Playwright Chromium and OS dependencies
+        run: bunx playwright install --with-deps chromium
+      - name: Run real browser E2E across 320 / 768 / 1280px
+        run: bun run test:e2e
+      - name: Upload Playwright diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Integration — p3a-real-server-http (STEP 13.57 P3-A real Next.js server)
         run: bunx vitest run --config vitest.integration.config.ts tests/integration/p3a-real-server-http.ts
 
