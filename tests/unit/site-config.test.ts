@@ -195,3 +195,54 @@ describe("site-config — request-time Preview deployment detection", () => {
     expect(isPreviewDeployment("localhost:3000")).toBe(false);
   });
 });
+
+
+describe("site-config — fail-closed Cloudflare Preview canonical origin", () => {
+  const original = {
+    nodeEnv: process.env.NODE_ENV,
+    heavixEnv: process.env.HEAVIX_ENV,
+    previewUrl: process.env.HEAVIX_PREVIEW_URL,
+    siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+  };
+
+  afterEach(() => {
+    if (original.nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = original.nodeEnv;
+    if (original.heavixEnv === undefined) delete process.env.HEAVIX_ENV;
+    else process.env.HEAVIX_ENV = original.heavixEnv;
+    if (original.previewUrl === undefined) delete process.env.HEAVIX_PREVIEW_URL;
+    else process.env.HEAVIX_PREVIEW_URL = original.previewUrl;
+    if (original.siteUrl === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = original.siteUrl;
+    vi.resetModules();
+  });
+
+  it("uses the explicit Cloudflare Preview origin instead of the production domain", async () => {
+    vi.resetModules();
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_URL = "https://heavix-preview.heavixir.workers.dev";
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    const { SITE_BASE_URL } = await import("@/lib/site-config");
+    expect(SITE_BASE_URL).toBe("https://heavix-preview.heavixir.workers.dev");
+    expect(SITE_BASE_URL).not.toContain("heavix.ir");
+  });
+
+  it("fails closed when Preview has no safe explicit origin", async () => {
+    vi.resetModules();
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    delete process.env.HEAVIX_PREVIEW_URL;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    await expect(import("@/lib/site-config")).rejects.toThrow(/requires a non-production HTTPS/);
+  });
+
+  it("rejects the production host as a Preview canonical origin", async () => {
+    vi.resetModules();
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_URL = "https://heavix.ir";
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    await expect(import("@/lib/site-config")).rejects.toThrow(/requires a non-production HTTPS/);
+  });
+});
