@@ -8,11 +8,13 @@ const brandsPage = fs.readFileSync("src/app/brands/page.tsx", "utf8");
 const sitemap = fs.readFileSync("src/app/sitemap.ts", "utf8");
 
 describe("Preview-safe canonical URL resolution", () => {
-  it("uses the deployment-specific Vercel host for Preview URLs", () => {
-    expect(siteConfig).toContain('process.env.VERCEL_ENV === "preview"');
-    expect(siteConfig).toContain("process.env.VERCEL_URL");
+  it("uses the explicit Cloudflare Preview origin and never a Vercel host", () => {
+    expect(siteConfig).toContain('process.env.HEAVIX_ENV === "preview"');
+    expect(siteConfig).toContain("process.env.HEAVIX_PREVIEW_URL");
     expect(siteConfig).toContain("PREVIEW_SITE_URL");
     expect(siteConfig).toContain("http://localhost:3000");
+    expect(siteConfig).not.toContain("VERCEL_ENV");
+    expect(siteConfig).not.toContain("VERCEL_URL");
   });
 
   it("does not let the default homepage expose internal section keys as headings", () => {
@@ -40,7 +42,7 @@ describe("Preview database-unavailable public route safeguards", () => {
       "src/app/brands/page.tsx",
     ]) {
       const source = fs.readFileSync(file, "utf8");
-      expect(source).toContain('process.env.VERCEL_ENV === "preview"');
+      expect(source).toContain('process.env.HEAVIX_ENV === "preview"');
       expect(source).toContain("PreviewDataUnavailable");
       expect(source).toContain("process.env.DATABASE_URL");
     }
