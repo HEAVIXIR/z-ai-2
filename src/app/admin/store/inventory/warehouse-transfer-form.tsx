@@ -137,7 +137,22 @@ export default function WarehouseTransferForm({
               جستجوی قطعه
               <input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  const nextSearch = event.target.value;
+                  const query = nextSearch.trim().toLocaleLowerCase();
+                  const matches = query
+                    ? parts.filter((part) =>
+                        [part.name, part.nameFa ?? "", part.sku]
+                          .join(" ")
+                          .toLocaleLowerCase()
+                          .includes(query),
+                      )
+                    : parts;
+                  setSearch(nextSearch);
+                  if (!matches.some((part) => part.id === partId)) {
+                    setPartId(matches[0]?.id ?? "");
+                  }
+                }}
                 placeholder="نام قطعه یا SKU"
                 className={INPUT}
               />
