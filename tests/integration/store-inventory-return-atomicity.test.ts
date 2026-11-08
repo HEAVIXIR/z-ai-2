@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
 import { adjustStock, createMovement, reserveStock, releaseStock } from '@/lib/store-inventory-service';
 import { resolveReturn } from '@/lib/store-returns-service';
+import { receivePurchaseOrderItem, cancelPurchaseOrder } from '@/lib/store-procurement-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
 
@@ -13,6 +14,9 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   let orderId: string | undefined;
   let orderItemId: string | undefined;
   let returnId: string | undefined;
+  let procurementId: string | undefined;
+  let purchaseOrderId: string | undefined;
+  let purchaseOrderItemId: string | undefined;
 
   beforeEach(async () => {
     const tag = suffix();
@@ -42,6 +46,16 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     if (returnId) {
       await storeDb.return.deleteMany({ where: { id: returnId } });
       returnId = undefined;
+    }
+    if (purchaseOrderId) {
+      await storeDb.purchaseOrderItem.deleteMany({ where: { purchaseOrderId } });
+      await storeDb.purchaseOrder.deleteMany({ where: { id: purchaseOrderId } });
+      purchaseOrderId = undefined;
+      purchaseOrderItemId = undefined;
+    }
+    if (procurementId) {
+      await storeDb.procurementRequest.deleteMany({ where: { id: procurementId } });
+      procurementId = undefined;
     }
     if (orderItemId) {
       await storeDb.orderItem.deleteMany({ where: { id: orderItemId } });
@@ -115,6 +129,85 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(partAfterAllowed?.stock).toBe(8);
     expect(movements).toHaveLength(1);
     expect(movements[0]?.balanceAfter).toBe(8);
+  }, 15000);
+
+  async function createApprovedPurchaseOrder(quantity: number) {
+    if (!partId) throw new Error('fixture setup incomplete');
+    const tag = suffix();
+    const procurement = await storeDb.procurementRequest.create({
+      data: { title: 'Atomicity procurement ' + tag, quantity },
+    });
+    procurementId = procurement.id;
+
+    const po = await storeDb.purchaseOrder.create({
+      data: { procurementId: procurement.id, status: 'APPROVED' },
+    });
+    purchaseOrderId = po.id;
+
+    const item = await storeDb.purchaseOrderItem.create({
+      data: {
+        purchaseOrderId: po.id,
+        partId,
+        quantity,
+        unitPrice: 1,
+      },
+    });
+    purchaseOrderItemId = item.id;
+    return { po, item };
+  }
+
+  it('serializes competing receives for the same PO item and prevents over-receiving', async () => {
+    const { po, item } = await createApprovedPurchaseOrder(5);
+
+    const outcomes = await Promise.allSettled([
+      receivePurchaseOrderItem(item.id, 4),
+      receivePurchaseOrderItem(item.id, 4),
+    ]);
+    expect(outcomes.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((x) => x.status === 'rejected')).toHaveLength(1);
+
+    const [savedItem, savedPo, part, movements] = await Promise.all([
+      storeDb.purchaseOrderItem.findUnique({ where: { id: item.id } }),
+      storeDb.purchaseOrder.findUnique({ where: { id: po.id } }),
+      storeDb.part.findUnique({ where: { id: partId! }, select: { stock: true } }),
+      storeDb.stockMovement.findMany({ where: { partId: partId!, reference: po.id } }),
+    ]);
+    expect(savedItem?.received).toBe(4);
+    expect(savedPo?.status).toBe('APPROVED');
+    expect(part?.stock).toBe(14);
+    expect(movements).toHaveLength(1);
+    expect(movements[0]?.quantity).toBe(4);
+    expect(movements[0]?.balanceAfter).toBe(14);
+  }, 15000);
+
+  it('serializes PO receiving against cancellation without partial stock or ledger writes', async () => {
+    const { po, item } = await createApprovedPurchaseOrder(5);
+
+    const outcomes = await Promise.allSettled([
+      receivePurchaseOrderItem(item.id, 5),
+      cancelPurchaseOrder(po.id, 'concurrent cancellation test'),
+    ]);
+    expect(outcomes.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((x) => x.status === 'rejected')).toHaveLength(1);
+
+    const [savedItem, savedPo, part, movements] = await Promise.all([
+      storeDb.purchaseOrderItem.findUnique({ where: { id: item.id } }),
+      storeDb.purchaseOrder.findUnique({ where: { id: po.id } }),
+      storeDb.part.findUnique({ where: { id: partId! }, select: { stock: true } }),
+      storeDb.stockMovement.findMany({ where: { partId: partId!, reference: po.id } }),
+    ]);
+
+    if (savedPo?.status === 'RECEIVED') {
+      expect(savedItem?.received).toBe(5);
+      expect(part?.stock).toBe(15);
+      expect(movements).toHaveLength(1);
+      expect(movements[0]?.quantity).toBe(5);
+    } else {
+      expect(savedPo?.status).toBe('CANCELLED');
+      expect(savedItem?.received).toBe(0);
+      expect(part?.stock).toBe(10);
+      expect(movements).toHaveLength(0);
+    }
   }, 15000);
 
   it('serializes competing stock decrements and keeps balance, snapshot, and ledger consistent', async () => {
