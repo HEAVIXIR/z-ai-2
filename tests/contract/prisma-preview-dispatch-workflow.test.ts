@@ -49,6 +49,8 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
     expect(worker).toContain("!row.default_transaction_read_only_on");
     expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'MEMBER')");
     expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'USAGE')");
+    expect(worker).toContain("pg_has_role(current_user, 'pg_read_server_files', 'MEMBER')");
+    expect(worker).toContain("row.member_pg_read_server_files");
     expect(worker).toContain("has_table_privilege(current_user, c.oid, 'INSERT')");
     expect(worker).toContain("has_sequence_privilege(current_user, c.oid, 'UPDATE')");
     expect(worker).toContain("p.prosecdef");
