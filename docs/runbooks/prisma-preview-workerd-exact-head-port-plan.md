@@ -3,7 +3,7 @@
 Date: 2026-11-09
 Status: partial implementation; Workerd smoke and OpenNext request-path proof pass; Preview DB proof not dispatched
 Branch: `security/active-session-hardening-2026-11-08`
-Reviewed HEAD: `98cc56d5a1f25b3814d472bcfe7e5d9032c0cdb5`
+Reviewed HEAD: `d7d3069438af4e890ee309146971f9038fa14af2`
 
 ## Purpose
 
@@ -51,7 +51,7 @@ The App schema and Store schema now each retain the Node-oriented `prisma-client
 - Store output: `src/lib/generated/store-worker-client`
 - Worker generator: `provider = "prisma-client"`, `engineType = "client"`, `runtime = "workerd"`
 
-That additive dual-generator pattern is implemented. Both generated Worker clients, Worker-specific typecheck, and local Workerd smoke have passed on the reviewed branch head. Full Preview database access proof remains gated separately.
+That additive dual-generator pattern is implemented. Both generated Worker clients, Worker-specific typecheck, and local Workerd smoke have passed on the reviewed branch head. The smoke now also verifies same-request resolver reuse and cross-request isolation using synthetic request keys, without connecting to a database. Full Preview database access proof remains gated separately.
 
 **Version rule:** current lock resolves Prisma CLI and `@prisma/client` to `6.19.3`, with `@prisma/adapter-ppg@7.10.1` and `@prisma/ppg@1.0.1` installed and locked. Prisma ORM v6 documentation supports the Prisma Postgres serverless driver path on 6.19. The dual-generator build preserves the existing Node client generator; general CI and OpenNext build remain the regression gates for the Node application path.
 
@@ -105,7 +105,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
 7. **Make workflow provenance exact**
    - Workflow must check out the triggering `github.sha` (or an explicitly supplied SHA that is verified to equal the reviewed branch head), never a fixed historical SHA.
    - Emit the tested commit SHA and resolved Prisma/adapter versions in non-secret logs.
-   - Keep App and Store connection strings in a protected GitHub Environment; never print, echo, mask-test, or serialize secret values.
+   - Keep App and Store connection strings in a dedicated GitHub Environment whose required reviewers, branch restrictions, and environment-scoped secret configuration have been verified by an administrator; never print, echo, mask-test, or serialize secret values.
    - Require a literal Preview-only confirmation and reject identical App/Store connection strings.
    - A successful workflow proves only the GitHub-provided connection strings, not Cloudflare Worker secret destinations.
 
@@ -131,7 +131,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
 
 At review time, GitHub reports this branch as `protected=false`, `protection.enabled=false`, with required status-check enforcement off and no repository rulesets returned by the available rulesets read. The connected GitHub App cannot access the branch-protection endpoint (HTTP 403), so the absence of protection is confirmed by the branch payload, but full administrative policy inspection is unavailable through this connection.
 
-Do not claim branch protection was changed. Apply required checks only through an authorized repository-administration connection after confirming the intended policy and Vercel exclusion. No PR or merge should be opened while the Vercel GitHub App remains enabled as an external failing check.
+Do not claim branch protection was changed. Apply required checks only through an authorized repository-administration connection after confirming the intended policy and Vercel exclusion. Environment protection for `preview-proof` is also unverified; configure required reviewers/branch restrictions and environment-scoped secrets through an authorized admin connection before dispatching the manual proof. No PR or merge should be opened while the Vercel GitHub App remains enabled as an external failing check.
 
 ## Current release decision
 
