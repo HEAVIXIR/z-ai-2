@@ -159,8 +159,8 @@ try {
     "Edge Middleware must add noindex to public Preview responses.",
   );
   const previewRobotsBody = await robots.text();
-  assert.match(previewRobotsBody, /User-agent: \\*/);
-  assert.match(previewRobotsBody, /Disallow: \\//);
+  assert.match(previewRobotsBody, /User-agent: \*/);
+  assert.match(previewRobotsBody, /Disallow: \//);
   assert.doesNotMatch(previewRobotsBody, /Sitemap:/i);
 
   const previewSitemap = await request(baseUrl, "/sitemap.xml");
@@ -169,15 +169,15 @@ try {
     404,
     "Preview must not expose a sitemap route with production canonical URLs.",
   );
-  assert.doesNotMatch(await previewSitemap.text(), /https:\\/\\/heavix\\.ir/i);
+  assert.doesNotMatch(await previewSitemap.text(), /https:\/\/heavix\.ir/i);
 
   const productionRobots = await request(baseUrl, "/robots.txt", "heavix.ir");
   assert.equal(productionRobots.status, 200);
-  assert.match(await productionRobots.text(), /Sitemap:\\s*https:\\/\\/heavix\\.ir\\/sitemap\\.xml/i);
+  assert.match(await productionRobots.text(), /Sitemap:\s*https:\/\/heavix\.ir\/sitemap\.xml/i);
 
   const productionSitemap = await request(baseUrl, "/sitemap.xml", "heavix.ir");
   assert.equal(productionSitemap.status, 200);
-  assert.match(await productionSitemap.text(), /https:\\/\\/heavix\\.ir\\//);
+  assert.match(await productionSitemap.text(), /https:\/\/heavix\.ir\//);
 
   const adminApi = await request(baseUrl, "/api/admin/users");
   assert.equal(
