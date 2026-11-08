@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { getRobotsTxt } from "@/lib/seo-service";
 
 export const runtime = "nodejs";
@@ -17,7 +18,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const body = getRobotsTxt();
+    const requestHeaders = await headers();
+    const body = getRobotsTxt(requestHeaders.get("host") ?? "");
     return new Response(body, {
       status: 200,
       headers: {
