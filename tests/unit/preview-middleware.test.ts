@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 const ORIGINAL_ENV = { ...process.env };
 
-describe("Preview crawler middleware", () => {
+describe("Preview crawler Proxy", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.HEAVIX_ENV;
@@ -16,16 +16,16 @@ describe("Preview crawler middleware", () => {
 
   it("adds noindex to public Cloudflare Preview responses", async () => {
     process.env.HEAVIX_ENV = "preview";
-    const { middleware } = await import("@/middleware");
-    const response = middleware(
+    const { proxy } = await import("@/proxy");
+    const response = proxy(
       new NextRequest("https://heavix-preview.heavixir.workers.dev/listings"),
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
   });
 
   it("adds noindex to provider Preview hosts without an environment binding", async () => {
-    const { middleware } = await import("@/middleware");
-    const response = middleware(
+    const { proxy } = await import("@/proxy");
+    const response = proxy(
       new NextRequest("https://heavix-preview.vercel.app/categories"),
     );
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow, noarchive");
@@ -33,15 +33,15 @@ describe("Preview crawler middleware", () => {
 
   it("does not add noindex to the official production host", async () => {
     process.env.HEAVIX_ENV = "production";
-    const { middleware } = await import("@/middleware");
-    const response = middleware(new NextRequest("https://heavix.ir/listings"));
+    const { proxy } = await import("@/proxy");
+    const response = proxy(new NextRequest("https://heavix.ir/listings"));
     expect(response.headers.get("X-Robots-Tag")).toBeNull();
   });
 
   it("preserves admin API authorization while marking Preview responses noindex", async () => {
     process.env.HEAVIX_ENV = "preview";
-    const { middleware } = await import("@/middleware");
-    const response = middleware(
+    const { proxy } = await import("@/proxy");
+    const response = proxy(
       new NextRequest("https://heavix-preview.heavixir.workers.dev/api/admin/users"),
     );
     expect(response.status).toBe(401);
