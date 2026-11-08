@@ -170,7 +170,9 @@ try {
   );
   const previewRobotsBody = await robots.text();
   assert.match(previewRobotsBody, /User-agent: \*/);
-  assert.match(previewRobotsBody, /Disallow: \//);
+  assert.match(previewRobotsBody, /^Allow: \/$/m);
+  assert.match(previewRobotsBody, /^Disallow: \/admin\/$/m);
+  assert.doesNotMatch(previewRobotsBody, /^Disallow: \/$/m);
   assert.doesNotMatch(previewRobotsBody, /Sitemap:/i);
 
   const previewSitemap = await request(baseUrl, "/sitemap.xml");
