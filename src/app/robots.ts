@@ -1,33 +1,40 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { isPreviewDeployment } from "@/lib/site-config";
 
 /* ============================================================
-   HEAVIX — robots.ts (P2-28)
-   HEAVIX-P0-IMPLEMENTATION-PLAN.md P2-28
+   HEAVIX — robots.ts
    ------------------------------------------------------------
-   Next.js metadata-route robots.txt.
-   Allow all, point to the sitemap.
-
-   STEP 13.00: SITE_BASE_URL is now imported from @/lib/site-config
-   (single source of truth). The previous local fallback to
-   "https://havix.ir" is removed.
+   Preview deployments remain crawlable so crawlers can observe the
+   X-Robots-Tag: noindex response header applied by middleware. They
+   intentionally do not advertise the production sitemap or host.
    ============================================================ */
 
-export const revalidate = 3600; // 1 hour
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const requestHeaders = await headers();
+  const preview = isPreviewDeployment(requestHeaders.get("host") ?? "");
+
+  const rules: MetadataRoute.Robots["rules"] = [
+    {
+      userAgent: "*",
+      allow: "/",
+      // Disallow admin + API + auth routes — they're not for indexing.
+      disallow: ["/admin/", "/api/", "/dashboard/", "/seller/", "/login", "/register"],
+    },
+  ];
+
+  if (preview) {
+    // Do not block crawling: the runtime X-Robots-Tag must be discoverable.
+    return { rules };
+  }
+
   return {
-    rules: [
-      {
-        userAgent: "*",
-        allow: "/",
-        // Disallow admin + API + auth routes — they're not for indexing.
-        disallow: ["/admin/", "/api/", "/dashboard/", "/seller/", "/login", "/register"],
-      },
-    ],
+    rules,
     sitemap: absoluteUrl("/sitemap.xml"),
-    host: SITE_BASE_URL,
+    host: absoluteUrl(""),
   };
 }
