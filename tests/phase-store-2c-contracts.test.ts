@@ -400,10 +400,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   (shipments/[id]/{assign,pickup,deliver,exception} POST) → total
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
-      //   Procurement receiving adds one inventory.manage gate, and opening stock allocation adds one more; total = 8 + 3 + 7 + 6 = 24.
+      //   Procurement receiving adds one inventory.manage gate, opening stock allocation adds one,
+      //   and return restocking authorization adds one; inventory.manage = 9.
+      //   Total = 9 + 3 + 7 + 6 = 25 domain-manage checks (the global baseline is tracked separately).
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 8,
+        'inventory.manage': 9,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
@@ -478,7 +480,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         if (content.match(/export async function GET\b/)) {
           // Must call requirePermission with at least one of the read keys.
           const found = READ_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -498,7 +501,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function POST\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -518,7 +522,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function PATCH\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
