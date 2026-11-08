@@ -6,6 +6,14 @@ const workflow = readFileSync(
   path.join(process.cwd(), ".github/workflows/prisma-preview-workerd-proof.yml"),
   "utf8",
 );
+const worker = readFileSync(
+  path.join(process.cwd(), "tests/workerd/worker.ts"),
+  "utf8",
+);
+const runner = readFileSync(
+  path.join(process.cwd(), "scripts/run-prisma-workerd-proof.mjs"),
+  "utf8",
+);
 
 describe("Prisma Preview Workerd dispatch safety contract", () => {
   it("requires explicit PREVIEW_ONLY dispatch confirmation", () => {
@@ -32,6 +40,20 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
     expect(workflow).toContain('test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"');
     expect(workflow).toContain('test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"');
     expect(workflow).not.toMatch(/echo .*HEAVIX_(APP|STORE)_PREVIEW_PPG_URL/);
+  });
+
+  it("proves least privilege beyond the transaction_read_only session flag", () => {
+    expect(worker).toContain("rolsuper AS is_superuser");
+    expect(worker).toContain("rolreplication AS can_replicate");
+    expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'MEMBER')");
+    expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'USAGE')");
+    expect(worker).toContain("has_table_privilege(current_user, c.oid, 'INSERT')");
+    expect(worker).toContain("has_sequence_privilege(current_user, c.oid, 'UPDATE')");
+    expect(worker).toContain("has_schema_privilege(current_user, n.oid, 'CREATE')");
+    expect(worker).toContain("has_database_privilege(current_user, current_database(), 'CREATE')");
+    expect(worker).toContain("readOnlyProven: readOnlyProven && roleEvidence.proven");
+    expect(runner).toContain("readOnlyRoleEvidence?.proven");
+    expect(runner).toContain("least-privilege role attributes, memberships, and effective table/sequence/schema/database privileges");
   });
 
   it("runs only the local Workerd proof and has no deployment or migration command", () => {
