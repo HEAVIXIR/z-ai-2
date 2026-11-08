@@ -56,7 +56,7 @@ export default async function ListingsPage({
   const sp = await searchParams;
 
   if (
-    process.env.VERCEL_ENV === "preview" &&
+    process.env.HEAVIX_ENV === "preview" &&
     !/^postgres(?:ql)?:\/\//i.test(process.env.DATABASE_URL ?? "")
   ) {
     return (
