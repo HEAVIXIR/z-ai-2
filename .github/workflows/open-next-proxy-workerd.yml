@@ -1,12 +1,12 @@
-name: Cloudflare OpenNext Proxy Workerd Proof
+name: Cloudflare OpenNext Edge Middleware Workerd Proof
 
 on:
   pull_request:
     branches:
       - "integration/**"
     paths:
-      - "src/proxy.ts"
-      - "scripts/test-open-next-proxy-workerd.mjs"
+      - "src/middleware.ts"
+      - "scripts/test-open-next-middleware-workerd.mjs"
       - "open-next.config.ts"
       - "wrangler.jsonc"
       - "package.json"
@@ -16,13 +16,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: heavix-open-next-proxy-workerd-${{ github.event.pull_request.number }}
+  group: heavix-open-next-middleware-workerd-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  proxy-workerd:
-    name: OpenNext Proxy request-path proof (local Workerd only)
-    if: startsWith(github.event.pull_request.head.ref, 'fix/next16-proxy-convention-')
+  middleware-workerd:
+    name: OpenNext Edge Middleware request-path proof (local Workerd only)
+    if: startsWith(github.event.pull_request.head.ref, 'fix/next16-middleware-convention-')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -50,5 +50,5 @@ jobs:
       - name: Build OpenNext Worker artifact
         run: bunx opennextjs-cloudflare build --noMinify
 
-      - name: Exercise Proxy through local Workerd
-        run: bun run test:open-next-proxy-workerd
+      - name: Exercise Edge Middleware through local Workerd
+        run: bun run test:open-next-middleware-workerd
