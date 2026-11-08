@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 30
     env:
       HEAVIX_ENV: preview
+      HEAVIX_BUILD_TARGET: cloudflare
       NODE_ENV: production
       NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
     steps:
