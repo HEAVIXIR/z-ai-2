@@ -13,11 +13,15 @@ describe("preview indexing safety", () => {
     expect(config).toMatch(/NODE_ENV === "development"/);
   });
 
-  it("sets a global noindex response header for preview deployments", () => {
-    const config = read("next.config.ts");
-    expect(config).toMatch(/X-Robots-Tag/);
-    expect(config).toMatch(/noindex, nofollow, noarchive/);
-    expect(config).toMatch(/IS_PREVIEW_DEPLOYMENT/);
+  it("sets one request-time noindex response header for Preview deployments", () => {
+    const middleware = read("src/middleware.ts");
+    const nextConfig = read("next.config.ts");
+    expect(middleware).toContain("X-Robots-Tag");
+    expect(middleware).toContain("noindex, nofollow, noarchive");
+    expect(middleware).toContain("isPreviewDeployment(req.nextUrl.hostname)");
+    // Preview noindex is owned by request-time middleware. Keeping a second
+    // production-build header in next.config duplicates the response header.
+    expect(nextConfig).not.toContain("X-Robots-Tag");
   });
 
   it("sets root metadata to noindex on preview", () => {
