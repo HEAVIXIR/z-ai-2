@@ -233,7 +233,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
     // Create a real Deal + Order + Payment with status=REFUNDED
     // (Order.dealId is required + @unique — must reference a real Deal)
     const precondBuyer = await db.user.create({
-      data: { mobile: "09129999001", email: "precond-buyer@test.com", firstName: "P", lastName: "B", passwordHash: "h" },
+      data: { mobile: "09129999001", email: "precond-buyer@test.com", firstName: "P", lastName: "B", passwordHash: "h", status: "ACTIVE" },
     });
     // STEP 13.49: assign ADMIN role so can(userId, "payment.refund") returns true
     const adminRole = await db.role.findUnique({ where: { key: "ADMIN" } });
@@ -247,7 +247,7 @@ describe.skipIf(!RUN_TESTS)("auditMutationTransactional — real DB integration"
       update: {},
     });
     const precondSeller = await db.user.create({
-      data: { mobile: "09129999002", email: "precond-seller@test.com", firstName: "P", lastName: "S", passwordHash: "h" },
+      data: { mobile: "09129999002", email: "precond-seller@test.com", firstName: "P", lastName: "S", passwordHash: "h", status: "ACTIVE" },
     });
 
     const testDeal = await db.deal.create({
