@@ -87,7 +87,8 @@ function serialize(m: any) {
  *   5. Update Part.stock to balanceAfter.
  *   6. Log two audit entries (movement.create + part.update side-effect).
  *
- * Best-effort audit: logAudit never throws (try/catch inside).
+ * Legacy direct movement creation is disabled; callers must use the
+ * warehouse-scoped transactional inventory workflows below.
  *
  * @throws InventoryServiceError on validation/lookup failure (400/404).
  */
