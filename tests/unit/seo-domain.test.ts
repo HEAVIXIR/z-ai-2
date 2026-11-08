@@ -73,6 +73,7 @@ describe("site-config Preview canonical origin", () => {
 
   it("fails closed when Preview has no safe public origin", async () => {
     process.env.HEAVIX_ENV = "preview";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     await expect(import("@/lib/site-config")).rejects.toThrow(
       /Preview deployment requires a non-production NEXT_PUBLIC_SITE_URL or VERCEL_URL/,
     );
