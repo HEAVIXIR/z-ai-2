@@ -52,12 +52,39 @@ vi.mock("@/lib/db", () => {
   };
 });
 
+describe("site-config Preview canonical origin", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NODE_ENV = "production";
+  });
+
+  it("uses VERCEL_URL for Vercel Preview instead of the production fallback", async () => {
+    process.env.VERCEL_ENV = "preview";
+    process.env.VERCEL_URL = "heavix-pr-123.vercel.app";
+    const mod = await import("@/lib/site-config");
+    expect(mod.SITE_BASE_URL).toBe("https://heavix-pr-123.vercel.app");
+    expect(mod.IS_PREVIEW_DEPLOYMENT).toBe(true);
+  });
+
+  it("fails closed when Preview has no safe public origin", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    await expect(import("@/lib/site-config")).rejects.toThrow(
+      /Preview deployment requires a non-production NEXT_PUBLIC_SITE_URL or VERCEL_URL/,
+    );
+  });
+});
+
 describe("robots.ts (official Next.js metadata route)", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
     process.env.NODE_ENV = "test";
   });
 
@@ -107,6 +134,7 @@ describe("robots.ts (official Next.js metadata route)", () => {
 
   it("omits production host and sitemap in Cloudflare Preview mode", async () => {
     process.env.HEAVIX_ENV = "preview";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix-preview.heavixir.workers.dev";
     const mod = await import("@/app/robots");
     const result = mod.default();
     expect(result.host).toBeUndefined();
