@@ -12,6 +12,7 @@ const original = {
   nodeEnv: process.env.NODE_ENV,
   heavixEnv: process.env.HEAVIX_ENV,
   vercelEnv: process.env.VERCEL_ENV,
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
 };
 
 describe("legacy SEO producers on Preview", () => {
@@ -20,6 +21,7 @@ describe("legacy SEO producers on Preview", () => {
     process.env.NODE_ENV = "production";
     process.env.HEAVIX_ENV = "preview";
     delete process.env.VERCEL_ENV;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix-preview.heavixir.workers.dev";
   });
 
   afterEach(() => {
@@ -29,6 +31,8 @@ describe("legacy SEO producers on Preview", () => {
     else process.env.HEAVIX_ENV = original.heavixEnv;
     if (original.vercelEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = original.vercelEnv;
+    if (original.siteUrl === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = original.siteUrl;
   });
 
   it("omits the sitemap directive from the legacy robots endpoint", async () => {
