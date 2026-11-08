@@ -1,3 +1,4 @@
+// Next.js 16 Proxy runs on the Node.js runtime; keep this boundary DB-free.
 import { NextResponse, type NextRequest } from "next/server";
 import { isPreviewDeployment } from "@/lib/site-config";
 
