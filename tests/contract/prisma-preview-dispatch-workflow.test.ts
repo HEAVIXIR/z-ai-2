@@ -45,6 +45,8 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
   it("proves least privilege beyond the transaction_read_only session flag", () => {
     expect(worker).toContain("rolsuper AS is_superuser");
     expect(worker).toContain("rolreplication AS can_replicate");
+    expect(worker).toContain("default_transaction_read_only=on");
+    expect(worker).toContain("!row.default_transaction_read_only_on");
     expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'MEMBER')");
     expect(worker).toContain("pg_has_role(current_user, 'pg_write_all_data', 'USAGE')");
     expect(worker).toContain("has_table_privilege(current_user, c.oid, 'INSERT')");
