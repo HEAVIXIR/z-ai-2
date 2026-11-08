@@ -65,13 +65,13 @@ const inScopeRoutes = allAdminRoutes.filter((p) => !isOutOfScope(p));
 describe("Auth boundary — Next.js Edge Middleware", () => {
   it("src/middleware.ts exists", () => {
     expect(fs.existsSync(MIDDLEWARE_PATH)).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, "src", "middleware.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, "src", "proxy.ts"))).toBe(false);
   });
 
   it("exports the Next.js Edge Middleware entry point", () => {
     const middlewareSource = read(MIDDLEWARE_PATH);
     expect(middlewareSource).toContain("export function middleware(");
-    expect(middlewareSource).not.toContain("export function middleware(");
+    expect(middlewareSource).not.toContain("export function proxy(");
   });
 
   it("middleware matcher covers public pages while preserving the admin auth boundary", () => {
