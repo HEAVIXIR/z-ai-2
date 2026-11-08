@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import PreviewDataUnavailable from "@/components/preview/PreviewDataUnavailable";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const metadata: Metadata = {
   title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو",
@@ -92,7 +93,7 @@ export default async function BrandsDirectoryPage({
         status: true,
         verification: true,
         featured: true,
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
     db.industry.findMany({
