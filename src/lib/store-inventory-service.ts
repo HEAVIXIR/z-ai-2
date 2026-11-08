@@ -845,3 +845,275 @@ export async function allocateInitialStock(
     throw error;
   }
 }
+
+
+/**
+ * Move on-hand stock between two active warehouses as one atomic operation.
+ *
+ * Invariants:
+ * - Part is locked first; Warehouse rows and then InventoryBalance rows are
+ *   locked in deterministic order.
+ * - The source must have enough unreserved stock.
+ * - Destination balance is created at zero if it does not exist.
+ * - Part.stock is a global snapshot and MUST NOT change during a transfer.
+ * - Paired TRANSFER ledger movements share one reference and one transactional
+ *   audit-outbox event; both balances and both movements commit or roll back.
+ */
+export async function transferStock(
+  partId: string,
+  sourceWarehouseId: string,
+  destinationWarehouseId: string,
+  quantity: number,
+  reason: string,
+  userId?: string | null,
+): Promise<any> {
+  if (
+    !partId ||
+    !sourceWarehouseId ||
+    !destinationWarehouseId ||
+    quantity === undefined ||
+    !reason?.trim()
+  ) {
+    throw new InventoryServiceError(400, 'قطعه، انبار مبدأ، انبار مقصد، تعداد و دلیل انتقال الزامی است');
+  }
+  if (sourceWarehouseId === destinationWarehouseId) {
+    throw new InventoryServiceError(400, 'انبار مبدأ و مقصد باید متفاوت باشند');
+  }
+  if (reason.trim().length > 500) {
+    throw new InventoryServiceError(400, 'دلیل انتقال نباید بیش از ۵۰۰ نویسه باشد');
+  }
+  const qty = Number(quantity);
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
+    throw new InventoryServiceError(400, 'تعداد انتقال باید عدد صحیح مثبت باشد');
+  }
+
+  const transferReference = `TRF-${crypto.randomUUID()}`;
+
+  try {
+    const result = await storeDb.$transaction(async (tx) => {
+      // Global lock order: Part → Warehouses (sorted) → InventoryBalances (sorted).
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new InventoryServiceError(404, 'قطعه یافت نشد');
+      }
+
+      const part = await tx.part.findUnique({
+        where: { id: partId },
+        select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+      });
+      if (!part) throw new InventoryServiceError(404, 'قطعه یافت نشد');
+      if (!Number.isSafeInteger(part.stock) || part.stock < 0) {
+        throw new InventoryServiceError(409, 'موجودی کل قطعه نامعتبر است؛ ابتدا مغایرت‌گیری انجام شود');
+      }
+
+      const lockedWarehouses = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse"
+        WHERE id IN (${sourceWarehouseId}, ${destinationWarehouseId})
+        ORDER BY id
+        FOR UPDATE
+      `;
+      if (lockedWarehouses.length !== 2) {
+        throw new InventoryServiceError(404, 'انبار مبدأ یا مقصد یافت نشد');
+      }
+
+      const warehouses = await tx.warehouse.findMany({
+        where: { id: { in: [sourceWarehouseId, destinationWarehouseId] } },
+        select: { id: true, name: true, code: true, active: true },
+      });
+      const sourceWarehouse = warehouses.find((warehouse) => warehouse.id === sourceWarehouseId);
+      const destinationWarehouse = warehouses.find((warehouse) => warehouse.id === destinationWarehouseId);
+      if (!sourceWarehouse || !destinationWarehouse) {
+        throw new InventoryServiceError(404, 'انبار مبدأ یا مقصد یافت نشد');
+      }
+      if (!sourceWarehouse.active || !destinationWarehouse.active) {
+        throw new InventoryServiceError(409, 'انتقال فقط بین انبارهای فعال مجاز است');
+      }
+
+      const existingSource = await tx.inventoryBalance.findUnique({
+        where: { partId_warehouseId: { partId, warehouseId: sourceWarehouseId } },
+      });
+      if (!existingSource) {
+        throw new InventoryServiceError(409, 'برای قطعه در انبار مبدأ موجودی ثبت نشده است');
+      }
+
+      // A new destination row starts at zero; this never creates stock.
+      await tx.inventoryBalance.upsert({
+        where: { partId_warehouseId: { partId, warehouseId: destinationWarehouseId } },
+        create: {
+          partId,
+          warehouseId: destinationWarehouseId,
+          quantity: 0,
+          reserved: 0,
+          lowStockThreshold: existingSource.lowStockThreshold,
+        },
+        update: {},
+      });
+
+      const lockedBalances = await tx.$queryRaw<Array<{ id: string; warehouseId: string }>>`
+        SELECT id, "warehouseId"
+        FROM "InventoryBalance"
+        WHERE "partId" = ${partId}
+          AND "warehouseId" IN (${sourceWarehouseId}, ${destinationWarehouseId})
+        ORDER BY "warehouseId" ASC, id ASC
+        FOR UPDATE
+      `;
+      if (lockedBalances.length !== 2) {
+        throw new InventoryServiceError(409, 'ردیف موجودی مبدأ یا مقصد قابل قفل‌گذاری نیست');
+      }
+
+      const balances = await tx.inventoryBalance.findMany({
+        where: {
+          partId,
+          warehouseId: { in: [sourceWarehouseId, destinationWarehouseId] },
+        },
+        orderBy: [{ warehouseId: 'asc' }, { id: 'asc' }],
+      });
+      const sourceBalance = balances.find((balance) => balance.warehouseId === sourceWarehouseId);
+      const destinationBalance = balances.find((balance) => balance.warehouseId === destinationWarehouseId);
+      if (!sourceBalance || !destinationBalance) {
+        throw new InventoryServiceError(409, 'ردیف موجودی مبدأ یا مقصد یافت نشد');
+      }
+
+      const allBalances = await tx.inventoryBalance.findMany({
+        where: { partId },
+        select: { quantity: true, reserved: true },
+      });
+      if (allBalances.some((balance) =>
+        !Number.isSafeInteger(balance.quantity) ||
+        !Number.isSafeInteger(balance.reserved) ||
+        balance.quantity < 0 ||
+        balance.reserved < 0 ||
+        balance.reserved > balance.quantity
+      )) {
+        throw new InventoryServiceError(409, 'موجودی یا رزرو نامعتبر در یکی از انبارها وجود دارد؛ ابتدا مغایرت‌گیری انجام شود');
+      }
+      const warehouseTotal = allBalances.reduce((sum, balance) => sum + balance.quantity, 0);
+      if (warehouseTotal !== part.stock) {
+        throw new InventoryServiceError(409, 'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت‌گیری انجام شود');
+      }
+
+      const availableAtSource = sourceBalance.quantity - sourceBalance.reserved;
+      if (availableAtSource < qty) {
+        throw new InventoryServiceError(
+          409,
+          `موجودی آزاد انبار مبدأ کافی نیست. موجودی: ${sourceBalance.quantity}، رزروشده: ${sourceBalance.reserved}، قابل انتقال: ${availableAtSource}، درخواست: ${qty}`,
+        );
+      }
+      if (!Number.isSafeInteger(destinationBalance.quantity + qty)) {
+        throw new InventoryServiceError(409, 'موجودی مقصد از محدوده عددی مجاز خارج می‌شود');
+      }
+
+      const sourceChanged = await tx.inventoryBalance.updateMany({
+        where: {
+          id: sourceBalance.id,
+          quantity: sourceBalance.quantity,
+          reserved: sourceBalance.reserved,
+        },
+        data: { quantity: { decrement: qty } },
+      });
+      if (sourceChanged.count !== 1) {
+        throw new InventoryServiceError(409, 'موجودی مبدأ هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید');
+      }
+
+      const destinationChanged = await tx.inventoryBalance.updateMany({
+        where: {
+          id: destinationBalance.id,
+          quantity: destinationBalance.quantity,
+          reserved: destinationBalance.reserved,
+        },
+        data: { quantity: { increment: qty } },
+      });
+      if (destinationChanged.count !== 1) {
+        throw new InventoryServiceError(409, 'موجودی مقصد هم‌زمان تغییر کرده است؛ عملیات را دوباره بررسی کنید');
+      }
+
+      const [afterSource, afterDestination] = await Promise.all([
+        tx.inventoryBalance.findUnique({ where: { id: sourceBalance.id } }),
+        tx.inventoryBalance.findUnique({ where: { id: destinationBalance.id } }),
+      ]);
+      if (!afterSource || !afterDestination) {
+        throw new InventoryServiceError(500, 'خواندن موجودی پس از انتقال ناموفق بود');
+      }
+
+      const sourceMovement = await tx.stockMovement.create({
+        data: {
+          partId,
+          type: 'TRANSFER',
+          quantity: -qty,
+          balanceAfter: part.stock,
+          reason: reason.trim(),
+          reference: transferReference,
+          createdBy: userId ?? null,
+          warehouseId: sourceWarehouseId,
+        },
+      });
+      const destinationMovement = await tx.stockMovement.create({
+        data: {
+          partId,
+          type: 'TRANSFER',
+          quantity: qty,
+          balanceAfter: part.stock,
+          reason: reason.trim(),
+          reference: transferReference,
+          createdBy: userId ?? null,
+          warehouseId: destinationWarehouseId,
+        },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.transfer',
+        entityType: 'StockMovement',
+        entityId: sourceMovement.id,
+        after: {
+          transferReference,
+          partId,
+          partSku: part.sku,
+          partStockUnchanged: part.stock,
+          source: {
+            warehouseId: sourceWarehouseId,
+            warehouseName: sourceWarehouse.name,
+            movementId: sourceMovement.id,
+            quantityBefore: sourceBalance.quantity,
+            quantityAfter: afterSource.quantity,
+            reserved: afterSource.reserved,
+          },
+          destination: {
+            warehouseId: destinationWarehouseId,
+            warehouseName: destinationWarehouse.name,
+            movementId: destinationMovement.id,
+            quantityBefore: destinationBalance.quantity,
+            quantityAfter: afterDestination.quantity,
+            reserved: afterDestination.reserved,
+          },
+          quantity: qty,
+          reason: reason.trim(),
+        },
+      });
+
+      return {
+        transferReference,
+        part: { id: part.id, name: part.name, sku: part.sku, stock: part.stock },
+        sourceWarehouse,
+        destinationWarehouse,
+        sourceBalance: afterSource,
+        destinationBalance: afterDestination,
+        movements: [sourceMovement, destinationMovement],
+      };
+    }, { isolationLevel: 'Serializable' });
+
+    return {
+      ...result,
+      movements: result.movements.map(serialize),
+    };
+  } catch (error: any) {
+    if (error instanceof InventoryServiceError) throw error;
+    if (error?.code === 'P2002' || error?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'انتقال هم‌زمان موجودی انجام شده است؛ وضعیت هر دو انبار را تازه‌سازی و بررسی کنید');
+    }
+    throw error;
+  }
+}
