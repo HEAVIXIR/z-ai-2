@@ -171,6 +171,12 @@ describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
 });
 
 describe("sitemap.ts (official Next.js metadata route) — static paths domain", () => {
+  it("generates at request time instead of freezing build-time DB failures", async () => {
+    const mod = await import("@/app/sitemap");
+    expect(mod.dynamic).toBe("force-dynamic");
+    expect(mod.revalidate).toBe(0);
+  });
+
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
