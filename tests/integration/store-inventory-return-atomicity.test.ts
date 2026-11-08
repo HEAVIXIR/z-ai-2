@@ -16,7 +16,6 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   let returnId: string | undefined;
   let procurementId: string | undefined;
   let purchaseOrderId: string | undefined;
-  let purchaseOrderItemId: string | undefined;
 
   beforeEach(async () => {
     const tag = suffix();
@@ -51,7 +50,6 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       await storeDb.purchaseOrderItem.deleteMany({ where: { purchaseOrderId } });
       await storeDb.purchaseOrder.deleteMany({ where: { id: purchaseOrderId } });
       purchaseOrderId = undefined;
-      purchaseOrderItemId = undefined;
     }
     if (procurementId) {
       await storeDb.procurementRequest.deleteMany({ where: { id: procurementId } });
@@ -152,7 +150,6 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
         unitPrice: 1,
       },
     });
-    purchaseOrderItemId = item.id;
 
     await submitPurchaseOrder(po.id);
     await approvePurchaseOrder(po.id);
