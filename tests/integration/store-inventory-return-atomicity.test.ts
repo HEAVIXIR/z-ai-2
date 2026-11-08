@@ -113,14 +113,14 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     const functionName = `heavix_test_reject_stock_movement_${identifier}`;
     const triggerName = `heavix_test_reject_stock_movement_${identifier}`;
 
-    await storeDb.$executeRawUnsafe(
-      `CREATE OR REPLACE FUNCTION "${functionName}"() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'intentional inventory atomicity test failure'; END; $`,
-    );
-    await storeDb.$executeRawUnsafe(
-      `CREATE TRIGGER "${triggerName}" BEFORE INSERT ON "StockMovement" FOR EACH ROW EXECUTE FUNCTION "${functionName}"()`,
-    );
-
     try {
+      await storeDb.$executeRawUnsafe(
+        "CREATE OR REPLACE FUNCTION \"" + functionName + "\"() RETURNS trigger LANGUAGE plpgsql AS $heavix$ BEGIN RAISE EXCEPTION 'intentional inventory atomicity test failure'; END; $heavix$",
+      );
+      await storeDb.$executeRawUnsafe(
+        `CREATE TRIGGER "${triggerName}" BEFORE INSERT ON "StockMovement" FOR EACH ROW EXECUTE FUNCTION "${functionName}"()`,
+      );
+
       await expect(
         createMovement(partId, 'RECEIVE', 3, 'forced ledger failure'),
       ).rejects.toThrow(/intentional inventory atomicity test failure/);
