@@ -6,10 +6,6 @@ on:
       - "integration/**"
     paths:
       - "src/proxy.ts"
-      - "src/middleware.ts"
-      - "tests/unit/proxy.test.ts"
-      - "tests/unit/preview-middleware.test.ts"
-      - "tests/contract/seo-public-metadata.test.ts"
       - "scripts/test-open-next-proxy-workerd.mjs"
       - "open-next.config.ts"
       - "wrangler.jsonc"
