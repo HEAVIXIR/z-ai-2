@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { adjustStock, reserveStock, releaseStock, createMovement } from '@/lib/store-inventory-service';
+import { adjustStock, reserveStock, releaseStock, createMovement, allocateInitialStock } from '@/lib/store-inventory-service';
 import { addReturnItem, inspectReturn, resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
@@ -155,6 +155,45 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(balanceCount).toBe(0);
     expect(movementCount).toBe(0);
     expect(outboxCount).toBe(0);
+  }, 15000);
+
+  it('explicitly allocates a legacy Part snapshot once, without changing total stock', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    const result = await allocateInitialStock(
+      partId,
+      warehouseId,
+      'opening balance verified against physical count',
+      'inventory-admin',
+    );
+    expect(result.balance.quantity).toBe(10);
+    expect(result.balance.reserved).toBe(0);
+
+    const [part, balance, movements, events] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.inventoryBalance.findUnique({ where: { partId_warehouseId: { partId, warehouseId } } }),
+      storeDb.stockMovement.count({ where: { partId } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: partId } } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(balance?.quantity).toBe(10);
+    expect(movements).toBe(0);
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(events[0].payloadJson).action).toBe('store.inventory.initial_allocation');
+
+    await expect(
+      allocateInitialStock(partId, warehouseId, 'duplicate allocation attempt', 'inventory-admin'),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(1);
+  }, 15000);
+
+  it('refuses opening-balance allocation into an inactive warehouse', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+    await storeDb.warehouse.update({ where: { id: warehouseId }, data: { active: false } });
+    await expect(
+      allocateInitialStock(partId, warehouseId, 'inactive warehouse test', 'inventory-admin'),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(0);
   }, 15000);
 
   it('does not allow an adjustment to consume reserved warehouse stock', async () => {
