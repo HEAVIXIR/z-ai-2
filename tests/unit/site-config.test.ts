@@ -19,8 +19,6 @@ describe("site-config — SITE_BASE_URL resolution", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.HEAVIX_PREVIEW_URL;
     // Ensure the production-warning branch does not fire in tests.
@@ -34,14 +32,6 @@ describe("site-config — SITE_BASE_URL resolution", () => {
   it('falls back to localhost when NEXT_PUBLIC_SITE_URL is unset', async () => {
     const mod = await import("@/lib/site-config");
     expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
-  });
-
-  it("uses the deployment-specific VERCEL_URL for Preview even when the production URL is configured", async () => {
-    process.env.VERCEL_ENV = "preview";
-    process.env.VERCEL_URL = "preview-branch-123.vercel.app";
-    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
-    const mod = await import("@/lib/site-config");
-    expect(mod.SITE_BASE_URL).toBe("https://preview-branch-123.vercel.app");
   });
 
   it("uses the explicit Cloudflare preview origin instead of the production URL", async () => {
@@ -93,8 +83,6 @@ describe("site-config — absoluteUrl helper", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
@@ -176,8 +164,6 @@ describe("site-config — backward compatibility re-export from @/lib/seo", () =
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_URL;
     delete process.env.HEAVIX_ENV;
     delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
