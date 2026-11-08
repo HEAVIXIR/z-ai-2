@@ -1,0 +1,38 @@
+name: Prisma Workerd Smoke Proof
+
+on:
+  push:
+    branches:
+      - security/active-session-hardening-2026-11-08
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prisma-workerd-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workerd-smoke:
+    name: Prisma Worker module + fail-closed smoke (no DB credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate App and Store Prisma clients
+        run: |
+          bun run db:generate
+          bun run store:db:generate
+      - name: Typecheck Worker-specific application graph
+        run: bun run typecheck:worker
+      - name: Run local Workerd smoke without database credentials
+        env:
+          HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+        run: bun run test:workerd:smoke

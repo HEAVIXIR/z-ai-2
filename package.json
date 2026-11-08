@@ -54,7 +54,10 @@
     "run:ai-agents": "tsx prisma/run-ai-agents.ts",
     "store:db:reset": "prisma migrate reset --schema=prisma/store/schema.prisma",
     "admin:promote-owner": "tsx scripts/promote-owner.ts",
-    "test:open-next-middleware-workerd": "bun scripts/test-open-next-middleware-workerd.mjs"
+    "test:open-next-middleware-workerd": "bun scripts/test-open-next-middleware-workerd.mjs",
+    "typecheck:worker": "tsc --noEmit -p tsconfig.worker.json",
+    "test:workerd": "bun scripts/run-prisma-workerd-proof.mjs",
+    "test:workerd:smoke": "HEAVIX_RUNTIME_PROOF_TARGET=SMOKE_ONLY bun scripts/run-prisma-workerd-proof.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

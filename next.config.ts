@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 /**
@@ -109,6 +110,7 @@ const nextConfig: NextConfig = {
     // F-013: build MUST fail on type errors. Was previously `true` which masked
     // security-relevant type mismatches at build time.
     ignoreBuildErrors: false,
+    tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
   ...(isCloudflareBuild
@@ -119,6 +121,11 @@ const nextConfig: NextConfig = {
         },
         outputFileTracingExcludes: {
           "/*": [
+            "./src/lib/generated/worker-client/**/*.ts",
+            "./src/lib/generated/store-worker-client/**/*.ts",
+            "./src/lib/generated/store-client/**/*",
+            "./node_modules/@prisma/engines/**/*",
+            "./node_modules/prisma/**/*",
             "./docs/**/*",
             "./tests/**/*",
             "./scripts/**/*",
@@ -129,8 +136,29 @@ const nextConfig: NextConfig = {
             "./.turbo/**/*",
           ],
         },
+        outputFileTracingIncludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
+            "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+          ],
+        },
+        turbopack: {
+          resolveAlias: {
+            "@/lib/db": "./src/lib/db.worker.ts",
+            "@/lib/store-db": "./src/lib/store-db.worker.ts",
+          },
+        },
         webpack(config) {
           config.parallelism = 4;
+          config.experiments = {
+            ...config.experiments,
+            asyncWebAssembly: true,
+          };
+          config.resolve.alias = {
+            ...config.resolve.alias,
+            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+          };
           return config;
         },
       }
