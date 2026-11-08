@@ -196,8 +196,14 @@ try {
   // transactions, so that test was invalid. The correct approach is to read
   // the runtime GUC directly via current_setting('transaction_read_only')::boolean.
   // No write is attempted. readOnlyProven=true means the GUC returned true.
-  assert.equal(appTx.readOnlyProven, true, `App transaction_read_only is NOT on (setting=${appTx.transactionReadOnlySetting}). Preview database must be read-only.`);
-  assert.equal(storeTx.readOnlyProven, true, `Store transaction_read_only is NOT on (setting=${storeTx.transactionReadOnlySetting}). Preview database must be read-only.`);
+  assert.equal(appTx.readOnlyRoleEvidence?.proven, true,
+    `App role ${appTx.readOnlyRoleEvidence?.roleName ?? "unknown"} has elevated attributes, inherited write roles, or effective write privileges.`);
+  assert.equal(storeTx.readOnlyRoleEvidence?.proven, true,
+    `Store role ${storeTx.readOnlyRoleEvidence?.roleName ?? "unknown"} has elevated attributes, inherited write roles, or effective write privileges.`);
+  assert.equal(appTx.readOnlyProven, true,
+    `App transaction_read_only is NOT on (setting=${appTx.transactionReadOnlySetting}) or role is not least privilege.`);
+  assert.equal(storeTx.readOnlyProven, true,
+    `Store transaction_read_only is NOT on (setting=${storeTx.transactionReadOnlySetting}) or role is not least privilege.`);
   assert.equal(appTx.writesPerformed, false, "App transaction must not perform any writes.");
   assert.equal(storeTx.writesPerformed, false, "Store transaction must not perform any writes.");
 
@@ -221,13 +227,24 @@ try {
       "sequential request isolation",
       "concurrent request isolation",
       "read-only transaction proven (current_setting('transaction_read_only')::boolean = true)",
+      "least-privilege role attributes, memberships, and effective table/sequence/schema/database privileges",
       "fail-closed missing-secret behavior",
     ],
     writesPerformed: false,
     productionAccessed: false,
     readOnlyProven: {
-      app: { method: appTx.readOnlyCheckMethod, setting: appTx.transactionReadOnlySetting, proven: appTx.readOnlyProven },
-      store: { method: storeTx.readOnlyCheckMethod, setting: storeTx.transactionReadOnlySetting, proven: storeTx.readOnlyProven },
+      app: {
+        method: appTx.readOnlyCheckMethod,
+        setting: appTx.transactionReadOnlySetting,
+        role: appTx.readOnlyRoleEvidence,
+        proven: appTx.readOnlyProven,
+      },
+      store: {
+        method: storeTx.readOnlyCheckMethod,
+        setting: storeTx.transactionReadOnlySetting,
+        role: storeTx.readOnlyRoleEvidence,
+        proven: storeTx.readOnlyProven,
+      },
     },
   }, null, 2));
   }
