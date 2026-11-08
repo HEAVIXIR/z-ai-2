@@ -1095,6 +1095,21 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(implementation).not.toMatch(/await storeDb\.(part|stockMovement)\.(create|update)\(/);
     });
 
+    it('warehouse stock decrements preserve existing reservations with compare-and-set', () => {
+      const source = readService('src/lib/store-inventory-service.ts');
+      const start = source.indexOf('export async function adjustStock(');
+      const end = source.indexOf('// ── reserveStock', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const implementation = source.slice(start, end);
+
+      expect(implementation).toContain('currentQty + qty < currentReserved');
+      expect(implementation).toContain('quantity: currentQty');
+      expect(implementation).toContain('reserved: currentReserved');
+      expect(implementation).toContain('changed.count !== 1');
+      expect(implementation).toContain('409');
+    });
+
     it('inventory reservation and release use compare-and-set transactions', () => {
       const source = readService('src/lib/store-inventory-service.ts');
 
