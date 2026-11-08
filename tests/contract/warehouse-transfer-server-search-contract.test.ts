@@ -49,6 +49,10 @@ describe("Warehouse transfer server-side part search", () => {
     expect(page).not.toContain("take: 1000");
   });
 
+  it("blocks transfers when there are no active parts or fewer than two active warehouses", () => {
+    expect(form).toContain("parts.length === 0 || warehouses.length < 2");
+  });
+
   it("searches remotely, aborts stale requests and offers explicit load-more behavior", () => {
     expect(form).toContain("/api/admin/store/inventory/transfer-parts?");
     expect(form).toContain("AbortController");
