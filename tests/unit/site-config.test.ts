@@ -51,13 +51,13 @@ describe("site-config — SITE_BASE_URL resolution", () => {
   it("strips a single trailing slash from NEXT_PUBLIC_SITE_URL", async () => {
     process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir/";
     const mod = await import("@/lib/site-config");
-    expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
+    expect(mod.SITE_BASE_URL).toBe("https://heavix.ir");
   });
 
   it("strips multiple trailing slashes from NEXT_PUBLIC_SITE_URL", async () => {
     process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir///";
     const mod = await import("@/lib/site-config");
-    expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
+    expect(mod.SITE_BASE_URL).toBe("https://heavix.ir");
   });
 
   it("never falls back to the legacy havix.ir (4-letter typo)", async () => {
