@@ -39,7 +39,9 @@ describe("public SEO metadata safety", () => {
   it("keeps Preview noindex at the request boundary without duplicate root metadata", () => {
     const layout = read("src/app/layout.tsx");
     const proxy = read("src/proxy.ts");
+    const nextConfig = read("next.config.ts");
     expect(layout).not.toContain("robots:");
+    expect(nextConfig).not.toContain("X-Robots-Tag");
     expect(proxy).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
   });
 
