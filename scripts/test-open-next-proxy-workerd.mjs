@@ -162,7 +162,7 @@ try {
   );
   const location = adminPage.headers.get("Location");
   assert.ok(location, "Admin redirect must include a Location header.");
-  const redirect = new URL(location);
+  const redirect = new URL(location, baseUrl);
   assert.equal(redirect.pathname, "/login");
   assert.equal(
     redirect.searchParams.get("redirect"),
