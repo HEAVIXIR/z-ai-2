@@ -5,6 +5,10 @@ import { rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
+
+if (process.env.HEAVIX_BUILD_TARGET !== "cloudflare") {
+  throw new Error("Workerd Proxy proof must run with HEAVIX_BUILD_TARGET=cloudflare.");
+}
 const configPath = resolve(root, ".heavix-proxy-smoke.wrangler.jsonc");
 let worker;
 let workerExit;
