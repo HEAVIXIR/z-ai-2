@@ -1,15 +1,15 @@
 # Prisma Preview Workerd exact-HEAD port plan
 
 Date: 2026-11-09
-Status: partial implementation; Workerd smoke and OpenNext request-path proof pass; Preview DB proof not dispatched
+Status: Worker client implementation and no-secret Workerd smoke pass; effective least-privilege DB role gate added; full CI/OpenNext reruns pending; Preview DB proof not dispatched
 Branch: `security/active-session-hardening-2026-11-08`
-Reviewed HEAD: `d7d3069438af4e890ee309146971f9038fa14af2`
+Reviewed HEAD: `d6828bca6d3755253d3f7d8802054b3593fbb69a`
 
 ## Purpose
 
 Replace the historical-commit-only Prisma Preview Workerd proof with a proof that is built and run from the exact reviewed branch commit. The proof must remain fail-closed, read-only, and restricted to the two inventoried Preview PostgreSQL resources.
 
-This document is a plan, not evidence of a passing database proof. No dependencies, lockfiles, workflow definitions, database roles, grants, secrets, Cloudflare bindings, or deployments were changed to produce it.
+This document records the implementation and remaining acceptance gates. Worker adapter dependencies, lockfile, client boundary, Workerd harness, manual exact-SHA workflow, and contract tests have been changed on the security branch. No database roles, grants, secrets, Cloudflare bindings, deployments, DNS, or Production resources have been changed.
 
 ## Current compatibility boundary
 
@@ -38,6 +38,27 @@ Do not transplant the historical package manifest, lockfile, or workflow as a un
 - The manual Preview DB proof workflow now checks out and verifies the exact dispatch SHA, requires the protected `preview-proof` environment, retains `PREVIEW_ONLY` confirmation, and runs Worker typecheck before its read-only proof. It has not been dispatched.
 
 **Important:** these are code/build/smoke validations only. No Preview database connection was made by the smoke run. The current `prisma_application` role remains writable and unsuitable for the strict read-only proof, so do not treat these passes as Preview DB acceptance.
+
+## Latest least-privilege gate implementation — exact HEAD `d6828bca6d3755253d3f7d8802054b3593fbb69a`
+
+The original runtime check of `current_setting('transaction_read_only')::boolean` was not sufficient by itself: a role with write privileges can still execute a read-only transaction. The proof now requires both the transaction flag and a SELECT-only inspection of the active PostgreSQL role.
+
+The new `inspectReadOnlyRole()` query rejects:
+- superuser, CREATEROLE, CREATEDB, REPLICATION, and BYPASSRLS role attributes;
+- membership or inherited use of `pg_write_all_data`;
+- membership in `pg_write_server_files` and `pg_execute_server_program`;
+- effective INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN privileges on user-schema relations;
+- effective sequence USAGE/UPDATE privileges;
+- CREATE on user schemas or the current database.
+
+The manual proof runner now requires this role evidence to be proven for **both** App and Store in addition to `transaction_read_only=true`. This closes the specific false-acceptance path identified in the earlier catalog audit, where `prisma_application` inherited `pg_write_all_data` and had `rolreplication=true`.
+
+The checks are SELECT-only. No DDL, DML, role changes, grants, revokes, or database settings were applied. The existing `prisma_application` role remains unsuitable; the intended next step is a separately provisioned Preview-only credential with no effective write privileges, not weakening the proof.
+
+- Contract coverage added in `tests/contract/prisma-preview-dispatch-workflow.test.ts`.
+- Exact-head no-secret Workerd smoke passed: [run 42526090697](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090697). It proves module loading, client generation, Worker typecheck, and missing-secret/request lifecycle behavior, but it does not connect to a database or execute the role-inspection query.
+- Exact-head general CI: [run 42526090799](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090799), still in progress at the time of this update. Typecheck, lint, TLS proof, phase tests, transaction audit, and report-only Cloudflare compatibility have passed; security/integration/build and Docker checks remain.
+- Exact-head OpenNext Workerd: [run 42526090782](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090782), still in progress at the time of this update.
 
 ## Upstream-supported Prisma Postgres Worker architecture (research update)
 
@@ -87,9 +108,10 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
    - On mismatch, stop immediately; do not query migrations, schema, or application data.
    - Verify PostgreSQL 17, schema `public`, and exact migration-name fingerprints only after identity succeeds.
 
-5. **Require actual read-only transaction proof**
-   - Both App and Store transactions must read `current_setting('transaction_read_only')::boolean`.
-   - The value must be `true` for both.
+5. **Require a least-privilege role and actual read-only transaction proof**
+   - Both App and Store transactions must read `current_setting('transaction_read_only')::boolean`; the value must be `true` for both.
+   - Independently inspect role attributes, inherited privileged memberships, effective table/sequence write privileges, schema CREATE, and database CREATE using SELECT-only catalog queries.
+   - Both checks must pass. A read-only transaction flag alone is not an acceptable least-privilege proof.
    - Do not weaken the assertion, attempt writes, use temporary-table creation as a write probe, or treat “no writes were attempted” as proof that the connection is read-only.
    - The current Prisma MCP role audit found inherited `pg_write_all_data`, `rolreplication=true`, and read-write transaction defaults. It is not an acceptable proof credential.
 
@@ -121,7 +143,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
 - Workerd starts with the expected compatibility flags.
 - Missing-secret and wrong-identity cases fail closed.
 - Both Preview database identities match their allowlisted system identifiers before any migration query.
-- Both App and Store transactions report `transaction_read_only=true`.
+- Both App and Store transactions report `transaction_read_only=true` and both active roles pass the effective least-privilege audit.
 - No DML/DDL is issued; no Production resource is contacted.
 - App/Store client lifecycle tests pass.
 - Workflow logs contain no connection strings or other secret material.
@@ -135,4 +157,4 @@ Do not claim branch protection was changed. Apply required checks only through a
 
 ## Current release decision
 
-**Preview release: NO-GO.** This plan does not close the outstanding database-role, exact-HEAD Prisma Workerd, Cloudflare binding-destination, or Backblaze B2 backup/restore gates.
+**Preview release: NO-GO.** Worker module/build proofs are passing, but no real Preview database proof has been dispatched. A dedicated App/Store Preview role must first pass the new least-privilege audit; Cloudflare secret destinations and paired Backblaze B2 backup/read-back/restore also remain unproven.
