@@ -1,9 +1,9 @@
 # Prisma Preview Workerd exact-HEAD port plan
 
 Date: 2026-11-09
-Status: Worker client implementation and no-secret Workerd smoke pass; effective least-privilege DB role gate added; full CI/OpenNext reruns pending; Preview DB proof not dispatched
+Status: Worker client implementation and no-secret Workerd smoke pass; least-privilege gate validates against both Preview DBs and correctly rejects current credentials; latest full CI/OpenNext reruns pending; Preview DB proof not dispatched
 Branch: `security/active-session-hardening-2026-11-08`
-Reviewed HEAD: `d6828bca6d3755253d3f7d8802054b3593fbb69a`
+Reviewed HEAD: `9800c215a7864c11c272ce9ea25d4f3510228b62`
 
 ## Purpose
 
@@ -51,14 +51,15 @@ The new `inspectReadOnlyRole()` query rejects:
 - effective sequence USAGE/UPDATE privileges;
 - CREATE on user schemas or the current database.
 
-The manual proof runner now requires this role evidence to be proven for **both** App and Store in addition to `transaction_read_only=true`. This closes the specific false-acceptance path identified in the earlier catalog audit, where `prisma_application` inherited `pg_write_all_data` and had `rolreplication=true`.
+The manual proof runner now requires this role evidence to be proven for **both** App and Store in addition to `transaction_read_only=true`. It also requires the role's own `rolconfig` to contain `default_transaction_read_only=on`, so the safe default is attached to the credential rather than relying only on one transaction's state. This closes the specific false-acceptance path identified in the earlier catalog audit, where `prisma_application` inherited `pg_write_all_data`, had `rolreplication=true`, and lacked a read-only role default.
 
-The checks are SELECT-only. No DDL, DML, role changes, grants, revokes, or database settings were applied. The existing `prisma_application` role remains unsuitable; the intended next step is a separately provisioned Preview-only credential with no effective write privileges, not weakening the proof.
+The checks are SELECT-only. The exact `inspectReadOnlyRole()` SQL was executed successfully against both allowlisted Preview resources. Both returned `rolreplication=true`, `default_transaction_read_only_on=false`, membership/inherited use of `pg_write_all_data`, and effective table-write privileges; both were therefore correctly rejected. Neither had superuser, CREATEROLE, CREATEDB, BYPASSRLS, write-server-files membership, execute-server-program membership, sequence write privileges, schema CREATE, or database CREATE. No DDL, DML, role changes, grants, revokes, or database settings were applied. The existing `prisma_application` role remains unsuitable; the intended next step is a separately provisioned Preview-only credential with no effective write privileges, not weakening the proof.
 
-- Contract coverage added in `tests/contract/prisma-preview-dispatch-workflow.test.ts`.
-- Exact-head no-secret Workerd smoke passed: [run 42526090697](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090697). It proves module loading, client generation, Worker typecheck, and missing-secret/request lifecycle behavior, but it does not connect to a database or execute the role-inspection query.
-- Exact-head general CI: [run 42526090799](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090799), still in progress at the time of this update. Typecheck, lint, TLS proof, phase tests, transaction audit, and report-only Cloudflare compatibility have passed; security/integration/build and Docker checks remain.
-- Exact-head OpenNext Workerd: [run 42526090782](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090782), still in progress at the time of this update.
+- Contract coverage added in `tests/contract/prisma-preview-dispatch-workflow.test.ts` for role attributes, default read-only config, inherited write-role memberships, and effective object privileges.
+- Exact-head no-secret Workerd smoke passed on the role-gate code commit: [run 42526090697](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090697). It proves module loading, client generation, Worker typecheck, and missing-secret/request lifecycle behavior, but it does not connect to a database or execute the role-inspection query.
+- Exact-head OpenNext Workerd passed on the same code commit: [run 42526090782](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090782).
+- General CI on that code commit: [run 42526090799](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526090799), overall success, including full `verify`, Docker image/Caddy/Compose proof, TLS, phase tests, transaction audit, and report-only Cloudflare compatibility.
+- The follow-up role-default config change and contract assertion are in commits `e706beeb7226c4183f86ad047be9f97a59951f93` and `9800c215a7864c11c272ce9ea25d4f3510228b62`; their exact-head CI/Workerd reruns are in progress. The latest smoke run is [42526400657](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526400657) and latest OpenNext run is [42526400701](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42526400701).
 
 ## Upstream-supported Prisma Postgres Worker architecture (research update)
 
@@ -113,7 +114,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
    - Independently inspect role attributes, inherited privileged memberships, effective table/sequence write privileges, schema CREATE, and database CREATE using SELECT-only catalog queries.
    - Both checks must pass. A read-only transaction flag alone is not an acceptable least-privilege proof.
    - Do not weaken the assertion, attempt writes, use temporary-table creation as a write probe, or treat “no writes were attempted” as proof that the connection is read-only.
-   - The current Prisma MCP role audit found inherited `pg_write_all_data`, `rolreplication=true`, and read-write transaction defaults. It is not an acceptable proof credential.
+   - The current Preview Prisma role audit found inherited `pg_write_all_data`, `rolreplication=true`, no role-level `default_transaction_read_only=on`, and effective table-write privileges. It is not an acceptable proof credential.
 
 6. **Add safe negative and isolation tests**
    - Missing App binding fails closed.
@@ -143,7 +144,7 @@ Cloudflare's current Hyperdrive/Prisma example documents `@prisma/adapter-pg` fo
 - Workerd starts with the expected compatibility flags.
 - Missing-secret and wrong-identity cases fail closed.
 - Both Preview database identities match their allowlisted system identifiers before any migration query.
-- Both App and Store transactions report `transaction_read_only=true` and both active roles pass the effective least-privilege audit.
+- Both App and Store transactions report `transaction_read_only=true`; both role configurations contain `default_transaction_read_only=on`; both active roles pass the effective least-privilege audit.
 - No DML/DDL is issued; no Production resource is contacted.
 - App/Store client lifecycle tests pass.
 - Workflow logs contain no connection strings or other secret material.
