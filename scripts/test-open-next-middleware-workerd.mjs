@@ -89,7 +89,7 @@ try {
         observability: { enabled: false },
         vars: {
           NODE_ENV: "production",
-          NEXT_PUBLIC_SITE_URL: "https://heavix.ir",
+          NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev",
           HEAVIX_BACKUP_EXECUTION_ENABLED: "false",
         },
       },
