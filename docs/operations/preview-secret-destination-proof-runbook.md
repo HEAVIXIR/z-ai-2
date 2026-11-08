@@ -440,3 +440,25 @@ The old Workerd check on PR #292 (`42478227562`) failed before starting Workerd 
 - Cloudflare Worker version 14 and the `previews_enabled=false` setting are last recorded as verified on 2026-11-07; they were not re-read in this 2026-11-08 check.
 
 **Current decision remains:** direct Preview database identities have prior documented read-only proof; live Worker Secret destinations remain **UNPROVEN**; Production remains **NO-GO**; main-domain release remains blocked pending complete Preview validation and explicit release authorization.
+
+
+### Prisma Cloudflare runtime dependency chain — current status
+
+The older PPG runtime integration remains a separate, unmerged dependency chain and must not be conflated with the newer OpenNext build-only proofs:
+
+| PR | Current head | Base | Exact validation | State |
+|---|---|---|---|---|
+| #191 request-scoped PPG clients | `322c2caea409e06a42dd3e992d9fff9fce26b256` | `infra/cloudflare-opennext-build-recovery` | CI `42384322857` PASS | Draft; mergeable |
+| #200 real OpenNext request-path proof | `b2693496f21a396440814950bb232a97e63ffb13` | `infra/prisma6-cloudflare-runtime` | CI `42203629883` PASS; Workerd `42203629863` PASS | Draft; currently not mergeable |
+
+Static dependency inventory on PR #191 records:
+- `prisma` and `@prisma/client`: `6.19.3`
+- `@prisma/adapter-pg`: `6.19.3`
+- `@prisma/adapter-ppg`: `7.10.1`
+- `@prisma/ppg`: `1.0.1`
+
+The public `@prisma/adapter-ppg` package README says Prisma Postgres support is available from Prisma 5.4.2 onward, but that broad statement is not a version-by-version compatibility guarantee for this exact mixed 6.19.3 / 7.10.1 dependency set. Keep the precise adapter/client compatibility matrix and real Workerd request-path test as an unresolved acceptance gate. Do not label the combination definitively incompatible or definitively supported without the exact peer/support metadata and runtime evidence.
+
+Official package reference: https://www.npmjs.com/package/%40prisma/adapter-ppg
+
+Neither PR #191 nor #200 is merged into main. Their successful branch CI/Workerd runs do not prove that the active Cloudflare Worker uses this code. PR #288's newer OpenNext build recovery and PR #290's Edge Middleware proof are also branch-only; their successful builds do not deploy a Worker or prove the live secret destinations.
