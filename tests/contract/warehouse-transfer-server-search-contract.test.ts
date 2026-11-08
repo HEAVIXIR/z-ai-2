@@ -52,6 +52,7 @@ describe("Warehouse transfer server-side part search", () => {
   it("searches remotely, aborts stale requests and offers explicit load-more behavior", () => {
     expect(form).toContain("/api/admin/store/inventory/transfer-parts?");
     expect(form).toContain("AbortController");
+    expect(form).toContain("aria-busy={searching || loadingMore}");
     expect(form).toContain("async function loadMore()");
     expect(form).toContain("setPartId");
     expect(form).toContain("بارگذاری قطعات بیشتر");
