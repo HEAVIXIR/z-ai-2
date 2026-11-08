@@ -118,6 +118,14 @@ try {
   }
   assert.equal(ready, true, "Local Workerd Worker did not become ready.");
 
+  const publicPage = await request(baseUrl, "/login");
+  assert.equal(publicPage.status, 200, "Preview HTML page must return HTTP 200.");
+  assert.equal(
+    publicPage.headers.get("X-Robots-Tag"),
+    "noindex, nofollow, noarchive",
+    "Proxy must add one noindex directive set to Preview HTML responses.",
+  );
+
   const robots = await request(baseUrl, "/robots.txt");
   assert.equal(robots.status, 200, "Preview robots.txt must return HTTP 200.");
   assert.equal(
@@ -168,6 +176,7 @@ try {
         runtime: "local Workerd via Wrangler",
         checks: [
           "Next.js 16 Proxy executed in generated Cloudflare Worker",
+          "Preview HTML page carries one X-Robots-Tag noindex directive set",
           "Preview robots response carries X-Robots-Tag noindex",
           "anonymous admin API remains 401 and noindex",
           "anonymous admin page redirects to login and preserves return URL",
