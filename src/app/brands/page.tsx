@@ -2,13 +2,12 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو | هویکس",
+  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو",
   description: "فهرست کامل برندهای ماشین‌آلات سنگین: کاترپیلار، کوماتسو، ولوو، هیوندای، جی‌سی‌بی و دیگران. آگهی‌های هر برند را مرور کنید.",
   alternates: { canonical: "/brands" },
   openGraph: { title: "برندهای ماشین‌آلات سنگین | هویکس", description: "فهرست کامل برندهای ماشین‌آلات سنگین.", type: "website", locale: "fa_IR" },
 };
 import { db } from "@/lib/db";
-import { getPublicListingWhere } from "@/lib/listing-visibility";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import BrandLiveSearch from "./BrandLiveSearch";
@@ -78,7 +77,7 @@ export default async function BrandsDirectoryPage({
         status: true,
         verification: true,
         featured: true,
-        _count: { select: { listings: { where: getPublicListingWhere() } } },
+        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
       },
     }),
     db.industry.findMany({
