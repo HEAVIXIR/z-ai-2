@@ -194,6 +194,10 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     });
 
     await expect(
+      transferStock(partId, warehouseId, warehouseId, 1, 'same warehouse must be rejected', 'inventory-admin'),
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
       transferStock(partId, warehouseId, destination.id, 6, 'cannot transfer reserved stock', 'inventory-admin'),
     ).rejects.toMatchObject({ status: 409 });
     expect(await storeDb.inventoryBalance.count({ where: { partId } })).toBe(1);
