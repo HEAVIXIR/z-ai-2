@@ -245,7 +245,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS (route-only — RBAC is enforced in routes)
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 53 admin store route files', () => {
+    it('should have exactly 54 admin store route files', () => {
       // T-A-DEEP-STORE: 28 routes originally.
       // T1+T2-DEEP: +6 new routes (warehouses/route, warehouses/[id],
       // inventory/reserve, inventory/release, inventory/low-stock,
@@ -260,12 +260,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +9 new routes (services/providers,
       //   services/providers/[id], services/requests, services/requests/[id],
       //   logistics/dashboard, shipments/[id]/{assign,pickup,deliver,
-      //   exception}) → 51; opening inventory allocation +1 → 52; paired warehouse transfer +1 → 53.
+      //   exception}) → 51; opening inventory allocation +1 → 52; paired warehouse transfer +1 → 53; transfer-part search endpoint +1 → 54.
       const files = listRouteFiles();
-      expect(files.length).toBe(53);
+      expect(files.length).toBe(54);
     });
 
-    it('should have 96 requirePermission calls across all store routes', () => {
+    it('should have 98 requirePermission calls across all store routes', () => {
       // T-A-DEEP-STORE: 53 originally.
       // T1+T2-DEEP: +10 new (warehouses 2+3, reserve 1, release 1,
       // low-stock 1, returns/[id]/items 2) → 63.
@@ -276,7 +276,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +14 new (services/providers 2,
       //   services/providers/[id] 3, services/requests 2, services/requests/[id]
       //   2, logistics/dashboard 1, shipments/[id]/{assign,pickup,deliver,
-      //   exception} 1+1+1+1) → 92; procurement receiving +1, return restock authorization +1, opening allocation +1, warehouse transfer +1 → 96.
+      //   exception} 1+1+1+1) → 92; procurement receiving +1, return restock authorization +1, opening allocation +1, warehouse transfer +1 → 96; transfer-part search endpoint +2 → 98.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -284,7 +284,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(96);
+      expect(count).toBe(98);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -368,7 +368,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // purchase-orders/* under procurement) → all 4 domains now have
       // more than 2 read calls each.
       const expected: Record<string, number> = {
-        'inventory.read': 5,
+        'inventory.read': 6,
         'returns.read': 3,
         'shipping.read': 3,
         'procurement.read': 4,
@@ -377,7 +377,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         expect(counts[key]).toBe(expected[key]);
       }
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      expect(total).toBe(15);
+      expect(total).toBe(16);
     });
 
     it('should have 26 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
@@ -403,10 +403,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   use store.manage (counted above), not domain-specific keys.
       //   Procurement receiving adds one inventory.manage gate, opening stock allocation adds one,
       //   and return restocking authorization adds one and paired warehouse transfer adds one; inventory.manage = 10.
-      //   Total = 10 + 3 + 7 + 6 = 26 domain-manage checks (the global baseline is tracked separately).
+      //   Total = 11 + 3 + 7 + 6 = 27 domain-manage checks (the global baseline is tracked separately).
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 10,
+        'inventory.manage': 11,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
