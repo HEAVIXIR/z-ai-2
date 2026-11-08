@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -95,7 +94,9 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: cspDirectives,
   },
-  ...(IS_PREVIEW_DEPLOYMENT
+  // Local development is build-time-known. Cloudflare/Vercel Preview must use
+  // the request-time middleware header to avoid duplicate X-Robots-Tag values.
+  ...(process.env.NODE_ENV === "development"
     ? [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }]
     : []),
 ];
