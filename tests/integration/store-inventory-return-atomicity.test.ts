@@ -143,8 +143,6 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       data: { procurementId: procurement.id },
     });
     purchaseOrderId = po.id;
-    await submitPurchaseOrder(po.id);
-    await approvePurchaseOrder(po.id);
 
     const item = await storeDb.purchaseOrderItem.create({
       data: {
@@ -155,6 +153,9 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       },
     });
     purchaseOrderItemId = item.id;
+
+    await submitPurchaseOrder(po.id);
+    await approvePurchaseOrder(po.id);
     return { po, item };
   }
 
