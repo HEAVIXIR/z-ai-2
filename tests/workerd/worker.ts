@@ -194,6 +194,7 @@ async function inspectReadOnlyRole(
     row.can_create_database ||
     row.can_replicate ||
     row.can_bypass_rls ||
+    !row.default_transaction_read_only_on ||
     row.member_pg_write_all_data ||
     row.inherits_pg_write_all_data ||
     row.member_pg_write_server_files ||
