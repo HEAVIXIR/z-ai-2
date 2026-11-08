@@ -246,6 +246,16 @@ export default async function StoreInventoryPage({
     <div className="space-y-6 p-6">
       <Header />
       {canManageInventory && (
+        <div className="flex justify-end">
+          <Link
+            href="/admin/store/inventory/transfers"
+            className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-bold text-violet-800 hover:bg-violet-100"
+          >
+            انتقال موجودی بین انبارها
+          </Link>
+        </div>
+      )}
+      {canManageInventory && (
         <InventoryAdjustmentForm
           parts={adjustmentParts}
           warehouses={adjustmentWarehouses}
