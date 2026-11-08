@@ -54,7 +54,7 @@ test.describe("HEAVIX public browser smoke", () => {
     await rentalLink.focus();
     await expect(rentalLink).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\\/rentals\\/?$/);
+    await expect(page).toHaveURL(/\/rentals\/?$/);
   });
 
   test("mobile menu opens from the keyboard", async ({ page }, testInfo) => {
