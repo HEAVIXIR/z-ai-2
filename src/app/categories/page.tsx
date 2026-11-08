@@ -19,7 +19,7 @@ function getPublicListingWhere() {
 }
 
 export const metadata: Metadata = {
-  title: "دسته‌بندی‌های صنعتی و ماشین‌آلات | هویکس",
+  title: "دسته‌بندی‌های صنعتی و ماشین‌آلات",
   description: "مرور دسته‌بندی‌های ماشین‌آلات سنگین، معدنی، راهسازی، قطعات و تجهیزات صنعتی در بازار هویکس.",
   alternates: { canonical: "/categories" },
   openGraph: {
