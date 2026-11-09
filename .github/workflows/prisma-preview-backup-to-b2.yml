@@ -74,23 +74,61 @@ jobs:
           AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
           AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
         run: |
-          set -euo pipefail
-          test -n "$MAIN_PREVIEW_DATABASE_URL"
-          test -n "$STORE_PREVIEW_DATABASE_URL"
-          test "$MAIN_PREVIEW_DATABASE_URL" != "$STORE_PREVIEW_DATABASE_URL"
-          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
-          test "$B2_BUCKET" = "heavix-db-backups"
-          test -n "$B2_APPLICATION_KEY_ID"
-          test -n "$B2_APPLICATION_KEY"
-          test -n "$AGE_RECIPIENT"
-          test -n "$AGE_IDENTITY"
+          set -uo pipefail
+          failures=0
+          pass() { echo "PASS: $1"; }
+          fail() { echo "FAIL: $1"; failures=$((failures + 1)); }
+          check_present() {
+            local label="$1" value="$2"
+            if [ -n "$value" ]; then pass "$label"; else fail "$label"; fi
+          }
+          check_equal() {
+            local label="$1" actual="$2" expected="$3"
+            if [ "$actual" = "$expected" ]; then pass "$label"; else fail "$label"; fi
+          }
+
+          check_present "MAIN_PREVIEW_DATABASE_URL_PRESENT" "$MAIN_PREVIEW_DATABASE_URL"
+          check_present "STORE_PREVIEW_DATABASE_URL_PRESENT" "$STORE_PREVIEW_DATABASE_URL"
+          if [ -n "$MAIN_PREVIEW_DATABASE_URL" ] && [ -n "$STORE_PREVIEW_DATABASE_URL" ]; then
+            if [ "$MAIN_PREVIEW_DATABASE_URL" != "$STORE_PREVIEW_DATABASE_URL" ]; then
+              pass "PREVIEW_DATABASE_URLS_ARE_DISTINCT"
+            else
+              fail "PREVIEW_DATABASE_URLS_ARE_DISTINCT"
+            fi
+          else
+            echo "SKIP: PREVIEW_DATABASE_URLS_ARE_DISTINCT (one or both URLs missing)"
+          fi
+
+          check_equal "B2_S3_ENDPOINT_EXPECTED" "$B2_S3_ENDPOINT" "s3.us-east-005.backblazeb2.com"
+          check_equal "B2_BUCKET_EXPECTED" "$B2_BUCKET" "heavix-db-backups"
+          check_present "B2_APPLICATION_KEY_ID_PRESENT" "$B2_APPLICATION_KEY_ID"
+          check_present "B2_APPLICATION_KEY_PRESENT" "$B2_APPLICATION_KEY"
+          check_present "AGE_RECIPIENT_PRESENT" "$AGE_RECIPIENT"
+          check_present "AGE_IDENTITY_PRESENT" "$AGE_IDENTITY"
+
           identity_file="$RUNNER_TEMP/age-identity-preflight.txt"
           trap 'rm -f "$identity_file"' EXIT
-          printf '%s\n' "$AGE_IDENTITY" > "$identity_file"
-          chmod 600 "$identity_file"
-          derived_recipient="$(age-keygen -y "$identity_file")"
-          test "$derived_recipient" = "$AGE_RECIPIENT" || { echo "AGE_RECIPIENT does not match AGE_IDENTITY."; exit 1; }
-          echo "Required secrets present and age key pair matches; values redacted."
+          if [ -n "$AGE_IDENTITY" ] && [ -n "$AGE_RECIPIENT" ]; then
+            printf '%s\n' "$AGE_IDENTITY" > "$identity_file"
+            chmod 600 "$identity_file"
+            if derived_recipient="$(age-keygen -y "$identity_file" 2>/dev/null)"; then
+              if [ "$derived_recipient" = "$AGE_RECIPIENT" ]; then
+                pass "AGE_KEYPAIR_MATCH"
+              else
+                fail "AGE_KEYPAIR_MATCH"
+              fi
+            else
+              fail "AGE_IDENTITY_PARSE"
+            fi
+          else
+            echo "SKIP: AGE_KEYPAIR_MATCH (recipient or identity missing)"
+          fi
+
+          if [ "$failures" -ne 0 ]; then
+            echo "Protected environment validation failed: $failures check(s). Secret values were not printed."
+            exit 1
+          fi
+          echo "All protected environment validation checks passed; secret values redacted."
 
       - name: Verify Preview resource IDs, TLS and enforced read-only backup sessions
         shell: bash
