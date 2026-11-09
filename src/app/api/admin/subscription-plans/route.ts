@@ -2,165 +2,88 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
+import {
+  parseSubscriptionPlanInput,
+  readSubscriptionPlanBody,
+} from "@/lib/admin/subscription-plan-input";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Serialize a SubscriptionPlan row (BigInt → string) and include subscriber count. */
-async function serialize(p: any) {
-  const count = await db.premiumSubscription.count({
-    where: { plan: p.code },
+function auditSnapshot(value: any) {
+  if (!value) return null;
+  return JSON.stringify(value, (_key, item) =>
+    typeof item === "bigint" ? item.toString() : item,
+  );
+}
+
+/** Serialize a plan without leaking BigInt values into JSON. */
+async function serialize(plan: any) {
+  const subscriberCount = await db.premiumSubscription.count({
+    where: { plan: plan.code },
   });
   return {
-    ...p,
-    priceMonthly: p.priceMonthly?.toString() ?? "0",
-    priceYearly: p.priceYearly?.toString() ?? null,
-    subscriberCount: count,
+    ...plan,
+    priceMonthly: plan.priceMonthly?.toString() ?? "0",
+    priceYearly: plan.priceYearly?.toString() ?? null,
+    subscriberCount,
   };
 }
 
-/* GET /api/admin/subscription-plans — list all plans ordered by sortOrder. */
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
+
   try {
     const plans = await db.subscriptionPlan.findMany({
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
-    const out = await Promise.all(plans.map(serialize));
-    return NextResponse.json({ success: true, plans: out });
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
-  }
-}
-
-/* POST /api/admin/subscription-plans — create a new plan. */
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  await requirePermission(user.id, "subscription.manage");
-  try {
-    const body = await req.json().catch(() => ({}));
-
-    const code = String(body.code ?? "").trim();
-    const nameFa = String(body.nameFa ?? "").trim();
-
-    if (!code) {
-      return NextResponse.json(
-        { success: false, error: "code الزامی است" },
-        { status: 400 },
-      );
-    }
-    if (!nameFa) {
-      return NextResponse.json(
-        { success: false, error: "nameFa الزامی است" },
-        { status: 400 },
-      );
-    }
-
-    const existing = await db.subscriptionPlan.findUnique({ where: { code } });
-    if (existing) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `طرح با کد «${code}» قبلاً ثبت شده است`,
-        },
-        { status: 409 },
-      );
-    }
-
-    const data: any = {
-      code,
-      nameFa,
-      nameEn: body.nameEn ? String(body.nameEn) : null,
-      description: body.description ? String(body.description) : null,
-      priceMonthly: parseBig(body.priceMonthly) ?? BigInt(0),
-      priceYearly: parseBig(body.priceYearly),
-      currency: body.currency ? String(body.currency) : "IRR",
-      featuredCredits: num(body.featuredCredits, 0),
-      analyticsAccess: Boolean(body.analyticsAccess),
-      aiAssistantAccess: Boolean(body.aiAssistantAccess),
-      priorityLeads: Boolean(body.priorityLeads),
-      companyPage: Boolean(body.companyPage),
-      maxListings: num(body.maxListings, 0),
-      maxImages: num(body.maxImages, 8),
-      verifiedBadge: Boolean(body.verifiedBadge),
-      supportLevel: body.supportLevel ? String(body.supportLevel) : null,
-      sortOrder: num(body.sortOrder, 0),
-      active: body.active !== false,
-      popular: Boolean(body.popular),
-      featuresJson: normalizeJson(body.featuresJson),
-    };
-
-    const plan = await db.subscriptionPlan.create({ data });
-
-    await audit("subscription_plan.create", plan.id, null, data);
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "admin.subscriptionPlans.create",
-      entityType: "SubscriptionPlan",
-      entityId: plan.id,
-      after: { code: plan.code, nameFa: plan.nameFa, priceMonthly: plan.priceMonthly?.toString() ?? null, active: plan.active, sortOrder: plan.sortOrder },
-      reason: "via admin API",
-    });
-
     return NextResponse.json({
       success: true,
-      plan: await serialize(plan),
+      plans: await Promise.all(plans.map(serialize)),
     });
+  } catch {
+    return NextResponse.json({ success: false, error: "خطای داخلی سرور" }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  await requirePermission(user.id, "subscription.manage");
+
+  const parsedBody = await readSubscriptionPlanBody(req);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ success: false, error: parsedBody.error }, { status: 400 });
+  }
+  const parsed = parseSubscriptionPlanInput(parsedBody.data, "create");
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, error: parsed.error }, { status: 400 });
+  }
+
+  try {
+    const plan = await db.$transaction(async (tx) => {
+      const created = await tx.subscriptionPlan.create({ data: parsed.data as any });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "admin.subscriptionPlans.create",
+          entityType: "SubscriptionPlan",
+          entityId: created.id,
+          beforeJson: null,
+          afterJson: auditSnapshot(created),
+          reason: "via admin API",
+        },
+      });
+      return created;
+    });
+    return NextResponse.json({ success: true, plan: await serialize(plan) });
   } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
-  }
-}
-
-/* ── helpers ── */
-function num(v: any, def: number): number {
-  const n = parseInt(String(v ?? ""), 10);
-  return Number.isFinite(n) ? n : def;
-}
-
-function normalizeJson(v: any): string | null {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "string") return v;
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return null;
-  }
-}
-
-async function audit(
-  action: string,
-  entityId: string,
-  before: any,
-  after: any,
-) {
-  try {
-    await db.auditLog.create({
-      data: {
-        actorType: "ADMIN",
-        action,
-        entityType: "SubscriptionPlan",
-        entityId,
-        beforeJson: before ? JSON.stringify(before).slice(0, 4000) : null,
-        afterJson: after ? JSON.stringify(after).slice(0, 4000) : null,
-      },
-    });
-  } catch {
-    /* best-effort */
+    if (err?.code === "P2002") {
+      return NextResponse.json({ success: false, error: "کد این پلن قبلاً ثبت شده است" }, { status: 409 });
+    }
+    return NextResponse.json({ success: false, error: "خطای داخلی سرور" }, { status: 500 });
   }
 }
