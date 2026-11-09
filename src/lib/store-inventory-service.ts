@@ -104,79 +104,109 @@ export async function createMovement(
     throw new InventoryServiceError(400, 'نوع حرکت نامعتبر');
   }
   const qty = Number(quantity);
-  if (!Number.isInteger(qty) || qty === 0) {
-    throw new InventoryServiceError(
-      400,
-      'تعداد باید عدد صحیح غیر صفر باشد',
-    );
+  if (!Number.isSafeInteger(qty) || qty === 0) {
+    throw new InventoryServiceError(400, 'تعداد باید عدد صحیح غیر صفر باشد');
   }
 
-  const part = await storeDb.part.findUnique({ where: { id: partId } });
-  if (!part) {
-    throw new InventoryServiceError(404, 'قطعه یافت نشد');
-  }
+  // Legacy-only compatibility path. A part with any warehouse balance must
+  // be changed through adjustStock(), which requires an explicit warehouse.
+  // Keep the Part snapshot, ledger row, and audit outbox in one Store tx.
+  const movement = await storeDb.$transaction(async (tx) => {
+    const part = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+    if (!part) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
 
-  const balanceAfter = part.stock + qty;
-  if (balanceAfter < 0) {
-    throw new InventoryServiceError(
-      400,
-      `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`,
-    );
-  }
+    const warehouseBalanceCount = await tx.inventoryBalance.count({
+      where: { partId },
+    });
+    if (warehouseBalanceCount > 0) {
+      throw new InventoryServiceError(
+        409,
+        'این قطعه مدیریت‌شده توسط انبار است؛ برای ثبت حرکت، انبار مقصد یا مبدأ را صریحاً انتخاب کنید',
+      );
+    }
 
-  // Step 1: create the ledger entry (records intent + balance after).
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-      createdBy: userId ?? null,
-    },
-    include: {
-      part: {
-        select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+    const balanceAfter = part.stock + qty;
+    if (balanceAfter < 0) {
+      throw new InventoryServiceError(
+        409,
+        `موجودی ناکافی. فعلی: ${part.stock}، درخواست: ${qty}`,
+      );
+    }
+
+    // Compare-and-set on the snapshot prevents lost updates between two
+    // legacy-only movements. If another writer changed stock after the read,
+    // this transaction fails closed instead of overwriting its value.
+    const changed = await tx.part.updateMany({
+      where: { id: partId, stock: part.stock },
+      data: { stock: { increment: qty } },
+    });
+    if (changed.count !== 1) {
+      throw new InventoryServiceError(
+        409,
+        'موجودی قطعه هم‌زمان تغییر کرده است؛ اطلاعات را تازه‌سازی و دوباره تلاش کنید',
+      );
+    }
+
+    const afterPart = await tx.part.findUnique({
+      where: { id: partId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+    if (!afterPart) {
+      throw new InventoryServiceError(404, 'قطعه پس از تغییر موجودی یافت نشد');
+    }
+
+    const createdMovement = await tx.stockMovement.create({
+      data: {
+        partId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+        createdBy: userId ?? null,
+        warehouseId: null,
       },
-    },
-  });
+      include: {
+        part: {
+          select: { id: true, name: true, nameFa: true, sku: true, stock: true },
+        },
+      },
+    });
 
-  // Step 2: side-effect — update Part.stock to the new balance.
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: partId },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.inventory.movement.create',
+      entityType: 'StockMovement',
+      entityId: createdMovement.id,
+      after: {
+        partId,
+        type,
+        quantity: qty,
+        balanceAfter: afterPart.stock,
+        reason: reason || null,
+        reference: reference || null,
+        warehouseId: null,
+      },
+    });
 
-  // Audit 1: the ledger entry is the primary audit hook for this route.
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId,
-      type,
-      quantity: qty,
-      balanceAfter,
-      reason: reason || null,
-      reference: reference || null,
-    },
-  });
+    await enqueueAuditOutbox(tx, {
+      actorId: userId ?? null,
+      actorType: 'ADMIN',
+      action: 'store.part.update',
+      entityType: 'Part',
+      entityId: partId,
+      before: { stock: part.stock },
+      after: { stock: afterPart.stock },
+      reason: reference || reason || null,
+    });
 
-  // Audit 2: the Part.stock update is a side-effect mutation, so it gets
-  // its own audit entry (mirrors payments/[id] side-effect pattern).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: partId,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
+    return createdMovement;
   });
 
   return serialize(movement);
