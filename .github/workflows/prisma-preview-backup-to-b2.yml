@@ -184,7 +184,7 @@ jobs:
               return "$rc"
             fi
             test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; rm -f "$result_file"; return 1; }
-            echo "INFO: $label checking enforced read-only and least-privilege properties."
+            echo "INFO: $label checking read-only session properties."
             if run_preview_sql "$label" "$url" "$SQL" "$result_file"; then
               safe="$(cat "$result_file")"
             else
@@ -194,7 +194,7 @@ jobs:
               return "$rc"
             fi
             rm -f "$result_file"
-            test "$safe" = "t" || { echo "$label role is not proven least-privilege/read-only. Backup blocked."; return 1; }
+            test "$safe" = "t" || { echo "$label session is not proven read-only. Backup blocked."; return 1; }
             echo "$label Preview identity, TLS and read-only session mode checks passed; database credential remains full-access by Prisma design."
           }
           verify_db Main "$MAIN_PREVIEW_DATABASE_URL" 7701427422680793119
