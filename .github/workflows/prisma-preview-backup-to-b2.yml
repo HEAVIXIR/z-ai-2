@@ -1,0 +1,183 @@
+name: HEAVIX Preview paired encrypted B2 backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Dedicated Preview databases only
+        required: true
+        type: choice
+        options: [PREVIEW_ONLY]
+      confirm:
+        description: Type BACKUP_PREVIEW_ONLY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-preview-paired-b2-backup
+  cancel-in-progress: false
+
+jobs:
+  paired-backup:
+    if: github.ref == 'refs/heads/security/active-session-hardening-2026-11-08'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      restore-db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: local-restore-only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U restore -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      MAIN_PREVIEW_DATABASE_URL: ${ secrets.MAIN_PREVIEW_DATABASE_URL }
+      STORE_PREVIEW_DATABASE_URL: ${ secrets.STORE_PREVIEW_DATABASE_URL }
+      B2_S3_ENDPOINT: ${ secrets.B2_S3_ENDPOINT }
+      B2_BUCKET: ${ secrets.B2_BUCKET }
+      B2_APPLICATION_KEY_ID: ${ secrets.B2_APPLICATION_KEY_ID }
+      B2_APPLICATION_KEY: ${ secrets.B2_APPLICATION_KEY }
+      AGE_RECIPIENT: ${ secrets.AGE_RECIPIENT }
+      AGE_IDENTITY: ${ secrets.AGE_IDENTITY }
+      AWS_REGION: us-east-005
+      AWS_DEFAULT_REGION: us-east-005
+      AWS_EC2_METADATA_DISABLED: "true"
+      RESTORE_PASSWORD: local-restore-only
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${ github.sha }
+
+      - name: Enforce branch, commit and explicit Preview confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "${ inputs.target }" = "PREVIEW_ONLY"
+          test "${ inputs.confirm }" = "BACKUP_PREVIEW_ONLY"
+          echo "Preview-only dispatch gates passed."
+
+      - name: Install age and AWS CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age awscli
+
+      - name: Validate protected environment values
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MAIN_PREVIEW_DATABASE_URL"
+          test -n "$STORE_PREVIEW_DATABASE_URL"
+          test "$MAIN_PREVIEW_DATABASE_URL" != "$STORE_PREVIEW_DATABASE_URL"
+          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
+          test "$B2_BUCKET" = "heavix-db-backups"
+          test -n "$B2_APPLICATION_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test -n "$AGE_RECIPIENT"
+          test -n "$AGE_IDENTITY"
+          echo "Required secrets present; values redacted."
+
+      - name: Verify Preview resource IDs, TLS and read-only roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          verify_db() {
+            label="$1"; url="$2"; expected="$3"
+            actual="$(docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql "$DB_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier FROM pg_control_system()"')"
+            test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; return 1; }
+            safe="$(docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql "$DB_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (current_setting('''transaction_read_only''') = '''on''') AND (current_setting('''default_transaction_read_only''') = '''on''') AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT pg_has_role(current_user, '''pg_write_all_data''', '''member''') AND NOT has_database_privilege(current_user, current_database(), '''CREATE''') AND NOT has_schema_privilege(current_user, '''public''', '''CREATE''') FROM pg_roles r WHERE r.rolname = current_user"')"
+            test "$safe" = "t" || { echo "$label role is not proven least-privilege/read-only. Backup blocked."; return 1; }
+            echo "$label Preview identity, TLS and role checks passed."
+          }
+          verify_db Main "$MAIN_PREVIEW_DATABASE_URL" 7701427422680793119
+          verify_db Store "$STORE_PREVIEW_DATABASE_URL" 7701425043360235551
+
+      - name: Dump both databases, encrypt and create manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          WORK="$RUNNER_TEMP/heavix-b2"
+          mkdir -m 700 -p "$WORK"
+          trap 'rm -rf "$WORK"' EXIT
+          for pair in "main:$MAIN_PREVIEW_DATABASE_URL" "store:$STORE_PREVIEW_DATABASE_URL"; do
+            name="${pair%%:*}"; url="${pair#*:}"
+            docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full "$CID" bash -ceu 'pg_dump --format=custom --no-owner --no-acl --dbname="$DB_URL" > /tmp/'"$name"'.dump'
+            docker cp "$CID:/tmp/$name.dump" "$WORK/$name.dump"
+            test -s "$WORK/$name.dump"
+          done
+          cd "$WORK"
+          sha256sum main.dump store.dump > SHA256SUMS
+          {
+            echo "format=heavix-preview-paired-backup-v1"
+            echo "created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "main_system_identifier=7701427422680793119"
+            echo "store_system_identifier=7701425043360235551"
+            echo "postgres_major=17"
+            echo "main_bytes=$(wc -c < main.dump)"
+            echo "store_bytes=$(wc -c < store.dump)"
+            cat SHA256SUMS
+          } > manifest.txt
+          age -r "$AGE_RECIPIENT" -o main.dump.age main.dump
+          age -r "$AGE_RECIPIENT" -o store.dump.age store.dump
+          age -r "$AGE_RECIPIENT" -o manifest.txt.age manifest.txt
+          sha256sum main.dump.age store.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS
+
+      - name: Upload encrypted objects and verify B2 read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-b2"
+          PREFIX="preview/paired/$(date -u +%Y/%m/%d)/$GITHUB_SHA/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
+          ENDPOINT="https://$B2_S3_ENDPOINT"
+          for file in main.dump.age store.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "$WORK/$file" "s3://$B2_BUCKET/$PREFIX/$file" --only-show-errors
+          done
+          mkdir -m 700 "$WORK/readback"
+          for file in main.dump.age store.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/readback/$file" --only-show-errors
+          done
+          (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
+          echo "Encrypted B2 upload and read-back verified."
+          echo "Object prefix: s3://$B2_BUCKET/$PREFIX"
+
+      - name: Decrypt, verify plaintext checksums and restore both databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-b2"
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          cd "$WORK/readback"
+          age -d -i "$WORK/age-identity.txt" -o main.dump main.dump.age
+          age -d -i "$WORK/age-identity.txt" -o store.dump store.dump.age
+          age -d -i "$WORK/age-identity.txt" -o manifest.txt manifest.txt.age
+          sha256sum -c <(grep -E ' (main|store)\.dump$' manifest.txt)
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          docker cp main.dump "$CID:/tmp/main.restore.dump"
+          docker cp store.dump "$CID:/tmp/store.restore.dump"
+          docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" createdb -h 127.0.0.1 -U restore main_restore
+          docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" createdb -h 127.0.0.1 -U restore store_restore
+          docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d main_restore /tmp/main.restore.dump
+          docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d store_restore /tmp/store.restore.dump
+          main_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d main_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          store_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d store_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          test "$main_count" -gt 0
+          test "$store_count" -gt 0
+          echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
+          echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
