@@ -140,11 +140,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(workflow).toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
     expect(workflow).toContain("bun run test:workerd");
     expect(ci).toContain("prisma-workerd-runtime-proof:");
-    expect(ci).toContain("github.event.pull_request.head.ref == 'infra/prisma6-cloudflare-runtime'");
-    expect(ci).toContain("environment: preview-backup");
-    expect(ci).toContain("secrets.MAIN_PREVIEW_DATABASE_URL");
-    expect(ci).toContain("secrets.STORE_PREVIEW_DATABASE_URL");
-    expect(ci).not.toContain("HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF");
+    expect(ci).toContain("HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF");
     expect(ci).toContain("prisma-workerd-smoke:");
     expect(ci).toContain("HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY");
   });
