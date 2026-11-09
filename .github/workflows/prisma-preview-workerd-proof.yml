@@ -1,9 +1,6 @@
 name: Prisma Preview Workerd Runtime Proof
 
 on:
-  push:
-    branches:
-      - infra/prisma6-cloudflare-runtime
   workflow_dispatch:
     inputs:
       confirm_preview_only:
