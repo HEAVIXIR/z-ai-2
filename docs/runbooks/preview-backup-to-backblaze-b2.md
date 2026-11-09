@@ -33,7 +33,9 @@ designated bucket.
 
 Before dumping, the workflow:
 1. Verifies the exact branch, triggering commit, explicit Preview-only input, and
-   protected environment values.
+   protected environment values. Before any database dump, it derives the public age
+   recipient from the private identity and requires an exact match; the temporary
+   identity file is removed when the validation step exits.
 2. Requires the exact B2 endpoint `s3.us-east-005.backblazeb2.com` and bucket
    `heavix-db-backups`; no other bucket is accepted.
 3. Connects with PostgreSQL TLS `verify-full` and checks the exact previously
