@@ -85,11 +85,13 @@ export async function GET() {
 
   try {
     const zai = await ZAI.create();
+    // AI receives only seller-owned, non-identifying lead context.
+    // Buyer phone numbers and free-text notes are excluded: notes can
+    // contain contact details or other personal data even when the
+    // structured phone field is removed.
     const leadSummary = leads.slice(0, 10).map((l) => ({
       type: l.leadType,
       listing: l.listing?.title,
-      note: l.note,
-      viewerPhone: l.viewerPhone,
     }));
     const offerSummary = offers.slice(0, 5).map((o) => ({
       amount: o.offerAmount?.toString(),
