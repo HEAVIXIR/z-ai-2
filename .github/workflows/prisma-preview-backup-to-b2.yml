@@ -141,34 +141,57 @@ jobs:
           test -n "$CID"
           SQL="SELECT current_setting('transaction_read_only') = 'on' AND current_setting('default_transaction_read_only') = 'on' AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolbypassrls AND NOT has_database_privilege(current_user,current_database(),'CREATE') AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND (has_schema_privilege(current_user,n.oid,'CREATE') OR NOT has_schema_privilege(current_user,n.oid,'USAGE'))) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f') AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_table_privilege(current_user,c.oid,'SELECT')) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_sequence_privilege(current_user,c.oid,'SELECT')) FROM pg_roles r WHERE r.rolname=current_user"
           run_preview_sql() {
-            local label="$1"; local url="$2"; local sql="$3"
+            local label="$1"; local url="$2"; local sql="$3"; local result_file="$4"; local rc
             test -n "$url" || { echo "$label Preview connection URL missing on runner."; return 1; }
             case "$url" in postgres://*|postgresql://*) ;; *) echo "$label Preview connection URL has an unsupported scheme."; return 1 ;; esac
-            local output rc
-            if output="$(docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$url" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu '
+            if docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$url" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu '
               test -n "${HEAVIX_PREVIEW_DATABASE_URL:-}" || { echo "Preview connection URL was not delivered to PostgreSQL client container."; exit 64; }
               case "$HEAVIX_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Preview connection URL scheme invalid inside PostgreSQL client container."; exit 64 ;; esac
               exec psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"
-            ' 2>&1)"; then
-              printf '%s\n' "$output"
+            ' >"$result_file" 2>&1; then
+              return 0
             else
               rc=$?
-              echo "$label PostgreSQL client failed (exit $rc); diagnostic follows with connection URLs redacted:" >&2
-              printf '%s\n' "$output" | sed -E 's#(postgres(ql)?://)[^[:space:]"]+#\1[REDACTED]#g' >&2
+              echo "$label PostgreSQL client failed (exit $rc); diagnostic follows with connection URLs redacted:"
+              sed -E 's#(postgres(ql)?://)[^[:space:]"]+#\\1[REDACTED]#g' "$result_file"
               return "$rc"
             fi
           }
           verify_db() {
             local label="$1"; local url="$2"; local expected="$3"; local rc
+            local control_sql control_access actual safe result_file
+            result_file="$(mktemp "${RUNNER_TEMP:-/tmp}/heavix-preview-sql.XXXXXX")"
             control_sql="SELECT has_function_privilege(current_user, 'pg_catalog.pg_control_system()', 'EXECUTE')"
             echo "INFO: $label checking pg_control_system privilege."
-            control_access="$(run_preview_sql "$label" "$url" "$control_sql")" || { rc=$?; echo "$label run_preview_sql failed during pg_control_system privilege check (exit $rc)." >&2; return "$rc"; }
-            test "$control_access" = "t" || { echo "$label role cannot execute pg_control_system(); Preview identity check blocked."; return 1; }
+            if run_preview_sql "$label" "$url" "$control_sql" "$result_file"; then
+              control_access="$(cat "$result_file")"
+            else
+              rc=$?
+              echo "$label run_preview_sql failed during pg_control_system privilege check (exit $rc)."
+              rm -f "$result_file"
+              return "$rc"
+            fi
+            test "$control_access" = "t" || { echo "$label role cannot execute pg_control_system(); Preview identity check blocked."; rm -f "$result_file"; return 1; }
             echo "INFO: $label checking Preview system identifier."
-            actual="$(run_preview_sql "$label" "$url" "SELECT system_identifier FROM pg_control_system()")" || { rc=$?; echo "$label run_preview_sql failed during Preview system-identifier check (exit $rc)." >&2; return "$rc"; }
-            test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; return 1; }
+            if run_preview_sql "$label" "$url" "SELECT system_identifier FROM pg_control_system()" "$result_file"; then
+              actual="$(cat "$result_file")"
+            else
+              rc=$?
+              echo "$label run_preview_sql failed during Preview system-identifier check (exit $rc)."
+              rm -f "$result_file"
+              return "$rc"
+            fi
+            test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; rm -f "$result_file"; return 1; }
             echo "INFO: $label checking enforced read-only and least-privilege properties."
-            safe="$(run_preview_sql "$label" "$url" "$SQL")" || { rc=$?; echo "$label run_preview_sql failed during read-only/least-privilege check (exit $rc)." >&2; return "$rc"; }
+            if run_preview_sql "$label" "$url" "$SQL" "$result_file"; then
+              safe="$(cat "$result_file")"
+            else
+              rc=$?
+              echo "$label run_preview_sql failed during read-only/least-privilege check (exit $rc)."
+              rm -f "$result_file"
+              return "$rc"
+            fi
+            rm -f "$result_file"
             test "$safe" = "t" || { echo "$label role is not proven least-privilege/read-only. Backup blocked."; return 1; }
             echo "$label Preview identity, TLS and enforced read-only session checks passed."
           }
