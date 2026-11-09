@@ -120,8 +120,8 @@ jobs:
           WORK="$RUNNER_TEMP/heavix-b2"
           mkdir -m 700 -p "$WORK"
           trap 'rm -rf "$WORK"' EXIT
-          for pair in "main:$MAIN_PREVIEW_DATABASE_URL" "store:$STORE_PREVIEW_DATABASE_URL"; do
-            name="${pair%%:*}"; url="${pair#*:}"
+          for name in main store; do
+            if [ "$name" = "main" ]; then url="$MAIN_PREVIEW_DATABASE_URL"; else url="$STORE_PREVIEW_DATABASE_URL"; fi
             docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full "$CID" bash -ceu 'pg_dump --format=custom --no-owner --no-acl --dbname="$DB_URL" > /tmp/'"$name"'.dump'
             docker cp "$CID:/tmp/$name.dump" "$WORK/$name.dump"
             test -s "$WORK/$name.dump"
