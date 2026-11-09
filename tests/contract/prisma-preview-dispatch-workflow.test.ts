@@ -8,7 +8,9 @@ const workflow = readFileSync(
 );
 
 describe("Prisma Preview Workerd dispatch safety contract", () => {
-  it("requires explicit PREVIEW_ONLY dispatch confirmation", () => {
+  it("runs on exact proof-branch pushes and retains explicit PREVIEW_ONLY manual dispatch", () => {
+    expect(workflow).toContain("push:");
+    expect(workflow).toContain("- infra/prisma6-cloudflare-runtime");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("confirm_preview_only:");
     expect(workflow).toContain("required: true");
@@ -24,12 +26,16 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
   });
 
   it("requires both distinct Preview secrets without printing their values", () => {
+    expect(workflow).toContain("environment: preview-backup");
+    expect(workflow).toContain("secrets.MAIN_PREVIEW_DATABASE_URL");
+    expect(workflow).toContain("secrets.STORE_PREVIEW_DATABASE_URL");
     expect(workflow).toContain("HEAVIX_APP_PREVIEW_PPG_URL");
     expect(workflow).toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
     expect(workflow).toContain('test -n "$HEAVIX_APP_PREVIEW_PPG_URL"');
     expect(workflow).toContain('test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"');
     expect(workflow).toContain('test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"');
     expect(workflow).not.toMatch(/echo .*HEAVIX_(APP|STORE)_PREVIEW_PPG_URL/);
+    expect(workflow).not.toMatch(/echo .*MAIN_PREVIEW_DATABASE_URL|echo .*STORE_PREVIEW_DATABASE_URL/);
   });
 
   it("runs only the local Workerd proof and has no deployment or migration command", () => {
