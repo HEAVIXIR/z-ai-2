@@ -27,6 +27,9 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
+// These Store domains have dedicated transactional mutation APIs.
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers']);
+
 type Params = { params: Promise<{ resource: string; id: string }> };
 
 // PR-SC-00: resolve server-side tenant access context (mirrors [resource]/route.ts).
@@ -80,6 +83,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // ── PATCH: Update resource ─────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
+
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
@@ -156,6 +169,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // ── DELETE: Delete resource ───────────────────────────────
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
+
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 

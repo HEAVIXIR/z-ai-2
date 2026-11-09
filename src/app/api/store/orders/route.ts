@@ -3,6 +3,7 @@ import { storeDb } from "@/lib/store-db";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
 import { getStoreUserWithRole } from "@/lib/store-auth";
 import { checkCsrf } from "@/lib/csrf";
+import { decrementOrderStock, OrderStockConflictError } from "@/lib/store-order-stock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,12 +17,13 @@ export const dynamic = "force-dynamic";
      GET responses.
    - If the caller is a HEAVIX admin (heavix-admin cookie), GET
      returns ALL orders regardless of userId/phone.
-   - Phone-based lookup is kept for backwards compatibility (the
-     pre-login flow) so existing customers with no HEAVIX account
-     can still see their orders by phone.
+   - Every non-admin read requires an authenticated HEAVIX session.
+   - Phone lookup is allowed only when the requested phone matches the
+     authenticated user's registered mobile number. Guest orders can be
+     found only after that same account has authenticated.
 
-   GET  ?phone=X        → list this customer's orders by phone
-        ?userId=X       → list this user's orders by HEAVIX userId
+   GET  ?phone=X        → list orders for the authenticated user's mobile
+        ?userId=X       → list this user's orders by HEAVIX userId (owner only)
         ?mine=true      → list the current session user's orders
         (admin session) → list all orders
    POST body:           → create a new order from cart
@@ -39,8 +41,18 @@ function genOrderNumber(): string {
 }
 
 function serializeOrder(o: any) {
+  const safePart = (part: any) => part ? {
+    id: part.id,
+    name: part.name,
+    nameFa: part.nameFa,
+    sku: part.sku,
+    images: part.images,
+    active: part.active,
+  } : null;
   return {
-    ...o,
+    id: o.id,
+    orderNumber: o.orderNumber,
+    status: o.status,
     subtotalUsd: Number(o.subtotalUsd ?? 0),
     shippingUsd: Number(o.shippingUsd ?? 0),
     discountIrr: Number(o.discountIrr ?? 0),
@@ -48,29 +60,63 @@ function serializeOrder(o: any) {
     totalIrr: Number(o.totalIrr ?? 0),
     currencyRateAtOrder: Number(o.currencyRateAtOrder ?? 0),
     marginPercentAtOrder: Number(o.marginPercentAtOrder ?? 0),
+    couponCode: o.couponCode ?? null,
+    shippingAddress: o.shippingAddress ?? null,
+    notes: o.notes ?? null,
+    paymentStatus: o.paymentStatus,
     createdAt: o.createdAt?.toISOString?.() ?? null,
     updatedAt: o.updatedAt?.toISOString?.() ?? null,
+    customer: o.customer ? {
+      id: o.customer.id,
+      phone: o.customer.phone,
+      name: o.customer.name,
+      family: o.customer.family,
+      address: o.customer.address,
+      status: o.customer.status,
+    } : undefined,
     items: (o.items || []).map((it: any) => ({
-      ...it,
+      id: it.id,
+      partId: it.partId,
+      partNameSnapshot: it.partNameSnapshot,
+      quantity: it.quantity,
       unitPriceUsd: Number(it.unitPriceUsd ?? 0),
       unitPriceIrr: Number(it.unitPriceIrr ?? 0),
       lineTotalUsd: Number(it.lineTotalUsd ?? 0),
       lineTotalIrr: Number(it.lineTotalIrr ?? 0),
+      part: safePart(it.part),
     })),
     payments: (o.payments || []).map((p: any) => ({
-      ...p,
+      id: p.id,
       amountIrr: Number(p.amountIrr ?? 0),
       amountUsd: Number(p.amountUsd ?? 0),
+      method: p.method,
+      status: p.status,
+      receiptImageUrl: p.receiptImageUrl ?? null,
+      referenceCode: p.referenceCode ?? null,
+      payerName: p.payerName ?? null,
+      note: p.note ?? null,
+      gateway: p.gateway ?? null,
+      gatewayUrl: p.gatewayUrl ?? null,
       createdAt: p.createdAt?.toISOString?.() ?? null,
       reviewedAt: p.reviewedAt?.toISOString?.() ?? null,
     })),
-    shipment: o.shipment
-      ? {
-          ...o.shipment,
-          shippedAt: o.shipment.shippedAt?.toISOString?.() ?? null,
-          deliveredAt: o.shipment.deliveredAt?.toISOString?.() ?? null,
-        }
-      : null,
+    shipment: o.shipment ? {
+      id: o.shipment.id,
+      carrier: o.shipment.carrier,
+      trackingCode: o.shipment.trackingCode ?? null,
+      status: o.shipment.status,
+      shippedAt: o.shipment.shippedAt?.toISOString?.() ?? null,
+      deliveredAt: o.shipment.deliveredAt?.toISOString?.() ?? null,
+      pickupDate: o.shipment.pickupDate?.toISOString?.() ?? null,
+      note: o.shipment.note ?? null,
+    } : null,
+    mechanic: o.mechanic ? {
+      id: o.mechanic.id,
+      name: o.mechanic.name,
+      family: o.mechanic.family,
+      shopName: o.mechanic.shopName,
+      phone: o.mechanic.phone,
+    } : null,
   };
 }
 
@@ -99,8 +145,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: orders.map(serializeOrder), admin: true });
     }
 
-    // ?mine=true → use the session user's id.
-    if (mine && sessionUser?.id) {
+    // All customer-facing order reads require a real authenticated session.
+    // Admin access was handled above; never let an anonymous caller select
+    // another user's orders by supplying a userId or phone query parameter.
+    if (!sessionUser) {
+      return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
+
+    // ?mine=true → use the authenticated session user's id.
+    if (mine) {
       const orders = await storeDb.order.findMany({
         where: { userId: sessionUser.id },
         orderBy: { createdAt: "desc" },
@@ -117,8 +170,8 @@ export async function GET(req: Request) {
 
     // Explicit userId filter (e.g. from the HEAVIX dashboard).
     if (userIdParam) {
-      // Only allow the user to query their own orders (or admin, handled above).
-      if (sessionUser && sessionUser.id !== userIdParam) {
+      // A caller-supplied userId is never an authentication credential.
+      if (sessionUser.id !== userIdParam) {
         return NextResponse.json({ error: "غیرمجاز" }, { status: 403 });
       }
       const orders = await storeDb.order.findMany({
@@ -135,9 +188,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: orders.map(serializeOrder) });
     }
 
-    // Backwards-compat phone lookup.
+    // Phone is a lookup key, not a secret. It is accepted only when it
+    // exactly matches the authenticated account's registered mobile.
     if (!phone || phone.length < 8) {
       return NextResponse.json({ orders: [] });
+    }
+    if (!sessionUser.mobileVerified || !sessionUser.mobile || phone !== sessionUser.mobile) {
+      return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
     const customer = await storeDb.customer.findUnique({ where: { phone } });
@@ -145,14 +202,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: [] });
     }
 
-    // Scope by userId too when available so a logged-in user doesn't
-    // see orders placed under the same phone by a different account.
-    const where = sessionUser?.id
-      ? { customerId: customer.id, userId: sessionUser.id }
-      : { customerId: customer.id };
-
+    // A verified authenticated mobile is the ownership proof for guest
+    // orders created before account linking. An unverified profile value
+    // must never authorize access to phone-linked customer records.
     const orders = await storeDb.order.findMany({
-      where,
+      where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {
@@ -324,15 +378,15 @@ export async function POST(req: Request) {
         },
       });
 
-      // decrement stock + increment soldCount per part
-      for (const it of orderItemsData) {
-        await tx.part.update({
-          where: { id: it.partId },
-          data: {
-            stock: { decrement: it.quantity },
-            soldCount: { increment: it.quantity },
-          },
-        });
+      // The preflight stock read above is advisory only. This conditional
+      // update is authoritative under concurrent checkouts; a conflict throws
+      // inside the transaction and rolls back the order and all side effects.
+      // Acquire Part locks in one global order for multi-line carts. This
+      // prevents two checkouts containing the same parts in opposite cart
+      // order from deadlocking before the per-Part warehouse allocation.
+      const stockLines = [...orderItemsData].sort((a, b) => a.partId.localeCompare(b.partId));
+      for (const it of stockLines) {
+        await decrementOrderStock(tx, it.partId, it.quantity, o.id, sessionUser?.id ?? null);
       }
 
       // bump coupon usage
@@ -363,6 +417,12 @@ export async function POST(req: Request) {
       linkedToUser: !!sessionUser?.id,
     });
   } catch (e: any) {
+    if (e instanceof OrderStockConflictError) {
+      return NextResponse.json(
+        { error: "موجودی یکی از قطعات تغییر کرده یا کافی نیست؛ سبد خرید را به‌روزرسانی کنید" },
+        { status: 409 },
+      );
+    }
     console.error("[api/store/orders POST] error:", e);
     return NextResponse.json(
       { error: e?.message ?? "Internal error" },

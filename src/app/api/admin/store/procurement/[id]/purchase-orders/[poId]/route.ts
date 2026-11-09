@@ -53,9 +53,15 @@ export async function GET(
       { status: 403 },
     );
   }
-  const { poId } = await params;
+  const { id: procurementId, poId } = await params;
   try {
     const po = await getPurchaseOrder(poId);
+    if (po.procurementId !== procurementId) {
+      return NextResponse.json(
+        { success: false, error: "سفارش خرید یافت نشد" },
+        { status: 404 },
+      );
+    }
     return NextResponse.json({ success: true, data: po });
   } catch (e: any) {
     return toErrorResponse(e);
@@ -84,7 +90,7 @@ export async function PATCH(
       { status: 403 },
     );
   }
-  const { poId } = await params;
+  const { id: procurementId, poId } = await params;
   try {
     const body = await req.json();
     const { action, reason } = body;
@@ -94,6 +100,11 @@ export async function PATCH(
         { success: false, error: "action الزامی است (submit | approve | cancel)" },
         { status: 400 },
       );
+    }
+
+    const existing = await getPurchaseOrder(poId);
+    if (existing.procurementId !== procurementId) {
+      return NextResponse.json({ success: false, error: "سفارش خرید یافت نشد" }, { status: 404 });
     }
 
     let po;

@@ -1,5 +1,6 @@
 // @ts-nocheck — HEAVIX Legacy: Owner=Migration, Scope=OldAdmin, Ticket=STEP-14.6-LEGACY
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, formatCompactPrice } from "@/lib/format";
 import {
   TrendingUp,
@@ -120,7 +121,7 @@ export default async function PriceIntelligencePage({
     categoryName: string | null;
   };
 
-  const listingWhere: any = { status: "PUBLISHED", price: { not: null } };
+  const listingWhere: any = { ...getPublicListingWhere(), price: { not: null } };
   if (categoryFilter) listingWhere.categoryId = categoryFilter;
   if (brandFilter) listingWhere.brandId = brandFilter;
   if (yearFilter && Number.isFinite(yearFilter)) listingWhere.year = yearFilter;

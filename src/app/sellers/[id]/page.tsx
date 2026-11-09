@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -33,7 +34,7 @@ export default async function SellerProfilePage({
       include: {
         company: { select: { id: true, name: true, slug: true, logoUrl: true, verified: true } },
         _count: {
-          select: { listings: { where: { status: "PUBLISHED" } } },
+          select: { listings: { where: getPublicListingWhere() } },
         },
       },
     }),
@@ -47,7 +48,7 @@ export default async function SellerProfilePage({
   if (!seller) notFound();
 
   const listings = await db.listing.findMany({
-    where: { sellerId: seller.id, status: "PUBLISHED" },
+    where: { ...getPublicListingWhere(), sellerId: seller.id },
     orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
     take: 12,
     include: {

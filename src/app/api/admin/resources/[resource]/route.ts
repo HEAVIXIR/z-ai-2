@@ -45,6 +45,9 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
+// These Store domains have dedicated transactional mutation APIs.
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers']);
+
 type Params = { params: Promise<{ resource: string }> };
 
 // PR-SC-00: resolve the server-side tenant access context. The userId is
@@ -138,6 +141,16 @@ export async function GET(req: NextRequest, { params }: Params) {
 // ── POST: Create resource ──────────────────────────────────
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
+
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
 
   const config = registry.get(resourceKey);
   if (!config) {

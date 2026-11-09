@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Listing, UserRecommendation } from "@prisma/client";
+import { getPublicListingWhere, isPublicListingActive } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Recommendation Engine (P2-24)
@@ -109,6 +110,7 @@ export async function generateRecommendations(
           categoryId: true,
           brandId: true,
           status: true,
+          expiresAt: true,
         },
       },
     },
@@ -122,7 +124,7 @@ export async function generateRecommendations(
   const brandAffinity = new Map<string, number>(); // brandId → weight
 
   for (const f of favorites) {
-    if (!f.listing) continue;
+    if (!f.listing || !isPublicListingActive(f.listing)) continue;
     watchedListingIds.add(f.listing.id);
     if (f.listing.categoryId) {
       categoryAffinity.set(
@@ -160,7 +162,7 @@ export async function generateRecommendations(
   if (categoryAffinity.size > 0 || brandAffinity.size > 0) {
     const watchedListings = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         id: { in: Array.from(watchedListingIds) },
       },
       select: { id: true, categoryId: true, brandId: true },
@@ -173,7 +175,7 @@ export async function generateRecommendations(
 
       const similar = await db.listing.findMany({
         where: {
-          status: "PUBLISHED",
+          ...getPublicListingWhere(),
           id: { notIn: excludeIds },
           OR: [
             ...(wl.categoryId ? [{ categoryId: wl.categoryId }] : []),
@@ -222,7 +224,7 @@ export async function generateRecommendations(
     const newCutoff = new Date(Date.now() - NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const freshInWatchedCats = await db.listing.findMany({
       where: {
-        status: "PUBLISHED",
+        ...getPublicListingWhere(),
         id: { notIn: excludeIds },
         categoryId: { in: Array.from(categoryAffinity.keys()) },
         createdAt: { gte: newCutoff },
@@ -257,7 +259,7 @@ export async function generateRecommendations(
   );
   const trending = await db.listing.findMany({
     where: {
-      status: "PUBLISHED",
+      ...getPublicListingWhere(),
       id: { notIn: excludeIds },
       // Use createdAt as the trending window (older listings with
       // high viewCount aren't really "trending" anymore).
@@ -281,7 +283,7 @@ export async function generateRecommendations(
   // fall back to all-time trending + newest published listings.
   if (candidates.size === 0) {
     const fallback = await db.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: getPublicListingWhere(),
       orderBy: [{ featured: "desc" }, { viewCount: "desc" }],
       take: TRENDING_LIMIT,
       select: { id: true, viewCount: true },
@@ -334,7 +336,7 @@ export async function generateRecommendations(
   // but without the Listing join (callers wanting the listings
   // should call `getRecommendations`).
   return db.userRecommendation.findMany({
-    where: { userId, dismissed: false },
+    where: { userId, dismissed: false, listing: { is: getPublicListingWhere() } },
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
     take: Math.max(1, limit),
   });
@@ -369,7 +371,7 @@ export async function getRecommendations(
     await generateRecommendations(userId, limit);
   }
   const rows = await db.userRecommendation.findMany({
-    where: { userId, dismissed: false },
+    where: { userId, dismissed: false, listing: { is: getPublicListingWhere() } },
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
     take: Math.max(1, limit),
     include: {

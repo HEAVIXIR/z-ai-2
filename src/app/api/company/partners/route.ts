@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
           partner: {
             select: {
               id: true, name: true, slug: true, logoUrl: true, city: true, province: true, verified: true,
-              _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+              _count: { select: { listings: { where: getPublicListingWhere() } } },
             },
           },
         },
@@ -81,7 +82,7 @@ export async function GET(req: Request) {
           company: {
             select: {
               id: true, name: true, slug: true, logoUrl: true, city: true, province: true, verified: true,
-              _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+              _count: { select: { listings: { where: getPublicListingWhere() } } },
             },
           },
         },

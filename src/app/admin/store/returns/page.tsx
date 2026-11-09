@@ -224,8 +224,9 @@ export default async function StoreReturnsPage({
                     <td className="px-3 py-3 font-mono text-[11px] font-bold text-zinc-900">
                       {r.order ? (
                         <Link
-                          href={`/admin/store/orders`}
+                          href={`/admin/store/returns/${r.id}`}
                           className="hover:text-[#F58220]"
+                          aria-label={`رسیدگی به مرجوعی سفارش ${r.order.orderNumber}`}
                         >
                           {r.order.orderNumber}
                         </Link>

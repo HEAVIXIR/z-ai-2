@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import PreviewDataUnavailable from "@/components/preview/PreviewDataUnavailable";
 
 export const metadata: Metadata = {
   title: "بازار ماشین‌آلات سنگین — خرید، فروش و اجاره",
@@ -8,6 +9,7 @@ export const metadata: Metadata = {
   openGraph: { title: "بازار ماشین‌آلات سنگین — هویکس", description: "جستجوی آگهی‌های ماشین‌آلات سنگین در سراسر ایران.", type: "website", locale: "fa_IR" },
 };
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -52,6 +54,20 @@ export default async function ListingsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+
+  if (
+    process.env.HEAVIX_ENV === "preview" &&
+    !/^postgres(?:ql)?:\/\//i.test(process.env.DATABASE_URL ?? "")
+  ) {
+    return (
+      <PreviewDataUnavailable
+        title="آگهی‌ها فعلاً در دسترس نیستند"
+        description="اتصال دیتابیس محیط پیش‌نمایش هنوز تکمیل نشده است. صفحه و مسیرهای اصلی سایت در حال بررسی هستند و داده‌های این بخش پس از تنظیم اتصال امن Preview نمایش داده می‌شوند."
+        retryHref="/listings"
+      />
+    );
+  }
+
 
   // Build the search URL string for the SavedSearchButton
   const searchUrl = (() => {
@@ -201,7 +217,7 @@ export default async function ListingsPage({
     catalogCategories.filter((c) => c.parentId === id);
 
   /* Build where clause */
-  const where: Record<string, unknown> = { status: "PUBLISHED" };
+  const where: Record<string, unknown> = { ...getPublicListingWhere() };
 
   if (sp.q) {
     where.OR = [

@@ -581,10 +581,10 @@ model ProcurementRequest {
 // partial `received` counter for split shipments). When all items are fully
 // received the PO auto-flips to RECEIVED + receivedAt is stamped.
 //
-// `approvedBy` / `approvedAt` capture the 3-way separation of duty: the
-// submitter ≠ the approver (approvePurchaseOrder enforces this by recording
-// the approver's userId distinct from the submitter, but we don't hard-refuse
-// same-user approve — that's a UI policy, not a data invariant).
+// `submittedBy` records the user who submitted the PO; `approvedBy` /
+// `approvedAt` record the separate approver. New submissions enforce that
+// the submitter and approver are different identities. Legacy submitted POs
+// may have submittedBy = NULL until they are re-submitted.
 // ---------------------------------------------------------------------------
 model PurchaseOrder {
   id              String   @id @default(cuid())
@@ -596,6 +596,7 @@ model PurchaseOrder {
   totalAmount     Float?
   currency        String   @default("USD")
   notes           String?
+  submittedBy     String?
   approvedBy      String?
   approvedAt      DateTime?
   receivedAt      DateTime?

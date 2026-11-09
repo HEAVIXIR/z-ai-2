@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { toFa } from "@/lib/format";
 import {
   getHotCategories,
@@ -25,7 +26,7 @@ export default async function MarketInsightsPage() {
   const allCategories = await db.category.findMany({
     where: { active: true, layer: "CATALOG" },
     orderBy: [{ sortOrder: "asc" }],
-    include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
+    include: { _count: { select: { listings: { where: getPublicListingWhere() } } } },
   });
   const categories = allCategories.map((c) => ({
     id: c.id,

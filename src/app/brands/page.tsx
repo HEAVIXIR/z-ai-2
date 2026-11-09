@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import PreviewDataUnavailable from "@/components/preview/PreviewDataUnavailable";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 export const metadata: Metadata = {
-  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو | هویکس",
+  title: "برندهای ماشین‌آلات سنگین — کاترپیلار، کوماتسو، ولوو",
   description: "فهرست کامل برندهای ماشین‌آلات سنگین: کاترپیلار، کوماتسو، ولوو، هیوندای، جی‌سی‌بی و دیگران. آگهی‌های هر برند را مرور کنید.",
   alternates: { canonical: "/brands" },
   openGraph: { title: "برندهای ماشین‌آلات سنگین | هویکس", description: "فهرست کامل برندهای ماشین‌آلات سنگین.", type: "website", locale: "fa_IR" },
@@ -50,6 +52,20 @@ export default async function BrandsDirectoryPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+
+  if (
+    process.env.HEAVIX_ENV === "preview" &&
+    !/^postgres(?:ql)?:\/\//i.test(process.env.DATABASE_URL ?? "")
+  ) {
+    return (
+      <PreviewDataUnavailable
+        title="فهرست برندها فعلاً در دسترس نیست"
+        description="اتصال دیتابیس محیط پیش‌نمایش هنوز تکمیل نشده است. صفحه و مسیرهای اصلی سایت در حال بررسی هستند و داده‌های این بخش پس از تنظیم اتصال امن Preview نمایش داده می‌شوند."
+        retryHref="/brands"
+      />
+    );
+  }
+
   const industryFilter =
     typeof sp.industry === "string" ? sp.industry : undefined;
   const countryFilter =
@@ -77,7 +93,7 @@ export default async function BrandsDirectoryPage({
         status: true,
         verification: true,
         featured: true,
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
     db.industry.findMany({

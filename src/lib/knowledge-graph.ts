@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — Knowledge Graph (P2-21)
@@ -343,7 +344,7 @@ async function fetchBrandLayer(brandId: string): Promise<FetchedLayer> {
 
   // Listings
   const listings = await db.listing.findMany({
-    where: { brandId, status: "PUBLISHED" },
+    where: { brandId, ...getPublicListingWhere() },
     select: {
       id: true,
       title: true,
@@ -442,7 +443,7 @@ async function fetchModelLayer(modelId: string): Promise<FetchedLayer> {
 
   // Listings under this model
   const listings = await db.listing.findMany({
-    where: { modelId, status: "PUBLISHED" },
+    where: { modelId, ...getPublicListingWhere() },
     select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     take: 30,
   });
@@ -577,7 +578,7 @@ async function fetchProductLayer(productId: string): Promise<FetchedLayer> {
 
   // Listings attached to this product
   const listings = await db.listing.findMany({
-    where: { productId, status: "PUBLISHED" },
+    where: { productId, ...getPublicListingWhere() },
     select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     take: 20,
   });
@@ -658,7 +659,7 @@ async function fetchCategoryLayer(categoryId: string): Promise<FetchedLayer> {
 
   // Listings in this category
   const listings = await db.listing.findMany({
-    where: { categoryId, status: "PUBLISHED" },
+    where: { categoryId, ...getPublicListingWhere() },
     select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     take: 50,
   });
@@ -697,7 +698,7 @@ async function fetchCategoryLayer(categoryId: string): Promise<FetchedLayer> {
 
 async function fetchListingLayer(listingId: string): Promise<FetchedLayer> {
   const listing = await db.listing.findUnique({
-    where: { id: listingId },
+    where: { id: listingId, ...getPublicListingWhere() },
     select: {
       id: true,
       title: true,
@@ -811,7 +812,7 @@ async function fetchCompanyLayer(companyId: string): Promise<FetchedLayer> {
   const edges: GraphEdge[] = [];
 
   const listings = await db.listing.findMany({
-    where: { companyId, status: "PUBLISHED" },
+    where: { companyId, ...getPublicListingWhere() },
     select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     take: 30,
   });
@@ -863,7 +864,7 @@ async function fetchMachineLayer(machineId: string): Promise<FetchedLayer> {
   }
   if (machine.listingId) {
     const l = await db.listing.findUnique({
-      where: { id: machine.listingId },
+      where: { id: machine.listingId, ...getPublicListingWhere() },
       select: { id: true, title: true, slug: true, price: true, year: true, status: true },
     });
     if (l) {
@@ -1043,7 +1044,7 @@ async function loadMinimalNode(
       }
       case "Listing": {
         const l = await db.listing.findUnique({
-          where: { id },
+          where: { id, ...getPublicListingWhere() },
           select: { id: true, title: true, slug: true, price: true, year: true, status: true },
         });
         return l ? listingNode(l) : null;
@@ -1256,7 +1257,7 @@ export async function getBrandGraph(brandId: string): Promise<BrandGraph> {
       orderBy: { canonicalName: "asc" },
     }),
     db.listing.findMany({
-      where: { brandId, status: "PUBLISHED" },
+      where: { brandId, ...getPublicListingWhere() },
       select: { id: true, title: true, slug: true, price: true, year: true },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -1441,7 +1442,7 @@ export async function getCategoryGraph(categoryId: string): Promise<CategoryGrap
       take: 100,
     }),
     db.listing.findMany({
-      where: { categoryId, status: "PUBLISHED" },
+      where: { categoryId, ...getPublicListingWhere() },
       select: { id: true, title: true, slug: true, price: true, year: true },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -1630,7 +1631,7 @@ export async function getProductGraph(productId: string): Promise<ProductGraph> 
       take: 30,
     }),
     db.listing.findMany({
-      where: { productId, status: "PUBLISHED" },
+      where: { productId, ...getPublicListingWhere() },
       select: { id: true, title: true, slug: true, price: true, year: true },
       orderBy: { createdAt: "desc" },
       take: 50,

@@ -17,6 +17,7 @@
    ============================================================ */
 
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import type { SEOMetadata } from "@prisma/client";
 import {
   getSEO as fetchSEO,
@@ -225,7 +226,7 @@ export async function generateSitemap(): Promise<string> {
       .catch(() => []),
     db.listing
       .findMany({
-        where: { status: "PUBLISHED" },
+        where: getPublicListingWhere(),
         select: { id: true, slug: true, updatedAt: true },
       })
       .catch(() => []),

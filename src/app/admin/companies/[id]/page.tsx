@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Building2 } from "lucide-react";
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import CompanyDetailClient from "./CompanyDetailClient";
 import PartnershipSection from "./PartnershipSection";
 
@@ -68,7 +69,7 @@ export default async function AdminCompanyDetailPage({ params }: Args) {
           partner: {
             select: {
               id: true, name: true, slug: true, logoUrl: true, city: true, province: true, verified: true,
-              _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+              _count: { select: { listings: { where: getPublicListingWhere() } } },
             },
           },
         },
@@ -80,7 +81,7 @@ export default async function AdminCompanyDetailPage({ params }: Args) {
           company: {
             select: {
               id: true, name: true, slug: true, logoUrl: true, city: true, province: true, verified: true,
-              _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+              _count: { select: { listings: { where: getPublicListingWhere() } } },
             },
           },
         },

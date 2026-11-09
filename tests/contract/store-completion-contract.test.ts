@@ -221,13 +221,13 @@ describe('Store Completion Matrix — 13 Resources', () => {
         // before/after fields and canonical action keys) are the
         // single source of truth. This test now verifies the audit
         // invariant by checking the COMBINED route + service code.
-        const hasInlineAudit = !!allCode.match(/logAudit|auditMutation|auditCreate|auditDelete/);
+        const hasInlineAudit = !!allCode.match(/logAudit|auditMutation|auditCreate|auditDelete|enqueueAuditOutbox/);
         let hasServiceAudit = false;
         if (r.serviceFile) {
           const servicePath = `src/lib/${r.serviceFile}.ts`;
           if (fileExists(servicePath)) {
             const serviceCode = readFile(servicePath);
-            hasServiceAudit = !!serviceCode.match(/logAudit|auditMutation|auditCreate|auditDelete/);
+            hasServiceAudit = !!serviceCode.match(/logAudit|auditMutation|auditCreate|auditDelete|enqueueAuditOutbox/);
           }
         }
         expect(hasInlineAudit || hasServiceAudit).toBe(true);

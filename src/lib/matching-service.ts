@@ -38,6 +38,7 @@
  */
 
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logAudit } from "@/lib/audit";
 import { matchRequestToListings } from "@/lib/ai-matching";
 
@@ -325,8 +326,8 @@ export async function matchRFQ(
 
     // Find published listings with this brandId OR matching the
     // machineType in the title (best-effort text match).
-    const listingWhere: { status: string; OR?: unknown[] } = {
-      status: "PUBLISHED",
+    const listingWhere: { status: string; AND?: ReturnType<typeof getPublicListingWhere>["AND"]; OR?: unknown[] } = {
+      ...getPublicListingWhere(),
     };
     const orClauses: unknown[] = [];
     if (brandId) orClauses.push({ brandId });

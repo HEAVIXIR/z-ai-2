@@ -42,7 +42,7 @@
  */
 
 import { storeDb } from '@/lib/store-db';
-import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Constants ──────────────────────────────────────────────
 const ALLOWED_PO_STATUSES = [
@@ -126,130 +126,115 @@ export async function createPurchaseOrder(
   userId?: string | null,
   options: { notes?: string | null; currency?: string } = {},
 ): Promise<any> {
-  if (!procurementId) {
-    throw new ProcurementServiceError(400, 'procurementId الزامی است');
-  }
+  if (!procurementId) throw new ProcurementServiceError(400, 'procurementId الزامی است');
   if (!Array.isArray(items) || items.length === 0) {
     throw new ProcurementServiceError(400, 'حداقل یک آیتم سفارش الزامی است');
   }
 
-  // Validate item shape + dedupe partIds in parallel with procurement lookup.
   const seenPartIds = new Set<string>();
   const normalizedItems: { partId: string; quantity: number; unitPrice: number }[] = [];
   for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it || !it.partId) {
-      throw new ProcurementServiceError(
-        400,
-        `آیتم ${i + 1}: partId الزامی است`,
-      );
+    const item = items[i];
+    if (!item || typeof item.partId !== 'string' || !item.partId.trim()) {
+      throw new ProcurementServiceError(400, `آیتم ${i + 1}: partId الزامی است`);
     }
-    const qty = Number(it.quantity);
-    if (!Number.isInteger(qty) || qty <= 0) {
-      throw new ProcurementServiceError(
-        400,
-        `آیتم ${i + 1}: تعداد باید عدد صحیح مثبت باشد`,
-      );
+    const quantity = Number(item.quantity);
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+      throw new ProcurementServiceError(400, `آیتم ${i + 1}: تعداد باید عدد صحیح مثبت باشد`);
     }
-    const price = Number(it.unitPrice);
-    if (!Number.isFinite(price) || price < 0) {
-      throw new ProcurementServiceError(
-        400,
-        `آیتم ${i + 1}: قیمت واحد نامعتبر است`,
-      );
+    const unitPrice = Number(item.unitPrice);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new ProcurementServiceError(400, `آیتم ${i + 1}: قیمت واحد نامعتبر است`);
     }
-    if (seenPartIds.has(it.partId)) {
-      throw new ProcurementServiceError(
-        409,
-        `قطعه تکراری در آیتم‌ها: ${it.partId} (یک خط به ازای هر قطعه)`,
-      );
+    if (seenPartIds.has(item.partId)) {
+      throw new ProcurementServiceError(409, `قطعه تکراری در آیتم‌ها: ${item.partId}`);
     }
-    seenPartIds.add(it.partId);
-    normalizedItems.push({ partId: it.partId, quantity: qty, unitPrice: price });
+    seenPartIds.add(item.partId);
+    normalizedItems.push({ partId: item.partId, quantity, unitPrice });
   }
 
-  // Look up the procurement + supplier + verify all parts exist.
-  const [procurement, supplier] = await Promise.all([
-    storeDb.procurementRequest.findUnique({ where: { id: procurementId } }),
-    supplierId
-      ? storeDb.supplier.findUnique({ where: { id: supplierId } })
-      : Promise.resolve(null),
-  ]);
-  if (!procurement) {
-    throw new ProcurementServiceError(404, 'مناقصه یافت نشد');
-  }
-  if (supplierId && !supplier) {
-    throw new ProcurementServiceError(404, 'تأمین‌کننده یافت نشد');
-  }
+  try {
+    const po = await storeDb.$transaction(async (tx) => {
+      const procurement = await tx.procurementRequest.findUnique({
+        where: { id: procurementId },
+        select: { id: true, status: true, supplierId: true },
+      });
+      if (!procurement) throw new ProcurementServiceError(404, 'مناقصه یافت نشد');
+      if (procurement.status !== 'AWARDED') {
+        throw new ProcurementServiceError(409, 'ایجاد سفارش خرید فقط برای مناقصه واگذارشده مجاز است');
+      }
+      if (procurement.supplierId && supplierId && procurement.supplierId !== supplierId) {
+        throw new ProcurementServiceError(409, 'تأمین‌کننده سفارش با تأمین‌کننده برنده مناقصه مطابقت ندارد');
+      }
+      const effectiveSupplierId = supplierId || procurement.supplierId || null;
+      const [supplier, parts] = await Promise.all([
+        effectiveSupplierId
+          ? tx.supplier.findUnique({
+              where: { id: effectiveSupplierId },
+              select: { id: true, active: true },
+            })
+          : Promise.resolve(null),
+        tx.part.findMany({
+          where: { id: { in: normalizedItems.map((item) => item.partId) } },
+          select: { id: true },
+        }),
+      ]);
+      if (effectiveSupplierId && !supplier) {
+        throw new ProcurementServiceError(404, 'تأمین‌کننده یافت نشد');
+      }
+      if (effectiveSupplierId && supplier && !supplier.active) {
+        throw new ProcurementServiceError(409, 'تأمین‌کننده غیرفعال قابل انتخاب برای سفارش خرید نیست');
+      }
+      const foundPartIds = new Set(parts.map((part) => part.id));
+      for (const item of normalizedItems) {
+        if (!foundPartIds.has(item.partId)) {
+          throw new ProcurementServiceError(404, `قطعه یافت نشد: ${item.partId}`);
+        }
+      }
 
-  // Verify every partId references an existing Part. SQLite + Prisma doesn't
-  // support a batched findUnique for non-id fields; we use findMany + a Set.
-  const parts = await storeDb.part.findMany({
-    where: { id: { in: normalizedItems.map(i => i.partId) } },
-    select: { id: true, name: true, sku: true, priceUsd: true },
-  });
-  const foundPartIds = new Set(parts.map((p: any) => p.id));
-  for (const it of normalizedItems) {
-    if (!foundPartIds.has(it.partId)) {
-      throw new ProcurementServiceError(
-        404,
-        `قطعه یافت نشد: ${it.partId}`,
-      );
-    }
-  }
-
-  // Compute totalAmount = Σ (quantity × unitPrice).
-  const totalAmount = normalizedItems.reduce(
-    (sum, it) => sum + it.quantity * it.unitPrice,
-    0,
-  );
-
-  // Create the PO + nested items in a single round-trip (Prisma nested write).
-  const po = await storeDb.purchaseOrder.create({
-    data: {
-      procurementId,
-      supplierId: supplierId || null,
-      status: 'DRAFT',
-      totalAmount,
-      currency: options.currency || 'USD',
-      notes: options.notes || null,
-      items: {
-        create: normalizedItems.map(it => ({
-          partId: it.partId,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-        })),
-      },
-    },
-    include: {
-      items: {
-        include: {
-          part: { select: { id: true, name: true, nameFa: true, sku: true } },
+      const totalAmount = normalizedItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+      const created = await tx.purchaseOrder.create({
+        data: {
+          procurementId,
+          supplierId: effectiveSupplierId,
+          status: 'DRAFT',
+          totalAmount,
+          currency: options.currency || 'USD',
+          notes: options.notes || null,
+          items: { create: normalizedItems },
         },
-      },
-      supplier: { select: { id: true, name: true, nameFa: true } },
-      procurement: { select: { id: true, title: true } },
-    },
-  });
+        include: {
+          items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true } } } },
+          supplier: { select: { id: true, name: true, nameFa: true } },
+          procurement: { select: { id: true, title: true } },
+        },
+      });
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.create',
-    entityType: 'PurchaseOrder',
-    entityId: po.id,
-    after: {
-      procurementId,
-      supplierId: supplierId || null,
-      status: po.status,
-      totalAmount: po.totalAmount,
-      currency: po.currency,
-      notes: po.notes,
-      items: normalizedItems,
-    },
-  });
-
-  return serialize(po);
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.procurement.po.create',
+        entityType: 'PurchaseOrder',
+        entityId: created.id,
+        after: {
+          procurementId,
+          supplierId: supplierId || null,
+          status: created.status,
+          totalAmount: created.totalAmount,
+          currency: created.currency,
+          notes: created.notes,
+          items: normalizedItems,
+        },
+      });
+      return created;
+    }, { isolationLevel: 'Serializable' });
+    return serialize(po);
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new ProcurementServiceError(409, 'اطلاعات مناقصه یا سفارش هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+    }
+    throw err;
+  }
 }
 
 // ── submitPurchaseOrder ───────────────────────────────────
@@ -263,41 +248,42 @@ export async function submitPurchaseOrder(
   id: string,
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.purchaseOrder.findUnique({ where: { id } });
-  if (!existing) {
-    throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
+  if (!userId || !userId.trim()) {
+    throw new ProcurementServiceError(400, 'شناسه کاربر ارسال‌کننده سفارش الزامی است');
   }
-  if (existing.status !== 'DRAFT') {
-    throw new ProcurementServiceError(
-      400,
-      `سفارش خرید در وضعیت ${existing.status} قرار دارد و قابل ارسال نیست`,
-    );
-  }
-
-  const po = await storeDb.purchaseOrder.update({
-    where: { id },
-    data: { status: 'SUBMITTED' },
-    include: {
-      items: {
+  try {
+    const po = await storeDb.$transaction(async (tx) => {
+      const existing = await tx.purchaseOrder.findUnique({ where: { id } });
+      if (!existing) throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
+      if (existing.status !== 'DRAFT') {
+        throw new ProcurementServiceError(409, `سفارش خرید در وضعیت ${existing.status} قرار دارد و قابل ارسال نیست`);
+      }
+      const changed = await tx.purchaseOrder.updateMany({
+        where: { id, status: 'DRAFT' },
+        data: { status: 'SUBMITTED', submittedBy: userId },
+      });
+      if (changed.count !== 1) throw new ProcurementServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده است');
+      const updated = await tx.purchaseOrder.findUnique({
+        where: { id },
         include: {
-          part: { select: { id: true, name: true, nameFa: true, sku: true } },
+          items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true } } } },
+          supplier: { select: { id: true, name: true, nameFa: true } },
         },
-      },
-      supplier: { select: { id: true, name: true, nameFa: true } },
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.submit',
-    entityType: 'PurchaseOrder',
-    entityId: id,
-    before: { status: existing.status },
-    after: { status: po.status },
-  });
-
-  return serialize(po);
+      });
+      if (!updated) throw new ProcurementServiceError(404, 'سفارش خرید پس از ارسال یافت نشد');
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null, actorType: 'ADMIN',
+        action: 'store.procurement.po.submit', entityType: 'PurchaseOrder', entityId: id,
+        before: { status: existing.status, submittedBy: existing.submittedBy },
+        after: { status: updated.status, submittedBy: updated.submittedBy },
+      });
+      return updated;
+    }, { isolationLevel: 'Serializable' });
+    return serialize(po);
+  } catch (err: any) {
+    if (err?.code === 'P2034') throw new ProcurementServiceError(409, 'ارسال سفارش هم‌زمان تغییر کرده است؛ دوباره بارگذاری کنید');
+    throw err;
+  }
 }
 
 // ── approvePurchaseOrder ──────────────────────────────────
@@ -305,9 +291,10 @@ export async function submitPurchaseOrder(
  * Transition a PO from SUBMITTED → APPROVED. Records approverId +
  * approvedAt. Refuses if the PO is not in SUBMITTED state.
  *
- * Separation of duty: at the data layer we record the approver's userId
- * (which may differ from the submitter's); we do NOT hard-refuse same-user
- * approve — that's a UI policy enforced in the admin page, not here.
+ * Separation of duty: submitPurchaseOrder persists submittedBy and this
+ * function rejects approval when the same user submits and approves. Legacy
+ * rows with submittedBy = NULL remain compatible because their submitter
+ * identity cannot be proven from the Store schema.
  *
  * @throws ProcurementServiceError on lookup (404) or state-machine (400).
  */
@@ -315,45 +302,56 @@ export async function approvePurchaseOrder(
   id: string,
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.purchaseOrder.findUnique({ where: { id } });
-  if (!existing) {
-    throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
+  if (!userId || !userId.trim()) {
+    throw new ProcurementServiceError(400, 'شناسه کاربر تأییدکننده سفارش الزامی است');
   }
-  if (existing.status !== 'SUBMITTED') {
-    throw new ProcurementServiceError(
-      400,
-      `سفارش خرید در وضعیت ${existing.status} قرار دارد و قابل تأیید نیست`,
-    );
-  }
-
-  const po = await storeDb.purchaseOrder.update({
-    where: { id },
-    data: {
-      status: 'APPROVED',
-      approvedBy: userId ?? null,
-      approvedAt: new Date(),
-    },
-    include: {
-      items: {
+  try {
+    const po = await storeDb.$transaction(async (tx) => {
+      const existing = await tx.purchaseOrder.findUnique({ where: { id } });
+      if (!existing) throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
+      if (existing.status !== 'SUBMITTED') {
+        throw new ProcurementServiceError(409, `سفارش خرید در وضعیت ${existing.status} قرار دارد و قابل تأیید نیست`);
+      }
+      if (existing.submittedBy && existing.submittedBy === userId) {
+        throw new ProcurementServiceError(409, 'تأیید سفارش خرید توسط همان کاربری که آن را ارسال کرده مجاز نیست');
+      }
+      const approvedAt = new Date();
+      const changed = await tx.purchaseOrder.updateMany({
+        where: { id, status: 'SUBMITTED' },
+        data: { status: 'APPROVED', approvedBy: userId ?? null, approvedAt },
+      });
+      if (changed.count !== 1) throw new ProcurementServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده است');
+      const updated = await tx.purchaseOrder.findUnique({
+        where: { id },
         include: {
-          part: { select: { id: true, name: true, nameFa: true, sku: true } },
+          items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true } } } },
+          supplier: { select: { id: true, name: true, nameFa: true } },
         },
-      },
-      supplier: { select: { id: true, name: true, nameFa: true } },
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.approve',
-    entityType: 'PurchaseOrder',
-    entityId: id,
-    before: { status: existing.status, approvedBy: existing.approvedBy, approvedAt: existing.approvedAt },
-    after: { status: po.status, approvedBy: po.approvedBy, approvedAt: po.approvedAt },
-  });
-
-  return serialize(po);
+      });
+      if (!updated) throw new ProcurementServiceError(404, 'سفارش خرید پس از تأیید یافت نشد');
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null, actorType: 'ADMIN',
+        action: 'store.procurement.po.approve', entityType: 'PurchaseOrder', entityId: id,
+        before: {
+          status: existing.status,
+          submittedBy: existing.submittedBy,
+          approvedBy: existing.approvedBy,
+          approvedAt: existing.approvedAt,
+        },
+        after: {
+          status: updated.status,
+          submittedBy: updated.submittedBy,
+          approvedBy: updated.approvedBy,
+          approvedAt: updated.approvedAt,
+        },
+      });
+      return updated;
+    }, { isolationLevel: 'Serializable' });
+    return serialize(po);
+  } catch (err: any) {
+    if (err?.code === 'P2034') throw new ProcurementServiceError(409, 'تأیید سفارش هم‌زمان تغییر کرده است؛ دوباره بارگذاری کنید');
+    throw err;
+  }
 }
 
 // ── receivePurchaseOrderItem ──────────────────────────────
@@ -389,150 +387,233 @@ export async function approvePurchaseOrder(
 export async function receivePurchaseOrderItem(
   poItemId: string,
   receivedQty: number,
-  userId?: string | null,
+  warehouseId: string,
+  userId: string | null | undefined,
+  procurementId: string,
+  purchaseOrderId: string,
 ): Promise<any> {
-  if (!poItemId || receivedQty === undefined) {
+  if (
+    typeof poItemId !== 'string' || !poItemId.trim() ||
+    typeof warehouseId !== 'string' || !warehouseId.trim() ||
+    typeof procurementId !== 'string' || !procurementId.trim() ||
+    typeof purchaseOrderId !== 'string' || !purchaseOrderId.trim() ||
+    !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+  ) {
     throw new ProcurementServiceError(
       400,
-      'poItemId و تعداد دریافتی الزامی است',
+      'شناسه قلم، شناسه سفارش، شناسه مناقصه، تعداد صحیح مثبت و انبار مقصد الزامی است',
     );
   }
-  const qty = Number(receivedQty);
-  if (!Number.isInteger(qty) || qty <= 0) {
+  const qty = receivedQty;
+  if (!Number.isSafeInteger(qty) || qty <= 0) {
     throw new ProcurementServiceError(
       400,
       'تعداد دریافتی باید عدد صحیح مثبت باشد',
     );
   }
 
-  // Look up the POItem + its PO + Part in one query (include nested).
-  const poItem = await storeDb.purchaseOrderItem.findUnique({
-    where: { id: poItemId },
-    include: {
-      purchaseOrder: true,
-      part: { select: { id: true, name: true, sku: true, stock: true } },
-    },
-  });
-  if (!poItem) {
-    throw new ProcurementServiceError(404, 'آیتم سفارش خرید یافت نشد');
+  try {
+    const result = await storeDb.$transaction(async (tx) => {
+      const poItem = await tx.purchaseOrderItem.findUnique({
+        where: { id: poItemId },
+        include: {
+          purchaseOrder: {
+            include: { procurement: { select: { status: true } } },
+          },
+          part: { select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true } },
+        },
+      });
+      if (!poItem || poItem.purchaseOrderId !== purchaseOrderId || poItem.purchaseOrder.procurementId !== procurementId) {
+        throw new ProcurementServiceError(404, 'آیتم سفارش خرید در این مسیر یافت نشد');
+      }
+      if (poItem.purchaseOrder.status === 'CANCELLED' || poItem.purchaseOrder.status === 'RECEIVED') {
+        throw new ProcurementServiceError(409, 'سفارش خرید لغوشده یا تکمیل‌شده قابل دریافت نیست');
+      }
+      if (poItem.purchaseOrder.status !== 'APPROVED') {
+        throw new ProcurementServiceError(409, 'دریافت کالا فقط پس از تأیید سفارش خرید مجاز است');
+      }
+      if (poItem.purchaseOrder.procurement.status !== 'AWARDED') {
+        throw new ProcurementServiceError(409, 'دریافت کالا فقط برای مناقصه واگذارشده مجاز است');
+      }
+
+      const newReceived = poItem.received + qty;
+      if (newReceived > poItem.quantity) {
+        throw new ProcurementServiceError(
+          409,
+          `دریافت بیش از تعداد سفارش. سفارش: ${poItem.quantity}، دریافت‌شده قبلی: ${poItem.received}، درخواست: ${qty}`,
+        );
+      }
+
+      const part = await tx.part.findUnique({
+        where: { id: poItem.partId },
+        select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+      });
+      if (!part) {
+        throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
+      }
+      const warehouse = await tx.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, name: true, active: true },
+      });
+      if (!warehouse || !warehouse.active) {
+        throw new ProcurementServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
+
+      const balances = await tx.inventoryBalance.findMany({
+        where: { partId: part.id },
+        select: { id: true, warehouseId: true, quantity: true, reserved: true },
+        orderBy: [{ warehouseId: 'asc' }, { id: 'asc' }],
+      });
+      if (balances.length === 0) {
+        throw new ProcurementServiceError(
+          409,
+          'موجودی اولیه این قطعه هنوز به انبار تخصیص نیافته است؛ ابتدا موجودی اولیه را در انبار مشخص ثبت کنید',
+        );
+      }
+      const warehouseTotal = balances.reduce((sum, balance) => sum + balance.quantity, 0);
+      if (warehouseTotal !== part.stock) {
+        throw new ProcurementServiceError(
+          409,
+          'موجودی کل قطعه با مجموع موجودی انبارها برابر نیست؛ ابتدا مغایرت‌گیری انجام شود',
+        );
+      }
+      const targetBalance = balances.find((balance) => balance.warehouseId === warehouseId);
+      if (!targetBalance) {
+        throw new ProcurementServiceError(
+          409,
+          'برای قطعه در انبار مقصد ردیف موجودی وجود ندارد؛ ابتدا موجودی اولیه انبار را ثبت کنید',
+        );
+      }
+
+      // CAS on the PO line prevents concurrent partial receipts from
+      // exceeding the ordered quantity. Serializable isolation below also
+      // protects the aggregate PO completion decision.
+      const itemChanged = await tx.purchaseOrderItem.updateMany({
+        where: {
+          id: poItemId,
+          received: poItem.received,
+          quantity: { gte: newReceived },
+        },
+        data: { received: { increment: qty } },
+      });
+      if (itemChanged.count !== 1) {
+        throw new ProcurementServiceError(
+          409,
+          'مقدار دریافتی این قلم هم‌زمان تغییر کرده است؛ صفحه را تازه‌سازی کنید',
+        );
+      }
+      const updatedItem = await tx.purchaseOrderItem.findUnique({
+        where: { id: poItemId },
+      });
+      if (!updatedItem) {
+        throw new ProcurementServiceError(404, 'آیتم سفارش خرید پس از دریافت یافت نشد');
+      }
+
+      // Global inventory lock order: Part first, then InventoryBalance.
+      // Both increments and the ledger/outbox writes remain in this transaction.
+      const afterPart = await tx.part.update({
+        where: { id: part.id },
+        data: { stock: { increment: qty } },
+        select: { id: true, name: true, sku: true, stock: true },
+      });
+      const afterBalance = await tx.inventoryBalance.update({
+        where: { id: targetBalance.id },
+        data: { quantity: { increment: qty } },
+      });
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          partId: part.id,
+          warehouseId,
+          type: 'RECEIVE',
+          quantity: qty,
+          balanceAfter: afterPart.stock,
+          reason: `دریافت سفارش خرید ${poItem.purchaseOrder.id}`,
+          reference: poItem.purchaseOrder.id,
+          createdBy: userId ?? null,
+        },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.procurement.po.receive',
+        entityType: 'PurchaseOrderItem',
+        entityId: poItemId,
+        before: { received: poItem.received, quantity: poItem.quantity },
+        after: { received: updatedItem.received, quantity: updatedItem.quantity, warehouseId },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.movement.create',
+        entityType: 'StockMovement',
+        entityId: movement.id,
+        after: { partId: part.id, warehouseId, type: 'RECEIVE', quantity: qty, balanceAfter: afterPart.stock, reference: poItem.purchaseOrder.id },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.part.update',
+        entityType: 'Part',
+        entityId: part.id,
+        before: { stock: part.stock },
+        after: { stock: afterPart.stock },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.inventory.balance.update',
+        entityType: 'InventoryBalance',
+        entityId: afterBalance.id,
+        before: { partId: part.id, quantity: targetBalance.quantity, reserved: targetBalance.reserved, warehouseId },
+        after: { partId: part.id, quantity: afterBalance.quantity, reserved: afterBalance.reserved, warehouseId },
+      });
+
+      const allItems = await tx.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: poItem.purchaseOrderId },
+        select: { quantity: true, received: true },
+      });
+      const allReceived = allItems.length > 0 && allItems.every((item) => item.received >= item.quantity);
+      let poUpdate: any = null;
+      if (allReceived) {
+        const changed = await tx.purchaseOrder.updateMany({
+          where: { id: poItem.purchaseOrderId, status: 'APPROVED' },
+          data: { status: 'RECEIVED', receivedAt: new Date() },
+        });
+        if (changed.count === 1) {
+          poUpdate = await tx.purchaseOrder.findUnique({ where: { id: poItem.purchaseOrderId } });
+          if (!poUpdate) throw new ProcurementServiceError(404, 'سفارش خرید پس از تکمیل یافت نشد');
+          await enqueueAuditOutbox(tx, {
+            actorId: userId ?? null,
+            actorType: 'ADMIN',
+            action: 'store.procurement.po.receive',
+            entityType: 'PurchaseOrder',
+            entityId: poItem.purchaseOrderId,
+            before: { status: poItem.purchaseOrder.status, receivedAt: poItem.purchaseOrder.receivedAt },
+            after: { status: poUpdate.status, receivedAt: poUpdate.receivedAt },
+          });
+        } else {
+          throw new ProcurementServiceError(409, 'وضعیت سفارش خرید هم‌زمان تغییر کرده است');
+        }
+      }
+
+      return { updatedItem, movement, afterPart, poUpdate, allReceived };
+    }, { isolationLevel: 'Serializable' });
+
+    return {
+      item: serialize({ ...result.updatedItem, part: result.afterPart }),
+      movement: serialize(result.movement),
+      part: result.afterPart,
+      purchaseOrder: result.poUpdate ? serialize(result.poUpdate) : null,
+      allReceived: result.allReceived,
+    };
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new ProcurementServiceError(409, 'دریافت سفارش خرید هم‌زمان تغییر کرده است؛ اطلاعات را تازه‌سازی و دوباره تلاش کنید');
+    }
+    throw err;
   }
-  if (poItem.purchaseOrder.status === 'CANCELLED') {
-    throw new ProcurementServiceError(
-      400,
-      'سفارش خرید لغوشده است و قابل دریافت نیست',
-    );
-  }
-
-  const newReceived = poItem.received + qty;
-  if (newReceived > poItem.quantity) {
-    throw new ProcurementServiceError(
-      400,
-      `دریافت بیش از تعداد سفارش. سفارش: ${poItem.quantity}، دریافت‌شده قبلی: ${poItem.received}، درخواست: ${qty}`,
-    );
-  }
-
-  // 1. Update the POItem received counter.
-  const beforeItem = { ...poItem };
-  const updatedItem = await storeDb.purchaseOrderItem.update({
-    where: { id: poItemId },
-    data: { received: newReceived },
-  });
-
-  // 2. Create the StockMovement ledger entry (RECEIVE).
-  //    balanceAfter = Part.stock + qty (the public snapshot mirrors the
-  //    inventory ledger, same invariant as createMovement / adjustStock).
-  const part = poItem.part;
-  const balanceAfter = part.stock + qty;
-  const movement = await storeDb.stockMovement.create({
-    data: {
-      partId: part.id,
-      type: 'RECEIVE',
-      quantity: qty,
-      balanceAfter,
-      reason: `دریافت سفارش خرید ${poItem.purchaseOrder.id}`,
-      reference: poItem.purchaseOrder.id,
-      createdBy: userId ?? null,
-    },
-  });
-
-  // 3. Update Part.stock snapshot (side-effect — mirrors createMovement).
-  const beforePart = { ...part };
-  const afterPart = await storeDb.part.update({
-    where: { id: part.id },
-    data: { stock: balanceAfter },
-    select: { id: true, name: true, sku: true, stock: true },
-  });
-
-  // Audit a: the POItem receive action (primary audit hook for this op).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.receive',
-    entityType: 'PurchaseOrderItem',
-    entityId: poItemId,
-    before: { received: beforeItem.received, quantity: beforeItem.quantity },
-    after: { received: updatedItem.received, quantity: updatedItem.quantity },
-  });
-
-  // Audit b: the StockMovement create (mirrors createMovement's primary).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.inventory.movement.create',
-    entityType: 'StockMovement',
-    entityId: movement.id,
-    after: {
-      partId: part.id,
-      type: 'RECEIVE',
-      quantity: qty,
-      balanceAfter,
-      reference: poItem.purchaseOrder.id,
-    },
-  });
-
-  // Audit c: the Part.stock side-effect (mirrors createMovement's secondary).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.part.update',
-    entityType: 'Part',
-    entityId: part.id,
-    before: { stock: beforePart.stock },
-    after: { stock: afterPart.stock },
-  });
-
-  // 4. Check if ALL items on the PO are fully received; if so, flip PO
-  //    status to RECEIVED + stamp receivedAt (conditional mutation + audit).
-  let poUpdate: any = null;
-  const allItems = await storeDb.purchaseOrderItem.findMany({
-    where: { purchaseOrderId: poItem.purchaseOrderId },
-  });
-  const allReceived = allItems.every((it: any) => it.received >= it.quantity);
-  if (allReceived && poItem.purchaseOrder.status !== 'RECEIVED') {
-    const beforePO = { ...poItem.purchaseOrder };
-    poUpdate = await storeDb.purchaseOrder.update({
-      where: { id: poItem.purchaseOrderId },
-      data: { status: 'RECEIVED', receivedAt: new Date() },
-    });
-    // Audit d: the PO status flip to RECEIVED (conditional).
-    await logAudit({
-      actorId: userId ?? null,
-      actorType: 'ADMIN',
-      action: 'store.procurement.po.receive',
-      entityType: 'PurchaseOrder',
-      entityId: poItem.purchaseOrderId,
-      before: { status: beforePO.status, receivedAt: beforePO.receivedAt },
-      after: { status: poUpdate.status, receivedAt: poUpdate.receivedAt },
-    });
-  }
-
-  return {
-    item: serialize({ ...updatedItem, part: afterPart }),
-    movement: serialize(movement),
-    part: afterPart,
-    purchaseOrder: poUpdate ? serialize(poUpdate) : null,
-    allReceived,
-  };
 }
 
 // ── cancelPurchaseOrder ───────────────────────────────────
@@ -549,51 +630,42 @@ export async function cancelPurchaseOrder(
   reason: string | null,
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.purchaseOrder.findUnique({ where: { id } });
-  if (!existing) {
-    throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
-  }
-  if (existing.status === 'CANCELLED') {
-    throw new ProcurementServiceError(
-      400,
-      'سفارش خرید قبلاً لغو شده است',
-    );
-  }
-  if (existing.status === 'RECEIVED') {
-    throw new ProcurementServiceError(
-      400,
-      'سفارش خرید تحویل‌شده قابل لغو نیست',
-    );
-  }
-
-  const po = await storeDb.purchaseOrder.update({
-    where: { id },
-    data: {
-      status: 'CANCELLED',
-      notes: reason ? `CANCELLED: ${reason}` : existing.notes,
-    },
-    include: {
-      items: {
+  try {
+    const po = await storeDb.$transaction(async (tx) => {
+      const existing = await tx.purchaseOrder.findUnique({ where: { id } });
+      if (!existing) throw new ProcurementServiceError(404, 'سفارش خرید یافت نشد');
+      if (existing.status === 'CANCELLED') throw new ProcurementServiceError(409, 'سفارش خرید قبلاً لغو شده است');
+      if (existing.status === 'RECEIVED') throw new ProcurementServiceError(409, 'سفارش خرید تحویل‌شده قابل لغو نیست');
+      if (!['DRAFT', 'SUBMITTED', 'APPROVED'].includes(existing.status)) {
+        throw new ProcurementServiceError(409, 'وضعیت سفارش برای لغو معتبر نیست');
+      }
+      const changed = await tx.purchaseOrder.updateMany({
+        where: { id, status: existing.status },
+        data: { status: 'CANCELLED', notes: reason ? `CANCELLED: ${reason}` : existing.notes },
+      });
+      if (changed.count !== 1) throw new ProcurementServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده یا قابل لغو نیست');
+      const updated = await tx.purchaseOrder.findUnique({
+        where: { id },
         include: {
-          part: { select: { id: true, name: true, nameFa: true, sku: true } },
+          items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true } } } },
+          supplier: { select: { id: true, name: true, nameFa: true } },
         },
-      },
-      supplier: { select: { id: true, name: true, nameFa: true } },
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.procurement.po.cancel',
-    entityType: 'PurchaseOrder',
-    entityId: id,
-    before: { status: existing.status },
-    after: { status: po.status, reason: reason || null },
-    reason: reason ?? null,
-  });
-
-  return serialize(po);
+      });
+      if (!updated) throw new ProcurementServiceError(404, 'سفارش خرید پس از لغو یافت نشد');
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null, actorType: 'ADMIN',
+        action: 'store.procurement.po.cancel', entityType: 'PurchaseOrder', entityId: id,
+        before: { status: existing.status },
+        after: { status: updated.status, reason: reason || null },
+        reason: reason ?? null,
+      });
+      return updated;
+    }, { isolationLevel: 'Serializable' });
+    return serialize(po);
+  } catch (err: any) {
+    if (err?.code === 'P2034') throw new ProcurementServiceError(409, 'لغو سفارش هم‌زمان تغییر کرده است؛ دوباره بارگذاری کنید');
+    throw err;
+  }
 }
 
 // ── listPurchaseOrders ────────────────────────────────────

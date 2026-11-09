@@ -11,6 +11,7 @@
  */
 
 import { db } from '@/lib/db';
+import { SITE_BASE_URL } from '@/lib/site-config';
 import { getWidget, getDataSource, validateLayout, type PageLayout, type PageWidgetInstance } from '@/lib/admin/page-builder/widget-registry';
 import { can } from '@/lib/authorization';
 import HeroWidget from './widgets/hero-widget';
@@ -57,8 +58,10 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
 
   // Fetch data (server-side fetch)
   try {
-    const deploymentHost = process.env.VERCEL_URL;
-    const base = process.env.NEXT_PUBLIC_BASE_URL || (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000');
+    // Use the same canonical-origin resolver as metadata/SEO. This keeps
+    // Cloudflare Preview requests on their explicit Preview origin and never
+    // infers an origin from provider-specific deployment host variables.
+    const base = SITE_BASE_URL;
     const res = await fetch(`${base}${apiPath}`, { next: { revalidate: ds.cacheTtl || 60 } });
     if (!res.ok) return null;
     const json = await res.json();

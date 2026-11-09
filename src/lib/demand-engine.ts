@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { normalizeSearchQuery } from "@/lib/search";
 
 /* ============================================================
@@ -247,7 +248,7 @@ export async function getDemandByCategory(
         id: true,
         name: true,
         slug: true,
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
   ]);
@@ -309,7 +310,7 @@ export async function getDemandByBrand(
         id: true,
         name: true,
         slug: true,
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: getPublicListingWhere() } } },
       },
     }),
   ]);

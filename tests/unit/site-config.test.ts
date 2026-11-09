@@ -19,6 +19,8 @@ describe("site-config — SITE_BASE_URL resolution", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     // Ensure the production-warning branch does not fire in tests.
     process.env.NODE_ENV = "test";
   });
@@ -27,9 +29,24 @@ describe("site-config — SITE_BASE_URL resolution", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it('falls back to "https://heavix.ir" when NEXT_PUBLIC_SITE_URL is unset', async () => {
+  it('falls back to localhost when NEXT_PUBLIC_SITE_URL is unset', async () => {
     const mod = await import("@/lib/site-config");
-    expect(mod.SITE_BASE_URL).toBe("https://heavix.ir");
+    expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
+  });
+
+  it("uses the explicit Cloudflare preview origin instead of the production URL", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_URL = "https://preview.heavix.workers.dev/";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
+    const mod = await import("@/lib/site-config");
+    expect(mod.SITE_BASE_URL).toBe("https://preview.heavix.workers.dev");
+  });
+
+  it("fails closed to localhost when Cloudflare preview origin is missing", async () => {
+    process.env.HEAVIX_ENV = "preview";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
+    const mod = await import("@/lib/site-config");
+    expect(mod.SITE_BASE_URL).toBe("http://localhost:3000");
   });
 
   it("respects NEXT_PUBLIC_SITE_URL when set (no trailing slash)", async () => {
@@ -54,7 +71,6 @@ describe("site-config — SITE_BASE_URL resolution", () => {
     // Critical regression guard: the STEP 12.99 split-brain bug.
     const mod = await import("@/lib/site-config");
     expect(mod.SITE_BASE_URL).not.toContain("havix.ir");
-    expect(mod.SITE_BASE_URL).toContain("heavix.ir");
   });
 
   it("exports the site display name in Persian", async () => {
@@ -67,34 +83,36 @@ describe("site-config — absoluteUrl helper", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
   });
 
   it('returns the bare base URL for empty input (homepage canonical)', async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
-    expect(absoluteUrl("")).toBe("https://heavix.ir");
+    expect(absoluteUrl("")).toBe("http://localhost:3000");
   });
 
   it('resolves "/" to base + "/"', async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
-    expect(absoluteUrl("/")).toBe("https://heavix.ir/");
+    expect(absoluteUrl("/")).toBe("http://localhost:3000/");
   });
 
   it('resolves "/listings" to base + "/listings"', async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
-    expect(absoluteUrl("/listings")).toBe("https://heavix.ir/listings");
+    expect(absoluteUrl("/listings")).toBe("http://localhost:3000/listings");
   });
 
   it('resolves "/listings/some-slug" with nested path', async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
     expect(absoluteUrl("/listings/some-slug")).toBe(
-      "https://heavix.ir/listings/some-slug",
+      "http://localhost:3000/listings/some-slug",
     );
   });
 
   it("resolves bare path segments with a leading-slash separator", async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
-    expect(absoluteUrl("listings")).toBe("https://heavix.ir/listings");
+    expect(absoluteUrl("listings")).toBe("http://localhost:3000/listings");
   });
 
   it("passes absolute https URLs through unchanged", async () => {
@@ -131,14 +149,14 @@ describe("site-config — absoluteUrl helper", () => {
     // is the browser's responsibility at fetch time. We only verify the
     // base is prepended correctly.
     const result = absoluteUrl("/companies/آریا-ماشین-جم");
-    expect(result).toBe("https://heavix.ir/companies/آریا-ماشین-جم");
+    expect(result).toBe("http://localhost:3000/companies/آریا-ماشین-جم");
   });
 
   it("resolves a percent-encoded slug path without double-encoding", async () => {
     const { absoluteUrl } = await import("@/lib/site-config");
     // A pre-encoded URL must not be mutated by absoluteUrl.
     const result = absoluteUrl("/brands/%D8%A8%DB%8C%D9%84");
-    expect(result).toBe("https://heavix.ir/brands/%D8%A8%DB%8C%D9%84");
+    expect(result).toBe("http://localhost:3000/brands/%D8%A8%DB%8C%D9%84");
   });
 });
 
@@ -146,12 +164,14 @@ describe("site-config — backward compatibility re-export from @/lib/seo", () =
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.HEAVIX_ENV;
+    delete process.env.HEAVIX_PREVIEW_URL;
     process.env.NODE_ENV = "test";
   });
 
   it("still exports absoluteUrl from @/lib/seo for existing consumers", async () => {
     const seo = await import("@/lib/seo");
     expect(typeof seo.absoluteUrl).toBe("function");
-    expect(seo.absoluteUrl("/listings")).toBe("https://heavix.ir/listings");
+    expect(seo.absoluteUrl("/listings")).toBe("http://localhost:3000/listings");
   });
 });

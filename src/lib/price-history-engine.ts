@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 
 /* ============================================================
    HEAVIX — PHASE 6B.1 — Canonical Price History Engine
@@ -205,7 +206,7 @@ export async function getPriceHistory(params: {
   // observation in the window at the database level; deriving exclusions from
   // the capped 2,000-row observation result could double-count older matches.
   const listingWhere: Record<string, unknown> = {
-    status: "PUBLISHED",
+    ...getPublicListingWhere(),
     price: { not: null },
     createdAt: { gte: since },
     priceObservations: {
@@ -294,7 +295,7 @@ export async function getPriceHistory(params: {
  */
 export async function detectOutliers(listingId: string): Promise<OutlierResult> {
   const listing = await db.listing.findUnique({
-    where: { id: listingId },
+    where: { id: listingId, ...getPublicListingWhere() },
     select: { id: true, price: true, categoryId: true, brandId: true, year: true },
   });
   if (!listing || !listing.price) {

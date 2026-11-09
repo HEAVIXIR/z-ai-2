@@ -9,6 +9,7 @@ import {
   buildSearchWhere,
   searchListings,
 } from "@/lib/search";
+import { getPublicListingWhere } from "@/lib/listing-visibility";
 import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
@@ -48,6 +49,20 @@ export const dynamic = "force-dynamic";
 */
 export async function GET(req: Request) {
   try {
+    if (
+      process.env.VERCEL_ENV === "preview" &&
+      !/^postgres(?:ql)?:\/\//i.test(process.env.DATABASE_URL ?? "")
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PREVIEW_DATABASE_UNAVAILABLE",
+          error: "اتصال دیتابیس محیط پیش‌نمایش هنوز تکمیل نشده است",
+        },
+        { status: 503 },
+      );
+    }
+
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
     const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
@@ -166,7 +181,7 @@ export async function GET(req: Request) {
     // (so the `attributeValues: { some: ... }` AND clauses can be
     // composed) but route text/brand/category through the normalized
     // search helpers.
-    const where: any = { status: "PUBLISHED" };
+    const where: any = getPublicListingWhere();
 
     if (q) {
       const textClause = buildSearchWhere(

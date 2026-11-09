@@ -79,15 +79,27 @@ describe('Universal Resource Contract — All 18 Resources', () => {
       });
 
       it('should have create permission', () => {
-        expect(isNonEmptyString(config.permissions.create)).toBe(true);
+        if (['procurement', 'suppliers'].includes(config.key)) {
+          expect(config.permissions.create).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.create)).toBe(true);
+        }
       });
 
       it('should have update permission', () => {
-        expect(isNonEmptyString(config.permissions.update)).toBe(true);
+        if (['procurement', 'suppliers'].includes(config.key)) {
+          expect(config.permissions.update).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.update)).toBe(true);
+        }
       });
 
       it('should have delete permission', () => {
-        expect(isNonEmptyString(config.permissions.delete)).toBe(true);
+        if (['procurement', 'suppliers'].includes(config.key)) {
+          expect(config.permissions.delete).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.delete)).toBe(true);
+        }
       });
 
       // ── 6-7. Columns + Fields ──────────────────────────

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { storeDb } from "@/lib/store-db";
+import { checkCsrf } from "@/lib/csrf";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
 import {
   listSuppliers,
-  createSupplier,
   SuppliersServiceError,
 } from "@/lib/store-suppliers-service";
 
@@ -83,28 +84,55 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست نامعتبر است" }, { status: 400 });
+    }
     const { name, nameFa, phone, email, address, active } = body;
-    const s = await createSupplier({
-      name,
-      nameFa,
-      phone,
-      email,
-      address,
-      active,
-    });
-    await logAudit({
-      actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.supplier.create',
-      entityType: 'Supplier',
-      entityId: s.id,
-      after: s,
-    });
+    if (typeof name !== 'string' || !name.trim()) {
+      return NextResponse.json({ success: false, error: "نام تأمین‌کننده الزامی است" }, { status: 400 });
+    }
+    for (const [field, value] of Object.entries({ nameFa, phone, email, address })) {
+      if (value !== undefined && value !== null && typeof value !== 'string') {
+        return NextResponse.json({ success: false, error: `فیلد ${field} نامعتبر است` }, { status: 400 });
+      }
+    }
+    if (active !== undefined && typeof active !== 'boolean') {
+      return NextResponse.json({ success: false, error: "وضعیت فعال بودن نامعتبر است" }, { status: 400 });
+    }
 
-    return NextResponse.json({ success: true, data: serialize(s) });
+    const result = await storeDb.$transaction(async (tx) => {
+      const supplier = await tx.supplier.create({
+        data: {
+          name: name.trim(),
+          nameFa: nameFa?.trim() || null,
+          phone: phone?.trim() || null,
+          email: email?.trim() || null,
+          address: address?.trim() || null,
+          active: typeof active === 'boolean' ? active : true,
+        },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: user.id,
+        actorType: 'ADMIN',
+        action: 'store.supplier.create',
+        entityType: 'Supplier',
+        entityId: supplier.id,
+        after: { id: supplier.id, name: supplier.name, nameFa: supplier.nameFa, active: supplier.active },
+      });
+      return supplier;
+    }, { isolationLevel: 'Serializable' });
+
+    return NextResponse.json({ success: true, data: serialize(result) });
   } catch (e: any) {
+    if (e?.code === 'P2034') {
+      return NextResponse.json({ success: false, error: "اطلاعات تأمین‌کننده هم‌زمان تغییر کرده است؛ دوباره تلاش کنید" }, { status: 409 });
+    }
     return toErrorResponse(e);
   }
 }

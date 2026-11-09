@@ -11,23 +11,34 @@
    STEP 12.99 split-brain (heavix.ir vs havix.ir).
 
    Resolution order:
-     1. `process.env.NEXT_PUBLIC_SITE_URL` (set per-environment in
-        production; trailing slashes are stripped).
-     2. Hardcoded fallback `https://heavix.ir` — the official
-        HEAVIX domain per owner decision (STEP 13.00).
+     1. Cloudflare Preview: explicit `HEAVIX_PREVIEW_URL` when `HEAVIX_ENV=preview`. 
+     3. `NEXT_PUBLIC_SITE_URL` for explicit non-preview environments.
+     4. Production fallback `https://heavix.ir`; local fallback localhost.
 
-   Local dev:  env unset → falls back to `https://heavix.ir`
-               (safe for metadataBase; no real crawling in dev).
-   Production: MUST be set explicitly via the hosting platform's
-               environment variables. A one-time console.warn is
-               emitted at module load when unset in production so
-               operators notice, but the code still works via the
-               hardcoded fallback.
+   Preview URLs are deployment-specific so metadata, sitemap and robots
+   never point at the primary domain while testing. Production still warns
+   when its canonical URL is not explicitly configured.
    ============================================================ */
 
+const IS_CLOUDFLARE_PREVIEW = process.env.HEAVIX_ENV === "preview";
+
+// Cloudflare Worker preview uses an explicit, non-secret URL binding.
+// Never infer a public host from the production domain. If an operator has
+// not configured the preview origin yet, fail closed to localhost.
+const CLOUDFLARE_PREVIEW_URL = process.env.HEAVIX_PREVIEW_URL
+  ?.replace(/\/+$/, "");
+const PREVIEW_SITE_URL = IS_CLOUDFLARE_PREVIEW
+  ? CLOUDFLARE_PREVIEW_URL || "http://localhost:3000"
+  : null;
+
+// Preview URLs are deployment-specific and must never inherit the
+// production canonical host. Production keeps the explicit owner-configured
+// URL (with the existing official-domain fallback); local development uses
+// localhost unless explicitly configured.
 const RAW_SITE_URL =
+  PREVIEW_SITE_URL ??
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
-  "https://heavix.ir";
+  (process.env.NODE_ENV === "production" ? "https://heavix.ir" : "http://localhost:3000");
 
 if (
   process.env.NODE_ENV === "production" &&
@@ -39,7 +50,7 @@ if (
   // where the URL differs from the canonical production domain).
   console.warn(
     "[site-config] NEXT_PUBLIC_SITE_URL is not set in production — falling back to https://heavix.ir. " +
-      "Set it explicitly in your hosting environment to avoid canonical/sitemap mismatches.",
+      "Set it explicitly in your production hosting environment to avoid canonical/sitemap mismatches.",
   );
 }
 
