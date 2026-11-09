@@ -37,19 +37,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U restore -d postgres"
           --health-interval 5s --health-timeout 5s --health-retries 20
-    env:
-      MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-      STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
-      B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
-      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
-      AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
-      AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
-      AWS_REGION: us-east-005
-      AWS_DEFAULT_REGION: us-east-005
-      AWS_EC2_METADATA_DISABLED: "true"
-      RESTORE_PASSWORD: local-restore-only
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -77,6 +64,15 @@ jobs:
 
       - name: Validate protected environment values
         shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
         run: |
           set -euo pipefail
           test -n "$MAIN_PREVIEW_DATABASE_URL"
@@ -92,6 +88,9 @@ jobs:
 
       - name: Verify Preview resource IDs, TLS and read-only roles
         shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
         run: |
           set -euo pipefail
           CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
@@ -110,6 +109,10 @@ jobs:
 
       - name: Dump both databases, encrypt and create manifest
         shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
         run: |
           set -euo pipefail
           umask 077
@@ -142,6 +145,14 @@ jobs:
 
       - name: Upload encrypted objects and verify B2 read-back
         shell: bash
+        env:
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
         run: |
           set -euo pipefail
           WORK="$RUNNER_TEMP/heavix-b2"
@@ -162,6 +173,9 @@ jobs:
 
       - name: Decrypt, verify plaintext checksums and restore both databases
         shell: bash
+        env:
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+          RESTORE_PASSWORD: local-restore-only
         run: |
           set -euo pipefail
           WORK="$RUNNER_TEMP/heavix-b2"
