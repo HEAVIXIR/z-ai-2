@@ -1,22 +1,22 @@
-# Preview paired backup to Backblaze B2 — implementation gate
+# Preview paired backup to Backblaze B2 — implementation and acceptance gate
 
 ## Decision
 
-Use a GitHub Actions runner for paired Main + Store Preview backups. Do not invoke
-`scripts/backup.sh` from the Cloudflare Worker: that route currently shells out to
-`pg_dump` and writes to the local filesystem, which is not a supported Cloudflare
-Workers execution model.
+Paired Main + Store Preview backups run from a manually dispatched GitHub Actions
+runner. The Cloudflare Worker backup route is not used: it shells out to `pg_dump`
+and writes to a local filesystem, neither of which is a supported Workers execution
+model.
 
-This document is a release-safe implementation plan, not a claim that B2 backup is live.
-The project owner has supplied Backblaze console metadata for an existing private bucket
-(see the inventory below). No application key, encryption identity, GitHub environment,
-workflow, or secret has been independently verified or configured by this audit.
+The implementation is `.github/workflows/prisma-preview-backup-to-b2.yml`. It is
+workflow_dispatch-only, restricted to the security branch, requires explicit
+`PREVIEW_ONLY` and `BACKUP_PREVIEW_ONLY` confirmations, and binds the
+`preview-backup` GitHub Environment. It performs no Production operations and has
+no schedule, push, pull-request, deployment, or retention-deletion trigger.
 
 ## Backblaze bucket inventory (owner-provided, not API-verified)
 
 The following values were copied from the owner's Backblaze console on 2026-11-09.
-They are recorded as user-provided evidence, not as independently verified control-plane
-results:
+They are user-provided evidence, not independently verified control-plane results:
 
 | Purpose | Bucket | Bucket ID | Endpoint | Visibility | Encryption | Current objects |
 |---|---|---|---|---|---|---|
@@ -24,95 +24,87 @@ results:
 | Development assets | `heavix-dev-assets` | `356d017312aba16dac1c0411` | `s3.us-east-005.backblazeb2.com` | Private | Enabled | 2 (43 bytes) |
 
 Both buckets report Object Lock disabled. The backup bucket reports custom lifecycle
-rules; the assets bucket reports keep-all-versions. The backup bucket is the designated
-destination for Preview database backups. The assets bucket must not be used for database
-backups. The reported zero-object state means no backup object is currently visible in
-that bucket; it does not establish whether any prior backup exists elsewhere.
+rules; the assets bucket reports keep-all-versions. Only `heavix-db-backups` is an
+approved backup destination. Never place database backups in `heavix-dev-assets`.
+The reported zero-object state means no backup object is currently visible in the
+designated bucket.
 
-## Mandatory preconditions
+## Workflow safeguards and behavior
 
-1. Independently verify the backup bucket ID, endpoint, region, private access, lifecycle
-   rules, encryption, and versioning/Object Lock policy through the B2 control plane.
-2. Create or verify a least-privilege B2 application key scoped only to
-   `heavix-db-backups`, with only the object operations required for upload, read-back,
-   and retention verification. Never use a master key.
-3. Review and document the exact lifecycle/retention policy before the first backup.
-   Do not enable destructive retention cleanup until a dry-run has been reviewed.
-4. Create a GitHub Environment named `preview-backup`, protected by required reviewers.
-5. Add the following values to that environment only; never to repository-wide secrets:
-   - `MAIN_PREVIEW_DATABASE_URL`
-   - `STORE_PREVIEW_DATABASE_URL`
-   - `B2_S3_ENDPOINT`
-   - `B2_BUCKET` (must equal `heavix-db-backups`)
-   - `B2_APPLICATION_KEY_ID`
-   - `B2_APPLICATION_KEY`
-   - `AGE_RECIPIENT` (public encryption recipient)
-   - `AGE_IDENTITY` (private decrypt identity; required only by the restore-verification job)
-6. Before using either DB URL, attest its destination independently against the intended
-   Prisma Preview database resource IDs and expected database names. Do not use
-   Cloudflare Worker secret binding names as proof of destination.
-7. Ensure the runner can reach both Preview databases over TLS and verify certificate
-   validation is enabled. Do not use `sslmode=require` as a substitute for verifying
-   the server certificate when the provider supports `verify-full`.
+Before dumping, the workflow:
+1. Verifies the exact branch, triggering commit, explicit Preview-only input, and
+   protected environment values.
+2. Requires the exact B2 endpoint `s3.us-east-005.backblazeb2.com` and bucket
+   `heavix-db-backups`; no other bucket is accepted.
+3. Connects with PostgreSQL TLS `verify-full` and checks the exact previously
+   inventoried system identifiers:
+   - Main Preview: `7701427422680793119`
+   - Store Preview: `7701425043360235551`
+4. Fails closed unless both sessions and roles prove read-only defaults, read-only
+   transaction state, no elevated role attributes, no `pg_write_all_data` membership,
+   and no database/schema CREATE privileges.
+5. Creates paired custom-format dumps with `pg_dump --format=custom --no-owner --no-acl`.
+6. Creates a non-secret manifest and SHA-256 checksums, encrypts both dumps and the
+   manifest with `age`, uploads only encrypted objects, reads them back, verifies
+   encrypted-object hashes, decrypts, verifies plaintext hashes, and restores both
+   into disposable PostgreSQL 17 databases.
+7. Requires non-empty user-table inventories after both restores. It never deletes
+   objects or changes retention policy.
 
-## Workflow design
+A successful workflow run is the minimum acceptance evidence. An upload alone is not
+a successful backup; both restores must pass.
 
-The workflow must be `workflow_dispatch` only, with no schedule, push, pull-request,
-or deployment trigger. It must:
+## Protected GitHub Environment configuration
 
-1. Require the caller to select the explicit target `preview`; reject any other value.
-2. Run only from the approved security/integration branch until the release owner
-   deliberately changes that policy.
-3. Bind the protected `preview-backup` GitHub Environment before reading its secrets.
-4. Verify the DB destination allowlist (host, port, database name, and provider resource
-   identity attestation) before any dump begins; fail closed on mismatch.
-5. Use `pg_dump --format=custom --no-owner --no-acl` independently for Main and Store.
-6. Require both dumps to be non-empty; write a manifest with UTC timestamp, target
-   resource IDs, database names, tool versions, byte counts, and SHA-256 checksums.
-   The manifest must not contain connection URLs, usernames, passwords, or secret data.
-7. Encrypt each dump and the manifest with `age` before upload. Do not upload plaintext.
-8. Upload to a deterministic, date-partitioned B2 object prefix in
-   `heavix-db-backups` using the B2 S3 endpoint. Do not place backup files in GitHub
-   artifacts as a long-term backup store.
-9. Read the uploaded objects back from B2, verify checksums, decrypt in the protected
-   runner, and restore both dumps into disposable PostgreSQL 17 databases.
-10. Run restore smoke checks and publish a non-secret evidence summary. A successful
-    upload without a successful read-back and restore must not be reported as a
-    successful backup.
-11. Apply and verify retention policy without deleting the newest known-good paired
-    backup. Never perform retention deletion in the first implementation until an
-    explicit dry-run report has been reviewed.
-12. Use `permissions: contents: read`, pin third-party actions to immutable commit
-    SHAs, set a concurrency group, disable shell tracing, and avoid printing command
-    arguments or environment values.
+Create a GitHub Environment named `preview-backup`, protected by required reviewers.
+Add these values as Environment secrets only, not repository-wide secrets:
 
-## Required evidence for acceptance
+- `MAIN_PREVIEW_DATABASE_URL`
+- `STORE_PREVIEW_DATABASE_URL`
+- `B2_S3_ENDPOINT` = `s3.us-east-005.backblazeb2.com`
+- `B2_BUCKET` = `heavix-db-backups`
+- `B2_APPLICATION_KEY_ID`
+- `B2_APPLICATION_KEY`
+- `AGE_RECIPIENT` (public recipient)
+- `AGE_IDENTITY` (private identity used by restore verification)
 
-- Independently verified B2 bucket identity, endpoint, region, lifecycle/retention policy,
-  encryption state, and least-privilege key scope.
-- Database destination attestation for both Preview resources.
-- TLS connection evidence for both database connections.
-- One complete paired backup with encrypted objects in B2.
-- Read-back, decryption, checksum, and restore proof for both databases.
-- A documented restore procedure and a measured restore duration.
-- A second paired run proving the process is repeatable.
+The B2 application key must be scoped only to `heavix-db-backups` and grant only the
+object permissions required to upload and read back. Never use the B2 master key.
+The private age identity must be restricted to the protected Environment. Do not send
+any secret values in chat, issues, commits, or logs.
 
 ## Current blockers
 
-- The bucket metadata above is owner-provided; B2 control-plane verification and key
-  scope verification remain outstanding.
-- No B2 application credentials or encryption identity are connected to this project
-  session.
-- No B2 integration exists in the current backup script or admin route.
-- Preview Worker bindings expose secret names, but their destination resources have not
-  been proven to match the two Preview database IDs.
-- No B2 restore test has been performed.
-- The current CI backup/restore tests run against disposable local PostgreSQL 17
-  databases and are not Preview backups.
+- The bucket metadata above is owner-provided; bucket ID, lifecycle rules, versioning,
+  encryption, and key scope have not been independently verified through B2 API.
+- No B2 application key or age identity has been configured in the protected GitHub
+  Environment as far as this session can verify.
+- The latest SELECT-only Preview audit found the current `prisma_application` roles
+  have `rolreplication=true`, membership in `pg_write_all_data`, effective table
+  write access, and no role-level `default_transaction_read_only=on`. Therefore the
+  new workflow's least-privilege preflight is expected to reject current credentials.
+  Do not weaken or bypass that gate. Dedicated Preview backup roles require a separate
+  reviewed and explicitly authorized database privilege change.
+- No successful B2 upload, read-back, decryption, or restore has been performed.
+- Existing local PostgreSQL 17 backup/restore tests are not evidence of Preview backup.
+
+## Acceptance sequence
+
+1. Independently verify B2 bucket identity, endpoint, region, encryption, lifecycle,
+   versioning/Object Lock settings, and the least-privilege application key scope.
+2. Review and approve the GitHub Environment protection rules and populate its secrets.
+3. Separately review and authorize dedicated Preview-only database backup roles; then
+   verify their exact resource IDs, TLS, role attributes, memberships, and effective
+   privileges using the read-only audit. Do not mutate roles/grants as part of this
+   workflow.
+4. Dispatch the workflow on the approved branch and enter both explicit confirmations.
+5. Retain the workflow run URL, encrypted object prefix, manifest evidence, and restore
+   smoke-test output as the backup acceptance record.
+6. Repeat a second paired run to prove repeatability.
+7. Review lifecycle retention as a dry run before authorizing any deletion policy.
 
 ## Safety boundary
 
-Until every precondition and acceptance item is satisfied, keep the existing backup API
-out of Cloudflare Worker production paths and do not create a workflow that can dump
-unattested or Production databases. Do not store credentials without explicit protected
-environment configuration. Production remains untouched.
+Until all acceptance steps pass, no backup is considered operational. Do not connect
+this flow to Production, Cloudflare Worker deployment, automatic schedules, or
+retention deletion. Production remains untouched.
