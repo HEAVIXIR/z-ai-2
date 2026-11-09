@@ -150,11 +150,11 @@ jobs:
               case "$HEAVIX_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Preview connection URL scheme invalid inside PostgreSQL client container."; exit 64 ;; esac
               exec psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"
             ' 2>&1)"; then
-              printf '%s\\n' "$output"
+              printf '%s\n' "$output"
             else
               rc=$?
               echo "$label PostgreSQL client failed (exit $rc); diagnostic follows with connection URLs redacted:" >&2
-              printf '%s\\n' "$output" | sed -E 's#(postgres(ql)?://)[^[:space:]"]+#\\1[REDACTED]#g' >&2
+              printf '%s\n' "$output" | sed -E 's#(postgres(ql)?://)[^[:space:]"]+#\1[REDACTED]#g' >&2
               return "$rc"
             fi
           }
