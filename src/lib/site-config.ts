@@ -49,6 +49,25 @@ if (
  */
 export const SITE_BASE_URL: string = RAW_SITE_URL;
 
+/**
+ * Detect a non-production deployment without relying on the canonical URL.
+ * Cloudflare Workers expose HEAVIX_ENV as a runtime text binding; Vercel
+ * exposes VERCEL_ENV. Host suffixes provide a defensive fallback for preview
+ * URLs when a provider environment variable is absent.
+ */
+export function isPreviewDeployment(hostname?: string): boolean {
+  const heavixEnv = process.env.HEAVIX_ENV?.trim().toLowerCase();
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
+  const host = (hostname ?? "").split(":")[0].trim().toLowerCase().replace(/\.$/, "");
+
+  if (heavixEnv === "preview" || vercelEnv === "preview") return true;
+  return (
+    host.endsWith(".workers.dev") ||
+    host.endsWith(".vercel.app") ||
+    host.endsWith(".pages.dev")
+  );
+}
+
 /** Site display name (Persian). */
 export const SITE_NAME = "هویکس";
 

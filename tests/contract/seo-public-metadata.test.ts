@@ -28,4 +28,32 @@ describe("public SEO metadata safety", () => {
     expect(source).toContain("[sitemap] listing lookup failed");
     expect(source).toContain("[sitemap] article lookup failed");
   });
+
+  it("applies a runtime noindex header to public Preview responses", () => {
+    const source = read("src/middleware.ts");
+    expect(source).toContain("isPreviewDeployment(req.nextUrl.hostname)");
+    expect(source).toContain('response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive")');
+    expect(source).toContain('matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]');
+  });
+
+  it("does not advertise the production sitemap from Preview robots.txt", () => {
+    const source = read("src/app/robots.ts");
+    expect(source).toContain('export const dynamic = "force-dynamic"');
+    expect(source).toContain("export function buildRobots(hostname?: string)");
+    expect(source).toContain("const preview = isPreviewDeployment(hostname)");
+    expect(source).toContain("if (preview)");
+    expect(source).toContain("return { rules }");
+  });
+
+  it("keeps the secondary robots API aligned with the Preview policy", () => {
+    const source = read("src/lib/seo-service.ts");
+    expect(source).toContain("const preview = isPreviewDeployment(hostname)");
+    const route = read("src/app/api/robots-txt/route.ts");
+    expect(route).toContain("const requestHeaders = await headers()");
+    expect(route).toContain('getRobotsTxt(requestHeaders.get("host") ?? "")');
+    expect(source).toContain("if (!preview)");
+    expect(source).toContain("Sitemap:");
+    expect(source).toContain("Host:");
+  });
+
 });
