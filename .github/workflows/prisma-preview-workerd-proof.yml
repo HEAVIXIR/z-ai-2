@@ -1,4 +1,4 @@
-# Manual proof workflow. CI's database-backed proof remains opt-in and runs from the approved Preview environment.
+# Manual proof workflow. DB-backed proof remains behind the protected preview-backup environment approval.
 name: Prisma Preview Workerd Runtime Proof
 
 on:
