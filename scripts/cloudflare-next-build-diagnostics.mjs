@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const nextCli = require.resolve("next/dist/bin/next");
-const child = spawn(process.execPath, [nextCli, "build", "--webpack"], {
+const child = spawn(process.execPath, [nextCli, "build", "--turbopack"], {
   stdio: "inherit",
   env: process.env,
 });

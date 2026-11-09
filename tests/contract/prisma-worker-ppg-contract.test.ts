@@ -46,8 +46,9 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.HEAVIX_ENV?.toLowerCase() === "preview"');
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
-    expect(next).toContain("asyncWebAssembly: true");
-    expect(next).toContain("config.parallelism = 4");
+    expect(next).toContain("turbopack:");
+    expect(next).not.toContain("webpack(config)");
+    expect(next).not.toContain("asyncWebAssembly");
     expect(next).toContain("outputFileTracingExcludes");
     expect(next).toContain("./src/lib/generated/worker-client/**/*.ts");
     expect(next).toContain("./src/lib/generated/store-worker-client/**/*.ts");
@@ -174,6 +175,8 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(diagnostic).toContain("/proc");
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
     expect(diagnostic).toContain("next/dist/bin/next");
+    expect(diagnostic).toContain('"--turbopack"');
+    expect(diagnostic).not.toContain('"--webpack"');
     const patcher = read("scripts/patch-next-nft-concurrency.cjs");
     expect(openNext).toContain("patch-next-nft-concurrency.cjs");
     expect(patcher).toContain("next/dist/compiled/@vercel/nft");
