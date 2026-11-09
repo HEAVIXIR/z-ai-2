@@ -130,7 +130,7 @@ jobs:
           fi
           echo "All protected environment validation checks passed; secret values redacted."
 
-      - name: Verify Preview resource IDs, TLS and enforced read-only backup sessions
+      - name: Verify Preview identity, TLS and read-only session mode (Prisma credentials remain full-access)
         shell: bash
         env:
           MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
@@ -139,7 +139,9 @@ jobs:
           set -euo pipefail
           CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
           test -n "$CID"
-          SQL="SELECT current_setting('transaction_read_only') = 'on' AND current_setting('default_transaction_read_only') = 'on' AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolbypassrls AND NOT has_database_privilege(current_user,current_database(),'CREATE') AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND (has_schema_privilege(current_user,n.oid,'CREATE') OR NOT has_schema_privilege(current_user,n.oid,'USAGE'))) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f') AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_table_privilege(current_user,c.oid,'SELECT')) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_sequence_privilege(current_user,c.oid,'SELECT')) FROM pg_roles r WHERE r.rolname=current_user"
+          # Prisma Postgres grants every credential full database access. This gate proves
+          # the backup session is read-only; it does NOT claim DB-role least privilege.
+          SQL="SELECT current_setting('transaction_read_only') = 'on' AND current_setting('default_transaction_read_only') = 'on'"
           run_preview_sql() {
             local label="$1"; local url="$2"; local sql="$3"; local result_file="$4"; local rc
             test -n "$url" || { echo "$label Preview connection URL missing on runner."; return 1; }
@@ -182,7 +184,7 @@ jobs:
               return "$rc"
             fi
             test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; rm -f "$result_file"; return 1; }
-            echo "INFO: $label checking enforced read-only and least-privilege properties."
+            echo "INFO: $label checking read-only session properties."
             if run_preview_sql "$label" "$url" "$SQL" "$result_file"; then
               safe="$(cat "$result_file")"
             else
@@ -192,8 +194,8 @@ jobs:
               return "$rc"
             fi
             rm -f "$result_file"
-            test "$safe" = "t" || { echo "$label role is not proven least-privilege/read-only. Backup blocked."; return 1; }
-            echo "$label Preview identity, TLS and enforced read-only session checks passed."
+            test "$safe" = "t" || { echo "$label session is not proven read-only. Backup blocked."; return 1; }
+            echo "$label Preview identity, TLS and read-only session mode checks passed; database credential remains full-access by Prisma design."
           }
           verify_db Main "$MAIN_PREVIEW_DATABASE_URL" 7701427422680793119
           verify_db Store "$STORE_PREVIEW_DATABASE_URL" 7701425043360235551
@@ -207,7 +209,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          echo "Prisma Postgres credentials are full-access; dump connections are forced into read-only sessions."
+          echo "SECURITY NOTE: Prisma Postgres credentials are full-access. This job uses fixed pg_dump operations with read-only session defaults; this is not database-role least privilege."
           CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
           WORK="$RUNNER_TEMP/heavix-b2"
           mkdir -m 700 -p "$WORK"
