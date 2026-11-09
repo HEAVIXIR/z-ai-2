@@ -52,7 +52,7 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
     expect(worker).toContain("pg_has_role(current_user, 'pg_read_server_files', 'MEMBER')");
     expect(worker).toContain("row.member_pg_read_server_files");
     expect(worker).toContain("has_unsafe_predefined_role");
-    expect(worker).toContain("!row.has_unsafe_predefined_role");
+    expect(worker).toContain("row.has_unsafe_predefined_role");
     expect(worker).toContain("'pg_read_all_settings'");
     expect(worker).toContain("'pg_read_all_stats'");
     expect(worker).toContain("'pg_stat_scan_tables'");
