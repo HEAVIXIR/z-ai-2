@@ -160,3 +160,16 @@ Limitations and acceptance requirements:
 - PR #210 has no submitted independent review in the current GitHub API response. Require a review tied to the exact HEAD after any further change.
 
 No secret values were read; no Worker configuration was changed; no deployment or Preview toggle was performed.
+
+
+## 10. Preview migration command hazard
+
+The `security/preview-gate` branch's `package.json` currently contains a script named `db:push:preview` that runs:
+
+```sh
+prisma db push --accept-data-loss --skip-generate --schema=prisma/preview-schema.prisma
+```
+
+This command is a schema-mutating operation and explicitly opts into data-loss acceptance. It is **not** part of the pre-Preview read-only validation sequence and must not be run as a shortcut for migration-baseline verification. Before any separately authorized Preview schema operation, inspect the target identity, produce a reviewed migration plan, verify backup/restore, and use a controlled migration process with explicit approval. The presence of a script named "preview" is not evidence that its target is isolated or safe.
+
+The same branch pins Wrangler `4.156.0`, which satisfies the runbook's stated minimum `4.135.0` for the documented Preview base-config secret command. This is a source-level version check only; no secret command was run.
