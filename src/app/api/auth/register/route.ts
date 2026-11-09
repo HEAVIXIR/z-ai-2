@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { toEnDigits } from "@/lib/format";
 import { sendVerificationEmail } from "@/lib/email";
@@ -154,7 +155,7 @@ export async function POST(req: Request) {
     });
 
     // MOBILE verification code — 5-digit, 10-min expiry
-    const devMobileCode = String(Math.floor(10000 + Math.random() * 90000));
+    const devMobileCode = String(randomInt(10000, 100000));
     const mobileExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.verificationCode.create({
       data: {
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
     });
 
     // EMAIL verification code — 6-digit, 10-min expiry (FIX 7)
-    const devEmailCode = String(Math.floor(100000 + Math.random() * 900000));
+    const devEmailCode = String(randomInt(100000, 1000000));
     const emailExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.verificationCode.create({
       data: {
