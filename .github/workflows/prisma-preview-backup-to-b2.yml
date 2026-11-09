@@ -84,7 +84,13 @@ jobs:
           test -n "$B2_APPLICATION_KEY"
           test -n "$AGE_RECIPIENT"
           test -n "$AGE_IDENTITY"
-          echo "Required secrets present; values redacted."
+          identity_file="$RUNNER_TEMP/age-identity-preflight.txt"
+          trap 'rm -f "$identity_file"' EXIT
+          printf '%s\\n' "$AGE_IDENTITY" > "$identity_file"
+          chmod 600 "$identity_file"
+          derived_recipient="$(age-keygen -y "$identity_file")"
+          test "$derived_recipient" = "$AGE_RECIPIENT" || { echo "AGE_RECIPIENT does not match AGE_IDENTITY."; exit 1; }
+          echo "Required secrets present and age key pair matches; values redacted."
 
       - name: Verify Preview resource IDs, TLS and read-only roles
         shell: bash
