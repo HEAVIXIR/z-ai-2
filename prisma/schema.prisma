@@ -9,7 +9,7 @@ generator workerClient {
   provider   = "prisma-client"
   output     = "../src/lib/generated/worker-client"
   engineType = "client"
-  runtime    = "cloudflare"
+  runtime    = "workerd"
 }
 
 datasource db {
