@@ -6,7 +6,7 @@ on:
     # receive the same blocking verification as PRs targeting main.
     branches: [main, 'infra/cloudflare-opennext-build-recovery']
   push:
-    branches: [main, 'feature/**', 'infra/**']
+    branches: [main, 'feature/**']
 
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
