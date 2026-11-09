@@ -137,3 +137,26 @@ Retention/cost caps and B2 lifecycle policy must be reviewed separately. No B2 u
 Approved infrastructure remains GitHub, Cloudflare, Prisma, and Backblaze B2 within free limits. Vercel is not HEAVIX infrastructure. Keep `main`, Production, `heavix.ir`, DNS, Worker settings, bindings, secrets, database roles/grants/settings, migrations, and B2 objects unchanged until their specific gates and separate authorizations are satisfied.
 
 **Current overall decision: NO-GO for Preview release.** The principal blockers are unproven dual-DB runtime identity/privileges, missing independent Preview-gate review/deployment proof, current Cloudflare preview capability enabled on an older active version, no integrated encrypted B2 restore, and branch protection/ruleset enforcement not established.
+
+
+## 9. Preview gate implementation review — PR #210
+
+The PR #210 source implements an outer Worker wrapper that calls `handlePreviewGate` before invoking the generated OpenNext Worker. The reviewed source has these positive controls:
+- exact `HEAVIX_ENV=preview` requirement and fail-closed 503 if either gate secret is missing or shorter than 32 UTF-8 bytes;
+- separate password and HMAC-SHA-256 signing key;
+- host-only `__Host-` cookie with Secure, HttpOnly, SameSite=Strict, Path=/, eight-hour expiry;
+- signature binds the session to the request origin;
+- constant-time byte comparison for supplied password/signature;
+- login/logout are the only unauthenticated paths; all other routes/methods are gated before OpenNext;
+- exact same-origin Origin validation for login/logout and unsafe application methods, with cross-site Fetch Metadata rejection;
+- login form body capped at 4 KiB and no-store/noindex/security headers on gate responses.
+
+Limitations and acceptance requirements:
+- Session is stateless. Clearing the browser cookie on logout does not revoke a copied cookie; it remains usable until expiry or signing-key rotation.
+- No durable/distributed rate limiter is implemented. Do not treat an in-isolate counter or no limiter as brute-force protection; a high-entropy password and an explicit rate-limiting design/review are still required.
+- A shared password does not provide individual identity, MFA, or per-user audit attribution. This is an accepted-preview limitation only if the owner explicitly accepts it; do not describe it as full user authentication.
+- The current Worker secret-name inventory returned only `DATABASE_URL` and `STORE_DATABASE_URL`; the two dedicated gate-secret names were not present in that inventory. This is not proof about a separate Preview base-config secret store. Verify the exact Preview secret names without reading values before deployment.
+- The current PR #210 check-run inventory shows successful no-DB OpenNext/Workerd checks and a skipped Prisma Preview-only proof, but does not expose a distinct completed check named for `run-preview-gate-smoke.mjs`. Require explicit exact-head evidence that the gate wrapper smoke ran before considering the gate tested.
+- PR #210 has no submitted independent review in the current GitHub API response. Require a review tied to the exact HEAD after any further change.
+
+No secret values were read; no Worker configuration was changed; no deployment or Preview toggle was performed.
