@@ -1,4 +1,7 @@
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { toFa } from "@/lib/format";
 import { Sparkles, Brain, Play, Clock, CheckCircle2, XCircle, Activity, Bot } from "lucide-react";
 import AIAgentsAdminClient from "./AIAgentsAdminClient";
@@ -10,11 +13,33 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export default async function AIAgentsPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return <div className="p-8 text-center text-zinc-500">Unauthorized</div>;
+  }
+  try {
+    await requirePermission(user.id, "ai.read");
+  } catch {
+    return (
+      <div className="p-8 text-center text-zinc-500">
+        Forbidden: requires ai.read
+      </div>
+    );
+  }
+
   // Touch the agent registry so the built-in agents are seeded
   // before we render — `listAgents` would also do it, but we want
   // to fetch with relations-ready stats separately.
   const agents = await db.aIAgent.findMany({
     orderBy: { createdAt: "asc" },
+  });
+
+  await logAudit({
+    actorId: user.id,
+    actorType: "ADMIN",
+    action: "ai.agents.list_view",
+    entityType: "AIAgent",
+    reason: `viewed AI agents registry (count=${agents.length})`,
   });
 
   // Format lastRunAt as Persian date string for the initial SSR.
