@@ -58,12 +58,15 @@ jobs:
 
       - name: Enforce branch, commit and explicit Preview confirmation
         shell: bash
+        env:
+          DISPATCH_TARGET: ${{ inputs.target }}
+          DISPATCH_CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "${{ inputs.target }}" = "PREVIEW_ONLY"
-          test "${{ inputs.confirm }}" = "BACKUP_PREVIEW_ONLY"
+          test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
           echo "Preview-only dispatch gates passed."
 
       - name: Install age and AWS CLI
