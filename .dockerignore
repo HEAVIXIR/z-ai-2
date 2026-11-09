@@ -1,0 +1,8 @@
+# Keep local runtime metadata and legacy sidecars out of container images.
+.git
+node_modules
+.next
+.heavix-media-metadata/
+.env*
+public/uploads/*.meta.json
+public/uploads/**/*.meta.json
