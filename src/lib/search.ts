@@ -153,6 +153,7 @@ export interface SearchListingsParams {
   yearMin?: number | null;
   yearMax?: number | null;
   sort?: "newest" | "oldest" | "price-asc" | "price-desc" | "featured" | null;
+  featuredOnly?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -212,6 +213,7 @@ export async function searchListings(
   const offset = Math.max(0, params.offset ?? 0);
 
   const where: PrismaWhere = { status: "PUBLISHED" };
+  if (params.featuredOnly) where.featured = true;
 
   // Free text
   const q = params.q?.trim();

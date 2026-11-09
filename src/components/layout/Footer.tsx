@@ -33,7 +33,7 @@ const LINK_COLUMNS: { title: string; links: { label: string; href: string }[] }[
     links: [
       { label: "خرید و فروش", href: "/listings" },
       { label: "اجاره دستگاه", href: "/listings?type=RENT" },
-      { label: "فروش در ۷ روز", href: "/#sell7" },
+      { label: "فروش در ۷ روز", href: "/sell-in-7-days" },
       { label: "قطعات یدکی", href: "/listings?category=spare-parts" },
       { label: "MEKANIX", href: "https://mekanix.ir" },
     ],
@@ -55,6 +55,9 @@ const MOBILES = ["0912-100-2000"];
 const EMAILS = ["info@heavix.ir", "support@heavix.ir"];
 const ADDRESS = "تهران، خیابان ولیعصر، برج آریا، طبقه ۱۲";
 const WORKING_HOURS = "شنبه تا پنجشنبه، ۸:۰۰ تا ۱۸:۰۰";
+const DEFAULT_ABOUT =
+  "بازار تخصصی ماشین‌آلات سنگین ایران؛ بستری برای خرید، فروش و اجاره تجهیزات صنعتی. متعلق به گروه صنعتی آریا ماشین جم.";
+const DEFAULT_COPYRIGHT = "© ۱۴۰۵ HEAVIX — متعلق به آریا ماشین جم. تمام حقوق محفوظ است.";
 
 type FooterSettings = {
   about?: string | null;
@@ -65,7 +68,7 @@ type FooterSettings = {
   copyright?: string | null;
   newsletterEnabled?: boolean;
   footerLogoUrl?: string | null;
-  footerLogoHeight?: number;
+  footerLogoHeight?: number | null;
   footerLogoPosition?: string | null;
   footerHeavixLogoUrl?: string | null;
   footerMekanixLogoUrl?: string | null;
@@ -79,6 +82,12 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
   const heavixLogoSrc = settings?.footerHeavixLogoUrl || settings?.footerLogoUrl || "/logos/heavix-logo.png";
   const mekanixLogoSrc = settings?.footerMekanixLogoUrl || "/logos/mekanix-logo.png";
   const ariaLogoSrc = settings?.footerAriaLogoUrl || "/logos/aria-logo.svg";
+  const phones = settings?.phone?.trim() ? [settings.phone.trim()] : PHONES;
+  const emails = settings?.email?.trim() ? [settings.email.trim()] : EMAILS;
+  const aboutText = settings?.about?.trim() || DEFAULT_ABOUT;
+  const addressText = settings?.address?.trim() || ADDRESS;
+  const workingHoursText = settings?.workingHours?.trim() || WORKING_HOURS;
+  const copyrightText = settings?.copyright?.trim() || DEFAULT_COPYRIGHT;
   return (
     <footer
       className="relative mt-auto border-t border-white/[0.06] bg-[#080808]"
@@ -88,7 +97,7 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
       <div className="mx-auto max-w-[1440px] px-6 pb-14 pt-16 lg:px-10">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
           {/* Brand column */}
-          <div className="lg:col-span-4">
+          <div id="about" className="lg:col-span-4">
             <div className={`flex items-center ${logoAlignClass}`}>
               <img
                 src={heavixLogoSrc}
@@ -99,19 +108,9 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
             </div>
 
             <p className="mt-5 max-w-sm text-[13px] leading-6 text-white/45">
-              بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران — خرید، فروش و اجاره دستگاه‌های صنعتی
-              با شبکه سراسری دیلرها و متخصصین. متعلق به گروه صنعتی آریا ماشین جم.
+              {aboutText}
             </p>
 
-            {/* Trust badges */}
-            <div className="mt-7 flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[8px] font-bold text-white/35">
-                اینماد
-              </div>
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[8px] font-bold text-white/35">
-                ساماندهی
-              </div>
-            </div>
           </div>
 
           {/* Link columns */}
@@ -137,7 +136,7 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
           <div className="lg:col-span-2" id="contact">
             <h3 className="mb-5 text-[13px] font-black text-white">تماس با ما</h3>
             <ul className="space-y-3.5">
-              {PHONES.map((phone, i) => (
+              {phones.map((phone, i) => (
                 <li key={i} className="flex items-center gap-3">
                   <Phone className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
                   <a
@@ -161,7 +160,7 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
                   </a>
                 </li>
               ))}
-              {EMAILS.map((email, i) => (
+              {emails.map((email, i) => (
                 <li key={i} className="flex items-center gap-3">
                   <Mail className="h-3.5 w-3.5 shrink-0 text-[#F58220]" />
                   <a
@@ -175,11 +174,11 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
               ))}
               <li className="flex items-start gap-3">
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                <span className="text-[13px] leading-6 text-white/55">{ADDRESS}</span>
+                <span className="text-[13px] leading-6 text-white/55">{addressText}</span>
               </li>
               <li className="flex items-start gap-3">
                 <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F58220]" />
-                <span className="text-[13px] leading-6 text-white/55">{WORKING_HOURS}</span>
+                <span className="text-[13px] leading-6 text-white/55">{workingHoursText}</span>
               </li>
             </ul>
           </div>
@@ -231,7 +230,7 @@ export default function Footer({ settings }: { settings?: FooterSettings | null 
       <div className="border-t border-white/[0.06]">
         <div className="mx-auto flex max-w-[1440px] flex-col items-center justify-between gap-4 px-6 py-5 md:flex-row lg:px-10">
           <div className="text-[11px] text-white/35">
-            © ۱۴۰۴ HEAVIX — متعلق به آریا ماشین جم. تمام حقوق محفوظ است.
+            {copyrightText}
           </div>
 
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">

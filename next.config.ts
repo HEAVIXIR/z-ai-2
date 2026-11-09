@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -94,7 +95,12 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: cspDirectives,
   },
+  ...(IS_PREVIEW_DEPLOYMENT
+    ? [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }]
+    : []),
 ];
+
+const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -104,6 +110,30 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: false,
+  ...(isCloudflareBuild
+    ? {
+        experimental: {
+          // Cloudflare Builds have a hard 1024-FD ceiling; constrain static generation.
+          cpus: 1,
+        },
+        outputFileTracingExcludes: {
+          "/*": [
+            "./docs/**/*",
+            "./tests/**/*",
+            "./scripts/**/*",
+            "./.git/**/*",
+            "./.github/**/*",
+            "./coverage/**/*",
+            "./.next/cache/**/*",
+            "./.turbo/**/*",
+          ],
+        },
+        webpack(config) {
+          config.parallelism = 4;
+          return config;
+        },
+      }
+    : {}),
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",

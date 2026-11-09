@@ -19,7 +19,6 @@ export const dynamic = "force-dynamic";
 const DEFAULT_HOME_LAYOUT = {
   sections: [
     {
-      title: "Hero",
       rows: [{
         widgets: [{
           key: "hero",
@@ -49,7 +48,6 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Search",
       rows: [{
         widgets: [{
           key: "search-box",
@@ -61,31 +59,68 @@ const DEFAULT_HOME_LAYOUT = {
       }],
     },
     {
-      title: "Featured Listings",
       rows: [{
         widgets: [{
           key: "listing-grid",
-          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4" },
+          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4", showPrice: true, showLocation: true },
           dataSource: "listing.featured",
         }],
       }],
     },
     {
-      title: "Categories",
+      rows: [{
+        widgets: [{
+          key: "listing-grid",
+          props: { title: "آخرین آگهی‌ها", limit: 8, columns: "4", showPrice: true, showLocation: true },
+          dataSource: "listing.latest",
+        }],
+      }],
+    },
+    {
       rows: [{
         widgets: [{
           key: "category-grid",
-          props: { title: "دسته‌بندی‌ها", limit: 12, columns: "4" },
+          props: { title: "دسته‌بندی ماشین‌آلات", limit: 12, columns: "4" },
           dataSource: "taxonomy.categories",
         }],
       }],
     },
     {
-      title: "Trust",
       rows: [{
         widgets: [{
-          key: "trust-badges",
-          props: { title: "چرا هویکس؟" },
+          key: "brand-grid",
+          props: { title: "برندهای منتخب", limit: 12, columns: "4" },
+          dataSource: "brand.popular",
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "service-grid",
+          props: { title: "خدمات تخصصی هویکس", limit: 8, columns: "4" },
+          dataSource: "service.all",
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "article-list",
+          props: { title: "دانش و راهنمای بازار", limit: 6 },
+          dataSource: "article.latest",
+        }],
+      }],
+    },
+    {
+      rows: [{
+        widgets: [{
+          key: "cta",
+          props: {
+            title: "ماشین‌آلات خود را هوشمندانه معامله کنید",
+            buttonText: "ثبت آگهی رایگان",
+            buttonLink: "/listings/new",
+          },
         }],
       }],
     },
@@ -93,11 +128,10 @@ const DEFAULT_HOME_LAYOUT = {
 };
 
 export default async function HomePage() {
-  // Try to load a published homepage AdminPage.
+  // Try to load a published homepage AdminPage and public site settings.
   let layout: unknown = DEFAULT_HOME_LAYOUT;
-
-  try {
-    const publishedPage = await db.adminPage.findFirst({
+  const [publishedPage, settings] = await Promise.all([
+    db.adminPage.findFirst({
       where: { pageType: "HOME", status: "PUBLISHED" },
       include: {
         versions: {
@@ -106,8 +140,11 @@ export default async function HomePage() {
           take: 1,
         },
       },
-    });
+    }).catch(() => null),
+    db.siteSettings.findUnique({ where: { id: "main" } }).catch(() => null),
+  ]);
 
+  try {
     if (publishedPage?.publishedVersionId) {
       const publishedVersion = await db.adminPageVersion.findUnique({
         where: { id: publishedPage.publishedVersionId },
@@ -117,16 +154,39 @@ export default async function HomePage() {
       }
     }
   } catch {
-    // DB unavailable — use default layout (PageRenderer handles gracefully).
+    // A missing/invalid published layout must not prevent the public homepage.
   }
+
+  const headerSettings = settings ? {
+    logoUrl: settings.logoUrl,
+    logoAnimationDurationMs: settings.logoAnimationDurationMs,
+    logoHeight: settings.logoHeight,
+    showPersianName: settings.showPersianName,
+    logoPosition: settings.logoPosition,
+  } : {};
+  const footerSettings = settings ? {
+    about: settings.about,
+    phone: settings.phone,
+    email: settings.email,
+    address: settings.address,
+    workingHours: settings.workingHours,
+    copyright: settings.copyright,
+    newsletterEnabled: settings.newsletterEnabled,
+    footerLogoUrl: settings.footerLogoUrl,
+    footerLogoHeight: settings.footerLogoHeight,
+    footerLogoPosition: settings.footerLogoPosition,
+    footerHeavixLogoUrl: settings.footerHeavixLogoUrl,
+    footerMekanixLogoUrl: settings.footerMekanixLogoUrl,
+    footerAriaLogoUrl: settings.footerAriaLogoUrl,
+  } : null;
 
   return (
     <>
-      <Header />
+      <Header siteSettings={headerSettings} />
       <main>
         <PageRenderer layout={layout} userId={null} />
       </main>
-      <Footer />
+      <Footer settings={footerSettings} />
     </>
   );
 }
