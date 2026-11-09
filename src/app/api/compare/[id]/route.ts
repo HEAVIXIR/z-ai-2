@@ -3,6 +3,10 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { getComparisonData } from "@/lib/compare-engine";
+import { toPublicComparisonDTO } from "@/lib/public-compare-dto";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { COMPARE_READ } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,9 +20,9 @@ export const dynamic = "force-dynamic";
    the shareToken of ANY session.
 
    Fix model (respects the product contract):
-   - GET: session ID is a capability token (if you know it, you can
-     view). This preserves the anonymous-compare feature. BUT: the
-     `userId` field is redacted from the response (PII protection).
+   - GET: anonymous-created sessions (userId=null) remain accessible
+     through the high-entropy session-ID capability. Owned sessions require
+     the owner or an admin; userId is redacted from every response.
    - PATCH + DELETE: require auth + ownership (or admin). This
      prevents token hijack (refreshShareToken) and unauthorized
      archival. Anonymous-created sessions (userId=null) require
@@ -68,9 +72,20 @@ async function authorizeMutation(
      }
    ============================================================ */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_READ.label),
+    limit: COMPARE_READ.limit,
+    windowMs: COMPARE_READ.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد درخواست‌های مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const { id } = await params;
     const session = await db.comparisonSession.findUnique({
@@ -91,11 +106,24 @@ export async function GET(
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
+    // Owned sessions are private even though anonymous sessions remain
+    // addressable through their high-entropy session-ID capability.
+    if (session.userId !== null) {
+      const user = await getCurrentUser();
+      if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const isOwner = session.userId === user.id;
+      const is_admin = await isAdmin(user.id);
+      if (!isOwner && !is_admin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
     if (session.status === "ARCHIVED") {
       return NextResponse.json({ error: "Session archived" }, { status: 410 });
     }
 
-    const data = await getComparisonData(id);
+    const data = toPublicComparisonDTO(await getComparisonData(id));
 
     return NextResponse.json({
       session: {
@@ -112,7 +140,7 @@ export async function GET(
         // The frontend does not use this field.
       },
       data,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

@@ -225,6 +225,38 @@ export async function addItem(
     select: { id: true, status: true, items: { select: { id: true, listingId: true } } },
   });
   if (!session) throw new Error("Session not found");
+  if (session.status !== "ACTIVE") throw new Error("Session archived");
+
+  // Comparison sessions are public capability surfaces. Only public,
+  // active catalog entities may be inserted into them.
+  if (input.listingId) {
+    const listing = await db.listing.findFirst({
+      where: { id: input.listingId, status: "PUBLISHED" },
+      select: { id: true },
+    });
+    if (!listing) throw new Error("Listing not found");
+  }
+  if (input.brandId) {
+    const brand = await db.brand.findFirst({
+      where: { id: input.brandId, active: true, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!brand) throw new Error("Brand not found");
+  }
+  if (input.modelId) {
+    const model = await db.productModel.findFirst({
+      where: { id: input.modelId, status: "ACTIVE", ...(input.brandId ? { brandId: input.brandId } : {}), brand: { is: { active: true, status: "ACTIVE" } } },
+      select: { id: true },
+    });
+    if (!model) throw new Error("Model not found");
+  }
+  if (input.productId) {
+    const product = await db.product.findFirst({
+      where: { id: input.productId, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!product) throw new Error("Product not found");
+  }
 
   // Cap at 5 items.
   if (session.items.length >= 5) {
@@ -249,6 +281,10 @@ export async function addItem(
     },
     select: { id: true, sessionId: true, sortOrder: true },
   });
+  await db.comparisonSession.update({
+    where: { id: sessionId },
+    data: { aiSummary: null, aiSummaryAt: null },
+  });
   return item;
 }
 
@@ -256,7 +292,13 @@ export async function addItem(
  * Remove an item from a session.
  */
 export async function removeItem(sessionId: string, itemId: string): Promise<void> {
-  await db.comparisonItem.deleteMany({ where: { id: itemId, sessionId } });
+  const deleted = await db.comparisonItem.deleteMany({ where: { id: itemId, sessionId } });
+  if (deleted.count > 0) {
+    await db.comparisonSession.update({
+      where: { id: sessionId },
+      data: { aiSummary: null, aiSummaryAt: null },
+    });
+  }
 }
 
 // ────────────────────────────────────────────────────────────
@@ -304,7 +346,7 @@ export async function getComparisonData(sessionId: string): Promise<ComparisonDa
   const items: ComparisonItemData[] = [];
   const listingIds: string[] = [];
   for (const it of session.items) {
-    if (it.listing) {
+    if (it.listing && it.listing.status === "PUBLISHED") {
       const l = it.listing;
       items.push({
         id: it.id,
@@ -331,13 +373,22 @@ export async function getComparisonData(sessionId: string): Promise<ComparisonDa
       // lazily so the comparison still has column metadata.
       const [brand, model, product] = await Promise.all([
         it.brandId
-          ? db.brand.findUnique({ where: { id: it.brandId }, select: { id: true, name: true, nameEn: true, country: true } })
+          ? db.brand.findFirst({
+              where: { id: it.brandId, active: true, status: "ACTIVE" },
+              select: { id: true, name: true, nameEn: true, country: true },
+            })
           : Promise.resolve(null),
         it.modelId
-          ? db.productModel.findUnique({ where: { id: it.modelId }, select: { id: true, name: true, nameEn: true, categoryId: true, category: { select: { id: true, name: true } } } })
+          ? db.productModel.findFirst({
+              where: { id: it.modelId, status: "ACTIVE", ...(it.brandId ? { brandId: it.brandId } : {}), brand: { is: { active: true, status: "ACTIVE" } } },
+              select: { id: true, name: true, nameEn: true, categoryId: true, category: { select: { id: true, name: true } } },
+            })
           : Promise.resolve(null),
         it.productId
-          ? db.product.findUnique({ where: { id: it.productId }, select: { id: true, canonicalName: true, slug: true, categoryId: true, category: { select: { id: true, name: true } } } })
+          ? db.product.findFirst({
+              where: { id: it.productId, status: "ACTIVE" },
+              select: { id: true, canonicalName: true, slug: true, categoryId: true, category: { select: { id: true, name: true } } },
+            })
           : Promise.resolve(null),
       ]);
       items.push({
@@ -737,6 +788,17 @@ export async function getSessionByShareToken(
  * so subsequent reads of the same session don't re-bill the LLM.
  */
 export async function generateAISummary(sessionId: string): Promise<string> {
+  const cached = await db.comparisonSession.findUnique({
+    where: { id: sessionId },
+    select: { aiSummary: true, aiSummaryAt: true },
+  });
+  const cacheAgeMs = cached?.aiSummaryAt
+    ? Date.now() - cached.aiSummaryAt.getTime()
+    : Number.POSITIVE_INFINITY;
+  if (cached?.aiSummary && cacheAgeMs >= 0 && cacheAgeMs < 15 * 60 * 1000) {
+    return cached.aiSummary;
+  }
+
   const data = await getComparisonData(sessionId);
   if (data.items.length < 2) {
     return "حداقل دو مورد برای خلاصه‌سازی لازم است.";
