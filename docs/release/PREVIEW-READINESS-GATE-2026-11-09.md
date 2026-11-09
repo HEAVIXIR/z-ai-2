@@ -2,7 +2,7 @@
 **Review date:** 2026-11-09  
 **Repository:** `HEAVIXIR/z-ai-2`  
 **Active security branch:** `security/active-session-hardening-2026-11-08`  
-**Reviewed security HEAD:** `f287bb3c9e48e36ff187f74e5df0eb78611fdaba`  
+**Latest verified security HEAD:** `c77a3fa0196cf0f6b881f3262ed1c0774baea94e` (documentation-only follow-up; earlier `f287...` evidence below is historical)  
 **Decision:** **NO-GO for Preview release** until the blockers in this document are independently closed.
 
 This is an evidence register and execution order, not authorization to deploy. It records only verified observations. Unknowns remain unknown; CI success is not substituted for runtime, database, security, backup, or release proof.
@@ -173,3 +173,30 @@ prisma db push --accept-data-loss --skip-generate --schema=prisma/preview-schema
 This command is a schema-mutating operation and explicitly opts into data-loss acceptance. It is **not** part of the pre-Preview read-only validation sequence and must not be run as a shortcut for migration-baseline verification. Before any separately authorized Preview schema operation, inspect the target identity, produce a reviewed migration plan, verify backup/restore, and use a controlled migration process with explicit approval. The presence of a script named "preview" is not evidence that its target is isolated or safe.
 
 The same branch pins Wrangler `4.156.0`, which satisfies the runbook's stated minimum `4.135.0` for the documented Preview base-config secret command. This is a source-level version check only; no secret command was run.
+
+
+## 11. Latest exact-HEAD CI closure — 2026-11-09
+
+Latest verified security branch HEAD: `c77a3fa0196cf0f6b881f3262ed1c0774baea94e`.
+
+All four workflows completed successfully on this exact HEAD:
+- [Main CI 42582633494](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42582633494): `docker-build-proof`, `verify`, `audit-transaction`, `phase-tests`, `tls-proof`, and Cloudflare compatibility report-only all succeeded. The legacy archive inventory job was skipped by workflow design.
+- [Prisma Workerd smoke 42582633601](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42582633601): exact-triggering-commit Worker module/typecheck and no-DB Workerd smoke succeeded.
+- [Cloudflare Edge Middleware Workerd 42582633580](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42582633580): OpenNext Edge Middleware request-path proof succeeded in local Workerd.
+- [Bun lockfile 42582633706](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42582633706): lockfile refresh workflow succeeded.
+
+These are CI/local-runtime proofs only. They do not establish live Preview deployment, real Preview DB connectivity, remote B2 archive/restore, browser acceptance, or Production readiness.
+
+## 12. Current branch protection observation
+
+A fresh read of the active security branch endpoint on 2026-11-09 returned `protected=false`, `protection.enabled=false`, and required status-check enforcement `off`. This is direct evidence for this security branch only; it must not be generalized to `main`. The repository ruleset inventory was previously empty, and the branch-protection administration endpoint remains unavailable to this connection. Owner/admin action is required to enforce protection and required checks; no settings were changed.
+
+## 13. Current PR review freshness
+
+Fresh review endpoint reads on 2026-11-09:
+- PR #258: the only independent review returned is `DISMISSED`, tied to older SHA `dac2c875938bb633a84bda86cdf1bf38f5e732fa`; no current independent approval exists for head `b980c4dc7200a023deb13207968e172cadddd5ca`.
+- PR #288: no submitted review returned.
+- PR #293: no submitted review returned.
+- PR #210: no submitted review returned.
+
+PR #288, #293, and #210 remain Draft. Do not merge or deploy them on the basis of CI alone. Obtain independent reviews tied to their exact current heads after integration changes.
