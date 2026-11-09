@@ -30,6 +30,13 @@ describe("R45 canonical authentication contract", () => {
     expect(s).not.toMatch(/userId\s*===\s*["']ADMIN["']/);
   });
 
+  it("denies RBAC permissions to non-active accounts", () => {
+    const legacy = read("src/lib/rbac-legacy.ts");
+    const authz = read("src/lib/authorization/index.ts");
+    expect(legacy).toContain("user: { status: 'ACTIVE' }");
+    expect(authz).toContain("user: { status: 'ACTIVE' }");
+  });
+
   it("uses USER_COOKIE at the edge", () => {
     const s = read("src/middleware.ts");
     expect(s).toContain('USER_COOKIE_NAME = "heavix-user"');
@@ -40,6 +47,13 @@ describe("R45 canonical authentication contract", () => {
     const s = read("src/lib/ai-policy.ts");
     expect(s).not.toMatch(/user\.role/);
     expect(s).not.toContain("select: { role: true }");
+  });
+
+  it("RBAC permissions and admin role require an ACTIVE account", () => {
+    const legacy = read("src/lib/rbac-legacy.ts");
+    const authz = read("src/lib/authorization/index.ts");
+    expect(legacy).toContain("where: { userId, user: { status: 'ACTIVE' } }");
+    expect(authz).toContain("where: { userId, user: { status: 'ACTIVE' }, role: { key: 'ADMIN' } }");
   });
 
   it("registerSeller assigns canonical SELLER UserRole", () => {
