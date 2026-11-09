@@ -1,0 +1,66 @@
+name: HEAVIX Preview Workerd Runtime Proof (controlled)
+
+on:
+  push:
+    branches:
+      - security/active-session-hardening-2026-11-08
+    paths:
+      - .github/workflows/prisma-preview-workerd-proof-runner.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-prisma-workerd-proof
+  cancel-in-progress: false
+
+jobs:
+  runtime-proof:
+    name: Read-only App + Store Preview Workerd proof
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 20
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: PREVIEW_ONLY
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+      HEAVIX_PROOF_SOURCE_SHA: fbe5c31abc20fe2fbf56a002caf2cedf8c052a86
+    steps:
+      - name: Checkout exact Prisma Workerd proof commit
+        uses: actions/checkout@v4
+        with:
+          ref: fbe5c31abc20fe2fbf56a002caf2cedf8c052a86
+
+      - name: Verify source commit and Preview-only target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
+          test "$(git rev-parse HEAD)" = "$HEAVIX_PROOF_SOURCE_SHA"
+          test "$HEAVIX_RUNTIME_PROOF_TARGET" = "PREVIEW_ONLY"
+          echo "Exact Workerd proof commit and Preview-only execution target verified."
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Fail closed unless both verified Preview inputs are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HEAVIX_APP_PREVIEW_PPG_URL"
+          test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          echo "Two distinct Preview connection inputs are present; values remain redacted."
+
+      - name: Execute read-only local Workerd runtime proof
+        run: bun run test:workerd
