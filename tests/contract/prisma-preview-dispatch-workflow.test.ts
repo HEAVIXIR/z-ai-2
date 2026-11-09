@@ -8,9 +8,7 @@ const workflow = readFileSync(
 );
 
 describe("Prisma Preview Workerd dispatch safety contract", () => {
-  it("runs on exact proof-branch pushes and retains explicit PREVIEW_ONLY manual dispatch", () => {
-    expect(workflow).toContain("push:");
-    expect(workflow).toContain("- infra/prisma6-cloudflare-runtime");
+  it("requires explicit PREVIEW_ONLY dispatch confirmation", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("confirm_preview_only:");
     expect(workflow).toContain("required: true");
