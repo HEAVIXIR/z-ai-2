@@ -140,14 +140,24 @@ jobs:
           CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
           test -n "$CID"
           SQL="SELECT current_setting('transaction_read_only') = 'on' AND current_setting('default_transaction_read_only') = 'on' AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolbypassrls AND NOT has_database_privilege(current_user,current_database(),'CREATE') AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND (has_schema_privilege(current_user,n.oid,'CREATE') OR NOT has_schema_privilege(current_user,n.oid,'USAGE'))) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f') AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_table_privilege(current_user,c.oid,'SELECT')) AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname NOT IN ('pg_catalog','information_schema') AND NOT has_sequence_privilege(current_user,c.oid,'SELECT')) FROM pg_roles r WHERE r.rolname=current_user"
+          run_preview_sql() {
+            local label="$1"; local url="$2"; local sql="$3"
+            test -n "$url" || { echo "$label Preview connection URL missing on runner."; return 1; }
+            case "$url" in postgres://*|postgresql://*) ;; *) echo "$label Preview connection URL has an unsupported scheme."; return 1 ;; esac
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$url" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu '
+              test -n "${HEAVIX_PREVIEW_DATABASE_URL:-}" || { echo "Preview connection URL was not delivered to PostgreSQL client container."; exit 64; }
+              case "$HEAVIX_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Preview connection URL scheme invalid inside PostgreSQL client container."; exit 64 ;; esac
+              exec psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"
+            '
+          }
           verify_db() {
             label="$1"; url="$2"; expected="$3"
             control_sql="SELECT has_function_privilege(current_user, 'pg_catalog.pg_control_system()', 'EXECUTE')"
-            control_access="$(docker exec -e DB_URL="$url" -e CONTROL_SQL="$control_sql" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu 'psql "$DB_URL" -XAtq -v ON_ERROR_STOP=1 -c "$CONTROL_SQL"')"
+            control_access="$(run_preview_sql "$label" "$url" "$control_sql")"
             test "$control_access" = "t" || { echo "$label role cannot execute pg_control_system(); Preview identity check blocked."; return 1; }
-            actual="$(docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu 'psql "$DB_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier FROM pg_control_system()"')"
+            actual="$(run_preview_sql "$label" "$url" "SELECT system_identifier FROM pg_control_system()")"
             test "$actual" = "$expected" || { echo "$label Preview identity mismatch."; return 1; }
-            safe="$(docker exec -e DB_URL="$url" -e SQL="$SQL" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu 'psql "$DB_URL" -XAtq -v ON_ERROR_STOP=1 -c "$SQL"')"
+            safe="$(run_preview_sql "$label" "$url" "$SQL")"
             test "$safe" = "t" || { echo "$label role is not proven least-privilege/read-only. Backup blocked."; return 1; }
             echo "$label Preview identity, TLS and enforced read-only session checks passed."
           }
@@ -169,7 +179,13 @@ jobs:
           mkdir -m 700 -p "$WORK"
           for name in main store; do
             if [ "$name" = "main" ]; then url="$MAIN_PREVIEW_DATABASE_URL"; else url="$STORE_PREVIEW_DATABASE_URL"; fi
-            docker exec -e DB_URL="$url" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu 'pg_dump --serializable-deferrable --format=custom --no-owner --no-acl --dbname="$DB_URL" > /tmp/'"$name"'.dump'
+            test -n "$url" || { echo "Preview database URL missing before dump."; exit 1; }
+            case "$url" in postgres://*|postgresql://*) ;; *) echo "Preview database URL has an unsupported scheme before dump."; exit 1 ;; esac
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$url" -e PGSSLMODE=verify-full -e PGOPTIONS='-c default_transaction_read_only=on' "$CID" bash -ceu '
+              test -n "${HEAVIX_PREVIEW_DATABASE_URL:-}" || { echo "Preview connection URL was not delivered to pg_dump container."; exit 64; }
+              case "$HEAVIX_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Preview connection URL scheme invalid inside pg_dump container."; exit 64 ;; esac
+              pg_dump --serializable-deferrable --format=custom --no-owner --no-acl --dbname="$HEAVIX_PREVIEW_DATABASE_URL" > /tmp/'"$name"'.dump
+            '
             docker cp "$CID:/tmp/$name.dump" "$WORK/$name.dump"
             test -s "$WORK/$name.dump"
           done
