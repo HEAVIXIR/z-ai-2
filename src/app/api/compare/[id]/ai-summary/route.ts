@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
-import { generateAISummary } from "@/lib/compare-engine";
+import { generateAISummary, getComparisonData } from "@/lib/compare-engine";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
+import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +40,7 @@ export async function POST(
     // are written on the session row).
     const session = await db.comparisonSession.findUnique({
       where: { id },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, aiSummary: true, aiSummaryAt: true },
     });
     if (!session) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -49,11 +51,75 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const summary = await generateAISummary(id);
-    return NextResponse.json({ summary });
-  } catch (err: any) {
-    const msg = err?.message ?? "Server error";
-    const status = msg.includes("not found") ? 404 : msg.includes("حداقل") ? 400 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    // Reuse a recent summary so repeated clicks do not repeatedly invoke the model.
+    const cacheFresh =
+      session.aiSummary &&
+      session.aiSummaryAt &&
+      Date.now() - session.aiSummaryAt.getTime() < 60 * 60 * 1000;
+    if (cacheFresh) {
+      return NextResponse.json({ summary: session.aiSummary, cached: true });
+    }
+
+    const comparisonData = await getComparisonData(id);
+    if (comparisonData.items.length < 2) {
+      return NextResponse.json(
+        { summary: "حداقل دو مورد برای خلاصه‌سازی لازم است." },
+        { status: 400 },
+      );
+    }
+
+    // Bound the complete server-derived comparison payload, not a
+    // partial projection. generateAISummary includes price ranges and
+    // cross-category metadata; omitting those here undercounted the
+    // actual model input and could bypass the configured size ceiling.
+    const inputLength = JSON.stringify(comparisonData).length;
+
+    const preflight = await preflightAIRequest({
+      taskType: "COMPARE_SUMMARY",
+      user: { id: user.id },
+      inputLength,
+    });
+    if (!preflight.ok) {
+      return NextResponse.json(
+        { error: preflight.reason },
+        { status: preflight.statusCode },
+      );
+    }
+
+    const startedAt = Date.now();
+    const summary = await generateAISummary(id, comparisonData);
+    const latencyMs = Date.now() - startedAt;
+    const estimatedCost = preflight.policy.costCeilingUsd;
+
+    try {
+      await recordAICost("COMPARE_SUMMARY", estimatedCost, user.id);
+    } catch {
+      // The summary remains available; budget accounting failures are monitored.
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "COMPARE_SUMMARY",
+          model: preflight.policy.model === "default" ? "z-ai-default" : preflight.policy.model,
+          input: JSON.stringify({ comparisonId: id, inputLength }).slice(0, 500),
+          output: summary.slice(0, 500),
+          latencyMs,
+          cost: estimatedCost,
+          success: true,
+          userId: user.id,
+        },
+      });
+    } catch {
+      // Do not fail a successfully generated/fallback summary due to log failure.
+    }
+
+    return NextResponse.json({ summary, cached: false });
+  } catch (err: unknown) {
+    trackError(err, { endpoint: "POST /api/compare/[id]/ai-summary", userId: user.id });
+    // Internal database/provider details must not be returned to callers.
+    return NextResponse.json(
+      { error: "خلاصه‌سازی در حال حاضر انجام نشد. لطفاً دوباره تلاش کنید." },
+      { status: 500 },
+    );
   }
 }
