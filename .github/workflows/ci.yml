@@ -658,13 +658,14 @@ jobs:
   # the repository variable is deliberately enabled and both secrets exist.
   prisma-workerd-runtime-proof:
     name: Prisma Workerd runtime proof (Preview-only)
-    if: ${{ vars.HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF == 'true' }}
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'infra/prisma6-cloudflare-runtime'
     runs-on: ubuntu-latest
+    environment: preview-backup
     timeout-minutes: 20
     env:
       HEAVIX_RUNTIME_PROOF_TARGET: PREVIEW_ONLY
-      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
-      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
     steps:
       - name: Checkout exact PR merge commit
         uses: actions/checkout@v4
