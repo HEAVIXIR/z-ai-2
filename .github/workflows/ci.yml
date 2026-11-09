@@ -722,3 +722,43 @@ jobs:
       - name: Execute no-database Workerd smoke proof
         run: bun run test:workerd
 
+
+  # Build the actual OpenNext/Workerd artifact and assert its WASM loader before any upload.
+  # Scoped to PR #191 while the Cloudflare Prisma runtime fix is being validated.
+  cloudflare-worker-artifact-proof:
+    name: Cloudflare Workerd WASM artifact proof
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'infra/prisma6-cloudflare-runtime'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HEAVIX_BUILD_TARGET: cloudflare
+      HEAVIX_ENV: preview
+      NODE_ENV: production
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Build OpenNext Worker
+        run: bunx opennextjs-cloudflare build --noMinify
+      - name: Produce Wrangler dry-run bundle (no deploy)
+        run: bunx wrangler deploy --dry-run --outdir=/tmp/heavix-worker-dry
+      - name: Assert Workerd-compatible Prisma WASM loader
+        shell: bash
+        run: |
+          set -euo pipefail
+          outdir=/tmp/heavix-worker-dry
+          worker="$outdir/worker.js"
+          test -s "$worker"
+          compile_count="$(grep -Roh 'compileStreaming' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
+          instantiate_count="$(grep -Roh 'instantiateStreaming' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
+          loader_count="$(grep -Roh 'loadWasmChunk' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
+          wasm_count="$(find "$outdir" -type f -name '*.wasm' | wc -l | tr -d ' ')"
+          echo "HEAVIX_WASM_ARTIFACT compileStreaming=$compile_count instantiateStreaming=$instantiate_count loadWasmChunk=$loader_count wasmFiles=$wasm_count"
+          test "$compile_count" -eq 0
+          test "$instantiate_count" -eq 0
+          test "$loader_count" -gt 0
+          test "$wasm_count" -gt 0
