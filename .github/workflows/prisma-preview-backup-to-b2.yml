@@ -300,38 +300,23 @@ jobs:
           # Prisma Postgres adds a provider-managed extension that is unavailable in
           # the disposable stock PostgreSQL container. Exclude ONLY its extension
           # registration/comment from the restore TOC; all other restore errors remain fatal.
+          # All TOC operations (list, filter, use-list) run with files inside the container.
           for name in main store; do
             archive="/tmp/$name.restore.dump"
             list="/tmp/$name.restore.list"
             filtered="/tmp/$name.restore.filtered.list"
             docker exec "$CID" pg_restore --list "$archive" > "$list"
-            if ! grep -Eq ' EXTENSION - prisma_postgres
-          main_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d main_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
-          store_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d store_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
-          test "$main_count" -gt 0
-          test "$store_count" -gt 0
-          echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
-          echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
- "$list"; then
+            if ! grep -Eq ' EXTENSION - prisma_postgres' "$list"; then
               echo "Expected Prisma-managed extension entry missing from $name archive; refusing altered restore path."
               exit 1
             fi
-            awk '
-              / EXTENSION - prisma_postgres$/ { next }
-              / COMMENT - EXTENSION prisma_postgres$/ { next }
-              { print }
-            ' "$list" > "$filtered"
-            if grep -Eq ' EXTENSION - prisma_postgres$| COMMENT - EXTENSION prisma_postgres
-          main_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d main_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
-          store_count="$(docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" psql -h 127.0.0.1 -U restore -d store_restore -XAtq -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
-          test "$main_count" -gt 0
-          test "$store_count" -gt 0
-          echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
-          echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
- "$filtered"; then
+            awk '/ EXTENSION - prisma_postgres$/ {next} / COMMENT - EXTENSION prisma_postgres$/ {next} {print}' "$list" > "$filtered"
+            if grep -Eq ' EXTENSION - prisma_postgres| COMMENT - EXTENSION prisma_postgres' "$filtered"; then
               echo "Prisma-managed extension filter did not remove the expected TOC entries for $name."
               exit 1
             fi
+            docker cp "$list" "$CID:/tmp/$name.restore.list"
+            docker cp "$filtered" "$CID:/tmp/$name.restore.filtered.list"
           done
           docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" pg_restore --exit-on-error --no-owner --no-acl --use-list=/tmp/main.restore.filtered.list -h 127.0.0.1 -U restore -d main_restore /tmp/main.restore.dump
           docker exec -e PGPASSWORD="$RESTORE_PASSWORD" "$CID" pg_restore --exit-on-error --no-owner --no-acl --use-list=/tmp/store.restore.filtered.list -h 127.0.0.1 -U restore -d store_restore /tmp/store.restore.dump
