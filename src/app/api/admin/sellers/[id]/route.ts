@@ -65,8 +65,9 @@ export async function GET(
     if (err instanceof SellerServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    console.error("[admin/sellers] GET failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to load seller" },
       { status: 500 },
     );
   }
@@ -87,12 +88,10 @@ export async function GET(
  *   lifecycle — verify + suspend mutate user state; register
  *   also flips User.role which is a user-level mutation).
  *
- * The service layer calls logAudit with the canonical action keys
- * (marketplace.seller.verify / marketplace.seller.suspend /
- * marketplace.seller.register). This route handler does not
- * duplicate those audits — they are the contract-required audits
- * and live in the service so the same logic is reusable from
- * server actions or other callers.
+ * The service layer writes the canonical marketplace.seller.*
+ * AuditLog event through the same Prisma transaction as each mutation.
+ * This route does not duplicate mutation audits; actor attribution is
+ * supplied from the authenticated session.
  */
 export async function PATCH(
   req: Request,
@@ -113,10 +112,84 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-    const action = String(body?.action ?? "").toLowerCase();
-    const reason = body?.reason ? String(body.reason) : null;
-    const companyId = body?.companyId ? String(body.companyId) : null;
+    const contentType = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+    if (contentType !== "application/json") {
+      return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+    }
+
+    const maxBodyBytes = 16 * 1024;
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+
+    // Enforce the limit while streaming so chunked requests cannot force
+    // an unbounded req.text() allocation before the size check.
+    const reader = req.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBodyBytes) {
+          await reader.cancel();
+          return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+        }
+        chunks.push(value);
+      }
+    }
+    const bodyBytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bodyBytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let rawBody: string;
+    try {
+      rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+    } catch {
+      return NextResponse.json({ error: "Request body must be valid UTF-8" }, { status: 400 });
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "JSON object required" }, { status: 400 });
+    }
+
+    const payload = body as Record<string, unknown>;
+    const allowedFields = new Set(["action", "reason", "companyId"]);
+    if (Object.keys(payload).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown request field" }, { status: 400 });
+    }
+
+    if (typeof payload.action !== "string" ||
+        !["verify", "suspend", "register"].includes(payload.action)) {
+      return NextResponse.json(
+        { error: "Invalid action. Allowed: verify | suspend | register" },
+        { status: 400 },
+      );
+    }
+    if (payload.reason !== undefined &&
+        (typeof payload.reason !== "string" || payload.reason.length > 2000)) {
+      return NextResponse.json({ error: "reason must be a string of at most 2000 characters" }, { status: 400 });
+    }
+    if (payload.companyId !== undefined &&
+        (typeof payload.companyId !== "string" || payload.companyId.length > 128)) {
+      return NextResponse.json({ error: "companyId must be a string of at most 128 characters" }, { status: 400 });
+    }
+
+    const action = payload.action;
+    const reason = typeof payload.reason === "string" ? payload.reason : null;
+    const companyId = typeof payload.companyId === "string" && payload.companyId.trim()
+      ? payload.companyId.trim()
+      : null;
 
     let result: Record<string, unknown> = {};
 
@@ -150,8 +223,9 @@ export async function PATCH(
     if (err instanceof SellerServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    console.error("[admin/sellers] PATCH failed:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to update seller" },
       { status: 500 },
     );
   }
