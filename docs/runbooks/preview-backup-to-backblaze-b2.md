@@ -68,6 +68,23 @@ Before dumping, the workflow:
 A successful workflow run is the minimum acceptance evidence. An upload alone is not
 a successful backup; both restores must pass.
 
+## Cross-database consistency semantics
+
+The Main and Store databases are dumped sequentially by two independent pg_dump
+invocations. Each custom-format dump is transactionally consistent for its own
+PostgreSQL database, but this workflow does **not** create a single atomic,
+point-in-time snapshot spanning both databases. The application is not quiesced and
+there is no shared cross-database snapshot coordinator or application checkpoint.
+Consequently, writes that occur between the two dump snapshots can produce a pair
+whose individual restores are valid but whose cross-database references or business
+invariants do not represent one exact instant.
+
+Treat this as a paired operational backup, not a globally consistent distributed
+snapshot. If a future recovery procedure requires cross-database point-in-time
+consistency, first design and test an explicit coordinated quiescence/checkpoint
+protocol (or another proven coordination mechanism) and record its evidence in the
+manifest. Do not silently infer atomicity from the word “paired.”
+
 ## Protected GitHub Environment configuration
 
 Create a GitHub Environment named `preview-backup`, protected by required reviewers.
