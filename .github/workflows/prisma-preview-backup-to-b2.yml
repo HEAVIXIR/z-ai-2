@@ -86,7 +86,7 @@ jobs:
           test -n "$AGE_IDENTITY"
           identity_file="$RUNNER_TEMP/age-identity-preflight.txt"
           trap 'rm -f "$identity_file"' EXIT
-          printf '%s\\n' "$AGE_IDENTITY" > "$identity_file"
+          printf '%s\n' "$AGE_IDENTITY" > "$identity_file"
           chmod 600 "$identity_file"
           derived_recipient="$(age-keygen -y "$identity_file")"
           test "$derived_recipient" = "$AGE_RECIPIENT" || { echo "AGE_RECIPIENT does not match AGE_IDENTITY."; exit 1; }
@@ -150,6 +150,7 @@ jobs:
           age -r "$AGE_RECIPIENT" -o store.dump.age store.dump
           age -r "$AGE_RECIPIENT" -o manifest.txt.age manifest.txt
           sha256sum main.dump.age store.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS
+          rm -f main.dump store.dump manifest.txt
 
       - name: Upload encrypted objects and verify B2 read-back
         shell: bash
