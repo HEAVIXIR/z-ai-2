@@ -8,22 +8,42 @@ Use a GitHub Actions runner for paired Main + Store Preview backups. Do not invo
 Workers execution model.
 
 This document is a release-safe implementation plan, not a claim that B2 backup is live.
-No B2 bucket, application key, encryption key, GitHub environment, workflow, or secret
-has been created or configured by this audit.
+The project owner has supplied Backblaze console metadata for an existing private bucket
+(see the inventory below). No application key, encryption identity, GitHub environment,
+workflow, or secret has been independently verified or configured by this audit.
+
+## Backblaze bucket inventory (owner-provided, not API-verified)
+
+The following values were copied from the owner's Backblaze console on 2026-11-09.
+They are recorded as user-provided evidence, not as independently verified control-plane
+results:
+
+| Purpose | Bucket | Bucket ID | Endpoint | Visibility | Encryption | Current objects |
+|---|---|---|---|---|---|---|
+| Preview DB backups | `heavix-db-backups` | `253da133c22ba1fdac1c0411` | `s3.us-east-005.backblazeb2.com` | Private | Enabled | 0 |
+| Development assets | `heavix-dev-assets` | `356d017312aba16dac1c0411` | `s3.us-east-005.backblazeb2.com` | Private | Enabled | 2 (43 bytes) |
+
+Both buckets report Object Lock disabled. The backup bucket reports custom lifecycle
+rules; the assets bucket reports keep-all-versions. The backup bucket is the designated
+destination for Preview database backups. The assets bucket must not be used for database
+backups. The reported zero-object state means no backup object is currently visible in
+that bucket; it does not establish whether any prior backup exists elsewhere.
 
 ## Mandatory preconditions
 
-1. Create/confirm a dedicated Backblaze B2 bucket for HEAVIX Preview backups only.
-2. Create a least-privilege B2 application key scoped to that bucket, with only the
-   object operations required for upload, read-back, and retention verification.
-3. Configure B2 lifecycle/retention and versioning/Object Lock policy deliberately.
-   Record the exact policy and verify it through B2's control plane before first backup.
+1. Independently verify the backup bucket ID, endpoint, region, private access, lifecycle
+   rules, encryption, and versioning/Object Lock policy through the B2 control plane.
+2. Create or verify a least-privilege B2 application key scoped only to
+   `heavix-db-backups`, with only the object operations required for upload, read-back,
+   and retention verification. Never use a master key.
+3. Review and document the exact lifecycle/retention policy before the first backup.
+   Do not enable destructive retention cleanup until a dry-run has been reviewed.
 4. Create a GitHub Environment named `preview-backup`, protected by required reviewers.
 5. Add the following values to that environment only; never to repository-wide secrets:
    - `MAIN_PREVIEW_DATABASE_URL`
    - `STORE_PREVIEW_DATABASE_URL`
    - `B2_S3_ENDPOINT`
-   - `B2_BUCKET`
+   - `B2_BUCKET` (must equal `heavix-db-backups`)
    - `B2_APPLICATION_KEY_ID`
    - `B2_APPLICATION_KEY`
    - `AGE_RECIPIENT` (public encryption recipient)
@@ -51,8 +71,9 @@ or deployment trigger. It must:
    resource IDs, database names, tool versions, byte counts, and SHA-256 checksums.
    The manifest must not contain connection URLs, usernames, passwords, or secret data.
 7. Encrypt each dump and the manifest with `age` before upload. Do not upload plaintext.
-8. Upload to a deterministic, date-partitioned B2 object prefix using the B2 S3 endpoint.
-   Do not place backup files in GitHub artifacts as a long-term backup store.
+8. Upload to a deterministic, date-partitioned B2 object prefix in
+   `heavix-db-backups` using the B2 S3 endpoint. Do not place backup files in GitHub
+   artifacts as a long-term backup store.
 9. Read the uploaded objects back from B2, verify checksums, decrypt in the protected
    runner, and restore both dumps into disposable PostgreSQL 17 databases.
 10. Run restore smoke checks and publish a non-secret evidence summary. A successful
@@ -67,8 +88,8 @@ or deployment trigger. It must:
 
 ## Required evidence for acceptance
 
-- Verified B2 bucket identity, endpoint, region, lifecycle/retention policy, and
-  least-privilege key scope.
+- Independently verified B2 bucket identity, endpoint, region, lifecycle/retention policy,
+  encryption state, and least-privilege key scope.
 - Database destination attestation for both Preview resources.
 - TLS connection evidence for both database connections.
 - One complete paired backup with encrypted objects in B2.
@@ -78,7 +99,10 @@ or deployment trigger. It must:
 
 ## Current blockers
 
-- No B2 bucket or credentials are connected to this project session.
+- The bucket metadata above is owner-provided; B2 control-plane verification and key
+  scope verification remain outstanding.
+- No B2 application credentials or encryption identity are connected to this project
+  session.
 - No B2 integration exists in the current backup script or admin route.
 - Preview Worker bindings expose secret names, but their destination resources have not
   been proven to match the two Preview database IDs.
@@ -90,5 +114,5 @@ or deployment trigger. It must:
 
 Until every precondition and acceptance item is satisfied, keep the existing backup API
 out of Cloudflare Worker production paths and do not create a workflow that can dump
-unattested or Production databases. Do not create B2 resources or store credentials
-without explicit resource/account configuration. Production remains untouched.
+unattested or Production databases. Do not store credentials without explicit protected
+environment configuration. Production remains untouched.
