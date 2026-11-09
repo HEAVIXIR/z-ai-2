@@ -310,7 +310,9 @@ jobs:
               echo "Expected Prisma-managed extension entry missing from $name archive; refusing altered restore path."
               exit 1
             fi
-            awk '/ EXTENSION - prisma_postgres$/ {next} / COMMENT - EXTENSION prisma_postgres$/ {next} {print}' "$list" > "$filtered"
+            echo "INFO: Prisma-managed TOC entries before filtering for $name:"
+            grep -nF 'prisma_postgres' "$list" || true
+            awk 'index($0, " EXTENSION - prisma_postgres") || index($0, " COMMENT - EXTENSION prisma_postgres") {next} {sub(/\r$/, ""); print}' "$list" > "$filtered"
             if grep -Eq ' EXTENSION - prisma_postgres| COMMENT - EXTENSION prisma_postgres' "$filtered"; then
               echo "Prisma-managed extension filter did not remove the expected TOC entries for $name."
               exit 1
