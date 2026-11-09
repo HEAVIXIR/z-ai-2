@@ -42,14 +42,23 @@ Before dumping, the workflow:
    inventoried system identifiers:
    - Main Preview: `7701427422680793119`
    - Store Preview: `7701425043360235551`
-4. Fails closed unless both sessions and roles prove read-only defaults, read-only
-   transaction state, no elevated role attributes, no `pg_write_all_data` membership,
-   and no database/schema CREATE privileges. It additionally verifies `default_transaction_read_only=on` in `pg_db_role_setting` for the exact login role (not merely a session-level GUC override).
+4. Verifies that the login role can execute `pg_catalog.pg_control_system()` before
+   reading the system identifier; this turns an uncertain function-ACL assumption into
+   an explicit preflight result. Fails closed unless both sessions and roles prove
+   read-only defaults, read-only transaction state, no elevated role attributes, no
+   `pg_write_all_data` membership, no CREATE privilege in any user schema, USAGE on
+   every user schema, SELECT on every user table/view/materialized view/foreign table
+   and sequence, and no effective table or sequence write privileges. It additionally
+   verifies `default_transaction_read_only=on` in `pg_db_role_setting` for the exact
+   login role (not merely a session-level GUC override).
 5. Creates paired custom-format dumps with `pg_dump --format=custom --no-owner --no-acl`.
-6. Creates a non-secret manifest and SHA-256 checksums, encrypts both dumps and the
-   manifest with `age`, uploads only encrypted objects, reads them back, verifies
-   encrypted-object hashes, decrypts, verifies plaintext hashes, and restores both
-   into disposable PostgreSQL 17 databases.
+6. Keeps the runner work directory intact across the dump and upload steps; cleanup
+   occurs only after the restore-verification step exits. Creates a non-secret manifest
+   and SHA-256 checksums, encrypts both dumps and the manifest with `age`, uploads only
+   encrypted objects, reads them back, verifies encrypted-object hashes, decrypts,
+   verifies plaintext hashes, and restores both into disposable PostgreSQL 17 databases.
+   The final cleanup removes runner-local plaintext and temporary service-container
+   dump files on success or failure.
 7. Requires non-empty user-table inventories after both restores. It never deletes
    objects or changes retention policy.
 
@@ -88,6 +97,10 @@ any secret values in chat, issues, commits, or logs.
   Do not weaken or bypass that gate. Dedicated Preview backup roles require a separate
   reviewed and explicitly authorized database privilege change.
 - No successful B2 upload, read-back, decryption, or restore has been performed.
+- The workflow source review found and fixed a lifecycle bug where the dump step's
+  EXIT trap deleted the runner work directory before the following upload step. The
+  directory now persists across steps and is removed by the final restore step's EXIT
+  cleanup. Static review is not a substitute for a successful workflow run.
 - Existing local PostgreSQL 17 backup/restore tests are not evidence of Preview backup.
 
 ## Acceptance sequence
