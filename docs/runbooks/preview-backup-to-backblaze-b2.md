@@ -57,8 +57,11 @@ Before dumping, the workflow:
    and SHA-256 checksums, encrypts both dumps and the manifest with `age`, uploads only
    encrypted objects, reads them back, verifies encrypted-object hashes, decrypts,
    verifies plaintext hashes, and restores both into disposable PostgreSQL 17 databases.
-   The final cleanup removes runner-local plaintext and temporary service-container
-   dump files on success or failure.
+   Immediately after encryption and encrypted checksums are created, the original
+   plaintext dumps and plaintext manifest are deleted; only encrypted dump/manifest
+   artifacts and checksum metadata remain for upload. The final cleanup removes
+   runner-local working files and temporary service-container dump files on success
+   or failure.
 7. Requires non-empty user-table inventories after both restores. It never deletes
    objects or changes retention policy.
 
@@ -100,7 +103,9 @@ any secret values in chat, issues, commits, or logs.
 - The workflow source review found and fixed a lifecycle bug where the dump step's
   EXIT trap deleted the runner work directory before the following upload step. The
   directory now persists across steps and is removed by the final restore step's EXIT
-  cleanup. Static review is not a substitute for a successful workflow run.
+  cleanup. A subsequent hardening pass corrected the age identity preflight's newline
+  serialization and deletes plaintext dumps/manifest immediately after encryption.
+  Static review is not a substitute for a successful workflow run.
 - Existing local PostgreSQL 17 backup/restore tests are not evidence of Preview backup.
 
 ## Acceptance sequence
