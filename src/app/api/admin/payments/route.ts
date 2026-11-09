@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
+import { parseManualPaymentAmount } from "@/lib/payments/manual-payment-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,15 +125,31 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const userId = String(body.userId ?? "");
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    }
+
+    const userId = String(body.userId ?? "").trim();
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
-    const amount = parseBig(body.amount);
-    if (!amount || amount <= 0n) {
-      return NextResponse.json({ error: "amount is required" }, { status: 400 });
+    const amount = parseManualPaymentAmount(body.amount);
+    if (amount === null) {
+      return NextResponse.json(
+        { error: "amount must be a positive whole number of IRR within the supported range" },
+        { status: 400 },
+      );
+    }
+    const currency = String(body.currency ?? "IRR").toUpperCase();
+    if (currency !== "IRR") {
+      return NextResponse.json({ error: "Manual payments currently support IRR only" }, { status: 400 });
+    }
+    const reason = String(body.reason ?? "").trim();
+    if (reason.length < 5 || reason.length > 500) {
+      return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
     }
     const type = String(body.type ?? "SUBSCRIPTION").toUpperCase();
     const ALLOWED = [
@@ -150,69 +165,111 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const markPaid = body.markPaid !== false; // default true
-
-    const user = await db.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const markPaid = body.markPaid !== false;
+    const subscriptionId = body.subscriptionId
+      ? String(body.subscriptionId).trim()
+      : null;
+    if (type === "SUBSCRIPTION" && !subscriptionId) {
+      return NextResponse.json(
+        { error: "subscriptionId is required for subscription payments" },
+        { status: 400 },
+      );
+    }
+    if (type !== "SUBSCRIPTION" && subscriptionId) {
+      return NextResponse.json(
+        { error: "subscriptionId is only valid for subscription payments" },
+        { status: 400 },
+      );
     }
 
-    const payment = await db.payment.create({
-      data: {
-        userId,
-        subscriptionId: body.subscriptionId
-          ? String(body.subscriptionId)
-          : null,
-        amount,
-        currency: body.currency ?? "IRR",
-        type,
-        status: markPaid ? "PAID" : "PENDING",
-        gateway: body.gateway ? String(body.gateway).toUpperCase() : "MANUAL",
-        trackingCode: body.trackingCode ? String(body.trackingCode) : null,
-        paidAt: markPaid ? new Date() : null,
-      },
-    });
+    const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
+    if (gateway !== "MANUAL") {
+      return NextResponse.json(
+        { error: "This endpoint records offline/manual payments only; online gateways require verified provider callbacks" },
+        { status: 400 },
+      );
+    }
+    const trackingCode = body.trackingCode ? String(body.trackingCode).trim() : null;
+    if (trackingCode && trackingCode.length > 100) {
+      return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
+    }
 
-    // On markPaid + SUBSCRIPTION type + linked subscriptionId,
-    // activate the subscription so plan features unlock
-    // immediately.
-    if (
-      markPaid &&
-      type === "SUBSCRIPTION" &&
-      payment.subscriptionId
-    ) {
-      try {
-        await db.premiumSubscription.update({
-          where: { id: payment.subscriptionId },
-          data: { status: "ACTIVE", paymentRef: payment.id },
+    const payment = await db.$transaction(async (tx) => {
+      const targetUser = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!targetUser) throw new Error("PAYMENT_USER_NOT_FOUND");
+
+      if (subscriptionId) {
+        const linkedSubscription = await tx.premiumSubscription.findUnique({
+          where: { id: subscriptionId },
+          select: { id: true, userId: true },
         });
-      } catch (subErr: any) {
-        console.error(
-          "[admin.payments] sub activation failed:",
-          subErr?.message ?? subErr,
-        );
+        if (!linkedSubscription || linkedSubscription.userId !== userId) {
+          throw new Error("PAYMENT_SUBSCRIPTION_MISMATCH");
+        }
       }
-    }
 
-    await logAudit({
-      actorType: "ADMIN",
-      action: "payment.create_manual",
-      entityType: "Payment",
-      entityId: payment.id,
-      after: {
-        userId,
-        amount: amount.toString(),
-        type,
-        gateway: payment.gateway,
-        status: payment.status,
-      },
+      const created = await tx.payment.create({
+        data: {
+          userId,
+          subscriptionId,
+          amount,
+          currency,
+          type,
+          status: markPaid ? "PAID" : "PENDING",
+          gateway,
+          trackingCode,
+          paidAt: markPaid ? new Date() : null,
+        },
+      });
+
+      if (markPaid && type === "SUBSCRIPTION" && subscriptionId) {
+        const activation = await tx.premiumSubscription.updateMany({
+          where: { id: subscriptionId, userId },
+          data: { status: "ACTIVE", paymentRef: created.id },
+        });
+        if (activation.count !== 1) {
+          throw new Error("PAYMENT_SUBSCRIPTION_MISMATCH");
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "payment.create_manual",
+          entityType: "Payment",
+          entityId: created.id,
+          afterJson: JSON.stringify({
+            userId,
+            amount: amount.toString(),
+            type,
+            gateway,
+            status: created.status,
+            subscriptionId,
+          }),
+          reason,
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: req.headers.get("user-agent"),
+        },
+      });
+
+      return created;
     });
 
     return NextResponse.json({ ok: true, payment: serialize(payment) });
   } catch (err: any) {
+    if (err?.message === "PAYMENT_USER_NOT_FOUND") {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    if (err?.message === "PAYMENT_SUBSCRIPTION_MISMATCH") {
+      return NextResponse.json(
+        { error: "Subscription not found or does not belong to this user" },
+        { status: 409 },
+      );
+    }
     trackError(err, { endpoint: "POST /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Manual payment creation failed" },
       { status: 500 },
     );
   }

@@ -90,7 +90,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error) return error;
 
   const body = await req.json().catch(() => null);
-  if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+  }
+
+  // Marketplace Payment is a financial ledger. Generic PATCH may update
+  // tracking metadata only; state/type/gateway/amount/ownership changes
+  // must use the dedicated audited action/route.
+  if (resourceKey === "payments") {
+    const keys = Object.keys(body);
+    const forbidden = keys.find((key) => key !== "trackingCode");
+    if (forbidden) {
+      return NextResponse.json(
+        {
+          error: `Payment field "${forbidden}" cannot be changed through generic PATCH; use the audited payment action`,
+          code: "PAYMENT_STATE_ACTION_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
+    if (!keys.includes("trackingCode")) {
+      return NextResponse.json(
+        { error: "Only trackingCode metadata can be updated through generic PATCH" },
+        { status: 400 },
+      );
+    }
+  }
 
   // P1 SERVER-SIDE VALIDATION
   const validation = validateResourcePayload(config, body);
