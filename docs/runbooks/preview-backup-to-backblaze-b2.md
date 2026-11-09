@@ -42,7 +42,7 @@ Before dumping, the workflow:
    - Store Preview: `7701425043360235551`
 4. Fails closed unless both sessions and roles prove read-only defaults, read-only
    transaction state, no elevated role attributes, no `pg_write_all_data` membership,
-   and no database/schema CREATE privileges.
+   and no database/schema CREATE privileges. It additionally verifies `default_transaction_read_only=on` in `pg_db_role_setting` for the exact login role (not merely a session-level GUC override).
 5. Creates paired custom-format dumps with `pg_dump --format=custom --no-owner --no-acl`.
 6. Creates a non-secret manifest and SHA-256 checksums, encrypts both dumps and the
    manifest with `age`, uploads only encrypted objects, reads them back, verifies
