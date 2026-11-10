@@ -176,7 +176,7 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
     expect(diagnostic).toContain("next/dist/bin/next");
     expect(diagnostic).toContain('"--turbopack"');
-    expect(diagnostic).not.toContain('"--webpack"');
+    expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack"');
     const ci = read(".github/workflows/ci.yml");
     expect(ci).toContain("cloudflare-worker-artifact-proof:");
     expect(ci).toContain("bunx wrangler deploy --dry-run");
