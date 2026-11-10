@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:30:14.641Z",
+  "updated_at_utc": "2026-11-10T22:30:23.006Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -132,7 +132,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "If the user authorizes secure GitHub browser-profile sign-in, cancel obsolete queued/in-progress CI runs for PR #307 and keep only the latest code-head run. Otherwise wait for the current queue. Then run the read-only Workerd proof with PREVIEW_ONLY. Do not deploy until exact-head CI and Preview App/Store DB identity gates pass.",
+    "task": "Fetch PR #307 current head and poll run #42915046750 for code head c8e95911e98143c1f9aa0ef07ace952e56df856f. The CI concurrency guard is added but did not cancel pre-existing queued runs. If user authorizes browser sign-in, cancel obsolete runs and dispatch the read-only Workerd proof with PREVIEW_ONLY. Do not deploy before exact-head CI and actual Preview App/Store DB identity verification.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -164,12 +164,12 @@
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42914300824,
-    "sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d",
+    "id": 42915046750,
+    "sha": "c8e95911e98143c1f9aa0ef07ace952e56df856f",
     "status": "queued",
-    "note": "Older CI runs from this recovery branch are still active/queued; no result yet for the latest code head. Later commits are documentation-only."
+    "note": "Latest code commit adds CI concurrency; earlier runs remain queued, so no exact-head result yet."
   },
-  "latest_code_head_sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d",
+  "latest_code_head_sha": "c8e95911e98143c1f9aa0ef07ace952e56df856f",
   "latest_ci_run": {
     "id": 42914986140,
     "sha": "01452ed",
