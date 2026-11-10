@@ -77,12 +77,12 @@ Store-prefixed pages currently present:
 
 Several Store domains intentionally use shared/global Admin pages rather than a /admin/store-prefixed route:
 - Procurement: `src/app/admin/procurement/page.tsx` uses the Store procurement APIs.
-- Service providers/requests: `src/app/admin/services/page.tsx` uses the Store services APIs.
-- Rentals: registered in `src/lib/admin/resources/store-domain-resources.ts` with adminPath `/admin/resources/rentals`, served by the Universal Resource Engine.
+- Homepage Service catalog: `src/app/admin/services/page.tsx` edits public homepage Service rows. Store ServiceProvider management uses the Universal Resource Engine at `/admin/resources/services` (`servicesConfig` → `serviceProvider` → `/api/admin/store/services/providers`). ServiceRequest has a separate API and appears as a provider relation/detail workflow; a dedicated request work-queue UI still needs verification.
+- Rentals: registered in the Store resource registry and served by the Universal Resource Engine at `/admin/resources/rentals`.
 - Pricing, Analytics, Audit Log, Media Library and SEO have shared global Admin pages.
 - Shipment lifecycle has the Store Shipments page; a separate logistics dashboard API exists and its exact UI wiring still needs verification.
 
-**Remaining Control Plane verification:** confirm navigation entries resolve to these shared routes, the resource registry points to the correct Store database and APIs, and each page exposes all necessary actions (including purchase-order receiving, rental booking lifecycle, service-request state transitions and logistics exceptions). The presence of a global page or API is not by itself proof of end-to-end feature completion.
+**Remaining Control Plane verification:** the older `docs/STORE-RESOURCE-MATRIX.md` reports 13 Store resources complete through Schema/Service/API/Permission/Registry/Admin UI/Validation/Audit/Tests/Monitoring, but explicitly records a DATABASE_URL environment blocker and static-only contract tests. Independently verify that navigation entries resolve to these shared routes, the resource registry points to the correct Store database and APIs, and each page exposes all necessary actions (including purchase-order receiving, rental booking lifecycle, service-request state transitions and logistics exceptions). The presence of a page or API is not by itself proof of runtime end-to-end completion.
 
 No Store-scoped Promotions page was found in the inspected route inventory; determine whether the approved product requires one or whether an existing global campaign/marketing page owns that workflow.
 
