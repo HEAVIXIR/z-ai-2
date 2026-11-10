@@ -43,3 +43,8 @@ Both scripts require Linux, Node.js 20+, pnpm 10.33.0, Rust/Cargo, and sufficien
 - No npm publish, migration, seed, database write, Production access, or DNS change is part of this experiment.
 
 A passing run is evidence for the patched Next build, HEAVIX Cloudflare artifact, trace reduction, WASM artifact presence, and no-database Workerd smoke. It is not, by itself, release approval or Production readiness.
+
+
+### Standalone trace-manifest de-duplication
+
+The verifier scans `.next` and `.open-next`, but Next's `.next/standalone` output can contain copied `.nft.json` manifests from the source `.next` tree. A standalone manifest is excluded from the trace-file gate only when its corresponding source manifest exists and its `files` array is byte-for-byte identical. Non-identical standalone manifests remain included. The verifier records the number of excluded mirror manifests and their aggregate entries separately; WASM artifact discovery still scans the full output tree, including standalone.
