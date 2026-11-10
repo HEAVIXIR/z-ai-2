@@ -83,3 +83,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added tests/contract/admin-homepage-sections.test.ts to guard default visibility, labels and stable-key persistence.
 - Commits: 94bd785d68c5de89c2315d329890fef01970d8d9 (admin API), 0e2eb05eba6c1ac3f1b10ab991d55411ca00cd5d (editor labels), 9e543230b600efe39effe2ed0b3056561d9da76c (contract tests).
 - CI validation for these latest changes is pending.
+
+## 2026-11-11 — Public homepage API and Admin defaults consistency
+
+- Updated public GET /api/homepage-sections to read all persisted rows, merge canonical defaults in memory, then filter active sections. This preserves explicit admin-disabled sections and still performs zero writes.
+- Updated handler tests: empty DB returns the canonical active sections; an explicitly disabled section remains disabled; public GET never calls createMany.
+- Admin GET already merges all canonical sections; bulk save upserts by stable key. Admin UI labels now match the 17 canonical hyphenated keys.
+- Added/updated contract coverage for root homepage data sources, custom PageBuilder registry preservation, admin default visibility and stable-key persistence.
+- Fixed an outdated pre-existing test that expected the old five-widget root PageRenderer layout. It now asserts the 17-section root and retains PageBuilder registry checks for custom pages.
+- Strengthened guest order retrieval: phone + exact order number required; order number now has a 40-bit CSPRNG suffix via Web Crypto; all Store order API JSON responses set Cache-Control private/no-store; regression test asserts no-store.
+- Commits: 33f0619ad4703d046f8bab700afb63c2f88af8b2 (public API merge), d2e99b7eeffcbd573e0333df79c4158eb70c1d17 (public handler tests), 78a1f547333a301a83e456f8709b8380c1c917dc (homepage data source test update), 94bd785d68c5de89c2315d329890fef01970d8d9 (admin API), 0e2eb05eba6c1ac3f1b10ab991d55411ca00cd5d (admin labels), 9e543230b600efe39effe2ed0b3056561d9da76c (admin contract test), 775f9a397eab756b03925829a0270aa288923778 (CSPRNG order reference), 7cee5ea4f7b8103d58d2923bad641ad81d7fe024 (no-store responses), 2b4925d64ca7a7ecabdfffb01149b9f1e0482d41 (no-store test).
+- CI run #42910792713 confirmed Typecheck/Lint/Security Tests and phase/tls/audit/Cloudflare report-only jobs passed. Full contract/unit tests failed on the old five-widget homepage assertion; corrected in commit 78a1f54. Docker image build, image verification, Caddy syntax and Compose config passed; Caddy→app connectivity remained in progress.
+- Exact latest-head CI after the homepage contract update, admin section editor, public API and Store no-store/CSPRNG changes is still pending.
