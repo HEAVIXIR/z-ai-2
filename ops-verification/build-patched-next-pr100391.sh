@@ -18,8 +18,17 @@ for c in git pnpm node python3 cargo rustc tar sha256sum awk df nproc find grep;
 node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
 (( node_major >= 20 )) || die "Node.js 20+ required."
 (( $(nproc) >= MIN_CPU_CORES )) || die "Need at least $MIN_CPU_CORES CPU cores."
-mem_kib="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
-mem_gib="$(awk -v k="$mem_kib" 'BEGIN {printf "%.1f", k/1048576}')"
+mem_limit=""
+if [[ -r /sys/fs/cgroup/memory.max ]]; then
+  candidate="$(cat /sys/fs/cgroup/memory.max)"
+  [[ "$candidate" =~ ^[0-9]+$ ]] && mem_limit="$candidate"
+fi
+if [[ -n "$mem_limit" ]]; then
+  mem_gib="$(awk -v b="$mem_limit" 'BEGIN {printf "%.1f", b/1073741824}')"
+else
+  mem_kib="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
+  mem_gib="$(awk -v k="$mem_kib" 'BEGIN {printf "%.1f", k/1048576}')"
+fi
 awk -v a="$mem_gib" -v m="$MIN_MEMORY_GIB" 'BEGIN {exit !(a >= m)}' || die "Need $MIN_MEMORY_GIB GiB RAM; found $mem_gib GiB."
 disk_gib="$(df -Pk "$WORK_DIR" | awk 'NR==2 {printf "%.1f", $4/1048576}')"
 awk -v a="$disk_gib" -v m="$MIN_DISK_GIB" 'BEGIN {exit !(a >= m)}' || die "Need $MIN_DISK_GIB GiB free disk; found $disk_gib GiB."
