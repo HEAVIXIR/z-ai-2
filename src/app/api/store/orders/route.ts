@@ -79,6 +79,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const phone = (url.searchParams.get("phone") || "").trim();
     const userIdParam = (url.searchParams.get("userId") || "").trim();
+    const orderNumber = (url.searchParams.get("orderNumber") || "").trim().toUpperCase();
     const mine = url.searchParams.get("mine") === "true";
 
     // Resolve the current session user (with admin flag).
@@ -139,9 +140,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: orders.map(serializeOrder) });
     }
 
-    // Backwards-compat phone lookup.
-    if (!phone || phone.length < 8) {
-      return NextResponse.json({ orders: [] });
+    // Guest lookup requires both the customer's phone and the exact order number.
+    // Phone-only enumeration could expose multiple orders and their PII.
+    if (!phone || phone.length < 8 || !orderNumber) {
+      return NextResponse.json(
+        { error: "شماره موبایل و شماره سفارش الزامی است" },
+        { status: 400 },
+      );
     }
 
     const customer = await storeDb.customer.findUnique({ where: { phone } });
@@ -149,16 +154,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ orders: [] });
     }
 
-    // Scope by userId too when available so a logged-in user doesn't
-    // see orders placed under the same phone by a different account.
-    const where = sessionUser?.id
-      ? { customerId: customer.id, userId: sessionUser.id }
-      : { customerId: customer.id };
-
     const orders = await storeDb.order.findMany({
-      where,
+      where: { customerId: customer.id, orderNumber },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 1,
       include: {
         items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true, images: true, active: true } } } },
         payments: { orderBy: { createdAt: "desc" } },
@@ -171,8 +170,8 @@ export async function GET(req: Request) {
   } catch (e: any) {
     console.error("[api/store/orders GET] error:", e);
     return NextResponse.json(
-      { error: e?.message ?? "Internal error" },
-      { status: 500 },
+      { error: "سرویس سفارش‌ها موقتاً در دسترس نیست" },
+      { status: 503 },
     );
   }
 }
