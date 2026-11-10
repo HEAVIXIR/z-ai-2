@@ -21,7 +21,7 @@ jobs:
       MIN_MEMORY_GIB: "8"
       MIN_CPU_CORES: "4"
       MIN_DISK_GIB: "8"
-      MAX_TRACE_ENTRIES: "5000"
+      MAX_UNIQUE_TRACE_FILES: "5000"
       HEAVIX_REF: "07b6de155284dd7813335201552acf4efbb6ad90"
     steps:
       - name: Checkout experiment scripts
