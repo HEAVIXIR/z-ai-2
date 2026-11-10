@@ -854,7 +854,7 @@ jobs:
           build_rc=$?
           # bunx may exit before a child in its process group; keep sampling
           # until the complete build process group has exited.
-          while kill -0 -- "-$build_pid" 2>/dev/null; do sleep 2; done
+          while kill -0 -- "-$build_pgid" 2>/dev/null; do sleep 2; done
           kill "$monitor_pid" 2>/dev/null
           wait "$monitor_pid" 2>/dev/null
           echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
