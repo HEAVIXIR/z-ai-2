@@ -124,3 +124,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Verified all Docker proof steps passed: dependencies, Prisma client generation, Docker image build, image existence, Caddyfile syntax, exact docker-compose.prod.yml interpolation, and real Caddy→app connectivity.
 - The verify job on the same run passed Typecheck, Lint and Security tests; phase-tests, tls-proof, audit-transaction and Cloudflare compatibility report-only passed. The full contract/unit suite failed only on the obsolete homepage-data-sources assertion; that test was rewritten in commit 78a1f547333a301a83e456f8709b8380c1c917dc to match the restored 17-section homepage while retaining PageBuilder registry checks.
 - Exact latest-head CI after the test correction and subsequent Store/Marketplace health RBAC changes is still pending.
+
+## 2026-11-11 — Read-only Cloudflare Preview Worker audit
+
+- Read-only Cloudflare account inspection confirmed the existing Worker script is `heavix-preview` in the HEAVIXIR Cloudflare account; no create/update/deploy action was performed.
+- Active deployment: 9c079e5b-e3df-4295-80e0-e930d2d25552; active version: 063ce438-ca3a-4482-b416-9260b780bccf; traffic allocation 100%; created 2026-11-10T21:08:35Z.
+- Deployment annotation: HEAVIX Preview visual refresh; full Next.js/OpenNext bundle, database readiness follow-up remains isolated.
+- Worker settings expose non-secret vars HEAVIX_ENV=preview and NODE_ENV=production. Secret binding names include DATABASE_URL and STORE_DATABASE_URL; secret values were not retrieved or printed.
+- The Worker script settings do not expose the database identities behind those secret bindings. Do not infer Preview DB identity from secret names alone.
+- Existing workflow .github/workflows/prisma-preview-workerd-proof.yml is a read-only, pinned-commit Workerd proof. It requires explicit workflow_dispatch input PREVIEW_ONLY and two distinct GitHub secrets HEAVIX_APP_PREVIEW_PPG_URL / HEAVIX_STORE_PREVIEW_PPG_URL; it verifies expected PostgreSQL system identifiers and read-only session mode without deploying a Worker. This workflow was not dispatched in this session because no GitHub workflow-dispatch action is exposed here.
+- Attempted web page open of the Preview URL was not accessible via the web retrieval tool; this is not evidence that the Worker is down.
+- No Cloudflare Worker deployment or DB connection was performed in this checkpoint.
