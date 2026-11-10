@@ -30,53 +30,6 @@ type Service = {
   featured: boolean;
 };
 
-const FALLBACK: Service[] = [
-  {
-    id: "fb-1",
-    key: "inspection",
-    nameFa: "کارشناسی و بازرسی",
-    nameEn: "Inspection",
-    description: "کارشناسی فنی و بررسی سلامت دستگاه قبل از معامله",
-    icon: "🔍",
-    imageUrl: null,
-    sortOrder: 1,
-    featured: true,
-  },
-  {
-    id: "fb-2",
-    key: "transport",
-    nameFa: "حمل و نقل",
-    nameEn: "Transport",
-    description: "انتقال امن ماشین‌آلات سنگین به سراسر کشور",
-    icon: "🚚",
-    imageUrl: null,
-    sortOrder: 2,
-    featured: false,
-  },
-  {
-    id: "fb-3",
-    key: "financing",
-    nameFa: "تسهیلات مالی",
-    nameEn: "Financing",
-    description: "مشاوره و تسهیلات برای خرید ماشین‌آلات",
-    icon: "🏦",
-    imageUrl: null,
-    sortOrder: 3,
-    featured: false,
-  },
-  {
-    id: "fb-4",
-    key: "repair",
-    nameFa: "تعمیر و نگهداری",
-    nameEn: "Repair",
-    description: "سرویس دوره‌ای و تعمیرات تخصصی ماشین‌آلات",
-    icon: "🛠️",
-    imageUrl: null,
-    sortOrder: 4,
-    featured: false,
-  },
-];
-
 export default function ServicesSection({
   cmsConfig,
 }: {
@@ -94,10 +47,10 @@ export default function ServicesSection({
         if (!cancelled && Array.isArray(json?.services) && json.services.length > 0) {
           setServices(json.services);
         } else if (!cancelled) {
-          setServices(FALLBACK);
+          setServices([]);
         }
       } catch {
-        if (!cancelled) setServices(FALLBACK);
+        if (!cancelled) setServices([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -107,7 +60,7 @@ export default function ServicesSection({
     };
   }, []);
 
-  const items = services.length > 0 ? services : FALLBACK;
+  const items = services;
 
   // Duplicate the list so the marquee scrolls seamlessly. Need at
   // least ~6 items in the loop for a smooth visual.
@@ -139,8 +92,12 @@ export default function ServicesSection({
         <div className="mt-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-[#F58220]" />
         </div>
-      ) : (
+      ) : items.length > 0 ? (
         <Ticker items={loop} />
+      ) : (
+        <div className="mx-auto mt-12 max-w-xl px-6 text-center text-sm leading-7 text-white/45">
+          در حال حاضر خدمت فعالی برای نمایش ثبت نشده است. برای ثبت نیاز خود می‌توانید درخواست خدمت ارسال کنید.
+        </div>
       )}
 
       {/* CTA */}
