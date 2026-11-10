@@ -126,6 +126,41 @@ if s.count(old_end) != 1:
 p.write_text(s.replace(old_end, new_end, 1))
 PY
 
+# Patch packageFiles only in the disposable upstream checkout used by this proof.
+python3 - scripts/pack-util.ts <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+old = """    if (set.has(f)) return false
+    // We add the full path, but check for parent directories too.
+    // This catches the case where the whole directory is added and then a single file from the directory.
+    // The sorting before ensures that the directory comes before the files inside of the directory.
+    while (f.includes('/')) {
+      f = f.replace(/\\/[^/]*$/, '')
+      if (set.has(f)) return false
+    }
+    set.add(f)
+    return true"""
+new = """    const originalPath = f
+    if (set.has(originalPath)) return false
+    // Check ancestors without replacing the candidate path stored in the set.
+    let parentPath = originalPath
+    while (parentPath.includes('/')) {
+      parentPath = parentPath.replace(/\\/[^/]*$/, '')
+      if (set.has(parentPath)) return false
+    }
+    set.add(originalPath)
+    return true"""
+if s.count(old) != 1:
+    raise SystemExit("Expected exactly one original dedup block; refusing patch.")
+p.write_text(s.replace(old, new, 1))
+PY
+git diff --check
+git diff -- scripts/pack-util.ts > "$OUTPUT_DIR/packagefiles-dedup-fix.patch"
+[[ -s "$OUTPUT_DIR/packagefiles-dedup-fix.patch" ]] || die "Disposable packageFiles dedup patch is empty."
+sha256sum "$OUTPUT_DIR/packagefiles-dedup-fix.patch" > "$OUTPUT_DIR/packagefiles-dedup-fix.patch.sha256"
+
 tarball_dir="tarballs"
 log "Running upstream pack-next (with read-only packageFiles diagnostics)"
 pnpm pack-next --no-js-build --tar --compress=strip
