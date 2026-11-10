@@ -62,6 +62,8 @@ git diff --check
 git diff -- "$source_file" > "$OUTPUT_DIR/pr100391.patch"
 [[ -s "$OUTPUT_DIR/pr100391.patch" ]] || die "Patch diff is empty."
 sha256sum "$OUTPUT_DIR/pr100391.patch" > "$OUTPUT_DIR/pr100391.patch.sha256"
+log "Installing pinned Next.js monorepo dependencies"
+pnpm install --frozen-lockfile
 log "Running upstream's official coordinated package builder"
 # pack-next builds JS + native components and creates all matching package tarballs.
 pnpm pack-next --tar --compress=strip
