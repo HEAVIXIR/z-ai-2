@@ -8,7 +8,7 @@ OUTPUT_DIR="${1:-$PWD/artifacts/next-pr100391}"
 MIN_MEMORY_GIB="${MIN_MEMORY_GIB:-8}"
 MIN_CPU_CORES="${MIN_CPU_CORES:-4}"
 MIN_DISK_GIB="${MIN_DISK_GIB:-15}"
-WORK_DIR="${WORK_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/heavix-next-patch.XXXXXX")}"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/heavix-next-patch.XXXXXX")"
 KEEP_WORK_DIR="${KEEP_WORK_DIR:-0}"
 log(){ printf '[next-patch-build] %s\n' "$*"; }
 die(){ printf '[next-patch-build] ERROR: %s\n' "$*" >&2; exit 1; }
