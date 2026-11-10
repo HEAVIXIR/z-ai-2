@@ -32,7 +32,7 @@ cd "$WORK_DIR/heavix"
 # type reference in this disposable checkout so NextFetchRequestConfig augments
 # the DOM RequestInit type during the Cloudflare worker tsconfig check.
 if [[ ! -f next-env.d.ts ]]; then
-  printf '%s\\n' '/// <reference types="next" />' > next-env.d.ts
+  printf '%s\n' '/// <reference types="next" />' > next-env.d.ts
   log "Generated temporary next-env.d.ts type reference in disposable checkout"
 fi
 actual_sha="$(git rev-parse HEAD)"
@@ -53,6 +53,11 @@ replace_package next-swc.tar node_modules/@next/swc
 replace_package next-mdx.tar node_modules/@next/mdx
 replace_package next-env.tar node_modules/@next/env
 replace_package next-bundle-analyzer.tar node_modules/@next/bundle-analyzer
+# Validate the package type augmentation and the exact generated reference.
+[[ -s node_modules/next/types/global.d.ts ]] || die "Patched next package is missing types/global.d.ts"
+grep -q 'interface RequestInit' node_modules/next/types/global.d.ts || die "Next types/global.d.ts lacks RequestInit augmentation"
+grep -qx '/// <reference types="next" />' next-env.d.ts || die "next-env.d.ts does not contain the exact canonical Next type reference"
+log "Verified Next RequestInit augmentation and canonical next-env.d.ts reference"
 installed_version="$(node -p "require('./node_modules/next/package.json').version")"
 [[ "$installed_version" == 16.4.5 ]] || die "Expected patched Next 16.4.5, found $installed_version."
 log "Running HEAVIX Cloudflare build (build only; no deploy)"
