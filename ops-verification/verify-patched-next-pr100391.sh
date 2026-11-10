@@ -143,9 +143,9 @@ log "Verified Next RequestInit augmentation and canonical next-env.d.ts referenc
 
 installed_version="$(node -p "require('./node_modules/next/package.json').version")"
 [[ "$installed_version" == 16.4.5 ]] || die "Expected patched Next 16.4.5, found $installed_version."
-log "Running HEAVIX Cloudflare build (build only; no deploy)"
+log "Running HEAVIX Cloudflare build in explicit Preview mode (build only; no deploy; no database URLs)"
 set +e
-bun run build:cloudflare 2>&1 | tee "$OUTPUT_DIR/cloudflare-build.log"
+HEAVIX_ENV=preview bun run build:cloudflare 2>&1 | tee "$OUTPUT_DIR/cloudflare-build.log"
 build_status=${PIPESTATUS[0]}
 set -e
 [[ "$build_status" -eq 0 ]] || die "Cloudflare build failed with exit $build_status."
