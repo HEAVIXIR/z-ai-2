@@ -98,10 +98,10 @@ log "Running Wrangler non-deploying dry-run"
 bunx wrangler deploy --dry-run --outdir "$OUTPUT_DIR/wrangler-dry-run" 2>&1 | tee "$OUTPUT_DIR/wrangler-dry-run.log"
 log "Running explicit no-database Workerd smoke"
 HEAVIX_RUNTIME_PROOF_TARGET=SMOKE_ONLY \
-HEAVIX_APP_PREVIEW_PPG_URL= \
-HEAVIX_STORE_PREVIEW_PPG_URL= \
-DATABASE_URL= \
-STORE_DATABASE_URL= \
+HEAVIX_APP_PREVIEW_PPG_URL='' \
+HEAVIX_STORE_PREVIEW_PPG_URL='' \
+DATABASE_URL='' \
+STORE_DATABASE_URL='' \
 bun run test:workerd 2>&1 | tee "$OUTPUT_DIR/workerd-smoke.log"
 cat > "$OUTPUT_DIR/RESULT.txt" <<EOF
 Result: PASS
