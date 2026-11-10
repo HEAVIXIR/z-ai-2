@@ -57,7 +57,7 @@ Never assume a legacy file is safe/current. Compare it with current code, schema
 - No blanket permissions. Map routes and mutations to least-privilege RBAC, ownership/tenant checks and audit.
 - Never expose secrets, tokens, credentials, customer PII or private environment values in logs/docs.
 - No fake stats, fake listings, mock success, or claiming deployment/tests passed without actual evidence.
-- Preserve PageRenderer/PageBuilder and custom admin-authored pages; restore full default homepage composition compatibly.
+- Preserve PageRenderer/PageBuilder for custom pages and preview flows. The root homepage is restored through the current HomePageSection-driven 17-section composition using existing current-tree components; do not reintroduce the five-widget fallback as the root default or let an incomplete generic HOME layout suppress the canonical product homepage.
 - No Cloudflare deployment until code-level checks, CI, artifact provenance, and DB identity gates pass. Use the existing Preview Worker only.
 
 ## 6. Required execution sequence
