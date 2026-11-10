@@ -117,8 +117,12 @@ export async function GET(req: Request) {
 
     // Explicit userId filter (e.g. from the HEAVIX dashboard).
     if (userIdParam) {
-      // Only allow the user to query their own orders (or admin, handled above).
-      if (sessionUser && sessionUser.id !== userIdParam) {
+      // Fail closed: an unauthenticated caller must never be able to enumerate
+      // another user's orders by supplying a guessed userId.
+      if (!sessionUser) {
+        return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+      }
+      if (sessionUser.id !== userIdParam) {
         return NextResponse.json({ error: "غیرمجاز" }, { status: 403 });
       }
       const orders = await storeDb.order.findMany({
