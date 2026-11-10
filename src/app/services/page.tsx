@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ServicesPage() {
-  const [services, headerCats] = await Promise.all([
+  const [services, headerCats, settings] = await Promise.all([
     db.service.findMany({
       where: { active: true },
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { nameFa: "asc" }],
@@ -31,6 +31,7 @@ export default async function ServicesPage() {
       orderBy: { sortOrder: "asc" },
       select: { id: true, name: true, slug: true, parentId: true, icon: true },
     }).catch(() => []),
+    db.siteSettings.findUnique({ where: { id: "main" } }).catch(() => null),
   ]);
 
   return (
@@ -118,7 +119,21 @@ export default async function ServicesPage() {
           </Link>
         </div>
       </main>
-      <Footer />
+      <Footer
+        settings={
+          settings
+            ? {
+                about: settings.about,
+                phone: settings.phone,
+                email: settings.email,
+                address: settings.address,
+                workingHours: settings.workingHours,
+                copyright: settings.copyright,
+                newsletterEnabled: settings.newsletterEnabled,
+              }
+            : null
+        }
+      />
     </div>
   );
 }
