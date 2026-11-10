@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 import { storeDb } from "@/lib/store-db";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
 import { getStoreUserWithRole } from "@/lib/store-auth";
@@ -35,7 +34,7 @@ export const dynamic = "force-dynamic";
 
 function genOrderNumber(): string {
   const t = Date.now().toString(36).toUpperCase().slice(-6);
-  const secret = randomBytes(5).toString("hex").toUpperCase();
+  const secret = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
   return `HV-${t}${secret}`;
 }
 
