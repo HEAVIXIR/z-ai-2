@@ -58,7 +58,7 @@ jobs:
           shellcheck ops-verification/verify-patched-next-pr100391.sh
           cargo --version
           rustc --version
-          pnpm --version
+          (cd "$RUNNER_TEMP" && pnpm --version)
           bun --version
 
       - name: Build patched Next.js 16.4.5 package set
