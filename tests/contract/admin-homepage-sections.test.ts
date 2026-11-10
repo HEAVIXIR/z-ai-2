@@ -16,9 +16,10 @@ describe("admin homepage section control-plane contract", () => {
   it("exposes canonical virtual defaults to the admin editor", () => {
     expect(apiSource).toContain("mergeHomepageSections(rows)");
     for (const section of DEFAULT_HOME_SECTIONS) {
-      expect(editorSource, `missing admin label for ${section.key}`).toContain(
-        `"${section.key}"`,
-      );
+      const hasLabelKey =
+        editorSource.includes(`${section.key}:`) ||
+        editorSource.includes(`"${section.key}":`);
+      expect(hasLabelKey, `missing admin label for ${section.key}`).toBe(true);
     }
   });
 
