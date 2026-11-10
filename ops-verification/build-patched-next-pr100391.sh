@@ -80,7 +80,7 @@ fi
   stat packages/next/types/global.d.ts 2>&1
   sha256sum packages/next/types/global.d.ts 2>&1
   echo "=== pre-pack types directory ==="
-  find packages/next/types -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | sort
+  find packages/next/types -maxdepth 1 -printf '%M %u %g %s %p\n' 2>&1 | sort
   echo "=== package files declaration ==="
   node -e 'const p=require("./packages/next/package.json"); console.log(JSON.stringify(p.files.filter(x => x.includes("types")), null, 2))'
 } > "$OUTPUT_DIR/types-dir-before-pack.txt" 2>&1
