@@ -86,3 +86,12 @@ Store Admin API domains also include:
 **Control Plane gap:** dedicated Store Admin page routes were not found for Procurement, Rentals, Service Providers/Requests, or Logistics operations, despite corresponding APIs. No dedicated Store-scoped Promotions or Analytics pages were found in this route inventory. Global Admin may provide shared Media/SEO/Analytics surfaces, but that does not replace Store-specific workflows.
 
 These are not marked complete merely because the API handlers exist. Next work must connect each advertised API domain to permission-aware list/detail/form/action UI, validation, audit, tests and monitoring.
+## Security finding — Admin health endpoints
+
+The middleware intentionally short-circuits paths ending in `/health` before checking the session cookie so infrastructure probes can reach health handlers. That means each detailed admin health handler must enforce its own route-level authorization.
+
+Source review found `/api/admin/store/health` and `/api/admin/marketplace/health` had no route-level authentication and exposed database status, counts, latency and monitoring details. `/api/admin/catalog-health` already required a signed-in user with analytics permission.
+
+**Remediation on this branch:** Store health now requires `getCurrentUser` + `store.read`; Marketplace health requires `getCurrentUser` + `analytics.read`. Added handler tests for unauthenticated, missing-permission and authorized cases, and updated the general auth-boundary test to assert route-level protection for all three detailed admin health endpoints. The middleware health-probe bypass and public `/api/health` liveness contract remain intact.
+
+CI validation is pending for these newest changes.
