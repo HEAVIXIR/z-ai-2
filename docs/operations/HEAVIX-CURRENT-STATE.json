@@ -1,0 +1,95 @@
+{
+  "project": "HEAVIX",
+  "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
+  "updated_at_utc": "2026-11-11",
+  "repository": "HEAVIXIR/z-ai-2",
+  "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
+  "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "NOT_RECORDED_IN_PRIOR_HANDOFF",
+  "legacy_reference": {
+    "repository": "dellk00k/z",
+    "branch": "legacy/extracted-archives",
+    "commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "usage": "Read-only reference; compare file-by-file; never bulk-copy."
+  },
+  "preview": {
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "must_preserve_existing_url": true,
+    "deployment_status": "NOT VERIFIED IN THIS CHECKPOINT",
+    "database_identity_app": "NOT VERIFIED",
+    "database_identity_store": "NOT VERIFIED",
+    "production_isolation": "NOT VERIFIED"
+  },
+  "production_and_dns": {
+    "production_changes_allowed": false,
+    "dns_changes_allowed": false,
+    "stable_worker_replacement_allowed": false
+  },
+  "cloudflare_quota": {
+    "last_user_report": "Approximately 1900 of 3000 monthly usage units consumed; verify current account usage before any Cloudflare action.",
+    "policy": "Avoid unnecessary builds/deployments; prefer GitHub/local checks first."
+  },
+  "verified_findings": [
+    "Current main homepage uses PageRenderer and a five-widget default fallback.",
+    "Legacy homepage route rendered 17 section keys.",
+    "Published HOME AdminPage layout can override the code fallback; actual Preview DB selection remains unverified.",
+    "All 26 legacy-matched homepage component files exist in current source; 18 identical and 8 differ.",
+    "The eight differing components are ActiveRequestsSection.tsx, BrandsSection.tsx, CtaSection.tsx, Hero.tsx, RecommendationsSection.tsx, StatsSection.tsx, VerifiedMachinesCarousel.tsx, VerifiedMachinesGallery.tsx.",
+    "Current tree includes routes/modules for Sell in 7 Days, Companies, Store, Services, Knowledge, Taxonomy and Admin; completeness is not yet proven.",
+    "Public GET /api/homepage-sections was flagged for read-side-effect audit; exact current behavior must be inspected.",
+    "Legacy extracted snapshot reports 10 archives and 845 files, with db.zip, upload.zip and bun.zip quarantined."
+  ],
+  "completed_in_previous_sessions": [
+    "Created isolated recovery branch from main.",
+    "Created full product integration plan.",
+    "Created legacy-to-current inventory audit with homepage regression evidence."
+  ],
+  "completed_in_this_checkpoint": [
+    "Created mandatory cross-agent continuation protocol.",
+    "Created machine-readable current-state checkpoint.",
+    "Created append-only worklog entry describing this handoff."
+  ],
+  "not_done_and_not_to_be_claimed": [
+    "No application source code repaired yet.",
+    "No homepage restoration implementation yet.",
+    "No route/API/RBAC matrix completed yet.",
+    "No CI result verified in this checkpoint.",
+    "No Preview deployment performed in this checkpoint.",
+    "No Preview database identity verified in this checkpoint.",
+    "No Production or DNS changes performed."
+  ],
+  "next_action": {
+    "priority": "P0",
+    "branch": "recovery/heavix-full-product-integration-2026-11-11",
+    "task": "Inspect the exact current PageRenderer registry, homepage-section APIs/editor, Prisma HomePageSection/AdminPage fields, and all 8 changed home components; then implement the 17-section homepage orchestrator with read-only public GET behavior and regression tests.",
+    "first_paths_to_read": [
+      "src/app/page.tsx",
+      "src/lib/admin/page-builder/widget-registry.ts",
+      "src/app/api/homepage-sections/route.ts",
+      "src/app/api/admin/homepage-sections/route.ts",
+      "src/components/home/ActiveRequestsSection.tsx",
+      "src/components/home/BrandsSection.tsx",
+      "src/components/home/CtaSection.tsx",
+      "src/components/home/Hero.tsx",
+      "src/components/home/RecommendationsSection.tsx",
+      "src/components/home/StatsSection.tsx",
+      "src/components/home/VerifiedMachinesCarousel.tsx",
+      "src/components/home/VerifiedMachinesGallery.tsx",
+      "prisma/schema.prisma"
+    ],
+    "required_tests": [
+      "All 17 canonical homepage section keys are represented.",
+      "Configured order and enabled/disabled visibility are respected.",
+      "Incomplete published HOME layouts cannot silently hide essential canonical sections.",
+      "Public homepage-section GET performs no database writes.",
+      "No fake stats or fabricated business records."
+    ],
+    "do_not": [
+      "Do not repeat the completed source inventory from zero.",
+      "Do not bulk-copy legacy files.",
+      "Do not modify main.",
+      "Do not deploy to Cloudflare before code/CI/artifact/database gates pass.",
+      "Do not touch Production, DNS, or the existing Preview URL configuration."
+    ]
+  }
+}
