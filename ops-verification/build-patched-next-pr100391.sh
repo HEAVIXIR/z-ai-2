@@ -129,37 +129,13 @@ PY
 log "Running upstream pack-next (with read-only packageFiles diagnostics)"
 pnpm pack-next --no-js-build --tar --compress=strip
 tar -tf "$tarball_dir/next.tar" > "$OUTPUT_DIR/next-tar-file-list.txt"
-grep -E '(^|/)(types/global\\.d\\.ts)
-tarball_dir="tarballs"
-for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
-  [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
-  if [[ "$f" == "next.tar" ]]; then
-    tar -tf "$tarball_dir/$f" | grep -Fxq "./types/global.d.ts" ||
-      die "Official next.tar is missing exact ./types/global.d.ts entry."
-  fi
-  cp "$tarball_dir/$f" "$OUTPUT_DIR/$f"
-done
-(cd "$OUTPUT_DIR" && sha256sum next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar > SHA256SUMS)
-cat > "$OUTPUT_DIR/BUILD-MANIFEST.txt" <<EOF
-Upstream repository: $NEXT_REPO
-Upstream ref: $NEXT_REF
-Upstream commit: $(cat "$OUTPUT_DIR/upstream-source-commit.txt")
-Applied fix: vercel/next.js PR #100391
-Patch SHA256: $(sha256sum "$OUTPUT_DIR/pr100391.patch" | awk '{print $1}')
-Build command: pnpm pack-next --tar --compress=strip
-Package set: next, next-swc, next-mdx, next-env, next-bundle-analyzer
-Built UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
-log "PASS: coordinated patched package set at $OUTPUT_DIR"
-log "Verify: (cd '$OUTPUT_DIR' && sha256sum -c SHA256SUMS)"
- "$OUTPUT_DIR/next-tar-file-list.txt" > "$OUTPUT_DIR/next-tar-global-dts-matches.txt" || true
+grep -E '(^|/)types/global\.d\.ts$' "$OUTPUT_DIR/next-tar-file-list.txt" > "$OUTPUT_DIR/next-tar-global-dts-matches.txt" || true
 
-tarball_dir="tarballs"
 for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
   [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
   if [[ "$f" == "next.tar" ]]; then
-    tar -tf "$tarball_dir/$f" | grep -Fxq "./types/global.d.ts" ||
-      die "Official next.tar is missing exact ./types/global.d.ts entry."
+    awk '$0 == "./types/global.d.ts" || $0 == "types/global.d.ts" { found=1 } END { exit !found }' "$OUTPUT_DIR/next-tar-file-list.txt" ||
+      die "Official next.tar is missing exact types/global.d.ts path (with or without tar's ./ prefix)."
   fi
   cp "$tarball_dir/$f" "$OUTPUT_DIR/$f"
 done
@@ -170,7 +146,7 @@ Upstream ref: $NEXT_REF
 Upstream commit: $(cat "$OUTPUT_DIR/upstream-source-commit.txt")
 Applied fix: vercel/next.js PR #100391
 Patch SHA256: $(sha256sum "$OUTPUT_DIR/pr100391.patch" | awk '{print $1}')
-Build command: pnpm pack-next --tar --compress=strip
+Build command: pnpm pack-next --no-js-build --tar --compress=strip
 Package set: next, next-swc, next-mdx, next-env, next-bundle-analyzer
 Built UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
