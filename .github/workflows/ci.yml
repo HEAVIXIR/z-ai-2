@@ -547,11 +547,11 @@ jobs:
           echo "STORE_DATABASE_URL interpolation verified"
           # 5. Assert no raw placeholders remain anywhere
           if echo "$RENDERED" | grep -q '${DB_PASSWORD}'; then
-            echo "FAIL: raw \${DB_PASSWORD} placeholder found in rendered config"
+            echo "FAIL: raw ${DB_PASSWORD} placeholder found in rendered config"
             exit 1
           fi
           if echo "$RENDERED" | grep -q '${HEAVIX_DOMAIN}'; then
-            echo "FAIL: raw \${HEAVIX_DOMAIN} placeholder found in rendered config"
+            echo "FAIL: raw ${HEAVIX_DOMAIN} placeholder found in rendered config"
             exit 1
           fi
           echo "All interpolation values verified exactly"
@@ -751,13 +751,13 @@ jobs:
           free -b || true
           report_dir="$RUNNER_TEMP/heavix-node-reports"
           mkdir -p "$report_dir"
-          export NODE_OPTIONS="\${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$report_dir"
+          export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$report_dir"
           bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
           (
             report_sent=0
             cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
-            cg="/sys/fs/cgroup\${cg_rel}"
+            cg="/sys/fs/cgroup${cg_rel}"
             if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
             while kill -0 "$build_pid" 2>/dev/null; do
               echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -813,8 +813,8 @@ jobs:
                 if [ -r "/proc/$node_pid/smaps_rollup" ]; then
                   grep -E '^(Rss|Pss|Private_Clean|Private_Dirty|Anonymous|AnonHugePages):' "/proc/$node_pid/smaps_rollup" || true
                 fi
-                rss_kb="$(sed -n 's/^VmRSS:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' "/proc/$node_pid/status" | head -n 1)"
-                if [ "$report_sent" -eq 0 ] && [ "\${rss_kb:-0}" -ge 6000000 ]; then
+                rss_kb="$(sed -n 's/^VmRSS:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "/proc/$node_pid/status" | head -n 1)"
+                if [ "$report_sent" -eq 0 ] && [ "${rss_kb:-0}" -ge 6000000 ]; then
                   echo "HEAVIX_NODE_DIAGNOSTIC_SIGNAL pid=$node_pid rss_kb=$rss_kb"
                   kill -USR2 "$node_pid" 2>/dev/null || true
                   report_sent=1
@@ -898,7 +898,7 @@ jobs:
           wait "$monitor_pid" 2>/dev/null
           echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
           cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
-          cg="/sys/fs/cgroup\${cg_rel}"
+          cg="/sys/fs/cgroup${cg_rel}"
           if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
           for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
             if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
