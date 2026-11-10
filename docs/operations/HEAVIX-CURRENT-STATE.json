@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T01:15:00+03:30",
+  "updated_at_utc": "2026-11-10T22:26:32.105Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -126,7 +126,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll CI run #42914300824 for code head e16ed41a5c123d5f2c8700816303771fbfdf3e9d. Verify Admin navigation RBAC, all 44 seed permission keys, Store resource permissions, homepage section tests, Store order privacy, Services, SEO and health endpoint tests. Resolve failures, then complete Preview DB identity proof and approved Preview-only seed/deploy gates.",
+    "task": "Poll CI run #42914300824 for code head e16ed41a5c123d5f2c8700816303771fbfdf3e9d. It includes homepage, Store order security, Services/SEO, Admin homepage editor, Admin health RBAC, Store menu and Admin navigation RBAC changes. Resolve any failures. Do not merge or deploy until all required jobs are green and Preview App/Store DB identities are independently verified.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -161,7 +161,7 @@
     "id": 42914300824,
     "sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d",
     "status": "queued",
-    "note": "Later commits are documentation-only; fetch PR #307 head before acting."
+    "note": "Older CI runs from this recovery branch are still active/queued; no result yet for the latest code head. Later commits are documentation-only."
   },
   "latest_code_head_sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d"
 }
