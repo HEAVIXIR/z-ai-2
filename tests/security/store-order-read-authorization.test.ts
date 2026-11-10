@@ -84,4 +84,34 @@ describe("GET /api/store/orders — userId authorization boundary", () => {
       expect.objectContaining({ orderBy: { createdAt: "desc" }, take: 200 }),
     );
   });
+  it("rejects guest phone-only order enumeration", async () => {
+    getStoreUserWithRole.mockResolvedValue(null);
+
+    const response = await GET(
+      new Request("http://localhost/api/store/orders?phone=09120000000"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(findCustomer).not.toHaveBeenCalled();
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes guest retrieval to one exact order number and phone", async () => {
+    getStoreUserWithRole.mockResolvedValue(null);
+    findCustomer.mockResolvedValue({ id: "customer-1" });
+
+    const response = await GET(
+      new Request("http://localhost/api/store/orders?phone=09120000000&orderNumber=hv-abc123xyz"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(findCustomer).toHaveBeenCalledWith({ where: { phone: "09120000000" } });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { customerId: "customer-1", orderNumber: "HV-ABC123XYZ" },
+        take: 1,
+      }),
+    );
+  });
+
 });
