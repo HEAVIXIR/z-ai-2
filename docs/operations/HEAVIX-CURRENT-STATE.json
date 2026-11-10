@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:30:23.006Z",
+  "updated_at_utc": "2026-11-10T22:30:57.215Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -132,7 +132,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Fetch PR #307 current head and poll run #42915046750 for code head c8e95911e98143c1f9aa0ef07ace952e56df856f. The CI concurrency guard is added but did not cancel pre-existing queued runs. If user authorizes browser sign-in, cancel obsolete runs and dispatch the read-only Workerd proof with PREVIEW_ONLY. Do not deploy before exact-head CI and actual Preview App/Store DB identity verification.",
+    "task": "Poll CI run #42915190630 for code head c8e95911e98143c1f9aa0ef07ace952e56df856f (PR head 27de6eb is docs-only on top). The CI queue remains congested; concurrency config only affects new runs and has not cancelled all pre-existing runs. If user authorizes secure GitHub browser sign-in, cancel obsolete runs and dispatch the read-only Workerd proof with PREVIEW_ONLY. Do not deploy before exact-head CI and actual Preview App/Store DB identity verification.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -164,10 +164,10 @@
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42915046750,
-    "sha": "c8e95911e98143c1f9aa0ef07ace952e56df856f",
+    "id": 42915190630,
+    "sha": "27de6eb135d819716b6f993ef1e8518c584b351a",
     "status": "queued",
-    "note": "Latest code commit adds CI concurrency; earlier runs remain queued, so no exact-head result yet."
+    "note": "The workflow run includes the latest code head c8e9591; this head differs only by documentation from the code commit. Fetch PR #307 current head before acting."
   },
   "latest_code_head_sha": "c8e95911e98143c1f9aa0ef07ace952e56df856f",
   "latest_ci_run": {
