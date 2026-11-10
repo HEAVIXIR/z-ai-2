@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "3a2d68f5009348146bc7127e3918cf1ac0a1c890",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "f818239735d4e89d776169e354884530ce6be7e9",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -67,7 +67,11 @@
     "Added source-level route/security readiness matrix; identified missing public /services landing route (API/home/admin service capability exists) and remaining metadata gaps.",
     "Added public /services directory backed by active Service records and links into the existing SERVICE_REQUEST listings workflow.",
     "Removed placeholder service cards from homepage when there are no active Service records.",
-    "Changed public GET /api/services to return a generic 503 instead of raw database errors."
+    "Changed public GET /api/services to return a generic 503 instead of raw database errors.",
+    "GitHub Actions run #42910341544 confirmed Typecheck and Lint pass on commit 4f960dc7ff90848c99358cc672d163159cc55492.",
+    "Run #42910341544 also confirmed phase-tests, tls-proof, audit-transaction and Cloudflare compatibility report-only jobs pass.",
+    "Fixed Vitest mock hoisting errors in both newly added homepage and Store security tests using vi.hoisted().",
+    "Added public /services directory and metadata/noindex handling for model, auctions, and Sell-in-7-Days routes."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -77,12 +81,15 @@
     "SEO metadata gaps for model, auctions and Sell-in-7-Days registration/tracking routes remain.",
     "No Preview deployment or Preview App/Store DB identity verification.",
     "No Production or DNS changes.",
-    "The new /services route and Store guest lookup changes are awaiting exact-head CI and Preview runtime validation."
+    "The new /services route and Store guest lookup changes are awaiting exact-head CI and Preview runtime validation.",
+    "The Security tests job failed on the 4f960 checkpoint due vi.mock hoisting; the fix is committed but not yet CI-verified.",
+    "The Docker image build step passed on the 4f960 checkpoint, but final Caddy/Compose/connectivity proof had not completed at inspection time.",
+    "Latest exact-head CI after service, SEO and mock changes is pending."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Monitor exact latest-head CI after the homepage Prisma payload type fix and services directory addition; repair all typecheck/test/build failures. Then continue Admin/RBAC/API/UI route matrix and verify Preview App/Store database identities before any deployment.",
+    "task": "Verify latest exact-head CI after vi.hoisted() test fixes, Services route and SEO metadata additions. Fix any remaining tests/build failures. Once all required CI jobs are green, complete final route/RBAC audit and Preview App/Store database identity verification; only then consider deployment to existing Preview Worker.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
