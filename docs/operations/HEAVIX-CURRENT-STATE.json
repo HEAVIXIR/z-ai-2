@@ -126,7 +126,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll exact-head CI after Admin navigation RBAC and all permission alias corrections. Verify new navigation/security tests and all prior homepage/Store/Services tests. After CI passes, verify Preview DB identities and apply the idempotent navigation seed only to the confirmed Preview DB.",
+    "task": "Poll CI run #42914300824 for code head e16ed41a5c123d5f2c8700816303771fbfdf3e9d. Verify Admin navigation RBAC, all 44 seed permission keys, Store resource permissions, homepage section tests, Store order privacy, Services, SEO and health endpoint tests. Resolve failures, then complete Preview DB identity proof and approved Preview-only seed/deploy gates.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -158,10 +158,10 @@
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42913533860,
-    "sha": "ef38b4ad6754f9d22abc8420b5dbc9a09df220dd",
+    "id": 42914300824,
+    "sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d",
     "status": "queued",
-    "note": "The subsequent commit 4ec49c99 is documentation-only; fetch PR #307 current head before acting."
+    "note": "Later commits are documentation-only; fetch PR #307 head before acting."
   },
   "latest_code_head_sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d"
 }
