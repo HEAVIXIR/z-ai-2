@@ -742,8 +742,37 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
-      - name: Build OpenNext Worker
-        run: bunx opennextjs-cloudflare build --noMinify
+      - name: Build OpenNext Worker (sample runner resources)
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "HEAVIX_RESOURCE_CGROUP_BEGIN"
+          for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events; do
+            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+          done
+          bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
+          build_pid=$!
+          (
+            while kill -0 "$build_pid" 2>/dev/null; do
+              echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
+                if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+              done
+              ps -eo pid,ppid,rss,vsz,stat,etime,comm,args --sort=-rss | head -n 18
+              sleep 10
+            done
+          ) &
+          monitor_pid=$!
+          set +e
+          wait "$build_pid"
+          build_rc=$?
+          kill "$monitor_pid" 2>/dev/null
+          wait "$monitor_pid" 2>/dev/null
+          echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
+          for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
+            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+          done
+          exit "$build_rc"
       - name: Produce Wrangler dry-run bundle (no deploy)
         run: bunx wrangler deploy --dry-run --outdir=/tmp/heavix-worker-dry
       - name: Assert Workerd-compatible Prisma WASM loader
