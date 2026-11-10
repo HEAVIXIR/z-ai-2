@@ -6,6 +6,12 @@ on:
   push:
     branches: [main, 'feature/**']
 
+# Keep only the newest CI run for a given PR/branch. This prevents obsolete
+# commits from occupying all runners while a newer recovery commit is waiting.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
   # Any failure fails the workflow and blocks merge.
