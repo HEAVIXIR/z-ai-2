@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "1008ceb903c214b08ff23592da68b01dcd54310b",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "d644e8e5ef48c2efb68f37363d1b6066565c86f7",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -74,7 +74,11 @@
     "Added public /services directory and metadata/noindex handling for model, auctions, and Sell-in-7-Days routes.",
     "Aligned /admin/homepage-layout with the restored 17-section homepage: GET now exposes canonical defaults and bulk PUT upserts by stable key.",
     "Updated admin labels for all canonical hyphenated section keys, including recommendations and trusted-brands.",
-    "Added contract test for admin visibility and stable-key persistence."
+    "Added contract test for admin visibility and stable-key persistence.",
+    "Public homepage sections API now merges canonical defaults in memory and preserves explicit inactive admin rows while remaining read-only.",
+    "Admin homepage editor now lists and persists all 17 canonical sections through stable-key upserts.",
+    "Updated obsolete root homepage data-source test to reflect the 17-section root while preserving PageBuilder custom-widget registry checks.",
+    "Guest Store order reference now has a CSPRNG suffix; guest lookup requires phone plus exact order number and Store order API responses are private/no-store."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -88,12 +92,14 @@
     "The Security tests job failed on the 4f960 checkpoint due vi.mock hoisting; the fix is committed but not yet CI-verified.",
     "The Docker image build step passed on the 4f960 checkpoint, but final Caddy/Compose/connectivity proof had not completed at inspection time.",
     "Latest exact-head CI after service, SEO and mock changes is pending.",
-    "Admin homepage editor changes and the latest SEO/Services changes are awaiting exact-head CI."
+    "Admin homepage editor changes and the latest SEO/Services changes are awaiting exact-head CI.",
+    "Exact latest-head CI after public homepage API, admin editor, contract-test, and Store privacy changes is pending.",
+    "Docker Caddy-to-app connectivity proof has not yet been observed passing on the inspected run."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Verify exact latest-head CI for the homepage, Store security, Services directory, SEO metadata and Admin homepage editor. Fix all failing tests/build steps, then continue full route/RBAC audit and Preview DB identity verification.",
+    "task": "Verify exact latest-head CI after the 17-section homepage contract update, Admin editor changes, public homepage API merge, and Store guest order privacy hardening. Resolve any test/build failures. Then complete remaining Admin/RBAC/API route matrix and Preview App/Store DB identity verification; no deployment before gates pass.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
