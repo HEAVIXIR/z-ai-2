@@ -118,7 +118,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Start by polling GitHub Actions run #42913239127 for exact HEAD f247e9a68accfe02b00959d40443decef1fda3a4. Fix any TypeScript/test/build failures. Then verify Admin health RBAC tests and Store guest order tests, complete remaining shared Admin resource/action audit, and obtain App/Store Preview database identity proof before any deployment.",
+    "task": "Fetch PR #307's current head and poll the CI run for the latest code head (f247e9a68accfe02b00959d40443decef1fda3a4; later commits are docs-only). Fix any CI failures. Then complete the remaining shared Admin resource/action audit and obtain App/Store Preview database identity proof before deployment.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -148,11 +148,12 @@
       "Do not alter Production, DNS, secrets, or the existing heavix-preview Worker during this recovery."
     ]
   },
-  "latest_branch_head_sha": "f247e9a68accfe02b00959d40443decef1fda3a4",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
     "id": 42913239127,
     "sha": "f247e9a68accfe02b00959d40443decef1fda3a4",
-    "status": "queued"
-  }
+    "status": "queued",
+    "note": "Subsequent commits are documentation-only; always fetch PR #307 head before acting."
+  },
+  "latest_code_head_sha": "f247e9a68accfe02b00959d40443decef1fda3a4"
 }
