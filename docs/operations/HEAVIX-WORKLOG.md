@@ -43,3 +43,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Validation state: source-level checks confirm 17 section switch cases and zero Prisma write calls in src/app/page.tsx. The full GitHub Actions run for the earlier checkpoint is in progress; a newer run is expected for this latest commit. No successful build/typecheck/test claim yet.
 - No Preview deployment, Cloudflare build, database access/write, Production change, or DNS change was performed.
 - Next: monitor CI for the latest PR head, fix every type/test/build failure, then continue route/API/RBAC audits for Store, Companies, Sell in 7 Days, Services, Knowledge and Admin. Do not deploy until DB identity and artifact gates pass.
+
+## 2026-11-11 — Store order privacy hardening
+
+- Source audit found an unauthenticated object-level authorization gap in GET /api/store/orders?userId=...: when no session existed, the mismatch check did not reject the request and the route queried arbitrary user orders.
+- Fixed the userId path to fail closed (401 without session, 403 for another user's ID); explicit admin all-orders access and own-user access remain.
+- Also removed guest phone-only enumeration. Guest order retrieval now requires phone + exact order number and queries at most one matching order; MyOrdersDialog now asks for both. This reduces exposure but is not a substitute for OTP or a high-entropy one-time guest access token.
+- Added tests for unauthenticated userId lookup, cross-user denial, own-user lookup, admin access, guest phone-only denial and exact guest order scoping.
+- Commits: 6d40eb9ad97c961a8c7aa3a5d89e44937e8bc36a (userId authorization), a024230c0e1df1a6102e504191d064e91fad807f (authorization tests), b4a4bce9250b85bd0671fde117c807766e4940d8 (phone+orderNumber API), c8f2ecc57551f6461d7ab2a93942b356b6695f62 (guest UI), aa856872768fd49ff86e79c501aaade3ecf17e5f (guest lookup tests).
+- The earlier CI Typecheck failure on commit 41032297 was inspected. It identified stale homepage component type imports/props and an invalid inferred listing row callback. The homepage was updated to import FeaturedListing from FeaturedMachineCard, use the current BrandsSection prop contract, and derive the listing row type with Prisma.ListingGetPayload from a typed Prisma.ListingInclude. Exact-head CI is still required to confirm.
+- The earlier Docker build failure is separate: Next tracing fails around dynamic filesystem access in the generated Store Prisma runtime. It remains open and requires a focused build-tracing fix.
+- Next: verify the latest CI run for the exact latest branch head, fix typecheck/test/build failures, and continue the route/RBAC/API inventory. No Preview deploy, Production change, DNS change or Cloudflare build performed.
