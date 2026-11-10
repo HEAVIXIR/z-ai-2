@@ -65,11 +65,25 @@ sha256sum "$OUTPUT_DIR/pr100391.patch" > "$OUTPUT_DIR/pr100391.patch.sha256"
 log "Installing pinned Next.js monorepo dependencies"
 pnpm install --frozen-lockfile
 log "Running upstream's official coordinated package builder"
-# pack-next builds JS + native components and creates all matching package tarballs.
-pnpm pack-next --tar --compress=strip
+# Build JS separately so we can restore the tracked global type if the build
+# pipeline removes it before pack-util's existsSync-based file selection.
+pnpm install --frozen-lockfile
+pnpm run build
+if [[ ! -s packages/next/types/global.d.ts ]]; then
+  log "Restoring tracked packages/next/types/global.d.ts after build"
+  git show "$NEXT_REF:packages/next/types/global.d.ts" > packages/next/types/global.d.ts
+fi
+[[ -s packages/next/types/global.d.ts ]] || die "Upstream types/global.d.ts source is missing."
+
+# Package the already-built JS and native components.
+pnpm pack-next --no-js-build --tar --compress=strip
 tarball_dir="tarballs"
 for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
   [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
+  if [[ "$f" == "next.tar" ]]; then
+    tar -tf "$tarball_dir/$f" | grep -Fxq "./types/global.d.ts" ||
+      die "Official next.tar is missing exact ./types/global.d.ts entry."
+  fi
   cp "$tarball_dir/$f" "$OUTPUT_DIR/$f"
 done
 (cd "$OUTPUT_DIR" && sha256sum next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar > SHA256SUMS)
