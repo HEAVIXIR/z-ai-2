@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:29:47.393Z",
+  "updated_at_utc": "2026-11-10T22:30:14.641Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "13dcc49ff25ee5d326b83bb44bf378f8d50f758f",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "60d238b013170753cc0be374efaea2770cb97f46",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -126,12 +126,13 @@
     "Recovery branch has not been deployed. Preview App/Store database identities remain unverified. No Production/DNS changes.",
     "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted.",
     "Older GitHub Actions runs created before the new concurrency group remain active/queued; no cancel-workflow-run action is exposed by the GitHub connector.",
-    "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched."
+    "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched.",
+    "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "If user authorizes secure GitHub browser-profile sign-in, use it to cancel obsolete runs for PR #307 and dispatch only the read-only Workerd proof with PREVIEW_ONLY. Otherwise poll run #42914986140 and the latest exact code-head CI. Do not deploy until CI and Preview DB identity gates pass.",
+    "task": "If the user authorizes secure GitHub browser-profile sign-in, cancel obsolete queued/in-progress CI runs for PR #307 and keep only the latest code-head run. Otherwise wait for the current queue. Then run the read-only Workerd proof with PREVIEW_ONLY. Do not deploy until exact-head CI and Preview App/Store DB identity gates pass.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
