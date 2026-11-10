@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
 
-const findMany = vi.fn();
-const createMany = vi.fn();
+const { findMany, createMany } = vi.hoisted(() => ({
+  findMany: vi.fn(),
+  createMany: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({
   db: {
