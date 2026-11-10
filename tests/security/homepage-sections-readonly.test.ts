@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+import { DEFAULT_HOME_SECTIONS } from "@/lib/homepage/sections";
 
 const { findMany, createMany } = vi.hoisted(() => ({
   findMany: vi.fn(),
@@ -43,7 +44,6 @@ describe("GET /api/homepage-sections — public read-only contract", () => {
       data: [{ key: "hero", order: 1, config: { variant: "dark" } }],
     });
     expect(findMany).toHaveBeenCalledWith({
-      where: { active: true },
       orderBy: { order: "asc" },
     });
     expect(createMany).not.toHaveBeenCalled();
@@ -54,10 +54,32 @@ describe("GET /api/homepage-sections — public read-only contract", () => {
 
     const response = await GET();
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      success: true,
-      data: [],
-    });
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.map((section: { key: string }) => section.key)).toEqual(
+      DEFAULT_HOME_SECTIONS.filter((section) => section.active).map((section) => section.key),
+    );
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("does not re-enable a section explicitly disabled by the admin", async () => {
+    findMany.mockResolvedValue([
+      {
+        key: "hero",
+        title: "Hero",
+        subtitle: null,
+        description: null,
+        order: 1,
+        active: false,
+        config: "{}",
+        id: "db-hero",
+      },
+    ]);
+
+    const response = await GET();
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.data.some((section: { key: string }) => section.key === "hero")).toBe(false);
     expect(createMany).not.toHaveBeenCalled();
   });
 
