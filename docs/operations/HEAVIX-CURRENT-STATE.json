@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "12424e0e3f30bed6b72e45a4cd90cf240dbe7734",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "3a31fc3786cf9b70ecab9ca99b9d57691d5a845a",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -48,7 +48,8 @@
     "Created mandatory cross-agent continuation protocol.",
     "Created machine-readable current-state checkpoint.",
     "Created append-only worklog entry describing this handoff.",
-    "Verified all three continuity files were committed to the recovery branch."
+    "Verified all three continuity files were committed to the recovery branch.",
+    "Added root AGENTS.md so coding agents discover the continuation protocol before changing files."
   ],
   "not_done_and_not_to_be_claimed": [
     "No application source code repaired yet.",
