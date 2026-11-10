@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "c54a36845ccb2d34411fe4e097877ef9e2e379e4",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "af868098968ef28ee6e0ecb73c6717285e55f019",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -84,7 +84,9 @@
     "Protected detailed Marketplace health endpoint with getCurrentUser + analytics.read.",
     "Added handler-level tests and updated the global auth-boundary contract to require route-level authorization for admin health endpoints despite middleware health-probe bypass.",
     "Audited Store Admin API permission patterns and confirmed RBAC in the sampled procurement, rentals, services, payments, orders, returns, shipments and AI scraper routes.",
-    "Corrected Store Control Plane inventory: Procurement and Services have shared Admin pages; Rentals uses Universal Resource Engine at /admin/resources/rentals. Store Admin includes 16 Store-prefixed pages and 52 API handlers."
+    "Corrected Store Control Plane inventory: Procurement and Services have shared Admin pages; Rentals uses Universal Resource Engine at /admin/resources/rentals. Store Admin includes 16 Store-prefixed pages and 52 API handlers.",
+    "Confirmed complete Docker proof job success on run #42910792713: Docker image build, image verification, Caddy syntax, Compose interpolation and real Caddy-to-app connectivity all passed.",
+    "Confirmed Typecheck, Lint and Security Tests passed on the same checkpoint; the only verify failure was the obsolete homepage data-source contract, now rewritten."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -104,12 +106,13 @@
     "Latest exact-head CI after Services header/footer wiring and subsequent Store/homepage changes is pending.",
     "Latest Store/Marketplace health RBAC tests and auth-boundary updates are awaiting exact-head CI.",
     "Detailed route/action coverage for logistics dashboard and all procurement/rental/service state transitions still needs verification.",
-    "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI."
+    "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI.",
+    "The corrected homepage contract suite and later Store/Marketplace health RBAC changes have not yet passed a new exact-head CI run."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Verify exact latest-head CI for Store/Marketplace health RBAC and all preceding homepage/store/services/SEO changes. Then inspect shared Admin routes and universal resource configs for Procurement, Services, Rentals and Logistics; verify API permissions, navigation, audit and actions. Complete Preview App/Store DB identity gate before any deployment.",
+    "task": "Wait for exact latest-head CI after homepage data-source contract correction, Store/Marketplace health RBAC, services and Store privacy changes. Confirm all contract/unit tests and Production build pass; then continue remaining product route and Preview database identity gates.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
