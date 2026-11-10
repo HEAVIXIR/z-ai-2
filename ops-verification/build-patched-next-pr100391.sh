@@ -14,7 +14,7 @@ log(){ printf '[next-patch-build] %s\n' "$*"; }
 die(){ printf '[next-patch-build] ERROR: %s\n' "$*" >&2; exit 1; }
 cleanup(){ if [[ "$KEEP_WORK_DIR" == 1 ]]; then log "Keeping source workspace: $WORK_DIR"; else rm -rf "$WORK_DIR"; fi; }
 trap cleanup EXIT
-for c in git pnpm node python3 tar sha256sum awk df nproc find grep; do command -v "$c" >/dev/null 2>&1 || die "Missing command: $c"; done
+for c in git pnpm node python3 cargo rustc tar sha256sum awk df nproc find grep; do command -v "$c" >/dev/null 2>&1 || die "Missing command: $c"; done
 node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
 (( node_major >= 20 )) || die "Node.js 20+ required."
 (( $(nproc) >= MIN_CPU_CORES )) || die "Need at least $MIN_CPU_CORES CPU cores."
