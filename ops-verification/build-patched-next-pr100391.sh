@@ -126,6 +126,7 @@ if s.count(old_end) != 1:
 p.write_text(s.replace(old_end, new_end, 1))
 PY
 
+tarball_dir="tarballs"
 log "Running upstream pack-next (with read-only packageFiles diagnostics)"
 pnpm pack-next --no-js-build --tar --compress=strip
 tar -tf "$tarball_dir/next.tar" > "$OUTPUT_DIR/next-tar-file-list.txt"
