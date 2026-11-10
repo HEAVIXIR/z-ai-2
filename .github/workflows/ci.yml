@@ -752,7 +752,7 @@ jobs:
           report_dir="$RUNNER_TEMP/heavix-node-reports"
           mkdir -p "$report_dir"
           export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$report_dir"
-           # Track the full build process group; bunx may exit before its child.
+          # Track the full build process group; bunx may exit before its child.
           setsid bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
           (
@@ -876,7 +876,7 @@ jobs:
               item = procs.get(pid)
               if not item:
                   continue
-              ppid, comm, cmd, fields = item
+              ppid, _pgid, comm, cmd, fields = item
               def smaps_value(name):
                   try:
                       with open(f"/proc/{pid}/smaps_rollup", encoding="utf-8") as f:
