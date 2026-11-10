@@ -64,10 +64,9 @@ git diff -- "$source_file" > "$OUTPUT_DIR/pr100391.patch"
 sha256sum "$OUTPUT_DIR/pr100391.patch" > "$OUTPUT_DIR/pr100391.patch.sha256"
 log "Installing pinned Next.js monorepo dependencies"
 pnpm install --frozen-lockfile
-log "Running upstream's official coordinated package builder"
+log "Running upstream JavaScript build"
 # Build JS separately so we can restore the tracked global type if the build
 # pipeline removes it before pack-util's existsSync-based file selection.
-pnpm install --frozen-lockfile
 pnpm run build
 if [[ ! -s packages/next/types/global.d.ts ]]; then
   log "Restoring tracked packages/next/types/global.d.ts after build"
@@ -75,8 +74,86 @@ if [[ ! -s packages/next/types/global.d.ts ]]; then
 fi
 [[ -s packages/next/types/global.d.ts ]] || die "Upstream types/global.d.ts source is missing."
 
-# Package the already-built JS and native components.
+# Capture the exact file state before the official packer starts.
+{
+  echo "=== pre-pack type file ==="
+  stat packages/next/types/global.d.ts 2>&1
+  sha256sum packages/next/types/global.d.ts 2>&1
+  echo "=== pre-pack types directory ==="
+  find packages/next/types -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | sort
+  echo "=== package files declaration ==="
+  node -e 'const p=require("./packages/next/package.json"); console.log(JSON.stringify(p.files.filter(x => x.includes("types")), null, 2))'
+} > "$OUTPUT_DIR/types-dir-before-pack.txt" 2>&1
+
+# Instrument only the disposable upstream checkout's packageFiles() with
+# read-only diagnostics. The selection/filtering algorithm remains unchanged.
+python3 - scripts/pack-util.ts <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text()
+old = """  const packageFiles = [...globbedFiles, ...simpleFiles].sort()
+  const set = new Set()
+  return packageFiles.filter((f) => {"""
+new = """  const packageFiles = [...globbedFiles, ...simpleFiles].sort()
+  const set = new Set()
+  const selectedFiles = packageFiles.filter((f) => {"""
+if s.count(old) != 1:
+    raise SystemExit("Expected exactly one packageFiles selection block.")
+s = s.replace(old, new, 1)
+old_end = """    set.add(f)
+    return true
+  })
+}"""
+new_end = """    set.add(f)
+    return true
+  })
+  if (path.endsWith('/packages/next')) {
+    console.log('[heavix-pack-diagnostic] packages/next packageFiles()')
+    console.log(JSON.stringify({
+      globalDtsExists: existsSync(join(path, 'types/global.d.ts')),
+      declaredTypeEntries: allFiles.filter((f) => f.includes('types')),
+      simpleTypeEntries: simpleFiles.filter((f) => f.includes('types')),
+      globbedTypeEntries: globbedFiles.filter((f) => f.includes('types')),
+      candidateTypeEntries: packageFiles.filter((f) => f.includes('types')),
+      selectedTypeEntries: selectedFiles.filter((f) => f.includes('types')),
+    }, null, 2))
+  }
+  return selectedFiles
+}"""
+if s.count(old_end) != 1:
+    raise SystemExit("Expected exactly one packageFiles() function ending.")
+p.write_text(s.replace(old_end, new_end, 1))
+PY
+
+log "Running upstream pack-next (with read-only packageFiles diagnostics)"
 pnpm pack-next --no-js-build --tar --compress=strip
+tar -tf "$tarball_dir/next.tar" > "$OUTPUT_DIR/next-tar-file-list.txt"
+grep -E '(^|/)(types/global\\.d\\.ts)
+tarball_dir="tarballs"
+for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
+  [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
+  if [[ "$f" == "next.tar" ]]; then
+    tar -tf "$tarball_dir/$f" | grep -Fxq "./types/global.d.ts" ||
+      die "Official next.tar is missing exact ./types/global.d.ts entry."
+  fi
+  cp "$tarball_dir/$f" "$OUTPUT_DIR/$f"
+done
+(cd "$OUTPUT_DIR" && sha256sum next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar > SHA256SUMS)
+cat > "$OUTPUT_DIR/BUILD-MANIFEST.txt" <<EOF
+Upstream repository: $NEXT_REPO
+Upstream ref: $NEXT_REF
+Upstream commit: $(cat "$OUTPUT_DIR/upstream-source-commit.txt")
+Applied fix: vercel/next.js PR #100391
+Patch SHA256: $(sha256sum "$OUTPUT_DIR/pr100391.patch" | awk '{print $1}')
+Build command: pnpm pack-next --tar --compress=strip
+Package set: next, next-swc, next-mdx, next-env, next-bundle-analyzer
+Built UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+log "PASS: coordinated patched package set at $OUTPUT_DIR"
+log "Verify: (cd '$OUTPUT_DIR' && sha256sum -c SHA256SUMS)"
+ "$OUTPUT_DIR/next-tar-file-list.txt" > "$OUTPUT_DIR/next-tar-global-dts-matches.txt" || true
+
 tarball_dir="tarballs"
 for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
   [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
