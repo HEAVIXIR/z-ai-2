@@ -265,9 +265,11 @@ export default async function HomePage() {
     publishedAt: l.publishedAt?.toISOString() ?? null,
   });
 
-  const featuredListings: FeaturedListing[] = featuredRows.map(mapListing);
-  const verifiedListings: FeaturedListing[] = verifiedRows.map(mapListing);
-  const latestAds: LatestAd[] = latestRows.map(mapListing);
+  // The shared listingInclude is validated against Prisma above. Narrow the
+  // three Promise.all result arrays to that exact relation payload at this boundary.
+  const featuredListings: FeaturedListing[] = (featuredRows as unknown as HomeListingRow[]).map(mapListing);
+  const verifiedListings: FeaturedListing[] = (verifiedRows as unknown as HomeListingRow[]).map(mapListing);
+  const latestAds: LatestAd[] = (latestRows as unknown as HomeListingRow[]).map(mapListing);
 
   const activeRequests: ActiveRequest[] = requestRows.map((r) => ({
     id: r.id,
