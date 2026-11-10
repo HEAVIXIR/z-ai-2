@@ -67,7 +67,7 @@ pnpm install --frozen-lockfile
 log "Running upstream's official coordinated package builder"
 # pack-next builds JS + native components and creates all matching package tarballs.
 pnpm pack-next --tar --compress=strip
-tarball_dir="packages/next/tarballs"
+tarball_dir="tarballs"
 for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
   [[ -s "$tarball_dir/$f" ]] || die "Official pack-next output missing: $f"
   cp "$tarball_dir/$f" "$OUTPUT_DIR/$f"
