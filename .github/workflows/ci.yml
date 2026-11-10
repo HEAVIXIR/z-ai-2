@@ -752,14 +752,15 @@ jobs:
           report_dir="$RUNNER_TEMP/heavix-node-reports"
           mkdir -p "$report_dir"
           export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$report_dir"
-          bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
+           # Track the full build process group; bunx may exit before its child.
+          setsid bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
           (
             report_sent=0
             cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
             cg="/sys/fs/cgroup${cg_rel}"
             if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
-            while kill -0 "$build_pid" 2>/dev/null; do
+            while kill -0 -- "-$build_pid" 2>/dev/null; do
               echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
               for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
                 if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
@@ -780,10 +781,11 @@ jobs:
                   ppid = int(fields.get("PPid", "0"))
                   comm = open(f"/proc/{pid}/comm", encoding="utf-8").read().strip()
                   cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode(errors="replace")
-                  procs[pid] = (ppid, comm, cmd, fields)
+                  pgid = os.getpgid(pid)
+                  procs[pid] = (ppid, pgid, comm, cmd, fields)
               except (OSError, ValueError, IndexError):
                   pass
-          descendants = {root}
+          descendants = {pid for pid, (_ppid, pgid, *_rest) in procs.items() if pgid == root}
           changed = True
           while changed:
               changed = False
@@ -796,7 +798,7 @@ jobs:
               item = procs.get(pid)
               if not item:
                   continue
-              _ppid, comm, cmd, fields = item
+              _ppid, _pgid, comm, cmd, fields = item
               if comm in ("node", "nodejs") and "opennextjs-cloudflare" in cmd and "build" in cmd:
                   try:
                       rss = int(fields.get("VmRSS", "0 kB").split()[0])
@@ -858,10 +860,11 @@ jobs:
                   ppid = int(fields.get("PPid", "0"))
                   comm = open(f"/proc/{pid}/comm", encoding="utf-8").read().strip()
                   cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode(errors="replace")
-                  procs[pid] = (ppid, comm, cmd, fields)
+                  pgid = os.getpgid(pid)
+                  procs[pid] = (ppid, pgid, comm, cmd, fields)
               except (OSError, ValueError, IndexError):
                   pass
-          descendants = {root}
+          descendants = {pid for pid, (_ppid, pgid, *_rest) in procs.items() if pgid == root}
           changed = True
           while changed:
               changed = False
