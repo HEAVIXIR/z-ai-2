@@ -117,12 +117,11 @@ export default async function HomePage() {
   // Fetch counts + extra data
   // NOTE: siteSettings is fetched above (before the listing query) so the
   // verified-section query can read its verifiedOnly flag.
-  const [activeListings, brandCount, categoryCount, featuredCount, verifiedCount, requestRows, articleRows, hotSearchRows, homeSections, heroConfig] = await Promise.all([
+  const [activeListings, brandCount, categoryCount, featuredCount, requestRows, articleRows, hotSearchRows, homeSections, heroConfig] = await Promise.all([
     db.listing.count({ where: { status: "PUBLISHED" } }),
     db.brand.count({ where: { active: true } }),
     db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } }),
     db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
-    db.listing.count({ where: { status: "PUBLISHED", verified: true } }),
     db.buyRequest.findMany({
       where: { status: "ACTIVE" },
       orderBy: [{ verified: "desc" }, { createdAt: "desc" }],
