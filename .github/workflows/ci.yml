@@ -742,37 +742,89 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
-      - name: Build OpenNext Worker (sample runner resources and Node diagnostic report)
+      - name: Build OpenNext Worker (sample cgroup and process-tree resources)
         shell: bash
         run: |
           set -uo pipefail
           echo "HEAVIX_RESOURCE_CGROUP_BEGIN"
           cat /proc/self/cgroup || true
           free -b || true
-          export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$RUNNER_TEMP"
+          report_dir="$RUNNER_TEMP/heavix-node-reports"
+          mkdir -p "$report_dir"
+          export NODE_OPTIONS="\${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$report_dir"
           bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
           (
             report_sent=0
+            cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
+            cg="/sys/fs/cgroup\${cg_rel}"
+            if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
             while kill -0 "$build_pid" 2>/dev/null; do
               echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              node_pid="$(ps -eo pid=,args= | awk '/node_modules\\/.bin\\/opennextjs-cloudflare build/ && !/awk/ {print $1; exit}')"
+              for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
+                if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+              done
+              node_pid="$(python3 - "$build_pid" <<'PY'
+          import glob, os, sys
+          root = int(sys.argv[1])
+          procs = {}
+          for status_path in glob.glob("/proc/[0-9]*/status"):
+              try:
+                  pid = int(status_path.split("/")[2])
+                  fields = {}
+                  with open(status_path, encoding="utf-8") as f:
+                      for line in f:
+                          if ":" in line:
+                              k, v = line.split(":", 1)
+                              fields[k] = v.strip()
+                  ppid = int(fields.get("PPid", "0"))
+                  comm = open(f"/proc/{pid}/comm", encoding="utf-8").read().strip()
+                  cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode(errors="replace")
+                  procs[pid] = (ppid, comm, cmd, fields)
+              except (OSError, ValueError, IndexError):
+                  pass
+          descendants = {root}
+          changed = True
+          while changed:
+              changed = False
+              for pid, (ppid, *_rest) in procs.items():
+                  if ppid in descendants and pid not in descendants:
+                      descendants.add(pid)
+                      changed = True
+          matches = []
+          for pid in descendants:
+              item = procs.get(pid)
+              if not item:
+                  continue
+              _ppid, comm, cmd, fields = item
+              if comm in ("node", "nodejs") and "opennextjs-cloudflare" in cmd and "build" in cmd:
+                  try:
+                      rss = int(fields.get("VmRSS", "0 kB").split()[0])
+                  except (ValueError, IndexError):
+                      rss = 0
+                  matches.append((rss, pid))
+          if matches:
+              print(max(matches)[1])
+          PY
+          )"
               if [ -n "$node_pid" ] && [ -r "/proc/$node_pid/status" ]; then
-                grep -E '^(Name|VmRSS|VmSize|VmData|VmSwap|Threads):' "/proc/$node_pid/status" || true
+                echo "HEAVIX_NODE_PROCESS pid=$node_pid"
+                grep -E '^(Name|PPid|VmRSS|VmSize|VmData|VmSwap|Threads):' "/proc/$node_pid/status" || true
                 if [ -r "/proc/$node_pid/smaps_rollup" ]; then
                   grep -E '^(Rss|Pss|Private_Clean|Private_Dirty|Anonymous|AnonHugePages):' "/proc/$node_pid/smaps_rollup" || true
                 fi
-                rss_kb="$(awk '/^VmRSS:/ {print $2}' "/proc/$node_pid/status")"
-                if [ "$report_sent" -eq 0 ] && [ "${rss_kb:-0}" -ge 6000000 ]; then
+                rss_kb="$(sed -n 's/^VmRSS:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' "/proc/$node_pid/status" | head -n 1)"
+                if [ "$report_sent" -eq 0 ] && [ "\${rss_kb:-0}" -ge 6000000 ]; then
                   echo "HEAVIX_NODE_DIAGNOSTIC_SIGNAL pid=$node_pid rss_kb=$rss_kb"
                   kill -USR2 "$node_pid" 2>/dev/null || true
                   report_sent=1
                   sleep 3
-                  report="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name 'report.*.json' -print -quit)"
+                  report="$(find "$report_dir" -maxdepth 1 -type f -name 'report.*.json' -print -quit)"
                   if [ -n "$report" ]; then
                     python3 - "$report" <<'PY'
           import json,sys
-          d=json.load(open(sys.argv[1]))
+          with open(sys.argv[1], encoding="utf-8") as f:
+              d=json.load(f)
           h=d.get("header",{})
           print("HEAVIX_NODE_REPORT", json.dumps({
             "event":h.get("event"),"trigger":h.get("trigger"),
@@ -787,13 +839,54 @@ jobs:
                     echo "HEAVIX_NODE_REPORT_NOT_FOUND"
                   fi
                 fi
+              else
+                echo "HEAVIX_NODE_PROCESS_NOT_FOUND"
               fi
-              cg_rel="$(awk -F: '$1=="0" {print $3}' "/proc/$build_pid/cgroup" 2>/dev/null || true)"
-              cg="/sys/fs/cgroup${cg_rel:-}"
-              for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.events"; do
-                if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
-              done
-              ps -eo pid,ppid,rss,vsz,stat,etime,comm,args --sort=-rss | head -n 18
+              python3 - "$build_pid" <<'PY'
+          import glob, os, sys
+          root = int(sys.argv[1])
+          procs = {}
+          for status_path in glob.glob("/proc/[0-9]*/status"):
+              try:
+                  pid = int(status_path.split("/")[2])
+                  fields = {}
+                  with open(status_path, encoding="utf-8") as f:
+                      for line in f:
+                          if ":" in line:
+                              k, v = line.split(":", 1)
+                              fields[k] = v.strip()
+                  ppid = int(fields.get("PPid", "0"))
+                  comm = open(f"/proc/{pid}/comm", encoding="utf-8").read().strip()
+                  cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode(errors="replace")
+                  procs[pid] = (ppid, comm, cmd, fields)
+              except (OSError, ValueError, IndexError):
+                  pass
+          descendants = {root}
+          changed = True
+          while changed:
+              changed = False
+              for pid, (ppid, *_rest) in procs.items():
+                  if ppid in descendants and pid not in descendants:
+                      descendants.add(pid)
+                      changed = True
+          for pid in sorted(descendants):
+              item = procs.get(pid)
+              if not item:
+                  continue
+              ppid, comm, cmd, fields = item
+              def smaps_value(name):
+                  try:
+                      with open(f"/proc/{pid}/smaps_rollup", encoding="utf-8") as f:
+                          for line in f:
+                              if line.startswith(name + ":"):
+                                  return line.split()[1]
+                  except OSError:
+                      pass
+                  return "NA"
+              rss = fields.get("VmRSS", "NA").split()[0]
+              role = "esbuild" if "esbuild" in comm.lower() or "esbuild" in cmd.lower() else ("node" if comm in ("node", "nodejs") else "other")
+              print(f"HEAVIX_PROCESS pid={pid} ppid={ppid} comm={comm} role={role} rss_kb={rss} pss_kb={smaps_value('Pss')} private_clean_kb={smaps_value('Private_Clean')} private_dirty_kb={smaps_value('Private_Dirty')}")
+          PY
               sleep 10
             done
           ) &
@@ -804,6 +897,12 @@ jobs:
           kill "$monitor_pid" 2>/dev/null
           wait "$monitor_pid" 2>/dev/null
           echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
+          cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
+          cg="/sys/fs/cgroup\${cg_rel}"
+          if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
+          for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
+            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
+          done
           free -b || true
           exit "$build_rc"
       - name: Produce Wrangler dry-run bundle (no deploy)
