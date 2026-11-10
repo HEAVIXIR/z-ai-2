@@ -102,7 +102,7 @@ bun install --frozen-lockfile
 } > "$OUTPUT_DIR/next-package-before-replace.txt" 2>&1
 
 tar -tf "$BUNDLE_DIR/next.tar" > "$OUTPUT_DIR/next-tar-file-list.txt"
-if grep -Eq '(^|/)types/global\.d\.ts$' "$OUTPUT_DIR/next-tar-file-list.txt"; then
+if grep -Fxq "./types/global.d.ts" "$OUTPUT_DIR/next-tar-file-list.txt"; then
   log "Archive inventory confirms types/global.d.ts is present in next.tar"
 else
   log "Archive inventory shows types/global.d.ts is absent from next.tar"
