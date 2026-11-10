@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { mergeHomepageSections } from "@/lib/homepage/sections";
 
 /**
  * Public homepage section configuration endpoint.
@@ -27,13 +28,13 @@ function parseConfig(config: string | null | undefined): Record<string, unknown>
 export async function GET() {
   try {
     const sections = await db.homePageSection.findMany({
-      where: { active: true },
       orderBy: { order: "asc" },
     });
+    const activeSections = mergeHomepageSections(sections).filter((section) => section.active);
 
     return NextResponse.json({
       success: true,
-      data: sections.map((section) => ({
+      data: activeSections.map((section) => ({
         key: section.key,
         title: section.title,
         subtitle: section.subtitle,
