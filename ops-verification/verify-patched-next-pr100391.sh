@@ -28,6 +28,13 @@ git clone --filter=blob:none --no-checkout "$HEAVIX_REPO" "$WORK_DIR/heavix"
 git -C "$WORK_DIR/heavix" fetch --depth 1 origin "$HEAVIX_REF"
 git -C "$WORK_DIR/heavix" checkout --detach FETCH_HEAD
 cd "$WORK_DIR/heavix"
+# The repository omits Next's generated next-env.d.ts. Recreate its canonical
+# type reference in this disposable checkout so NextFetchRequestConfig augments
+# the DOM RequestInit type during the Cloudflare worker tsconfig check.
+if [[ ! -f next-env.d.ts ]]; then
+  printf '%s\\n' '/// <reference types="next" />' > next-env.d.ts
+  log "Generated temporary next-env.d.ts type reference in disposable checkout"
+fi
 actual_sha="$(git rev-parse HEAD)"
 printf '%s\n' "$actual_sha" > "$OUTPUT_DIR/heavix-tested-commit.txt"
 [[ -f package.json && -f bun.lock && -f wrangler.jsonc ]] || die "Expected HEAVIX Bun/Wrangler files missing."
