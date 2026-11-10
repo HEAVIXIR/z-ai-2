@@ -121,7 +121,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll CI for code head ef38b4ad6754f9d22abc8420b5dbc9a09df220dd and later Store/Marketplace health RBAC commits. Confirm all Security/contract/unit tests and Docker proof pass. Then finish Preview DB identity proof and remaining route/action verification.",
+    "task": "Poll GitHub Actions run #42913533860 for code head ef38b4ad6754f9d22abc8420b5dbc9a09df220dd. This includes the public homepage API test correction; later commit 4ec49c99 is docs-only. Fix all remaining failures, then verify Store/Marketplace health RBAC and Admin homepage editor, and obtain App/Store Preview database identity proof before deployment.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -153,10 +153,10 @@
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42913239127,
-    "sha": "f247e9a68accfe02b00959d40443decef1fda3a4",
+    "id": 42913533860,
+    "sha": "ef38b4ad6754f9d22abc8420b5dbc9a09df220dd",
     "status": "queued",
-    "note": "Subsequent commits are documentation-only; always fetch PR #307 head before acting."
+    "note": "The subsequent commit 4ec49c99 is documentation-only; fetch PR #307 current head before acting."
   },
   "latest_code_head_sha": "ef38b4ad6754f9d22abc8420b5dbc9a09df220dd"
 }
