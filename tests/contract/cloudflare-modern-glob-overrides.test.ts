@@ -66,7 +66,7 @@ describe("Cloudflare Next file-descriptor guard", () => {
     const diagnostic = read("scripts/cloudflare-next-build-diagnostics.mjs");
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
     expect(diagnostic).toContain('"--turbopack"');
-    expect(diagnostic).not.toContain('"--webpack"');
+    expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack"');
   });
 });
 
