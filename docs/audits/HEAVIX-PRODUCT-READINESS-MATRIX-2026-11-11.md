@@ -110,3 +110,12 @@ CI validation is pending for these newest changes.
 - Found a permission mismatch in `rentalsConfig`: it referenced `rentals.read/manage`, which are not in the canonical permission catalog, while the dedicated Rentals API enforces `store.read/manage`. Updated the resource config to use `store.read/manage`.
 - Added a contract test to ensure the Store menu exposes these routes and the permission keys match the canonical catalog/API.
 - Important: the navigation seed has not been run against Preview DB in this session. After Preview App/Store DB identity is verified, run the approved idempotent admin-navigation seed and confirm the sidebar displays these entries.
+## Security finding — Admin navigation RBAC bypass and stale permission aliases
+
+Source review found `GET /api/admin/navigation` treated any authenticated user session as the legacy-admin path. It attempted `requirePermission(admin.navigation.read)` but swallowed denial, left the permission set null, and consequently returned every navigation item. This was not a data API bypass, but it exposed the complete Admin route tree and violated least-privilege navigation filtering.
+
+**Remediation on this branch:** the route now requires an authenticated user and `admin.navigation.read`; it always builds the user's canonical permission set and filters grouped and standalone items by exact `permissionKey`. The unrestricted legacy fallback has been removed. Added tests for 401, 403, no-permission denial, exact item filtering and RBAC mode.
+
+Additional source scan found seven navigation seed permission aliases absent from the canonical `PERMISSIONS` catalog: `admin.home.manage`, `admin.menu.manage`, `admin.settings.read`, `article.read`, `media.read`, `pricing.read`, and `service.read`. They were aligned to `admin.homepage.manage`, `admin.navigation.manage`, `admin.settings.manage`, `content.read`, `media.manage`, `price.read`, and `service.manage`. A contract test now checks every permissionKey in the navigation seed against the canonical catalog.
+
+These navigation seed changes are code-only. The idempotent seed has not been run against Preview DB; apply only after exact App/Store Preview DB identity verification.
