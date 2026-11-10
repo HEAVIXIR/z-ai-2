@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11",
+  "updated_at_utc": "2026-11-11T01:15:00+03:30",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "3a31fc3786cf9b70ecab9ca99b9d57691d5a845a",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "506d8d66e0407071cd824e2e0b415d8a76028720",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -49,49 +49,49 @@
     "Created machine-readable current-state checkpoint.",
     "Created append-only worklog entry describing this handoff.",
     "Verified all three continuity files were committed to the recovery branch.",
-    "Added root AGENTS.md so coding agents discover the continuation protocol before changing files."
+    "Added root AGENTS.md so coding agents discover the continuation protocol before changing files.",
+    "Re-verified the active branch and read the continuity protocol/state/worklog before continuing.",
+    "Changed public GET /api/homepage-sections to read-only; removed request-time auto-seeding and added safe JSON parsing plus generic 503 handling.",
+    "Added handler-level tests for populated/empty/error cases and asserted public GET never invokes createMany.",
+    "Inspected current PageRenderer registry, Prisma HomePageSection model, admin section API, legacy homepage route and CI workflow; documented why legacy page cannot be copied wholesale."
   ],
   "not_done_and_not_to_be_claimed": [
-    "No application source code repaired yet.",
-    "No homepage restoration implementation yet.",
-    "No route/API/RBAC matrix completed yet.",
-    "No CI result verified in this checkpoint.",
-    "No Preview deployment performed in this checkpoint.",
-    "No Preview database identity verified in this checkpoint.",
+    "Full 17-section homepage restoration is not implemented.",
+    "No full route/API/RBAC/product feature matrix completed.",
+    "The newly added Vitest file has not been executed locally or in CI yet.",
+    "No CI result verified for the latest changes.",
+    "No Preview deployment performed.",
+    "No Preview App/Store database identity verified.",
     "No Production or DNS changes performed."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Inspect the exact current PageRenderer registry, homepage-section APIs/editor, Prisma HomePageSection/AdminPage fields, and all 8 changed home components; then implement the 17-section homepage orchestrator with read-only public GET behavior and regression tests.",
+    "task": "Open a draft PR to main to run the repository's pull_request CI (the inspected CI workflow does not deploy Cloudflare); verify the new homepage read-only tests pass. Then implement a typed, read-only canonical homepage composition adapter using current components/data contracts, preserving PageRenderer/PageBuilder as an explicit custom-layout path. Never port legacy request-time seeding or deactivation writes.",
     "first_paths_to_read": [
       "src/app/page.tsx",
+      "src/components/page-renderer/page-renderer.tsx",
       "src/lib/admin/page-builder/widget-registry.ts",
       "src/app/api/homepage-sections/route.ts",
       "src/app/api/admin/homepage-sections/route.ts",
-      "src/components/home/ActiveRequestsSection.tsx",
-      "src/components/home/BrandsSection.tsx",
-      "src/components/home/CtaSection.tsx",
-      "src/components/home/Hero.tsx",
-      "src/components/home/RecommendationsSection.tsx",
-      "src/components/home/StatsSection.tsx",
-      "src/components/home/VerifiedMachinesCarousel.tsx",
-      "src/components/home/VerifiedMachinesGallery.tsx",
-      "prisma/schema.prisma"
+      "prisma/schema.prisma",
+      "tests/security/homepage-sections-readonly.test.ts",
+      "extracted/src/src/app/page.tsx (legacy reference only)"
     ],
     "required_tests": [
-      "All 17 canonical homepage section keys are represented.",
-      "Configured order and enabled/disabled visibility are respected.",
-      "Incomplete published HOME layouts cannot silently hide essential canonical sections.",
-      "Public homepage-section GET performs no database writes.",
-      "No fake stats or fabricated business records."
+      "GET /api/homepage-sections returns configured rows in order.",
+      "Empty HomePageSection table returns empty data and causes no DB writes.",
+      "Database failure returns safe 503 without leaking details.",
+      "All canonical homepage section keys map to actual current components/data contracts.",
+      "Custom published PageBuilder layouts remain supported without hiding mandatory sections accidentally.",
+      "No public homepage read performs database mutations."
     ],
     "do_not": [
-      "Do not repeat the completed source inventory from zero.",
-      "Do not bulk-copy legacy files.",
-      "Do not modify main.",
-      "Do not deploy to Cloudflare before code/CI/artifact/database gates pass.",
-      "Do not touch Production, DNS, or the existing Preview URL configuration."
+      "Do not restart source inventory from zero.",
+      "Do not bulk-copy the legacy homepage route or components.",
+      "Do not modify main directly or merge without owner review.",
+      "Do not deploy Cloudflare before code/CI/artifact/database-identity gates pass.",
+      "Do not touch Production, DNS, or existing Preview Worker configuration."
     ]
   }
 }
