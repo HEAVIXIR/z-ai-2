@@ -95,3 +95,11 @@ Source review found `/api/admin/store/health` and `/api/admin/marketplace/health
 **Remediation on this branch:** Store health now requires `getCurrentUser` + `store.read`; Marketplace health requires `getCurrentUser` + `analytics.read`. Added handler tests for unauthenticated, missing-permission and authorized cases, and updated the general auth-boundary test to assert route-level protection for all three detailed admin health endpoints. The middleware health-probe bypass and public `/api/health` liveness contract remain intact.
 
 CI validation is pending for these newest changes.
+## Cloudflare Preview environment evidence (read-only)
+
+- Existing Worker script: `heavix-preview`.
+- Active deployment: `9c079e5b-e3df-4295-80e0-e930d2d25552`; active version: `063ce438-ca3a-4482-b416-9260b780bccf`; 100% traffic allocation; created 2026-11-10T21:08:35Z.
+- Worker vars: `HEAVIX_ENV=preview`, `NODE_ENV=production`.
+- Secret binding names include `DATABASE_URL` and `STORE_DATABASE_URL`; values were not retrieved. Names alone do not prove that the databases are dedicated Preview instances or that App and Store are distinct.
+- Existing `.github/workflows/prisma-preview-workerd-proof.yml` performs a pinned, read-only Workerd proof against two distinct Preview GitHub secrets and checks expected PostgreSQL system identifiers plus read-only session mode. It requires manual `workflow_dispatch` with `PREVIEW_ONLY`; it was inspected but not dispatched in this session.
+- No Worker deploy, secret update, DB connection or DNS change was performed.
