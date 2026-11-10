@@ -1,27 +1,37 @@
-import { PrismaClient } from "@/lib/generated/store-client";
+import { PrismaClient as NodeStorePrismaClient } from "@/lib/generated/store-node-client";
+import { PrismaClient as WorkerStorePrismaClient } from "@/lib/generated/store-client/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-/**
- * HEAVIX Store Prisma Client (singleton).
- *
- * The HEAVIX auto-parts marketplace has its OWN PostgreSQL database
- * (`STORE_DATABASE_URL`) and its own Prisma schema
- * (`prisma/store/schema.prisma`). The generated client lives at
- * `src/lib/generated/store-client` so it does NOT clash with the
- * main HEAVIX `@prisma/client`.
- *
- * The instance is cached on `globalThis` to avoid connection
- * exhaustion in dev-mode hot reloads (same pattern as `@/lib/db`).
- */
-const globalForStore = globalThis as unknown as {
-  storeDb: PrismaClient | undefined;
+type StorePrismaGlobal = typeof globalThis & {
+  storeDbNode?: NodeStorePrismaClient;
+  storeDbWorker?: WorkerStorePrismaClient;
 };
 
-export const storeDb =
-  globalForStore.storeDb ??
-  new PrismaClient({
-    log: ["error", "warn"],
-  });
+const globalForStore = globalThis as StorePrismaGlobal;
 
-if (process.env.NODE_ENV !== "production") {
-  globalForStore.storeDb = storeDb;
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
 }
+
+function createNodeStorePrismaClient(): NodeStorePrismaClient {
+  const adapter = new PrismaPg({ connectionString: requiredEnv("STORE_DATABASE_URL") });
+  return new NodeStorePrismaClient({ adapter });
+}
+
+function createWorkerStorePrismaClient(): WorkerStorePrismaClient {
+  const adapter = new PrismaPg({ connectionString: requiredEnv("STORE_DATABASE_URL") });
+  return new WorkerStorePrismaClient({ adapter });
+}
+
+function getStorePrismaClient(): NodeStorePrismaClient | WorkerStorePrismaClient {
+  if (process.env.HEAVIX_ENV === "preview") {
+    globalForStore.storeDbWorker ??= createWorkerStorePrismaClient();
+    return globalForStore.storeDbWorker;
+  }
+  globalForStore.storeDbNode ??= createNodeStorePrismaClient();
+  return globalForStore.storeDbNode;
+}
+
+export const storeDb = getStorePrismaClient();

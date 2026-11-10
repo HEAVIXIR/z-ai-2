@@ -21,7 +21,7 @@
  *
  * DATABASE_URL must be set through the operator's secure environment; it is never printed.
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client';
 import { assertOwnerPromotionTargetEnvironment } from "./owner-promotion-environment";
 
 const OWNER_EMAIL = "heavixir@gmail.com";

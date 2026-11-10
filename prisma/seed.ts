@@ -1,8 +1,9 @@
 /* HEAVIX seed v2 — expanded: 45 brands, 16 root categories with real data,
    30 listings across all categories. Idempotent upsert by slug. */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const slugify = (s: string) =>
   s

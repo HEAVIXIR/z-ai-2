@@ -6,9 +6,10 @@
    but does NOT overwrite active/featured (admin edits preserved).
    ============================================================ */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 type SeedService = {
   key: string;

@@ -18,9 +18,10 @@
    Run: bunx tsx prisma/seed-machine-taxonomy.ts
 */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 // ────────────────────────────────────────────────────────────
 // Types
