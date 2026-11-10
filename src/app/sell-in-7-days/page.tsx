@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   ArrowLeft,
   ClipboardList,
@@ -17,6 +18,13 @@ import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
 import { toFa, formatFullPrice } from "@/lib/format";
 import { getActiveStats } from "@/lib/site-stats";
+
+export const metadata: Metadata = {
+  title: "فروش ماشین‌آلات در ۷ روز | کمپین فروش ویژه هویکس",
+  description: "ثبت دستگاه، کارشناسی، ارزش‌گذاری و فروش ویژه ماشین‌آلات سنگین در کمپین فروش ۷ روزه هویکس.",
+  alternates: { canonical: "/sell-in-7-days" },
+  openGraph: { title: "فروش ماشین‌آلات در ۷ روز | هویکس", description: "فرآیند فروش ویژه ماشین‌آلات سنگین در هویکس.", type: "website", locale: "fa_IR" },
+};
 
 export const dynamic = "force-dynamic";
 
