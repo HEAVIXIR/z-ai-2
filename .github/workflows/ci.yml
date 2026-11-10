@@ -750,23 +750,36 @@ jobs:
           cat /proc/self/cgroup || true
           free -b || true
 
-          # Do not assume the runtime is Node.js. bunx may launch Bun's
-          # MainThread process, so identify build descendants by command line,
-          # executable and process-tree membership instead of comm == node.
-          setsid bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
+          # Do not assume the runtime is Node.js. Capture the actual session
+          # leader PID because setsid may fork when its caller is already a
+          # process-group leader; $! is not guaranteed to be the new PGID.
+          build_pid_file="$RUNNER_TEMP/heavix-build-session.pid"
+          rm -f "$build_pid_file"
+          setsid bash -c 'echo "$$" > "$1"; exec bunx opennextjs-cloudflare build --noMinify' _ "$build_pid_file" > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
-          cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pid/cgroup" 2>/dev/null | head -n 1)"
+          for _ in $(seq 1 50); do
+            [ -s "$build_pid_file" ] && break
+            kill -0 "$build_pid" 2>/dev/null || break
+            sleep 0.1
+          done
+          build_pgid="$(cat "$build_pid_file" 2>/dev/null || true)"
+          if [ -z "$build_pgid" ]; then
+            echo "HEAVIX_BUILD_SESSION_PID_NOT_CAPTURED"
+            exit 1
+          fi
+          cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pgid/cgroup" 2>/dev/null | head -n 1)"
           cg="/sys/fs/cgroup${cg_rel}"
           if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
 
           (
-            while kill -0 -- "-$build_pid" 2>/dev/null; do
-              echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            export PYTHONUNBUFFERED=1
+            while kill -0 -- "-$build_pgid" 2>/dev/null; do
+              echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ) pgid=$build_pgid"
               for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
                 if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
               done
 
-              python3 - "$build_pid" <<'PY'
+              python3 - "$build_pgid" <<'PY'
           import glob, os, sys
           root = int(sys.argv[1])
           procs = {}
