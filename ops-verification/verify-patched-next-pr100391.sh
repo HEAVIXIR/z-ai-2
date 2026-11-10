@@ -7,7 +7,7 @@ set -Eeuo pipefail
 BUNDLE_DIR="${1:-}"
 HEAVIX_REF="${HEAVIX_REF:-}"
 HEAVIX_REPO="${HEAVIX_REPO:-https://github.com/HEAVIXIR/z-ai-2.git}"
-MAX_TRACE_ENTRIES="${MAX_TRACE_ENTRIES:-5000}"
+MAX_UNIQUE_TRACE_FILES="${MAX_UNIQUE_TRACE_FILES:-5000}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PWD/artifacts/heavix-pr100391-verification}"
 KEEP_WORK_DIR="${KEEP_WORK_DIR:-0}"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/heavix-pr100391-proof.XXXXXX")"
@@ -59,7 +59,7 @@ trap 'capture_failure_state; cleanup' EXIT
 [[ -n "$BUNDLE_DIR" && -d "$BUNDLE_DIR" ]] || die "Usage: $0 <build-output-dir>"
 BUNDLE_DIR="$(cd "$BUNDLE_DIR" && pwd)"
 [[ -n "$HEAVIX_REF" ]] || die "Set HEAVIX_REF to the exact branch or commit to test."
-[[ "$MAX_TRACE_ENTRIES" =~ ^[1-9][0-9]*$ ]] || die "MAX_TRACE_ENTRIES must be a positive integer."
+[[ "$MAX_UNIQUE_TRACE_FILES" =~ ^[1-9][0-9]*$ ]] || die "MAX_UNIQUE_TRACE_FILES must be a positive integer."
 for file in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do
   [[ -s "$BUNDLE_DIR/$file" ]] || die "Missing archive: $file"
 done
@@ -150,34 +150,54 @@ build_status=${PIPESTATUS[0]}
 set -e
 [[ "$build_status" -eq 0 ]] || die "Cloudflare build failed with exit $build_status."
 
-log "Measuring output traces and checking emitted Prisma WASM"
-node - "$OUTPUT_DIR" "$MAX_TRACE_ENTRIES" <<'NODE'
+log "Measuring per-route trace references, unique traced files, and emitted Prisma WASM"
+node - "$OUTPUT_DIR" "$MAX_UNIQUE_TRACE_FILES" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 const out = process.argv[2];
-const maxEntries = Number(process.argv[3]);
+const maxUniqueFiles = Number(process.argv[3]);
 const traces = [];
 const wasm = [];
+const referencedByTraceCount = new Map();
+const uniqueFiles = new Set();
+function canonicalPath(traceFile, entry) {
+  const absolute = path.resolve(path.dirname(traceFile), entry);
+  try { return fs.realpathSync.native(absolute); } catch { return absolute; }
+}
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(file);
     else if (entry.isFile() && entry.name.endsWith('.nft.json')) {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      traces.push({ file, entries: Array.isArray(data.files) ? data.files.length : 0 });
+      const entries = Array.isArray(data.files) ? data.files : [];
+      const resolved = entries.map((item) => canonicalPath(file, item));
+      for (const item of resolved) {
+        uniqueFiles.add(item);
+        referencedByTraceCount.set(item, (referencedByTraceCount.get(item) || 0) + 1);
+      }
+      traces.push({ file: path.relative(process.cwd(), file), entries: entries.length, uniqueEntries: new Set(resolved).size });
     } else if (entry.isFile() && entry.name === 'query_compiler_bg.wasm') {
-      wasm.push(file);
+      wasm.push(path.relative(process.cwd(), file));
     }
   }
 }
 for (const root of ['.next', '.open-next']) if (fs.existsSync(root)) walk(root);
-const total = traces.reduce((sum, trace) => sum + trace.entries, 0);
-const result = { traceFiles: traces.length, traceEntries: total, maxTraceEntries: maxEntries, traces, queryCompilerWasm: wasm };
-fs.writeFileSync(path.join(out, 'artifact-evidence.json'), JSON.stringify(result, null, 2) + '\n');
-console.log(JSON.stringify({ traceFiles: traces.length, traceEntries: total, queryCompilerWasm: wasm }, null, 2));
-if (!traces.length) throw new Error('No *.nft.json output trace files found.');
-if (total > maxEntries) throw new Error(`Trace entry count exceeds configured limit: ${total}`);
-if (!wasm.length) throw new Error('query_compiler_bg.wasm absent from .next/.open-next output.');
+const totalReferences = traces.reduce((sum, trace) => sum + trace.entries, 0);
+const topReferencedFiles = [...referencedByTraceCount.entries()].sort((a,b)=>b[1]-a[1]).slice(0,100)
+  .map(([file,traceCount])=>({file:path.relative(process.cwd(),file),traceCount}));
+const wasmRelatedReferences = [...referencedByTraceCount.entries()].filter(([file])=>/wasm|turbopack/i.test(file))
+  .sort((a,b)=>b[1]-a[1]).map(([file,traceCount])=>({file:path.relative(process.cwd(),file),traceCount}));
+const maxEntriesPerTrace = Math.max(0,...traces.map(trace=>trace.entries));
+const result = {traceFiles:traces.length,traceEntries:totalReferences,uniqueTraceFiles:uniqueFiles.size,
+  maxUniqueTraceFiles:maxUniqueFiles,maxEntriesPerTrace,traces:traces.sort((a,b)=>b.entries-a.entries),
+  topReferencedFiles,wasmRelatedReferences,queryCompilerWasm:wasm};
+fs.writeFileSync(path.join(out,'artifact-evidence.json'),JSON.stringify(result,null,2)+'\n');
+console.log(JSON.stringify({traceFiles:traces.length,traceEntries:totalReferences,uniqueTraceFiles:uniqueFiles.size,
+  maxEntriesPerTrace,wasmRelatedReferences:wasmRelatedReferences.slice(0,20),queryCompilerWasm:wasm},null,2));
+if(!traces.length) throw new Error('No *.nft.json output trace files found.');
+if(uniqueFiles.size>maxUniqueFiles) throw new Error(`Unique traced file count exceeds configured limit: ${uniqueFiles.size}`);
+if(!wasm.length) throw new Error('query_compiler_bg.wasm absent from .next/.open-next output.');
 NODE
 
 {
