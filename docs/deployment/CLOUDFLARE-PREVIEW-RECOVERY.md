@@ -110,26 +110,52 @@ echo HEAVIX_WORKERS_PRODUCTION_DEPLOY_BLOCKED_PENDING_ARCHITECTURE_AND_DATABASE_
 The production deployment guard remains unchanged. No Worker version was
 deployed by this recovery work.
 
-## Database/runtime evidence still BLOCKED
+## Database/runtime evidence: DB-backed Workerd proof PASS; deployed Preview pending
 
-The successful build log also records four Prisma calls during static page
-generation that could not resolve `DATABASE_URL`:
-- `category.findMany()`
-- `brand.findMany()`
-- `listing.findMany()`
-- `article.findMany()`
+The earlier statement that App + Store Preview database identity was unverified is superseded by the successful manual Workerd proof:
 
-Those failures did not fail the adapter build because the relevant build-time
-paths handled the errors. They are not proof that the deployed Worker can query
-data.
+- GitHub Actions Run: [#42872987144](https://github.com/HEAVIXIR/z-ai-2/actions/runs/42872987144)
+- Result: **SUCCESS**
+- Exact tested commit: `07b6de155284dd7813335201552acf4efbb6ad90`
+- Job: `Read-only App + Store Workerd proof`
+- Target: `PREVIEW_ONLY`
+- Inputs: two distinct, protected GitHub environment secrets (`MAIN_PREVIEW_DATABASE_URL` and `STORE_PREVIEW_DATABASE_URL`); values remain redacted.
 
-The preview build environment contains no `DATABASE_URL` or
-`STORE_DATABASE_URL` values. The existing `heavix-preview` Worker has secret
-bindings with those names, but Cloudflare redacts their values; their target
-databases cannot be independently verified from this connection. Therefore
-preview deployment remains blocked until both endpoints are proven to be
-isolated non-production databases and read-only connectivity checks pass. No
-secret values are copied into Git or this document.
+The test checks each PostgreSQL `system_identifier` against the exact allow-listed App and Store Preview resource identifiers **before reading migration metadata or running transaction checks**. It then verifies PostgreSQL 17 and the exact App/Store migration fingerprints. The internal database name is reported as `postgres` by Prisma Postgres for both resources; the system identifier is the resource-identity check.
+
+The successful run proves:
+- distinct App and Store Preview connection inputs;
+- exact App and Store PostgreSQL resource identity and migration fingerprints;
+- request-scoped client reuse and sequential/concurrent request isolation;
+- successful read-only transactions using `SET TRANSACTION READ ONLY`;
+- fail-closed behavior when either Worker secret is absent;
+- zero writes and zero Production access in the proof.
+
+**Scope boundary:** this is a DB-backed local Workerd runtime proof against the allow-listed Preview databases. It is not yet an HTTP smoke test against a deployed Cloudflare branch Preview.
+
+The Cloudflare Workers Build environment intentionally still has no database URLs. The existing `heavix-preview` Worker has secret bindings with the names `DATABASE_URL` and `STORE_DATABASE_URL`, but Cloudflare redacts their values; do not assume those existing Worker secrets are suitable for a new Preview. New Worker Previews need their own Preview-specific secrets in the Preview Base configuration.
+
+## Live Cloudflare Preview status (read-only inspection, 2026-11-10)
+
+The Cloudflare account was inspected directly:
+- Worker: `heavix-preview`
+- Connected repository: `HEAVIXIR/z-ai-2`
+- Production branch: `main`
+- `previews_enabled = false`
+- Preview list: empty
+- Preview deploy command remains the fail-closed marker `HEAVIX_PREVIEW_DEPLOY_BLOCKED_PENDING_ARTIFACT_AND_DATABASE_ISOLATION_PROOF`
+- Production deploy command remains fail-closed.
+- No Worker Preview was created or deployed by this inspection.
+
+A Cloudflare build was automatically queued for the test-contract correction commit `4171f6e631086fe90f3b3b639dda4308613882c2` (build UUID `2326072d-1e24-45ec-9899-1fa9101ece37`). Its deploy command remains the no-op safety marker, so this build cannot publish a Worker.
+
+Cloudflare's current Worker Previews migration for an existing Workers Builds Worker is a **one-time, non-reversible switch**. Before making that change:
+1. finish the current Cloudflare build and required GitHub checks;
+2. configure only the verified App/Store Preview endpoints as Preview Base secrets (never copy Production credentials);
+3. explicitly approve switching `heavix-preview` to the new Worker Previews model;
+4. then test the deployed Preview's HTTP health, authentication, session, RBAC, security headers, and error paths.
+
+Cloudflare documentation: [Existing Workers connected to Builds](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#existing-workers-connected-to-builds), [Preview secrets](https://developers.cloudflare.com/workers/previews/configuration/#secrets), and [Preview resources and isolation](https://developers.cloudflare.com/workers/previews/resources/).
 
 ## Acceptance gates
 
