@@ -22,7 +22,9 @@ OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 [[ -z "$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]] || die "Output directory must be empty."
 (cd "$BUNDLE_DIR" && sha256sum -c SHA256SUMS)
 log "Cloning HEAVIX at explicit ref $HEAVIX_REF"
-git clone --depth 1 --branch "$HEAVIX_REF" "$HEAVIX_REPO" "$WORK_DIR/heavix"
+git clone --filter=blob:none --no-checkout "$HEAVIX_REPO" "$WORK_DIR/heavix"
+git -C "$WORK_DIR/heavix" fetch --depth 1 origin "$HEAVIX_REF"
+git -C "$WORK_DIR/heavix" checkout --detach FETCH_HEAD
 cd "$WORK_DIR/heavix"
 actual_sha="$(git rev-parse HEAD)"
 printf '%s\n' "$actual_sha" > "$OUTPUT_DIR/heavix-tested-commit.txt"
