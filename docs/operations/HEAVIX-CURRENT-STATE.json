@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "99ba40b59e57a140a5c344ed14763dcc46b089d1",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "76c8113ebd2e8c0a1ff1192a4e623648236b7906",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -116,12 +116,14 @@
     "Actual App and Store PostgreSQL system identities behind Cloudflare secret bindings DATABASE_URL and STORE_DATABASE_URL remain unverified.",
     "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets.",
     "Exact-head CI after the ServicesSection discoverability change is pending.",
-    "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending."
+    "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending.",
+    "Store Admin navigation seed changes for Procurement/Rentals/Service Providers are committed but not applied to Preview DB; run only after DB identity verification.",
+    "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll GitHub Actions run #42913533860 for code head ef38b4ad6754f9d22abc8420b5dbc9a09df220dd. This includes the public homepage API test correction; later commit 4ec49c99 is docs-only. Fix all remaining failures, then verify Store/Marketplace health RBAC and Admin homepage editor, and obtain App/Store Preview database identity proof before deployment.",
+    "task": "Poll exact-head CI after homepage API test correction, Store navigation seed and Rentals permission alignment. Verify all contract/security tests and Docker proof. Then verify Preview DB identities and, only with the correct Preview target, run the idempotent Admin navigation seed; never use Production DB.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -158,5 +160,5 @@
     "status": "queued",
     "note": "The subsequent commit 4ec49c99 is documentation-only; fetch PR #307 current head before acting."
   },
-  "latest_code_head_sha": "ef38b4ad6754f9d22abc8420b5dbc9a09df220dd"
+  "latest_code_head_sha": "4ac3a271fda976f22ecc919e4c1014863885f066"
 }
