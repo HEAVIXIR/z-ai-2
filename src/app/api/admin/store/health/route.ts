@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import { getStoreMonitoringStatus } from "@/lib/admin/store-monitoring-registry";
 
 export const runtime = "nodejs";
@@ -14,6 +16,16 @@ const VERSION = "2.0";
    HTTP 503 if DB unreachable.
 */
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    await requirePermission(user.id, "store.read");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const timestamp = new Date().toISOString();
   let dbStatus: "connected" | "error" = "error";
   let dbLatencyMs: number | undefined;
