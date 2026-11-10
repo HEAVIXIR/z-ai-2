@@ -54,3 +54,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - The earlier CI Typecheck failure on commit 41032297 was inspected. It identified stale homepage component type imports/props and an invalid inferred listing row callback. The homepage was updated to import FeaturedListing from FeaturedMachineCard, use the current BrandsSection prop contract, and derive the listing row type with Prisma.ListingGetPayload from a typed Prisma.ListingInclude. Exact-head CI is still required to confirm.
 - The earlier Docker build failure is separate: Next tracing fails around dynamic filesystem access in the generated Store Prisma runtime. It remains open and requires a focused build-tracing fix.
 - Next: verify the latest CI run for the exact latest branch head, fix typecheck/test/build failures, and continue the route/RBAC/API inventory. No Preview deploy, Production change, DNS change or Cloudflare build performed.
+
+## 2026-11-11 — Services public surface completion
+
+- Added the missing public /services directory at src/app/services/page.tsx. It reads active Service records, renders service details and links each service to the existing SERVICE_REQUEST listings workflow.
+- Removed hard-coded placeholder service records from the homepage ServicesSection. If no active services exist, the section now explains that none are registered instead of presenting placeholder cards as live offerings.
+- Hardened GET /api/services to return a generic 503 on DB errors rather than exposing raw error messages.
+- Updated the product readiness matrix to reflect the new public route.
+- Commits: 831e57af97d53340e3afe52de7e809619e7ad36c (remove placeholder cards), 10f346e94eb428f2b041f6b938983b5ab3b7dab5 (safe API errors), 5a9cc3df3d4f5f9133d2ca4a61a00d3651131ee5 (public services directory).
+- Validation pending: exact-head GitHub Actions CI must typecheck/build/test the new route and current homepage/store changes. No runtime/Preview validation performed.
