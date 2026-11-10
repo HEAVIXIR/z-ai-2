@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import SellIn7TrackClient from "./TrackClient";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "پیگیری کمپین فروش ۷ روزه | هویکس",
+  robots: { index: false, follow: false },
+};
 
 export const dynamic = "force-dynamic";
 
