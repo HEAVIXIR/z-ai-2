@@ -135,3 +135,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Existing workflow .github/workflows/prisma-preview-workerd-proof.yml is a read-only, pinned-commit Workerd proof. It requires explicit workflow_dispatch input PREVIEW_ONLY and two distinct GitHub secrets HEAVIX_APP_PREVIEW_PPG_URL / HEAVIX_STORE_PREVIEW_PPG_URL; it verifies expected PostgreSQL system identifiers and read-only session mode without deploying a Worker. This workflow was not dispatched in this session because no GitHub workflow-dispatch action is exposed here.
 - Attempted web page open of the Preview URL was not accessible via the web retrieval tool; this is not evidence that the Worker is down.
 - No Cloudflare Worker deployment or DB connection was performed in this checkpoint.
+
+## 2026-11-11 — Continuity checkpoint before next agent/session
+
+- Active recovery branch HEAD at this checkpoint: f247e9a68accfe02b00959d40443decef1fda3a4.
+- Draft PR: https://github.com/HEAVIXIR/z-ai-2/pull/307 (base main; not merged).
+- Latest CI run for exact head: #42913239127, queued at inspection. Earlier run #42910792713 passed Typecheck, Lint, Security Tests, phase/tls/audit/Cloudflare compatibility and full Docker proof; its only verify failure was an obsolete homepage contract test now corrected.
+- Source changes in this workstream: full 17-section homepage; read-only canonical section composition; Admin editor GET/upsert integration; public /services directory; no placeholder service data; Store order enumeration hardening; Store/Marketplace health RBAC; SEO metadata; readiness matrix.
+- Cloudflare read-only audit: current heavix-preview deployment/version recorded; HEAVIX_ENV=preview; secret names DATABASE_URL and STORE_DATABASE_URL; no secret values retrieved. Actual PostgreSQL system identifiers remain unverified.
+- Next agent must start by reading AGENTS.md, docs/operations/HEAVIX-AGENT-CONTINUATION.md, docs/operations/HEAVIX-CURRENT-STATE.json and this worklog. Do not start from zero.
