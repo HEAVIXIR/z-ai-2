@@ -158,3 +158,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Its Security Tests job failed one assertion in tests/security/homepage-sections-readonly.test.ts because the public endpoint now correctly returns the canonical active default sections in addition to the persisted hero row; the old assertion incorrectly expected a one-element data array.
 - Updated the test to assert the hero row is first and the response contains exactly the canonical active section count, preserving the no-write assertions.
 - Fix commit: ef38b4ad6754f9d22abc8420b5dbc9a09df220dd. Exact-head CI pending.
+
+## 2026-11-11 — Store Admin navigation and rental permission alignment
+
+- Source audit found the Store navigation seed omitted the Universal Resource Engine routes for Procurement, Rentals and Service Providers even though the configs/pages existed.
+- Added Store menu items for /admin/resources/procurement (procurement.read), /admin/resources/rentals (store.read), and /admin/resources/services (store.read).
+- Found rentalsConfig used rentals.read/manage, but the canonical permission catalog did not define those keys and the dedicated Rentals API enforces store.read/manage. Aligned the universal resource config to store.read/manage.
+- Added tests/contract/admin-store-navigation.test.ts to guard route presence and permission consistency.
+- Commits: a496b6820ea45d825c30ba72479994ff20bca48f (rental permission fix), 45fc756060b9052be3c64c42ece63ab3a790cabe1 (navigation seed), 4ac3a271fda976f22ecc919e4c1014863885f066 (contract test), b86b434a2801fd0f23c33e975d42178053242e30 (audit update).
+- Navigation seed has NOT been run on any DB; run only after Preview DB identity verification and explicit approval of the Preview seed step.
+- Exact-head CI pending.
