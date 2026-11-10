@@ -21,14 +21,21 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ServicesPage() {
-  const services = await db.service.findMany({
-    where: { active: true },
-    orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { nameFa: "asc" }],
-  }).catch(() => []);
+  const [services, headerCats] = await Promise.all([
+    db.service.findMany({
+      where: { active: true },
+      orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { nameFa: "asc" }],
+    }).catch(() => []),
+    db.category.findMany({
+      where: { active: true, layer: "CATALOG", parentId: null },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, name: true, slug: true, parentId: true, icon: true },
+    }).catch(() => []),
+  ]);
 
   return (
     <div className="site-theme flex min-h-screen flex-col bg-[#0b0b0b]">
-      <Header categories={[]} />
+      <Header categories={headerCats} />
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-6 pb-20 pt-32 lg:px-10">
         <header className="mx-auto mb-12 max-w-3xl text-center">
           <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl border border-[#F58220]/20 bg-[#F58220]/10">
