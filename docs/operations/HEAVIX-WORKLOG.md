@@ -28,3 +28,18 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - CI workflow inspection: .github/workflows/ci.yml runs on pull requests targeting main; it does not deploy Cloudflare. No CI result has been observed yet.
 - Not performed: no local test execution (repository runtime is not mounted in this session), no PR created yet, no Cloudflare build/deploy, no DB access/write, no Production or DNS change.
 - Next: create a draft PR to trigger repository CI, inspect its result, then implement the canonical homepage section adapter without porting legacy request-time writes.
+
+## 2026-11-11 — Full homepage section composition restored in source
+
+- Restored the original HEAVIX homepage composition in src/app/page.tsx using the existing current-tree home components and the legacy section orchestration as a read-only reference.
+- Reinstated all 17 canonical section keys: hero, categories, hot-searches, stats, recommendations, verified-machines, featured-machines, active-requests, exclusive-sale, services, latest-ads, sell7, why-us, brands, trusted-brands, knowledge, cta.
+- Extracted the canonical defaults/merge logic to src/lib/homepage/sections.ts. Existing database rows remain authoritative; explicit active=false settings are preserved; missing defaults are supplied in memory only and never written during a public request.
+- Removed legacy request-time HomePageSection createMany/create/update/deactivation behavior from the homepage route. A source scan of src/app/page.tsx found zero Prisma mutation calls.
+- Removed the legacy hard-coded 31-province statistic. StatsSection now receives only admin-configured real SiteStat values; hero metrics continue to use live database counts.
+- Added tests/unit/homepage-sections.test.ts for the 17-key canonical registry, merge behavior, preserved admin configuration, and empty-table fallback.
+- Removed an unused verified-listing aggregate query from the restored route.
+- Implementation commits: 874132e7bea4ab2af3d1c1620d97fab22d35fd3f (homepage restoration), 744917e259365de55d90a64338810924b62627d9 (pure composition helper extraction), b17244026f3a54f9bc9dfc7b09cadb81568025c7 (helper file), fa50d99b0afa0f654e8349bc180e8bab58495247 (unit tests), 701016644ebe1a170a89ee4a3a31dff29869c9bd (unused query removal).
+- Review note: the homepage now uses the legacy-compatible HomePageSection orchestration and current components. PageRenderer/PageBuilder remain available for custom pages/preview flows; the root homepage no longer lets an incomplete generic five-widget layout suppress the canonical product homepage.
+- Validation state: source-level checks confirm 17 section switch cases and zero Prisma write calls in src/app/page.tsx. The full GitHub Actions run for the earlier checkpoint is in progress; a newer run is expected for this latest commit. No successful build/typecheck/test claim yet.
+- No Preview deployment, Cloudflare build, database access/write, Production change, or DNS change was performed.
+- Next: monitor CI for the latest PR head, fix every type/test/build failure, then continue route/API/RBAC audits for Store, Companies, Sell in 7 Days, Services, Knowledge and Admin. Do not deploy until DB identity and artifact gates pass.
