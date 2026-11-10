@@ -178,3 +178,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Expanded tests/contract/admin-store-navigation.test.ts to assert every navigation permissionKey exists in the canonical catalog.
 - Commits: 4cc2ab395b7303f9b34ec176a9c3c0e877b43193 (remove legacy bypass), e0f8971d6a64de13a69f1ff8d3c6cef2980e0f85 (navigation RBAC tests), 4d44957f6df3a2d06ebf608962e1474a3b27e926 (permission-key normalization), cd98be611dbdc322b6653ba8c21aa828ac7912e8 (catalog consistency test).
 - Preview DB seed has not been run; exact-head CI pending.
+
+## 2026-11-11 — Final scan of Admin navigation permission aliases
+
+- Re-scanned all 44 distinct permissionKey values in prisma/seed-admin-navigation.ts against the canonical PERMISSIONS array after normalization.
+- Found repeated legacy aliases still present on additional Home, Media and Pricing items because the first patch changed only the first occurrence. Replaced every remaining occurrence: admin.home.manage → admin.homepage.manage, media.read → media.manage, pricing.read → price.read.
+- Final source scan: 44 navigation permission keys, 0 missing from the canonical permission catalog.
+- Commit: e16ed41a5c123d5f2c8700816303771fbfdf3e9d. CI pending.
