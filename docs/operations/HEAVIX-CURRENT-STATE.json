@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "40327b40203bd69c63ecaf29bf0a1fa28d4973de",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "6e484ad320aa6a7908f3443c3160234395de2d5c",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -90,7 +90,8 @@
     "Read-only Cloudflare audit verified existing Worker script heavix-preview, active deployment/version IDs, 100% traffic, HEAVIX_ENV=preview and NODE_ENV=production; secret values were not retrieved.",
     "Recorded current Cloudflare Preview Worker active deployment/version and Preview environment vars without reading secret values.",
     "Corrected Store Control Plane audit to reflect shared Admin routes and Universal Resource Engine rather than falsely marking global pages missing.",
-    "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff."
+    "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff.",
+    "Homepage ServicesSection now links to /services and SERVICE_REQUEST, and its stale placeholder-fallback comment was corrected."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -113,12 +114,13 @@
     "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI.",
     "The corrected homepage contract suite and later Store/Marketplace health RBAC changes have not yet passed a new exact-head CI run.",
     "Actual App and Store PostgreSQL system identities behind Cloudflare secret bindings DATABASE_URL and STORE_DATABASE_URL remain unverified.",
-    "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets."
+    "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets.",
+    "Exact-head CI after the ServicesSection discoverability change is pending."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Fetch PR #307's current head and poll the CI run for the latest code head (f247e9a68accfe02b00959d40443decef1fda3a4; later commits are docs-only). Fix any CI failures. Then complete the remaining shared Admin resource/action audit and obtain App/Store Preview database identity proof before deployment.",
+    "task": "Poll the latest code-head GitHub Actions run and resolve all remaining tests/build failures. After green CI, complete route/action audit and Preview App/Store database identity proof before any deploy.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
