@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "76c8113ebd2e8c0a1ff1192a4e623648236b7906",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "d046cda67a99ee53e12d2e3804e0a27dbfcaf5ab",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -118,12 +118,14 @@
     "Exact-head CI after the ServicesSection discoverability change is pending.",
     "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending.",
     "Store Admin navigation seed changes for Procurement/Rentals/Service Providers are committed but not applied to Preview DB; run only after DB identity verification.",
-    "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending."
+    "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending.",
+    "Admin navigation RBAC bypass and stale seed permission aliases are fixed in code and tested, but latest CI is pending.",
+    "Admin navigation seed additions are not yet applied to Preview DB; apply only after database identity verification."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll exact-head CI after homepage API test correction, Store navigation seed and Rentals permission alignment. Verify all contract/security tests and Docker proof. Then verify Preview DB identities and, only with the correct Preview target, run the idempotent Admin navigation seed; never use Production DB.",
+    "task": "Poll exact latest code-head CI after Admin navigation RBAC, permission-key normalization, Store navigation and prior homepage/store/services fixes. Fix all failing tests/builds. Then verify Preview DB identities and apply only the idempotent Admin navigation seed to the confirmed Preview DB.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -160,5 +162,5 @@
     "status": "queued",
     "note": "The subsequent commit 4ec49c99 is documentation-only; fetch PR #307 current head before acting."
   },
-  "latest_code_head_sha": "4ac3a271fda976f22ecc919e4c1014863885f066"
+  "latest_code_head_sha": "cd98be611dbdc322b6653ba8c21aa828ac7912e8"
 }
