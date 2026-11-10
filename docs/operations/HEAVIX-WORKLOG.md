@@ -102,3 +102,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Wired the shared SiteSettings fields into Footer (about/contact/working hours/copyright/newsletter) so the new public page uses the site's configured footer.
 - Commits: 0f161958f47ee3f48d9c48c19ef8367e35f16d50 (header categories), aa2fce86910e7c7a5491f8d3fcb8ac0c0f4446e2 (footer settings).
 - Exact-head CI pending.
+
+## 2026-11-11 — Admin health endpoint authorization
+
+- Security audit found /api/admin/store/health and /api/admin/marketplace/health had no route-level authorization while src/middleware.ts intentionally bypasses paths ending in /health for infrastructure probes. These endpoints exposed database state, counts, latency and resource monitoring.
+- Added route-level authentication and RBAC: Store health requires store.read; Marketplace health requires analytics.read. Catalog health was already protected by analytics.read.
+- Added handler-level security tests for unauthenticated, missing permission and authorized access to Store/Marketplace health.
+- Updated tests/security/auth-boundary.test.ts: middleware health probe bypass remains an intentional contract, but all detailed admin health handlers must have route-level auth+permission checks.
+- Commits: 4c727003a1d2f40c4a1bdc8ba29be46dfb4be255 (Store health RBAC), 9e4f9893ca06463aab98e7e9d1c500c5e18245c7 (Store health tests), 165ec09770170ab215a5f334b9f892e73aef4c2d (Marketplace health RBAC), e1159ba5c30f1b6f584c13bfe534615e22f1ff6f (Marketplace health tests), 6881a08246860c5e16f537c5df03f5792eeded8f (auth-boundary contract update).
+- CI validation pending.
