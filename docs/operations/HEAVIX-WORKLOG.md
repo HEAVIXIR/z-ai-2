@@ -204,3 +204,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - No credentials were requested in chat, no sign-in was attempted, and no workflow run was created.
 - To proceed, the user must explicitly authorize a GitHub sign-in setup session for that browser profile. Never ask the user to paste a password into chat. Once sign-in is saved, the read-only proof may be dispatched with PREVIEW_ONLY.
 - Run reference: https://agent.tinyfish.ai/runs/257d4f29-4e34-4d5f-8d8a-7bb39ab879df.
+
+## 2026-11-11 — CI concurrency guard added
+
+- Added a workflow-level concurrency group to `.github/workflows/ci.yml`: `ci-${{ github.event.pull_request.number || github.ref }}` with `cancel-in-progress: true`. Future commits on the same PR/branch will supersede earlier runs and avoid repeating full builds for obsolete commits.
+- This change does NOT retroactively cancel runs created before the concurrency setting existed. At inspection, multiple older runs were still active/queued; latest workflow run #42914986140 (commit 01452ed) was queued.
+- GitHub connector in this session does not expose a cancel-workflow-run action. Browser profile also lacks GitHub sign-in, so old runs could not be cancelled through the UI.
+- Commit: c8e95911e98143c1f9aa0ef07ace952e56df856f. Exact latest CI pending.
