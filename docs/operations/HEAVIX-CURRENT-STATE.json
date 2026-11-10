@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:26:32.105Z",
+  "updated_at_utc": "2026-11-10T22:27:40.029Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "92cf425cdbaf2582d9a7cf123deb2d268e49ca68",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "ba21ef114938bb7d7e4fb0f665680116bbe264bd",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -121,12 +121,14 @@
     "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending.",
     "Admin navigation RBAC bypass and stale seed permission aliases are fixed in code and tested, but latest CI is pending.",
     "Admin navigation seed additions are not yet applied to Preview DB; apply only after database identity verification.",
-    "Admin navigation permission alias normalization is complete at source level (44 keys, 0 missing), but exact-head CI and Preview seed verification remain pending."
+    "Admin navigation permission alias normalization is complete at source level (44 keys, 0 missing), but exact-head CI and Preview seed verification remain pending.",
+    "Live Preview verification confirmed current Worker is still old/incomplete: root not 17-section; /api/health 503; /api/services 500; /services 404; /sell-in-7-days, /knowledge, /auctions, /rentals, /listings 500; /companies empty; /store partial/empty.",
+    "Recovery branch has not been deployed. Preview App/Store database identities remain unverified. No Production/DNS changes."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll CI run #42914300824 for code head e16ed41a5c123d5f2c8700816303771fbfdf3e9d. It includes homepage, Store order security, Services/SEO, Admin homepage editor, Admin health RBAC, Store menu and Admin navigation RBAC changes. Resolve any failures. Do not merge or deploy until all required jobs are green and Preview App/Store DB identities are independently verified.",
+    "task": "First poll exact latest code-head CI (e16ed41a5c123d5f2c8700816303771fbfdf3e9d; later commits are docs-only). Fix failures. Then prove actual Worker App and Store secret bindings resolve to distinct dedicated Preview PostgreSQL system identifiers; only after proof, deploy to existing heavix-preview Worker and recheck /, /api/health, /services, /listings, /companies, /store, /sell-in-7-days, /knowledge, /auctions and /rentals.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
