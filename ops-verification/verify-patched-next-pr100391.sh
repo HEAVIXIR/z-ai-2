@@ -158,6 +158,8 @@ const out = process.argv[2];
 const maxUniqueFiles = Number(process.argv[3]);
 const traces = [];
 const wasm = [];
+let excludedStandaloneTraceFiles = 0;
+let excludedStandaloneTraceEntries = 0;
 const referencedByTraceCount = new Map();
 const uniqueFiles = new Set();
 function canonicalPath(traceFile, entry) {
@@ -171,12 +173,29 @@ function walk(dir) {
     else if (entry.isFile() && entry.name.endsWith('.nft.json')) {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       const entries = Array.isArray(data.files) ? data.files : [];
+      const relativeFile = path.relative(process.cwd(), file).split(path.sep).join('/');
+      // Next's standalone output copies the route trace manifests from .next.
+      // Exclude a standalone copy only when its matching source manifest exists
+      // and has an identical files array; keep all non-identical manifests.
+      if (relativeFile.startsWith('.next/standalone/')) {
+        const sourceRelative = relativeFile.slice('.next/standalone/'.length);
+        const sourceFile = path.resolve(process.cwd(), sourceRelative);
+        if (fs.existsSync(sourceFile)) {
+          const sourceData = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
+          const sourceEntries = Array.isArray(sourceData.files) ? sourceData.files : [];
+          if (JSON.stringify(entries) === JSON.stringify(sourceEntries)) {
+            excludedStandaloneTraceFiles += 1;
+            excludedStandaloneTraceEntries += entries.length;
+            continue;
+          }
+        }
+      }
       const resolved = entries.map((item) => canonicalPath(file, item));
       for (const item of resolved) {
         uniqueFiles.add(item);
         referencedByTraceCount.set(item, (referencedByTraceCount.get(item) || 0) + 1);
       }
-      traces.push({ file: path.relative(process.cwd(), file), entries: entries.length, uniqueEntries: new Set(resolved).size });
+      traces.push({ file: relativeFile, entries: entries.length, uniqueEntries: new Set(resolved).size });
     } else if (entry.isFile() && entry.name === 'query_compiler_bg.wasm') {
       wasm.push(path.relative(process.cwd(), file));
     }
@@ -190,10 +209,12 @@ const wasmRelatedReferences = [...referencedByTraceCount.entries()].filter(([fil
   .sort((a,b)=>b[1]-a[1]).map(([file,traceCount])=>({file:path.relative(process.cwd(),file),traceCount}));
 const maxEntriesPerTrace = Math.max(0,...traces.map(trace=>trace.entries));
 const result = {traceFiles:traces.length,traceEntries:totalReferences,uniqueTraceFiles:uniqueFiles.size,
+  excludedStandaloneTraceFiles,excludedStandaloneTraceEntries,
   maxUniqueTraceFiles:maxUniqueFiles,maxEntriesPerTrace,traces:traces.sort((a,b)=>b.entries-a.entries),
   topReferencedFiles,wasmRelatedReferences,queryCompilerWasm:wasm};
 fs.writeFileSync(path.join(out,'artifact-evidence.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({traceFiles:traces.length,traceEntries:totalReferences,uniqueTraceFiles:uniqueFiles.size,
+  excludedStandaloneTraceFiles,excludedStandaloneTraceEntries,
   maxEntriesPerTrace,wasmRelatedReferences:wasmRelatedReferences.slice(0,20),queryCompilerWasm:wasm},null,2));
 if(!traces.length) throw new Error('No *.nft.json output trace files found.');
 if(uniqueFiles.size>maxUniqueFiles) throw new Error(`Unique traced file count exceeds configured limit: ${uniqueFiles.size}`);
