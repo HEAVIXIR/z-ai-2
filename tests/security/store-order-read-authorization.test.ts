@@ -107,6 +107,7 @@ describe("GET /api/store/orders — userId authorization boundary", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(findCustomer).toHaveBeenCalledWith({ where: { phone: "09120000000" } });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
