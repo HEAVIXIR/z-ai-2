@@ -726,159 +726,66 @@ jobs:
   # Build the actual OpenNext/Workerd artifact and assert its WASM loader before any upload.
   # Scoped to PR #191 while the Cloudflare Prisma runtime fix is being validated.
   cloudflare-worker-artifact-proof:
-    name: Cloudflare Workerd WASM artifact proof
+    name: Cloudflare Workerd WASM artifact proof (patched Next.js)
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'infra/prisma6-cloudflare-runtime'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     env:
-      HEAVIX_BUILD_TARGET: cloudflare
-      HEAVIX_ENV: preview
-      HEAVIX_NEXT_BUNDLER: webpack
-      NODE_ENV: production
-      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+      MIN_MEMORY_GIB: "8"
+      MIN_CPU_CORES: "4"
+      MIN_DISK_GIB: "8"
+      MAX_UNIQUE_TRACE_FILES: "5000"
+      HEAVIX_REF: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.0"
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile
-      - name: Build OpenNext Worker (sample cgroup and process-tree resources)
-        shell: bash
+      - name: Install shell lint tools
         run: |
-          set -uo pipefail
-          echo "HEAVIX_RESOURCE_CGROUP_BEGIN"
-          cat /proc/self/cgroup || true
-          free -b || true
-
-          # Do not assume the runtime is Node.js. Capture the actual session
-          # leader PID because setsid may fork when its caller is already a
-          # process-group leader; $! is not guaranteed to be the new PGID.
-          build_pid_file="$RUNNER_TEMP/heavix-build-session.pid"
-          rm -f "$build_pid_file"
-          setsid bash -c 'echo "$$" > "$1"; exec bunx opennextjs-cloudflare build --noMinify' _ "$build_pid_file" > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
-          build_pid=$!
-          for _ in $(seq 1 50); do
-            [ -s "$build_pid_file" ] && break
-            kill -0 "$build_pid" 2>/dev/null || break
-            sleep 0.1
-          done
-          build_pgid="$(cat "$build_pid_file" 2>/dev/null || true)"
-          if [ -z "$build_pgid" ]; then
-            echo "HEAVIX_BUILD_SESSION_PID_NOT_CAPTURED"
-            exit 1
-          fi
-          cg_rel="$(sed -n 's/^0:://p' "/proc/$build_pgid/cgroup" 2>/dev/null | head -n 1)"
-          cg="/sys/fs/cgroup${cg_rel}"
-          if [ -z "$cg_rel" ]; then cg="/sys/fs/cgroup"; fi
-
-          (
-            export PYTHONUNBUFFERED=1
-            while kill -0 -- "-$build_pgid" 2>/dev/null; do
-              echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ) pgid=$build_pgid"
-              for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
-                if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
-              done
-
-              python3 - "$build_pgid" <<'PY'
-          import glob, os, sys
-          root = int(sys.argv[1])
-          procs = {}
-          for status_path in glob.glob("/proc/[0-9]*/status"):
-              try:
-                  pid = int(status_path.split("/")[2])
-                  fields = {}
-                  with open(status_path, encoding="utf-8") as f:
-                      for line in f:
-                          if ":" in line:
-                              k, v = line.split(":", 1)
-                              fields[k] = v.strip()
-                  ppid = int(fields.get("PPid", "0"))
-                  comm = open(f"/proc/{pid}/comm", encoding="utf-8").read().strip()
-                  cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\\0", b" ").decode(errors="replace")
-                  try:
-                      exe = os.path.basename(os.readlink(f"/proc/{pid}/exe"))
-                  except OSError:
-                      exe = "NA"
-                  pgid = os.getpgid(pid)
-                  procs[pid] = (ppid, pgid, comm, cmd, exe, fields)
-              except (OSError, ValueError, IndexError):
-                  pass
-
-          descendants = {pid for pid, (_ppid, pgid, *_rest) in procs.items() if pgid == root}
-          changed = True
-          while changed:
-              changed = False
-              for pid, (ppid, *_rest) in procs.items():
-                  if ppid in descendants and pid not in descendants:
-                      descendants.add(pid)
-                      changed = True
-
-          candidates = []
-          for pid in sorted(descendants):
-              item = procs.get(pid)
-              if not item:
-                  continue
-              ppid, _pgid, comm, cmd, exe, fields = item
-              try:
-                  rss = int(fields.get("VmRSS", "0 kB").split()[0])
-              except (ValueError, IndexError):
-                  rss = 0
-              try:
-                  with open(f"/proc/{pid}/smaps_rollup", encoding="utf-8") as f:
-                      smaps = {line.split(":", 1)[0]: line.split()[1] for line in f if ":" in line and len(line.split()) >= 2}
-              except OSError:
-                  smaps = {}
-              pss = smaps.get("Pss", "NA")
-              private_clean = smaps.get("Private_Clean", "NA")
-              private_dirty = smaps.get("Private_Dirty", "NA")
-              cmd_match = "opennextjs-cloudflare" in cmd or "bunx" in cmd
-              runtime_match = exe.lower().startswith("bun") or comm == "MainThread"
-              role = "build-command-match" if cmd_match else ("runtime-candidate" if runtime_match else "other")
-              print(f"HEAVIX_PROCESS pid={pid} ppid={ppid} comm={comm} exe={exe} role={role} rss_kb={rss} pss_kb={pss} private_clean_kb={private_clean} private_dirty_kb={private_dirty}")
-              if cmd_match or runtime_match:
-                  candidates.append((rss, pid, ppid, comm, exe, pss, role))
-
-          if candidates:
-              rss, pid, ppid, comm, exe, pss, role = max(candidates)
-              print(f"HEAVIX_BUILD_PROCESS pid={pid} ppid={ppid} comm={comm} exe={exe} role={role} rss_kb={rss} pss_kb={pss}")
-          else:
-              print("HEAVIX_BUILD_PROCESS_NOT_FOUND")
-          PY
-              sleep 10
-            done
-          ) &
-          monitor_pid=$!
-
-          set +e
-          wait "$build_pid"
-          build_rc=$?
-          # bunx may exit before a child in its process group; keep sampling
-          # until the complete build process group has exited.
-          while kill -0 -- "-$build_pgid" 2>/dev/null; do sleep 2; done
-          kill "$monitor_pid" 2>/dev/null
-          wait "$monitor_pid" 2>/dev/null
-          echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
-          for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.peak" "$cg/memory.events" "$cg/memory.events.local"; do
-            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
-          done
-          free -b || true
-          exit "$build_rc"
-      - name: Produce Wrangler dry-run bundle (no deploy)
-        run: bunx wrangler deploy --dry-run --outdir=/tmp/heavix-worker-dry
-      - name: Assert Workerd-compatible Prisma WASM loader
-        shell: bash
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+      - name: Lint patched Next verification scripts
         run: |
-          set -euo pipefail
-          outdir=/tmp/heavix-worker-dry
-          worker="$outdir/worker.js"
-          test -s "$worker"
-          compile_count="$(grep -Roh 'compileStreaming' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
-          instantiate_count="$(grep -Roh 'instantiateStreaming' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
-          loader_count="$(grep -Roh 'loadWasmChunk' "$outdir" --include='*.js' --include='*.mjs' | wc -l | tr -d ' ' || true)"
-          wasm_count="$(find "$outdir" -type f -name '*.wasm' | wc -l | tr -d ' ')"
-          echo "HEAVIX_WASM_ARTIFACT compileStreaming=$compile_count instantiateStreaming=$instantiate_count loadWasmChunk=$loader_count wasmFiles=$wasm_count"
-          test "$compile_count" -eq 0
-          test "$instantiate_count" -eq 0
-          test "$loader_count" -gt 0
-          test "$wasm_count" -gt 0
+          bash -n ops-verification/build-patched-next-pr100391.sh
+          bash -n ops-verification/verify-patched-next-pr100391.sh
+          shellcheck ops-verification/build-patched-next-pr100391.sh
+          shellcheck ops-verification/verify-patched-next-pr100391.sh
+          cargo --version
+          rustc --version
+          (cd "$RUNNER_TEMP" && pnpm --version)
+          bun --version
+      - name: Build patched Next.js 16.4.5 package set
+        run: bash ops-verification/build-patched-next-pr100391.sh artifacts/next-pr100391
+      - name: Verify patched Next against this exact HEAVIX commit
+        run: bash ops-verification/verify-patched-next-pr100391.sh artifacts/next-pr100391
+      - name: Upload verification evidence (package tarballs intentionally excluded)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-patched-next-workerd-proof-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/next-pr100391/BUILD-MANIFEST.txt
+            artifacts/next-pr100391/upstream-source-commit.txt
+            artifacts/next-pr100391/pr100391.patch
+            artifacts/next-pr100391/pr100391.patch.sha256
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch.sha256
+            artifacts/next-pr100391/SHA256SUMS
+            artifacts/next-pr100391/types-dir-before-pack.txt
+            artifacts/next-pr100391/next-tar-file-list.txt
+            artifacts/next-pr100391/next-tar-global-dts-matches.txt
+            artifacts/heavix-pr100391-verification/
