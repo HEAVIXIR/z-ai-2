@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "2a3dacefbd578c382a153537b67d6b2ba85e818b",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "40327b40203bd69c63ecaf29bf0a1fa28d4973de",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -87,7 +87,10 @@
     "Corrected Store Control Plane inventory: Procurement and Services have shared Admin pages; Rentals uses Universal Resource Engine at /admin/resources/rentals. Store Admin includes 16 Store-prefixed pages and 52 API handlers.",
     "Confirmed complete Docker proof job success on run #42910792713: Docker image build, image verification, Caddy syntax, Compose interpolation and real Caddy-to-app connectivity all passed.",
     "Confirmed Typecheck, Lint and Security Tests passed on the same checkpoint; the only verify failure was the obsolete homepage data-source contract, now rewritten.",
-    "Read-only Cloudflare audit verified existing Worker script heavix-preview, active deployment/version IDs, 100% traffic, HEAVIX_ENV=preview and NODE_ENV=production; secret values were not retrieved."
+    "Read-only Cloudflare audit verified existing Worker script heavix-preview, active deployment/version IDs, 100% traffic, HEAVIX_ENV=preview and NODE_ENV=production; secret values were not retrieved.",
+    "Recorded current Cloudflare Preview Worker active deployment/version and Preview environment vars without reading secret values.",
+    "Corrected Store Control Plane audit to reflect shared Admin routes and Universal Resource Engine rather than falsely marking global pages missing.",
+    "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -115,33 +118,41 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Run the exact-head GitHub Actions CI to completion. Then use the existing pinned read-only Workerd proof workflow (PREVIEW_ONLY) to verify distinct App/Store Preview database system identifiers and read-only session mode; do not deploy until this gate passes. Preserve the existing heavix-preview Worker and URL.",
+    "task": "Start by polling GitHub Actions run #42913239127 for exact HEAD f247e9a68accfe02b00959d40443decef1fda3a4. Fix any TypeScript/test/build failures. Then verify Admin health RBAC tests and Store guest order tests, complete remaining shared Admin resource/action audit, and obtain App/Store Preview database identity proof before any deployment.",
     "first_paths_to_read": [
+      "AGENTS.md",
+      "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
+      "docs/operations/HEAVIX-CURRENT-STATE.json",
+      "docs/operations/HEAVIX-WORKLOG.md",
+      "docs/audits/HEAVIX-PRODUCT-READINESS-MATRIX-2026-11-11.md",
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
+      "src/app/api/admin/homepage-sections/route.ts",
       "src/app/api/store/orders/route.ts",
-      "src/components/store/MyOrdersDialog.tsx",
-      "tests/security/store-order-read-authorization.test.ts",
-      "src/lib/generated/store-client/runtime/library.js",
-      "src/lib/generated/store-client/index.js",
-      "next.config.ts",
-      "Dockerfile",
-      "src/app/admin/layout.tsx",
-      "src/app/api/admin/store"
+      "src/app/api/admin/store/health/route.ts",
+      "src/app/api/admin/marketplace/health/route.ts"
     ],
     "required_tests": [
-      "Exact latest-head CI verify, phase-tests, tls-proof and audit-transaction pass.",
-      "Homepage TypeScript, lint, full build and all 17-section contract tests pass.",
-      "Store order authorization tests pass; no unauthenticated userId lookup or phone-only guest enumeration.",
-      "Docker build succeeds without weakening Store DB isolation or security.",
-      "Preview App/Store database identities are independently verified before deploy."
+      "Exact-head CI verify and all contract/unit/security tests pass.",
+      "Docker proof including Caddy-to-app connectivity passes on exact latest head.",
+      "All 17 homepage sections render and admin editing persists them by stable key.",
+      "Guest order lookup requires phone plus exact random order reference; userId enumeration is blocked; all order responses no-store.",
+      "Admin health metrics require route-level RBAC.",
+      "Preview App/Store PostgreSQL system identifiers are independently verified using the pinned read-only Workerd proof before deploy."
     ],
     "do_not": [
       "Do not restart source inventory from zero.",
-      "Do not copy legacy route side-effects or introduce fake stats/business data.",
-      "Do not merge draft PR before all required checks are green.",
-      "Do not deploy Cloudflare before exact-head CI, build artifact and DB identity gates pass.",
-      "Do not touch Production or DNS."
+      "Do not bulk-copy legacy routes or reintroduce request-time DB writes.",
+      "Do not merge PR #307 until owner review and all required checks are green.",
+      "Do not deploy Cloudflare before exact-head CI and DB identity gates pass.",
+      "Do not alter Production, DNS, secrets, or the existing heavix-preview Worker during this recovery."
     ]
+  },
+  "latest_branch_head_sha": "f247e9a68accfe02b00959d40443decef1fda3a4",
+  "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
+  "latest_exact_head_ci_run": {
+    "id": 42913239127,
+    "sha": "f247e9a68accfe02b00959d40443decef1fda3a4",
+    "status": "queued"
   }
 }
