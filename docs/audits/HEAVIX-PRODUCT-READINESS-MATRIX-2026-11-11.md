@@ -51,7 +51,7 @@ Manual payment submission and gateway request routes currently require a session
 - Draft PR #307 targets `main`; it has not been merged.
 - Latest CI run observed during the checkpoint: run #42909392999, head `a024230c0e1df1a6102e504191d064e91fad807f`, in progress at the time of inspection.
 - Earlier run #42909080778 completed with `phase-tests`, `tls-proof`, `audit-transaction`, and Cloudflare compatibility report-only jobs successful; `verify` failed at Typecheck and `docker-build-proof` failed during Docker build.
-- The earlier Typecheck errors were caused by the restored homepage using stale component type imports/props and a loosely inferred listing row. These were corrected in a later commit; only a new exact-head CI run can verify the correction.
+- The earlier Typecheck errors were caused by stale component type imports/props and a loosely inferred listing row. The component contracts and Prisma payload typing have been corrected, including an explicit cast of the three query result arrays at the mapping boundary; only a new exact-head CI run can verify the correction.
 - The Docker build failure log points to dynamic filesystem access in the generated Store Prisma runtime, with traces through `src/lib/generated/store-client/runtime/library.js`, `src/lib/store-db.ts`, `src/app/api/admin/backup/route.ts`, `src/app/api/store/coupons/validate/route.ts`, and `src/app/admin/observability/page.tsx`. This is separate from the homepage change and remains a build blocker.
 - Vercel reported a build-rate-limit failure for the PR commit; this is not a Cloudflare Worker deployment result.
 - No Cloudflare deploy, Preview DB connection, Production DB access, Production change, or DNS change was performed.
@@ -60,7 +60,7 @@ Manual payment submission and gateway request routes currently require a session
 
 1. Verify CI on the exact latest PR head; resolve homepage typecheck and new test failures.
 2. Fix Store guest-order privacy with OTP/one-time order access; add regression tests.
-3. Investigate generated Store Prisma dynamic filesystem tracing and repair Docker production build without weakening security.
+3. Re-run Docker production build after TypeScript passes; only investigate Prisma dynamic filesystem tracing if it remains a fatal build error (current logs show warnings only).
 4. Confirm whether a standalone public Services directory is part of the approved product scope; implement only after mapping the current Service/ServiceRequest contracts.
 5. Complete route-by-route Admin/RBAC/API/UI matrix for Store, Companies, Sell in 7 Days, Services, Knowledge, Auctions, Rentals and core Marketplace.
 6. Verify Preview App and Store database identities independently before any Preview deploy.
