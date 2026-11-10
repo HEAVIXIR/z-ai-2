@@ -151,3 +151,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Corrected the stale component comment that still described a placeholder fallback; the component now explicitly renders an empty state when no live services exist.
 - Commit: 7bc022d9e8c8c53adf271f3f3e6bceef75696267.
 - Exact-head CI pending.
+
+## 2026-11-11 — Public homepage API test corrected for virtual defaults
+
+- CI run #42912204178 on commit 4c727003a1d2f40c4a1bdc8ba29be46dfb4be255 passed Typecheck, Lint, auth-boundary tests, phase-tests, TLS, audit-transaction and Cloudflare compatibility report-only.
+- Its Security Tests job failed one assertion in tests/security/homepage-sections-readonly.test.ts because the public endpoint now correctly returns the canonical active default sections in addition to the persisted hero row; the old assertion incorrectly expected a one-element data array.
+- Updated the test to assert the hero row is first and the response contains exactly the canonical active section count, preserving the no-write assertions.
+- Fix commit: ef38b4ad6754f9d22abc8420b5dbc9a09df220dd. Exact-head CI pending.
