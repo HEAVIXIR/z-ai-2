@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "506d8d66e0407071cd824e2e0b415d8a76028720",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "8d470faca9537477c27477e68ac9269781d92dc0",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -53,13 +53,18 @@
     "Re-verified the active branch and read the continuity protocol/state/worklog before continuing.",
     "Changed public GET /api/homepage-sections to read-only; removed request-time auto-seeding and added safe JSON parsing plus generic 503 handling.",
     "Added handler-level tests for populated/empty/error cases and asserted public GET never invokes createMany.",
-    "Inspected current PageRenderer registry, Prisma HomePageSection model, admin section API, legacy homepage route and CI workflow; documented why legacy page cannot be copied wholesale."
+    "Inspected current PageRenderer registry, Prisma HomePageSection model, admin section API, legacy homepage route and CI workflow; documented why legacy page cannot be copied wholesale.",
+    "Restored the original 17-section homepage orchestration in src/app/page.tsx using existing current-tree components.",
+    "Extracted canonical 17-section defaults/merge into src/lib/homepage/sections.ts; DB-configured rows and explicit disabled states are preserved, missing rows are virtual defaults only.",
+    "Removed all request-time HomePageSection writes from the homepage route; source scan shows zero Prisma mutation calls in src/app/page.tsx.",
+    "Removed a hard-coded 31-province statistic; homepage stats use configured real SiteStat data and live DB counts only.",
+    "Added unit tests for canonical section registry and merge semantics.",
+    "Recorded renderer decision: root homepage uses full section composition; PageRenderer/PageBuilder remain for custom pages and preview flows."
   ],
   "not_done_and_not_to_be_claimed": [
-    "Full 17-section homepage restoration is not implemented.",
+    "Homepage source restoration is implemented but has not yet passed CI/typecheck/build or visual Preview validation.",
     "No full route/API/RBAC/product feature matrix completed.",
-    "The newly added Vitest file has not been executed locally or in CI yet.",
-    "No CI result verified for the latest changes.",
+    "The new homepage tests have not yet been observed passing in CI.",
     "No Preview deployment performed.",
     "No Preview App/Store database identity verified.",
     "No Production or DNS changes performed."
@@ -67,29 +72,32 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Open a draft PR to main to run the repository's pull_request CI (the inspected CI workflow does not deploy Cloudflare); verify the new homepage read-only tests pass. Then implement a typed, read-only canonical homepage composition adapter using current components/data contracts, preserving PageRenderer/PageBuilder as an explicit custom-layout path. Never port legacy request-time seeding or deactivation writes.",
+    "task": "Monitor GitHub Actions for the latest PR head and repair all failures. Once CI is green, continue full product integration audit and end-to-end verification; no Preview deploy until artifact provenance and separate App/Store DB identity gates pass.",
     "first_paths_to_read": [
       "src/app/page.tsx",
-      "src/components/page-renderer/page-renderer.tsx",
-      "src/lib/admin/page-builder/widget-registry.ts",
-      "src/app/api/homepage-sections/route.ts",
-      "src/app/api/admin/homepage-sections/route.ts",
-      "prisma/schema.prisma",
+      "src/lib/homepage/sections.ts",
+      "tests/unit/homepage-sections.test.ts",
       "tests/security/homepage-sections-readonly.test.ts",
-      "extracted/src/src/app/page.tsx (legacy reference only)"
+      ".github/workflows/ci.yml",
+      "src/app/api/admin/homepage-sections/route.ts",
+      "src/app/admin/home",
+      "src/app/store",
+      "src/app/companies",
+      "src/app/sell-in-7-days",
+      "src/app/services",
+      "src/app/knowledge"
     ],
     "required_tests": [
-      "GET /api/homepage-sections returns configured rows in order.",
-      "Empty HomePageSection table returns empty data and causes no DB writes.",
-      "Database failure returns safe 503 without leaking details.",
-      "All canonical homepage section keys map to actual current components/data contracts.",
-      "Custom published PageBuilder layouts remain supported without hiding mandatory sections accidentally.",
-      "No public homepage read performs database mutations."
+      "CI verify, audit-transaction, phase-tests and tls-proof jobs pass on exact latest head.",
+      "Canonical homepage helper unit tests pass.",
+      "Public homepage sections GET handler tests pass and never invoke createMany.",
+      "Typecheck, lint, production build and full required tests pass.",
+      "Preview desktop/mobile visual parity and all 17 homepage sections are verified after the DB identity gate."
     ],
     "do_not": [
       "Do not restart source inventory from zero.",
-      "Do not bulk-copy the legacy homepage route or components.",
-      "Do not modify main directly or merge without owner review.",
+      "Do not bulk-copy legacy files or reintroduce request-time database writes.",
+      "Do not merge draft PR until review and required checks are green.",
       "Do not deploy Cloudflare before code/CI/artifact/database-identity gates pass.",
       "Do not touch Production, DNS, or existing Preview Worker configuration."
     ]
