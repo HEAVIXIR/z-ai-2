@@ -144,3 +144,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Source changes in this workstream: full 17-section homepage; read-only canonical section composition; Admin editor GET/upsert integration; public /services directory; no placeholder service data; Store order enumeration hardening; Store/Marketplace health RBAC; SEO metadata; readiness matrix.
 - Cloudflare read-only audit: current heavix-preview deployment/version recorded; HEAVIX_ENV=preview; secret names DATABASE_URL and STORE_DATABASE_URL; no secret values retrieved. Actual PostgreSQL system identifiers remain unverified.
 - Next agent must start by reading AGENTS.md, docs/operations/HEAVIX-AGENT-CONTINUATION.md, docs/operations/HEAVIX-CURRENT-STATE.json and this worklog. Do not start from zero.
+
+## 2026-11-11 — Homepage Services directory discoverability
+
+- Updated the homepage ServicesSection to link to the new public /services directory as well as the existing SERVICE_REQUEST flow.
+- Corrected the stale component comment that still described a placeholder fallback; the component now explicitly renders an empty state when no live services exist.
+- Commit: 7bc022d9e8c8c53adf271f3f3e6bceef75696267.
+- Exact-head CI pending.
