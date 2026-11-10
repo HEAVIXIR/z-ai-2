@@ -1803,12 +1803,13 @@ export const rentalsConfig: AdminResourceConfig = {
   apiBase: '/api/admin/store/rentals',
   adminPath: '/admin/resources/rentals',
 
+  // Reuse the canonical Store permissions enforced by the dedicated API.
   permissions: {
-    read: 'rentals.read',
-    create: 'rentals.manage',
-    update: 'rentals.manage',
-    delete: 'rentals.manage',
-    export: 'rentals.read',
+    read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
+    export: 'store.read',
   },
 
   columns: [
