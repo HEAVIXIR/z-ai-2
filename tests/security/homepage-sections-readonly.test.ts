@@ -39,10 +39,16 @@ describe("GET /api/homepage-sections — public read-only contract", () => {
     const response = await GET();
     expect(response).toBeInstanceOf(NextResponse);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      success: true,
-      data: [{ key: "hero", order: 1, config: { variant: "dark" } }],
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data[0]).toMatchObject({
+      key: "hero",
+      order: 1,
+      config: { variant: "dark" },
     });
+    expect(body.data).toHaveLength(
+      DEFAULT_HOME_SECTIONS.filter((section) => section.active).length,
+    );
     expect(findMany).toHaveBeenCalledWith({
       orderBy: { order: "asc" },
     });
