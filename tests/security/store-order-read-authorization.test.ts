@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const findMany = vi.fn();
-const findCustomer = vi.fn();
-const getStoreUserWithRole = vi.fn();
+const { findMany, findCustomer, getStoreUserWithRole } = vi.hoisted(() => ({
+  findMany: vi.fn(),
+  findCustomer: vi.fn(),
+  getStoreUserWithRole: vi.fn(),
+}));
 
 vi.mock("@/lib/store-db", () => ({
   storeDb: {
