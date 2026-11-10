@@ -1,9 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { BookOpen, ArrowLeft, Eye } from "lucide-react";
 import { toFa } from "@/lib/format";
+
+export const metadata: Metadata = {
+  title: "هویکس دانش | راهنمای ماشین‌آلات، مقایسه و آموزش صنعتی",
+  description: "مقالات تخصصی، راهنمای خرید، مقایسه ماشین‌آلات و آموزش‌های فنی در مرکز دانش هویکس.",
+  alternates: { canonical: "/knowledge" },
+  openGraph: {
+    title: "هویکس دانش | دانش و راهنمای صنعت",
+    description: "راهنماها، مقایسه‌ها و آموزش‌های تخصصی ماشین‌آلات صنعتی.",
+    type: "website",
+    locale: "fa_IR",
+  },
+};
 
 export const dynamic = "force-dynamic";
 
