@@ -7,7 +7,8 @@ import HeroSearch from "@/components/home/HeroSearch";
 import type { CategoryWithCount } from "@/components/home/CategoriesSection";
 import MachineCategoriesSection, { type MachineCategoryCard } from "@/components/home/MachineCategoriesSection";
 import StatsSection, { type StatItem } from "@/components/home/StatsSection";
-import FeaturedMachinesSection, { type FeaturedListing } from "@/components/home/FeaturedMachinesSection";
+import FeaturedMachinesSection from "@/components/home/FeaturedMachinesSection";
+import type { FeaturedListing } from "@/components/home/FeaturedMachineCard";
 import VerifiedMachinesCarousel from "@/components/home/VerifiedMachinesCarousel";
 import LatestAdsSection, { type LatestAd } from "@/components/home/LatestAdsSection";
 import Sell7Section from "@/components/home/Sell7Section";
@@ -50,6 +51,28 @@ const listingInclude = {
     orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const,
     take: 1,
   },
+};
+
+type HomeListingRow = {
+  id: string;
+  slug: string;
+  title: string;
+  shortDesc: string | null;
+  description: string | null;
+  brand: { name: string } | null;
+  price: bigint | null;
+  priceType: string;
+  images: Array<{ url: string }>;
+  category: { icon: string | null } | null;
+  year: number | null;
+  city: string | null;
+  province: string | null;
+  workingHours: number | null;
+  condition: string | null;
+  featured: boolean;
+  verified: boolean;
+  viewCount: number;
+  publishedAt: Date | null;
 };
 
 export default async function HomePage() {
@@ -237,7 +260,7 @@ export default async function HomePage() {
     listingCount: b._count.listings,
   }));
 
-  const mapListing = (l: typeof featuredRows[number]) => ({
+  const mapListing = (l: HomeListingRow) => ({
     id: l.id,
     slug: l.slug,
     title: l.title,
@@ -536,7 +559,7 @@ export default async function HomePage() {
               case "brands":
                 return (
                   <ScrollReveal key={section.id} id="brands">
-                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} cmsConfig={cms} />
+                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} />
                   </ScrollReveal>
                 );
               case "trusted-brands":
