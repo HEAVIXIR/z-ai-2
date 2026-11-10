@@ -30,15 +30,11 @@ Draft PR: #307
 
 Before remediation, `GET /api/store/orders?userId=<id>` only rejected a mismatch when a session existed. If no session existed, the condition was false and the route queried orders for the supplied user ID. The response includes order items, payments, shipment and mechanic details.
 
-**Remediation on this branch:** the route now returns 401 when a `userId` lookup has no session, returns 403 for a different user's ID, and retains the explicit admin path. Regression tests were added in `tests/security/store-order-read-authorization.test.ts`.
+**Remediation on this branch:** the route now returns 401 when a `userId` lookup has no session, returns 403 for a different user's ID, and retains the explicit admin path. Regression tests cover unauthenticated, cross-user, own-user and admin cases.
 
-This fix is not yet CI-verified.
+**Additional guest-flow remediation:** phone-only enumeration has been removed. Guest retrieval now requires both the phone number and the exact order number, and the API returns at most the matching single order. The guest Store dialog now asks for both values. Regression tests cover phone-only rejection and exact order scoping.
 
-### Remaining guest privacy issue — release blocker
-
-The legacy guest flow still permits `GET /api/store/orders?phone=<phone>` without authentication or an OTP/one-time access token. It can return up to 50 orders, including addresses, payment records, shipment details and mechanic contact information. A phone number alone is not a sufficient authorization factor.
-
-**Required before public Preview sign-off:** replace phone-only enumeration with an authenticated account lookup or a verified one-time guest order-access token/OTP flow. Keep guest checkout only if the retrieval path is securely bound to the order owner. Add negative tests proving a caller who knows only another person's phone cannot retrieve order details.
+This remediation is not yet CI-verified. An OTP or high-entropy one-time guest access token remains the stronger long-term control; the order number currently acts as a bearer lookup factor and should not be treated as equivalent to OTP.
 
 Manual payment submission and gateway request routes currently require a session and ownership checks; this does not close the separate guest GET issue.
 
