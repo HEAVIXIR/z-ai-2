@@ -16,7 +16,14 @@ describe("Store Control Plane navigation contract", () => {
     expect(navigation).toContain("href: '/admin/resources/services'");
   });
 
-  it("uses permission keys that exist in the canonical permission catalog", () => {
+  it("uses only permission keys defined in the canonical permission catalog", () => {
+    const permissionKeys = [
+      ...navigation.matchAll(/permissionKey:\s*['"]([^'"]+)['"]/g),
+    ].map((match) => match[1]);
+    const missing = permissionKeys.filter(
+      (key) => !permissions.includes(`'${key}'`) && !permissions.includes(`"${key}"`),
+    );
+    expect(missing).toEqual([]);
     expect(navigation).toContain("permissionKey: 'procurement.read'");
     expect(navigation).toContain("permissionKey: 'store.read'");
     expect(permissions).toContain("'procurement.read'");
