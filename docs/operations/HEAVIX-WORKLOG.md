@@ -196,3 +196,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - `/sell-in-7-days`, `/knowledge`, `/auctions`, `/rentals`, `/listings` each returned 500.
 - This confirms the active Worker is not serving the recovery branch and that the existing Preview has runtime/data readiness failures. No claim of completion or successful deployment is permitted.
 - The recovery release gate remains: exact-head CI → actual Worker App/Store DB identity proof → deploy only to existing Preview Worker → live route recheck. No Production/DNS changes.
+
+## 2026-11-11 — Preview Workerd proof dispatch blocked by browser authentication
+
+- Attempted to dispatch only the read-only GitHub Actions workflow `Prisma Preview Workerd Runtime Proof` via TinyFish browser at the workflow page, with branch recovery/heavix-full-product-integration-2026-11-11 and input PREVIEW_ONLY.
+- The browser reached the workflow page but had no GitHub sign-in configured for profile `prof_ae1391636a204a5a`; GitHub required authentication before Run workflow was available. The task stopped without submitting any action.
+- No credentials were requested in chat, no sign-in was attempted, and no workflow run was created.
+- To proceed, the user must explicitly authorize a GitHub sign-in setup session for that browser profile. Never ask the user to paste a password into chat. Once sign-in is saved, the read-only proof may be dispatched with PREVIEW_ONLY.
+- Run reference: https://agent.tinyfish.ai/runs/257d4f29-4e34-4d5f-8d8a-7bb39ab879df.
