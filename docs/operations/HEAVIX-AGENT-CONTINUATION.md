@@ -122,3 +122,28 @@ If tool access is lost, the next agent should use GitHub repository/branch/docs 
 Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, a reviewed PR is merged through the repository's approved process, the existing Preview URL displays the full reference-aligned product, core user/admin flows pass, database isolation is proven, visual/HTTP evidence is saved, and Production/DNS remain untouched.
 
 **Current rule:** This is an execution protocol, not a claim that the product has already been restored. Check the live state document before acting.
+
+## Latest operational checkpoint — 2026-11-11
+
+- Active branch: `recovery/heavix-full-product-integration-2026-11-11`.
+- Draft PR: `https://github.com/HEAVIXIR/z-ai-2/pull/307`; do not merge until owner review and all required checks are green.
+- Root homepage has been restored to the canonical 17-section HomePageSection composition. Admin GET exposes the same virtual defaults and PUT persists them by stable key. Public GET is read-only; no request-time DB writes. PageRenderer/PageBuilder remain for custom pages and preview flows.
+- Store order authorization has been hardened: no unauthenticated `userId` enumeration; guest lookup requires phone + exact high-entropy order number; order API responses are private/no-store.
+- Store and Marketplace detailed health endpoints now enforce route-level RBAC even though middleware intentionally bypasses `/health` paths for infrastructure probes.
+- Public `/services` directory and SEO metadata additions are present in the recovery branch.
+- GitHub Actions run `42910792713` passed Typecheck, Lint, Security Tests, phase/tls/audit/Cloudflare report-only and full Docker proof including Caddy→app connectivity. Its only failure was an obsolete five-widget homepage contract test, which has been rewritten. Exact latest-head CI after all later changes is still pending; fetch PR #307 head and poll Actions before claiming green.
+
+### Cloudflare Preview safety — do not infer DB identity
+
+- Read-only Cloudflare inspection found existing Worker `heavix-preview`, active deployment `9c079e5b-e3df-4295-80e0-e930d2d25552`, active version `063ce438-ca3a-4482-b416-9260b780bccf`, with 100% traffic.
+- Non-secret vars are `HEAVIX_ENV=preview` and `NODE_ENV=production`. Secret binding names include `DATABASE_URL` and `STORE_DATABASE_URL`; their values were not retrieved.
+- The Worker settings/secret names do not prove which PostgreSQL instances those URLs target. Do not call App/Store DB identity verified from names or `HEAVIX_ENV` alone.
+- `.github/workflows/prisma-preview-workerd-proof.yml` is a pinned, read-only Workerd proof using distinct GitHub secrets `HEAVIX_APP_PREVIEW_PPG_URL` and `HEAVIX_STORE_PREVIEW_PPG_URL`, with expected PostgreSQL system identifiers and read-only session checks. It requires manual `workflow_dispatch` input `PREVIEW_ONLY`. It was inspected but not dispatched. Also note it proves the GitHub Action connection inputs, not automatically that the Cloudflare Worker secret values are identical.
+- Before any Preview release, obtain evidence that the exact App and Store databases used by the active Worker correspond to dedicated Preview system identifiers. Preserve the existing Worker and URL; no Production or DNS changes.
+
+### Immediate next action
+
+1. Fetch the current head SHA of PR #307 and inspect the latest queued/running GitHub Actions run. Fix all failures on the latest code head.
+2. Verify the Admin health RBAC, Store order security, homepage admin editor, public Services page and SEO additions in CI.
+3. Verify App/Store Preview database identities with a controlled read-only proof tied to the actual Worker bindings; do not expose or print secret values.
+4. Only after CI, Docker proof, artifact provenance and DB identity gates pass, consider deploying to the existing Preview Worker. Never touch Production or DNS.
