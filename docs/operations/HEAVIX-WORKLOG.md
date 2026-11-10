@@ -73,3 +73,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - The Docker job's Build Docker image step PASSED on that run; final Caddy/Compose/connectivity proof steps were still in progress at inspection time. The earlier Docker build failure was caused by TypeScript errors, not proven Prisma dynamic-filesystem warnings.
 - New exact-head CI is pending after the vi.hoisted() fixes and subsequent Services/SEO changes. Do not claim green until all required jobs complete.
 - Commits for mock fix: 5b018adb6ef7bf23de5697c60ebde9c1f8eb5343 and a198a5df501c4ce8cdb76da770a37233b3ae972b.
+
+## 2026-11-11 — Admin homepage section editor aligned with restored root page
+
+- Verified /admin/homepage-layout is the actual editor for HomePageSection rows and is linked from /admin/home.
+- Found editor/API inconsistency: GET returned only persisted rows, while the restored public homepage supplies missing canonical sections virtually; the editor could therefore omit sections visible on the site. Bulk PUT also used synthetic default IDs with update-by-id, which would fail for virtual defaults.
+- Fixed admin GET to merge the 17 canonical sections in memory; fixed bulk PUT to upsert by stable unique key so virtual defaults can be persisted safely.
+- Updated SECTION_LABELS to the exact canonical hyphenated keys and added labels for recommendations and trusted-brands.
+- Added tests/contract/admin-homepage-sections.test.ts to guard default visibility, labels and stable-key persistence.
+- Commits: 94bd785d68c5de89c2315d329890fef01970d8d9 (admin API), 0e2eb05eba6c1ac3f1b10ab991d55411ca00cd5d (editor labels), 9e543230b600efe39effe2ed0b3056561d9da76c (contract tests).
+- CI validation for these latest changes is pending.
