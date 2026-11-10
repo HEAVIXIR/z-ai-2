@@ -44,3 +44,15 @@ Both failures were preflight-only. No database connection, Worker upload, deploy
 - Independent artifact inspection established that the 538 manifests under `.next/standalone/.next/server` each have a corresponding manifest under `.next/server` with the same manifest path after removing the standalone prefix and the same entry count. Their combined entries are 75,100. This is copied standalone trace metadata, not an additional independent set of route traces.
 - The next verifier revision will exclude a standalone manifest only if the matching source manifest exists and its complete `files` array is identical; it will report excluded mirror counts/entries explicitly. Non-identical standalone manifests remain counted. WASM discovery will continue to scan the complete output, including standalone.
 - This is a measurement correction, not an increase to the 5,000 threshold. If the corrected distinct trace set still exceeds 5,000, the run must fail and the underlying trace growth must be investigated. No deploy, DB connection/write, Production access, or DNS change occurred.
+
+
+## Run 11 — 42835445615
+
+- Exact experiment HEAD: `6d75ad3d05e6d77e9aa339793cef181ab7c2a96f`; exact HEAVIX source commit: `07b6de155284dd7813335201552acf4efbb6ad90`.
+- All workflow steps passed, including ShellCheck, patched Next package build, HEAVIX Cloudflare/OpenNext Preview build, trace/WASM checks, Wrangler dry-run, and Workerd `SMOKE_ONLY`.
+- Artifact `13774643164`, SHA-256 `aed64681dba71a4ca39c66af48cbfc74fd8b9a37da6f63661adde61aef528d44`.
+- Independent artifact inspection: 540 trace manifests; 76,324 aggregate entries; 4,089 unique resolved paths against the unchanged 5,000 threshold; 538 byte-for-byte identical standalone manifest mirrors excluded (75,100 entries); maximum 1,131 entries per retained manifest.
+- Four `query_compiler_bg.wasm` artifacts found across `.next/standalone` and `.open-next/server-functions/default`. Wrangler 4.156.0 `--dry-run` exited normally. Workerd `SMOKE_ONLY` loaded the Worker module graph, both generated Prisma clients and PPG adapter, and verified missing secrets fail closed; no DB connection or write was attempted.
+- **Important scope correction:** this successful build used an additional packaging-only correction to Next's `scripts/pack-util.ts` in the disposable upstream checkout to prevent the ancestor-dedup bug from dropping `types/global.d.ts`. This is separate from the upstream Turbopack PR #100391 patch and is not a HEAVIX source change. The prior artifact did not upload this workaround patch; the workflow now retains it and its checksum for subsequent runs.
+- **Memory evidence gap:** `cgroup-memory.txt` in this artifact is zero bytes because the checked cgroup files were unavailable at the assumed paths. No cgroup peak-memory figure is claimed from this run. This does not invalidate the build/trace/WASM/Wrangler/Workerd PASS, but memory measurement remains open.
+- No Worker deploy/upload, database connection/write, Production access, migration, seed, or DNS change occurred.
