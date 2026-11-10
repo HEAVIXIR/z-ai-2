@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:29:07.136Z",
+  "updated_at_utc": "2026-11-10T22:29:47.393Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "b2d6482616e61171570d6d01e4957941a8b640d5",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "13dcc49ff25ee5d326b83bb44bf378f8d50f758f",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -124,12 +124,14 @@
     "Admin navigation permission alias normalization is complete at source level (44 keys, 0 missing), but exact-head CI and Preview seed verification remain pending.",
     "Live Preview verification confirmed current Worker is still old/incomplete: root not 17-section; /api/health 503; /api/services 500; /services 404; /sell-in-7-days, /knowledge, /auctions, /rentals, /listings 500; /companies empty; /store partial/empty.",
     "Recovery branch has not been deployed. Preview App/Store database identities remain unverified. No Production/DNS changes.",
-    "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted."
+    "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted.",
+    "Older GitHub Actions runs created before the new concurrency group remain active/queued; no cancel-workflow-run action is exposed by the GitHub connector.",
+    "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll exact-head CI run #42914300824 for code head e16ed41a5c123d5f2c8700816303771fbfdf3e9d. For Preview DB identity proof, ask the user to authorize GitHub browser sign-in setup for TinyFish profile prof_ae1391636a204a5a; never ask for a password in chat. After sign-in, dispatch only prisma-preview-workerd-proof.yml with confirm_preview_only=PREVIEW_ONLY. Do not deploy until the App/Store Preview identity proof passes.",
+    "task": "If user authorizes secure GitHub browser-profile sign-in, use it to cancel obsolete runs for PR #307 and dispatch only the read-only Workerd proof with PREVIEW_ONLY. Otherwise poll run #42914986140 and the latest exact code-head CI. Do not deploy until CI and Preview DB identity gates pass.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -166,5 +168,11 @@
     "status": "queued",
     "note": "Older CI runs from this recovery branch are still active/queued; no result yet for the latest code head. Later commits are documentation-only."
   },
-  "latest_code_head_sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d"
+  "latest_code_head_sha": "e16ed41a5c123d5f2c8700816303771fbfdf3e9d",
+  "latest_ci_run": {
+    "id": 42914986140,
+    "sha": "01452ed",
+    "status": "queued",
+    "note": "CI concurrency guard was added in this commit; it does not retroactively cancel runs created before it."
+  }
 }
