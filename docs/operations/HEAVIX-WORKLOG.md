@@ -211,3 +211,9 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - This change does NOT retroactively cancel runs created before the concurrency setting existed. At inspection, multiple older runs were still active/queued; latest workflow run #42914986140 (commit 01452ed) was queued.
 - GitHub connector in this session does not expose a cancel-workflow-run action. Browser profile also lacks GitHub sign-in, so old runs could not be cancelled through the UI.
 - Commit: c8e95911e98143c1f9aa0ef07ace952e56df856f. Exact latest CI pending.
+
+### CI concurrency observation correction
+
+- After adding the concurrency group, GitHub still showed older pre-existing PR runs #42914986140 (01452ed) and #42915046750 (c8e9591) both queued; no cancellation of the earlier queue was observed.
+- Therefore the concurrency guard is recorded as a future-run optimization only; do not claim it cancelled pre-existing runs or that the exact latest CI is running.
+- Current branch queue remains overloaded; if secure GitHub browser sign-in is enabled, cancel obsolete runs manually and keep only the latest code-head run.
