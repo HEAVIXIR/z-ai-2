@@ -7,14 +7,16 @@ HEAVIX_REF="${HEAVIX_REF:-}"
 HEAVIX_REPO="${HEAVIX_REPO:-https://github.com/HEAVIXIR/z-ai-2.git}"
 MAX_TRACE_ENTRIES="${MAX_TRACE_ENTRIES:-5000}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PWD/artifacts/heavix-pr100391-verification}"
-WORK_DIR="${WORK_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/heavix-pr100391-proof.XXXXXX")}"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/heavix-pr100391-proof.XXXXXX")"
 KEEP_WORK_DIR="${KEEP_WORK_DIR:-0}"
 log(){ printf '[heavix-patch-proof] %s\n' "$*"; }
 die(){ printf '[heavix-patch-proof] ERROR: %s\n' "$*" >&2; exit 1; }
 cleanup(){ if [[ "$KEEP_WORK_DIR" == 1 ]]; then log "Keeping isolated checkout: $WORK_DIR"; else rm -rf "$WORK_DIR"; fi; }
 trap cleanup EXIT
 [[ -n "$BUNDLE_DIR" && -d "$BUNDLE_DIR" ]] || die "Usage: $0 <build-output-dir>"
+BUNDLE_DIR="$(cd "$BUNDLE_DIR" && pwd)"
 [[ -n "$HEAVIX_REF" ]] || die "Set HEAVIX_REF to the exact branch or commit to test."
+[[ "$MAX_TRACE_ENTRIES" =~ ^[1-9][0-9]*$ ]] || die "MAX_TRACE_ENTRIES must be a positive integer."
 for f in next.tar next-swc.tar next-mdx.tar next-env.tar next-bundle-analyzer.tar; do [[ -s "$BUNDLE_DIR/$f" ]] || die "Missing archive: $f"; done
 for c in git bun tar node find sha256sum; do command -v "$c" >/dev/null 2>&1 || die "Missing command: $c"; done
 mkdir -p "$OUTPUT_DIR"
