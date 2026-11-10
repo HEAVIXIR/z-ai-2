@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
      pre-login flow) so existing customers with no HEAVIX account
      can still see their orders by phone.
 
-   GET  ?phone=X        → list this customer's orders by phone
+   GET  ?phone=X&orderNumber=Y → retrieve one exact guest order
         ?userId=X       → list this user's orders by HEAVIX userId
         ?mine=true      → list the current session user's orders
         (admin session) → list all orders
