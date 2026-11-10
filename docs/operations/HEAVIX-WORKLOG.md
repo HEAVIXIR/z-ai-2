@@ -95,3 +95,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: 33f0619ad4703d046f8bab700afb63c2f88af8b2 (public API merge), d2e99b7eeffcbd573e0333df79c4158eb70c1d17 (public handler tests), 78a1f547333a301a83e456f8709b8380c1c917dc (homepage data source test update), 94bd785d68c5de89c2315d329890fef01970d8d9 (admin API), 0e2eb05eba6c1ac3f1b10ab991d55411ca00cd5d (admin labels), 9e543230b600efe39effe2ed0b3056561d9da76c (admin contract test), 775f9a397eab756b03925829a0270aa288923778 (CSPRNG order reference), 7cee5ea4f7b8103d58d2923bad641ad81d7fe024 (no-store responses), 2b4925d64ca7a7ecabdfffb01149b9f1e0482d41 (no-store test).
 - CI run #42910792713 confirmed Typecheck/Lint/Security Tests and phase/tls/audit/Cloudflare report-only jobs passed. Full contract/unit tests failed on the old five-widget homepage assertion; corrected in commit 78a1f54. Docker image build, image verification, Caddy syntax and Compose config passed; Caddy→app connectivity remained in progress.
 - Exact latest-head CI after the homepage contract update, admin section editor, public API and Store no-store/CSPRNG changes is still pending.
+
+## 2026-11-11 — Services directory navigation and site settings
+
+- Improved /services directory to use the same active catalog root categories in the shared Header instead of an empty navigation list.
+- Wired the shared SiteSettings fields into Footer (about/contact/working hours/copyright/newsletter) so the new public page uses the site's configured footer.
+- Commits: 0f161958f47ee3f48d9c48c19ef8367e35f16d50 (header categories), aa2fce86910e7c7a5491f8d3fcb8ac0c0f4446e2 (footer settings).
+- Exact-head CI pending.
