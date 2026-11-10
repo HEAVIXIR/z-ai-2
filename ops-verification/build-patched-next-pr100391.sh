@@ -126,7 +126,9 @@ if s.count(old_end) != 1:
 p.write_text(s.replace(old_end, new_end, 1))
 PY
 
-# Patch packageFiles only in the disposable upstream checkout used by this proof.
+# Packaging-only workaround: upstream pack-util's ancestor de-dup logic can drop a
+# sibling file (types/global.d.ts) after recording its parent directory. This fix
+# is confined to the disposable Next.js source checkout; it is NOT part of PR #100391.
 python3 - scripts/pack-util.ts <<'PY'
 from pathlib import Path
 import sys
@@ -182,6 +184,9 @@ Upstream ref: $NEXT_REF
 Upstream commit: $(cat "$OUTPUT_DIR/upstream-source-commit.txt")
 Applied fix: vercel/next.js PR #100391
 Patch SHA256: $(sha256sum "$OUTPUT_DIR/pr100391.patch" | awk '{print $1}')
+Additional disposable packaging workaround: scripts/pack-util.ts packageFiles() ancestor-dedup correction
+Packaging workaround patch SHA256: $(sha256sum "$OUTPUT_DIR/packagefiles-dedup-fix.patch" | awk '{print $1}')
+Packaging workaround scope: disposable upstream checkout only; separate from PR #100391
 Build command: pnpm pack-next --no-js-build --tar --compress=strip
 Package set: next, next-swc, next-mdx, next-env, next-bundle-analyzer
 Built UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
