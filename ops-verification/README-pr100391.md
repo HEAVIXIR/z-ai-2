@@ -10,7 +10,7 @@ It performs, in order:
 
 1. Bash syntax validation and ShellCheck.
 2. The official Next.js `pnpm pack-next --tar --compress=strip` build pipeline.
-3. A Cloudflare OpenNext build against the exact HEAVIX commit pinned in the workflow.
+3. A Cloudflare OpenNext build against the exact HEAVIX commit pinned in the workflow, with `HEAVIX_ENV=preview` scoped to that build so the sitemap returns its documented empty Preview result rather than attempting a database lookup during static prerender.
 4. Output trace-count and `query_compiler_bg.wasm` checks.
 5. Wrangler `deploy --dry-run` only.
 6. The existing Workerd `SMOKE_ONLY` harness with database connection variables explicitly empty.
@@ -37,6 +37,7 @@ Both scripts require Linux, Node.js 20+, pnpm 10.33.0, Rust/Cargo, and sufficien
 - The verifier clones HEAVIX into a temporary directory and does not modify the caller's checkout.
 - It does not modify package manifests or lockfiles in the disposable clone.
 - It supplies no App/Store Preview or Production database URLs.
+- The Cloudflare build runs with `HEAVIX_ENV=preview` only inside the disposable verification process. This exercises the documented Preview sitemap behavior and prevents static prerender from resolving request-scoped Cloudflare database context; it does not alter application source or deployment environment.
 - The Workerd proof is explicitly `SMOKE_ONLY`; it is not a DB-backed Prisma query proof.
 - Wrangler is invoked with `--dry-run`; no Worker upload or deployment is performed.
 - No npm publish, migration, seed, database write, Production access, or DNS change is part of this experiment.
