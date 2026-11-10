@@ -54,3 +54,28 @@ The current main tree contains 2,225 entries; the homepage parity branch contain
 ## Non-actions
 
 No changes to either repository main branch, no merge, no Worker deployment, no DNS change, no database write, no migration/seed, no secrets output, and no blanket permission grants were performed during this inventory.
+
+
+## Confirmed homepage regression: legacy 16-section composer was replaced by 5-widget fallback
+
+The legacy extracted `src/app/page.tsx` (read in full through its render switch) loads `HomePageSection` records and renders a 16-key section registry:
+`hero`, `categories`, `hot-searches`, `stats`, `recommendations`, `verified-machines`, `featured-machines`, `active-requests`, `exclusive-sale`, `services`, `latest-ads`, `sell7`, `why-us`, `brands`, `trusted-brands`, `knowledge`, `cta`.
+The current `main/src/app/page.tsx` no longer reads `HomePageSection`; it uses PageRenderer and a code fallback containing only five widgets: `hero`, `search-box`, `listing-grid`, `category-grid`, `trust-badges`. This is a verified code-level regression in the homepage composition, independent of the Preview database hypothesis above.
+
+The current `src/components/home/` directory still contains all 26 homepage component files found in the legacy snapshot. Blob-SHA comparison across 26 matching files:
+- 18 files are byte-identical.
+- 8 differ: `ActiveRequestsSection.tsx`, `BrandsSection.tsx`, `CtaSection.tsx`, `Hero.tsx`, `RecommendationsSection.tsx`, `StatsSection.tsx`, `VerifiedMachinesCarousel.tsx`, `VerifiedMachinesGallery.tsx`.
+- No legacy homepage component file in this set is missing from current main.
+
+This is why the right fix is not a wholesale legacy copy: restore the full section orchestration using the current versions of existing components and current data/authorization contracts, then compare the eight changed components individually against their legacy counterparts.
+
+## Immediate code repair scope (next implementation task)
+
+1. Preserve PageRenderer for published custom HOME pages, but reject/avoid treating a technically valid yet materially incomplete saved layout as a complete product homepage; the fallback must render the complete canonical section set.
+2. Restore the legacy `HomePageSection`-driven 16-section ordering and visibility model using the current component exports and current Prisma schema.
+3. Ensure the homepage Hero passes real configured `HeroConfig`, verified read-only stats, and optional published listing cards; do not hardcode fake counts.
+4. Ensure the floating Header, search panel, Featured/Verified/Latest ads, Sell in 7 Days, Services, Knowledge, brands, requests and footer all render from real data.
+5. Add tests that fail against the current five-widget fallback and pass only when all required section keys are represented, while checking disabled sections stay hidden and order is respected.
+6. Validate no mutation occurs in public GET requests. In particular, audit the current public `GET /api/homepage-sections` implementation, which currently attempts to seed rows when empty; public reads should not perform writes.
+
+The current repository's PageRenderer path is still useful for admin-authored custom pages and must not be discarded. The goal is to restore the full homepage, not remove the PageBuilder architecture.
