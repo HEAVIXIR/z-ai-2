@@ -101,10 +101,17 @@ export default function ServicesSection({
       )}
 
       {/* CTA */}
-      <div className="relative mt-10 flex justify-center">
+      <div className="relative mt-10 flex flex-wrap justify-center gap-3">
+        <Link
+          href="/services"
+          className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 text-sm font-bold text-white transition-all duration-300 hover:border-[#F58220]/40 hover:bg-[#F58220]/10 hover:text-[#F58220]"
+        >
+          مشاهده همه خدمات
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
         <Link
           href="/listings?transaction=SERVICE_REQUEST"
-          className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 text-sm font-bold text-white transition-all duration-300 hover:border-[#F58220]/40 hover:bg-[#F58220]/10 hover:text-[#F58220]"
+          className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-8 text-sm font-bold text-white transition-all duration-300 hover:bg-[#ff8c38]"
         >
           درخواست خدمت
           <ArrowLeft className="h-4 w-4" />
