@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "5cec4c3e344922463ca1f8bc80ab1e8ce2b214fe",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "c54a36845ccb2d34411fe4e097877ef9e2e379e4",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -82,7 +82,9 @@
     "Public /services directory now shares the active category navigation and configured SiteSettings footer with the rest of HEAVIX.",
     "Protected detailed Store health endpoint with getCurrentUser + store.read.",
     "Protected detailed Marketplace health endpoint with getCurrentUser + analytics.read.",
-    "Added handler-level tests and updated the global auth-boundary contract to require route-level authorization for admin health endpoints despite middleware health-probe bypass."
+    "Added handler-level tests and updated the global auth-boundary contract to require route-level authorization for admin health endpoints despite middleware health-probe bypass.",
+    "Audited Store Admin API permission patterns and confirmed RBAC in the sampled procurement, rentals, services, payments, orders, returns, shipments and AI scraper routes.",
+    "Corrected Store Control Plane inventory: Procurement and Services have shared Admin pages; Rentals uses Universal Resource Engine at /admin/resources/rentals. Store Admin includes 16 Store-prefixed pages and 52 API handlers."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -100,12 +102,14 @@
     "Exact latest-head CI after public homepage API, admin editor, contract-test, and Store privacy changes is pending.",
     "Docker Caddy-to-app connectivity proof has not yet been observed passing on the inspected run.",
     "Latest exact-head CI after Services header/footer wiring and subsequent Store/homepage changes is pending.",
-    "Latest Store/Marketplace health RBAC tests and auth-boundary updates are awaiting exact-head CI."
+    "Latest Store/Marketplace health RBAC tests and auth-boundary updates are awaiting exact-head CI.",
+    "Detailed route/action coverage for logistics dashboard and all procurement/rental/service state transitions still needs verification.",
+    "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Verify latest exact-head CI after Admin health RBAC and route-level tests. Resolve all remaining contract/test/build issues, then continue Admin Store UI coverage and full product route verification. No Preview deployment before DB identity checks.",
+    "task": "Verify exact latest-head CI for Store/Marketplace health RBAC and all preceding homepage/store/services/SEO changes. Then inspect shared Admin routes and universal resource configs for Procurement, Services, Rentals and Logistics; verify API permissions, navigation, audit and actions. Complete Preview App/Store DB identity gate before any deployment.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
