@@ -38,7 +38,7 @@ export async function POST() {
   }
 
   try {
-    const projectRoot = path.resolve(process.cwd());
+    const projectRoot = path.resolve(/*turbopackIgnore: true*/ process.cwd());
     const scriptPath = path.join(projectRoot, "scripts", "backup.sh");
     await fs.access(scriptPath);
 
