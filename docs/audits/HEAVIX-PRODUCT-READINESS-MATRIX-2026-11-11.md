@@ -119,3 +119,25 @@ Source review found `GET /api/admin/navigation` treated any authenticated user s
 Additional source scan found seven navigation seed permission aliases absent from the canonical `PERMISSIONS` catalog: `admin.home.manage`, `admin.menu.manage`, `admin.settings.read`, `article.read`, `media.read`, `pricing.read`, and `service.read`. They were aligned to `admin.homepage.manage`, `admin.navigation.manage`, `admin.settings.manage`, `content.read`, `media.manage`, `price.read`, and `service.manage`. A contract test now checks every permissionKey in the navigation seed against the canonical catalog.
 
 These navigation seed changes are code-only. The idempotent seed has not been run against Preview DB; apply only after exact App/Store Preview DB identity verification.
+## Live Preview verification — 2026-11-11
+
+Read-only, JavaScript-rendered fetches were made against the existing Worker URL `https://heavix-preview.heavixir.workers.dev`. No Worker settings, secrets, database rows or deployments were changed.
+
+| Live route | Observed result |
+|---|---|
+| `/` | HTTP page renders, but it is the old/incomplete composition, not the 17-section recovery branch. It shows mostly placeholder/empty-state content. Robots metadata is `noindex,nofollow,noarchive`. |
+| `/api/health` | HTTP 503 |
+| `/api/homepage-sections` | Retrieval failed / target unreachable on this fetch |
+| `/api/services` | HTTP 500 |
+| `/services` | HTTP 404 |
+| `/store` | HTTP page renders, but featured parts are empty; the page showed a 0 Toman exchange rate and category controls still loading. |
+| `/companies` | HTTP page renders, but the company directory content is empty. |
+| `/sell-in-7-days` | HTTP 500 |
+| `/knowledge` | HTTP 500 |
+| `/auctions` | HTTP 500 |
+| `/rentals` | HTTP 500 |
+| `/listings` | HTTP 500 |
+
+**Conclusion:** the currently active Preview Worker is not serving the recovery branch and has substantial runtime/data-readiness failures. The recovery branch source changes are not yet deployed. The 503/500/404 responses are live evidence, not guesses. Do not attempt to mask these failures with fake data or a superficial static shell.
+
+**Release gate:** first complete exact-head CI; then prove that the actual Worker App and Store secret bindings point to distinct dedicated Preview PostgreSQL system identifiers and are read-only where required; then deploy only to the existing Preview Worker; finally re-fetch every route above and confirm the 17-section homepage, public services, and 200/healthy status for core routes. No Production/DNS changes.
