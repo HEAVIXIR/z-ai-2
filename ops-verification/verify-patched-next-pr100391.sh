@@ -37,7 +37,7 @@ capture_failure_state() {
           echo "symlink_target=$(readlink "$path" 2>&1)"
           echo "resolved_target=$(readlink -f "$path" 2>&1)"
         fi
-        ls -la "$path" 2>&1 | head -60
+        find "$path" -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | head -60
       done
       echo "=== next.tar entries (first 100) ==="
       if [[ -s "${BUNDLE_DIR:-}/next.tar" ]]; then
@@ -98,7 +98,7 @@ bun install --frozen-lockfile
     echo "symlink_target=$(readlink node_modules/next 2>&1)"
     echo "resolved_target=$(readlink -f node_modules/next 2>&1)"
   fi
-  ls -la node_modules/next 2>&1 | head -60
+  find node_modules/next -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | head -60
 } > "$OUTPUT_DIR/next-package-before-replace.txt" 2>&1
 
 tar -tf "$BUNDLE_DIR/next.tar" > "$OUTPUT_DIR/next-tar-file-list.txt"
@@ -124,9 +124,9 @@ replace_package next.tar node_modules/next
     echo "symlink_target=$(readlink node_modules/next 2>&1)"
     echo "resolved_target=$(readlink -f node_modules/next 2>&1)"
   fi
-  ls -la node_modules/next 2>&1 | head -60
+  find node_modules/next -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | head -60
   echo "=== next/types after extraction ==="
-  ls -la node_modules/next/types 2>&1 | head -100
+  find node_modules/next/types -maxdepth 1 -printf '%M %u %g %s %p\\n' 2>&1 | head -100
   echo "=== global.d.ts exact path ==="
   stat node_modules/next/types/global.d.ts 2>&1
 } > "$OUTPUT_DIR/next-package-after-replace.txt" 2>&1
