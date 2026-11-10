@@ -742,20 +742,55 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
-      - name: Build OpenNext Worker (sample runner resources)
+      - name: Build OpenNext Worker (sample runner resources and Node diagnostic report)
         shell: bash
         run: |
           set -uo pipefail
           echo "HEAVIX_RESOURCE_CGROUP_BEGIN"
-          for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events; do
-            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
-          done
+          cat /proc/self/cgroup || true
+          free -b || true
+          export NODE_OPTIONS="${NODE_OPTIONS:-} --report-on-signal --report-signal=SIGUSR2 --report-directory=$RUNNER_TEMP"
           bunx opennextjs-cloudflare build --noMinify > >(tee "$RUNNER_TEMP/heavix-opennext-build.log") 2>&1 &
           build_pid=$!
           (
+            report_sent=0
             while kill -0 "$build_pid" 2>/dev/null; do
               echo "HEAVIX_RESOURCE_SAMPLE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
+              node_pid="$(ps -eo pid=,args= | awk '/node_modules\\/.bin\\/opennextjs-cloudflare build/ && !/awk/ {print $1; exit}')"
+              if [ -n "$node_pid" ] && [ -r "/proc/$node_pid/status" ]; then
+                grep -E '^(Name|VmRSS|VmSize|VmData|VmSwap|Threads):' "/proc/$node_pid/status" || true
+                if [ -r "/proc/$node_pid/smaps_rollup" ]; then
+                  grep -E '^(Rss|Pss|Private_Clean|Private_Dirty|Anonymous|AnonHugePages):' "/proc/$node_pid/smaps_rollup" || true
+                fi
+                rss_kb="$(awk '/^VmRSS:/ {print $2}' "/proc/$node_pid/status")"
+                if [ "$report_sent" -eq 0 ] && [ "${rss_kb:-0}" -ge 6000000 ]; then
+                  echo "HEAVIX_NODE_DIAGNOSTIC_SIGNAL pid=$node_pid rss_kb=$rss_kb"
+                  kill -USR2 "$node_pid" 2>/dev/null || true
+                  report_sent=1
+                  sleep 3
+                  report="$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name 'report.*.json' -print -quit)"
+                  if [ -n "$report" ]; then
+                    python3 - "$report" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1]))
+          h=d.get("header",{})
+          print("HEAVIX_NODE_REPORT", json.dumps({
+            "event":h.get("event"),"trigger":h.get("trigger"),
+            "nodejsVersion":h.get("nodejsVersion"),
+            "javascriptHeap":h.get("javascriptHeap"),
+            "resourceUsage":h.get("resourceUsage"),
+            "uvthreadResourceUsage":h.get("uvthreadResourceUsage"),
+            "libuv":d.get("libuv")
+          }, default=str))
+          PY
+                  else
+                    echo "HEAVIX_NODE_REPORT_NOT_FOUND"
+                  fi
+                fi
+              fi
+              cg_rel="$(awk -F: '$1=="0" {print $3}' "/proc/$build_pid/cgroup" 2>/dev/null || true)"
+              cg="/sys/fs/cgroup${cg_rel:-}"
+              for f in "$cg/memory.current" "$cg/memory.max" "$cg/memory.events"; do
                 if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
               done
               ps -eo pid,ppid,rss,vsz,stat,etime,comm,args --sort=-rss | head -n 18
@@ -769,9 +804,7 @@ jobs:
           kill "$monitor_pid" 2>/dev/null
           wait "$monitor_pid" 2>/dev/null
           echo "HEAVIX_RESOURCE_FINAL build_rc=$build_rc"
-          for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.events; do
-            if [ -r "$f" ]; then echo "--- $f"; cat "$f"; fi
-          done
+          free -b || true
           exit "$build_rc"
       - name: Produce Wrangler dry-run bundle (no deploy)
         run: bunx wrangler deploy --dry-run --outdir=/tmp/heavix-worker-dry
