@@ -147,3 +147,11 @@ Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, 
 2. Verify the Admin health RBAC, Store order security, homepage admin editor, public Services page and SEO additions in CI.
 3. Verify App/Store Preview database identities with a controlled read-only proof tied to the actual Worker bindings; do not expose or print secret values.
 4. Only after CI, Docker proof, artifact provenance and DB identity gates pass, consider deploying to the existing Preview Worker. Never touch Production or DNS.
+### Additional Admin RBAC checkpoint — 2026-11-11
+
+- Removed the unrestricted legacy fallback from `GET /api/admin/navigation`. It now requires `getCurrentUser` + `admin.navigation.read` and filters every grouped/standalone item by the user's exact permission set.
+- Normalized all navigation seed permission aliases. Static scan confirms 44 unique permission keys and zero missing from the canonical `PERMISSIONS` catalog.
+- Added Store menu entries for Procurement, Rentals and Service Providers. Rentals resource permission keys now match the dedicated Store API (`store.read/store.manage`).
+- Added security and contract tests for navigation RBAC, canonical permission coverage, Store route navigation and rental permission alignment.
+- Code head: `e16ed41a5c123d5f2c8700816303771fbfdf3e9d`; exact-head CI run #42914300824 was queued at inspection. Latest PR head may include documentation-only commits; always fetch PR #307 head.
+- Do not run the Admin navigation seed on any database until App/Store Preview PostgreSQL identities have been independently verified.
