@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "6e484ad320aa6a7908f3443c3160234395de2d5c",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "99ba40b59e57a140a5c344ed14763dcc46b089d1",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -115,12 +115,13 @@
     "The corrected homepage contract suite and later Store/Marketplace health RBAC changes have not yet passed a new exact-head CI run.",
     "Actual App and Store PostgreSQL system identities behind Cloudflare secret bindings DATABASE_URL and STORE_DATABASE_URL remain unverified.",
     "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets.",
-    "Exact-head CI after the ServicesSection discoverability change is pending."
+    "Exact-head CI after the ServicesSection discoverability change is pending.",
+    "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll the latest code-head GitHub Actions run and resolve all remaining tests/build failures. After green CI, complete route/action audit and Preview App/Store database identity proof before any deploy.",
+    "task": "Poll CI for code head ef38b4ad6754f9d22abc8420b5dbc9a09df220dd and later Store/Marketplace health RBAC commits. Confirm all Security/contract/unit tests and Docker proof pass. Then finish Preview DB identity proof and remaining route/action verification.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -157,5 +158,5 @@
     "status": "queued",
     "note": "Subsequent commits are documentation-only; always fetch PR #307 head before acting."
   },
-  "latest_code_head_sha": "f247e9a68accfe02b00959d40443decef1fda3a4"
+  "latest_code_head_sha": "ef38b4ad6754f9d22abc8420b5dbc9a09df220dd"
 }
