@@ -168,3 +168,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: a496b6820ea45d825c30ba72479994ff20bca48f (rental permission fix), 45fc756060b9052be3c64c42ece63ab3a790cabe1 (navigation seed), 4ac3a271fda976f22ecc919e4c1014863885f066 (contract test), b86b434a2801fd0f23c33e975d42178053242e30 (audit update).
 - Navigation seed has NOT been run on any DB; run only after Preview DB identity verification and explicit approval of the Preview seed step.
 - Exact-head CI pending.
+
+## 2026-11-11 — Admin navigation RBAC bypass and permission-key normalization
+
+- Found GET /api/admin/navigation treated any signed-in user as legacy admin, swallowed failure of admin.navigation.read, and then returned all menu entries because userPermissions remained null.
+- Removed the legacy bypass: unauthenticated returns 401; missing admin.navigation.read returns 403; authorized users always receive navigation filtered by exact canonical permissions.
+- Added tests/security/admin-navigation-rbac.test.ts for unauthenticated, missing permission, no permissions and exact group/standalone filtering.
+- Scanned every permissionKey in prisma/seed-admin-navigation.ts against src/lib/authorization/permissions.ts. Seven aliases were absent and therefore not granted by canonical role assignments. Aligned them to existing canonical keys: admin.homepage.manage, admin.navigation.manage, admin.settings.manage, content.read, media.manage, price.read and service.manage.
+- Expanded tests/contract/admin-store-navigation.test.ts to assert every navigation permissionKey exists in the canonical catalog.
+- Commits: 4cc2ab395b7303f9b34ec176a9c3c0e877b43193 (remove legacy bypass), e0f8971d6a64de13a69f1ff8d3c6cef2980e0f85 (navigation RBAC tests), 4d44957f6df3a2d06ebf608962e1474a3b27e926 (permission-key normalization), cd98be611dbdc322b6653ba8c21aa828ac7912e8 (catalog consistency test).
+- Preview DB seed has not been run; exact-head CI pending.
