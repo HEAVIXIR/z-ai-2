@@ -11,7 +11,7 @@ It performs, in order:
 1. Bash syntax validation and ShellCheck.
 2. The official Next.js `pnpm pack-next --tar --compress=strip` build pipeline.
 3. A Cloudflare OpenNext build against the exact HEAVIX commit pinned in the workflow, with `HEAVIX_ENV=preview` scoped to that build so the sitemap returns its documented empty Preview result rather than attempting a database lookup during static prerender.
-4. Output trace-count and `query_compiler_bg.wasm` checks.
+4. Per-route trace-reference, globally unique resolved-file, and `query_compiler_bg.wasm` checks. The 5,000-file gate applies to the union of distinct resolved file paths across all route manifests; repeated references to the same dependency from separate routes remain visible in the aggregate trace-entry metric but are not double-counted as distinct files.
 5. Wrangler `deploy --dry-run` only.
 6. The existing Workerd `SMOKE_ONLY` harness with database connection variables explicitly empty.
 
