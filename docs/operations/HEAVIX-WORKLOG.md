@@ -63,3 +63,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Updated the product readiness matrix to reflect the new public route.
 - Commits: 831e57af97d53340e3afe52de7e809619e7ad36c (remove placeholder cards), 10f346e94eb428f2b041f6b938983b5ab3b7dab5 (safe API errors), 5a9cc3df3d4f5f9133d2ca4a61a00d3651131ee5 (public services directory).
 - Validation pending: exact-head GitHub Actions CI must typecheck/build/test the new route and current homepage/store changes. No runtime/Preview validation performed.
+
+## 2026-11-11 — CI evidence and Vitest mock correction
+
+- Inspected GitHub Actions run #42910341544 on commit 4f960dc7ff90848c99358cc672d163159cc55492.
+- Confirmed the verify job's Typecheck and Lint steps PASSED after the homepage Prisma listing payload/type fixes.
+- Confirmed phase-tests, tls-proof, audit-transaction and Cloudflare compatibility report-only jobs PASSED on that run.
+- The verify job's Security tests step failed before executing the two new files because vi.mock factories referenced top-level vi.fn() constants before initialization. Changed both files to initialize mocks through vi.hoisted().
+- The Docker job's Build Docker image step PASSED on that run; final Caddy/Compose/connectivity proof steps were still in progress at inspection time. The earlier Docker build failure was caused by TypeScript errors, not proven Prisma dynamic-filesystem warnings.
+- New exact-head CI is pending after the vi.hoisted() fixes and subsequent Services/SEO changes. Do not claim green until all required jobs complete.
+- Commits for mock fix: 5b018adb6ef7bf23de5697c60ebde9c1f8eb5343 and a198a5df501c4ce8cdb76da770a37233b3ae972b.
