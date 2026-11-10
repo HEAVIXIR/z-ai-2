@@ -23,18 +23,18 @@ const GROUPS: Group[] = [
   {
     key: 'home', titleFa: 'صفحه اصلی', icon: 'MonitorSmartphone', sortOrder: 1,
     items: [
-      { titleFa: 'بخش‌های صفحه', href: '/admin/home', permissionKey: 'admin.home.manage' },
+      { titleFa: 'بخش‌های صفحه', href: '/admin/home', permissionKey: 'admin.homepage.manage' },
       { titleFa: 'چیدمان صفحه اصلی', href: '/admin/homepage-layout', permissionKey: 'admin.home.manage' },
       { titleFa: 'هیرو', href: '/admin/home/hero', permissionKey: 'admin.home.manage' },
       { titleFa: 'دسته‌بندی صفحه اصلی', href: '/admin/home/categories', permissionKey: 'admin.home.manage' },
       { titleFa: 'ماشین‌آلات تأییدشده', href: '/admin/home/verified-machines', permissionKey: 'admin.home.manage' },
       { titleFa: 'برندهای مورد اعتماد', href: '/admin/home/trusted-brands', permissionKey: 'admin.home.manage' },
-      { titleFa: 'خدمات', href: '/admin/services', permissionKey: 'service.read' },
+      { titleFa: 'خدمات', href: '/admin/services', permissionKey: 'service.manage' },
       { titleFa: 'هدر', href: '/admin/home/header', permissionKey: 'admin.home.manage' },
       { titleFa: 'فوتر', href: '/admin/home/footer', permissionKey: 'admin.home.manage' },
-      { titleFa: 'آمار سایت', href: '/admin/site-stats', permissionKey: 'admin.settings.read' },
-      { titleFa: 'منو', href: '/admin/menu', permissionKey: 'admin.menu.manage' },
-      { titleFa: 'کتابخانه رسانه', href: '/admin/media', permissionKey: 'media.read' },
+      { titleFa: 'آمار سایت', href: '/admin/site-stats', permissionKey: 'admin.settings.manage' },
+      { titleFa: 'منو', href: '/admin/menu', permissionKey: 'admin.navigation.manage' },
+      { titleFa: 'کتابخانه رسانه', href: '/admin/media', permissionKey: 'media.manage' },
     ],
   },
   {
@@ -61,7 +61,7 @@ const GROUPS: Group[] = [
       { titleFa: 'تحلیل و آمار', href: '/admin/analytics', permissionKey: 'analytics.read' },
       { titleFa: 'هوش بازار', href: '/admin/market-intelligence', permissionKey: 'analytics.read' },
       { titleFa: 'نقشه حرارتی بازار', href: '/admin/market-heatmap', permissionKey: 'analytics.read' },
-      { titleFa: 'هوش قیمتی', href: '/admin/price-intelligence', permissionKey: 'pricing.read' },
+      { titleFa: 'هوش قیمتی', href: '/admin/price-intelligence', permissionKey: 'price.read' },
       { titleFa: 'موتور قیمت‌گذاری', href: '/admin/pricing', permissionKey: 'pricing.read' },
       { titleFa: 'موتور تقاضا', href: '/admin/demand-engine', permissionKey: 'analytics.read' },
       { titleFa: 'رادار فرصت‌ها', href: '/admin/opportunity-radar', permissionKey: 'analytics.read' },
@@ -89,7 +89,7 @@ const GROUPS: Group[] = [
   {
     key: 'content', titleFa: 'محتوا', icon: 'BookOpen', sortOrder: 7,
     items: [
-      { titleFa: 'هویکس دانش', href: '/admin/articles', permissionKey: 'article.read' },
+      { titleFa: 'هویکس دانش', href: '/admin/articles', permissionKey: 'content.read' },
       { titleFa: 'پایه دانش', href: '/admin/knowledge', permissionKey: 'knowledge.read' },
       { titleFa: 'دیکشنری صنعتی', href: '/admin/dictionary', permissionKey: 'taxonomy.read' },
       { titleFa: 'جستجوهای داغ', href: '/admin/hot-searches', permissionKey: 'content.read' },
