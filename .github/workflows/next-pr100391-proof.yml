@@ -81,6 +81,8 @@ jobs:
             artifacts/next-pr100391/upstream-source-commit.txt
             artifacts/next-pr100391/pr100391.patch
             artifacts/next-pr100391/pr100391.patch.sha256
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch.sha256
             artifacts/next-pr100391/SHA256SUMS
             artifacts/next-pr100391/types-dir-before-pack.txt
             artifacts/next-pr100391/next-tar-file-list.txt
