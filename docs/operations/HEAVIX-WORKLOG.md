@@ -185,3 +185,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Found repeated legacy aliases still present on additional Home, Media and Pricing items because the first patch changed only the first occurrence. Replaced every remaining occurrence: admin.home.manage → admin.homepage.manage, media.read → media.manage, pricing.read → price.read.
 - Final source scan: 44 navigation permission keys, 0 missing from the canonical permission catalog.
 - Commit: e16ed41a5c123d5f2c8700816303771fbfdf3e9d. CI pending.
+
+## 2026-11-11 — Live Preview route audit (read-only)
+
+- Used JavaScript-rendered live fetches against https://heavix-preview.heavixir.workers.dev; no Cloudflare deployment, secret access, database connection or write was performed.
+- `/` renders the old/incomplete shell, not the 17-section recovery composition; its robots metadata is noindex,nofollow,noarchive.
+- `/api/health` returned 503; `/api/services` returned 500; `/services` returned 404; `/api/homepage-sections` was unreachable on the fetch.
+- `/store` rendered but featured parts were empty, exchange rate displayed 0 Toman and category controls remained loading.
+- `/companies` rendered an empty directory.
+- `/sell-in-7-days`, `/knowledge`, `/auctions`, `/rentals`, `/listings` each returned 500.
+- This confirms the active Worker is not serving the recovery branch and that the existing Preview has runtime/data readiness failures. No claim of completion or successful deployment is permitted.
+- The recovery release gate remains: exact-head CI → actual Worker App/Store DB identity proof → deploy only to existing Preview Worker → live route recheck. No Production/DNS changes.
