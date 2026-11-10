@@ -38,13 +38,15 @@ This remediation is not yet CI-verified. An OTP or high-entropy one-time guest a
 
 Manual payment submission and gateway request routes currently require a session and ownership checks; this does not close the separate guest GET issue.
 
-## SEO / discoverability source gaps to verify
+## SEO / discoverability source review
 
-- `src/app/models/[slug]/page.tsx`: no `generateMetadata` or static metadata export found during this source review.
-- `src/app/auctions/page.tsx`: no `generateMetadata` or static metadata export found.
-- `src/app/sell-in-7-days/register/page.tsx` and `track/page.tsx`: no metadata export found in the inspected files.
-- The company detail route does have `generateMetadata`; an older SEO audit stating otherwise is stale for this branch.
-- Recheck sitemap/robots and private/stateful routes before launch.
+- Added dynamic metadata/canonical/OpenGraph to `src/app/models/[slug]/page.tsx`.
+- Added listing metadata/canonical/OpenGraph to `src/app/auctions/page.tsx`; auction detail already has static metadata.
+- Added landing-page metadata to `/sell-in-7-days`; marked registration as `noindex,follow` and tracking as `noindex,nofollow`.
+- Added metadata to the Knowledge hub index. The Knowledge article detail route already has dynamic metadata.
+- Store and Companies are client pages but already have metadata in `src/app/store/layout.tsx` and `src/app/companies/layout.tsx`; the company detail route also has `generateMetadata`.
+- Listings, Rentals and Services already expose metadata.
+- These are source changes only; verify generated HTML, canonical URLs, sitemap/robots and actual crawler behavior before launch. Other dynamic routes have not all been audited.
 
 ## CI / release evidence
 
