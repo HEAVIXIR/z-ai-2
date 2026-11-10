@@ -34,3 +34,13 @@ Both failures were preflight-only. No database connection, Worker upload, deploy
 - The verifier stopped at its trace threshold: 1,078 `.nft.json` manifests contained 151,424 aggregate file references, exceeding the configured 5,000 limit. This was a verifier assertion after the Cloudflare build, not a Cloudflare build failure, OOM, or FD exhaustion.
 - The previous verifier summed every route-manifest reference, counting shared dependencies repeatedly. That aggregate is retained as a diagnostic, while the 5,000-file gate is being corrected to use the union of distinct canonical resolved file paths. The next run will also retain per-manifest counts and the most frequently referenced/WASM-related paths so the result can be independently inspected.
 - Because the trace assertion stopped execution, cgroup memory evidence, Wrangler dry-run, and Workerd `SMOKE_ONLY` were not reached. No deploy, DB connection/write, Production access, or DNS change occurred.
+
+
+## Run 10 — 42832717762
+
+- Exact experiment HEAD: `a942aed2d506a5a727db891d74c170e3805bdd70`; exact HEAVIX source commit remained `07b6de155284dd7813335201552acf4efbb6ad90`.
+- ShellCheck and patched Next.js package build passed. HEAVIX Cloudflare/OpenNext build completed successfully in explicit Preview mode; four `query_compiler_bg.wasm` artifacts were found.
+- The revised trace analyzer reported 1,078 manifests, 151,424 aggregate references, 7,252 unique resolved paths, and maximum per-manifest entries of 1,131. It failed only because 7,252 exceeded the 5,000 unique-path gate.
+- Independent artifact inspection established that the 538 manifests under `.next/standalone/.next/server` each have a corresponding manifest under `.next/server` with the same manifest path after removing the standalone prefix and the same entry count. Their combined entries are 75,100. This is copied standalone trace metadata, not an additional independent set of route traces.
+- The next verifier revision will exclude a standalone manifest only if the matching source manifest exists and its complete `files` array is identical; it will report excluded mirror counts/entries explicitly. Non-identical standalone manifests remain counted. WASM discovery will continue to scan the complete output, including standalone.
+- This is a measurement correction, not an increase to the 5,000 threshold. If the corrected distinct trace set still exceeds 5,000, the run must fail and the underlying trace growth must be investigated. No deploy, DB connection/write, Production access, or DNS change occurred.
