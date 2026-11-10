@@ -103,3 +103,10 @@ CI validation is pending for these newest changes.
 - Secret binding names include `DATABASE_URL` and `STORE_DATABASE_URL`; values were not retrieved. Names alone do not prove that the databases are dedicated Preview instances or that App and Store are distinct.
 - Existing `.github/workflows/prisma-preview-workerd-proof.yml` performs a pinned, read-only Workerd proof against two distinct Preview GitHub secrets and checks expected PostgreSQL system identifiers plus read-only session mode. It requires manual `workflow_dispatch` with `PREVIEW_ONLY`; it was inspected but not dispatched in this session.
 - No Worker deploy, secret update, DB connection or DNS change was performed.
+### Store Admin navigation remediation
+
+- The seeded Store navigation originally omitted the Universal Resource Engine entries for Procurement, Rentals and Service Providers, even though the resource configs and pages existed.
+- Added `/admin/resources/procurement` (`procurement.read`), `/admin/resources/rentals` (`store.read`) and `/admin/resources/services` (`store.read`) to the Store menu seed.
+- Found a permission mismatch in `rentalsConfig`: it referenced `rentals.read/manage`, which are not in the canonical permission catalog, while the dedicated Rentals API enforces `store.read/manage`. Updated the resource config to use `store.read/manage`.
+- Added a contract test to ensure the Store menu exposes these routes and the permission keys match the canonical catalog/API.
+- Important: the navigation seed has not been run against Preview DB in this session. After Preview App/Store DB identity is verified, run the approved idempotent admin-navigation seed and confirm the sidebar displays these entries.
