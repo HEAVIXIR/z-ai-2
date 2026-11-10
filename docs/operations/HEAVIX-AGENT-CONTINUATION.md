@@ -155,3 +155,9 @@ Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, 
 - Added security and contract tests for navigation RBAC, canonical permission coverage, Store route navigation and rental permission alignment.
 - Code head: `e16ed41a5c123d5f2c8700816303771fbfdf3e9d`; exact-head CI run #42914300824 was queued at inspection. Latest PR head may include documentation-only commits; always fetch PR #307 head.
 - Do not run the Admin navigation seed on any database until App/Store Preview PostgreSQL identities have been independently verified.
+
+### CI queue checkpoint — 2026-11-11
+
+- Latest code commit is `c8e95911e98143c1f9aa0ef07ace952e56df856f` (CI concurrency guard); run #42915046750 is queued.
+- The new concurrency group did not retroactively cancel pre-existing queued runs in the observed Actions queue. Do not claim that it did.
+- TinyFish browser profile `prof_ae1391636a204a5a` has no GitHub sign-in. The read-only Workerd proof dispatch was stopped before submission. User authorization is needed to start secure browser-profile sign-in; never request a password in chat.
