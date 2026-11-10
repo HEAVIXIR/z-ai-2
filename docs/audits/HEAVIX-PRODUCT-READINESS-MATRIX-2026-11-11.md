@@ -85,3 +85,13 @@ Several Store domains intentionally use shared/global Admin pages rather than a 
 **Remaining Control Plane verification:** confirm navigation entries resolve to these shared routes, the resource registry points to the correct Store database and APIs, and each page exposes all necessary actions (including purchase-order receiving, rental booking lifecycle, service-request state transitions and logistics exceptions). The presence of a global page or API is not by itself proof of end-to-end feature completion.
 
 No Store-scoped Promotions page was found in the inspected route inventory; determine whether the approved product requires one or whether an existing global campaign/marketing page owns that workflow.
+
+## Security finding — Admin health endpoints
+
+The middleware intentionally short-circuits paths ending in `/health` before checking the session cookie so infrastructure probes can reach health handlers. Each detailed admin health handler must therefore enforce its own route-level authorization.
+
+Source review found `/api/admin/store/health` and `/api/admin/marketplace/health` had no route-level authentication and exposed database status, counts, latency and monitoring details. `/api/admin/catalog-health` already required a signed-in user with analytics permission.
+
+**Remediation on this branch:** Store health now requires `getCurrentUser` + `store.read`; Marketplace health requires `getCurrentUser` + `analytics.read`. Added handler tests for unauthenticated, missing-permission and authorized cases, and updated the general auth-boundary test to assert route-level protection for all three detailed admin health endpoints. The middleware health-probe bypass and public `/api/health` liveness contract remain intact.
+
+CI validation is pending for these newest changes.
