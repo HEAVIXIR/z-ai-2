@@ -111,3 +111,9 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Updated tests/security/auth-boundary.test.ts: middleware health probe bypass remains an intentional contract, but all detailed admin health handlers must have route-level auth+permission checks.
 - Commits: 4c727003a1d2f40c4a1bdc8ba29be46dfb4be255 (Store health RBAC), 9e4f9893ca06463aab98e7e9d1c500c5e18245c7 (Store health tests), 165ec09770170ab215a5f334b9f892e73aef4c2d (Marketplace health RBAC), e1159ba5c30f1b6f584c13bfe534615e22f1ff6f (Marketplace health tests), 6881a08246860c5e16f537c5df03f5792eeded8f (auth-boundary contract update).
 - CI validation pending.
+
+## 2026-11-11 — Store Control Plane route inventory correction
+
+- Cross-checked the Store route tree against docs/STORE-RESOURCE-MATRIX.md and GitHub search. Corrected an initial overstatement: Procurement UI exists at /admin/procurement; Services UI exists at /admin/services; Rentals is served through the Universal Resource Engine at /admin/resources/rentals. These are shared/global Admin routes, not missing capabilities.
+- Current inventory: 16 /admin/store page routes and 52 /api/admin/store route handlers. Other shared Admin pages exist for Pricing, Analytics, Audit Log, Media, SEO, Procurement and Services. Shipment UI exists; exact wiring for logistics dashboard and all state transitions still needs verification.
+- Updated product readiness matrix to distinguish source presence, shared-route implementation and actual end-to-end verification.
