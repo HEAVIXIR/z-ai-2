@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "ac3c55e20c1070757944d7c5daa20c2390ccc378",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "3a2d68f5009348146bc7127e3918cf1ac0a1c890",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -64,7 +64,10 @@
     "Removed phone-only guest order enumeration; guest retrieval now requires phone plus exact order number and returns at most one matching order.",
     "Updated guest Store order dialog to request phone and order number.",
     "Added security tests for unauthenticated/cross-user/own-user/admin and guest phone-only/exact-order cases.",
-    "Added source-level route/security readiness matrix; identified missing public /services landing route (API/home/admin service capability exists) and remaining metadata gaps."
+    "Added source-level route/security readiness matrix; identified missing public /services landing route (API/home/admin service capability exists) and remaining metadata gaps.",
+    "Added public /services directory backed by active Service records and links into the existing SERVICE_REQUEST listings workflow.",
+    "Removed placeholder service cards from homepage when there are no active Service records.",
+    "Changed public GET /api/services to return a generic 503 instead of raw database errors."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -73,12 +76,13 @@
     "Standalone public /services landing page has not been implemented; confirm scope and ServiceRequest contract first.",
     "SEO metadata gaps for model, auctions and Sell-in-7-Days registration/tracking routes remain.",
     "No Preview deployment or Preview App/Store DB identity verification.",
-    "No Production or DNS changes."
+    "No Production or DNS changes.",
+    "The new /services route and Store guest lookup changes are awaiting exact-head CI and Preview runtime validation."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Wait for exact latest-head CI; fix all TypeScript, test and Docker build failures. The prior Docker failure traces to dynamic filesystem access in generated Store Prisma runtime. Then close guest order retrieval with OTP or a high-entropy signed token, complete public Services decision, and verify Preview database identities before any deploy.",
+    "task": "Monitor exact latest-head CI after the homepage Prisma payload type fix and services directory addition; repair all typecheck/test/build failures. Then continue Admin/RBAC/API/UI route matrix and verify Preview App/Store database identities before any deployment.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
