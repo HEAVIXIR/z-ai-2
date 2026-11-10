@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -48,32 +49,14 @@ const listingInclude = {
   brand: { select: { name: true } },
   category: { select: { icon: true } },
   images: {
-    orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const,
+    orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
     take: 1,
   },
-};
+} satisfies Prisma.ListingInclude;
 
-type HomeListingRow = {
-  id: string;
-  slug: string;
-  title: string;
-  shortDesc: string | null;
-  description: string | null;
-  brand: { name: string } | null;
-  price: bigint | null;
-  priceType: string;
-  images: Array<{ url: string }>;
-  category: { icon: string | null } | null;
-  year: number | null;
-  city: string | null;
-  province: string | null;
-  workingHours: number | null;
-  condition: string | null;
-  featured: boolean;
-  verified: boolean;
-  viewCount: number;
-  publishedAt: Date | null;
-};
+type HomeListingRow = Prisma.ListingGetPayload<{
+  include: typeof listingInclude;
+}>;
 
 export default async function HomePage() {
   // Fetch brand + category data first
@@ -119,7 +102,7 @@ export default async function HomePage() {
       where: { status: "PUBLISHED", featured: true },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
-      include: listingInclude as any,
+      include: listingInclude,
     }),
     db.listing.findMany({
       where: verifiedOnlyFlag
