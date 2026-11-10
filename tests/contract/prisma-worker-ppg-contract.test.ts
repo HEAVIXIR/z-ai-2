@@ -179,9 +179,17 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack"');
     const ci = read(".github/workflows/ci.yml");
     expect(ci).toContain("cloudflare-worker-artifact-proof:");
-    expect(ci).toContain("bunx wrangler deploy --dry-run");
-    expect(ci).toContain("loadWasmChunk");
-    expect(ci).toContain("compileStreaming");
+    expect(ci).toContain("ops-verification/build-patched-next-pr100391.sh");
+    expect(ci).toContain("ops-verification/verify-patched-next-pr100391.sh");
+
+    // The workflow delegates the Cloudflare build and Wrangler dry-run to the
+    // verification script; assert the executable contract at its real location
+    // rather than requiring those commands to be duplicated in ci.yml.
+    const verification = read("ops-verification/verify-patched-next-pr100391.sh");
+    expect(verification).toContain("HEAVIX_ENV=preview bun run build:cloudflare");
+    expect(verification).toContain("bunx wrangler deploy --dry-run");
+    expect(verification).toContain("query_compiler_bg.wasm");
+    expect(verification).toContain("HEAVIX_RUNTIME_PROOF_TARGET=SMOKE_ONLY");
     const patcher = read("scripts/patch-next-nft-concurrency.cjs");
     expect(openNext).toContain("patch-next-nft-concurrency.cjs");
     expect(patcher).toContain("next/dist/compiled/@vercel/nft");
