@@ -67,3 +67,22 @@ Manual payment submission and gateway request routes currently require a session
 5. Complete route-by-route Admin/RBAC/API/UI matrix for Store, Companies, Sell in 7 Days, Services, Knowledge, Auctions, Rentals and core Marketplace.
 6. Verify Preview App and Store database identities independently before any Preview deploy.
 7. Deploy only to the existing Preview Worker URL after all required checks and artifact gates pass; never touch Production or DNS in this workstream.
+
+## Store Admin Control Plane — source coverage
+
+Recursive source-tree inventory found **16 Store Admin page routes** and **52 Store Admin API route handlers**.
+
+Store Admin pages currently present:
+- Dashboard, Parts, Brands, Car Models, Categories, Currency, Customers, Inventory, Mechanics, Orders, Payments, Returns, Shipments, Suppliers, Warehouses, AI Scraper.
+
+Store Admin API domains also include:
+- Procurement and purchase-order receiving.
+- Rental listings and bookings.
+- Service providers and service requests.
+- Logistics dashboard and shipment lifecycle actions.
+- Inventory low-stock, reserve and release operations.
+- Store health and statistics.
+
+**Control Plane gap:** dedicated Store Admin page routes were not found for Procurement, Rentals, Service Providers/Requests, or Logistics operations, despite corresponding APIs. No dedicated Store-scoped Promotions or Analytics pages were found in this route inventory. Global Admin may provide shared Media/SEO/Analytics surfaces, but that does not replace Store-specific workflows.
+
+These are not marked complete merely because the API handlers exist. Next work must connect each advertised API domain to permission-aware list/detail/form/action UI, validation, audit, tests and monitoring.
