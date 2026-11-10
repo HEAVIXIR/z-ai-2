@@ -117,3 +117,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Cross-checked the Store route tree against docs/STORE-RESOURCE-MATRIX.md and GitHub search. Corrected an initial overstatement: Procurement UI exists at /admin/procurement; Services UI exists at /admin/services; Rentals is served through the Universal Resource Engine at /admin/resources/rentals. These are shared/global Admin routes, not missing capabilities.
 - Current inventory: 16 /admin/store page routes and 52 /api/admin/store route handlers. Other shared Admin pages exist for Pricing, Analytics, Audit Log, Media, SEO, Procurement and Services. Shipment UI exists; exact wiring for logistics dashboard and all state transitions still needs verification.
 - Updated product readiness matrix to distinguish source presence, shared-route implementation and actual end-to-end verification.
+
+## 2026-11-11 — Docker proof completed successfully
+
+- Rechecked Docker job for run #42910792713 (head a198a5df501c4ce8cdb76da770a37233b3ae972b). The complete docker-build-proof job finished SUCCESS.
+- Verified all Docker proof steps passed: dependencies, Prisma client generation, Docker image build, image existence, Caddyfile syntax, exact docker-compose.prod.yml interpolation, and real Caddy→app connectivity.
+- The verify job on the same run passed Typecheck, Lint and Security tests; phase-tests, tls-proof, audit-transaction and Cloudflare compatibility report-only passed. The full contract/unit suite failed only on the obsolete homepage-data-sources assertion; that test was rewritten in commit 78a1f547333a301a83e456f8709b8380c1c917dc to match the restored 17-section homepage while retaining PageBuilder registry checks.
+- Exact latest-head CI after the test correction and subsequent Store/Marketplace health RBAC changes is still pending.
