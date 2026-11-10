@@ -5,7 +5,7 @@
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "8d470faca9537477c27477e68ac9269781d92dc0",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "ac3c55e20c1070757944d7c5daa20c2390ccc378",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -59,47 +59,52 @@
     "Removed all request-time HomePageSection writes from the homepage route; source scan shows zero Prisma mutation calls in src/app/page.tsx.",
     "Removed a hard-coded 31-province statistic; homepage stats use configured real SiteStat data and live DB counts only.",
     "Added unit tests for canonical section registry and merge semantics.",
-    "Recorded renderer decision: root homepage uses full section composition; PageRenderer/PageBuilder remain for custom pages and preview flows."
+    "Recorded renderer decision: root homepage uses full section composition; PageRenderer/PageBuilder remain for custom pages and preview flows.",
+    "Fixed unauthenticated userId-based Store order enumeration with fail-closed session and ownership checks.",
+    "Removed phone-only guest order enumeration; guest retrieval now requires phone plus exact order number and returns at most one matching order.",
+    "Updated guest Store order dialog to request phone and order number.",
+    "Added security tests for unauthenticated/cross-user/own-user/admin and guest phone-only/exact-order cases.",
+    "Added source-level route/security readiness matrix; identified missing public /services landing route (API/home/admin service capability exists) and remaining metadata gaps."
   ],
   "not_done_and_not_to_be_claimed": [
-    "Homepage source restoration is implemented but has not yet passed CI/typecheck/build or visual Preview validation.",
-    "No full route/API/RBAC/product feature matrix completed.",
-    "The new homepage tests have not yet been observed passing in CI.",
-    "No Preview deployment performed.",
-    "No Preview App/Store database identity verified.",
-    "No Production or DNS changes performed."
+    "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
+    "OTP/high-entropy one-time guest order access token is not implemented; order number is currently used as a bearer lookup factor.",
+    "Docker production build still fails in generated Store Prisma dynamic filesystem tracing; not fixed.",
+    "Standalone public /services landing page has not been implemented; confirm scope and ServiceRequest contract first.",
+    "SEO metadata gaps for model, auctions and Sell-in-7-Days registration/tracking routes remain.",
+    "No Preview deployment or Preview App/Store DB identity verification.",
+    "No Production or DNS changes."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Monitor GitHub Actions for the latest PR head and repair all failures. Once CI is green, continue full product integration audit and end-to-end verification; no Preview deploy until artifact provenance and separate App/Store DB identity gates pass.",
+    "task": "Wait for exact latest-head CI; fix all TypeScript, test and Docker build failures. The prior Docker failure traces to dynamic filesystem access in generated Store Prisma runtime. Then close guest order retrieval with OTP or a high-entropy signed token, complete public Services decision, and verify Preview database identities before any deploy.",
     "first_paths_to_read": [
       "src/app/page.tsx",
       "src/lib/homepage/sections.ts",
-      "tests/unit/homepage-sections.test.ts",
-      "tests/security/homepage-sections-readonly.test.ts",
-      ".github/workflows/ci.yml",
-      "src/app/api/admin/homepage-sections/route.ts",
-      "src/app/admin/home",
-      "src/app/store",
-      "src/app/companies",
-      "src/app/sell-in-7-days",
-      "src/app/services",
-      "src/app/knowledge"
+      "src/app/api/store/orders/route.ts",
+      "src/components/store/MyOrdersDialog.tsx",
+      "tests/security/store-order-read-authorization.test.ts",
+      "src/lib/generated/store-client/runtime/library.js",
+      "src/lib/generated/store-client/index.js",
+      "next.config.ts",
+      "Dockerfile",
+      "src/app/admin/layout.tsx",
+      "src/app/api/admin/store"
     ],
     "required_tests": [
-      "CI verify, audit-transaction, phase-tests and tls-proof jobs pass on exact latest head.",
-      "Canonical homepage helper unit tests pass.",
-      "Public homepage sections GET handler tests pass and never invoke createMany.",
-      "Typecheck, lint, production build and full required tests pass.",
-      "Preview desktop/mobile visual parity and all 17 homepage sections are verified after the DB identity gate."
+      "Exact latest-head CI verify, phase-tests, tls-proof and audit-transaction pass.",
+      "Homepage TypeScript, lint, full build and all 17-section contract tests pass.",
+      "Store order authorization tests pass; no unauthenticated userId lookup or phone-only guest enumeration.",
+      "Docker build succeeds without weakening Store DB isolation or security.",
+      "Preview App/Store database identities are independently verified before deploy."
     ],
     "do_not": [
       "Do not restart source inventory from zero.",
-      "Do not bulk-copy legacy files or reintroduce request-time database writes.",
-      "Do not merge draft PR until review and required checks are green.",
-      "Do not deploy Cloudflare before code/CI/artifact/database-identity gates pass.",
-      "Do not touch Production, DNS, or existing Preview Worker configuration."
+      "Do not copy legacy route side-effects or introduce fake stats/business data.",
+      "Do not merge draft PR before all required checks are green.",
+      "Do not deploy Cloudflare before exact-head CI, build artifact and DB identity gates pass.",
+      "Do not touch Production or DNS."
     ]
   }
 }
