@@ -63,7 +63,7 @@ jobs:
           if [[ -n "$sql_file" ]]; then
             exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
           fi
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
@@ -331,7 +331,7 @@ jobs:
           if [[ -n "$sql_file" ]]; then
             exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
           fi
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
@@ -416,7 +416,7 @@ jobs:
           if [[ -n "$sql_file" ]]; then
             exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
           fi
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
