@@ -553,6 +553,7 @@ jobs:
           HEAVIX_RUN_E5_REAL_DB_TESTS: '1'
         run: |
           set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
           export PGHOST=localhost
           export PGPORT="$HEAVIX_TLS_VALID_PORT"
