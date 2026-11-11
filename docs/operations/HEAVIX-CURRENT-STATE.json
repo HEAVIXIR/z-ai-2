@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T06:16:29.146Z",
+  "updated_at_utc": "2026-11-11T06:42:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -91,7 +91,9 @@
     "Recorded current Cloudflare Preview Worker active deployment/version and Preview environment vars without reading secret values.",
     "Corrected Store Control Plane audit to reflect shared Admin routes and Universal Resource Engine rather than falsely marking global pages missing.",
     "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff.",
-    "Homepage ServicesSection now links to /services and SERVICE_REQUEST, and its stale placeholder-fallback comment was corrected."
+    "Homepage ServicesSection now links to /services and SERVICE_REQUEST, and its stale placeholder-fallback comment was corrected.",
+    "Exact-head PR #307 CI verified successful: run #42971293294 on 45d86f1c7df9d644e4d33431ba5013e0a30646b7; all required jobs passed.",
+    "Read-only Cloudflare Worker settings audit confirmed heavix-preview has secret_text bindings DATABASE_URL and STORE_DATABASE_URL and HEAVIX_ENV=preview; secret values not read or modified."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -129,49 +131,44 @@
     "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched.",
     "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled.",
     "CI run #42915285217 failed two contract assertions (Rentals audit permission still rentals.manage; homepage test falsely matched local helper filename site-stats). Both source/test issues are fixed in commits d5e80c3 and 7d2c067.",
-    "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete."
+    "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete.",
+    "GitHub Actions proof secrets are not independently proven identical to live Cloudflare Worker secret bindings; proof workflow not dispatched."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll GitHub Actions run #42971201849 for head 7d2c0670a4eb8c51eb7a133ee4d3476679416292. If tests fail, inspect verify job 130359841421 logs and fix. If green, continue Preview App/Store PostgreSQL identity proof; browser profile still lacks GitHub sign-in, so secure sign-in authorization is required before browser-dispatched read-only Workerd proof. No deploy before proof.",
+    "task": "Establish provenance/equivalence of GitHub proof secrets to the existing Cloudflare Preview Worker bindings without exposing secret values. Then obtain secure GitHub sign-in authorization to dispatch the pinned read-only Workerd proof. Do not deploy until both identity and provenance are verified.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
       "docs/operations/HEAVIX-CURRENT-STATE.json",
-      "docs/operations/HEAVIX-WORKLOG.md",
-      "docs/audits/HEAVIX-PRODUCT-READINESS-MATRIX-2026-11-11.md",
-      "src/app/page.tsx",
-      "src/lib/homepage/sections.ts",
-      "src/app/api/admin/homepage-sections/route.ts",
-      "src/app/api/store/orders/route.ts",
-      "src/app/api/admin/store/health/route.ts",
-      "src/app/api/admin/marketplace/health/route.ts"
+      "docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md",
+      ".github/workflows/prisma-preview-workerd-proof.yml",
+      "scripts/run-prisma-workerd-proof.mjs"
     ],
     "required_tests": [
-      "Exact-head CI verify and all contract/unit/security tests pass.",
-      "Docker proof including Caddy-to-app connectivity passes on exact latest head.",
-      "All 17 homepage sections render and admin editing persists them by stable key.",
-      "Guest order lookup requires phone plus exact random order reference; userId enumeration is blocked; all order responses no-store.",
-      "Admin health metrics require route-level RBAC.",
-      "Preview App/Store PostgreSQL system identifiers are independently verified using the pinned read-only Workerd proof before deploy."
+      "Exact-head CI success on PR #307 head 45d86f1c.",
+      "Prove GitHub proof input provenance matches live Cloudflare Worker Preview secret bindings without exposing values.",
+      "Read-only Workerd proof validates exact PostgreSQL system identifiers, migration fingerprints and read-only transaction mode.",
+      "After deployment, re-audit Preview routes and verify restored complete UI."
     ],
     "do_not": [
-      "Do not restart source inventory from zero.",
-      "Do not bulk-copy legacy routes or reintroduce request-time DB writes.",
-      "Do not merge PR #307 until owner review and all required checks are green.",
-      "Do not deploy Cloudflare before exact-head CI and DB identity gates pass.",
-      "Do not alter Production, DNS, secrets, or the existing heavix-preview Worker during this recovery."
+      "Do not merge PR #307 until owner review.",
+      "Do not deploy before database provenance and identity gates pass.",
+      "Do not alter Production, DNS, secrets, or existing heavix-preview Worker.",
+      "Do not claim CI proves Preview DB identity."
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42971201849,
-    "sha": "7d2c0670a4eb8c51eb7a133ee4d3476679416292",
-    "status": "in_progress",
-    "note": "Fixes both contract failures from run #42915285217. Verify and other jobs were running at checkpoint."
+    "id": 42971293294,
+    "sha": "45d86f1c7df9d644e4d33431ba5013e0a30646b7",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
+    "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "7d2c0670a4eb8c51eb7a133ee4d3476679416292",
+  "latest_code_head_sha": "45d86f1c7df9d644e4d33431ba5013e0a30646b7",
   "latest_ci_run": {
     "id": 42914986140,
     "sha": "01452ed",
