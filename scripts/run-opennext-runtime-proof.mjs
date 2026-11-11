@@ -155,7 +155,8 @@ try {
   assert.equal(body.appFailsClosedWithoutBinding, true);
   assert.equal(body.storeFailsClosedWithoutBinding, true);
   assert.equal(body.mediaServiceModuleLoaded, true);
-  assert.equal(body.b2MediaConfigWorks, true);
+  assert.equal(body.b2ConfigScopeValidatedWithDummyCredentials, true);
+  assert.equal(body.b2LiveObjectOperationsAttempted, false);
   assert.equal(body.mediaReadGateRejectsInvalidId, true);
   assert.equal(body.mediaImageOptimizerWorks, true);
   assert.equal(body.databaseConnectionsAttempted, false);
