@@ -8,6 +8,13 @@ generator client {
   output   = "../../src/lib/generated/store-client"
 }
 
+generator workerClient {
+  provider   = "prisma-client"
+  output     = "../../src/lib/generated/store-worker-client"
+  engineType = "client"
+  runtime    = "workerd"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("STORE_DATABASE_URL")

@@ -16,8 +16,6 @@ node_modules
 # next.js
 /.next/
 /out/
-.open-next/
-.wrangler/
 
 # production
 /build
@@ -94,4 +92,15 @@ public/uploads/articles/test-article-*.png
 
 # STEP 15.88: local real-TLS PostgreSQL infrastructure (binaries, certs, cluster data)
 .tls-pg/
-src/lib/generated/
+
+# Cloudflare OpenNext generated output (never commit build artifacts)
+.open-next/
+.wrangler/
+
+# Generated Prisma workerd clients
+/src/lib/generated/worker-client/
+/src/lib/generated/store-worker-client/
+
+# Temporary local-only Workerd runtime proof config and credentials
+.heavix-workerd-proof-*/
+.dev.vars

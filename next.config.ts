@@ -95,29 +95,34 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: cspDirectives,
   },
-  ...(IS_PREVIEW_DEPLOYMENT
-    ? [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }]
-    : []),
 ];
 
-const isCloudflareBuild = process.env.HEAVIX_BUILD_TARGET === "cloudflare";
+const isCloudflareBuild =
+  process.env.HEAVIX_BUILD_TARGET === "cloudflare" ||
+  (process.env.HEAVIX_ENV?.toLowerCase() === "preview" &&
+    process.env.VERCEL !== "1");
 
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
-    // F-013: build MUST fail on type errors. Was previously `true` which masked
-    // security-relevant type mismatches at build time.
     ignoreBuildErrors: false,
+    tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
   ...(isCloudflareBuild
     ? {
         experimental: {
-          // Cloudflare Builds have a hard 1024-FD ceiling; constrain static generation.
+          // Cloudflare Workers Builds have a constrained file-descriptor limit.
+          // Keep Next's static generation to one worker in this adapter-only path.
           cpus: 1,
         },
         outputFileTracingExcludes: {
           "/*": [
+            "./src/lib/generated/worker-client/**/*.ts",
+            "./src/lib/generated/store-worker-client/**/*.ts",
+            "./src/lib/generated/store-client/**/*",
+            "./node_modules/@prisma/engines/**/*",
+            "./node_modules/prisma/**/*",
             "./docs/**/*",
             "./tests/**/*",
             "./scripts/**/*",
@@ -128,9 +133,17 @@ const nextConfig: NextConfig = {
             "./.turbo/**/*",
           ],
         },
-        webpack(config) {
-          config.parallelism = 4;
-          return config;
+        outputFileTracingIncludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
+            "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+          ],
+        },
+        turbopack: {
+          resolveAlias: {
+            "@/lib/db": "./src/lib/db.worker.ts",
+            "@/lib/store-db": "./src/lib/store-db.worker.ts",
+          },
         },
       }
     : {}),
@@ -144,7 +157,17 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          ...(IS_PREVIEW_DEPLOYMENT
+            ? [
+                {
+                  key: "X-Robots-Tag",
+                  value: "noindex, nofollow, noarchive",
+                },
+              ]
+            : []),
+        ],
       },
     ];
   },

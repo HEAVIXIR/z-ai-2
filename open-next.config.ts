@@ -2,7 +2,12 @@ import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 
 /**
  * HEAVIX OpenNext adapter configuration.
- * This is an isolated Cloudflare build experiment, not deployment approval.
+ *
+ * The Cloudflare-only build path uses Turbopack so OpenNext can rewrite
+ * Next.js WebAssembly chunk loading to the workerd-compatible static loader
+ * for the generated Prisma Worker clients. This does not alter the Node build
+ * path. No cache, queue, or storage
+ * override is enabled until its runtime contract is separately verified.
  */
 export default {
   ...defineCloudflareConfig(),

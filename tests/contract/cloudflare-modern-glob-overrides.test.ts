@@ -44,13 +44,16 @@ describe("CI Bun and lockfile compatibility", () => {
 });
 
 describe("Cloudflare Next file-descriptor guard", () => {
-  it("applies the constrained build settings only to Cloudflare", () => {
+  it("applies the constrained build settings only to Cloudflare and uses Turbopack for Workerd WASM", () => {
     const next = read("next.config.ts");
     expect(next).toContain('process.env.HEAVIX_BUILD_TARGET === "cloudflare"');
     expect(next).toContain("cpus: 1");
-    expect(next).toContain("config.parallelism = 4");
+    expect(next).toContain("turbopack:");
+    expect(next).not.toContain("webpack(config)");
+    expect(next).not.toContain("asyncWebAssembly");
     const openNext = read("open-next.config.ts");
     expect(openNext).toContain("patch-next-nft-concurrency.cjs");
+    expect(openNext).toContain("Turbopack");
     const patcher = read("scripts/patch-next-nft-concurrency.cjs");
     expect(patcher).toContain("next/dist/compiled/@vercel/nft");
     expect(patcher).toContain("fileIOConcurrency:w=1024");
@@ -62,6 +65,8 @@ describe("Cloudflare Next file-descriptor guard", () => {
     expect(patcher).toContain("16.4.5");
     const diagnostic = read("scripts/cloudflare-next-build-diagnostics.mjs");
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
+    expect(diagnostic).toContain('"--turbopack"');
+    expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack"');
   });
 });
 

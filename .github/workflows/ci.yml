@@ -53,6 +53,8 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck Worker-specific Prisma clients
+        run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
           sudo apt-get install -y postgresql-client
@@ -545,11 +547,11 @@ jobs:
           echo "STORE_DATABASE_URL interpolation verified"
           # 5. Assert no raw placeholders remain anywhere
           if echo "$RENDERED" | grep -q '${DB_PASSWORD}'; then
-            echo "FAIL: raw \${DB_PASSWORD} placeholder found in rendered config"
+            echo "FAIL: raw ${DB_PASSWORD} placeholder found in rendered config"
             exit 1
           fi
           if echo "$RENDERED" | grep -q '${HEAVIX_DOMAIN}'; then
-            echo "FAIL: raw \${HEAVIX_DOMAIN} placeholder found in rendered config"
+            echo "FAIL: raw ${HEAVIX_DOMAIN} placeholder found in rendered config"
             exit 1
           fi
           echo "All interpolation values verified exactly"
@@ -652,3 +654,138 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Optional, explicit Preview-only PPG runtime proof. It remains skipped until
+  # the repository variable is deliberately enabled and both secrets exist.
+  prisma-workerd-runtime-proof:
+    name: Prisma Workerd runtime proof (Preview-only)
+    if: ${{ vars.HEAVIX_ENABLE_PRISMA_WORKER_RUNTIME_PROOF == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: PREVIEW_ONLY
+      HEAVIX_APP_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_APP_PREVIEW_PPG_URL }}
+      HEAVIX_STORE_PREVIEW_PPG_URL: ${{ secrets.HEAVIX_STORE_PREVIEW_PPG_URL }}
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Fail closed unless both Preview inputs are supplied
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$HEAVIX_APP_PREVIEW_PPG_URL"
+          test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"
+          echo "Two distinct Preview connection inputs are present; values remain redacted."
+
+      - name: Execute read-only local Workerd runtime proof
+        run: bun run test:workerd
+
+  # Always-on runtime smoke: loads the generated clients and PPG adapter in workerd,
+  # but supplies no database credentials and cannot reach any database.
+  prisma-workerd-smoke:
+    name: Workerd runtime smoke (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Execute no-database Workerd smoke proof
+        run: bun run test:workerd
+
+
+  # Build the actual OpenNext/Workerd artifact and assert its WASM loader before any upload.
+  # Scoped to PR #191 while the Cloudflare Prisma runtime fix is being validated.
+  cloudflare-worker-artifact-proof:
+    name: Cloudflare Workerd WASM artifact proof (patched Next.js)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'infra/prisma6-cloudflare-runtime'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MIN_MEMORY_GIB: "8"
+      MIN_CPU_CORES: "4"
+      MIN_DISK_GIB: "8"
+      MAX_UNIQUE_TRACE_FILES: "5000"
+      HEAVIX_REF: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.0"
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install shell lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+      - name: Lint patched Next verification scripts
+        run: |
+          bash -n ops-verification/build-patched-next-pr100391.sh
+          bash -n ops-verification/verify-patched-next-pr100391.sh
+          shellcheck ops-verification/build-patched-next-pr100391.sh
+          shellcheck ops-verification/verify-patched-next-pr100391.sh
+          cargo --version
+          rustc --version
+          (cd "$RUNNER_TEMP" && pnpm --version)
+          bun --version
+      - name: Build patched Next.js 16.4.5 package set
+        run: bash ops-verification/build-patched-next-pr100391.sh artifacts/next-pr100391
+      - name: Verify patched Next against this exact HEAVIX commit
+        run: bash ops-verification/verify-patched-next-pr100391.sh artifacts/next-pr100391
+      - name: Upload verification evidence (package tarballs intentionally excluded)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-patched-next-workerd-proof-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/next-pr100391/BUILD-MANIFEST.txt
+            artifacts/next-pr100391/upstream-source-commit.txt
+            artifacts/next-pr100391/pr100391.patch
+            artifacts/next-pr100391/pr100391.patch.sha256
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch
+            artifacts/next-pr100391/packagefiles-dedup-fix.patch.sha256
+            artifacts/next-pr100391/SHA256SUMS
+            artifacts/next-pr100391/types-dir-before-pack.txt
+            artifacts/next-pr100391/next-tar-file-list.txt
+            artifacts/next-pr100391/next-tar-global-dts-matches.txt
+            artifacts/heavix-pr100391-verification/
