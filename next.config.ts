@@ -119,11 +119,7 @@ const nextConfig: NextConfig = {
     };
     const patchDefaultAssetRules = (rules: MutableRule[]) => {
       for (const rule of rules) {
-        if (
-          rule.test instanceof RegExp &&
-          rule.test.test("codec.wasm") &&
-          rule.generator?.filename
-        ) {
+        if (rule.generator?.filename) {
           const existing = Array.isArray(rule.exclude)
             ? rule.exclude
             : rule.exclude
