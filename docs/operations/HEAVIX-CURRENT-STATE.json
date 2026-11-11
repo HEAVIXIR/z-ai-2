@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T08:56:00.000Z",
+  "updated_at_utc": "2026-11-11T09:58:26.089Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "0db03c5bcc481c2fba5a3afb31f55034c308e7fa",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "4beff75222e70763d54fb778f7afa7e344b503e3",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -15,7 +15,7 @@
   "preview": {
     "url": "https://heavix-preview.heavixir.workers.dev",
     "must_preserve_existing_url": true,
-    "deployment_status": "NOT DEPLOYED: active Worker remains version 17 (063ce438-ca3a-4482-b416-9260b780bccf; deployed 2026-11-10T21:08:35Z). Cloudflare Build #42986374509 was a guarded no-op; no Worker Preview exists because previews_enabled=false.",
+    "deployment_status": "Recovery candidate NOT DEPLOYED. Existing Worker heavix-preview remains active deployment 9c079e5b-e3df-4295-80e0-e930d2d25552, version #17 063ce438-ca3a-4482-b416-9260b780bccf at 100% traffic. previews_enabled=false; Preview list empty. Current read-only smoke: root timeout, /api/health 503, /api/services 500, /services 404, /api/opennext-runtime-proof 404.",
     "database_identity_app": "NOT VERIFIED",
     "database_identity_store": "NOT VERIFIED",
     "production_isolation": "NOT VERIFIED"
@@ -26,7 +26,7 @@
     "stable_worker_replacement_allowed": false
   },
   "cloudflare_quota": {
-    "last_user_report": "Approximately 1900 of 3000 monthly usage units consumed; verify current account usage before any Cloudflare action.",
+    "last_user_report": "Owner-reported: more than 2,000 of 3,000 monthly Cloudflare Build units had been consumed by 2026-11-11; exact dashboard count not independently verified. No speculative or automatic Cloudflare retries.",
     "policy": "Avoid unnecessary builds/deployments; prefer GitHub/local checks first."
   },
   "verified_findings": [
@@ -48,7 +48,16 @@
     "Recovery branch lacks the OpenNext/Worker Prisma runtime stack; it still uses Prisma 6.11.1 and Node Prisma clients. The required Worker runtime files exist only on the divergent infra branch.",
     "Infra branch is 213 commits ahead and 11 behind main; recovery branch is 173 commits ahead of main. Whole-branch merge/cherry-pick is unsafe.",
     "Historical App/Store Workerd Preview database proof #42872987144 passed on infra commit 07b6de155284dd7813335201552acf4efbb6ad90, but has not been rerun on recovery and does not prove current Worker secrets.",
-    "Prisma 6.19.3 + PPG adapter 7.10.1 exact published compatibility matrix remains an open verification item."
+    "Prisma 6.19.3 + PPG adapter 7.10.1 exact published compatibility matrix remains an open verification item.",
+    "infra/prisma6-cloudflare-runtime current head was 65a2bb444eab9d80983feea70557a2e2213e67ef before a documentation-only recovery note was added; PR #191 remains Draft/unmerged. Exact-head CI run #42883319569 succeeded, but its DB-backed Preview proof was skipped; the latest independent approval is on older commit 3bf2333 and is stale.",
+    "Cloudflare Build 2326072d-1e24-45ec-9899-1fa9101ece37 on infra commit 4171f6e631086fe90f3b3b639dda4308613882c2 terminated after the Next.js 16.4.5 Turbopack optimized production build stalled and logged `Build took too long and was timed out`; no OpenNext artifact or Worker deployment resulted.",
+    "Older Cloudflare Build 1eacbd94-d31e-4969-b01a-88c50d707bfa succeeded on infra commit 3bf2333fde4f81473ce0d14c99cbd653a386c2e2 using Next.js 16.4.5 Webpack; this is older-head evidence and does not authorize changing the current WASM-sensitive bundler.",
+    "Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f is still running on recovery commit d5f034178918d0b44f83aca7986d82cbada10915; logs remain at the optimized Next.js build phase, and the deploy command is a no-op guard.",
+    "Recovery PR #307 current head is 4beff75222e70763d54fb778f7afa7e344b503e3. CI run #42998197252 passed on that exact head; OpenNext real-route proof run #42998197018 remains in progress. The previous proof attempt was interrupted during OpenNext bundling, and its retry was canceled when the PR head advanced.",
+    "Cloudflare GET for the active Worker secret bindings returned only name and type for DATABASE_URL and STORE_DATABASE_URL; no secret values were returned. The active Worker has no deployed /api/opennext-runtime-proof route or proof-mode/token/App-Store OID configuration.",
+    "Historical Workerd DB proof #42872987144 used protected GitHub Actions connection secrets; it does not prove the active Cloudflare Worker secret values or their target resources.",
+    "Read-only stable URL smoke against the existing version #17 returned root timeout, /api/health 503, /api/services 500, /services 404 and /api/opennext-runtime-proof 404.",
+    "The Cloudflare recovery document was updated on infra PR #191 in documentation-only commit 8cc293e849be4271f778a75b7f7158e2d356c8ab to record the exact Build timeout and distinguish it from the older Webpack success."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -119,7 +128,15 @@
     "Ran read-only live smoke tests on the existing Preview URL and recorded current HTTP outcomes.",
     "Updated append-only worklog with exact CI, Cloudflare, Preview and B2 configuration evidence.",
     "Compared recovery and infra branch divergence and identified minimal Cloudflare runtime stack required for a safe port.",
-    "Reviewed historical PR #191/#200 and exact scope of prior Workerd database proof."
+    "Reviewed historical PR #191/#200 and exact scope of prior Workerd database proof.",
+    "Read the active recovery branch continuation protocol, current-state checkpoint, worklog, integration plan, legacy inventory, Cloudflare quota runbook, project principles, architecture overview and homepage visual-parity specification.",
+    "Inspected infra/prisma6-cloudflare-runtime head 65a2bb444eab9d80983feea70557a2e2213e67ef, PR #191 reviews and exact-head CI run #42883319569; confirmed DB proof skipped and independent approval stale.",
+    "Inspected Cloudflare Build 2326072d-1e24-45ec-9899-1fa9101ece37 failure logs and older successful Build 1eacbd94-d31e-4969-b01a-88c50d707bfa; documented the distinction in docs/deployment/CLOUDFLARE-PREVIEW-RECOVERY.md on infra PR #191.",
+    "Monitored Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f on recovery commit d5f034178918d0b44f83aca7986d82cbada10915; it remained running with no log progress beyond the optimized build phase.",
+    "Verified recovery PR #307 head 4beff75222e70763d54fb778f7afa7e344b503e3; CI run #42998197252 passed and OpenNext run #42998197018 remained in progress.",
+    "Verified Cloudflare secret-binding metadata exposes no secret values and that actual Worker App/Store DB identity remains NOT VERIFIED.",
+    "Performed read-only smoke checks against the existing stable Preview URL; no recovery candidate was deployed.",
+    "No Cloudflare Build was triggered or retried; no Worker configuration or secrets changed; no database connection, migration, seed or write; no Production or DNS changes."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -167,12 +184,13 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Port the minimal, compatible Cloudflare/OpenNext/Prisma Worker runtime stack from the infra branch into recovery in small reviewed batches. Do not merge/cherry-pick the whole 213-commit infra branch. Preserve Node/Docker behavior and all deploy guards. Verify exact package compatibility, run exact-head CI, OpenNext build + no-DB real-route smoke, then rerun the read-only App/Store Preview identity proof on the recovery head. Only after this runtime gate proceed with B2 adapter and seller-owned media staging/finalization.",
+    "task": "Continue polling existing Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f and GitHub OpenNext run 42998197018 on recovery head 4beff75222e70763d54fb778f7afa7e344b503e3; do not trigger or retry Cloudflare Builds. Reconstruct the exact owner-confirmed prior successful Next.js/Cloudflare remediation from historical transcript, commit history, workflow revisions and Worker version metadata before any future quota-consuming build, and obtain explicit owner authorization for that build. Do not deploy until both actual Cloudflare Worker DB bindings are proven by read-only App/Store system_identifier plus database-OID queries against independently allow-listed Preview resources; GitHub Actions secrets and Cloudflare secret-name metadata are insufficient. Continue the minimal reviewed runtime-stack port only after the current exact-head CI/OpenNext proof and package compatibility gates are reconciled.",
     "source_branches": {
       "active_recovery": "recovery/heavix-full-product-integration-2026-11-11",
       "reference_infra": "infra/prisma6-cloudflare-runtime",
       "infra_pr": 191,
-      "opennext_proof_pr": 200
+      "opennext_proof_pr": 200,
+      "reference_infra_head": "8cc293e849be4271f778a75b7f7158e2d356c8ab"
     },
     "first_files_to_review": [
       "package.json",
@@ -199,7 +217,8 @@
       "OpenNext real-route smoke in Workerd with no DB credentials must pass on the recovery exact HEAD.",
       "Read-only App/Store Preview identity proof must pass on the recovery exact HEAD using independently allow-listed system identifiers and migration fingerprints.",
       "No Cloudflare Preview enablement or deployment until all prior gates pass and owner approves the one-time Preview migration switch.",
-      "Then implement B2 adapter and seller upload staging/finalization with mocked tests and a dedicated B2 object proof."
+      "Then implement B2 adapter and seller upload staging/finalization with mocked tests and a dedicated B2 object proof.",
+      "Prove the actual active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL bindings against the allow-listed App Preview and Store Preview physical PostgreSQL system identifiers and database OIDs; do not substitute GitHub Actions Workerd secrets."
     ],
     "do_not": [
       "Do not merge PR #191 or #200 wholesale into PR #307.",
@@ -209,7 +228,9 @@
       "Do not read or log any secret values.",
       "Do not perform DB migrations, seeds, or writes.",
       "Do not use the DB backup bucket for media or introduce R2.",
-      "Do not begin native iOS/Android before web parity is accepted."
+      "Do not begin native iOS/Android before web parity is accepted.",
+      "Do not trigger or automatically retry Cloudflare Builds without the exact prior successful remediation and explicit owner authorization.",
+      "Do not deploy or modify Worker secrets while actual App/Store Worker binding identities remain NOT VERIFIED."
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
@@ -510,5 +531,57 @@
       "No live test until exact bucket scope is confirmed"
     ],
     "next_step": "Confirm the UI bucket selector is set to the single heavix-dev-assets bucket (not All). Then configure secret only in secure runtime environment and perform random-object upload/readback SHA-256/delete proof within heavix-media/."
-  }
+  },
+  "last_live_smoke": {
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "root": "TIMEOUT",
+    "/api/health": 503,
+    "/api/services": 500,
+    "/services": 404,
+    "/api/opennext-runtime-proof": 404,
+    "classification": "Pre-deployment observations of existing active version #17; not a smoke test of the recovery candidate."
+  },
+  "last_github_runs": {
+    "recovery_head": "4beff75222e70763d54fb778f7afa7e344b503e3",
+    "pr307_ci": {
+      "run_id": 42998197252,
+      "conclusion": "success"
+    },
+    "pr307_opennext": {
+      "run_id": 42998197018,
+      "status": "in_progress"
+    },
+    "infra_head_before_recovery_doc_update": "65a2bb444eab9d80983feea70557a2e2213e67ef",
+    "infra_pr191_ci": {
+      "run_id": 42883319569,
+      "conclusion": "success",
+      "preview_db_proof": "skipped"
+    }
+  },
+  "last_cloudflare_builds": {
+    "infra_timeout": {
+      "build_id": "2326072d-1e24-45ec-9899-1fa9101ece37",
+      "branch": "infra/prisma6-cloudflare-runtime",
+      "commit": "4171f6e631086fe90f3b3b639dda4308613882c2",
+      "status": "terminated",
+      "cause": "Build took too long and was timed out during Next.js 16.4.5 Turbopack optimized production build; no OpenNext artifact."
+    },
+    "older_success": {
+      "build_id": "1eacbd94-d31e-4969-b01a-88c50d707bfa",
+      "branch": "infra/prisma6-cloudflare-runtime",
+      "commit": "3bf2333fde4f81473ce0d14c99cbd653a386c2e2",
+      "status": "success",
+      "qualification": "Older-head success; log used Next.js 16.4.5 Webpack; not evidence for current head."
+    },
+    "recovery_running": {
+      "build_id": "69a49f21-67dc-4df2-bbc5-911ca7d1be9f",
+      "branch": "recovery/heavix-full-product-integration-2026-11-11",
+      "commit": "d5f034178918d0b44f83aca7986d82cbada10915",
+      "status": "running",
+      "last_log": "2026-11-11T09:27:58Z; optimized production build phase; no deploy."
+    }
+  },
+  "blockers": [
+    "ACTUAL WORKER DB IDENTITY NOT VERIFIED: Cloudflare secret endpoints return only DATABASE_URL / STORE_DATABASE_URL names and secret_text types, not values. Current active Worker has no deployed proof route or App/Store database OID proof configuration. The successful GitHub Workerd proof used GitHub Actions secrets and does not establish that the active Worker bindings point to the allow-listed App Preview and Store Preview resources."
+  ]
 }

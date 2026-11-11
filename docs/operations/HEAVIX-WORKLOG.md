@@ -331,3 +331,33 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - The infra branch documents an unresolved exact package-support-matrix question for Prisma 6.19.3 + @prisma/adapter-ppg 7.10.1 + @prisma/ppg 1.0.1. The prior Workerd proof is positive runtime evidence but does not replace checking published peer dependencies/engines and rerunning exact-head tests after porting.
 - Priority correction: before B2 application implementation or any Cloudflare Preview enablement, port the minimal Cloudflare/OpenNext/Prisma Worker runtime stack from the infra work in small reviewed batches to the recovery branch. Preserve Node/Docker behavior, keep deploy commands fail-closed, validate exact package compatibility, run CI + OpenNext real-route no-DB smoke + Workerd DB identity proof on the recovery branch. Only after runtime is viable proceed with the B2 adapter and seller-owned media staging/finalization.
 - No code/runtime config change was made during this comparison. No Worker Preview was enabled, no Worker deployed, no DB connection/write, no secret read, and no Production/DNS mutation occurred.
+
+
+## 2026-11-11 — Exact-branch Build/CI and active Preview identity monitor
+
+### Branches and GitHub evidence
+
+- Active implementation branch remains `recovery/heavix-full-product-integration-2026-11-11`; PR #307 is Draft / unmerged at `4beff75222e70763d54fb778f7afa7e344b503e3`.
+- Exact-head CI run #42998197252 passed on that recovery commit. OpenNext real-route proof run #42998197018 is still in progress; do not call the runtime proof green until it completes.
+- Reference runtime branch `infra/prisma6-cloudflare-runtime` was at `65a2bb444eab9d80983feea70557a2e2213e67ef` before this session's documentation-only recovery note. PR #191 remains Draft/unmerged. CI run #42883319569 passed, but the Preview DB proof job was skipped. The latest independent approval is on older commit `3bf2333`, so it is stale for the current branch head.
+- The earlier OpenNext proof attempt on PR #307 was interrupted by a runner shutdown/SIGKILL during Worker bundling; a retry was canceled after a new branch commit advanced the PR head. The current exact-head run is the authoritative pending proof.
+
+### Cloudflare Build evidence
+
+- Build #2326072d-1e24-45ec-9899-1fa9101ece37 on infra commit `4171f6e631086fe90f3b3b639dda4308613882c2` ended `terminated`. Its log reached Next.js 16.4.5 (Turbopack), remained at `Creating an optimized production build ...`, then emitted `Build took too long and was timed out`. The CSS selector warning involving `#F58220` was non-fatal. No OpenNext artifact was produced and the deploy command was a no-op guard.
+- Older Build #1eacbd94-d31e-4969-b01a-88c50d707bfa succeeded on older infra commit `3bf2333fde4f81473ce0d14c99cbd653a386c2e2` with Next.js 16.4.5 (Webpack). It is not exact-head evidence and does not by itself prove that switching the current WASM-sensitive build back to Webpack is safe.
+- Build #69a49f21-67dc-4df2-bbc5-911ca7d1be9f on recovery commit `d5f034178918d0b44f83aca7986d82cbada10915` remained running at the last poll; logs had not advanced beyond the optimized production build phase. Its deploy command is still a no-op marker. No Cloudflare Build was triggered or retried during this session.
+- The Cloudflare recovery document was updated on infra PR #191 in commit `8cc293e849be4271f778a75b7f7158e2d356c8ab` with the exact timeout evidence and the distinction from the older Webpack success.
+
+### Existing Preview and database-identity gate
+
+- Existing Worker baseline is unchanged: `heavix-preview`, deployment `9c079e5b-e3df-4295-80e0-e930d2d25552`, version #17 `063ce438-ca3a-4482-b416-9260b780bccf`, 100% traffic. No new Worker Preview was created; `previews_enabled=false`.
+- Read-only secret-binding GETs returned only `DATABASE_URL` and `STORE_DATABASE_URL` names/types; values were not returned. The active Worker does not expose `/api/opennext-runtime-proof` and has no proof-mode/token/App-Store database-OID configuration.
+- The historical Workerd DB proof #42872987144 used GitHub Actions secrets. It proves those GitHub connection inputs, not the actual Cloudflare Worker bindings, and is therefore insufficient for the owner's release gate.
+- Live read-only smoke against the stable URL: root timeout; `/api/health` 503; `/api/services` 500; `/services` 404; `/api/opennext-runtime-proof` 404. These are observations of existing version #17, not the un-deployed recovery candidate.
+
+### Safety and next action
+
+- No deployment, Worker setting/secret change, database connection, migration, seed, database write, Production change or DNS change occurred.
+- Owner-reported Cloudflare Build usage is already above 2,000 of 3,000 monthly units. Do not trigger/retry Cloudflare Builds as a debugging loop. Recover the exact prior owner-confirmed successful remediation first and obtain explicit owner authorization before any further quota-consuming build.
+- Next exact action: poll the existing Build #69a49 and OpenNext run #42998197018 without retrying. Before any deployment, prove both actual Worker DB bindings by read-only App/Store PostgreSQL system identifier plus database OID checks against the independently allow-listed Preview resources. If the binding values remain unprovable, keep deployment blocked.
