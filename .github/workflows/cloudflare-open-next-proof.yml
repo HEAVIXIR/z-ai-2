@@ -12,6 +12,15 @@ on:
       - 'src/lib/db.worker.ts'
       - 'src/lib/store-db.worker.ts'
       - 'src/lib/notifications.ts'
+      - 'src/lib/media-image-optimizer.ts'
+      - 'src/lib/upload-security.ts'
+      - 'src/lib/media-service.ts'
+      - 'src/app/api/media/**'
+      - 'src/app/api/opennext-runtime-proof/route.ts'
+      - 'src/components/listings/ListingImageUploader.tsx'
+      - 'tests/unit/**'
+      - 'package.json'
+      - 'bun.lock'
       - 'src/lib/generated/worker-client/**'
       - 'src/lib/generated/store-worker-client/**'
       - '.github/workflows/cloudflare-open-next-proof.yml'
@@ -40,8 +49,20 @@ jobs:
         with:
           bun-version: "1.4.4"
 
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile
+      - name: Resolve and install Bun dependencies
+        run: |
+          set -euo pipefail
+          bun install
+          bun install --frozen-lockfile
+
+      - name: Upload resolved Bun lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-bun-lockfile-${{ github.sha }}
+          path: bun.lock
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Generate App and Store Worker Prisma clients
         run: |
