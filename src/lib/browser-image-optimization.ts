@@ -146,8 +146,8 @@ export async function prepareImageForUpload(
   maxBytes = MAX_IMAGE_UPLOAD_BYTES,
 ): Promise<PreparedImageUpload> {
   const limit = Math.min(maxBytes, MAX_IMAGE_UPLOAD_BYTES);
-  if (file.size <= limit) {
-    return { file, originalBytes: file.size, uploadBytes: file.size, compressed: false };
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("فقط تصاویر ثابت JPG، PNG و WebP پشتیبانی می‌شوند.");
   }
   if (file.size > MAX_SOURCE_IMAGE_BYTES) {
     throw new Error("حجم تصویر اصلی بیش از ۲۰ مگابایت است؛ تصویر کوچک‌تری انتخاب کنید.");
@@ -159,7 +159,10 @@ export async function prepareImageForUpload(
     throw new Error("این فرمت تصویر برای فشرده‌سازی مرورگری پشتیبانی نمی‌شود.");
   }
   if (dimensions.animated) {
-    throw new Error("برای حفظ پویانمایی، فایل متحرک بزرگ‌تر از ۴ مگابایت را باید کوچک‌تر کنید.");
+    throw new Error("تصاویر متحرک پشتیبانی نمی‌شوند. لطفاً یک تصویر ثابت ارسال کنید.");
+  }
+  if (file.size <= limit) {
+    return { file, originalBytes: file.size, uploadBytes: file.size, compressed: false };
   }
   if (
     !dimensions.width ||
