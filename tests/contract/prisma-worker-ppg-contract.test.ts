@@ -188,7 +188,7 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     const artifactProof = read("scripts/cloudflare-worker-artifact-proof.sh");
     expect(artifactProof).toContain("bunx wrangler deploy --dry-run");
     expect(artifactProof).toContain("HEAVIX_PREVIEW_DEPLOY_BLOCKED_PENDING_ARTIFACT_AND_DATABASE_ISOLATION_PROOF");
-    expect(artifactProof).toContain("query_compiler_bg.wasm");
+    expect(artifactProof).toContain("name '*.wasm' -size +0c");
     const patcher = read("scripts/patch-next-nft-concurrency.cjs");
     expect(openNext).toContain("patch-next-nft-concurrency.cjs");
     expect(patcher).toContain("next/dist/compiled/@vercel/nft");
