@@ -4,11 +4,6 @@ import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
 import resizeImage, { initResize } from "@jsquash/resize";
-import JPEG_DEC_WASM from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
-import PNG_WASM from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
-import WEBP_DEC_WASM from "@jsquash/webp/codec/dec/webp_dec.wasm";
-import WEBP_ENC_WASM from "@jsquash/webp/codec/enc/webp_enc.wasm";
-import RESIZE_WASM from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
 const MAX_INPUT_PIXELS = 12_000_000;
@@ -41,14 +36,31 @@ async function initializeCodecs(): Promise<void> {
   if (!codecsReady) {
     // Webpack's asyncWebAssembly module imports are compiled at build time.
     // Workerd forbids dynamic WebAssembly.compile/instantiate from byte buffers.
-    codecsReady = Promise.all([
-      initJpegDecode(JPEG_DEC_WASM),
-      initPngDecode(PNG_WASM),
-      initPngEncode(PNG_WASM),
-      initWebpDecode(WEBP_DEC_WASM),
-      initWebpEncode(WEBP_ENC_WASM),
-      initResize(RESIZE_WASM),
-    ])
+    const hasWorkerWasmBindings =
+      typeof JPEG_DEC_WASM !== "undefined" &&
+      typeof PNG_WASM !== "undefined" &&
+      typeof WEBP_DEC_WASM !== "undefined" &&
+      typeof WEBP_ENC_WASM !== "undefined" &&
+      typeof RESIZE_WASM !== "undefined";
+    codecsReady = Promise.all(
+      hasWorkerWasmBindings
+        ? [
+            initJpegDecode(JPEG_DEC_WASM),
+            initPngDecode(PNG_WASM),
+            initPngEncode(PNG_WASM),
+            initWebpDecode(WEBP_DEC_WASM),
+            initWebpEncode(WEBP_ENC_WASM),
+            initResize(RESIZE_WASM),
+          ]
+        : [
+            initJpegDecode(),
+            initPngDecode(),
+            initPngEncode(),
+            initWebpDecode(),
+            initWebpEncode(),
+            initResize(),
+          ],
+    )
       .then(() => undefined)
       .catch((error) => {
         codecsReady = null;
