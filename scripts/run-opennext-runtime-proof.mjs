@@ -192,7 +192,7 @@ try {
       "actual App Router route imported @/lib/db and @/lib/store-db",
       "route executed in OpenNext Worker request context",
       "both production-path proxies failed closed without DB bindings",
-      "B2 media service and its optimizer module imported in Workerd without credentials",
+      "B2 media service and optimizer imported with CI-only dummy bindings; no remote storage request was made",
       "invalid media IDs rejected before any B2 request",
       "jSquash WebAssembly image decode/optimization executes in Workerd without native host dependencies",
       "B2 runtime bindings populate process.env and match the fixed bucket/prefix scope without making a network request",

@@ -218,7 +218,7 @@ export async function GET(request: Request) {
   const storeClosed = store.status === "rejected" &&
     store.reason instanceof Error &&
     store.reason.message === "Missing Cloudflare Worker secret: STORE_DATABASE_URL";
-  // Import and exercise the media service in Workerd without B2 credentials.
+  // Exercise the media service with CI-only dummy B2 bindings. No storage request is made.
   // An invalid opaque id must be rejected before any object-storage request.
   const invalidMediaAsset = await getAsset("not-a-valid-media-id");
   const mediaServiceModuleLoaded = invalidMediaAsset === null;
