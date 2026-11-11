@@ -128,7 +128,8 @@ async function resizeIfNeeded(image: ImageData): Promise<ImageData> {
  * JPEG/PNG/WebP decode, Lanczos resize, PNG lossless output and WebP output.
  *
  * GIF and BMP are deliberately rejected at the upload-security boundary.
- * Animated images are not silently flattened.
+ * Animated images are not silently flattened. This module is exercised by the
+ * OpenNext Workerd smoke route; it must not acquire Node-native dependencies.
  */
 export async function optimizeImageBuffer(
   buffer: Buffer,
