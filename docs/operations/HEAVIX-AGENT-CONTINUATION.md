@@ -161,3 +161,13 @@ Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, 
 - Latest code commit is `c8e95911e98143c1f9aa0ef07ace952e56df856f` (CI concurrency guard); run #42915046750 is queued.
 - The new concurrency group did not retroactively cancel pre-existing queued runs in the observed Actions queue. Do not claim that it did.
 - TinyFish browser profile `prof_ae1391636a204a5a` has no GitHub sign-in. The read-only Workerd proof dispatch was stopped before submission. User authorization is needed to start secure browser-profile sign-in; never request a password in chat.
+
+
+### Authoritative media-storage decision — confirmed by project owner, 2026-11-11
+
+- **Backblaze B2 is the selected and existing object-storage service for HEAVIX media** (images, files, videos and other uploads). The owner explicitly confirmed that B2 was selected because Cloudflare R2 activation required PayPal, which was unavailable.
+- **Do not propose enabling Cloudflare R2, do not make R2 a prerequisite, and do not migrate media storage to R2.** The prior R2 activation request was withdrawn.
+- Cloudflare remains in use for the application's Worker/runtime and Preview hosting; that does not make R2 the media store.
+- Any investigation or repair of listing uploads, media management, persistence, public URLs, access control, and upload tests must first inspect and preserve the existing Backblaze B2 integration and its current credentials/configuration. Never print or expose secret values.
+- Before changing media code, identify the actual B2 bucket, endpoint/region, key handling, public/private URL strategy, upload/delete flows and Preview-vs-Production configuration from the repository and connected infrastructure. Do not invent bucket names or assume that a local filesystem is the intended persistent store.
+- This is a durable architecture decision. Every future agent/session must read this checkpoint before touching media upload or storage.
