@@ -38,7 +38,7 @@ if [[ -n "${POSTGRES_CONTAINER_ID:-}" ]]; then
     if [[ -n "$sql_file" ]]; then
       docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
     else
-      docker exec --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+      docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
     fi
   }
 fi
