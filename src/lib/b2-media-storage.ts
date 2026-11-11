@@ -176,7 +176,10 @@ async function signedRequest(
   options: { body?: Uint8Array | string; contentType?: string; query?: Array<[string, string]> } = {},
 ): Promise<Response> {
   const config = getB2MediaConfig();
-  assertMediaKey(key, config);
+  if (key) assertMediaKey(key, config);
+  else if (method !== "GET" || !options.query?.some(([name]) => name === "list-type")) {
+    throw new Error("B2 object key is required for this operation.");
+  }
 
   const timestamp = amzTimestamp(new Date());
   const payload = options.body === undefined
