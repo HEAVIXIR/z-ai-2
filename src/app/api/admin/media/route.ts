@@ -98,6 +98,7 @@ export async function POST(req: Request) {
       file: buffer,
       uploadedBy: user?.id ?? null,
       actorType: "ADMIN",
+      visibility: "PRIVATE",
       originalFilename: file.name,
       altText,
       entityType,
