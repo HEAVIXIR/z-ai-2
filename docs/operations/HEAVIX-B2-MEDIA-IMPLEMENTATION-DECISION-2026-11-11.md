@@ -122,26 +122,29 @@ The owner reports creating a standard application key named `heavix-dev-assets-m
 
 No secret key was shared in chat. Do not store or log any secret.
 
-### Security status — HOLD, not yet approved for runtime use
+### Security status — OWNER-CONFIRMED PLAN LIMITATION; CONDITIONAL ACCEPTANCE
 
-- The key has materially broader capabilities than the application data plane needs, especially bucket configuration writes (encryption, lifecycle, logging, notifications, replication) and `writeBuckets`.
-- A `namePrefix` restriction alone is not proof of a bucket restriction. Backblaze's `b2_create_key` documentation states that `namePrefix` applies across all buckets unless `bucketIds` is also supplied.
-- The full Bucket ID for `heavix-dev-assets` and the actual key's bucket restriction have not yet been independently verified.
-- Do not configure this key in Preview, local runtime, GitHub Actions or Worker secrets, and do not perform B2 operations with it.
-- The key's capabilities cannot be edited in place; a replacement key must be created, validated, and then the broad key revoked.
-- Backblaze documents explicit capability selection through the Native API `b2_create_key` using `bucketIds`, `namePrefix`, and a precise `capabilities` array. If the console preset does not offer granular selection, use the API from the owner's trusted local environment; never send master credentials or the new secret through chat.
+The owner has clarified that the current Backblaze web-console plan/UI does not expose granular capability selection and issues the full capability set shown above. This is a known constraint already encountered during the HEAVIX database-backup setup. Do not ask the owner to recreate the key with fewer capabilities or edit the existing key; Backblaze application-key capabilities are immutable after creation.
 
-### Intended minimum B2 media permissions
+- Accept the owner-provisioned key as the available credential option, subject to verifying that its resource restrictions are set to the exact `heavix-dev-assets` bucket and `namePrefix=heavix-media/`.
+- The capability list is broad, but Backblaze documents bucket and prefix restrictions as separate enforced controls. A bucket restriction limits access to the selected bucket(s), and a prefix restriction limits file operations to matching object names.
+- The current HEAVIX application must use only object-level operations under `heavix-media/`; do not call bucket administration APIs (bucket create/delete/configuration, lifecycle, encryption, logging, notifications, replication), account-wide bucket enumeration, or key-management APIs.
+- Do not reuse the media credential for DB backups or any other workload. Keep it server-side only; never expose it to browser/client bundles.
+- The key ID is non-secret metadata. The application secret remains only in the owner's secure secret manager/local environment.
+- No live credential test has been run yet. The key is accepted as a plan-constrained option, but operational scope must be verified before configuration.
 
-For the current S3-compatible implementation, start with:
-- `listFiles`
-- `readFiles`
-- `writeFiles`
-- `deleteFiles` only because the documented B2 S3 API requires it for deleting a specific object version; ordinary delete-by-name requires `writeFiles`.
+### Runtime containment controls
 
-Scope the key to the exact full Bucket ID for `heavix-dev-assets` and `namePrefix=heavix-media/`. Do not grant `listBuckets`, `readBuckets`, `writeBuckets`, bucket configuration permissions, key management, or account-wide access unless a specific tested SDK call proves it necessary. The app already knows the exact bucket and endpoint; avoid S3 List Buckets and bucket administration calls.
+1. Confirm the key's Backblaze "Allow Access to Bucket(s)" setting is the single exact `heavix-dev-assets` bucket, not `All`.
+2. Confirm the object name prefix is exactly `heavix-media/`.
+3. Configure only server-side environment variables for the S3-compatible endpoint `https://s3.us-east-005.backblazeb2.com`, region `us-east-005`, bucket name, key ID and secret.
+4. Hard-code the expected bucket and prefix in server-side configuration; reject any requested object key outside the prefix.
+5. Do not expose bucket-management routes or let user input choose bucket names, endpoints, prefixes or credentials.
+6. Test with a random object strictly inside `heavix-media/`: upload, read back, compare SHA-256, delete, then verify absence. No bucket configuration operation is part of this proof.
+7. Log operation type and opaque object identifier only; never log credentials, authorization headers or signed secrets.
+8. If bucket-scope verification fails, do not run the live proof; retain mock-adapter tests and request the one missing non-secret setting confirmation.
 
 References:
 - https://www.backblaze.com/docs/cloud-storage-application-keys
-- https://backblaze-prod.us.document360.io/apidocs/b2-create-key
 - https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys
+- https://backblaze-prod.us.document360.io/apidocs/b2-create-key

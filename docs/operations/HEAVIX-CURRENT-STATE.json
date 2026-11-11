@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T10:00:00.000Z",
+  "updated_at_utc": "2026-11-11T10:20:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -437,12 +437,13 @@
     "design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md"
   },
   "b2_media_key_provisioning": {
-    "status": "HOLD_NOT_CONFIGURED",
+    "status": "OWNER_CONFIRMED_PLAN_LIMITATION_ACCEPTED_PENDING_BUCKET_SCOPE_CONFIRMATION",
     "key_name": "heavix-dev-assets-media-preview",
+    "key_id": "0055d132b1dcc410000000004",
     "bucket_name": "heavix-dev-assets",
     "prefix": "heavix-media/",
     "expiration": "none",
-    "reported_capabilities": [
+    "capabilities_as_reported": [
       "deleteFiles",
       "listBuckets",
       "listFiles",
@@ -462,18 +463,18 @@
       "writeBuckets",
       "writeFiles"
     ],
+    "owner_confirmed_limitation": "Current Backblaze plan/UI does not permit granular capability selection; full capability set is the only available key option. Do not ask owner to recreate/edit a reduced-capability key.",
     "secret_shared_in_chat": false,
-    "full_bucket_id_verified": false,
-    "bucket_scope_verified": false,
-    "risks": [
-      "Bucket configuration write capabilities are broader than application media needs.",
-      "namePrefix alone does not restrict the key to a single bucket; bucketIds must be explicitly set."
+    "bucket_scope": "Needs confirmation that Allow Access to Bucket(s) is set to the single heavix-dev-assets bucket, not All.",
+    "prefix_scope": "Owner reports exact namePrefix heavix-media/.",
+    "runtime_constraints": [
+      "Server-side only; never expose key to browser/client",
+      "Use only object operations under heavix-media/",
+      "No bucket administration, configuration, account-wide enumeration, or key-management API calls",
+      "Hard-code bucket and prefix; reject object keys outside prefix",
+      "Separate media credential from DB backup credentials",
+      "No live test until exact bucket scope is confirmed"
     ],
-    "next_step": "Obtain full Bucket ID and verify whether key Allow Access to Buckets is set to the specific heavix-dev-assets bucket rather than All. Create a replacement via b2_create_key with bucketIds=[exact bucket ID], namePrefix=heavix-media/, capabilities=[listFiles,readFiles,writeFiles,deleteFiles]. Keep all secrets in the owner's secure local environment. Do not configure or use current key.",
-    "official_docs": [
-      "https://www.backblaze.com/docs/cloud-storage-application-keys",
-      "https://backblaze-prod.us.document360.io/apidocs/b2-create-key",
-      "https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys"
-    ]
+    "next_step": "Confirm the UI bucket selector is set to the single heavix-dev-assets bucket (not All). Then configure secret only in secure runtime environment and perform random-object upload/readback SHA-256/delete proof within heavix-media/."
   }
 }

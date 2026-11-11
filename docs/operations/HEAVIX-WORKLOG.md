@@ -294,3 +294,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Official Backblaze documentation confirms a key can be scoped by `bucketIds` plus `namePrefix`; prefix alone applies across buckets. A key's capabilities cannot be edited in place.
 - Runtime configuration remains on HOLD pending full Bucket ID and verification of exact bucket restriction. Replace with explicit Native API `b2_create_key` capabilities `listFiles,readFiles,writeFiles,deleteFiles`, scoped to the one media bucket and prefix.
 - Do not use current key for any application, Preview, Worker, GitHub Actions or B2 object operations.
+
+## 2026-11-11 — B2 application-key plan limitation accepted
+
+- Owner corrected prior assumption: their current Backblaze plan/UI does not expose granular capability selection; the full listed capability set is the only available option, consistent with prior DB-backup setup. Do not ask owner to recreate or edit a reduced-capability key.
+- Accepted current key as the available credential option, conditional on confirming resource scope is the single `heavix-dev-assets` bucket and prefix `heavix-media/`.
+- Backblaze documentation describes bucket restriction and prefix restriction as enforced resource scopes distinct from capability set. Runtime will use only object operations under the prefix and will not call bucket-administration APIs.
+- Key metadata recorded: key name `heavix-dev-assets-media-preview`; key ID `0055d132b1dcc410000000004`; bucket `heavix-dev-assets`; prefix `heavix-media/`; no expiry. Secret was not shared or recorded.
+- Live B2 test remains pending secure configuration and verification of exact bucket scope. No B2 API call, upload, deletion, or secret configuration was performed.
+- Previous "HOLD due to broad capability list" is superseded by this owner-confirmed plan constraint; remaining gate is resource-scope confirmation, not capability reduction.
