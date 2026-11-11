@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-10T22:30:57.215Z",
+  "updated_at_utc": "2026-11-11T06:16:29.146Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "60d238b013170753cc0be374efaea2770cb97f46",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "8ac241262d2f0711ba8092f3d602c9fab24b03c4",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -127,12 +127,14 @@
     "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted.",
     "Older GitHub Actions runs created before the new concurrency group remain active/queued; no cancel-workflow-run action is exposed by the GitHub connector.",
     "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched.",
-    "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled."
+    "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled.",
+    "CI run #42915285217 failed two contract assertions (Rentals audit permission still rentals.manage; homepage test falsely matched local helper filename site-stats). Both source/test issues are fixed in commits d5e80c3 and 7d2c067.",
+    "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Poll CI run #42915190630 for code head c8e95911e98143c1f9aa0ef07ace952e56df856f (PR head 27de6eb is docs-only on top). The CI queue remains congested; concurrency config only affects new runs and has not cancelled all pre-existing runs. If user authorizes secure GitHub browser sign-in, cancel obsolete runs and dispatch the read-only Workerd proof with PREVIEW_ONLY. Do not deploy before exact-head CI and actual Preview App/Store DB identity verification.",
+    "task": "Poll GitHub Actions run #42971201849 for head 7d2c0670a4eb8c51eb7a133ee4d3476679416292. If tests fail, inspect verify job 130359841421 logs and fix. If green, continue Preview App/Store PostgreSQL identity proof; browser profile still lacks GitHub sign-in, so secure sign-in authorization is required before browser-dispatched read-only Workerd proof. No deploy before proof.",
     "first_paths_to_read": [
       "AGENTS.md",
       "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
@@ -164,12 +166,12 @@
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42915190630,
-    "sha": "27de6eb135d819716b6f993ef1e8518c584b351a",
-    "status": "queued",
-    "note": "The workflow run includes the latest code head c8e9591; this head differs only by documentation from the code commit. Fetch PR #307 current head before acting."
+    "id": 42971201849,
+    "sha": "7d2c0670a4eb8c51eb7a133ee4d3476679416292",
+    "status": "in_progress",
+    "note": "Fixes both contract failures from run #42915285217. Verify and other jobs were running at checkpoint."
   },
-  "latest_code_head_sha": "c8e95911e98143c1f9aa0ef07ace952e56df856f",
+  "latest_code_head_sha": "7d2c0670a4eb8c51eb7a133ee4d3476679416292",
   "latest_ci_run": {
     "id": 42914986140,
     "sha": "01452ed",
