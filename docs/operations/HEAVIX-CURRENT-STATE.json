@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T11:36:30.000Z",
+  "updated_at_utc": "2026-11-11T22:30:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "7ef9bc290f1342230808bd92c20f70f3b54d11aa",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "631414a900de1fcd698c10a1b7079e3bf41a22d2",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -142,7 +142,11 @@
     "Ported the proven Cloudflare Webpack profile from the successful proof branch into the active recovery branch: Next config Webpack parallelism 4, asyncWASM, App/Store worker aliases; explicit Webpack OpenNext build command; diagnostics default to Webpack; fixed duplicate notification read property.",
     "Added the reusable exact-head OpenNext/Workerd artifact proof workflow to the recovery branch.",
     "Added recovery/heavix-full-product-integration-2026-11-11 to the non-production Cloudflare Build trigger branch exclusions and read back the trigger to verify it. Build and deploy commands were not changed.",
-    "No Cloudflare Build, Worker upload/deployment, database connection/write, B2 object operation, Production change or DNS change was performed."
+    "No Cloudflare Build, Worker upload/deployment, database connection/write, B2 object operation, Production change or DNS change was performed.",
+    "Compared extracted legacy and recovery Git trees: all 145 legacy page routes and 278 legacy API handlers are present; no missing legacy static image assets after path normalization.",
+    "Recorded absent legacy source-file dispositions and rejected unsafe legacy direct-ZAI AI gateway and unreviewed legacy seed/migration scripts.",
+    "Verified exact-head CI #43109607418 and OpenNext Workerd proof #43109607496 are completed/success.",
+    "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -550,12 +554,15 @@
   "last_github_runs": {
     "recovery_head": "4beff75222e70763d54fb778f7afa7e344b503e3",
     "pr307_ci": {
-      "run_id": 42998197252,
-      "conclusion": "success"
+      "run_id": 43109607418,
+      "conclusion": "success",
+      "exact_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f"
     },
     "pr307_opennext": {
-      "run_id": 42998197018,
-      "status": "in_progress"
+      "run_id": 43109607496,
+      "status": "completed",
+      "conclusion": "success",
+      "exact_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f"
     },
     "infra_head_before_recovery_doc_update": "65a2bb444eab9d80983feea70557a2e2213e67ef",
     "infra_pr191_ci": {
@@ -578,7 +585,9 @@
         "no-database Workerd smoke",
         "artifact upload"
       ]
-    }
+    },
+    "recovery_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f",
+    "opennext_audit_artifact_digest": "sha256:8a0b1023e941b28578cecf442ef95fa434d94e069bdf6a899cdb171b128c5534"
   },
   "last_cloudflare_builds": {
     "infra_timeout": {
@@ -604,6 +613,31 @@
     }
   },
   "blockers": [
-    "ACTUAL WORKER DB IDENTITY NOT VERIFIED: Cloudflare secret endpoints return only DATABASE_URL / STORE_DATABASE_URL names and secret_text types, not values. Current active Worker has no deployed proof route or App/Store database OID proof configuration. The successful GitHub Workerd proof used GitHub Actions secrets and does not establish that the active Worker bindings point to the allow-listed App Preview and Store Preview resources."
-  ]
+    "ACTUAL WORKER DB IDENTITY NOT VERIFIED: active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL targets have not been proven to be the allow-listed Preview App and Store databases. Secret names are not identity evidence. The protected GitHub Workerd proof workflow has not been dispatched in this session, and GitHub secret proof alone must be tied to the actual Worker bindings.",
+    "LIVE B2 OBJECT OPERATIONS NOT VERIFIED: no real upload/download/SHA-256/delete proof has been performed against the dedicated heavix-dev-assets bucket.",
+    "PREVIEW RELEASE NOT PERFORMED: active Worker still serves the previous deployment; candidate is not deployed. Runtime/browser/data/visual acceptance across product journeys remains pending."
+  ],
+  "last_verified_legacy_parity": {
+    "audited_at_utc": "2026-11-11T22:30:00.000Z",
+    "legacy_repository": "dellk00k/z",
+    "legacy_commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "recovery_code_commit": "5e1ad2341d713221840d335fa318a74ce9e5668f",
+    "legacy_page_routes": 145,
+    "current_page_routes": 173,
+    "missing_legacy_page_routes": 0,
+    "legacy_api_routes": 278,
+    "current_api_routes": 365,
+    "missing_legacy_api_routes": 0,
+    "missing_legacy_static_image_assets": 0,
+    "absent_legacy_application_source_files": 4,
+    "dispositions": {
+      "compare_page_client": "Current /compare route contains the client experience; no duplicate component needed.",
+      "listing_price_intelligence": "Current PriceEstimateCard + price-engine/price-compare-service replace the legacy component.",
+      "price_intelligence_library": "Current price-engine/price-compare-service replace the legacy library contract.",
+      "ai_gateway_service": "Legacy direct ZAI SDK service rejected; current validated gateway architecture retained because legacy auth/policy/budget enforcement is best-effort."
+    },
+    "audit_document": "docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md",
+    "audit_commit": "2772a12fd5cf5b29c2713b4f14a1be2176b28ebe",
+    "qualification": "Source-tree parity only; does not prove live Preview routes, real data, visual parity, RBAC journeys or object storage."
+  }
 }
