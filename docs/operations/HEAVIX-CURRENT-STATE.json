@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T22:35:00.000Z",
+  "updated_at_utc": "2026-11-11T22:38:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "6780bd08bc99f13b091be246c6972c9de8629932",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "6e6983efe66154321998e9ce5d623d1885222c24",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -147,7 +147,8 @@
     "Recorded absent legacy source-file dispositions and rejected unsafe legacy direct-ZAI AI gateway and unreviewed legacy seed/migration scripts.",
     "Verified exact-head CI #43109607418 and OpenNext Workerd proof #43109607496 are completed/success.",
     "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog.",
-    "Updated the historical legacy inventory audit with an explicit recovery-branch correction to prevent stale main-branch findings being treated as current."
+    "Updated the historical legacy inventory audit with an explicit recovery-branch correction to prevent stale main-branch findings being treated as current.",
+    "Ran read-only browser-rendered live Preview sweep across public routes and APIs; documented HTTP outcomes and empty-data states in the parity audit."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -192,7 +193,7 @@
     "No B2 media adapter, seller staging/finalization flow, B2 upload/readback/hash/delete proof, or durable media persistence exists.",
     "Preview App/Store database identities and Production isolation remain unverified."
   ],
-  "next_action": "Obtain authorized GitHub Actions workflow_dispatch capability for the existing protected read-only Preview App/Store database identity proof. Do not deploy until actual active Worker binding identity and live B2 object operations are independently proven.",
+  "next_action": "Use authorized GitHub Actions workflow_dispatch to run the existing protected read-only Preview App/Store DB identity proof; then prove the actual active Worker binding targets and run a bounded live B2 object proof. Do not deploy before these gates.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
     "id": 42971293294,
@@ -565,7 +566,8 @@
   "blockers": [
     "ACTUAL WORKER DB IDENTITY NOT VERIFIED: active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL targets have not been proven to be the allow-listed Preview App and Store databases. Secret names are not identity evidence. The protected GitHub Workerd proof workflow has not been dispatched in this session, and GitHub secret proof alone must be tied to the actual Worker bindings.",
     "LIVE B2 OBJECT OPERATIONS NOT VERIFIED: no real upload/download/SHA-256/delete proof has been performed against the dedicated heavix-dev-assets bucket.",
-    "PREVIEW RELEASE NOT PERFORMED: active Worker still serves the previous deployment; candidate is not deployed. Runtime/browser/data/visual acceptance across product journeys remains pending."
+    "PREVIEW RELEASE NOT PERFORMED: active Worker still serves the previous deployment; candidate is not deployed. Runtime/browser/data/visual acceptance across product journeys remains pending.",
+    "ACTIVE PREVIEW RUNTIME/DATA FAILURES: old Worker returns 503 for /api/health, 500 for multiple product pages/APIs, 404 for /services, and empty/partial Companies/Store/homepage data. Recovery source route parity does not fix the active Worker until safe Preview runtime/database binding and data acceptance are completed."
   ],
   "last_verified_legacy_parity": {
     "audited_at_utc": "2026-11-11T22:30:00.000Z",
@@ -589,7 +591,31 @@
     "audit_document": "docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md",
     "audit_commit": "2772a12fd5cf5b29c2713b4f14a1be2176b28ebe",
     "qualification": "Source-tree parity only; does not prove live Preview routes, real data, visual parity, RBAC journeys or object storage.",
-    "inventory_correction": "The older HEAVIX-LEGACY-TO-CURRENT-INVENTORY document now explicitly distinguishes its historical main-branch regression from the restored recovery branch."
+    "inventory_correction": "The older HEAVIX-LEGACY-TO-CURRENT-INVENTORY document now explicitly distinguishes its historical main-branch regression from the restored recovery branch.",
+    "live_preview_sweep": {
+      "observed_at_local": "2026-11-12T02:00:00+03:30",
+      "active_worker_only": true,
+      "results": {
+        "/": "200 old shell with empty/placeholder sections",
+        "/api/health": 503,
+        "/api/services": 500,
+        "/services": 404,
+        "/sell-in-7-days": 500,
+        "/knowledge": 500,
+        "/auctions": 500,
+        "/rentals": 500,
+        "/listings": 500,
+        "/api/listings": 500,
+        "/market-insights": 500,
+        "/brands": 500,
+        "/transport/request": 500,
+        "/companies": "200 but no company records/content",
+        "/store": "200 partial/empty; USD rate displayed as 0",
+        "/compare": "200 comparison UI loads but listing API is 500",
+        "/admin": "login required"
+      },
+      "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
+    }
   },
-  "documentation_head": "6780bd08bc99f13b091be246c6972c9de8629932"
+  "documentation_head": "6e6983efe66154321998e9ce5d623d1885222c24"
 }
