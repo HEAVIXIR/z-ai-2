@@ -78,7 +78,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
     url.pathname = `/${databaseName}`;
     return url.toString();
   };
-  const SOURCE_DB_URL = databaseUrlFor(BASE_DATABASE_URL.pathname.replace(/^\\//, ""));
+  const SOURCE_DB_URL = databaseUrlFor(BASE_DATABASE_URL.pathname.slice(1));
   const MAINTENANCE_URL = databaseUrlFor("postgres");
   const BACKUP_DIR = "/tmp/e5-rehearsal";
   const BACKUP_FILE = join(BACKUP_DIR, "e5-rehearsal.dump");
