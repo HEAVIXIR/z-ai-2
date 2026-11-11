@@ -1,0 +1,76 @@
+name: Cloudflare OpenNext Webpack Proof
+
+on:
+  pull_request:
+    branches:
+      - 'recovery/**'
+    paths:
+      - 'next.config.ts'
+      - 'open-next.config.ts'
+      - 'scripts/cloudflare-next-build-diagnostics.mjs'
+      - 'scripts/patch-next-nft-concurrency.cjs'
+      - 'src/lib/db.worker.ts'
+      - 'src/lib/store-db.worker.ts'
+      - 'src/lib/generated/worker-client/**'
+      - 'src/lib/generated/store-worker-client/**'
+      - '.github/workflows/cloudflare-open-next-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-cloudflare-open-next-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  open-next-webpack:
+    name: OpenNext build with Worker Prisma Webpack async-WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate App and Store Worker Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Run the exact Cloudflare OpenNext build profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"
+          node scripts/patch-next-nft-concurrency.cjs
+          UV_THREADPOOL_SIZE=4 HEAVIX_BUILD_TARGET=cloudflare HEAVIX_NEXT_BUNDLER=webpack bunx opennextjs-cloudflare build --noMinify
+
+      - name: Verify deployable OpenNext Worker artifact exists
+        run: |
+          set -euo pipefail
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+          echo "PASS: .open-next/worker.js and assets directory exist"
+
+      - name: Upload OpenNext proof artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-open-next-webpack-${{ github.sha }}
+          path: |
+            .open-next/worker.js
+            .open-next/assets
+            .open-next/worker
+          if-no-files-found: warn
+          retention-days: 7
