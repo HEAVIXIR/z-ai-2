@@ -139,6 +139,11 @@ const nextConfig: NextConfig = {
     // Exclude jSquash from Next's default WASM module rule; the following
     // asset/inline rule supplies data URLs to the generated codec glue code.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
+    config.module.rules.push({
+      test: /\.wasm$/,
+      include: jsquashWasm,
+      type: "asset/inline",
+    });
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
