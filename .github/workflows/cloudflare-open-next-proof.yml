@@ -1,6 +1,9 @@
 name: Cloudflare OpenNext Webpack Proof
 
 on:
+  push:
+    branches:
+      - 'proof/**'
   pull_request:
     branches:
       - 'recovery/**'
@@ -65,9 +68,9 @@ jobs:
           bun install --frozen-lockfile
 
       - name: Commit resolved Bun lockfile to same-repository proof branch
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'proof/')
+        if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'proof/')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/proof/'))
         env:
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
