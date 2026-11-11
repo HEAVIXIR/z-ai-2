@@ -67,4 +67,16 @@ describe("seller B2 media staging contract", () => {
     expect(adapter).toContain('requiredEnv("B2_APPLICATION_KEY")');
     expect(adapter).toContain("createB2MediaReadUrl");
   });
+  
+  it("declares the fixed B2 media bindings and process.env compatibility in Wrangler", () => {
+    const worker = read("wrangler.jsonc");
+    expect(worker).toContain('"nodejs_compat_populate_process_env"');
+    expect(worker).toContain('"B2_BUCKET_NAME": "heavix-dev-assets"');
+    expect(worker).toContain('"B2_MEDIA_PREFIX": "heavix-media/"');
+    expect(worker).toContain('"B2_REGION": "us-east-005"');
+    expect(worker).toContain('"B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"');
+    expect(worker).toContain('"B2_KEY_ID"');
+    expect(worker).toContain('"B2_APPLICATION_KEY"');
+  });
+
 });

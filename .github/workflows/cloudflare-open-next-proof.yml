@@ -13,9 +13,18 @@ on:
       - 'src/lib/store-db.worker.ts'
       - 'src/lib/notifications.ts'
       - 'src/lib/media-image-optimizer.ts'
+      - 'src/lib/b2-media-storage.ts'
+      - 'src/app/api/listings/route.ts'
+      - 'src/app/api/admin/media/**'
       - 'src/lib/upload-security.ts'
       - 'src/lib/media-service.ts'
       - 'src/app/api/media/**'
+      - 'src/components/admin/MediaUploader.tsx'
+      - 'wrangler.jsonc'
+      - 'scripts/run-opennext-runtime-proof.mjs'
+      - 'vitest.preview-proof.config.ts'
+      - 'tests/security/**'
+      - 'tests/admin-backup-readiness.test.ts'
       - 'src/app/api/opennext-runtime-proof/route.ts'
       - 'src/components/listings/ListingImageUploader.tsx'
       - 'tests/unit/**'
@@ -27,7 +36,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: heavix-cloudflare-open-next-proof-${{ github.event.pull_request.number || github.ref }}
@@ -55,6 +64,20 @@ jobs:
           bun install
           bun install --frozen-lockfile
 
+      - name: Commit resolved Bun lockfile to same-repository proof branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'proof/')
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- bun.lock; then
+            git add bun.lock
+            git commit -m "chore(deps): refresh Bun lockfile"
+            git push origin "HEAD:refs/heads/${PR_HEAD_REF}"
+          fi
+
       - name: Upload resolved Bun lockfile for review
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,9 +100,9 @@ jobs:
       - name: Lint application
         run: bun run lint
 
-      - name: Run isolated unit and security suites
+      - name: Run deterministic Preview proof and security suites
         run: |
-          bunx vitest run tests/unit
+          bun run test:preview-proof
           bun run test:security
 
       - name: Run the exact Cloudflare Preview OpenNext build profile
@@ -118,6 +141,8 @@ jobs:
         env:
           DATABASE_URL: "postgresql://dry-run.invalid:5432/app"
           STORE_DATABASE_URL: "postgresql://dry-run.invalid:5432/store"
+          B2_KEY_ID: "0055d132b1dcc410000000004"
+          B2_APPLICATION_KEY: "ci-only-dummy-application-key-material"
           HEAVIX_APP_PREVIEW_DATABASE_OID: "1"
           HEAVIX_STORE_PREVIEW_DATABASE_OID: "2"
           HEAVIX_ENV: preview
@@ -133,6 +158,11 @@ jobs:
         env:
           HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
         run: bun run test:workerd
+
+      - name: Execute OpenNext media optimizer and B2 binding smoke in Workerd
+        env:
+          HEAVIX_SKIP_OPENNEXT_BUILD: "1"
+        run: bun scripts/run-opennext-runtime-proof.mjs
 
       - name: Upload complete OpenNext proof artifact
         if: always()
