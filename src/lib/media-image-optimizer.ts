@@ -98,6 +98,91 @@ function assertDimensions(image: ImageData): void {
   }
 }
 
+function readUInt24LE(buffer: Buffer, offset: number): number {
+  return buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16);
+}
+
+function readJpegDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  const startOfFrame = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  let offset = 2;
+  while (offset + 4 <= buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset++;
+      continue;
+    }
+    while (offset < buffer.length && buffer[offset] === 0xff) offset++;
+    if (offset >= buffer.length) break;
+    const marker = buffer[offset++];
+    if (marker === 0x00 || marker === 0x01 || marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > buffer.length) break;
+    const segmentLength = buffer.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > buffer.length) break;
+    if (startOfFrame.has(marker) && segmentLength >= 7) {
+      return {
+        height: buffer.readUInt16BE(offset + 3),
+        width: buffer.readUInt16BE(offset + 5),
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+function readWebpDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 20 || buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WEBP") return null;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkType = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const data = offset + 8;
+    if (chunkSize > buffer.length - data) return null;
+    if (chunkType === "VP8X" && chunkSize >= 10) {
+      return {
+        width: readUInt24LE(buffer, data + 4) + 1,
+        height: readUInt24LE(buffer, data + 7) + 1,
+      };
+    }
+    if (chunkType === "VP8 " && chunkSize >= 10 &&
+        buffer[data + 3] === 0x9d && buffer[data + 4] === 0x01 && buffer[data + 5] === 0x2a) {
+      return {
+        width: buffer.readUInt16LE(data + 6) & 0x3fff,
+        height: buffer.readUInt16LE(data + 8) & 0x3fff,
+      };
+    }
+    if (chunkType === "VP8L" && chunkSize >= 5 && buffer[data] === 0x2f) {
+      const bits = buffer[data + 1] | (buffer[data + 2] << 8) | (buffer[data + 3] << 16) | (buffer[data + 4] << 24);
+      return {
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >>> 14) & 0x3fff) + 1,
+      };
+    }
+    offset = data + chunkSize + (chunkSize & 1);
+  }
+  return null;
+}
+
+function readImageDimensions(buffer: Buffer, type: ImageType): { width: number; height: number } | null {
+  if (type === "png") {
+    if (buffer.length < 24 || buffer.toString("ascii", 12, 16) !== "IHDR") return null;
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (type === "jpeg") return readJpegDimensions(buffer);
+  return readWebpDimensions(buffer);
+}
+
+function assertHeaderDimensions(buffer: Buffer, type: ImageType): void {
+  const dimensions = readImageDimensions(buffer, type);
+  if (!dimensions) throw new Error("Image could not be decoded");
+  const { width, height } = dimensions;
+  if (!Number.isInteger(width) || !Number.isInteger(height) ||
+      width <= 0 || height <= 0 ||
+      width > MAX_DIMENSION || height > MAX_DIMENSION ||
+      width * height > MAX_INPUT_PIXELS) {
+    throw new Error("Image dimensions exceed the supported limit");
+  }
+}
+
 async function resizeIfNeeded(image: ImageData): Promise<ImageData> {
   const longestEdge = Math.max(image.width, image.height);
   if (longestEdge <= MAX_OUTPUT_DIMENSION) return image;
@@ -138,6 +223,8 @@ export async function optimizeImageBuffer(
     throw new Error("Unsupported image format");
   }
 
+  // Reject oversized headers before decoding to avoid decompression-bomb allocations.
+  assertHeaderDimensions(buffer, detectedType);
   await initializeCodecs();
 
   const input = toArrayBuffer(buffer);
