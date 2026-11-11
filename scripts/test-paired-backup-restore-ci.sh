@@ -20,6 +20,29 @@ if [[ "$PGHOST" != "localhost" && "$PGHOST" != "127.0.0.1" ]]; then
   exit 2
 fi
 
+# Execute psql inside the disposable service container as its postgres OS
+# account. Support -f by streaming the runner-local SQL file over stdin.
+if [[ -n "${POSTGRES_CONTAINER_ID:-}" ]]; then
+  psql() {
+    local -a args=()
+    local sql_file=""
+    while (($#)); do
+      if [[ "$1" == "-f" && $# -ge 2 ]]; then
+        sql_file="$2"
+        shift 2
+      else
+        args+=("$1")
+        shift
+      fi
+    done
+    if [[ -n "$sql_file" ]]; then
+      docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+    else
+      docker exec --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+    fi
+  }
+fi
+
 MAIN_SOURCE="heavix_pair_main_source_proof"
 STORE_SOURCE="heavix_pair_store_source_proof"
 MAIN_RESTORE="heavix_pair_main_restore_proof"
