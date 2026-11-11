@@ -11,6 +11,7 @@ on:
       - 'scripts/patch-next-nft-concurrency.cjs'
       - 'src/lib/db.worker.ts'
       - 'src/lib/store-db.worker.ts'
+      - 'src/lib/notifications.ts'
       - 'src/lib/generated/worker-client/**'
       - 'src/lib/generated/store-worker-client/**'
       - '.github/workflows/cloudflare-open-next-proof.yml'
