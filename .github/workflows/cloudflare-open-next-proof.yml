@@ -69,6 +69,19 @@ jobs:
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
 
+      - name: Typecheck application and Worker runtime
+        run: |
+          bun run typecheck
+          bun run typecheck:worker
+
+      - name: Lint application
+        run: bun run lint
+
+      - name: Run isolated unit and security suites
+        run: |
+          bunx vitest run tests/unit
+          bun run test:security
+
       - name: Run the exact Cloudflare Preview OpenNext build profile
         shell: bash
         env:
