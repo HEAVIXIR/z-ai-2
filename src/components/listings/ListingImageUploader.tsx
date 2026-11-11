@@ -7,12 +7,14 @@ import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-
 type Props = {
   images: string[];
   onChange: (images: string[]) => void;
+  onUploadingChange?: (uploading: boolean) => void;
   maxImages?: number;
 };
 
 export default function ListingImageUploader({
   images,
   onChange,
+  onUploadingChange,
   maxImages = 30,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -38,6 +40,7 @@ export default function ListingImageUploader({
 
     const accepted = files.slice(0, remaining);
     setUploading(true);
+    onUploadingChange?.(true);
     setProgress({ completed: 0, total: accepted.length });
     const uploaded: string[] = [];
     const compressionNotes: string[] = [];
@@ -84,6 +87,7 @@ export default function ListingImageUploader({
       );
     } finally {
       setUploading(false);
+      onUploadingChange?.(false);
       if (inputRef.current) inputRef.current.value = "";
     }
   };
@@ -97,6 +101,11 @@ export default function ListingImageUploader({
         type="button"
         disabled={uploading || images.length >= maxImages}
         onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (!uploading && event.dataTransfer.files.length) void uploadFiles(event.dataTransfer.files);
+        }}
         className="flex min-h-40 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/10 bg-black/30 p-5 text-center transition hover:border-[#F58220]/40 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {uploading ? (
