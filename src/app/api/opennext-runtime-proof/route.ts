@@ -223,7 +223,7 @@ export async function GET(request: Request) {
   const invalidMediaAsset = await getAsset("not-a-valid-media-id");
   const mediaServiceModuleLoaded = invalidMediaAsset === null;
   const b2Config = getB2MediaConfig();
-  const b2MediaConfigWorks =
+  const b2ConfigScopeValidatedWithDummyCredentials =
     b2Config.bucket === "heavix-dev-assets" &&
     b2Config.prefix === "heavix-media/" &&
     b2Config.region === "us-east-005" &&
@@ -237,7 +237,7 @@ export async function GET(request: Request) {
     optimizedMedia.buffer.length > 0 &&
     optimizedMedia.type === "png" &&
     optimizedMedia.mime === "image/png";
-  const passed = appClosed && storeClosed && mediaServiceModuleLoaded && b2MediaConfigWorks && mediaImageOptimizerWorks;
+  const passed = appClosed && storeClosed && mediaServiceModuleLoaded && b2ConfigScopeValidatedWithDummyCredentials && mediaImageOptimizerWorks;
   return json({
     result: passed ? "PASS" : "FAIL",
     mode: "SMOKE_ONLY",
@@ -245,7 +245,8 @@ export async function GET(request: Request) {
     appFailsClosedWithoutBinding: appClosed,
     storeFailsClosedWithoutBinding: storeClosed,
     mediaServiceModuleLoaded,
-    b2MediaConfigWorks,
+    b2ConfigScopeValidatedWithDummyCredentials,
+    b2LiveObjectOperationsAttempted: false,
     mediaReadGateRejectsInvalidId: invalidMediaAsset === null,
     mediaImageOptimizerWorks,
     databaseConnectionsAttempted: false,
