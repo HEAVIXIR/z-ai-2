@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T07:35:00.000Z",
+  "updated_at_utc": "2026-11-11T07:50:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -93,7 +93,11 @@
     "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff.",
     "Homepage ServicesSection now links to /services and SERVICE_REQUEST, and its stale placeholder-fallback comment was corrected.",
     "Exact-head PR #307 CI verified successful: run #42971293294 on 45d86f1c7df9d644e4d33431ba5013e0a30646b7; all required jobs passed.",
-    "Read-only Cloudflare Worker settings audit confirmed heavix-preview has secret_text bindings DATABASE_URL and STORE_DATABASE_URL and HEAVIX_ENV=preview; secret values not read or modified."
+    "Read-only Cloudflare Worker settings audit confirmed heavix-preview has secret_text bindings DATABASE_URL and STORE_DATABASE_URL and HEAVIX_ENV=preview; secret values not read or modified.",
+    "Verified exact PR #307 head b74d23b9014ac42437d62181b06ffd1fcfcd9be4 CI run #42979858320: all six main jobs passed; legacy archive inventory was skipped.",
+    "Audited seller image upload, admin upload authorization, local filesystem media service, package dependencies and listing POST; confirmed seller upload gate, local disk persistence and 30-vs-10 image truncation.",
+    "Searched current repository for B2 media adapter; only explicit B2 configuration found is the paired encrypted database-backup workflow using bucket heavix-db-backups.",
+    "Recorded the unresolved difference between historical HEAVIXIR/z 13-archive/899-path audit and dellk00k/z extracted 10-archive/845-file snapshot; refresh/reconciliation required before parity or merge claims."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -137,25 +141,27 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Continue P0 seller listing/media audit and B2 adapter discovery; then complete legacy/current/benchmark parity area by area. Keep responsive web across desktop/tablet/mobile in scope. Native iOS/Android remain future phase after web acceptance.",
+    "task": "Continue P0 B2 media and seller listing remediation; first reconcile the actual media bucket/config and the two legacy source snapshots, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
     "first_paths_to_read": [
-      "src/components/listings/ListingImageUploader.tsx",
-      "src/app/api/admin/upload/route.ts",
       "src/lib/media-service.ts",
-      "src/lib/authorization/permissions.ts",
+      "src/app/api/admin/upload/route.ts",
+      "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/listings/route.ts",
-      "src/app/listings/new/page.tsx",
-      "all B2-related workflows/config and legacy Z media paths"
+      "package.json",
+      ".github/workflows/prisma-preview-backup-to-b2.yml",
+      "docs/legacy-parity/VALUE-BASED-DISPOSITION-2026-10-27.md",
+      "docs/legacy-parity/INTEGRATION-PROPOSAL-FOR-SENIOR-DIRECTOR-2026-10-28.md"
     ],
     "required_tests": [
-      "Seller upload least-privilege authorization and ownership",
-      "B2 durable upload/read/delete",
-      "Listing image count contract without silent truncation",
-      "Consistent brand selection/request behavior",
-      "Listing read-after-write",
-      "Responsive desktop/tablet/mobile journeys"
+      "B2 media upload/read-back/delete using a dedicated non-production media bucket",
+      "Seller least-privilege upload and ownership",
+      "Unified image-count contract without silent truncation",
+      "Listing create and media read-after-write",
+      "Legacy source snapshot reconciliation and per-area parity",
+      "Responsive desktop/tablet/mobile critical journeys"
     ],
     "do_not": [
+      "Do not use the DB-backup bucket for media",
       "Do not enable or migrate to Cloudflare R2",
       "Do not expose B2 secrets or invent bucket names",
       "Do not deploy or write Preview DB before App/Store DB identity proof",
@@ -172,12 +178,25 @@
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
     "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "937db951246a5bb82e354e4d14d5d747d6364025",
+  "latest_code_head_sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
   "latest_ci_run": {
-    "id": 42914986140,
-    "sha": "01452ed",
-    "status": "queued",
-    "note": "CI concurrency guard was added in this commit; it does not retroactively cancel runs created before it."
+    "id": 42979858320,
+    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
+    "jobs": [
+      "verify",
+      "phase-tests",
+      "audit-transaction",
+      "tls-proof",
+      "docker-build-proof",
+      "Cloudflare compatibility (report-only)"
+    ],
+    "skipped": [
+      "Legacy archive inventory (read-only)"
+    ],
+    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -194,22 +213,23 @@
     ]
   },
   "latest_verified_ci_run": {
-    "id": 42978976169,
-    "sha": "e89be0581b20cf8dd3ff384b8c988c1472166a82",
+    "id": 42979858320,
+    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
     "status": "completed",
     "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
     "jobs": [
+      "verify",
       "phase-tests",
       "audit-transaction",
-      "Cloudflare compatibility (report-only)",
-      "docker-build-proof",
       "tls-proof",
-      "verify"
+      "docker-build-proof",
+      "Cloudflare compatibility (report-only)"
     ],
     "skipped": [
       "Legacy archive inventory (read-only)"
     ],
-    "note": "All listed required jobs passed on exact checkpoint commit. CI green is not equivalent to Preview functional acceptance."
+    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
   },
   "confirmed_blockers": [
     "ListingImageUploader targets /api/admin/upload, whose route requires requireAdmin(media.upload); seller upload is not proven and expected to be denied for non-admin sellers.",
@@ -235,9 +255,71 @@
   },
   "preview_latest_observation": {
     "source": "GitHub PR #307 Cloudflare Workers bot deployment comment",
-    "deployment_commit": "e89be0581b20cf8dd3ff384b8c988c1472166a82",
+    "deployment_commit": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
     "status": "Cloudflare Preview deployment reported successful",
     "url": "https://heavix-preview.heavixir.workers.dev",
-    "note": "Deployment event is confirmed from PR bot comment; do not infer database identity, isolation, or end-to-end functional acceptance from deployment success."
+    "note": "Deployment event only; application behavior, Preview App/Store DB identities, isolation and end-to-end acceptance remain unverified."
+  },
+  "media_storage_audit": {
+    "status": "BLOCKED — source-level findings verified; B2 media integration not located or proven",
+    "verified_findings": [
+      "ListingImageUploader calls /api/admin/upload.",
+      "The upload API requires requireAdmin(media.upload); ordinary seller upload is not supported by this endpoint.",
+      "media-service.ts persists files and sidecar JSON under public/uploads using node:fs; it is not durable B2 object storage.",
+      "package.json has no @aws-sdk/client-s3 dependency; current-branch search found no S3Client or media-specific B2 adapter.",
+      "The only explicit B2 configuration found is prisma-preview-backup-to-b2.yml for encrypted DB backup and bucket heavix-db-backups; it is not the media bucket.",
+      "POST /api/listings uses body.images.slice(0, 10), while the uploader permits 30 images, silently truncating the remainder."
+    ],
+    "not_verified": [
+      "Actual B2 media bucket, endpoint/region, scoped key, public/private access, CDN/custom domain and CORS.",
+      "Whether the prior PC-local upload/download test used B2 or a local/mock endpoint; no reproducible evidence found.",
+      "Durable media upload/read/delete, seller authorization/ownership and listing attachment."
+    ],
+    "safety": [
+      "Do not reuse the database-backup bucket for media.",
+      "Do not expose or retrieve secret values.",
+      "Do not enable or migrate to Cloudflare R2.",
+      "Do not deploy or write Preview DB before DB identity and isolation gates pass."
+    ],
+    "next_steps": [
+      "Reconcile actual media bucket/config and recover local-test evidence if available.",
+      "Implement server-only B2 adapter with explicit media-specific configuration and fail-closed behavior.",
+      "Implement seller-safe staged upload and ownership-bound listing finalization.",
+      "Align UI/API image limits and reject over-limit requests instead of silently truncating.",
+      "Add protected non-production B2 upload/read-back/delete proof."
+    ]
+  },
+  "legacy_parity_refresh": {
+    "status": "IN PROGRESS — prior audit is historical and must be refreshed against current main/recovery head",
+    "historical_audit": {
+      "repository": "HEAVIXIR/z",
+      "source_commit": "217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
+      "archive_count": 13,
+      "unique_paths": 899,
+      "dispositions": {
+        "integrate": 845,
+        "adapt_then_integrate": 17,
+        "preserve_as_reference": 19,
+        "safe_archive": 18
+      },
+      "compared_target_at_time": "z-ai-2/main@833bec6169a214319857b2ac1cfadfa6bf195a88",
+      "caveat": "Historical disposition is not current branch parity evidence."
+    },
+    "second_snapshot_to_reconcile": {
+      "repository": "dellk00k/z",
+      "branch": "legacy/extracted-archives",
+      "commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e",
+      "reported_archive_count": 10,
+      "reported_file_count": 845,
+      "caveat": "Reconcile archive manifests, paths and hashes against HEAVIXIR/z's 13-archive/899-path snapshot; do not assume they are identical."
+    },
+    "required_method": [
+      "Reconcile the two legacy source snapshots and provenance manifests.",
+      "Refresh file-level comparisons against current main and the active recovery branch.",
+      "Trace every legacy capability/API through UI, authorization/ownership, validation/service, persistence, Admin, public/seller UI, tests and responsive desktop/tablet/mobile behavior.",
+      "Adapt useful behavior to current PostgreSQL, RBAC, security and runtime contracts; never bulk-copy incompatible source.",
+      "Keep INTEGRATE, ADAPT_THEN_INTEGRATE, PRESERVE_AS_REFERENCE and SAFE_ARCHIVE dispositions with provenance.",
+      "Merge only after per-area acceptance, exact-head CI, Preview DB identity proof and E2E validation."
+    ]
   }
 }
