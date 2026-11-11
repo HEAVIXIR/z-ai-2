@@ -79,7 +79,7 @@ export default function ListingImageUploader({
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد.`);
       }
     } catch (uploadError) {
-      if (uploaded.length) onChange([...images, ...uploaded].slice(0, maxImages));
+      if (uploaded.length) onChange([...images, ...uploaded]);
       setError(
         uploadError instanceof Error
           ? `${uploadError.message}${uploaded.length ? ` ${uploaded.length} تصویر قبلی با موفقیت آپلود شدند.` : ""}`
@@ -129,7 +129,7 @@ export default function ListingImageUploader({
         ref={inputRef}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
+        accept="image/jpeg,image/png,image/webp"
         className="hidden"
         disabled={uploading || images.length >= maxImages}
         onChange={(event) => {
