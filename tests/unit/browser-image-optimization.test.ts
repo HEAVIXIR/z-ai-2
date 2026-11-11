@@ -20,7 +20,7 @@ function pngFile(size: number, width: number, height: number, animated = false):
 
 describe("prepareImageForUpload", () => {
   it("returns files already below the cap without decoding or changing them", async () => {
-    const file = new File([new Uint8Array(1024)], "small.png", { type: "image/png" });
+    const file = pngFile(1024, 1, 1);
     const decode = vi.fn();
     vi.stubGlobal("createImageBitmap", decode);
 
@@ -74,7 +74,7 @@ describe("prepareImageForUpload", () => {
     const decode = vi.fn();
     vi.stubGlobal("createImageBitmap", decode);
 
-    await expect(prepareImageForUpload(file)).rejects.toThrow("برای حفظ پویانمایی");
+    await expect(prepareImageForUpload(file)).rejects.toThrow("تصاویر متحرک پشتیبانی نمی‌شوند");
     expect(decode).not.toHaveBeenCalled();
   });
 
