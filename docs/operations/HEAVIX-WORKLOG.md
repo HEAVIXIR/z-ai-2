@@ -249,3 +249,16 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added `docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md` with archive identity table, count semantics, security boundaries and next exact migration actions.
 - Latest code-head CI before this documentation checkpoint: run #42982227259, SUCCESS on `cecd4b6601d17e757b018271ba6d49d75c7fdc1a`; six main jobs passed, legacy archive inventory skipped.
 - No application code changed; no deploy, DB read/write, Production/DNS action, or merge performed.
+
+## 2026-11-11 — 844-file extracted snapshot vs recovery-branch SHA comparison
+
+- Compared every one of the 844 safe extracted payload files against the current recovery branch tree at `714678ca6920cc10fbb4696b203753df8244bbab` using normalized paths and Git blob SHA-1.
+- Results: 494 IDENTICAL, 321 DIFFERENT, 29 MISSING, 0 UNMAPPED.
+- Path normalization was explicit and reversible; original staging paths and both source/target blob SHAs are retained in the CSV.
+- Mapped all 29 missing paths to the existing value-based disposition record: 16 ADAPT_THEN_INTEGRATE and 13 PRESERVE_AS_REFERENCE. No missing path was automatically imported.
+- Identified the historical 17th ADAPT item as `prisma/migrations/README.md`: its target path exists but content differs, so it is not in the 29 missing paths and requires a separate semantic review.
+- Per-area comparison: .zscripts 8/1/1; docs 17/1/0; download 1/0/0; examples 2/0/0; mini-services 1/0/0; prisma 29/8/2; public 37/0/1; scripts 0/4/21; src 385/301/4; tests 14/6/0 (identical/different/missing).
+- Created `docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.md` and its full 844-row CSV companion.
+- This is path/hash evidence only; 321 differences are not defects by default, and no code was copied or modified.
+- Archive-level scan remains unverified because the last green CI run #42982227259 skipped `Legacy archive inventory (read-only)`.
+- No deploy, DB operation, Production/DNS action, or merge.
