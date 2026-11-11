@@ -1,115 +1,155 @@
-import sharp from "sharp";
+import decodeJpeg, { init as initJpegDecode } from "@jsquash/jpeg/decode";
+import decodePng, { init as initPngDecode } from "@jsquash/png/decode";
+import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
+import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
+import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
+import resizeImage, { initResize } from "@jsquash/resize";
+import JPEG_DEC_WASM from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
+import PNG_WASM from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
+import WEBP_DEC_WASM from "@jsquash/webp/codec/dec/webp_dec.wasm";
+import WEBP_ENC_WASM from "@jsquash/webp/codec/enc/webp_enc_simd.wasm";
+import RESIZE_WASM from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
 const MAX_INPUT_PIXELS = 16_000_000;
 const MAX_DIMENSION = 6_000;
+const MAX_OUTPUT_DIMENSION = 2_560;
 
 export interface OptimizedImage {
   buffer: Buffer;
   type: ImageType;
   ext: string;
   mime: string;
-  /** False only when an animated/multi-page image is intentionally preserved. */
   reencoded: boolean;
 }
 
 const OUTPUT_FORMATS: Record<ImageType, { ext: string; mime: string }> = {
   jpeg: { ext: "jpg", mime: "image/jpeg" },
   png: { ext: "png", mime: "image/png" },
-  gif: { ext: "gif", mime: "image/gif" },
   webp: { ext: "webp", mime: "image/webp" },
-  bmp: { ext: "bmp", mime: "image/bmp" },
 };
 
-function result(buffer: Buffer, type: ImageType, reencoded: boolean): OptimizedImage {
-  const format = OUTPUT_FORMATS[type];
-  return { buffer, type, ext: format.ext, mime: format.mime, reencoded };
+let codecsReady: Promise<void> | null = null;
+
+function toArrayBuffer(buffer: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(buffer.byteLength);
+  copy.set(buffer);
+  return copy.buffer;
+}
+
+async function initializeCodecs(): Promise<void> {
+  if (!codecsReady) {
+    codecsReady = Promise.all([
+      initJpegDecode(JPEG_DEC_WASM),
+      initPngDecode(PNG_WASM),
+      initPngEncode(PNG_WASM),
+      initWebpDecode(WEBP_DEC_WASM),
+      initWebpEncode(WEBP_ENC_WASM),
+      initResize(RESIZE_WASM),
+    ])
+      .then(() => undefined)
+      .catch((error) => {
+        // Allow a later request to retry a transient WASM initialization error.
+        codecsReady = null;
+        throw error;
+      });
+  }
+  await codecsReady;
+}
+
+function assertDimensions(image: ImageData): void {
+  const { width, height, data } = image;
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    width > MAX_DIMENSION ||
+    height > MAX_DIMENSION ||
+    width * height > MAX_INPUT_PIXELS ||
+    data.length !== width * height * 4
+  ) {
+    throw new Error("Image dimensions exceed the supported limit");
+  }
+}
+
+async function resizeIfNeeded(image: ImageData): Promise<ImageData> {
+  const longestEdge = Math.max(image.width, image.height);
+  if (longestEdge <= MAX_OUTPUT_DIMENSION) return image;
+
+  const ratio = MAX_OUTPUT_DIMENSION / longestEdge;
+  const width = Math.max(1, Math.round(image.width * ratio));
+  const height = Math.max(1, Math.round(image.height * ratio));
+  return resizeImage(image, {
+    width,
+    height,
+    method: "lanczos3",
+    fitMethod: "contain",
+    premultiply: true,
+    linearRGB: true,
+  });
 }
 
 /**
- * Validate decoded dimensions and re-encode static images to strip embedded
- * metadata (including EXIF) and reduce storage. Input byte limits are enforced
- * by validateImageBuffer before this helper is called.
+ * Cloudflare Workerd-compatible image normalization.
  *
- * Animated/multi-page images are preserved byte-for-byte to avoid silently
- * flattening animation. This is a bounded, Node-only operation; callers must
- * never invoke it before authentication and upload-size checks.
+ * The previous implementation depended on Sharp's native Node binding and
+ * failed when the actual Worker route executed. This implementation uses
+ * single-threaded WebAssembly codecs with explicit module initialization:
+ * JPEG/PNG/WebP decode, Lanczos resize, PNG lossless output and WebP output.
+ *
+ * GIF and BMP are deliberately rejected at the upload-security boundary.
+ * Animated images are not silently flattened.
  */
 export async function optimizeImageBuffer(
   buffer: Buffer,
   detectedType: ImageType,
 ): Promise<OptimizedImage> {
-  const options = {
-    limitInputPixels: MAX_INPUT_PIXELS,
-    failOn: "error" as const,
-    animated: true,
-  };
-
-  const metadata = await sharp(buffer, options).metadata();
-  const width = metadata.width;
-  const frameHeight = metadata.pageHeight ?? metadata.height;
-  const pages = metadata.pages ?? 1;
-
-  // Count every decoded page, not just the compressed input bytes. For animated
-  // formats this prevents a small multi-frame file from expanding without bound.
-  if (
-    !width ||
-    !frameHeight ||
-    width > MAX_DIMENSION ||
-    frameHeight > MAX_DIMENSION ||
-    width * frameHeight * pages > MAX_INPUT_PIXELS
-  ) {
-    throw new Error("Image dimensions exceed the supported limit");
+  if (!buffer || buffer.length < 12) {
+    throw new Error("Image could not be decoded");
+  }
+  if (detectedType !== "jpeg" && detectedType !== "png" && detectedType !== "webp") {
+    throw new Error("Unsupported image format");
   }
 
-  // Do not flatten GIF/APNG or any other multi-page image.
-  if (pages > 1) {
-    return result(buffer, detectedType, false);
+  await initializeCodecs();
+
+  const input = toArrayBuffer(buffer);
+  let image: ImageData;
+  if (detectedType === "jpeg") {
+    image = await decodeJpeg(input, { preserveOrientation: true });
+  } else if (detectedType === "png") {
+    image = await decodePng(input);
+  } else {
+    image = await decodeWebp(input);
   }
+
+  assertDimensions(image);
+  const normalized = await resizeIfNeeded(image);
+  assertDimensions(normalized);
 
   if (detectedType === "png") {
-    const webp = await sharp(buffer, options)
-      .rotate()
-      .webp({ lossless: true, effort: 4 })
-      .toBuffer();
-
-    if (webp.length < buffer.length) {
-      return result(webp, "webp", true);
-    }
-
-    // Preserve lossless PNG pixels when lossless WebP is not smaller.
-    const png = await sharp(buffer, options)
-      .rotate()
-      .png({ compressionLevel: 9, adaptiveFiltering: true })
-      .toBuffer();
-    return result(png, "png", true);
+    const output = await encodePng(normalized, { bitDepth: 8 });
+    return {
+      buffer: Buffer.from(output),
+      type: "png",
+      ext: OUTPUT_FORMATS.png.ext,
+      mime: OUTPUT_FORMATS.png.mime,
+      reencoded: true,
+    };
   }
 
-  if (detectedType === "jpeg") {
-    const webp = await sharp(buffer, options)
-      .rotate()
-      .webp({ quality: 82, effort: 4 })
-      .toBuffer();
-    const jpeg = await sharp(buffer, options)
-      .rotate()
-      .jpeg({ quality: 85, mozjpeg: true })
-      .toBuffer();
-
-    return webp.length < jpeg.length
-      ? result(webp, "webp", true)
-      : result(jpeg, "jpeg", true);
-  }
-
-  // Preserve decoded pixels for existing WebP and static GIF inputs while
-  // re-encoding to remove metadata. BMP can use lossy WebP because it is a
-  // typically uncompressed source format.
-  const webp = await sharp(buffer, options)
-    .rotate()
-    .webp(
-      detectedType === "webp" || detectedType === "gif"
-        ? { lossless: true, effort: 4 }
-        : { quality: 82, effort: 4 },
-    )
-    .toBuffer();
-  return result(webp, "webp", true);
+  // Preserve exact decoded pixels for existing WebP inputs. JPEG sources use
+  // lossy WebP at a bounded quality; the output never retains EXIF metadata.
+  const webpOptions = detectedType === "webp"
+    ? { quality: 100, lossless: 1, exact: 1, method: 4 }
+    : { quality: 82, method: 4 };
+  const output = await encodeWebp(normalized, webpOptions);
+  return {
+    buffer: Buffer.from(output),
+    type: "webp",
+    ext: OUTPUT_FORMATS.webp.ext,
+    mime: OUTPUT_FORMATS.webp.mime,
+    reencoded: true,
+  };
 }
