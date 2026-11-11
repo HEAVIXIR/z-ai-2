@@ -201,7 +201,7 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(diagnostic).toContain("HEAVIX_FD_PEAK");
     expect(diagnostic).toContain("next/dist/bin/next");
     expect(diagnostic).toContain('"--turbopack"');
-    expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack"');
+    expect(diagnostic).toContain('process.env.HEAVIX_NEXT_BUNDLER === "turbopack" ? "--turbopack" : "--webpack"');
     const artifactProof = read("scripts/cloudflare-worker-artifact-proof.sh");
     expect(artifactProof).toContain("bunx wrangler deploy --dry-run");
     expect(artifactProof).toContain("HEAVIX_PREVIEW_DEPLOY_BLOCKED_PENDING_ARTIFACT_AND_DATABASE_ISOLATION_PROOF");
