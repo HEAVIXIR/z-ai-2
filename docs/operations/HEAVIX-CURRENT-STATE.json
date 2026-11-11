@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T22:30:00.000Z",
+  "updated_at_utc": "2026-11-11T22:35:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "631414a900de1fcd698c10a1b7079e3bf41a22d2",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "6780bd08bc99f13b091be246c6972c9de8629932",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -146,7 +146,8 @@
     "Compared extracted legacy and recovery Git trees: all 145 legacy page routes and 278 legacy API handlers are present; no missing legacy static image assets after path normalization.",
     "Recorded absent legacy source-file dispositions and rejected unsafe legacy direct-ZAI AI gateway and unreviewed legacy seed/migration scripts.",
     "Verified exact-head CI #43109607418 and OpenNext Workerd proof #43109607496 are completed/success.",
-    "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog."
+    "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog.",
+    "Updated the historical legacy inventory audit with an explicit recovery-branch correction to prevent stale main-branch findings being treated as current."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -191,58 +192,7 @@
     "No B2 media adapter, seller staging/finalization flow, B2 upload/readback/hash/delete proof, or durable media persistence exists.",
     "Preview App/Store database identities and Production isolation remain unverified."
   ],
-  "next_action": {
-    "priority": "P0",
-    "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Implement the server-only Backblaze B2 media adapter and seller staging/finalization flow on the recovery branch with mocked tests; use only heavix-dev-assets/heavix-media/. Do not run a live B2 proof until the owner confirms the application key is restricted to the single heavix-dev-assets bucket (not All) and the prefix is heavix-media/. Keep Preview DB identity and release gates closed; no Cloudflare Build or deployment.",
-    "source_branches": {
-      "active_recovery": "recovery/heavix-full-product-integration-2026-11-11",
-      "reference_infra": "infra/prisma6-cloudflare-runtime",
-      "infra_pr": 191,
-      "opennext_proof_pr": 200,
-      "reference_infra_head": "8cc293e849be4271f778a75b7f7158e2d356c8ab"
-    },
-    "first_files_to_review": [
-      "package.json",
-      "bun.lock",
-      "prisma/schema.prisma",
-      "prisma/store/schema.prisma",
-      "next.config.ts",
-      "wrangler.jsonc",
-      "open-next.config.ts",
-      "tsconfig.worker.json",
-      "src/lib/prisma-worker-clients.ts",
-      "src/lib/prisma-worker-proxy.ts",
-      "src/lib/db.worker.ts",
-      "src/lib/store-db.worker.ts",
-      "scripts/run-prisma-workerd-proof.mjs",
-      "scripts/run-opennext-runtime-proof.mjs",
-      "docs/deployment/CLOUDFLARE-PREVIEW-RECOVERY.md"
-    ],
-    "required_gates": [
-      "Recovery branch now has the proven Webpack/asyncWASM configuration and an artifact proof; repeat exact-head GitHub proof after any subsequent code changes, never via Cloudflare Builds.",
-      "Inspect published peerDependencies/engines and prove the exact Prisma + PPG adapter version set; do not assume the infra branch's historical pairing is vendor-supported solely because an old proof passed.",
-      "Generate separate App and Store Workerd clients without breaking Node/Docker clients.",
-      "Add Worker-only aliases and runtime bindings; keep Production deploy command fail-closed.",
-      "OpenNext real-route smoke in Workerd with no DB credentials must pass on the recovery exact HEAD.",
-      "Read-only App/Store Preview identity proof must pass on the recovery exact HEAD using independently allow-listed system identifiers and migration fingerprints.",
-      "No Cloudflare Preview enablement or deployment until all prior gates pass and owner approves the one-time Preview migration switch.",
-      "Then implement B2 adapter and seller upload staging/finalization with mocked tests and a dedicated B2 object proof.",
-      "Prove the actual active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL bindings against the allow-listed App Preview and Store Preview physical PostgreSQL system identifiers and database OIDs; do not substitute GitHub Actions Workerd secrets."
-    ],
-    "do_not": [
-      "Do not merge PR #191 or #200 wholesale into PR #307.",
-      "Do not merge or cherry-pick the entire infra branch.",
-      "Do not enable Worker Previews or change deploy commands until exact-head runtime and database isolation proofs pass.",
-      "Do not modify Production settings, stable Worker, DNS, or Production DB.",
-      "Do not read or log any secret values.",
-      "Do not perform DB migrations, seeds, or writes.",
-      "Do not use the DB backup bucket for media or introduce R2.",
-      "Do not begin native iOS/Android before web parity is accepted.",
-      "Do not trigger or automatically retry Cloudflare Builds without the exact prior successful remediation and explicit owner authorization.",
-      "Do not deploy or modify Worker secrets while actual App/Store Worker binding identities remain NOT VERIFIED."
-    ]
-  },
+  "next_action": "Obtain authorized GitHub Actions workflow_dispatch capability for the existing protected read-only Preview App/Store database identity proof. Do not deploy until actual active Worker binding identity and live B2 object operations are independently proven.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
     "id": 42971293294,
@@ -638,6 +588,8 @@
     },
     "audit_document": "docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md",
     "audit_commit": "2772a12fd5cf5b29c2713b4f14a1be2176b28ebe",
-    "qualification": "Source-tree parity only; does not prove live Preview routes, real data, visual parity, RBAC journeys or object storage."
-  }
+    "qualification": "Source-tree parity only; does not prove live Preview routes, real data, visual parity, RBAC journeys or object storage.",
+    "inventory_correction": "The older HEAVIX-LEGACY-TO-CURRENT-INVENTORY document now explicitly distinguishes its historical main-branch regression from the restored recovery branch."
+  },
+  "documentation_head": "6780bd08bc99f13b091be246c6972c9de8629932"
 }
