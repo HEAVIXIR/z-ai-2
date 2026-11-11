@@ -30,6 +30,7 @@ const GIF87_MAGIC = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x00, 0x00,
 const GIF89_MAGIC = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 const WEBP_MAGIC = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
 const BMP_MAGIC = Buffer.from([0x42, 0x4d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+const ANIMATED_WEBP = Buffer.concat([WEBP_MAGIC, Buffer.from("ANIM"), Buffer.alloc(4)]);
 
 describe("detectImageType magic-byte sniffing", () => {
   it("identifies JPEG", () => {
@@ -114,6 +115,12 @@ describe("validateImageBuffer size + magic gate", () => {
     const r = validateImageBuffer(Buffer.from("not an image at all!!"));
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/فرمت/);
+  });
+
+  it("rejects animated WebP by parsing RIFF chunks rather than scanning image payload bytes", () => {
+    const r = validateImageBuffer(ANIMATED_WEBP);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/تصاویر متحرک/);
   });
 
   it("rejects an SVG (XSS vector) even though its MIME would be image/svg+xml", () => {
