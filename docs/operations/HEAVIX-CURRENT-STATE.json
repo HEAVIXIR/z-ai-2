@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T09:58:26.089Z",
+  "updated_at_utc": "2026-11-11T11:36:30.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "4beff75222e70763d54fb778f7afa7e344b503e3",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "7ef9bc290f1342230808bd92c20f70f3b54d11aa",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -27,7 +27,7 @@
   },
   "cloudflare_quota": {
     "last_user_report": "Owner-reported: more than 2,000 of 3,000 monthly Cloudflare Build units had been consumed by 2026-11-11; exact dashboard count not independently verified. No speculative or automatic Cloudflare retries.",
-    "policy": "Avoid unnecessary builds/deployments; prefer GitHub/local checks first."
+    "policy": "Avoid unnecessary builds/deployments; recovery branch is explicitly excluded from the non-production Cloudflare Build trigger. Prefer GitHub/local checks first."
   },
   "verified_findings": [
     "Current main homepage uses PageRenderer and a five-widget default fallback.",
@@ -136,7 +136,13 @@
     "Verified recovery PR #307 head 4beff75222e70763d54fb778f7afa7e344b503e3; CI run #42998197252 passed and OpenNext run #42998197018 remained in progress.",
     "Verified Cloudflare secret-binding metadata exposes no secret values and that actual Worker App/Store DB identity remains NOT VERIFIED.",
     "Performed read-only smoke checks against the existing stable Preview URL; no recovery candidate was deployed.",
-    "No Cloudflare Build was triggered or retried; no Worker configuration or secrets changed; no database connection, migration, seed or write; no Production or DNS changes."
+    "No Cloudflare Build was triggered or retried; no Worker configuration or secrets changed; no database connection, migration, seed or write; no Production or DNS changes.",
+    "Polled the pre-existing Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f; it is stopped. Its final logs show Next.js 16.4.5 (Turbopack) timed out during optimized production build after dependency restore and NFT patch; no deployment occurred.",
+    "Verified GitHub OpenNext artifact proof run #43010880902 completed successfully: Webpack build, complete bundle verification, no-database Workerd smoke and artifact upload all passed. Artifact #13849664588 is 26,418,563 bytes with digest sha256:7418ab71b120329a0fc9becd438d34a014d77e0833233aa303efc32210a4ca18.",
+    "Ported the proven Cloudflare Webpack profile from the successful proof branch into the active recovery branch: Next config Webpack parallelism 4, asyncWASM, App/Store worker aliases; explicit Webpack OpenNext build command; diagnostics default to Webpack; fixed duplicate notification read property.",
+    "Added the reusable exact-head OpenNext/Workerd artifact proof workflow to the recovery branch.",
+    "Added recovery/heavix-full-product-integration-2026-11-11 to the non-production Cloudflare Build trigger branch exclusions and read back the trigger to verify it. Build and deploy commands were not changed.",
+    "No Cloudflare Build, Worker upload/deployment, database connection/write, B2 object operation, Production change or DNS change was performed."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -184,7 +190,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Continue polling existing Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f and GitHub OpenNext run 42998197018 on recovery head 4beff75222e70763d54fb778f7afa7e344b503e3; do not trigger or retry Cloudflare Builds. Reconstruct the exact owner-confirmed prior successful Next.js/Cloudflare remediation from historical transcript, commit history, workflow revisions and Worker version metadata before any future quota-consuming build, and obtain explicit owner authorization for that build. Do not deploy until both actual Cloudflare Worker DB bindings are proven by read-only App/Store system_identifier plus database-OID queries against independently allow-listed Preview resources; GitHub Actions secrets and Cloudflare secret-name metadata are insufficient. Continue the minimal reviewed runtime-stack port only after the current exact-head CI/OpenNext proof and package compatibility gates are reconciled.",
+    "task": "Implement the server-only Backblaze B2 media adapter and seller staging/finalization flow on the recovery branch with mocked tests; use only heavix-dev-assets/heavix-media/. Do not run a live B2 proof until the owner confirms the application key is restricted to the single heavix-dev-assets bucket (not All) and the prefix is heavix-media/. Keep Preview DB identity and release gates closed; no Cloudflare Build or deployment.",
     "source_branches": {
       "active_recovery": "recovery/heavix-full-product-integration-2026-11-11",
       "reference_infra": "infra/prisma6-cloudflare-runtime",
@@ -210,10 +216,10 @@
       "docs/deployment/CLOUDFLARE-PREVIEW-RECOVERY.md"
     ],
     "required_gates": [
+      "Recovery branch now has the proven Webpack/asyncWASM configuration and an artifact proof; repeat exact-head GitHub proof after any subsequent code changes, never via Cloudflare Builds.",
       "Inspect published peerDependencies/engines and prove the exact Prisma + PPG adapter version set; do not assume the infra branch's historical pairing is vendor-supported solely because an old proof passed.",
       "Generate separate App and Store Workerd clients without breaking Node/Docker clients.",
       "Add Worker-only aliases and runtime bindings; keep Production deploy command fail-closed.",
-      "Cloudflare Workers Build must execute a real OpenNext build, produce .open-next/worker.js and route manifest, and publish auditable build artifacts.",
       "OpenNext real-route smoke in Workerd with no DB credentials must pass on the recovery exact HEAD.",
       "Read-only App/Store Preview identity proof must pass on the recovery exact HEAD using independently allow-listed system identifiers and migration fingerprints.",
       "No Cloudflare Preview enablement or deployment until all prior gates pass and owner approves the one-time Preview migration switch.",
@@ -242,7 +248,7 @@
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
     "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "cecd4b6601d17e757b018271ba6d49d75c7fdc1a",
+  "latest_code_head_sha": "578fffc21a24a2c879eb5b73e483827c85db434d",
   "latest_ci_run": {
     "id": 42979858320,
     "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
@@ -556,6 +562,22 @@
       "run_id": 42883319569,
       "conclusion": "success",
       "preview_db_proof": "skipped"
+    },
+    "webpack_artifact_proof": {
+      "run_id": 43010880902,
+      "commit": "8d0f0a58f55864d4a246717c39aec19a6b0a90d8",
+      "status": "completed",
+      "conclusion": "success",
+      "artifact_id": 13849664588,
+      "artifact_name": "heavix-open-next-webpack-6baee22f25e169536dba96fb7621123d7a13c791",
+      "artifact_size_bytes": 26418563,
+      "artifact_digest": "sha256:7418ab71b120329a0fc9becd438d34a014d77e0833233aa303efc32210a4ca18",
+      "checks": [
+        "Webpack OpenNext build",
+        "complete Worker/runtime/assets bundle verification",
+        "no-database Workerd smoke",
+        "artifact upload"
+      ]
     }
   },
   "last_cloudflare_builds": {
@@ -577,8 +599,8 @@
       "build_id": "69a49f21-67dc-4df2-bbc5-911ca7d1be9f",
       "branch": "recovery/heavix-full-product-integration-2026-11-11",
       "commit": "d5f034178918d0b44f83aca7986d82cbada10915",
-      "status": "running",
-      "last_log": "2026-11-11T09:27:58Z; optimized production build phase; no deploy."
+      "status": "stopped",
+      "last_log": "2026-11-11T09:58:56Z; Next.js 16.4.5 (Turbopack) timed out during optimized production build; no deployment."
     }
   },
   "blockers": [
