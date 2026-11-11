@@ -4,11 +4,6 @@ import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
 import resizeImage, { initResize } from "@jsquash/resize";
-import JPEG_DEC_WASM from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
-import PNG_WASM from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
-import WEBP_DEC_WASM from "@jsquash/webp/codec/dec/webp_dec.wasm";
-import WEBP_ENC_WASM from "@jsquash/webp/codec/enc/webp_enc.wasm";
-import RESIZE_WASM from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
 const MAX_INPUT_PIXELS = 12_000_000;
@@ -37,38 +32,34 @@ function toArrayBuffer(buffer: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-type WasmModuleInput = WebAssembly.Module | string | ArrayBuffer;
-
-async function resolveWasmModule(input: WasmModuleInput): Promise<WebAssembly.Module> {
-  if (input instanceof WebAssembly.Module) return input;
-  if (typeof input === "string" && input.startsWith("data:application/wasm;base64,")) {
-    const response = await fetch(input);
-    if (!response.ok) throw new Error("Unable to load inline WASM codec");
-    return WebAssembly.compile(await response.arrayBuffer());
-  }
-  if (input instanceof ArrayBuffer) return WebAssembly.compile(input);
-  throw new Error("Unsupported WASM codec module representation");
-}
+type HeavixWasmModules = {
+  JPEG_DEC_WASM: WebAssembly.Module;
+  PNG_WASM: WebAssembly.Module;
+  WEBP_DEC_WASM: WebAssembly.Module;
+  WEBP_ENC_WASM: WebAssembly.Module;
+  RESIZE_WASM: WebAssembly.Module;
+};
 
 async function initializeCodecs(): Promise<void> {
   if (!codecsReady) {
+    const wasmModules = (
+      globalThis as typeof globalThis & {
+        __HEAVIX_WASM_MODULES__?: HeavixWasmModules;
+      }
+    ).__HEAVIX_WASM_MODULES__;
+
+    if (!wasmModules) {
+      throw new Error("Cloudflare WASM codec modules are not initialized");
+    }
+
     codecsReady = Promise.all([
-      resolveWasmModule(JPEG_DEC_WASM),
-      resolveWasmModule(PNG_WASM),
-      resolveWasmModule(WEBP_DEC_WASM),
-      resolveWasmModule(WEBP_ENC_WASM),
-      resolveWasmModule(RESIZE_WASM),
+      initJpegDecode(wasmModules.JPEG_DEC_WASM),
+      initPngDecode(wasmModules.PNG_WASM),
+      initPngEncode(wasmModules.PNG_WASM),
+      initWebpDecode(wasmModules.WEBP_DEC_WASM),
+      initWebpEncode(wasmModules.WEBP_ENC_WASM),
+      initResize(wasmModules.RESIZE_WASM),
     ])
-      .then(([jpegDecodeWasm, pngWasm, webpDecodeWasm, webpEncodeWasm, resizeWasm]) =>
-        Promise.all([
-          initJpegDecode(jpegDecodeWasm),
-          initPngDecode(pngWasm),
-          initPngEncode(pngWasm),
-          initWebpDecode(webpDecodeWasm),
-          initWebpEncode(webpEncodeWasm),
-          initResize(resizeWasm),
-        ]),
-      )
       .then(() => undefined)
       .catch((error) => {
         codecsReady = null;
