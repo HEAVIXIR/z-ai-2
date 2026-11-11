@@ -86,6 +86,12 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(store).toContain('provider = "prisma-client-js"');
   });
 
+  it("keeps the SQLite Preview schema aligned while excluding only the Worker-only generator", () => {
+    const sync = read("tests/preview-schema-sync.sh");
+    expect(sync).toContain("sed '/^generator workerClient {/,/^}/d'");
+    expect(sync).toContain('diff -u <(normalize_blank_lines "$TMP_MAIN") <(normalize_blank_lines "$TMP_SCHEMA")');
+  });
+
   it("blocks native PostgreSQL scalar-list fields unsupported by PPG 7.10.1", () => {
     expect(scalarListFields(read("prisma/schema.prisma"))).toEqual([]);
     expect(scalarListFields(read("prisma/store/schema.prisma"))).toEqual([]);
