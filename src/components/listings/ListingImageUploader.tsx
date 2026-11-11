@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Trash2, Upload, X } from "lucide-react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
 
 type Props = {
@@ -15,7 +15,7 @@ export default function ListingImageUploader({
   images,
   onChange,
   onUploadingChange,
-  maxImages = 30,
+  maxImages = 10,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -35,10 +35,11 @@ export default function ListingImageUploader({
       return;
     }
     if (files.length > remaining) {
-      setError(`فقط ${remaining} تصویر دیگر قابل افزودن است؛ بقیه انتخاب‌ها نادیده گرفته شدند.`);
+      setError(`فقط ${remaining} تصویر دیگر قابل افزودن است. تعداد فایل‌های انتخاب‌شده را کاهش دهید.`);
+      return;
     }
 
-    const accepted = files.slice(0, remaining);
+    const accepted = files;
     setUploading(true);
     onUploadingChange?.(true);
     setProgress({ completed: 0, total: accepted.length });
@@ -55,9 +56,8 @@ export default function ListingImageUploader({
         const prepared = await prepareImageForUpload(source);
         const body = new FormData();
         body.append("file", prepared.file);
-        body.append("entityType", "Listing");
 
-        const response = await fetch("/api/admin/upload", {
+        const response = await fetch("/api/media/staging", {
           method: "POST",
           body,
         });
@@ -72,7 +72,7 @@ export default function ListingImageUploader({
         setProgress({ completed: index + 1, total: accepted.length });
       }
 
-      if (uploaded.length) onChange([...images, ...uploaded].slice(0, maxImages));
+      if (uploaded.length) onChange([...images, ...uploaded]);
       if (compressionNotes.length) {
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد. ${compressionNotes[0]}`);
       } else if (uploaded.length) {
