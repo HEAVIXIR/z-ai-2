@@ -1849,5 +1849,5 @@ export const rentalsConfig: AdminResourceConfig = {
   bulkActions: [],
 
   audit: { enabled: true, entityType: 'RentalListing',
-    actions: ['rentals.manage'] },
+    actions: ['store.manage'] },
 };
