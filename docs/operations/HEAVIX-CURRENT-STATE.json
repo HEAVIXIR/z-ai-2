@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T06:42:00.000Z",
+  "updated_at_utc": "2026-11-11T07:30:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "8ac241262d2f0711ba8092f3d602c9fab24b03c4",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "abd88eced783ae528c364da0f215832073601227",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -137,26 +137,28 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Establish provenance/equivalence of GitHub proof secrets to the existing Cloudflare Preview Worker bindings without exposing secret values. Then obtain secure GitHub sign-in authorization to dispatch the pinned read-only Workerd proof. Do not deploy until both identity and provenance are verified.",
+    "task": "Trace the complete seller listing media path and locate the owner-confirmed Backblaze B2 media integration/configuration; fix the seller authorization boundary and persistent B2 adapter without changing storage architecture. Then reconcile image-count and brand validation contracts.",
     "first_paths_to_read": [
-      "AGENTS.md",
-      "docs/operations/HEAVIX-AGENT-CONTINUATION.md",
-      "docs/operations/HEAVIX-CURRENT-STATE.json",
-      "docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md",
-      ".github/workflows/prisma-preview-workerd-proof.yml",
-      "scripts/run-prisma-workerd-proof.mjs"
+      "src/components/listings/ListingImageUploader.tsx",
+      "src/app/api/admin/upload/route.ts",
+      "src/lib/media-service.ts",
+      "src/lib/authorization/permissions.ts",
+      "src/app/api/listings/route.ts",
+      "src/app/listings/new/page.tsx",
+      "all B2-related workflows/config and legacy Z media paths"
     ],
     "required_tests": [
-      "Exact-head CI success on PR #307 head 45d86f1c.",
-      "Prove GitHub proof input provenance matches live Cloudflare Worker Preview secret bindings without exposing values.",
-      "Read-only Workerd proof validates exact PostgreSQL system identifiers, migration fingerprints and read-only transaction mode.",
-      "After deployment, re-audit Preview routes and verify restored complete UI."
+      "Seller (non-admin) upload authorization is least-privilege and ownership-bound",
+      "B2 upload/read/delete persistence survives Worker restart and returns correct public/private URL",
+      "Listing create with 1, multiple and max images persists every accepted image; no silent truncation",
+      "Brand selection and request-new-brand behavior are consistent end-to-end",
+      "Read-after-write listing detail renders persisted media"
     ],
     "do_not": [
-      "Do not merge PR #307 until owner review.",
-      "Do not deploy before database provenance and identity gates pass.",
-      "Do not alter Production, DNS, secrets, or existing heavix-preview Worker.",
-      "Do not claim CI proves Preview DB identity."
+      "Do not enable or migrate to Cloudflare R2",
+      "Do not expose B2 secrets or invent bucket names",
+      "Do not deploy or write Preview DB before App/Store DB identity proof",
+      "Do not change Production, DNS or stable Worker"
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
@@ -168,11 +170,50 @@
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
     "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "45d86f1c7df9d644e4d33431ba5013e0a30646b7",
+  "latest_code_head_sha": "e3ab121018c10f1a5134f6f70e65bb52c0dec966",
   "latest_ci_run": {
     "id": 42914986140,
     "sha": "01452ed",
     "status": "queued",
     "note": "CI concurrency guard was added in this commit; it does not retroactively cancel runs created before it."
-  }
+  },
+  "benchmark_audit": {
+    "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
+    "commit": "e3ab121018c10f1a5134f6f70e65bb52c0dec966",
+    "status": "baseline established; repeated per-area audit in progress",
+    "references": [
+      "Machinio",
+      "Mascus",
+      "MachineryTrader",
+      "Kitmondo",
+      "Surplex",
+      "MachineTools.com",
+      "Machineseeker"
+    ]
+  },
+  "latest_verified_ci_run": {
+    "id": 42977975042,
+    "sha": "abd88eced783ae528c364da0f215832073601227",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      "verify",
+      "phase-tests",
+      "tls-proof",
+      "audit-transaction",
+      "Cloudflare compatibility (report-only)",
+      "docker-build-proof"
+    ],
+    "skipped": [
+      "Legacy archive inventory (read-only)"
+    ],
+    "note": "Verified job-level results. This is CI evidence only, not Preview runtime acceptance."
+  },
+  "confirmed_blockers": [
+    "ListingImageUploader targets /api/admin/upload, whose route requires requireAdmin(media.upload); seller upload is not proven and expected to be denied for non-admin sellers.",
+    "src/lib/media-service.ts persists files to local public/uploads via node:fs; operational Backblaze B2 media integration has not yet been located/proven in the repository.",
+    "Preview App DB and Store DB identities, and Production isolation, remain NOT VERIFIED.",
+    "Listing image UI limit 30 vs POST /api/listings slice(0,10) requires reconciliation; no silent truncation.",
+    "Brand free-text fallback conflicts with brandId validation and needs a real moderated request flow or strict registered-brand policy."
+  ]
 }
