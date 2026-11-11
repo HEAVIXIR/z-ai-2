@@ -29,7 +29,7 @@ import {
      • value      — current image URL (string | null | "")
      • onChange   — (url: string | null) => void
      • label?     — Persian label above the field
-     • accept?    — input accept attr (default "image/*")
+     • accept?    — input accept attr (default "image/jpeg,image/png,image/webp")
      • maxSize?   — bytes, default 4 MiB
      • endpoint?  — upload endpoint (default "/api/admin/upload")
      • theme?     — "light" | "dark" | "auto" (default "auto")
@@ -58,7 +58,7 @@ export default function MediaUploader({
   value,
   onChange,
   label,
-  accept = "image/*",
+  accept = "image/jpeg,image/png,image/webp",
   maxSize = DEFAULT_MAX,
   endpoint = "/api/admin/upload",
   theme = "auto",
