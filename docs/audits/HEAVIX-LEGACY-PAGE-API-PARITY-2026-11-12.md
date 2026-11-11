@@ -76,3 +76,34 @@ The OpenNext run built and exercised a real App Router path in Workerd without D
 ## Safety
 
 No Production/DNS change, merge, Worker setting/secret update, database connection/write, migration, seed, B2 object operation, Cloudflare Build or deployment was performed during this audit.
+
+
+## Read-only live Preview acceptance sweep — 2026-11-12 02:00 local (+03:30)
+
+The existing URL was fetched directly; these results describe the currently active pre-recovery Worker, not the candidate commit:
+
+| URL | HTTP/result | Observed behavior |
+|---|---:|---|
+| `/` | 200 | Old homepage shell; featured/latest ads, categories, brands, services and knowledge show empty/placeholder states |
+| `/api/health` | 503 | Health route unavailable |
+| `/api/services` | 500 | API failure |
+| `/services` | 404 | New recovery directory not present on active Worker |
+| `/sell-in-7-days` | 500 | Runtime failure |
+| `/knowledge` | 500 | Runtime failure |
+| `/auctions` | 500 | Runtime failure |
+| `/rentals` | 500 | Runtime failure |
+| `/listings` | 500 | Runtime failure |
+| `/api/listings` | 500 | API failure |
+| `/market-insights` | 500 | Runtime failure |
+| `/brands` | 500 | Runtime failure |
+| `/transport/request` | 500 | Runtime failure |
+| `/companies` | 200 | Page renders but no company records/content are shown |
+| `/store` | 200 | Store shell renders; parts list empty, category/model data loading, displayed USD rate is zero |
+| `/compare` | 200 | Comparison UI loads; it correctly asks for 2–5 listings, but data-backed use is blocked by listing API 500 |
+| `/admin` | login required | Auth boundary is active; no authenticated Admin browser session was used |
+
+`/categories` returned 404, but it is not a legacy route in the route inventory; category detail routes are slug-based under `/categories/[slug]`. Do not classify that path alone as a missing feature.
+
+This confirms the main discrepancy: the page and API route files exist in the recovery source, but the active Preview is still on an older Worker with broad runtime/API failures and empty catalog data. These failures require a correctly bound Preview runtime and real Preview data, not copying the same page files again.
+
+No authenticated Admin actions, database reads/writes, B2 operations, deployment or Production/DNS changes were performed during this live sweep.
