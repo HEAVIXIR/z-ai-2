@@ -13,7 +13,7 @@ import WEBP_ENC_WASM_URL from "@jsquash/webp/codec/enc/webp_enc.wasm";
 import RESIZE_WASM_URL from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
-const MAX_INPUT_PIXELS = 16_000_000;
+const MAX_INPUT_PIXELS = 12_000_000;
 const MAX_DIMENSION = 6_000;
 const MAX_OUTPUT_DIMENSION = 2_560;
 
