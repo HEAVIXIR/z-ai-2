@@ -13,7 +13,7 @@ import {
    HEAVIX-P0-IMPLEMENTATION-PLAN.md   STEP 6 (Upload Pipeline)
    ------------------------------------------------------------
    Verifies:
-     • detectImageType correctly identifies JPEG/PNG/GIF/WebP/BMP
+     • detectImageType correctly identifies supported static JPEG/PNG/WebP
        by their magic bytes (NEVER trusting the client MIME).
      • detectImageType returns null for non-image bytes.
      • detectImageType returns null for too-short buffers (<12).
@@ -40,20 +40,14 @@ describe("detectImageType magic-byte sniffing", () => {
     expect(detectImageType(PNG_MAGIC)).toBe("png");
   });
 
-  it("identifies GIF87a", () => {
-    expect(detectImageType(GIF87_MAGIC)).toBe("gif");
-  });
-
-  it("identifies GIF89a", () => {
-    expect(detectImageType(GIF89_MAGIC)).toBe("gif");
-  });
-
   it("identifies WebP (RIFF…WEBP)", () => {
     expect(detectImageType(WEBP_MAGIC)).toBe("webp");
   });
 
-  it("identifies BMP (BM)", () => {
-    expect(detectImageType(BMP_MAGIC)).toBe("bmp");
+  it("rejects GIF and BMP because only static JPEG, PNG and WebP are supported", () => {
+    expect(detectImageType(GIF87_MAGIC)).toBeNull();
+    expect(detectImageType(GIF89_MAGIC)).toBeNull();
+    expect(detectImageType(BMP_MAGIC)).toBeNull();
   });
 
   it("returns null for non-image bytes", () => {
