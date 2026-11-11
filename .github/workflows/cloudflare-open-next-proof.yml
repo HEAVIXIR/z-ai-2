@@ -12,6 +12,7 @@ on:
       - 'open-next.config.ts'
       - 'scripts/cloudflare-next-build-diagnostics.mjs'
       - 'scripts/patch-next-nft-concurrency.cjs'
+      - 'scripts/patch-opennext-worker-wasm.mjs'
       - 'src/lib/db.worker.ts'
       - 'src/lib/store-db.worker.ts'
       - 'src/lib/notifications.ts'
