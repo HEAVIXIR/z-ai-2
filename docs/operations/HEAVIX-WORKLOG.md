@@ -237,3 +237,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Updated machine-readable state: `docs/operations/HEAVIX-CURRENT-STATE.json`.
 - No merge, deployment, DB writes, secret changes, Production changes or DNS changes.
 - Next: establish secret provenance safely; then dispatch read-only Workerd proof and validate Preview before any deployment.
+
+## 2026-11-11 — Legacy archive identity and extracted-manifest reconciliation
+
+- Compared immutable recursive Git trees for `HEAVIXIR/z@217f98ecc800aa64ae4739d27ed2aeb95dd260ed` and `dellk00k/z@bbb1f4947e4b1a05e39f7b510c5c7801d52389e7`.
+- Verified all 13 root ZIP archives are byte-identical by matching Git blob SHA and byte size across both repositories.
+- Verified the extraction README declares 10 extracted archive families and quarantines `db.zip`, `upload.zip`, and `bun.zip`.
+- Counted 844 extracted payload blobs plus three bookkeeping files. The SHA-256 manifest has 845 entries, including its self-entry; 844 payload entries match extracted paths exactly once. The README's category totals also sum to 844.
+- Clarified that the historical 845 INTEGRATE / 17 ADAPT / 19 PRESERVE / 18 SAFE_ARCHIVE disposition counts refer to the 899-path archive inventory compared with target `833bec6`, not the extracted staging file count.
+- No ZIP was downloaded/extracted/executed; no quarantined content, DB, upload, secret or .env content was read.
+- Added `docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md` with archive identity table, count semantics, security boundaries and next exact migration actions.
+- Latest code-head CI before this documentation checkpoint: run #42982227259, SUCCESS on `cecd4b6601d17e757b018271ba6d49d75c7fdc1a`; six main jobs passed, legacy archive inventory skipped.
+- No application code changed; no deploy, DB read/write, Production/DNS action, or merge performed.
