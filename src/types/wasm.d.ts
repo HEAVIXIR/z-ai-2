@@ -1,4 +1,4 @@
 declare module "*.wasm" {
-  const module: WebAssembly.Module;
-  export default module;
+  const dataUrl: string;
+  export default dataUrl;
 }
