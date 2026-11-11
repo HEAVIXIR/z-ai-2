@@ -225,3 +225,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: `d5e80c3e15c3d2dffb5eee82a76fa78d45fc76a4` (Rentals audit permission), `7d2c0670a4eb8c51eb7a133ee4d3476679416292` (homepage contract assertion).
 - New exact-head CI run #42971201849 for commit `7d2c0670a4eb8c51eb7a133ee4d3476679416292` is running. At checkpoint, verify, phase-tests, Docker proof, TLS proof, Cloudflare compatibility report-only and audit-transaction jobs were in progress; no latest result yet.
 - No Preview deploy, DB write, migration, seed or Production/DNS change.
+
+## 2026-11-11 — Exact-head CI green and live Preview binding names verified
+
+- Verified PR #307 remains open/Draft at exact head `45d86f1c7df9d644e4d33431ba5013e0a30646b7`.
+- GitHub Actions run #42971293294 completed SUCCESS on that exact head. All required jobs passed, including Typecheck, Lint, security, contract/unit, integration, E2E, PostgreSQL migration, TLS, phase, audit transaction, Cloudflare compatibility report-only, and Docker/Caddy/Compose connectivity.
+- Performed a read-only Cloudflare Worker settings audit. Existing `heavix-preview` has secret_text bindings `DATABASE_URL` and `STORE_DATABASE_URL`; plain-text vars are `HEAVIX_ENV=preview` and `NODE_ENV=production`. Secret values were not retrieved or changed.
+- Inspected the pinned Workerd proof workflow. It consumes GitHub Actions secrets `HEAVIX_APP_PREVIEW_PPG_URL` and `HEAVIX_STORE_PREVIEW_PPG_URL`; its code does not prove those are identical to the live Cloudflare Worker bindings. This provenance gap must be resolved before treating a passing run as Worker DB identity evidence.
+- The proof workflow remains undispatched because browser profile has no GitHub sign-in. No credentials were requested/submitted.
+- Added durable audit: `docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md`.
+- Updated machine-readable state: `docs/operations/HEAVIX-CURRENT-STATE.json`.
+- No merge, deployment, DB writes, secret changes, Production changes or DNS changes.
+- Next: establish secret provenance safely; then dispatch read-only Workerd proof and validate Preview before any deployment.
