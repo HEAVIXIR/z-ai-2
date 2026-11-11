@@ -43,6 +43,12 @@ if [[ -n "${POSTGRES_CONTAINER_ID:-}" ]]; then
   }
 fi
 
+
+  pg_dump() {
+    docker exec --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" pg_dump "$@"
+  }
+  export -f psql pg_dump
+
 MAIN_SOURCE="heavix_pair_main_source_proof"
 STORE_SOURCE="heavix_pair_store_source_proof"
 MAIN_RESTORE="heavix_pair_main_restore_proof"
