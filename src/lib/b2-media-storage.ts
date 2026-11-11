@@ -110,7 +110,7 @@ async function hmac(key: Uint8Array, value: string): Promise<Uint8Array> {
     false,
     ["sign"],
   );
-  return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(value)));
+  return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, arrayBufferOf(encoder.encode(value))));
 }
 
 function encodeRfc3986(value: string): string {
