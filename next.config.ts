@@ -105,6 +105,7 @@ const isCloudflareBuild =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
   typescript: {
     ignoreBuildErrors: false,
     tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
@@ -153,6 +154,11 @@ const nextConfig: NextConfig = {
           "/*": [
             "./src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
             "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+            "./node_modules/@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm",
+            "./node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm",
+            "./node_modules/@jsquash/webp/codec/dec/webp_dec.wasm",
+            "./node_modules/@jsquash/webp/codec/enc/webp_enc_simd.wasm",
+            "./node_modules/@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm",
           ],
         },
         // Keep the alias for any explicitly opted-in local Turbopack diagnostics.
