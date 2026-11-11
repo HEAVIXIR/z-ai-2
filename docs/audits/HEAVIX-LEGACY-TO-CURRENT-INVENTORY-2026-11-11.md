@@ -79,3 +79,16 @@ This is why the right fix is not a wholesale legacy copy: restore the full secti
 6. Validate no mutation occurs in public GET requests. In particular, audit the current public `GET /api/homepage-sections` implementation, which currently attempts to seed rows when empty; public reads should not perform writes.
 
 The current repository's PageRenderer path is still useful for admin-authored custom pages and must not be discarded. The goal is to restore the full homepage, not remove the PageBuilder architecture.
+
+
+## Recovery-branch correction — 2026-11-12
+
+The findings above describe the protected `main` baseline and the initial homepage regression discovered before implementation. They must not be read as the current state of the recovery branch.
+
+On recovery code commit `5e1ad2341d713221840d335fa318a74ce9e5668f`:
+- The homepage has been restored to the canonical 17-section composition using current components and current data contracts.
+- All 145 legacy page routes and 278 legacy API route handlers from the extracted reference are present by normalized path; no legacy page/API route file is missing.
+- All legacy static image/logo assets have matching paths after normalization.
+- The separate full comparison and file dispositions are recorded in `docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md`.
+
+The live Preview is still not proof of this recovery source: it continues to serve the older active Worker. Source parity does not prove real database identity, live B2 operations, or browser/runtime acceptance. Those remain explicit release gates.
