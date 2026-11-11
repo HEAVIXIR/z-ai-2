@@ -167,3 +167,14 @@ Every new agent/chat must:
 5. Never ask the owner to repeat known constraints or provide secret values in chat.
 6. Never trigger Cloudflare Builds, upload a Worker version, deploy, merge, contact Preview databases, or mutate B2 objects without the specific approval gates already established for that action.
 7. Optimize for the owner's time and the fastest safe path to a complete real HEAVIX site, not for number of commits, builds, or reports.
+
+
+## 2026-11-11 — Proof-branch auto-build incident and prevention
+
+- A new proof branch, `proof/jsquash-worker-image-2026-11-11`, was pushed before its exact name had been added to the non-production Cloudflare Build trigger exclusions. This was an operator error; do not repeat it.
+- Trigger: `ac8064c1-e751-4669-af03-f03cb2922d5e8` (non-production trigger; account `3fe0437a0aab4bafb2e728e458f67ea0`).
+- Cloudflare recorded 24 build records for that branch: 5 failed, 18 skipped, 1 successful. A still-running build was cancelled. The deploy command remained fail-closed, and read-only verification confirmed the active `heavix-preview` deployment/version and 100% traffic were unchanged.
+- The branch is now in `branch_excludes`; read-back confirmed the exclusion. The recovery branch and earlier Webpack proof branch remain excluded.
+- The Cloudflare account limits endpoint still reported `has_reached_build_minutes_limit=false`, but did not expose exact consumed minutes. Treat the attempts as quota-consuming until the dashboard confirms otherwise.
+- **Mandatory rule:** before creating or pushing to any new branch, read the current Cloudflare Build trigger, add that exact branch name to `branch_excludes`, read it back, and only then create/push. Never assume `proof/*` is excluded. Never create another branch just to test this.
+- All subsequent build/runtime validation for this work must run in GitHub Actions or local/offline tools. No Cloudflare Build, Worker upload, or deployment without the explicit gates and owner approval.
