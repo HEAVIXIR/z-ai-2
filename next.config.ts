@@ -105,82 +105,20 @@ const isCloudflareBuild =
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
+  // Keep jSquash outside Next's Webpack bundle. The final Wrangler/esbuild
+  // pass imports the codec binaries as precompiled WebAssembly.Module values.
+  serverExternalPackages: [
+    "@jsquash/jpeg",
+    "@jsquash/png",
+    "@jsquash/resize",
+    "@jsquash/webp",
+  ],
   typescript: {
     ignoreBuildErrors: false,
     tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
   webpack(config) {
-    const jsquashWasm = /node_modules[\\/]@jsquash[\\/]/;
-    type MutableRule = {
-      test?: RegExp;
-      generator?: { filename?: string };
-      exclude?: RegExp | RegExp[];
-      include?: RegExp;
-      type?: string;
-      oneOf?: MutableRule[];
-      rules?: MutableRule[];
-    };
-    const patchDefaultAssetRules = (rules: MutableRule[]) => {
-      for (const rule of rules) {
-        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
-          const existing = Array.isArray(rule.exclude)
-            ? rule.exclude
-            : rule.exclude
-              ? [rule.exclude]
-              : [];
-          rule.exclude = [...existing, jsquashWasm];
-        }
-        if (rule.oneOf) patchDefaultAssetRules(rule.oneOf);
-        if (rule.rules) patchDefaultAssetRules(rule.rules);
-      }
-    };
-    // Exclude jSquash from Next's default WASM module rule; the following
-    // asset/inline rule supplies data URLs to the generated codec glue code.
-    patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
-    const moduleGenerator = {
-      ...config.module.generator,
-    } as Record<string, unknown>;
-    const genericAssetGenerator = moduleGenerator.asset as
-      | { filename?: string; [key: string]: unknown }
-      | undefined;
-    if (genericAssetGenerator?.filename) {
-      const { filename: _assetFilename, ...assetGeneratorWithoutFilename } =
-        genericAssetGenerator;
-      moduleGenerator.asset = assetGeneratorWithoutFilename;
-    }
-    moduleGenerator["asset/inline"] = {
-      dataUrl: { encoding: "base64", mimetype: "application/wasm" },
-    };
-    config.module.generator = moduleGenerator as typeof config.module.generator;
-    config.module.rules.push({
-      test: /\.wasm$/,
-      include: jsquashWasm,
-      type: "asset/inline",
-      generator: {
-        dataUrl: { encoding: "base64", mimetype: "application/wasm" },
-      },
-    });
-    const finalWasmRules: Array<Record<string, unknown>> = [];
-    const inspectFinalRules = (rules: MutableRule[], prefix = "root") => {
-      rules.forEach((rule, index) => {
-        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
-          finalWasmRules.push({
-            path: `${prefix}[${index}]`,
-            type: rule.type,
-            generator: rule.generator,
-            include: rule.include?.toString(),
-            exclude: rule.exclude?.toString(),
-          });
-        }
-        if (rule.oneOf) inspectFinalRules(rule.oneOf, `${prefix}[${index}].oneOf`);
-        if (rule.rules) inspectFinalRules(rule.rules, `${prefix}[${index}].rules`);
-      });
-    };
-    inspectFinalRules(config.module.rules as unknown as MutableRule[]);
-    console.log("HEAVIX_FINAL_WASM_RULES", JSON.stringify(finalWasmRules));
-    console.log("HEAVIX_FINAL_MODULE_GENERATOR", JSON.stringify(config.module.generator));
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
