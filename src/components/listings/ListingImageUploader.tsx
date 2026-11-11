@@ -51,8 +51,8 @@ export default function ListingImageUploader({
     try {
       for (let index = 0; index < accepted.length; index++) {
         const source = accepted[index];
-        if (!source.type.startsWith("image/")) {
-          throw new Error(`فایل «${source.name}» تصویر معتبر نیست.`);
+        if (!SUPPORTED_IMAGE_TYPES.has(source.type)) {
+          throw new Error(`فرمت «${source.name}» پشتیبانی نمی‌شود. فقط JPG، PNG و WebP مجاز هستند.`);
         }
 
         const prepared = await prepareImageForUpload(source);
