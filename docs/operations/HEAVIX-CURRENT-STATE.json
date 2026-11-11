@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T09:00:00.000Z",
+  "updated_at_utc": "2026-11-11T09:10:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -146,32 +146,34 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Generate a normalized 844-file path+SHA-256 parity report from the extracted snapshot against the current recovery branch; reconcile it with the 899-path four-way disposition and then resume the confirmed B2 seller-media integration without touching the DB-backup bucket.",
+    "task": "Review the 321 changed extracted files in risk/domain batches and refresh the 17-item ADAPT_THEN_INTEGRATE backlog against current contracts. Start with Prisma/data/security/media and compare each legacy capability to its current implementation before making any code changes; then continue B2 seller-media architecture and the 22-area product parity/acceptance work.",
     "first_paths_to_read": [
-      "docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md",
+      "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.md",
+      "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.csv",
       "docs/legacy-parity/VALUE-BASED-DISPOSITION-2026-10-27.md",
       "docs/legacy-parity/INTEGRATION-PROPOSAL-FOR-SENIOR-DIRECTOR-2026-10-28.md",
+      "prisma/schema.prisma",
+      "prisma/store/schema.prisma",
       "src/lib/media-service.ts",
       "src/app/api/admin/upload/route.ts",
       "src/app/api/admin/media/route.ts",
-      "src/app/api/admin/media/[id]/route.ts",
       "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/listings/route.ts",
-      "package.json",
-      ".github/workflows/prisma-preview-backup-to-b2.yml"
+      "package.json"
     ],
     "required_tests": [
-      "Normalized path/hash comparison with explicit prefix mapping and preserved provenance.",
+      "Current-contract tests for each adapted legacy capability.",
+      "Prisma migration and generated-client compatibility checks; no legacy SQLite migration execution.",
       "B2 media upload/read-back/delete using dedicated non-production heavix-dev-assets bucket.",
       "Seller least-privilege upload and ownership.",
       "Unified image-count contract without silent truncation.",
-      "Listing create and media read-after-write.",
       "Responsive desktop/tablet/mobile critical journeys."
     ],
     "do_not": [
       "Do not use heavix-db-backups for media.",
       "Do not enable or migrate to Cloudflare R2.",
       "Do not expose B2 secrets.",
+      "Do not import files just because hashes differ.",
       "Do not deploy or write Preview DB before App/Store DB identity proof.",
       "Do not change Production, DNS or stable Worker.",
       "Do not implement native iOS/Android in current web release."
@@ -366,7 +368,7 @@
     ],
     "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
   },
-  "latest_documentation_checkpoint_commit_sha": "87bb83190c6ce62565964db83ed2d810656a67cc",
+  "latest_documentation_checkpoint_commit_sha": "c311854b689cb3876407f30fa401ba180301a3f4",
   "legacy_snapshot_reconciliation": {
     "status": "SOURCE ARCHIVE IDENTITY VERIFIED; FILE-LEVEL CURRENT-BRANCH PARITY STILL IN PROGRESS",
     "source_repository": "HEAVIXIR/z",
@@ -387,6 +389,27 @@
       "Refreshed 17-item adaptation backlog against current branch head."
     ],
     "evidence_document": "docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md",
-    "evidence_commit": "87bb83190c6ce62565964db83ed2d810656a67cc"
+    "evidence_commit": "87bb83190c6ce62565964db83ed2d810656a67cc",
+    "path_hash_comparison": {
+      "target_head": "714678ca6920cc10fbb4696b203753df8244bbab",
+      "extracted_payload_files": 844,
+      "results": {
+        "identical": 494,
+        "different": 321,
+        "missing": 29,
+        "unmapped": 0
+      },
+      "missing_path_dispositions": {
+        "adapt_then_integrate": 16,
+        "preserve_as_reference": 13
+      },
+      "additional_adaptation_path": "prisma/migrations/README.md",
+      "additional_adaptation_status": "DIFFERENT at existing target path; historical disposition ADAPT_THEN_INTEGRATE",
+      "comparison_csv": "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.csv",
+      "comparison_report": "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.md",
+      "report_commit": "a6103524797c2bef842eeace7de68987f0e73da9",
+      "csv_disposition_fix_commit": "c311854b689cb3876407f30fa401ba180301a3f4",
+      "interpretation": "Hash/path comparison only; different hashes are not automatically defects and missing paths must follow historical disposition. No files copied."
+    }
   }
 }

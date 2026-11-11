@@ -262,3 +262,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - This is path/hash evidence only; 321 differences are not defects by default, and no code was copied or modified.
 - Archive-level scan remains unverified because the last green CI run #42982227259 skipped `Legacy archive inventory (read-only)`.
 - No deploy, DB operation, Production/DNS action, or merge.
+
+## 2026-11-11 — Refreshed extracted path/hash comparison committed
+
+- Comparison commit: `a6103524797c2bef842eeace7de68987f0e73da9`.
+- CSV disposition correction commit: `c311854b689cb3876407f30fa401ba180301a3f4`; `prisma/migrations/README.md` is marked ADAPT_THEN_INTEGRATE (existing path, differing hash).
+- Current comparison totals: 844 payload files; 494 IDENTICAL, 321 DIFFERENT, 29 MISSING, 0 UNMAPPED.
+- The 29 missing paths map to 16 ADAPT_THEN_INTEGRATE and 13 PRESERVE_AS_REFERENCE. The 17th historical adaptation is the differing `prisma/migrations/README.md`.
+- The full per-file CSV preserves source path, normalized target path, source/target Git blob SHA, comparison result and historical disposition.
+- No source files were copied or modified; no app behavior changed.
+- Current code commit remains `cecd4b6601d17e757b018271ba6d49d75c7fdc1a`; later commits are documentation-only. The last verified green CI run #42982227259 applies to that code commit; no new exact-head CI result is claimed for the subsequent documentation commits.
+- Next: review 321 changed files and 17 adaptations by risk/domain; then continue B2 media and full responsive-web acceptance.
