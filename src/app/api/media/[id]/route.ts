@@ -27,15 +27,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     let listingOwnerId: string | null = null;
     let listingIsPublic = false;
-    if (asset.entityType === "Listing" && asset.entityId) {
-      const listing = await db.listing.findUnique({
-        where: { id: asset.entityId },
-        select: { sellerId: true, status: true },
-      });
-      if (listing) {
-        listingOwnerId = listing.sellerId;
-        listingIsPublic = listing.status === "PUBLISHED";
-      }
+    const listingImage = await db.listingImage.findFirst({
+      where: { url: asset.url },
+      select: { listing: { select: { sellerId: true, status: true } } },
+    });
+    if (listingImage?.listing) {
+      listingOwnerId = listingImage.listing.sellerId;
+      listingIsPublic = listingImage.listing.status === "PUBLISHED";
     }
 
     const isPublic = asset.visibility === "PUBLIC" || listingIsPublic;
