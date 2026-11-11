@@ -1,9 +1,9 @@
 name: Cloudflare Worker Wrangler Dry-Run Proof
 
 on:
-  push:
+  pull_request:
     branches:
-      - 'proof/webpack-worker-wasm-2026-11-11'
+      - 'recovery/**'
     paths:
       - '.github/workflows/cloudflare-wrangler-dry-run-proof.yml'
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   wrangler-dry-run:
-    name: Package exact OpenNext artifact with Wrangler (no upload)
+    name: Package exact Preview OpenNext artifact with Wrangler (no upload)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -24,6 +24,7 @@ jobs:
       HEAVIX_APP_PREVIEW_DATABASE_OID: "1"
       HEAVIX_STORE_PREVIEW_DATABASE_OID: "2"
       HEAVIX_ENV: "preview"
+      NEXT_PUBLIC_SITE_URL: "https://heavix-preview.heavixir.workers.dev"
       NODE_ENV: "production"
     steps:
       - name: Checkout exact source and Wrangler configuration
@@ -37,12 +38,12 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
-      - name: Download the inspected OpenNext artifact
+      - name: Download the inspected Preview OpenNext artifact
         uses: actions/download-artifact@v4
         with:
-          name: heavix-open-next-webpack-6baee22f25e169536dba96fb7621123d7a13c791
+          name: heavix-open-next-webpack-21cc47a5d3d4133684a40cbed7f133f2db7d11bc
           repository: HEAVIXIR/z-ai-2
-          run-id: 43010880902
+          run-id: 43011670723
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .open-next
 
@@ -59,11 +60,11 @@ jobs:
           test -s .open-next/.build/durable-objects/bucket-cache-purge.js
           test -s .open-next/server-functions/default/src/lib/generated/worker-client/internal/query_compiler_bg.wasm
           test -s .open-next/server-functions/default/src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm
-          echo "PASS: exact inspected OpenNext artifact restored"
+          echo "PASS: exact Preview OpenNext artifact restored"
 
       - name: Run Wrangler deploy dry-run only
         run: |
           set -euo pipefail
-          bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/heavix-wrangler-dry-run"
+          bunx wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/heavix-wrangler-dry-run"
           test -d "$RUNNER_TEMP/heavix-wrangler-dry-run"
           echo "PASS: Wrangler packaged the Worker without uploading or deploying"
