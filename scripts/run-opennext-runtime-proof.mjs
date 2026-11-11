@@ -177,7 +177,7 @@ try {
       "both production-path proxies failed closed without DB bindings",
       "B2 media service and its optimizer module imported in Workerd without credentials",
       "invalid media IDs rejected before any B2 request",
-      "Sharp image decode/optimization executes in Workerd without native host dependencies",
+      "jSquash WebAssembly image decode/optimization executes in Workerd without native host dependencies",
       "no database connection or write was attempted",
     ],
     databaseMode: "SMOKE_ONLY",
