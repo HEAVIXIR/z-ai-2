@@ -61,9 +61,19 @@ async function initializeCodecs(): Promise<void> {
       loadInlineWasm(WEBP_DEC_WASM_URL),
       loadInlineWasm(RESIZE_WASM_URL),
     ])
-      .then(async ([jpegWasm, pngWasm, webpDecodeWasm, resizeWasm]) => {
-        // Use the portable scalar encoder in Node/Vitest and Workerd alike.
-        const webpEncodeWasm = await loadInlineWasm(WEBP_ENC_WASM_URL);
+      .then(async ([jpegBytes, pngBytes, webpDecodeBytes, resizeBytes]) => {
+        // jSquash init expects a compiled WebAssembly.Module. Passing raw
+        // ArrayBuffer is interpreted as Emscripten options and falls back to
+        // fetch(import.meta.url), which fails in Node/Vitest and Workerd.
+        const [jpegWasm, pngWasm, webpDecodeWasm, resizeWasm, webpEncodeBytes] =
+          await Promise.all([
+            WebAssembly.compile(jpegBytes),
+            WebAssembly.compile(pngBytes),
+            WebAssembly.compile(webpDecodeBytes),
+            WebAssembly.compile(resizeBytes),
+            loadInlineWasm(WEBP_ENC_WASM_URL),
+          ]);
+        const webpEncodeWasm = await WebAssembly.compile(webpEncodeBytes);
         await Promise.all([
           initJpegDecode(jpegWasm),
           initPngDecode(pngWasm),
