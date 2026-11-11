@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T10:20:00.000Z",
+  "updated_at_utc": "2026-11-11T08:50:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "cecd4b6601d17e757b018271ba6d49d75c7fdc1a",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "d2f68100ded4c0c1fbdcf81d6e8cdcb93de0e1f7",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -15,7 +15,7 @@
   "preview": {
     "url": "https://heavix-preview.heavixir.workers.dev",
     "must_preserve_existing_url": true,
-    "deployment_status": "NOT VERIFIED IN THIS CHECKPOINT",
+    "deployment_status": "NOT DEPLOYED: active Worker remains version 17 (063ce438-ca3a-4482-b416-9260b780bccf; deployed 2026-11-10T21:08:35Z). Cloudflare Build #42986374509 was a guarded no-op; no Worker Preview exists because previews_enabled=false.",
     "database_identity_app": "NOT VERIFIED",
     "database_identity_store": "NOT VERIFIED",
     "production_isolation": "NOT VERIFIED"
@@ -37,7 +37,14 @@
     "The eight differing components are ActiveRequestsSection.tsx, BrandsSection.tsx, CtaSection.tsx, Hero.tsx, RecommendationsSection.tsx, StatsSection.tsx, VerifiedMachinesCarousel.tsx, VerifiedMachinesGallery.tsx.",
     "Current tree includes routes/modules for Sell in 7 Days, Companies, Store, Services, Knowledge, Taxonomy and Admin; completeness is not yet proven.",
     "Public GET /api/homepage-sections was flagged for read-side-effect audit; exact current behavior must be inspected.",
-    "Legacy extracted snapshot reports 10 archives and 845 files, with db.zip, upload.zip and bun.zip quarantined."
+    "Legacy extracted snapshot reports 10 archives and 845 files, with db.zip, upload.zip and bun.zip quarantined.",
+    "Exact PR #307 head d2f68100ded4c0c1fbdcf81d6e8cdcb93de0e1f7 passed GitHub Actions run #42986374509: verify, phase-tests, tls-proof, audit-transaction and docker-build-proof all passed; Cloudflare compatibility report-only passed; legacy archive inventory skipped.",
+    "Cloudflare Workers Builds is connected to main, branch Previews are disabled, Preview list is empty, and both configured deploy commands are explicit no-op safety guards.",
+    "Cloudflare build command skips successfully when no open-next.config.ts/js/mjs exists; the latest reported successful build was not a Next.js build or Worker deployment.",
+    "Active Worker runtime has only DATABASE_URL and STORE_DATABASE_URL secret bindings; no B2 runtime bindings are present. Secret values were not read.",
+    "Owner reports six B2 values saved under Previews Base; these are not active on the current Worker while Previews are disabled and no branch Preview exists.",
+    "Live smoke test of existing Worker: root HTTP success but incomplete/empty sections; /api/health 503; /api/services 500; /services 404. Active version is still the pre-recovery deployment.",
+    "Current media-service remains local filesystem + JSON sidecars; seller uploader still targets admin-only endpoint; listing POST silently slices images to 10."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -102,7 +109,11 @@
     "Owner identified two existing Backblaze B2 buckets: heavix-db-backups is the private database-backup bucket (bucket ID suffix 0411, 12 current files, 2.1 MB); a second private assets bucket is reported with a name transcribed as heavix-dev-assets pending exact spelling verification (bucket ID prefix 356, Keep all versions, 2 current files, 43 bytes). Both use s3.us-east-005.backblazeb2.com and encryption is enabled.",
     "Selected the second B2 assets bucket as the intended dedicated development media bucket, subject to exact bucket-name/full-ID and access-policy/CORS/credential-scope verification; database backup bucket must never be used for media.",
     "Owner explicitly confirmed the exact Backblaze B2 development assets bucket name as heavix-dev-assets; no spelling ambiguity remains.",
-    "Owner confirmed that the execution agent does not have direct Backblaze console access and authorized a guided handoff: request precise non-secret identifiers/settings from the owner when needed, while instructing them to enter application keys only into local secure environment variables or the appropriate secret manager, never into chat."
+    "Owner confirmed that the execution agent does not have direct Backblaze console access and authorized a guided handoff: request precise non-secret identifiers/settings from the owner when needed, while instructing them to enter application keys only into local secure environment variables or the appropriate secret manager, never into chat.",
+    "Verified exact-head GitHub Actions run #42986374509 and all six blocking jobs.",
+    "Audited Cloudflare Workers Builds configuration, active Worker deployment/version, runtime binding names, secret names, branch Preview status and deploy/build no-op guards without reading secret values.",
+    "Ran read-only live smoke tests on the existing Preview URL and recorded current HTTP outcomes.",
+    "Updated append-only worklog with exact CI, Cloudflare, Preview and B2 configuration evidence."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -141,12 +152,16 @@
     "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled.",
     "CI run #42915285217 failed two contract assertions (Rentals audit permission still rentals.manage; homepage test falsely matched local helper filename site-stats). Both source/test issues are fixed in commits d5e80c3 and 7d2c067.",
     "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete.",
-    "GitHub Actions proof secrets are not independently proven identical to live Cloudflare Worker secret bindings; proof workflow not dispatched."
+    "GitHub Actions proof secrets are not independently proven identical to live Cloudflare Worker secret bindings; proof workflow not dispatched.",
+    "Recovery branch d2f68100 has not been deployed; the Cloudflare Build bot success comment represented a guarded no-op build, not a new active Worker deployment.",
+    "Worker Previews are disabled and there is no branch Preview environment; owner-reported B2 Preview Base settings are not active runtime bindings yet.",
+    "No B2 media adapter, seller staging/finalization flow, B2 upload/readback/hash/delete proof, or durable media persistence exists.",
+    "Preview App/Store database identities and Production isolation remain unverified."
   ],
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Implement the server-only B2 S3 adapter and dedicated seller upload/staging/finalization path against the recorded design; in parallel continue the 321 differing-file review by risk/domain. Do not enable live B2 operations until the owner supplies non-secret bucket metadata and configures the dedicated bucket/prefix-scoped key securely.",
+    "task": "Implement the server-only Backblaze B2 S3-compatible media adapter and seller-owned staging/finalization path on the recovery branch; add mocked storage/security/ownership/image-count tests. In parallel, prepare the Cloudflare Preview build configuration, but do not enable Previews or deploy until App/Store database identity and Preview resource isolation are proven.",
     "first_paths_to_read": [
       "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
       "src/lib/media-service.ts",
@@ -158,23 +173,26 @@
       "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/listings/route.ts",
       "prisma/schema.prisma",
-      "package.json"
+      "package.json",
+      "bun.lock"
     ],
     "required_tests": [
-      "Mocked B2 adapter tests and fail-closed config tests.",
+      "Mocked B2 adapter tests and fail-closed configuration tests.",
       "Seller auth, CSRF, rate-limit, magic-byte, dimension and size tests.",
       "Cross-seller asset ownership and staged-asset finalization tests.",
       "10-image accept / 11-image reject contract tests.",
-      "B2 live upload/readback/SHA-256/delete-version proof in the dedicated media bucket only.",
-      "Responsive desktop/tablet/mobile listing creation and image management."
+      "B2 live upload/readback/SHA-256/delete-version proof in the dedicated media bucket only, after scope verification.",
+      "Responsive desktop/tablet/mobile listing creation and image management.",
+      "Exact-head CI and artifact provenance; no Worker deployment until DB identity gates pass."
     ],
     "do_not": [
       "Do not use heavix-db-backups for media.",
       "Do not enable or migrate to Cloudflare R2.",
-      "Do not expose B2 secrets in chat or logs.",
+      "Do not expose B2 secrets in chat, GitHub, or logs.",
       "Do not alter bucket lifecycle, versioning, CORS or existing objects without approval.",
-      "Do not deploy or write Preview DB before App/Store DB identity proof.",
-      "Do not change Production, DNS or stable Worker.",
+      "Do not enable Worker Previews or change deploy commands until Preview DB identities and isolation are proven.",
+      "Do not modify Production settings, DNS, or stable Worker.",
+      "Do not run migrations, seeds, or writes against Preview/Production DB.",
       "Do not implement native iOS/Android in current web release."
     ]
   },
