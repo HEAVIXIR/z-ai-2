@@ -69,11 +69,17 @@ jobs:
           test -s .open-next/.build/durable-objects/bucket-cache-purge.js
           echo "PASS: Worker entrypoint, runtime modules, durable objects, and assets exist"
 
+      - name: Execute no-database Workerd runtime smoke
+        env:
+          HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+        run: bun run test:workerd
+
       - name: Upload complete OpenNext proof artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: heavix-open-next-webpack-${{ github.sha }}
           path: .open-next/**
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
