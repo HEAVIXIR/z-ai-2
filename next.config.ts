@@ -105,8 +105,14 @@ const isCloudflareBuild =
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
-  // Cloudflare injects jSquash codec binaries through Wrangler wasm_modules.
+  // Keep jSquash outside Next's Webpack bundle. OpenNext's final Wrangler/esbuild
+  // pass handles its direct .wasm imports as precompiled WebAssembly.Module values.
+  serverExternalPackages: [
+    "@jsquash/jpeg",
+    "@jsquash/png",
+    "@jsquash/resize",
+    "@jsquash/webp",
+  ],
   webpack(config) {
     if (isCloudflareBuild) {
       config.parallelism = 4;
