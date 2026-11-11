@@ -228,4 +228,13 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(wrangler).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED");
   });
 
+
+  it("uses the canonical site-config Preview flag for sitemap suppression", () => {
+    const siteConfig = read("src/lib/site-config.ts");
+    const sitemap = read("src/app/sitemap.ts");
+    expect(siteConfig).toContain('export const IS_PREVIEW_DEPLOYMENT = process.env.HEAVIX_ENV === "preview"');
+    expect(sitemap).toContain("IS_PREVIEW_DEPLOYMENT");
+    expect(sitemap).toContain("SITE_BASE_URL");
+  });
+
 });
