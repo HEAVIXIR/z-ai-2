@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
 
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 type Props = {
   images: string[];
   onChange: (images: string[]) => void;
@@ -117,7 +119,7 @@ export default function ListingImageUploader({
           {uploading ? "در حال آپلود تصاویر واقعی..." : "تصاویر دستگاه را انتخاب کنید"}
         </span>
         <span className="mt-1 text-[11px] text-white/30">
-          JPG، PNG، WebP، GIF و BMP · حداکثر ۲۰ مگابایت ورودی برای هر تصویر
+          JPG، PNG و WebP · حداکثر ۲۰ مگابایت ورودی برای هر تصویر
         </span>
         {uploading && (
           <span className="mt-2 text-xs text-[#F58220]">
@@ -129,7 +131,7 @@ export default function ListingImageUploader({
         ref={inputRef}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
+        accept="image/jpeg,image/png,image/webp"
         className="hidden"
         disabled={uploading || images.length >= maxImages}
         onChange={(event) => {
