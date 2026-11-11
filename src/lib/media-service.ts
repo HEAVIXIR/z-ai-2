@@ -15,6 +15,7 @@
 
 import {
   B2_MEDIA_SCOPE,
+  copyB2MediaObject,
   createB2MediaReadUrl,
   deleteB2MediaObject,
   getB2MediaObject,
@@ -84,6 +85,15 @@ function objectKey(assetId: string, ext: string, date = new Date()): string {
   const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!safeExt) throw new Error("فرمت فایل نامعتبر است.");
   return B2_MEDIA_SCOPE.prefix + "objects/" + monthSubfolder(date) + "/" + assetId + "." + safeExt;
+}
+
+function stagingObjectKey(assetId: string, ext: string, userId: string | null): string {
+  const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const owner = (userId ?? "").trim();
+  if (!safeExt || !/^[a-zA-Z0-9_-]{1,128}$/.test(owner)) {
+    throw new Error("مالک یا فرمت فایل برای فضای موقت نامعتبر است.");
+  }
+  return B2_MEDIA_SCOPE.prefix + "staging/" + owner + "/" + assetId + "." + safeExt;
 }
 
 function parseSidecar(bytes: Uint8Array): AssetSidecar | null {
@@ -176,8 +186,10 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
   const assetId = randomAssetId();
   const safeName = sanitizeFilename(optimized.ext);
   const storedAt = new Date();
-  const key = objectKey(assetId, optimized.ext, storedAt);
   const visibility: MediaVisibility = input.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+  const key = visibility === "PRIVATE"
+    ? stagingObjectKey(assetId, optimized.ext, input.uploadedBy)
+    : objectKey(assetId, optimized.ext, storedAt);
   const sidecar: AssetSidecar = {
     id: assetId,
     filename: safeName,
@@ -302,8 +314,20 @@ export async function attachAsset(
   const asset = await getAsset(assetId);
   if (!asset) return { ok: false, error: "رسانه یافت نشد." };
 
+  let finalKey = asset.relativePath;
+  const uploadedAt = new Date(asset.uploadedAt);
+  if (asset.status === "STAGED" && asset.relativePath.includes("/staging/")) {
+    finalKey = objectKey(asset.id, asset.ext, Number.isNaN(uploadedAt.getTime()) ? new Date() : uploadedAt);
+    try {
+      await copyB2MediaObject(asset.relativePath, finalKey);
+    } catch {
+      return { ok: false, error: "انتقال رسانه از فضای موقت به فضای نهایی B2 ناموفق بود." };
+    }
+  }
+
   const updated: AssetSidecar = {
     ...asset,
+    relativePath: finalKey,
     entityType,
     entityId,
     status: "ATTACHED",
@@ -311,7 +335,14 @@ export async function attachAsset(
   try {
     await writeSidecar(updated);
   } catch {
+    // Keep the staging source in place so the existing stable URL still works.
     return { ok: false, error: "به‌روزرسانی متادیتای رسانه ناموفق بود." };
+  }
+
+  if (finalKey !== asset.relativePath) {
+    // B2 bucket versioning is preserved; DeleteObject creates the normal
+    // delete marker and does not purge historical versions.
+    await deleteB2MediaObject(asset.relativePath).catch(() => {});
   }
 
   await logAudit({
