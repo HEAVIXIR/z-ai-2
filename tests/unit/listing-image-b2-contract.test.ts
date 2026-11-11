@@ -49,7 +49,8 @@ describe("seller B2 media staging contract", () => {
 
   it("keeps B2 private and gates read URLs by public visibility, owner or admin", () => {
     const route = read("src/app/api/media/[id]/route.ts");
-    expect(route).toContain('adminGuard("media.read")');
+    expect(route).toContain('can(user.id, "media.read")');
+    expect(route).toContain("const isOwner");
     expect(route).toContain('asset.visibility === "PUBLIC"');
     expect(route).toContain('listingImage.listing.status === "PUBLISHED"');
     expect(route).toContain("listingOwnerId === user.id");
