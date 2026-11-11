@@ -238,3 +238,4 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     const wrapper = read("scripts/preview-version-worker.mjs");
     expect(wrapper).toContain("preview-version-worker-gate");
   });
+});
