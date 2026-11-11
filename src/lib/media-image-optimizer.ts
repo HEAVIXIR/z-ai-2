@@ -7,7 +7,6 @@ import resizeImage, { initResize } from "@jsquash/resize";
 import JPEG_DEC_WASM_URL from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import PNG_WASM_URL from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
 import WEBP_DEC_WASM_URL from "@jsquash/webp/codec/dec/webp_dec.wasm";
-import WEBP_ENC_SIMD_WASM_URL from "@jsquash/webp/codec/enc/webp_enc_simd.wasm";
 import WEBP_ENC_WASM_URL from "@jsquash/webp/codec/enc/webp_enc.wasm";
 import RESIZE_WASM_URL from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
@@ -64,7 +63,7 @@ async function initializeCodecs(): Promise<void> {
     ])
       .then(async ([jpegWasm, pngWasm, webpDecodeWasm, resizeWasm]) => {
         // Use the portable scalar encoder in Node/Vitest and Workerd alike.
-n        const webpEncodeWasm = await loadInlineWasm(WEBP_ENC_WASM_URL);
+        const webpEncodeWasm = await loadInlineWasm(WEBP_ENC_WASM_URL);
         await Promise.all([
           initJpegDecode(jpegWasm),
           initPngDecode(pngWasm),
