@@ -57,6 +57,8 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck Worker-specific Prisma clients
+        run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
           sudo apt-get install -y postgresql-client
@@ -656,3 +658,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  prisma-workerd-smoke:
+    name: Workerd runtime smoke (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Execute no-database Workerd smoke proof
+        run: bun run test:workerd
