@@ -3,7 +3,7 @@ import decodePng, { init as initPngDecode } from "@jsquash/png/decode";
 import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
-import resizeImage, { init as initResize } from "@jsquash/resize";
+import resizeImage, { initResize } from "@jsquash/resize";
 import { simd } from "wasm-feature-detect";
 import JPEG_DEC_WASM_URL from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import PNG_WASM_URL from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
