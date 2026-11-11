@@ -116,7 +116,7 @@ const nextConfig: NextConfig = {
     type MutableRule = {
       test?: RegExp;
       generator?: { filename?: string };
-      exclude?: RegExp | MutableRule["exclude"][];
+      exclude?: RegExp | RegExp[];
       oneOf?: MutableRule[];
       rules?: MutableRule[];
     };
@@ -142,7 +142,7 @@ const nextConfig: NextConfig = {
     // jSquash binaries from that rule before applying the data-URL rule below.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
     config.module.rules.push({
-      test: /\\.wasm$/,
+      test: /\.wasm$/,
       include: jsquashWasm,
       type: "asset/inline",
     });
