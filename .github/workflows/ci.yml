@@ -49,7 +49,21 @@ jobs:
           cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
           #!/usr/bin/env bash
           set -euo pipefail
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
@@ -302,7 +316,21 @@ jobs:
           cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
           #!/usr/bin/env bash
           set -euo pipefail
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
@@ -373,7 +401,21 @@ jobs:
           cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
           #!/usr/bin/env bash
           set -euo pipefail
-          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
