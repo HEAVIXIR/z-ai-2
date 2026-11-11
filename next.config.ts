@@ -165,6 +165,7 @@ const nextConfig: NextConfig = {
             "./node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm",
             "./node_modules/@jsquash/webp/codec/dec/webp_dec.wasm",
             "./node_modules/@jsquash/webp/codec/enc/webp_enc_simd.wasm",
+            "./node_modules/@jsquash/webp/codec/enc/webp_enc.wasm",
             "./node_modules/@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm",
           ],
         },
