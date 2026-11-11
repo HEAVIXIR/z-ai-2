@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T09:20:00.000Z",
+  "updated_at_utc": "2026-11-11T10:00:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -435,5 +435,45 @@
     "secret_handling": "Never request or store Application Key secret in chat.",
     "blocker": "No dedicated media app key or B2 runtime configuration confirmed; no B2 media adapter/proof yet.",
     "design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md"
+  },
+  "b2_media_key_provisioning": {
+    "status": "HOLD_NOT_CONFIGURED",
+    "key_name": "heavix-dev-assets-media-preview",
+    "bucket_name": "heavix-dev-assets",
+    "prefix": "heavix-media/",
+    "expiration": "none",
+    "reported_capabilities": [
+      "deleteFiles",
+      "listBuckets",
+      "listFiles",
+      "readBucketEncryption",
+      "readBucketLifecycleRules",
+      "readBucketLogging",
+      "readBucketNotifications",
+      "readBucketReplications",
+      "readBuckets",
+      "readFiles",
+      "shareFiles",
+      "writeBucketEncryption",
+      "writeBucketLifecycleRules",
+      "writeBucketLogging",
+      "writeBucketNotifications",
+      "writeBucketReplications",
+      "writeBuckets",
+      "writeFiles"
+    ],
+    "secret_shared_in_chat": false,
+    "full_bucket_id_verified": false,
+    "bucket_scope_verified": false,
+    "risks": [
+      "Bucket configuration write capabilities are broader than application media needs.",
+      "namePrefix alone does not restrict the key to a single bucket; bucketIds must be explicitly set."
+    ],
+    "next_step": "Obtain full Bucket ID and verify whether key Allow Access to Buckets is set to the specific heavix-dev-assets bucket rather than All. Create a replacement via b2_create_key with bucketIds=[exact bucket ID], namePrefix=heavix-media/, capabilities=[listFiles,readFiles,writeFiles,deleteFiles]. Keep all secrets in the owner's secure local environment. Do not configure or use current key.",
+    "official_docs": [
+      "https://www.backblaze.com/docs/cloud-storage-application-keys",
+      "https://backblaze-prod.us.document360.io/apidocs/b2-create-key",
+      "https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys"
+    ]
   }
 }

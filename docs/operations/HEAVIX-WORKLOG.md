@@ -285,3 +285,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Backblaze official docs confirm bucket/prefix-scoped standard keys; planned capabilities are listFiles/readFiles/writeFiles/deleteFiles. Avoid List Buckets and therefore do not grant listAllBucketNames unless a tested SDK operation proves it is required.
 - No B2 key was created/configured, no B2 object changed, no CORS/lifecycle setting changed, and no live upload test performed.
 - Waiting on owner-supplied non-secret Account ID and full Bucket ID plus secure creation/configuration of the dedicated bucket-scoped key; never request the key secret in chat.
+
+## 2026-11-11 — Owner provisioned B2 media key; security hold recorded
+
+- Owner reports key name `heavix-dev-assets-media-preview`, bucket `heavix-dev-assets`, prefix `heavix-media/`, no expiry.
+- Reported capability set includes bucket configuration writes and bucket administration. This is broader than HEAVIX's media runtime needs.
+- No secret was provided in chat. No B2 key was configured or used.
+- Official Backblaze documentation confirms a key can be scoped by `bucketIds` plus `namePrefix`; prefix alone applies across buckets. A key's capabilities cannot be edited in place.
+- Runtime configuration remains on HOLD pending full Bucket ID and verification of exact bucket restriction. Replace with explicit Native API `b2_create_key` capabilities `listFiles,readFiles,writeFiles,deleteFiles`, scoped to the one media bucket and prefix.
+- Do not use current key for any application, Preview, Worker, GitHub Actions or B2 object operations.

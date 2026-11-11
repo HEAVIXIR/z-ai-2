@@ -114,3 +114,34 @@ Never request the Application Key secret in chat. The Application Key ID can als
 - No B2 upload/read/delete proof exists yet.
 - Seller upload remains blocked on implementation of the dedicated B2 adapter/endpoint and the non-secret owner setup data.
 - No database schema migration, deployment, bucket mutation, or object mutation was performed.
+
+## Owner key provisioning update — 2026-11-11
+
+The owner reports creating a standard application key named `heavix-dev-assets-media-preview` for bucket name `heavix-dev-assets`, with file prefix `heavix-media/`, no expiry, and these reported capabilities:
+`deleteFiles, listBuckets, listFiles, readBucketEncryption, readBucketLifecycleRules, readBucketLogging, readBucketNotifications, readBucketReplications, readBuckets, readFiles, shareFiles, writeBucketEncryption, writeBucketLifecycleRules, writeBucketLogging, writeBucketNotifications, writeBucketReplications, writeBuckets, writeFiles`.
+
+No secret key was shared in chat. Do not store or log any secret.
+
+### Security status — HOLD, not yet approved for runtime use
+
+- The key has materially broader capabilities than the application data plane needs, especially bucket configuration writes (encryption, lifecycle, logging, notifications, replication) and `writeBuckets`.
+- A `namePrefix` restriction alone is not proof of a bucket restriction. Backblaze's `b2_create_key` documentation states that `namePrefix` applies across all buckets unless `bucketIds` is also supplied.
+- The full Bucket ID for `heavix-dev-assets` and the actual key's bucket restriction have not yet been independently verified.
+- Do not configure this key in Preview, local runtime, GitHub Actions or Worker secrets, and do not perform B2 operations with it.
+- The key's capabilities cannot be edited in place; a replacement key must be created, validated, and then the broad key revoked.
+- Backblaze documents explicit capability selection through the Native API `b2_create_key` using `bucketIds`, `namePrefix`, and a precise `capabilities` array. If the console preset does not offer granular selection, use the API from the owner's trusted local environment; never send master credentials or the new secret through chat.
+
+### Intended minimum B2 media permissions
+
+For the current S3-compatible implementation, start with:
+- `listFiles`
+- `readFiles`
+- `writeFiles`
+- `deleteFiles` only because the documented B2 S3 API requires it for deleting a specific object version; ordinary delete-by-name requires `writeFiles`.
+
+Scope the key to the exact full Bucket ID for `heavix-dev-assets` and `namePrefix=heavix-media/`. Do not grant `listBuckets`, `readBuckets`, `writeBuckets`, bucket configuration permissions, key management, or account-wide access unless a specific tested SDK call proves it necessary. The app already knows the exact bucket and endpoint; avoid S3 List Buckets and bucket administration calls.
+
+References:
+- https://www.backblaze.com/docs/cloud-storage-application-keys
+- https://backblaze-prod.us.document360.io/apidocs/b2-create-key
+- https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys
