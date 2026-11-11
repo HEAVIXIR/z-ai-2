@@ -119,7 +119,7 @@ const nextConfig: NextConfig = {
     };
     const patchDefaultAssetRules = (rules: MutableRule[]) => {
       for (const rule of rules) {
-        if (rule.generator?.filename) {
+        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
           const existing = Array.isArray(rule.exclude)
             ? rule.exclude
             : rule.exclude
@@ -131,8 +131,8 @@ const nextConfig: NextConfig = {
         if (rule.rules) patchDefaultAssetRules(rule.rules);
       }
     };
-    // Next's built-in static-asset rule sets generator.filename. Exclude only
-    // jSquash binaries from that rule before applying the data-URL rule below.
+    // Exclude jSquash from Next's default WASM module rule; the following
+    // asset/inline rule supplies data URLs to the generated codec glue code.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
     config.module.rules.push({
       test: /\.wasm$/,
