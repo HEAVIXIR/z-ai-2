@@ -109,9 +109,38 @@ const nextConfig: NextConfig = {
   // jSquash wasm-bindgen modules are embedded as data URLs so both Node and
   // Workerd can pass the bytes to the package's generated JS glue code.
   webpack(config) {
+    const jsquashWasm = /node_modules[\\/]@jsquash[\\/]/;
+    type MutableRule = {
+      test?: RegExp;
+      generator?: { filename?: string };
+      exclude?: RegExp | MutableRule["exclude"][];
+      oneOf?: MutableRule[];
+      rules?: MutableRule[];
+    };
+    const patchDefaultAssetRules = (rules: MutableRule[]) => {
+      for (const rule of rules) {
+        if (
+          rule.test instanceof RegExp &&
+          rule.test.test("codec.wasm") &&
+          rule.generator?.filename
+        ) {
+          const existing = Array.isArray(rule.exclude)
+            ? rule.exclude
+            : rule.exclude
+              ? [rule.exclude]
+              : [];
+          rule.exclude = [...existing, jsquashWasm];
+        }
+        if (rule.oneOf) patchDefaultAssetRules(rule.oneOf);
+        if (rule.rules) patchDefaultAssetRules(rule.rules);
+      }
+    };
+    // Next's built-in static-asset rule sets generator.filename. Exclude only
+    // jSquash binaries from that rule before applying the data-URL rule below.
+    patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
     config.module.rules.push({
-      test: /\.wasm$/,
-      include: /node_modules[\\/]@jsquash[\\/]/,
+      test: /\\.wasm$/,
+      include: jsquashWasm,
       type: "asset/inline",
     });
     if (isCloudflareBuild) {
