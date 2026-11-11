@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T08:00:00.000Z",
+  "updated_at_utc": "2026-11-11T08:10:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -100,7 +100,9 @@
     "Recorded the unresolved difference between historical HEAVIXIR/z 13-archive/899-path audit and dellk00k/z extracted 10-archive/845-file snapshot; refresh/reconciliation required before parity or merge claims.",
     "Owner clarified that prior legacy Z audits and partial transfer into dellk00k/z are an unfinished continuation of the same end-to-end migration effort; future agents must recover prior audit history and continue without treating the extracted repository as a fresh unrelated project.",
     "Owner identified two existing Backblaze B2 buckets: heavix-db-backups is the private database-backup bucket (bucket ID suffix 0411, 12 current files, 2.1 MB); a second private assets bucket is reported with a name transcribed as heavix-dev-assets pending exact spelling verification (bucket ID prefix 356, Keep all versions, 2 current files, 43 bytes). Both use s3.us-east-005.backblazeb2.com and encryption is enabled.",
-    "Selected the second B2 assets bucket as the intended dedicated development media bucket, subject to exact bucket-name/full-ID and access-policy/CORS/credential-scope verification; database backup bucket must never be used for media."
+    "Selected the second B2 assets bucket as the intended dedicated development media bucket, subject to exact bucket-name/full-ID and access-policy/CORS/credential-scope verification; database backup bucket must never be used for media.",
+    "Owner explicitly confirmed the exact Backblaze B2 development assets bucket name as heavix-dev-assets; no spelling ambiguity remains.",
+    "Owner confirmed that the execution agent does not have direct Backblaze console access and authorized a guided handoff: request precise non-secret identifiers/settings from the owner when needed, while instructing them to enter application keys only into local secure environment variables or the appropriate secret manager, never into chat."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -144,7 +146,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Continue end-to-end Z migration from prior audit/transfer history; reconcile the two legacy snapshots and all previously transferred files, verify the owner-identified dedicated B2 development assets bucket, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
+    "task": "Continue end-to-end Z migration from prior audit/transfer history; reconcile the two legacy snapshots and all previously transferred files, guide the owner through safe verification/configuration of the confirmed B2 development assets bucket heavix-dev-assets, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
     "first_paths_to_read": [
       "src/lib/media-service.ts",
       "src/app/api/admin/upload/route.ts",
@@ -264,7 +266,7 @@
     "note": "Deployment event only; application behavior, Preview App/Store DB identities, isolation and end-to-end acceptance remain unverified."
   },
   "media_storage_audit": {
-    "status": "BLOCKED — owner has identified the existing dedicated development assets bucket; exact bucket name/full ID and operational access configuration still require read-only verification",
+    "status": "BLOCKED — dedicated development media bucket name confirmed by owner; operational configuration and credentials must be safely verified through owner-guided steps",
     "verified_findings": [
       "ListingImageUploader calls /api/admin/upload.",
       "The upload API requires requireAdmin(media.upload); ordinary seller upload is not supported by this endpoint.",
@@ -274,8 +276,10 @@
       "POST /api/listings uses body.images.slice(0, 10), while the uploader permits 30 images, silently truncating the remainder."
     ],
     "not_verified": [
-      "Actual B2 media bucket, endpoint/region, scoped key, public/private access, CDN/custom domain and CORS.",
-      "Whether the prior PC-local upload/download test used B2 or a local/mock endpoint; no reproducible evidence found.",
+      "Full bucket ID and Account ID; owner reported only bucket ID prefix 356.",
+      "Application key name, scope and permissions; key material must never be sent in chat.",
+      "Bucket access policy, CORS, lifecycle/versioning details beyond owner-reported Keep all versions, and public/private URL/read strategy.",
+      "Whether the prior PC upload/download test targeted this bucket; no reproducible evidence found.",
       "Durable media upload/read/delete, seller authorization/ownership and listing attachment."
     ],
     "safety": [
@@ -285,8 +289,10 @@
       "Do not deploy or write Preview DB before DB identity and isolation gates pass."
     ],
     "next_steps": [
-      "Verify the exact spelling and full bucket ID of the owner-reported development assets bucket; preserve heavix-db-backups exclusively for database backups.",
-      "Inspect bucket access policy, CORS, lifecycle/versioning, encryption, least-privilege application key scope and public/private URL/read strategy without exposing secrets.",
+      "Use the exact owner-confirmed media bucket name heavix-dev-assets; preserve heavix-db-backups exclusively for database backups.",
+      "When configuration is needed, guide the owner step by step to retrieve Account ID, full Bucket ID, endpoint/region, and application key name/scope from Backblaze B2. Do not ask for secret key material in chat.",
+      "Specify least-privilege application key scope and have the owner enter key ID/secret only into a local secure environment or GitHub/Cloudflare secret manager as appropriate; never print, echo, commit, or log secret values.",
+      "Verify bucket access policy, CORS, lifecycle/versioning, encryption and public/private URL/read strategy before live media writes.",
       "Recover prior PC upload/download test command/log if available and determine whether it targeted this bucket.",
       "Implement server-only B2 adapter with explicit media-specific configuration and fail-closed behavior.",
       "Implement seller-safe staged upload and ownership-bound listing finalization.",
@@ -307,7 +313,6 @@
         "encryption_enabled": true
       },
       "development_assets_bucket": {
-        "name_as_transcribed_pending_exact_confirmation": "heavix-dev-assets",
         "purpose": "Dedicated HEAVIX development media/assets",
         "privacy": "private",
         "bucket_id_prefix": "356",
@@ -317,7 +322,9 @@
         "current_size": "43 bytes",
         "endpoint": "s3.us-east-005.backblazeb2.com",
         "encryption_enabled": true,
-        "decision": "Intended media bucket; do not perform live writes until exact name/full ID, CORS, scoped credentials and read/URL policy are verified."
+        "decision": "Confirmed dedicated HEAVIX development media/assets bucket. Do not perform live writes until full bucket ID, CORS, scoped credentials and read/URL policy are verified.",
+        "name": "heavix-dev-assets",
+        "owner_name_confirmation": "Owner explicitly confirmed exact spelling: heavix-dev-assets."
       }
     }
   },
