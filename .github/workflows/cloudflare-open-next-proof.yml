@@ -159,7 +159,7 @@ jobs:
           HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
         run: bun run test:workerd
 
-      - name: Execute OpenNext media optimizer and B2 binding smoke in Workerd
+      - name: Execute jSquash media optimizer and B2 binding smoke in Workerd
         env:
           HEAVIX_SKIP_OPENNEXT_BUILD: "1"
         run: bun scripts/run-opennext-runtime-proof.mjs

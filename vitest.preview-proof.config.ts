@@ -12,6 +12,11 @@ export default defineConfig({
     ],
     // These contract suites query seeded PostgreSQL and run in the dedicated DB integration lane.
     exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/cypress/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*",
       "tests/contract/crud-pipeline.test.ts",
       "tests/contract/page-builder.test.ts",
       "tests/contract/rbac-matrix.test.ts",
