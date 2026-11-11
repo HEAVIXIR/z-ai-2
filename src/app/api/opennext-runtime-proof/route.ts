@@ -53,6 +53,19 @@ async function probeApp(expectedDatabaseOid: string) {
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
+  // Identity is verified before schema reads or transaction creation.
+  if (!clusterMatch || !databaseMatch) {
+    return {
+      clusterMatch,
+      databaseMatch,
+      identityMatch: false,
+      schemaMatch: actual?.schema_name === "public",
+      postgres17: isPostgres17(actual?.server_version),
+      migrationsMatch: false,
+      transactionReadOnly: false,
+      transactionReadOnlyEnforced: false,
+    };
+  }
   const migrations = await db.$queryRaw<Array<{ migration_name: string }>>`
     SELECT migration_name FROM "_prisma_migrations"
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
@@ -104,6 +117,19 @@ async function probeStore(expectedDatabaseOid: string) {
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
+  // Identity is verified before schema reads or transaction creation.
+  if (!clusterMatch || !databaseMatch) {
+    return {
+      clusterMatch,
+      databaseMatch,
+      identityMatch: false,
+      schemaMatch: actual?.schema_name === "public",
+      postgres17: isPostgres17(actual?.server_version),
+      migrationsMatch: false,
+      transactionReadOnly: false,
+      transactionReadOnlyEnforced: false,
+    };
+  }
   const migrations = await storeDb.$queryRaw<Array<{ migration_name: string }>>`
     SELECT migration_name FROM "_prisma_migrations"
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL

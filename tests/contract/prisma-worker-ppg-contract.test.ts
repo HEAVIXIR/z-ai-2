@@ -153,26 +153,44 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(ci).not.toContain("HEAVIX_APP_PREVIEW_PPG_URL");
     expect(ci).not.toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
   });
-  it("proves read-only mode per transaction without requiring a read-only Preview database", () => {
+  it("verifies read-only transaction behavior without performing writes", () => {
     const worker = read("tests/workerd/worker.ts");
     const runner = read("scripts/run-prisma-workerd-proof.mjs");
+    const route = read("src/app/api/opennext-runtime-proof/route.ts");
     const appStart = worker.indexOf('if (path === "/app/transaction")');
     const storeStart = worker.indexOf('if (path === "/store/transaction")');
     const appBlock = worker.slice(appStart, storeStart);
     const storeBlock = worker.slice(storeStart);
 
-    expect(appBlock).toContain("SET TRANSACTION READ ONLY");
-    expect(storeBlock).toContain("SET TRANSACTION READ ONLY");
-    expect(appBlock.indexOf("await tx.$executeRaw")).toBeLessThan(
-      appBlock.indexOf("const settingRows = await tx.$queryRaw"),
-    );
-    expect(storeBlock.indexOf("await tx.$executeRaw")).toBeLessThan(
-      storeBlock.indexOf("const settingRows = await tx.$queryRaw"),
-    );
-    expect(worker).toContain("without requiring the entire Preview database to be read-only");
-    expect(runner).not.toContain("Preview database must be read-only");
-  });
+    expect(appBlock).toContain("current_setting('transaction_read_only')::boolean");
+    expect(storeBlock).toContain("current_setting('transaction_read_only')::boolean");
+    expect(worker).toContain("writesPerformed: false");
+    expect(runner).toContain("readOnlyProven");
+    expect(runner).not.toContain("SET TRANSACTION READ ONLY");
 
+    const appProbeStart = route.indexOf("async function probeApp");
+    const storeProbeStart = route.indexOf("async function probeStore");
+    const getStart = route.indexOf("export async function GET");
+    const appProbe = route.slice(appProbeStart, storeProbeStart);
+    const storeProbe = route.slice(storeProbeStart, getStart);
+
+    for (const probe of [appProbe, storeProbe]) {
+      expect(probe).toContain("SELECT set_config('transaction_read_only', 'on', true)");
+      expect(probe).toContain("SELECT current_setting('transaction_read_only')::boolean");
+      expect(probe).toContain("transactionReadOnlyEnforced: transaction");
+      expect(probe).not.toContain("CREATE TEMP TABLE");
+      expect(probe).not.toContain("SET TRANSACTION READ ONLY");
+    }
+
+    const appIdentityGuard = appProbe.indexOf("if (!clusterMatch || !databaseMatch)");
+    const storeIdentityGuard = storeProbe.indexOf("if (!clusterMatch || !databaseMatch)");
+    expect(appIdentityGuard).toBeGreaterThan(0);
+    expect(storeIdentityGuard).toBeGreaterThan(0);
+    expect(appIdentityGuard).toBeLessThan(appProbe.indexOf("const migrations = await db.$queryRaw"));
+    expect(appIdentityGuard).toBeLessThan(appProbe.indexOf("const transaction = await db.$transaction"));
+    expect(storeIdentityGuard).toBeLessThan(storeProbe.indexOf("const migrations = await storeDb.$queryRaw"));
+    expect(storeIdentityGuard).toBeLessThan(storeProbe.indexOf("const transaction = await storeDb.$transaction"));
+  });
 });
 
 describe("Cloudflare Next build descriptor diagnostics", () => {
