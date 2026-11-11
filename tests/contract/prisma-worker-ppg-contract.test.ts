@@ -47,8 +47,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
     expect(next).toContain("turbopack:");
-    expect(next).not.toContain("webpack(config)");
-    expect(next).not.toContain("asyncWebAssembly");
+    expect(next).toContain("webpack(config)");
+    expect(next).toContain("asyncWebAssembly");
     expect(next).toContain("outputFileTracingExcludes");
     expect(next).toContain("./src/lib/generated/worker-client/**/*.ts");
     expect(next).toContain("./src/lib/generated/store-worker-client/**/*.ts");
