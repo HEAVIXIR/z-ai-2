@@ -86,6 +86,12 @@ function assertMediaKey(key: string, config: B2MediaConfig): void {
   }
 }
 
+function arrayBufferOf(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function hex(bytes: ArrayBuffer | Uint8Array): string {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   return Array.from(view, (value) => value.toString(16).padStart(2, "0")).join("");
@@ -93,13 +99,13 @@ function hex(bytes: ArrayBuffer | Uint8Array): string {
 
 async function sha256(value: string | Uint8Array): Promise<string> {
   const bytes = typeof value === "string" ? encoder.encode(value) : value;
-  return hex(await crypto.subtle.digest("SHA-256", bytes));
+  return hex(await crypto.subtle.digest("SHA-256", arrayBufferOf(bytes)));
 }
 
 async function hmac(key: Uint8Array, value: string): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    arrayBufferOf(key),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -165,8 +171,8 @@ async function signature(
   const key = await signingKey(config.applicationKey, timestamp.day, config.region);
   return hex(await crypto.subtle.sign(
     { name: "HMAC" },
-    await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
-    encoder.encode(stringToSign),
+    await crypto.subtle.importKey("raw", arrayBufferOf(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+    arrayBufferOf(encoder.encode(stringToSign)),
   ));
 }
 
@@ -229,7 +235,7 @@ async function signedRequest(
   const response = await fetch(url, {
     method,
     headers,
-    body: method === "PUT" ? payload : undefined,
+    body: method === "PUT" ? arrayBufferOf(payload) : undefined,
     redirect: "error",
   });
   if (!response.ok) {
