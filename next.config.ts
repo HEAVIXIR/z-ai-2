@@ -139,6 +139,11 @@ const nextConfig: NextConfig = {
       include: jsquashWasm,
       type: "asset/inline",
     });
+    config.module.rules.push({
+      test: /\.wasm$/,
+      include: jsquashWasm,
+      type: "asset/inline",
+    });
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
