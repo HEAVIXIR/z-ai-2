@@ -19,3 +19,8 @@ Preserve the known-good Preview baseline unless explicitly authorized otherwise:
 HEAVIX recovery must stay isolated on `recovery/heavix-full-product-integration-2026-11-11` unless the owner explicitly approves a different branch. Do not modify `main`, Production, DNS, or the existing Preview Worker configuration. Do not deploy or touch databases until the documented code, CI, artifact, and database-identity gates pass. Never grant blanket permissions or claim tests/deployments succeeded without evidence.
 
 The current objective is restoration of the full existing HEAVIX product—not a simplified replacement. Preserve PageRenderer/PageBuilder and current domain contracts while restoring all required homepage sections and auditing every product capability.
+
+
+## Mandatory Cloudflare trigger protection
+
+Before creating or pushing any branch, inspect the live non-production Cloudflare Build trigger and add the exact branch name to `branch_excludes`; read back and verify the exclusion first. Do not assume wildcard exclusion for `proof/*`. Current excluded work branches include `recovery/heavix-full-product-integration-2026-11-11`, `proof/webpack-worker-wasm-2026-11-11`, and `proof/jsquash-worker-image-2026-11-11`. The 2026-11-11 proof-branch auto-build incident is documented in the quota runbook. No Cloudflare Build may be triggered during validation.
