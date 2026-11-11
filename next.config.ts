@@ -134,10 +134,19 @@ const nextConfig: NextConfig = {
     // Exclude jSquash from Next's default WASM module rule; the following
     // asset/inline rule supplies data URLs to the generated codec glue code.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
+    config.module.generator = {
+      ...config.module.generator,
+      "asset/inline": {
+        dataUrl: { encoding: "base64", mimetype: "application/wasm" },
+      },
+    } as typeof config.module.generator;
     config.module.rules.push({
       test: /\.wasm$/,
       include: jsquashWasm,
       type: "asset/inline",
+      generator: {
+        dataUrl: { encoding: "base64", mimetype: "application/wasm" },
+      },
     });
     config.module.rules.push({
       test: /\.wasm$/,
