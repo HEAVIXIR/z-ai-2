@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T08:10:00.000Z",
+  "updated_at_utc": "2026-11-11T09:00:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "abd88eced783ae528c364da0f215832073601227",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "cecd4b6601d17e757b018271ba6d49d75c7fdc1a",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -146,32 +146,35 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Continue end-to-end Z migration from prior audit/transfer history; reconcile the two legacy snapshots and all previously transferred files, guide the owner through safe verification/configuration of the confirmed B2 development assets bucket heavix-dev-assets, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
+    "task": "Generate a normalized 844-file path+SHA-256 parity report from the extracted snapshot against the current recovery branch; reconcile it with the 899-path four-way disposition and then resume the confirmed B2 seller-media integration without touching the DB-backup bucket.",
     "first_paths_to_read": [
+      "docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md",
+      "docs/legacy-parity/VALUE-BASED-DISPOSITION-2026-10-27.md",
+      "docs/legacy-parity/INTEGRATION-PROPOSAL-FOR-SENIOR-DIRECTOR-2026-10-28.md",
       "src/lib/media-service.ts",
       "src/app/api/admin/upload/route.ts",
+      "src/app/api/admin/media/route.ts",
+      "src/app/api/admin/media/[id]/route.ts",
       "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/listings/route.ts",
       "package.json",
-      ".github/workflows/prisma-preview-backup-to-b2.yml",
-      "docs/legacy-parity/VALUE-BASED-DISPOSITION-2026-10-27.md",
-      "docs/legacy-parity/INTEGRATION-PROPOSAL-FOR-SENIOR-DIRECTOR-2026-10-28.md"
+      ".github/workflows/prisma-preview-backup-to-b2.yml"
     ],
     "required_tests": [
-      "B2 media upload/read-back/delete using a dedicated non-production media bucket",
-      "Seller least-privilege upload and ownership",
-      "Unified image-count contract without silent truncation",
-      "Listing create and media read-after-write",
-      "Legacy source snapshot reconciliation and per-area parity",
-      "Responsive desktop/tablet/mobile critical journeys"
+      "Normalized path/hash comparison with explicit prefix mapping and preserved provenance.",
+      "B2 media upload/read-back/delete using dedicated non-production heavix-dev-assets bucket.",
+      "Seller least-privilege upload and ownership.",
+      "Unified image-count contract without silent truncation.",
+      "Listing create and media read-after-write.",
+      "Responsive desktop/tablet/mobile critical journeys."
     ],
     "do_not": [
-      "Do not use the DB-backup bucket for media",
-      "Do not enable or migrate to Cloudflare R2",
-      "Do not expose B2 secrets or invent bucket names",
-      "Do not deploy or write Preview DB before App/Store DB identity proof",
-      "Do not change Production, DNS or stable Worker",
-      "Do not implement native iOS/Android in current web release"
+      "Do not use heavix-db-backups for media.",
+      "Do not enable or migrate to Cloudflare R2.",
+      "Do not expose B2 secrets.",
+      "Do not deploy or write Preview DB before App/Store DB identity proof.",
+      "Do not change Production, DNS or stable Worker.",
+      "Do not implement native iOS/Android in current web release."
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
@@ -183,7 +186,7 @@
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
     "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+  "latest_code_head_sha": "cecd4b6601d17e757b018271ba6d49d75c7fdc1a",
   "latest_ci_run": {
     "id": 42979858320,
     "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
@@ -362,5 +365,28 @@
       "Merge only after per-area acceptance, exact-head CI, Preview DB identity proof and E2E validation."
     ],
     "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
+  },
+  "latest_documentation_checkpoint_commit_sha": "87bb83190c6ce62565964db83ed2d810656a67cc",
+  "legacy_snapshot_reconciliation": {
+    "status": "SOURCE ARCHIVE IDENTITY VERIFIED; FILE-LEVEL CURRENT-BRANCH PARITY STILL IN PROGRESS",
+    "source_repository": "HEAVIXIR/z",
+    "source_commit": "217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
+    "extracted_repository": "dellk00k/z",
+    "extracted_branch": "legacy/extracted-archives",
+    "extracted_commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "verified_facts": [
+      "All 13 root ZIP archives have matching Git blob SHA and byte size in both repositories.",
+      "Extraction README identifies 10 extracted archive families and quarantines db.zip, upload.zip and bun.zip.",
+      "Extracted tree has 844 payload files plus three bookkeeping files.",
+      "SHA-256 manifest has 845 entries including its own empty-file self-entry; 844 payload paths match extracted blobs exactly once.",
+      "Historical 899-path disposition totals (845 INTEGRATE, 17 ADAPT_THEN_INTEGRATE, 19 PRESERVE_AS_REFERENCE, 18 SAFE_ARCHIVE) refer to comparison against target 833bec6, not extracted file count."
+    ],
+    "not_verified": [
+      "Normalized path+SHA-256 comparison of 844 extracted payloads against active recovery branch.",
+      "Fresh archive-level scanner run; latest green CI #42982227259 skipped Legacy archive inventory (read-only).",
+      "Refreshed 17-item adaptation backlog against current branch head."
+    ],
+    "evidence_document": "docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md",
+    "evidence_commit": "87bb83190c6ce62565964db83ed2d810656a67cc"
   }
 }
