@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const nextCli = require.resolve("next/dist/bin/next");
 const nextBundler = process.env.HEAVIX_NEXT_BUNDLER === "webpack" ? "--webpack" : "--turbopack";
+process.stdout.write(`HEAVIX_NEXT_BUNDLER_SELECTED=${nextBundler}\n`);
 const child = spawn(process.execPath, [nextCli, "build", nextBundler], {
   stdio: "inherit",
   env: process.env,
