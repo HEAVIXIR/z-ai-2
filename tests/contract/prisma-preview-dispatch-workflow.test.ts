@@ -15,19 +15,24 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
     expect(workflow).toContain("PREVIEW_ONLY");
   });
 
-  it("checks out and verifies the exact reviewed Prisma Workerd commit", () => {
-    const reviewedSha = "b94b9d6f3540e8f4467b1d4ac051d5ef050c0994";
-    expect(workflow).toContain(`ref: ${reviewedSha}`);
-    expect(workflow).toContain(`test "$(git rev-parse HEAD)" = "${reviewedSha}"`);
-    expect(workflow).not.toContain("a5b62a41a94b41ea5d09ffb27ec02cadec51fc64");
+  it("uses a protected environment and the exact selected recovery commit", () => {
+    expect(workflow).toContain("environment: preview-backup");
+    expect(workflow).toContain("refs/heads/recovery/heavix-full-product-integration-2026-11-11");
+    expect(workflow).toContain("ref: ${{ github.sha }}");
+    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"');
+    expect(workflow).not.toContain("b94b9d6f3540e8f4467b1d4ac051d5ef050c0994");
   });
 
-  it("requires both distinct Preview secrets without printing their values", () => {
+  it("requires distinct Preview URLs and database OIDs without printing values", () => {
     expect(workflow).toContain("HEAVIX_APP_PREVIEW_PPG_URL");
     expect(workflow).toContain("HEAVIX_STORE_PREVIEW_PPG_URL");
     expect(workflow).toContain('test -n "$HEAVIX_APP_PREVIEW_PPG_URL"');
     expect(workflow).toContain('test -n "$HEAVIX_STORE_PREVIEW_PPG_URL"');
     expect(workflow).toContain('test "$HEAVIX_APP_PREVIEW_PPG_URL" != "$HEAVIX_STORE_PREVIEW_PPG_URL"');
+    expect(workflow).toContain("secrets.HEAVIX_APP_PREVIEW_DATABASE_OID");
+    expect(workflow).toContain("secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID");
+    expect(workflow).toContain('[[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~');
+    expect(workflow).toContain('[[ "$HEAVIX_STORE_PREVIEW_DATABASE_OID" =~');
     expect(workflow).not.toMatch(/echo .*HEAVIX_(APP|STORE)_PREVIEW_PPG_URL/);
   });
 

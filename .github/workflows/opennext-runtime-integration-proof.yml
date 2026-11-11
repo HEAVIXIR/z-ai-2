@@ -1,0 +1,94 @@
+name: OpenNext runtime integration proof
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "open-next.config.ts"
+      - "tsconfig.worker.json"
+      - "prisma/**"
+      - "scripts/run-prisma-workerd-proof.mjs"
+      - "scripts/patch-next-nft-concurrency.cjs"
+      - "scripts/cloudflare-next-build-diagnostics.mjs"
+      - "scripts/cloudflare-worker-artifact-proof.sh"
+      - "src/app/api/admin/backup/**"
+      - "tests/unit/admin-backup-route.test.ts"
+      - "tests/contract/prisma-worker-ppg-contract.test.ts"
+      - "tests/contract/prisma-preview-dispatch-workflow.test.ts"
+      - "docker-compose.prod.yml"
+      - "src/app/api/opennext-runtime-proof/**"
+      - "src/app/sitemap.ts"
+      - "src/lib/db.worker.ts"
+      - "src/lib/store-db.worker.ts"
+      - "src/lib/opennext-proof-guards.ts"
+      - "tests/unit/opennext-runtime-proof-guards.test.ts"
+      - "tests/unit/prisma-worker-identity-guard.test.ts"
+      - "tests/workerd/worker.ts"
+      - "src/lib/prisma-worker-clients.ts"
+      - "src/lib/prisma-worker-proxy.ts"
+      - "scripts/run-opennext-runtime-proof.mjs"
+      - "scripts/preview-version-worker.mjs"
+      - "src/lib/preview-version-worker-gate.ts"
+      - "tests/unit/preview-version-worker-gate.test.ts"
+      - "scripts/audit-opennext-worker-bundle.mjs"
+      - "docs/architecture/opennext-runtime-integration-proof.md"
+      - "wrangler.jsonc"
+      - "next.config.ts"
+      - "package.json"
+      - "bun.lock*"
+      - ".github/workflows/opennext-runtime-integration-proof.yml"
+  push:
+    branches:
+      - test/opennext-runtime-integration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opennext-runtime-proof-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  open-next-workerd-smoke:
+    name: OpenNext real-route smoke (no DB credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout event revision (PR merge ref or branch HEAD)
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate both Node and Worker Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Run identity guard and OpenNext proof unit tests
+        run: bunx vitest run tests/unit/opennext-runtime-proof-guards.test.ts tests/unit/prisma-worker-identity-guard.test.ts tests/unit/preview-version-worker-gate.test.ts
+      - name: Prove PPG adapter module loads in Workerd without database credentials
+        env:
+          HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+        run: bun scripts/run-prisma-workerd-proof.mjs
+      - name: Build OpenNext Worker and exercise real App Router path
+        env:
+          CI: "1"
+        run: bun scripts/run-opennext-runtime-proof.mjs
+
+      - name: Audit generated Worker bundle (heuristic)
+        if: success()
+        run: bun scripts/audit-opennext-worker-bundle.mjs
+
+      - name: Upload Worker bundle audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-opennext-worker-bundle-audit
+          path: |
+            .open-next/audit/worker-bundle-audit.json
+            .open-next/audit/wrangler-bundle-meta.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -10,6 +10,8 @@ const appUrl = process.env.HEAVIX_APP_PREVIEW_PPG_URL;
 const storeUrl = process.env.HEAVIX_STORE_PREVIEW_PPG_URL;
 const target = process.env.HEAVIX_RUNTIME_PROOF_TARGET;
 const smokeOnly = target === "SMOKE_ONLY";
+const appDatabaseOid = process.env.HEAVIX_APP_PREVIEW_DATABASE_OID;
+const storeDatabaseOid = process.env.HEAVIX_STORE_PREVIEW_DATABASE_OID;
 
 if (target !== "PREVIEW_ONLY" && !smokeOnly) {
   throw new Error("Blocked: choose SMOKE_ONLY or explicitly confirm PREVIEW_ONLY.");
@@ -19,6 +21,12 @@ if (smokeOnly && (appUrl || storeUrl)) {
 }
 if (!smokeOnly && (!appUrl || !storeUrl || appUrl === storeUrl)) {
   throw new Error("Blocked: two distinct Preview-only PPG connection strings are required.");
+}
+if (!smokeOnly && (!/^[1-9]\d{0,9}$/.test(appDatabaseOid ?? "") ||
+    Number(appDatabaseOid) > 4_294_967_295 ||
+    !/^[1-9]\d{0,9}$/.test(storeDatabaseOid ?? "") ||
+    Number(storeDatabaseOid) > 4_294_967_295)) {
+  throw new Error("Blocked: trusted App and Store Preview database OIDs are required.");
 }
 if (!smokeOnly && (!appUrl.includes("://") || !storeUrl.includes("://"))) {
   throw new Error("Blocked: one or both Preview connection inputs are malformed.");
@@ -49,18 +57,21 @@ async function getJson(baseUrl, path) {
 }
 
 // Prisma Postgres reports the internal database name "postgres" for every
-// resource, so database_name is not a unique resource identifier. The stable
-// PostgreSQL system_identifier is independently inventoried per Preview
-// resource and is the primary fail-closed resource allowlist below; exact
-// migration-name sets are a second, schema-level fingerprint.
+// resource, so database_name is not a unique resource identifier. The
+// fail-closed identity is the pair (PostgreSQL system_identifier, pg_database.oid):
+// the former identifies the cluster; the latter distinguishes databases within
+// that cluster. Both expected values are independently inventoried per target.
+// Exact migration-name sets remain a separate schema-level fingerprint.
 const expected = {
   app: {
     databaseName: "postgres",
+    databaseOid: appDatabaseOid,
     systemIdentifier: "7701427422680793119",
     migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
   },
   store: {
     databaseName: "postgres",
+    databaseOid: storeDatabaseOid,
     systemIdentifier: "7701425043360235551",
     migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
   },
@@ -78,7 +89,7 @@ try {
   if (!smokeOnly) {
     await writeFile(
       varsPath,
-      `DATABASE_URL=${JSON.stringify(appUrl)}\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\n`,
+      `DATABASE_URL=${JSON.stringify(appUrl)}\nSTORE_DATABASE_URL=${JSON.stringify(storeUrl)}\nHEAVIX_APP_PREVIEW_DATABASE_OID=${appDatabaseOid}\nHEAVIX_STORE_PREVIEW_DATABASE_OID=${storeDatabaseOid}\n`,
       { mode: 0o600 },
     );
   }
@@ -154,7 +165,9 @@ try {
     assert.equal(result.identity?.database_name, target.databaseName,
       `${label}: unexpected internal database name`);
     assert.equal(result.identity?.system_identifier, target.systemIdentifier,
-      `${label}: PostgreSQL system identifier does not match the exact Preview resource`);
+      `${label}: PostgreSQL system identifier does not match the expected cluster`);
+    assert.equal(result.identity?.database_oid, target.databaseOid,
+      `${label}: PostgreSQL database OID does not match the exact Preview database`);
     assert.equal(result.identity?.schema_name, "public", `${label}: unexpected schema`);
     assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
     assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
@@ -176,7 +189,9 @@ try {
     assert.equal(result.identity?.database_name, target.databaseName,
       `Concurrent request ${index + 1}: unexpected internal database name`);
     assert.equal(result.identity?.system_identifier, target.systemIdentifier,
-      `Concurrent request ${index + 1}: unexpected Preview resource identity`);
+      `Concurrent request ${index + 1}: unexpected Preview cluster identity`);
+    assert.equal(result.identity?.database_oid, target.databaseOid,
+      `Concurrent request ${index + 1}: unexpected Preview database identity`);
   }
 
   const [appTx, storeTx] = await Promise.all([
@@ -185,12 +200,14 @@ try {
   ]);
   assert.equal(appTx.transactionOk, true, "App transaction failed (connection check SELECT 1).");
   assert.equal(storeTx.transactionOk, true, "Store transaction failed (connection check SELECT 1).");
-  // Each endpoint explicitly issues SET TRANSACTION READ ONLY before its
-  // SELECT statements, then checks the transaction GUC. This proves that the
-  // Worker/adapter can execute a read-only transaction without requiring the
-  // entire Preview database (which the app must write to) to be read-only.
-  assert.equal(appTx.readOnlyProven, true, `App transaction did not enter read-only mode (setting=${appTx.transactionReadOnlySetting}).`);
-  assert.equal(storeTx.readOnlyProven, true, `Store transaction did not enter read-only mode (setting=${storeTx.transactionReadOnlySetting}).`);
+  // STEP 18.2.7.3.10 (Finding T-1, revised per review #6657226686):
+  // The previous approach attempted CREATE TEMP TABLE and expected SQLSTATE
+  // 25006. Per PostgreSQL docs, CREATE TEMP TABLE is ALLOWED in read-only
+  // transactions, so that test was invalid. The correct approach is to read
+  // the runtime GUC directly via current_setting('transaction_read_only')::boolean.
+  // No write is attempted. readOnlyProven=true means the GUC returned true.
+  assert.equal(appTx.readOnlyProven, true, `App transaction_read_only is NOT on (setting=${appTx.transactionReadOnlySetting}). Preview database must be read-only.`);
+  assert.equal(storeTx.readOnlyProven, true, `Store transaction_read_only is NOT on (setting=${storeTx.transactionReadOnlySetting}). Preview database must be read-only.`);
   assert.equal(appTx.writesPerformed, false, "App transaction must not perform any writes.");
   assert.equal(storeTx.writesPerformed, false, "Store transaction must not perform any writes.");
 

@@ -34,11 +34,15 @@ const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 class PreviewIdentityMismatchError extends Error {
   readonly expectedSystemIdentifier: string;
   readonly actualSystemIdentifier: string;
-  constructor(actual: string, expected: string, label: string) {
-    super(`${label} system_identifier mismatch: expected ${expected}, got ${actual}`);
+  readonly expectedDatabaseOid: string;
+  readonly actualDatabaseOid: string;
+  constructor(actual: string, expected: string, actualOid: string, expectedOid: string, label: string) {
+    super(`${label} database identity mismatch; refusing to continue`);
     this.name = "PreviewIdentityMismatchError";
     this.expectedSystemIdentifier = expected;
     this.actualSystemIdentifier = actual;
+    this.expectedDatabaseOid = expectedOid;
+    this.actualDatabaseOid = actualOid;
   }
 }
 
@@ -51,40 +55,44 @@ class PreviewIdentityMismatchError extends Error {
 async function verifyDatabaseIdentity(
   client: AppPrismaClient | StorePrismaClient,
   expectedSystemIdentifier: string,
+  expectedDatabaseOid: string,
   label: string,
 ): Promise<void> {
   const rows = await client.$queryRaw<
-    Array<{ system_identifier: string }>
-  >`SELECT system_identifier::text AS system_identifier FROM pg_control_system()`;
+    Array<{ system_identifier: string; database_oid: string }>
+  >`SELECT
+    (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier,
+    (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid`;
   const actual = rows[0]?.system_identifier ?? "";
-  if (actual !== expectedSystemIdentifier) {
-    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, label);
+  const actualOid = rows[0]?.database_oid ?? "";
+  if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
+    throw new PreviewIdentityMismatchError(actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label);
   }
 }
 
-async function appFingerprint(client: AppPrismaClient): Promise<{
-  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+async function appFingerprint(client: AppPrismaClient, expectedDatabaseOid: string): Promise<{
+  identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
   // If this throws, the caller returns 502 immediately — migrations are never read.
-  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+  await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, expectedDatabaseOid, "App");
   const identity = await client.$queryRaw<
-    Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+    Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
+  >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
 
-async function storeFingerprint(client: StorePrismaClient): Promise<{
-  identity: { database_name: string; schema_name: string; server_version: string; system_identifier: string };
+async function storeFingerprint(client: StorePrismaClient, expectedDatabaseOid: string): Promise<{
+  identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
-  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+  await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
   const identity = await client.$queryRaw<
-    Array<{ database_name: string; schema_name: string; server_version: string; system_identifier: string }>
-  >`SELECT current_database()::text AS database_name, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+    Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
+  >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
   return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
 }
@@ -137,7 +145,7 @@ export default {
       try {
         const client = getAppClient(ctx, env);
         const sameRequestClientReused = client === getAppClient(ctx, env);
-        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await appFingerprint(client)) });
+        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await appFingerprint(client, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "")) });
       } catch (error) {
         return json({
           error: "app_preview_probe_failed",
@@ -149,7 +157,7 @@ export default {
       try {
         const client = getStoreClient(ctx, env);
         const sameRequestClientReused = client === getStoreClient(ctx, env);
-        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await storeFingerprint(client)) });
+        return json({ clientId: getClientId(client), sameRequestClientReused, ...(await storeFingerprint(client, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "")) });
       } catch (error) {
         return json({
           error: "store_preview_probe_failed",
@@ -166,30 +174,27 @@ export default {
       // prove read-only, and a failed one (25006) would have been even
       // less meaningful.
       //
-      // The proof explicitly issues SET TRANSACTION READ ONLY as the first
-      // statement inside the interactive transaction, then queries the
-      // transaction_read_only GUC. This proves transaction-scoped read-only
-      // execution without requiring the entire Preview database to be read-only.
+      // The correct approach is to query the runtime GUC directly:
+      //   SELECT current_setting('transaction_read_only')::boolean
+      // This returns the actual state of the transaction_read_only GUC
+      // for the current transaction. If the Preview database is
+      // configured with transaction_read_only=on (either at the role
+      // level or the session level), this returns true.
       //
-      // We also verify that SELECT 1 succeeds (transactionOk) to prove the
-      // connection works.
+      // We also verify that the SELECT itself succeeded (transactionOk)
+      // to prove the connection works.
       //
       // STEP 18.2.7.3.10 (Finding S-3): verify identity BEFORE opening the
       // transaction. If the secret points at Production, the transaction
       // is never opened.
       try {
         const client = getAppClient(ctx, env);
-        await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, "App");
+        await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "", "App");
         const result = await client.$transaction(async (tx) => {
-          // Explicitly mark this one proof transaction read-only. The Preview
-          // application database itself remains writable for normal app use;
-          // this test proves the Worker/adapter can execute a read-only
-          // transaction without relying on a database-wide read-only setting.
-          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-          const settingRows = await tx.$queryRaw<
-            Array<{ transaction_read_only: boolean | string }>
-          >`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
-          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          const [selectRows, settingRows] = await Promise.all([
+            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
+            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
+          ]);
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
@@ -220,15 +225,12 @@ export default {
       // transaction.
       try {
         const client = getStoreClient(ctx, env);
-        await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, "Store");
+        await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "", "Store");
         const result = await client.$transaction(async (tx) => {
-          // Explicitly mark this one proof transaction read-only. The Store
-          // Preview database remains writable for normal app use.
-          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-          const settingRows = await tx.$queryRaw<
-            Array<{ transaction_read_only: boolean | string }>
-          >`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
-          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          const [selectRows, settingRows] = await Promise.all([
+            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
+            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
+          ]);
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {

@@ -200,4 +200,32 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     expect(patcher).toContain("16.4.5");
     expect(patcher).toContain("path.resolve(path.dirname(nftPath)");
   });
+
+  it("requires cluster and database-level identity for each Preview database", () => {
+    const clients = read("src/lib/prisma-worker-clients.ts");
+    expect(clients).toContain("HEAVIX_APP_PREVIEW_DATABASE_OID");
+    expect(clients).toContain("HEAVIX_STORE_PREVIEW_DATABASE_OID");
+    expect(clients).toContain("system_identifier");
+    const wrangler = read("wrangler.jsonc");
+    expect(wrangler).toContain("HEAVIX_APP_PREVIEW_DATABASE_OID");
+    expect(wrangler).toContain("HEAVIX_STORE_PREVIEW_DATABASE_OID");
+  });
+
+  it("keeps the real OpenNext route proof local and credential-free", () => {
+    const workflow = read(".github/workflows/opennext-runtime-integration-proof.yml");
+    expect(workflow).toContain("run-opennext-runtime-proof.mjs");
+    expect(workflow).toContain("audit-opennext-worker-bundle.mjs");
+    expect(workflow).not.toContain("secrets.");
+    expect(workflow).not.toContain("wrangler deploy");
+    const wrapper = read("scripts/preview-version-worker.mjs");
+    expect(wrapper).toContain("preview-version-worker-gate");
+  });
+
+  it("disables database backup execution in the Preview Worker", () => {
+    const backup = read("src/app/api/admin/backup/route.ts");
+    expect(backup).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED");
+    const wrangler = read("wrangler.jsonc");
+    expect(wrangler).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED");
+  });
+
 });

@@ -16,13 +16,16 @@
   "previews": {
     "vars": {
       "HEAVIX_ENV": "preview",
-      "NODE_ENV": "production"
+      "NODE_ENV": "production",
+      "HEAVIX_BACKUP_EXECUTION_ENABLED": "false"
     }
   },
   "secrets": {
     "required": [
       "DATABASE_URL",
-      "STORE_DATABASE_URL"
+      "STORE_DATABASE_URL",
+      "HEAVIX_APP_PREVIEW_DATABASE_OID",
+      "HEAVIX_STORE_PREVIEW_DATABASE_OID"
     ]
   }
 }

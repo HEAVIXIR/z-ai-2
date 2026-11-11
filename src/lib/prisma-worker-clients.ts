@@ -6,142 +6,90 @@ import { createRequestScopedClientResolver } from "./prisma-worker-proxy";
 export type WorkerDatabaseEnv = {
   DATABASE_URL?: string;
   STORE_DATABASE_URL?: string;
+  HEAVIX_APP_PREVIEW_DATABASE_OID?: string;
+  HEAVIX_STORE_PREVIEW_DATABASE_OID?: string;
 };
+
+// Database identity is a pair, not just a PostgreSQL cluster identifier:
+//   - pg_control_system().system_identifier identifies the cluster.
+//   - pg_database.oid identifies the current database within that cluster.
+// The OID is supplied independently for each target through protected Worker
+// configuration. Missing or malformed expected OIDs fail before a Prisma
+// client is created. The first database statement then checks both values.
+//
+// Each real OpenNext Prisma client is wrapped in a Proxy. The identity result
+// (including a failure) is cached per client; all raw-query, model-delegate,
+// transaction, and extension paths must pass the guard before execution.
+// This prevents a connection accidentally aimed at a sibling database on
+// the same PostgreSQL cluster from passing the Preview allowlist.
 
 const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
 const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 
+function requireExpectedDatabaseOid(value: string | undefined, label: string): string {
+  if (!value || !/^[1-9]\d{0,9}$/.test(value) || Number(value) > 4_294_967_295) {
+    throw new Error(label + ": missing or invalid HEAVIX database OID; refusing to create a database client");
+  }
+  return value;
+}
+
 export class PreviewIdentityMismatchError extends Error {
   readonly expectedSystemIdentifier: string;
   readonly actualSystemIdentifier: string;
+  readonly expectedDatabaseOid: string;
+  readonly actualDatabaseOid: string;
   readonly databaseLabel: string;
-  constructor(actual: string, expected: string, label: string) {
-    super(
-      `${label} system_identifier mismatch: expected ${expected}, got ${actual}. The configured connection string does not point at the expected Preview database — refusing to execute queries.`,
-    );
+  constructor(actual: string, expected: string, actualOid: string, expectedOid: string, label: string) {
+    super(`${label} database identity mismatch; refusing to execute queries.`);
     this.name = "PreviewIdentityMismatchError";
     this.expectedSystemIdentifier = expected;
     this.actualSystemIdentifier = actual;
+    this.expectedDatabaseOid = expectedOid;
+    this.actualDatabaseOid = actualOid;
     this.databaseLabel = label;
   }
 }
 
 /**
- * Preserve PrismaPromise's lazy execution and requestTransaction contract.
- *
- * Prisma's array form of $transaction requires PrismaPromise objects, not
- * native Promises. An async delegate wrapper would erase requestTransaction
- * and make otherwise-valid db.$transaction([db.model.update(...)]) calls fail.
- * Identity is therefore checked when the PrismaPromise is consumed, while
- * the original promise's transaction methods and symbols remain available.
- */
-function wrapPrismaPromise<T>(
-  candidate: T,
-  ensureIdentity: () => Promise<void>,
-): T {
-  if (
-    candidate === null ||
-    (typeof candidate !== "object" && typeof candidate !== "function")
-  ) {
-    return candidate;
-  }
-
-  const originalThen = Reflect.get(candidate as object, "then", candidate);
-  if (typeof originalThen !== "function") return candidate;
-
-  return new Proxy(candidate as object, {
-    get(target, property) {
-      const value = Reflect.get(target, property, target);
-
-      if (property === "then" && typeof value === "function") {
-        return (...args: unknown[]) =>
-          ensureIdentity().then(
-            () => Reflect.apply(value, target, args),
-            (error: unknown) => {
-              // Promise/thenable assimilation ignores the return value of
-              // its then method. Forward identity failures to the supplied
-              // rejection callback or an awaiting consumer would remain
-              // pending forever even though the identity check had rejected.
-              const onRejected = args[1];
-              if (typeof onRejected === "function") {
-                return Reflect.apply(onRejected, undefined, [error]);
-              }
-              throw error;
-            },
-          );
-      }
-
-      if (property === "requestTransaction" && typeof value === "function") {
-        return (...args: unknown[]) =>
-          wrapPrismaPromise(
-            Reflect.apply(value, target, args),
-            ensureIdentity,
-          );
-      }
-
-      if (property === "catch" && typeof value === "function") {
-        return (onRejected: (reason: unknown) => unknown) =>
-          ensureIdentity().then(() =>
-            Reflect.apply(value, target, [onRejected]),
-          );
-      }
-
-      if (property === "finally" && typeof value === "function") {
-        return (onFinally: (() => unknown) | undefined) =>
-          ensureIdentity().then(() =>
-            Reflect.apply(value, target, [onFinally]),
-          );
-      }
-
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  }) as T;
-}
-
-/**
- * Wraps a PrismaClient so its first executed query verifies database identity.
- * The check is cached per client instance; failures remain fail-closed.
+ * Wraps a PrismaClient in a Proxy that verifies database identity before
+ * the FIRST query. If the identity check fails, all subsequent queries
+ * also throw (the check result is cached as a failed promise).
  */
 export function withIdentityGuard<TClient extends object>(
   client: TClient,
   expectedSystemIdentifier: string,
+  expectedDatabaseOid: string,
   label: string,
 ): TClient {
   let identityCheckPromise: Promise<void> | null = null;
   const delegateProxyCache = new WeakMap<object, object>();
   const identitySql =
-    "SELECT system_identifier::text AS system_identifier FROM pg_control_system()";
+    "SELECT (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid";
 
   const ensureIdentity = (): Promise<void> => {
     if (!identityCheckPromise) {
       identityCheckPromise = (async () => {
         const rawMethod = Reflect.get(client, "$queryRaw", client) as
-          | ((
-              strings: TemplateStringsArray,
-              ...values: unknown[]
-            ) => Promise<unknown>)
+          | ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>)
           | undefined;
         if (typeof rawMethod !== "function") {
-          throw new Error(
-            label +
-              ": $queryRaw not available on client — cannot verify identity",
-          );
+          throw new Error(label + ": $queryRaw not available on client — cannot verify identity");
         }
 
-        // Invoke the underlying client directly to avoid recursively entering
-        // this guard. Prisma's tagged-template API requires the raw member.
+        // Prisma's tagged-template API expects a TemplateStringsArray with
+        // its raw member. Invoke the underlying client directly so this
+        // bootstrap query does not recursively enter the guard.
         const strings = Object.assign([identitySql], {
           raw: [identitySql],
         }) as unknown as TemplateStringsArray;
         const rows = (await Reflect.apply(rawMethod, client, [strings])) as
-          | Array<{ system_identifier: string }>
+          | Array<{ system_identifier: string; database_oid: string }>
           | undefined;
         const actual = rows?.[0]?.system_identifier ?? "";
-        if (actual !== expectedSystemIdentifier) {
+        const actualOid = rows?.[0]?.database_oid ?? "";
+        if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
           throw new PreviewIdentityMismatchError(
-            actual,
-            expectedSystemIdentifier,
-            label,
+            actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label,
           );
         }
       })();
@@ -149,9 +97,60 @@ export function withIdentityGuard<TClient extends object>(
     return identityCheckPromise;
   };
 
-  // Prisma model APIs are nested delegates (client.user.findMany()). Keep
-  // their returned PrismaPromise lazy and preserve requestTransaction so the
-  // array form of $transaction remains supported.
+  // Prisma model operations return lazy PrismaPromise objects. Keep that
+  // contract intact: Prisma's array $transaction API relies on
+  // requestTransaction() being present before the promise is awaited.
+  const promiseProxyCache = new WeakMap<object, object>();
+  const wrapPrismaPromise = (promise: object): object => {
+    const cached = promiseProxyCache.get(promise);
+    if (cached) return cached;
+    const thenMethod = Reflect.get(promise, "then", promise);
+    if (typeof thenMethod !== "function") return promise;
+
+    let guardedPromise: object;
+    guardedPromise = new Proxy(promise, {
+      get(target, property) {
+        if (property === "then") {
+          return (onFulfilled?: unknown, onRejected?: unknown) =>
+            ensureIdentity().then(
+              () => Reflect.apply(thenMethod, target, [onFulfilled, onRejected]),
+              onRejected as ((reason: unknown) => unknown) | undefined,
+            );
+        }
+        if (property === "catch") {
+          return (onRejected?: unknown) =>
+            Reflect.get(guardedPromise, "then")?.(undefined, onRejected);
+        }
+        if (property === "finally") {
+          return (onFinally?: unknown) =>
+            Reflect.get(guardedPromise, "then")(
+              (value: unknown) =>
+                Promise.resolve(typeof onFinally === "function" ? onFinally() : undefined)
+                  .then(() => value),
+              (reason: unknown) =>
+                Promise.resolve(typeof onFinally === "function" ? onFinally() : undefined)
+                  .then(() => { throw reason; }),
+            );
+        }
+        if (property === "requestTransaction") {
+          const requestTransaction = Reflect.get(target, property, target);
+          if (typeof requestTransaction !== "function") return requestTransaction;
+          return (...args: unknown[]) => {
+            const transactionPromise = Reflect.apply(requestTransaction, target, args);
+            return transactionPromise && typeof transactionPromise === "object"
+              ? wrapPrismaPromise(transactionPromise)
+              : transactionPromise;
+          };
+        }
+        return Reflect.get(target, property, target);
+      },
+    });
+    promiseProxyCache.set(promise, guardedPromise);
+    return guardedPromise;
+  };
+
+  // Prisma model APIs are nested delegates (client.user.findMany()), not
+  // root-level client functions. Guard their lazy PrismaPromise at await time.
   const wrapDelegate = (delegate: object): object => {
     const cached = delegateProxyCache.get(delegate);
     if (cached) return cached;
@@ -161,11 +160,12 @@ export function withIdentityGuard<TClient extends object>(
         const value = Reflect.get(target, property, target);
         if (typeof value !== "function") return value;
 
-        return (...args: unknown[]) =>
-          wrapPrismaPromise(
-            Reflect.apply(value, target, args),
-            ensureIdentity,
-          );
+        return (...args: unknown[]) => {
+          const result = Reflect.apply(value, target, args);
+          return result && typeof result === "object"
+            ? wrapPrismaPromise(result)
+            : result;
+        };
       },
     });
     delegateProxyCache.set(delegate, guardedDelegate);
@@ -177,8 +177,29 @@ export function withIdentityGuard<TClient extends object>(
       const value = Reflect.get(target, property, target);
 
       if (property === "$transaction" && typeof value === "function") {
-        return (...args: unknown[]) =>
-          ensureIdentity().then(() => Reflect.apply(value, target, args));
+        return async (...args: unknown[]) => {
+          // Verify the root client before Prisma opens either transaction form.
+          // Array transactions retain their lazy PrismaPromise/requestTransaction
+          // contract; interactive callbacks receive a separately guarded tx
+          // client so identity is checked on the transaction connection too.
+          await ensureIdentity();
+          const callback = args[0];
+          if (typeof callback === "function") {
+            const guardedCallback = (transactionClient: object) =>
+              Reflect.apply(
+                callback,
+                undefined,
+                [withIdentityGuard(
+                  transactionClient,
+                  expectedSystemIdentifier,
+                  expectedDatabaseOid,
+                  label,
+                )],
+              );
+            return Reflect.apply(value, target, [guardedCallback, ...args.slice(1)]);
+          }
+          return Reflect.apply(value, target, args);
+        };
       }
 
       if (
@@ -190,19 +211,18 @@ export function withIdentityGuard<TClient extends object>(
         typeof value === "function"
       ) {
         return (...args: unknown[]) =>
-          wrapPrismaPromise(
-            Reflect.apply(value, target, args),
-            ensureIdentity,
-          );
+          wrapPrismaPromise(Reflect.apply(value, target, args) as object);
       }
 
       // Preserve Prisma extensions while ensuring the returned client is
-      // guarded independently.
+      // guarded independently. The common application path does not need
+      // extensions, but this prevents an accidental guard escape.
       if (property === "$extends" && typeof value === "function") {
         return (...args: unknown[]) =>
           withIdentityGuard(
             Reflect.apply(value, target, args) as object,
             expectedSystemIdentifier,
+            expectedDatabaseOid,
             label,
           );
       }
@@ -231,15 +251,12 @@ export function createAppWorkerClientResolver() {
       if (!connectionString) {
         throw new Error("Missing Cloudflare Worker secret: DATABASE_URL");
       }
+      const expectedDatabaseOid = requireExpectedDatabaseOid(env.HEAVIX_APP_PREVIEW_DATABASE_OID, "App");
       const client = new AppPrismaClient({
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      return withIdentityGuard(
-        client,
-        EXPECTED_APP_SYSTEM_IDENTIFIER,
-        "App",
-      );
+      return withIdentityGuard(client, EXPECTED_APP_SYSTEM_IDENTIFIER, expectedDatabaseOid, "App");
     },
   );
 }
@@ -251,15 +268,12 @@ export function createStoreWorkerClientResolver() {
       if (!connectionString) {
         throw new Error("Missing Cloudflare Worker secret: STORE_DATABASE_URL");
       }
+      const expectedDatabaseOid = requireExpectedDatabaseOid(env.HEAVIX_STORE_PREVIEW_DATABASE_OID, "Store");
       const client = new StorePrismaClient({
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      return withIdentityGuard(
-        client,
-        EXPECTED_STORE_SYSTEM_IDENTIFIER,
-        "Store",
-      );
+      return withIdentityGuard(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
     },
   );
 }
