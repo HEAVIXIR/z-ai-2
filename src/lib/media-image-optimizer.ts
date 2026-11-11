@@ -4,10 +4,12 @@ import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
 import resizeImage, { initResize } from "@jsquash/resize";
+import { simd } from "wasm-feature-detect";
 import JPEG_DEC_WASM_URL from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import PNG_WASM_URL from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
 import WEBP_DEC_WASM_URL from "@jsquash/webp/codec/dec/webp_dec.wasm";
-import WEBP_ENC_WASM_URL from "@jsquash/webp/codec/enc/webp_enc_simd.wasm";
+import WEBP_ENC_SIMD_WASM_URL from "@jsquash/webp/codec/enc/webp_enc_simd.wasm";
+import WEBP_ENC_WASM_URL from "@jsquash/webp/codec/enc/webp_enc.wasm";
 import RESIZE_WASM_URL from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
@@ -59,10 +61,13 @@ async function initializeCodecs(): Promise<void> {
       loadInlineWasm(JPEG_DEC_WASM_URL),
       loadInlineWasm(PNG_WASM_URL),
       loadInlineWasm(WEBP_DEC_WASM_URL),
-      loadInlineWasm(WEBP_ENC_WASM_URL),
       loadInlineWasm(RESIZE_WASM_URL),
+      simd(),
     ])
-      .then(async ([jpegWasm, pngWasm, webpDecodeWasm, webpEncodeWasm, resizeWasm]) => {
+      .then(async ([jpegWasm, pngWasm, webpDecodeWasm, resizeWasm, supportsSimd]) => {
+        const webpEncodeWasm = await loadInlineWasm(
+          supportsSimd ? WEBP_ENC_SIMD_WASM_URL : WEBP_ENC_WASM_URL,
+        );
         await Promise.all([
           initJpegDecode(jpegWasm),
           initPngDecode(pngWasm),
