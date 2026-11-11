@@ -124,7 +124,7 @@ const nextConfig: NextConfig = {
     };
     const patchDefaultAssetRules = (rules: MutableRule[]) => {
       for (const rule of rules) {
-        if (rule.generator?.filename) {
+        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
           const existing = Array.isArray(rule.exclude)
             ? rule.exclude
             : rule.exclude
@@ -136,35 +136,9 @@ const nextConfig: NextConfig = {
         if (rule.rules) patchDefaultAssetRules(rule.rules);
       }
     };
-    // Next's built-in static-asset rule sets generator.filename. Exclude only
-    // jSquash binaries from that rule before applying the data-URL rule below.
+    // Exclude jSquash from Next's default WASM module rule; the following
+    // asset/inline rule supplies data URLs to the generated codec glue code.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
-    const wasmRuleDiagnostics: Array<Record<string, string | undefined>> = [];
-    const inspectRules = (rules: MutableRule[], prefix = "root") => {
-      rules.forEach((rule, index) => {
-        const test = rule.test instanceof RegExp ? rule.test.toString() : undefined;
-        if (rule.generator?.filename || (test && test.includes("wasm"))) {
-          wasmRuleDiagnostics.push({
-            path: `${prefix}[${index}]`,
-            test,
-            type: rule.type,
-            filename: rule.generator?.filename,
-            include: rule.include?.toString(),
-            exclude: rule.exclude?.toString(),
-          });
-        }
-        if (rule.oneOf) inspectRules(rule.oneOf, `${prefix}[${index}].oneOf`);
-        if (rule.rules) inspectRules(rule.rules, `${prefix}[${index}].rules`);
-      });
-    };
-    inspectRules(config.module.rules as unknown as MutableRule[]);
-    console.log("HEAVIX_MODULE_GENERATOR", JSON.stringify(config.module.generator));
-    console.log("HEAVIX_WASM_RULE_DIAGNOSTICS", JSON.stringify(wasmRuleDiagnostics));
-    config.module.rules.push({
-      test: /\.wasm$/,
-      include: jsquashWasm,
-      type: "asset/inline",
-    });
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
