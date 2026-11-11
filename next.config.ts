@@ -110,6 +110,29 @@ const nextConfig: NextConfig = {
     tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
+  webpack(config) {
+    // jSquash ships WASM binaries as URL assets. Keep them as embedded data
+    // URLs in both Node/Docker and Cloudflare builds; treating them as async
+    // WebAssembly modules exposes Emscripten internals as fake imports.
+    config.module.rules.push({
+      test: /\\.wasm$/,
+      include: /node_modules[\\/]@jsquash[\\/]/,
+      type: "asset/inline",
+    });
+    if (isCloudflareBuild) {
+      config.parallelism = 4;
+      config.experiments = {
+        ...config.experiments,
+        asyncWebAssembly: true,
+      };
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+        "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+      };
+    }
+    return config;
+  },
   ...(isCloudflareBuild
     ? {
         experimental: {
@@ -119,19 +142,6 @@ const nextConfig: NextConfig = {
         },
         // Proven on Next.js 16.4.5 + OpenNext + Prisma Worker clients:
         // Webpack asyncWASM avoids Turbopack's broad WASM loader glob scan.
-        webpack(config) {
-          config.parallelism = 4;
-          config.experiments = {
-            ...config.experiments,
-            asyncWebAssembly: true,
-          };
-          config.resolve.alias = {
-            ...config.resolve.alias,
-            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
-            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
-          };
-          return config;
-        },
         outputFileTracingExcludes: {
           "/*": [
             "./src/lib/generated/worker-client/**/*.ts",
