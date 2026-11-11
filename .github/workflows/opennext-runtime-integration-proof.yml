@@ -28,6 +28,7 @@ on:
       - "src/lib/prisma-worker-clients.ts"
       - "src/lib/prisma-worker-proxy.ts"
       - "scripts/run-opennext-runtime-proof.mjs"
+      - "scripts/patch-opennext-worker-wasm.mjs"
       - "scripts/preview-version-worker.mjs"
       - "src/lib/preview-version-worker-gate.ts"
       - "tests/unit/preview-version-worker-gate.test.ts"
