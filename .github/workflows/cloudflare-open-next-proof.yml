@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: heavix-cloudflare-open-next-proof-${{ github.event.pull_request.number || github.ref }}
@@ -54,6 +54,20 @@ jobs:
           set -euo pipefail
           bun install
           bun install --frozen-lockfile
+
+      - name: Commit resolved Bun lockfile to same-repository proof branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'proof/')
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- bun.lock; then
+            git add bun.lock
+            git commit -m "chore(deps): refresh Bun lockfile"
+            git push origin "HEAD:refs/heads/${PR_HEAD_REF}"
+          fi
 
       - name: Upload resolved Bun lockfile for review
         if: always()
