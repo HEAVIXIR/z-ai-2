@@ -61,7 +61,7 @@ export interface MediaAsset {
   status: MediaStatus;
 }
 
-interface AssetSidecar extends MediaAsset {}
+type AssetSidecar = MediaAsset;
 
 function randomAssetId(): string {
   const bytes = new Uint8Array(12);

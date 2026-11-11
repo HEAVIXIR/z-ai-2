@@ -105,6 +105,29 @@ const isCloudflareBuild =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
+  // jSquash wasm-bindgen modules are embedded as data URLs so both Node and
+  // Workerd can pass the bytes to the package's generated JS glue code.
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.wasm$/,
+      include: /node_modules[\\/]@jsquash[\\/]/,
+      type: "asset/inline",
+    });
+    if (isCloudflareBuild) {
+      config.parallelism = 4;
+      config.experiments = {
+        ...config.experiments,
+        asyncWebAssembly: true,
+      };
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+        "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+      };
+    }
+    return config;
+  },
   typescript: {
     ignoreBuildErrors: false,
     tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
@@ -116,21 +139,6 @@ const nextConfig: NextConfig = {
           // Cloudflare Workers Builds have a constrained file-descriptor limit.
           // Keep Next's static generation to one worker in this adapter-only path.
           cpus: 1,
-        },
-        // Proven on Next.js 16.4.5 + OpenNext + Prisma Worker clients:
-        // Webpack asyncWASM avoids Turbopack's broad WASM loader glob scan.
-        webpack(config) {
-          config.parallelism = 4;
-          config.experiments = {
-            ...config.experiments,
-            asyncWebAssembly: true,
-          };
-          config.resolve.alias = {
-            ...config.resolve.alias,
-            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
-            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
-          };
-          return config;
         },
         outputFileTracingExcludes: {
           "/*": [

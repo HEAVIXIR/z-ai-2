@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
 import { getAsset } from "@/lib/media-service";
+import { getB2MediaConfig } from "@/lib/b2-media-storage";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
 import {
   constantTimeEqual,
@@ -221,13 +222,22 @@ export async function GET(request: Request) {
   // An invalid opaque id must be rejected before any object-storage request.
   const invalidMediaAsset = await getAsset("not-a-valid-media-id");
   const mediaServiceModuleLoaded = invalidMediaAsset === null;
-  const sharp = (await import("sharp")).default;
-  const tinyPng = await sharp({
-    create: { width: 1, height: 1, channels: 4, background: { r: 8, g: 16, b: 24, alpha: 1 } },
-  }).png().toBuffer();
+  const b2Config = getB2MediaConfig();
+  const b2MediaConfigWorks =
+    b2Config.bucket === "heavix-dev-assets" &&
+    b2Config.prefix === "heavix-media/" &&
+    b2Config.region === "us-east-005" &&
+    b2Config.endpoint === "https://s3.us-east-005.backblazeb2.com";
+  const tinyPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5ZkAAAAASUVORK5CYII=",
+    "base64",
+  );
   const optimizedMedia = await optimizeImageBuffer(tinyPng, "png");
-  const mediaImageOptimizerWorks = optimizedMedia.buffer.length > 0;
-  const passed = appClosed && storeClosed && mediaServiceModuleLoaded && mediaImageOptimizerWorks;
+  const mediaImageOptimizerWorks =
+    optimizedMedia.buffer.length > 0 &&
+    optimizedMedia.type === "png" &&
+    optimizedMedia.mime === "image/png";
+  const passed = appClosed && storeClosed && mediaServiceModuleLoaded && b2MediaConfigWorks && mediaImageOptimizerWorks;
   return json({
     result: passed ? "PASS" : "FAIL",
     mode: "SMOKE_ONLY",
@@ -235,6 +245,7 @@ export async function GET(request: Request) {
     appFailsClosedWithoutBinding: appClosed,
     storeFailsClosedWithoutBinding: storeClosed,
     mediaServiceModuleLoaded,
+    b2MediaConfigWorks,
     mediaReadGateRejectsInvalidId: invalidMediaAsset === null,
     mediaImageOptimizerWorks,
     databaseConnectionsAttempted: false,
