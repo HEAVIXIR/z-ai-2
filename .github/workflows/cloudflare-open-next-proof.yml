@@ -9,6 +9,7 @@ on:
       - 'open-next.config.ts'
       - 'scripts/cloudflare-next-build-diagnostics.mjs'
       - 'scripts/patch-next-nft-concurrency.cjs'
+      - 'scripts/patch-opennext-worker-wasm.mjs'
       - 'src/lib/db.worker.ts'
       - 'src/lib/store-db.worker.ts'
       - 'src/lib/notifications.ts'
@@ -122,6 +123,7 @@ jobs:
           test "$NEXT_PUBLIC_SITE_URL" = "https://heavix-preview.heavixir.workers.dev"
           node scripts/patch-next-nft-concurrency.cjs
           bunx opennextjs-cloudflare build --noMinify
+          bun scripts/patch-opennext-worker-wasm.mjs
 
       - name: Verify complete deployable OpenNext Worker bundle
         run: |
