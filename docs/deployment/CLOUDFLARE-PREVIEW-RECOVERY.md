@@ -312,3 +312,17 @@ The first PR #183 Cloudflare attempt failed closed because its lock resolves Nex
 ## Base synchronization note
 
 PR #191 now carries the latest PR #183 build-recovery base history through `f78800aa52c2a929a8625a48ae0b3c686ca4f695`, including the shared Next NFT patcher allowlist. This merge is branch synchronization only; neither PR was merged into `main`.
+
+
+## 2026-11-11 — Exact-branch Cloudflare Build timeout and release hold
+
+Read-only recheck of the current runtime PR branch found:
+
+- Current branch head at inspection: `65a2bb444eab9d80983feea70557a2e2213e67ef` (PR #191 remains Draft / unmerged). The head contains a documentation update after the last code-bearing proof commit; do not treat older artifact evidence as exact-head evidence.
+- Cloudflare Build `2326072d-1e24-45ec-9899-1fa9101ece37` ran on `infra/prisma6-cloudflare-runtime` commit `4171f6e631086fe90f3b3b639dda4308613882c2` and ended `terminated` at `2026-11-10T20:09:53.700Z`. Its log reached Next.js 16.4.5 (Turbopack), printed `Creating an optimized production build ...`, then ended with `Build took too long and was timed out`. The CSS selector warning involving `#F58220` was non-fatal. No `.open-next/worker.js`, OpenNext completion marker, or deploy artifact was produced by this run.
+- The deploy command for that build was the explicit no-op marker `HEAVIX_PREVIEW_DEPLOY_BLOCKED_PENDING_ARTIFACT_AND_DATABASE_ISOLATION_PROOF`; no Worker version was deployed.
+- Earlier Build `1eacbd94-d31e-4969-b01a-88c50d707bfa` succeeded on older commit `3bf2333fde4f81473ce0d14c99cbd653a386c2e2` and logged Next.js 16.4.5 (webpack), then produced `.open-next/worker.js`. That is older-head evidence only. The current branch config selects Turbopack by default; the existence of the older Webpack success does not by itself prove that switching the current WASM-sensitive runtime back to Webpack is safe.
+- Exact-head GitHub CI run `42883319569` for `65a2bb444eab9d80983feea70557a2e2213e67ef` completed successfully, but its DB-backed Preview proof job was skipped. The previous DB-backed Workerd proof used GitHub Actions secrets and does not prove the active Cloudflare Worker secret bindings.
+- A separate Cloudflare Build `69a49f21-67dc-4df2-bbc5-911ca7d1be9f` was observed on recovery-branch commit `d5f034178918d0b44f83aca7986d82cbada10915`; it was still running at the latest inspection and its logs had not advanced beyond the optimized Next.js build phase. It is not a build of this infra branch.
+
+No speculative bundler, concurrency, memory, cache, or timeout change is authorized by this evidence. Do not retry Cloudflare Builds as a debugging loop. Reconstruct the owner-confirmed prior successful remediation first, preserve the known-good Preview version #17, and obtain explicit owner approval before any further quota-consuming Cloudflare Build. Release remains blocked until both actual Worker database bindings are proven against the App Preview and Store Preview physical PostgreSQL identities and allow-lists.
