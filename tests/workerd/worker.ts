@@ -191,19 +191,23 @@ export default {
         const client = getAppClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_APP_SYSTEM_IDENTIFIER, env.HEAVIX_APP_PREVIEW_DATABASE_OID ?? "", "App");
         const result = await client.$transaction(async (tx) => {
-          const [selectRows, settingRows] = await Promise.all([
-            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
-          ]);
+          const configuredRows = await tx.$queryRaw<Array<{ read_only: string }>>`SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
+          const configured = configuredRows[0]?.read_only === "on";
+          if (!configured) {
+            return { selectOk: false, transactionReadOnlySetting: String(configuredRows[0]?.read_only), isReadOnly: false, readOnlyConfigured: false };
+          }
+          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          const settingRows = await tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
             selectOk: Number(selectRows[0]?.ok) === 1,
             transactionReadOnlySetting: String(rawSetting),
             isReadOnly,
+            readOnlyConfigured: configured,
           };
         });
-        const readOnlyProven = result.selectOk === true && result.isReadOnly === true;
+        const readOnlyProven = result.selectOk === true && result.isReadOnly === true && result.readOnlyConfigured === true;
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,
@@ -227,19 +231,23 @@ export default {
         const client = getStoreClient(ctx, env);
         await verifyDatabaseIdentity(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, env.HEAVIX_STORE_PREVIEW_DATABASE_OID ?? "", "Store");
         const result = await client.$transaction(async (tx) => {
-          const [selectRows, settingRows] = await Promise.all([
-            tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`,
-            tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`,
-          ]);
+          const configuredRows = await tx.$queryRaw<Array<{ read_only: string }>>`SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
+          const configured = configuredRows[0]?.read_only === "on";
+          if (!configured) {
+            return { selectOk: false, transactionReadOnlySetting: String(configuredRows[0]?.read_only), isReadOnly: false, readOnlyConfigured: false };
+          }
+          const selectRows = await tx.$queryRaw<Array<{ ok: number }>>`SELECT 1 AS ok`;
+          const settingRows = await tx.$queryRaw<Array<{ transaction_read_only: boolean | string }>>`SELECT current_setting('transaction_read_only')::boolean AS transaction_read_only`;
           const rawSetting = settingRows[0]?.transaction_read_only;
           const isReadOnly = rawSetting === true || rawSetting === "true" || rawSetting === "t" || rawSetting === 1 || rawSetting === "1";
           return {
             selectOk: Number(selectRows[0]?.ok) === 1,
             transactionReadOnlySetting: String(rawSetting),
             isReadOnly,
+            readOnlyConfigured: configured,
           };
         });
-        const readOnlyProven = result.selectOk === true && result.isReadOnly === true;
+        const readOnlyProven = result.selectOk === true && result.isReadOnly === true && result.readOnlyConfigured === true;
         return json({
           clientId: getClientId(client),
           transactionOk: result.selectOk,

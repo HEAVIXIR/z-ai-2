@@ -53,7 +53,11 @@ async function probeApp(expectedDatabaseOid: string) {
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
-  // Identity is verified before schema reads or transaction creation.
+  const actual = identity[0];
+  const clusterMatch = actual?.system_identifier === EXPECTED.app.systemIdentifier;
+  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
+
+  // Fail closed before reading schema metadata or opening a transaction.
   if (!clusterMatch || !databaseMatch) {
     return {
       clusterMatch,
@@ -66,20 +70,14 @@ async function probeApp(expectedDatabaseOid: string) {
       transactionReadOnlyEnforced: false,
     };
   }
+
   const migrations = await db.$queryRaw<Array<{ migration_name: string }>>`
     SELECT migration_name FROM "_prisma_migrations"
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
     ORDER BY migration_name`;
   const transaction = await db.$transaction(async (tx) => {
-    // STEP 18.2.7.3.11 (Finding RO-1, per senior-manager audit):
-    // Previously we only READ current_setting('transaction_read_only') —
-    // this observed the existing state but did NOT enforce read-only mode.
-    // A misconfigured read-write database would pass that check.
-    //
-    // Set transaction_read_only with a transaction-local GUC as the first
-    // statement. This is a SELECT function call, so it can use Prisma's
-    // prepared-statement raw-query path (unlike a SET utility command).
-    // is_local=true resets the setting when this transaction ends.
+    // Transaction-local, prepared-statement-safe read-only enforcement.
+    // This must be the first statement in the transaction.
     const configured = await tx.$queryRaw<Array<{ read_only: string }>>`
       SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
     if (configured[0]?.read_only !== "on") return false;
@@ -87,9 +85,6 @@ async function probeApp(expectedDatabaseOid: string) {
       SELECT current_setting('transaction_read_only')::boolean AS read_only`;
     return rows[0]?.read_only === true;
   });
-  const actual = identity[0];
-  const clusterMatch = actual?.system_identifier === EXPECTED.app.systemIdentifier;
-  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
   return {
     clusterMatch,
     databaseMatch,
@@ -117,7 +112,11 @@ async function probeStore(expectedDatabaseOid: string) {
     current_database()::text AS database_name,
     current_schema()::text AS schema_name,
     current_setting('server_version') AS server_version`;
-  // Identity is verified before schema reads or transaction creation.
+  const actual = identity[0];
+  const clusterMatch = actual?.system_identifier === EXPECTED.store.systemIdentifier;
+  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
+
+  // Fail closed before reading schema metadata or opening a transaction.
   if (!clusterMatch || !databaseMatch) {
     return {
       clusterMatch,
@@ -130,12 +129,14 @@ async function probeStore(expectedDatabaseOid: string) {
       transactionReadOnlyEnforced: false,
     };
   }
+
   const migrations = await storeDb.$queryRaw<Array<{ migration_name: string }>>`
     SELECT migration_name FROM "_prisma_migrations"
     WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
     ORDER BY migration_name`;
   const transaction = await storeDb.$transaction(async (tx) => {
-    // STEP 18.2.7.3.11 (Finding RO-1): use the same prepared-safe GUC as probeApp().
+    // Transaction-local, prepared-statement-safe read-only enforcement.
+    // This must be the first statement in the transaction.
     const configured = await tx.$queryRaw<Array<{ read_only: string }>>`
       SELECT set_config('transaction_read_only', 'on', true) AS read_only`;
     if (configured[0]?.read_only !== "on") return false;
@@ -143,9 +144,6 @@ async function probeStore(expectedDatabaseOid: string) {
       SELECT current_setting('transaction_read_only')::boolean AS read_only`;
     return rows[0]?.read_only === true;
   });
-  const actual = identity[0];
-  const clusterMatch = actual?.system_identifier === EXPECTED.store.systemIdentifier;
-  const databaseMatch = actual?.database_oid === expectedDatabaseOid;
   return {
     clusterMatch,
     databaseMatch,
