@@ -113,6 +113,7 @@ function parseSidecar(bytes: Uint8Array): AssetSidecar | null {
     }
     return {
       ...parsed,
+      originalFilename: typeof parsed.originalFilename === "string" ? parsed.originalFilename.slice(0, 255) : null,
       visibility: parsed.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
       status:
         parsed.status === "STAGED" || parsed.status === "ATTACHED"
