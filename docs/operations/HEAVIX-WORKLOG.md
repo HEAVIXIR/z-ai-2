@@ -361,3 +361,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - No deployment, Worker setting/secret change, database connection, migration, seed, database write, Production change or DNS change occurred.
 - Owner-reported Cloudflare Build usage is already above 2,000 of 3,000 monthly units. Do not trigger/retry Cloudflare Builds as a debugging loop. Recover the exact prior owner-confirmed successful remediation first and obtain explicit owner authorization before any further quota-consuming build.
 - Next exact action: poll the existing Build #69a49 and OpenNext run #42998197018 without retrying. Before any deployment, prove both actual Worker DB bindings by read-only App/Store PostgreSQL system identifier plus database OID checks against the independently allow-listed Preview resources. If the binding values remain unprovable, keep deployment blocked.
+
+
+## 2026-11-11 — Recovery branch Webpack profile and quota protection
+
+- Read-only poll of Cloudflare Build `69a49f21-67dc-4df2-bbc5-911ca7d1be9f` showed terminal status `stopped`. Its logs explicitly show Next.js 16.4.5 (Turbopack), the NFT patch already applied, then `Build took too long and was timed out` during optimized production build. No deployment was performed.
+- Verified GitHub Actions run `43010880902`: all 9 job steps succeeded, including the OpenNext Webpack build, complete Worker bundle checks, no-database Workerd smoke, and artifact upload. Artifact `13849664588` is 26,418,563 bytes; GitHub digest `sha256:7418ab71b120329a0fc9becd438d34a014d77e0833233aa303efc32210a4ca18`.
+- Ported the tested proof-branch files into `recovery/heavix-full-product-integration-2026-11-11`: `next.config.ts` (Webpack parallelism 4, asyncWASM, App/Store worker aliases), `open-next.config.ts` (explicit Webpack diagnostics), `scripts/cloudflare-next-build-diagnostics.mjs` (Webpack default; Turbopack opt-in), and the small `src/lib/notifications.ts` duplicate-property correction. Added `.github/workflows/cloudflare-open-next-proof.yml` for repeatable GitHub-only artifact/Workerd proof.
+- Resulting recovery branch commit: `578fffc21a24a2c879eb5b73e483827c85db434d`.
+- Updated Cloudflare non-production Build trigger `ac8064c1-e751-4669-af03-f6cb2922d5e8` to exclude the active recovery branch. Read-back confirmed the exclusion and confirmed Build/Deploy commands are unchanged. No Cloudflare Build was triggered.
+- No Worker upload/deploy, DB connection/write, B2 object operation, Production change or DNS change.
+- Next: implement the B2 media adapter and seller staging/finalization with mocked tests. Before any live B2 object proof, owner must confirm the dedicated key's bucket selector is exactly `heavix-dev-assets` (not All) and its prefix is exactly `heavix-media/`; never request the secret in chat. Preview DB identity remains NOT VERIFIED.
