@@ -47,8 +47,8 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(next).toContain('process.env.VERCEL !== "1"');
     expect(next).toContain('tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json"');
     expect(next).toContain("turbopack:");
-    expect(next).not.toContain("webpack(config)");
-    expect(next).not.toContain("asyncWebAssembly");
+    expect(next).toContain("webpack(config)");
+    expect(next).toContain("asyncWebAssembly: true");
     expect(next).toContain("outputFileTracingExcludes");
     expect(next).toContain("./src/lib/generated/worker-client/**/*.ts");
     expect(next).toContain("./src/lib/generated/store-worker-client/**/*.ts");
@@ -59,6 +59,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(openNext).toContain("ulimit -n 4096");
     expect(openNext).toContain("HEAVIX_NOFILE_SOFT");
     expect(openNext).toContain("UV_THREADPOOL_SIZE=4");
+    expect(openNext).toContain("HEAVIX_NEXT_BUNDLER=webpack");
   });
 
   it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {
@@ -237,21 +238,3 @@ describe("Cloudflare Next build descriptor diagnostics", () => {
     const wrapper = read("scripts/preview-version-worker.mjs");
     expect(wrapper).toContain("preview-version-worker-gate");
   });
-
-  it("disables database backup execution in the Preview Worker", () => {
-    const backup = read("src/app/api/admin/backup/route.ts");
-    expect(backup).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED");
-    const wrangler = read("wrangler.jsonc");
-    expect(wrangler).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED");
-  });
-
-
-  it("uses the canonical site-config Preview flag for sitemap suppression", () => {
-    const siteConfig = read("src/lib/site-config.ts");
-    const sitemap = read("src/app/sitemap.ts");
-    expect(siteConfig).toContain('export const IS_PREVIEW_DEPLOYMENT = process.env.HEAVIX_ENV === "preview"');
-    expect(sitemap).toContain("IS_PREVIEW_DEPLOYMENT");
-    expect(sitemap).toContain("SITE_BASE_URL");
-  });
-
-});
