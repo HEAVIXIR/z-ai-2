@@ -117,6 +117,8 @@ const nextConfig: NextConfig = {
       test?: RegExp;
       generator?: { filename?: string };
       exclude?: RegExp | RegExp[];
+      include?: RegExp;
+      type?: string;
       oneOf?: MutableRule[];
       rules?: MutableRule[];
     };
@@ -137,6 +139,26 @@ const nextConfig: NextConfig = {
     // Next's built-in static-asset rule sets generator.filename. Exclude only
     // jSquash binaries from that rule before applying the data-URL rule below.
     patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
+    const wasmRuleDiagnostics: Array<Record<string, string | undefined>> = [];
+    const inspectRules = (rules: MutableRule[], prefix = "root") => {
+      rules.forEach((rule, index) => {
+        const test = rule.test instanceof RegExp ? rule.test.toString() : undefined;
+        if (rule.generator?.filename || (test && test.includes("wasm"))) {
+          wasmRuleDiagnostics.push({
+            path: `${prefix}[${index}]`,
+            test,
+            type: rule.type,
+            filename: rule.generator?.filename,
+            include: rule.include?.toString(),
+            exclude: rule.exclude?.toString(),
+          });
+        }
+        if (rule.oneOf) inspectRules(rule.oneOf, `${prefix}[${index}].oneOf`);
+        if (rule.rules) inspectRules(rule.rules, `${prefix}[${index}].rules`);
+      });
+    };
+    inspectRules(config.module.rules as unknown as MutableRule[]);
+    console.log("HEAVIX_WASM_RULE_DIAGNOSTICS", JSON.stringify(wasmRuleDiagnostics));
     config.module.rules.push({
       test: /\.wasm$/,
       include: jsquashWasm,
