@@ -106,18 +106,17 @@ const isCloudflareBuild =
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
-  // jSquash wasm-bindgen modules are embedded as data URLs so both Node and
-  // Workerd can pass the bytes to the package's generated JS glue code.
+  // jSquash codecs use build-time async WebAssembly modules. This avoids
+  // runtime WebAssembly.compile(), which Cloudflare Workerd intentionally blocks.
   webpack(config) {
     const jsquashWasm = /node_modules[\\/]@jsquash[\\/]/;
     type MutableRule = {
       test?: RegExp;
-      generator?: { filename?: string };
       exclude?: RegExp | RegExp[];
       oneOf?: MutableRule[];
       rules?: MutableRule[];
     };
-    const patchDefaultAssetRules = (rules: MutableRule[]) => {
+    const excludeJsquashFromDefaultWasmRules = (rules: MutableRule[]) => {
       for (const rule of rules) {
         if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
           const existing = Array.isArray(rule.exclude)
@@ -127,40 +126,15 @@ const nextConfig: NextConfig = {
               : [];
           rule.exclude = [...existing, jsquashWasm];
         }
-        if (rule.oneOf) patchDefaultAssetRules(rule.oneOf);
-        if (rule.rules) patchDefaultAssetRules(rule.rules);
+        if (rule.oneOf) excludeJsquashFromDefaultWasmRules(rule.oneOf);
+        if (rule.rules) excludeJsquashFromDefaultWasmRules(rule.rules);
       }
     };
-    // Exclude jSquash from Next's default WASM module rule; the following
-    // asset/inline rule supplies data URLs to the generated codec glue code.
-    patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
-    const moduleGenerator = {
-      ...config.module.generator,
-    } as Record<string, unknown>;
-    const genericAssetGenerator = moduleGenerator.asset as
-      | { filename?: string; [key: string]: unknown }
-      | undefined;
-    if (genericAssetGenerator?.filename) {
-      const { filename: _assetFilename, ...assetGeneratorWithoutFilename } =
-        genericAssetGenerator;
-      moduleGenerator.asset = assetGeneratorWithoutFilename;
-    }
-    moduleGenerator["asset/inline"] = {
-      dataUrl: { encoding: "base64", mimetype: "application/wasm" },
-    };
-    config.module.generator = moduleGenerator as typeof config.module.generator;
+    excludeJsquashFromDefaultWasmRules(config.module.rules as unknown as MutableRule[]);
     config.module.rules.push({
-      test: /\.wasm$/,
+      test: /\\.wasm$/,
       include: jsquashWasm,
-      type: "asset/inline",
-      generator: {
-        dataUrl: { encoding: "base64", mimetype: "application/wasm" },
-      },
-    });
-    config.module.rules.push({
-      test: /\.wasm$/,
-      include: jsquashWasm,
-      type: "asset/inline",
+      type: "webassembly/async",
     });
     if (isCloudflareBuild) {
       config.parallelism = 4;
