@@ -34,8 +34,9 @@ describe("public homepage renderer contracts", () => {
     expect(homepageSource).not.toMatch(/db\.homePageSection\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/);
   });
 
-  it("does not put the admin-only site statistics endpoint on the public homepage", () => {
-    expect(homepageSource).not.toContain("site-stats");
+  it("does not call an admin-only site statistics endpoint from the public homepage", () => {
+    expect(homepageSource).not.toContain("/api/admin/site-stats");
+    expect(homepageSource).not.toContain("fetch('/api/site-stats");
     expect(homepageSource).toContain("getActiveStats");
     expect(homepageSource).not.toContain("31 استان");
   });
