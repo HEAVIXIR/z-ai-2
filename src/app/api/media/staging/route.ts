@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     const result = await uploadAsset({
       file: Buffer.from(await file.arrayBuffer()),
       uploadedBy: user.id,
+      actorType: "USER",
       originalFilename: file.name,
       entityType: "Listing",
       visibility: "PRIVATE",
