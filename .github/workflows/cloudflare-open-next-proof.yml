@@ -25,7 +25,7 @@ on:
       - 'src/components/admin/MediaUploader.tsx'
       - 'wrangler.jsonc'
       - 'scripts/run-opennext-runtime-proof.mjs'
-      - 'vitest.preview-proof.config.ts'
+      - 'vitest.preview-proof.config.mjs'
       - 'tests/security/**'
       - 'tests/admin-backup-readiness.test.ts'
       - 'src/app/api/opennext-runtime-proof/route.ts'

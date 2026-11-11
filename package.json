@@ -57,7 +57,7 @@
     "admin:promote-owner": "tsx scripts/promote-owner.ts",
     "typecheck:worker": "tsc --noEmit -p tsconfig.worker.json",
     "test:workerd": "bun scripts/run-prisma-workerd-proof.mjs",
-    "test:preview-proof": "vitest run --config vitest.preview-proof.config.ts"
+    "test:preview-proof": "vitest run --config vitest.preview-proof.config.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
