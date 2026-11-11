@@ -217,3 +217,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - After adding the concurrency group, GitHub still showed older pre-existing PR runs #42914986140 (01452ed) and #42915046750 (c8e9591) both queued; no cancellation of the earlier queue was observed.
 - Therefore the concurrency guard is recorded as a future-run optimization only; do not claim it cancelled pre-existing runs or that the exact latest CI is running.
 - Current branch queue remains overloaded; if secure GitHub browser sign-in is enabled, cancel obsolete runs manually and keep only the latest code-head run.
+## 2026-11-11 — Latest CI failure triage and two contract fixes
+
+- Inspected full logs for CI run #42915285217 (commit 453273cf). `verify` failed only in two contract assertions; 1,908 of 1,910 tests passed, with 61 contract/unit test files passing and 2 failing.
+- Failure 1: `tests/contract/admin-store-navigation.test.ts` correctly found the Rentals config still contained `rentals.manage` under its audit action even though CRUD permissions used `store.manage`. Updated `src/lib/admin/resources/store-domain-resources.ts` so Rentals audit actions use `store.manage`.
+- Failure 2: `tests/contract/homepage-data-sources.test.ts` rejected any occurrence of the substring `site-stats`, including the safe local helper import `@/lib/site-stats`. Narrowed the assertion to forbid actual admin endpoint `/api/admin/site-stats` and public fetch path `/api/site-stats`, while retaining checks for the DB-backed `getActiveStats` helper and no fabricated province stats.
+- Commits: `d5e80c3e15c3d2dffb5eee82a76fa78d45fc76a4` (Rentals audit permission), `7d2c0670a4eb8c51eb7a133ee4d3476679416292` (homepage contract assertion).
+- New exact-head CI run #42971201849 for commit `7d2c0670a4eb8c51eb7a133ee4d3476679416292` is running. At checkpoint, verify, phase-tests, Docker proof, TLS proof, Cloudflare compatibility report-only and audit-transaction jobs were in progress; no latest result yet.
+- No Preview deploy, DB write, migration, seed or Production/DNS change.
