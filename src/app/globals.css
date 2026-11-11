@@ -502,3 +502,25 @@ section {
     transform: translateX(20px);
   }
 }
+
+
+/* Admin-controlled homepage section presentation. Empty settings preserve legacy visuals. */
+.hp-section-frame { position: relative; width: 100%; }
+.hp-section-frame h1,
+.hp-section-frame h2,
+.hp-section-frame h3 { color: var(--hp-heading-color, inherit); }
+.hp-section-frame h2,
+.hp-section-frame h3 { font-size: var(--hp-heading-size, inherit); }
+.hp-section-frame .mx-auto[class*="max-w-"] { max-width: var(--hp-content-max-width, inherit); }
+.hp-section-frame .grid { column-gap: var(--hp-card-gap, inherit); row-gap: var(--hp-card-gap, inherit); }
+.hp-section-frame img { border-radius: var(--hp-image-radius, inherit); }
+.hp-section-frame .text-\\[\\#F58220\\] { color: var(--hp-accent-color, inherit); }
+@keyframes hp-section-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hp-section-slide-up { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes hp-section-zoom { from { opacity: .65; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes hp-section-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.hp-section-motion-fade { animation: hp-section-fade var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-slide-up { animation: hp-section-slide-up var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-zoom { animation: hp-section-zoom var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-float { animation: hp-section-float var(--hp-motion-duration,700ms) ease-in-out infinite; animation-delay: var(--hp-motion-delay,0ms); }
+@media (prefers-reduced-motion: reduce) { .hp-section-frame[class*="hp-section-motion-"] { animation: none !important; } }
