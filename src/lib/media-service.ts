@@ -194,7 +194,7 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
   const sidecar: AssetSidecar = {
     id: assetId,
     filename: safeName,
-    originalFilename: (input.originalFilename ?? "").replace(/[\\/]/g, "_").replace(/[\u0000-\u001F\u007F]/g, "").slice(0, 255) || null,
+    originalFilename: (input.originalFilename ?? "").split(/[\\/]/).pop()?.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 255) || null,
     url: "/api/media/" + assetId,
     relativePath: key,
     mimeType: optimized.mime,
