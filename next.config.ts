@@ -153,6 +153,25 @@ const nextConfig: NextConfig = {
         dataUrl: { encoding: "base64", mimetype: "application/wasm" },
       },
     });
+    const finalWasmRules: Array<Record<string, unknown>> = [];
+    const inspectFinalRules = (rules: MutableRule[], prefix = "root") => {
+      rules.forEach((rule, index) => {
+        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
+          finalWasmRules.push({
+            path: `${prefix}[${index}]`,
+            type: rule.type,
+            generator: rule.generator,
+            include: rule.include?.toString(),
+            exclude: rule.exclude?.toString(),
+          });
+        }
+        if (rule.oneOf) inspectFinalRules(rule.oneOf, `${prefix}[${index}].oneOf`);
+        if (rule.rules) inspectFinalRules(rule.rules, `${prefix}[${index}].rules`);
+      });
+    };
+    inspectFinalRules(config.module.rules as unknown as MutableRule[]);
+    console.log("HEAVIX_FINAL_WASM_RULES", JSON.stringify(finalWasmRules));
+    console.log("HEAVIX_FINAL_MODULE_GENERATOR", JSON.stringify(config.module.generator));
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
