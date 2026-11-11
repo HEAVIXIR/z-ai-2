@@ -26,6 +26,8 @@ on:
       - 'wrangler.jsonc'
       - 'scripts/run-opennext-runtime-proof.mjs'
       - 'vitest.preview-proof.config.mjs'
+      - 'vitest.config.ts'
+      - 'vitest.security.config.ts'
       - 'tests/security/**'
       - 'tests/admin-backup-readiness.test.ts'
       - 'src/app/api/opennext-runtime-proof/route.ts'
