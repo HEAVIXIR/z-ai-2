@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   B2_MEDIA_SCOPE,
+  copyB2MediaObject,
   createB2MediaReadUrl,
   deleteB2MediaObject,
   getB2MediaConfig,
@@ -127,6 +128,25 @@ describe("HEAVIX scoped Backblaze B2 media adapter", () => {
 
     expect(Array.from(bytes)).toEqual([8, 9]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("copies a staged object to the final object prefix within the same bucket", async () => {
+    const fetchMock = vi.fn(async () => new Response("<CopyObjectResult/>", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await copyB2MediaObject(
+      "heavix-media/staging/user-1/asset.webp",
+      "heavix-media/objects/2026/11/asset.webp",
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(init.method).toBe("PUT");
+    expect(url).toContain("/heavix-dev-assets/heavix-media/objects/2026/11/asset.webp");
+    expect(headers.get("x-amz-copy-source")).toBe(
+      "/heavix-dev-assets/heavix-media/staging/user-1/asset.webp",
+    );
+    expect(headers.get("authorization")).toMatch(/^AWS4-HMAC-SHA256 /);
   });
 
   it("deletes only an object under the media prefix", async () => {
