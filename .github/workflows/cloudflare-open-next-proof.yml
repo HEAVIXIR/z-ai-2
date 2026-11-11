@@ -48,14 +48,23 @@ jobs:
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
 
-      - name: Run the exact Cloudflare OpenNext build profile
+      - name: Run the exact Cloudflare Preview OpenNext build profile
         shell: bash
+        env:
+          HEAVIX_BUILD_TARGET: cloudflare
+          HEAVIX_ENV: preview
+          NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+          NODE_ENV: production
+          HEAVIX_NEXT_BUNDLER: webpack
+          UV_THREADPOOL_SIZE: "4"
         run: |
           set -euo pipefail
           ulimit -n 4096 2>/dev/null || true
           echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"
+          test "$HEAVIX_ENV" = "preview"
+          test "$NEXT_PUBLIC_SITE_URL" = "https://heavix-preview.heavixir.workers.dev"
           node scripts/patch-next-nft-concurrency.cjs
-          UV_THREADPOOL_SIZE=4 HEAVIX_BUILD_TARGET=cloudflare HEAVIX_NEXT_BUNDLER=webpack bunx opennextjs-cloudflare build --noMinify
+          bunx opennextjs-cloudflare build --noMinify
 
       - name: Verify complete deployable OpenNext Worker bundle
         run: |
