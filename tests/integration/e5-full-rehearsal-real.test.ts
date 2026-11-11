@@ -36,8 +36,8 @@ process.env.PGPASSWORD = process.env.PGPASSWORD || "postgres";
       11. CR-12 (E5_REQUIRE_PRIMARY=no) → rejected on mutating path
       12. Cleanup: scratch databases are dropped after test
 
-   Test gating: Only runs when DATABASE_URL contains "localhost"
-   (same pattern as other integration tests).
+   Test gating: Only runs when HEAVIX_RUN_E5_REAL_DB_TESTS=1.
+   CI runs it only against the dedicated TLS-enabled PostgreSQL 17 cluster.
    ============================================================ */
 
 /* ============================================================
@@ -65,24 +65,34 @@ process.env.PGPASSWORD = process.env.PGPASSWORD || "postgres";
 
    ============================================================ */
 
-const RUN_TESTS = process.env.DATABASE_URL?.includes("localhost") ?? false;
+const RUN_TESTS = process.env.HEAVIX_RUN_E5_REAL_DB_TESTS === "1";
 
 describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)", () => {
-  const SOURCE_DB_URL = process.env.DATABASE_URL!.split("?")[0];
-  const MAINTENANCE_URL = `postgresql://postgres:postgres@localhost:5432/postgres`;
+  const BASE_DATABASE_URL = new URL(process.env.DATABASE_URL!);
+  const PG_HOST = process.env.PGHOST || BASE_DATABASE_URL.hostname;
+  const PG_PORT = process.env.PGPORT || BASE_DATABASE_URL.port || "5432";
+  const PG_USER = process.env.PGUSER || decodeURIComponent(BASE_DATABASE_URL.username) || "postgres";
+  const PSQL_PREFIX = `psql -h "${PG_HOST}" -p "${PG_PORT}" -U "${PG_USER}"`;
+  const databaseUrlFor = (databaseName: string) => {
+    const url = new URL(BASE_DATABASE_URL);
+    url.pathname = `/${databaseName}`;
+    return url.toString();
+  };
+  const SOURCE_DB_URL = databaseUrlFor(BASE_DATABASE_URL.pathname.replace(/^\\//, ""));
+  const MAINTENANCE_URL = databaseUrlFor("postgres");
   const BACKUP_DIR = "/tmp/e5-rehearsal";
   const BACKUP_FILE = join(BACKUP_DIR, "e5-rehearsal.dump");
   const SCRATCH_DB = `e5_scratch_${Date.now()}`;
   const RESTORE_DB = `e5_restore_${Date.now()}`;
-  const SCRATCH_URL = `postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}`;
-  const RESTORE_URL = `postgresql://postgres:postgres@localhost:5432/${RESTORE_DB}`;
+  const SCRATCH_URL = databaseUrlFor(SCRATCH_DB);
+  const RESTORE_URL = databaseUrlFor(RESTORE_DB);
 
   // Track created databases for cleanup
   const createdDbs: string[] = [];
 
   function psql(dbName: string, sql: string): string {
     // Use stdin to avoid shell quoting issues — pipe SQL to psql via input
-    return execSync('psql -h localhost -U postgres -t -A -v ON_ERROR_STOP=1 -d ' + dbName, {
+    return execSync(`${PSQL_PREFIX} -t -A -v ON_ERROR_STOP=1 -d "${dbName}"`, {
       input: sql,
       encoding: 'utf-8',
       timeout: 30000,
@@ -90,7 +100,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   }
 
   function createDb(name: string): void {
-    execSync(`psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${name}";'`, {
+    execSync(`${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${name}";'`, {
       encoding: "utf-8",
       timeout: 10000,
     });
@@ -99,7 +109,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
   function dropDb(name: string): void {
     try {
-      execSync(`psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'DROP DATABASE IF EXISTS "${name}";'`, {
+      execSync(`${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'DROP DATABASE IF EXISTS "${name}";'`, {
         encoding: "utf-8",
         timeout: 10000,
       });
@@ -145,7 +155,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
    */
   function createDbFromTemplate(name: string, template: string): void {
     execSync(
-      `psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${name}" TEMPLATE "${template}";'`,
+      `${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${name}" TEMPLATE "${template}";'`,
       { encoding: "utf-8", timeout: 30000 },
     );
     createdDbs.push(name);
@@ -157,7 +167,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
    */
   function pushSchema(dbName: string): void {
     execSync(
-      `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${dbName}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`,
+      `DATABASE_URL="${databaseUrlFor(dbName)}" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`,
       { encoding: "utf-8", timeout: 60000 },
     );
   }
@@ -187,13 +197,13 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
     // Create scratch DB and push schema + seed
     createDb(SCRATCH_DB);
-    execSync(`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`, {
+    execSync(`DATABASE_URL="${SCRATCH_URL}" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`, {
       encoding: "utf-8",
       timeout: 60000,
     });
 
     // Seed minimal data
-    execSync(`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}?schema=public" bun run db:seed-rbac`, {
+    execSync(`DATABASE_URL="${SCRATCH_URL}" bun run db:seed-rbac`, {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -214,7 +224,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
   describe("G2-1: Backup (CREATE DATABASE TEMPLATE — avoids pg_dump v16/v17 mismatch)", () => {
     it("backup: CREATE DATABASE from template succeeds (full copy)", () => {
       execSync(
-        `psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${RESTORE_DB}" TEMPLATE "${SCRATCH_DB}";'`,
+        `${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${RESTORE_DB}" TEMPLATE "${SCRATCH_DB}";'`,
         { encoding: "utf-8", timeout: 30000 },
       );
       createdDbs.push(RESTORE_DB);
@@ -495,7 +505,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
       const emptyDb = `e5_empty_${Date.now()}`;
       const emptyCopy = `e5_empty_copy_${Date.now()}`;
       createDb(emptyDb);
-      execSync(`psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${emptyCopy}" TEMPLATE "${emptyDb}";'`, {
+      execSync(`${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "${emptyCopy}" TEMPLATE "${emptyDb}";'`, {
         encoding: "utf-8",
         timeout: 10000,
       });
@@ -508,7 +518,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
       let exitCode = 0;
       try {
         execSync(
-          `psql -h localhost -U postgres -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "fs_fail_test" TEMPLATE "nonexistent_source_db";'`,
+          `${PSQL_PREFIX} -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE "fs_fail_test" TEMPLATE "nonexistent_source_db";'`,
           { encoding: "utf-8", timeout: 10000 },
         );
       } catch (e) {
