@@ -13,6 +13,7 @@ import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
+import { getAsset, attachAsset } from "@/lib/media-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -362,6 +363,61 @@ export async function POST(req: Request) {
       );
     }
 
+    // Listing image contract: one shared maximum of 10. Never silently slice.
+    const rawImages = Array.isArray(body.images) ? body.images : [];
+    const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
+    if (rawImages.length > 10 || rawAssetIds.length > 10 || (rawImages.length > 0 && rawAssetIds.length > 0)) {
+      return NextResponse.json(
+        { error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." },
+        { status: 400 },
+      );
+    }
+
+    const imageAssetIds: string[] = rawAssetIds.length
+      ? rawAssetIds.map((value: unknown) => String(value))
+      : rawImages.length && rawImages.every((image: any) =>
+          /^\/api\/media\/[a-f0-9]{24}$/.test(String(image?.url ?? image))
+        )
+        ? rawImages.map((image: any) => String(image?.url ?? image).slice("/api/media/".length))
+        : [];
+
+    const legacyImages = imageAssetIds.length ? [] : rawImages;
+    const stagedAssets: NonNullable<Awaited<ReturnType<typeof getAsset>>>[] = [];
+    if (imageAssetIds.length) {
+      if (new Set(imageAssetIds).size !== imageAssetIds.length) {
+        return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+      }
+      for (const assetId of imageAssetIds) {
+        const asset = await getAsset(assetId);
+        if (
+          !asset ||
+          asset.uploadedBy !== user.id ||
+          asset.visibility !== "PRIVATE" ||
+          asset.status !== "STAGED" ||
+          asset.entityType !== "Listing" ||
+          asset.entityId !== null
+        ) {
+          return NextResponse.json(
+            { error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." },
+            { status: 403 },
+          );
+        }
+        stagedAssets.push(asset);
+      }
+    } else {
+      for (const image of legacyImages) {
+        const url = String(image?.url ?? image ?? "").trim();
+        if (
+          !url ||
+          (!url.startsWith("/uploads/") &&
+            !url.startsWith("https://") &&
+            !url.startsWith("http://"))
+        ) {
+          return NextResponse.json({ error: "آدرس یکی از تصاویر معتبر نیست." }, { status: 400 });
+        }
+      }
+    }
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -420,12 +476,30 @@ export async function POST(req: Request) {
 
     const listing = await db.listing.create({ data });
 
-    if (Array.isArray(body.images)) {
+    if (stagedAssets.length) {
       await db.listingImage.createMany({
-        data: body.images.slice(0, 10).map((img: any, idx: number) => ({
+        data: stagedAssets.map((asset, idx) => ({
           listingId: listing.id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
+          url: asset.url,
+          alt: asset.altText,
+          isPrimary: idx === 0,
+          sortOrder: idx,
+        })),
+      });
+      // ListingImage is the authorization source of truth. Sidecar attachment
+      // is a metadata index and is repaired best-effort if B2 metadata is offline.
+      for (const asset of stagedAssets) {
+        const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
+        if (!attached.ok) {
+          console.error("[listings] media sidecar attachment needs repair", { assetId: asset.id, listingId: listing.id });
+        }
+      }
+    } else if (legacyImages.length) {
+      await db.listingImage.createMany({
+        data: legacyImages.map((img: any, idx: number) => ({
+          listingId: listing.id,
+          url: String(img?.url ?? img),
+          alt: img?.alt ?? null,
           isPrimary: idx === 0,
           sortOrder: idx,
         })),
