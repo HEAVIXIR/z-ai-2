@@ -373,49 +373,44 @@ export async function POST(req: Request) {
       );
     }
 
+    if (rawImages.length === 0 && rawAssetIds.length === 0) {
+      return NextResponse.json({ error: "حداقل یک تصویر برای آگهی الزامی است." }, { status: 400 });
+    }
+
+    const imageUrlsAreStableB2Urls = rawImages.every((image: any) =>
+      /^\/api\/media\/[a-f0-9]{24}$/.test(String(image?.url ?? image))
+    );
+    if (rawImages.length && !imageUrlsAreStableB2Urls) {
+      return NextResponse.json(
+        { error: "تصاویر آگهی باید ابتدا از مسیر امن بارگذاری رسانه ثبت شوند." },
+        { status: 400 },
+      );
+    }
+
     const imageAssetIds: string[] = rawAssetIds.length
       ? rawAssetIds.map((value: unknown) => String(value))
-      : rawImages.length && rawImages.every((image: any) =>
-          /^\/api\/media\/[a-f0-9]{24}$/.test(String(image?.url ?? image))
-        )
-        ? rawImages.map((image: any) => String(image?.url ?? image).slice("/api/media/".length))
-        : [];
+      : rawImages.map((image: any) => String(image?.url ?? image).slice("/api/media/".length));
 
-    const legacyImages = imageAssetIds.length ? [] : rawImages;
     const stagedAssets: NonNullable<Awaited<ReturnType<typeof getAsset>>>[] = [];
-    if (imageAssetIds.length) {
-      if (new Set(imageAssetIds).size !== imageAssetIds.length) {
-        return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+    if (new Set(imageAssetIds).size !== imageAssetIds.length) {
+      return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+    }
+    for (const assetId of imageAssetIds) {
+      const asset = await getAsset(assetId);
+      if (
+        !asset ||
+        asset.uploadedBy !== user.id ||
+        asset.visibility !== "PRIVATE" ||
+        asset.status !== "STAGED" ||
+        asset.entityType !== "Listing" ||
+        asset.entityId !== null
+      ) {
+        return NextResponse.json(
+          { error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." },
+          { status: 403 },
+        );
       }
-      for (const assetId of imageAssetIds) {
-        const asset = await getAsset(assetId);
-        if (
-          !asset ||
-          asset.uploadedBy !== user.id ||
-          asset.visibility !== "PRIVATE" ||
-          asset.status !== "STAGED" ||
-          asset.entityType !== "Listing" ||
-          asset.entityId !== null
-        ) {
-          return NextResponse.json(
-            { error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." },
-            { status: 403 },
-          );
-        }
-        stagedAssets.push(asset);
-      }
-    } else {
-      for (const image of legacyImages) {
-        const url = String(image?.url ?? image ?? "").trim();
-        if (
-          !url ||
-          (!url.startsWith("/uploads/") &&
-            !url.startsWith("https://") &&
-            !url.startsWith("http://"))
-        ) {
-          return NextResponse.json({ error: "آدرس یکی از تصاویر معتبر نیست." }, { status: 400 });
-        }
-      }
+      stagedAssets.push(asset);
     }
 
     const slug = await uniqueSlug(db.listing, body.slug || title);
@@ -494,16 +489,6 @@ export async function POST(req: Request) {
           console.error("[listings] media sidecar attachment needs repair", { assetId: asset.id, listingId: listing.id });
         }
       }
-    } else if (legacyImages.length) {
-      await db.listingImage.createMany({
-        data: legacyImages.map((img: any, idx: number) => ({
-          listingId: listing.id,
-          url: String(img?.url ?? img),
-          alt: img?.alt ?? null,
-          isPrimary: idx === 0,
-          sortOrder: idx,
-        })),
-      });
     }
 
     // P1-2 — track LISTING_CREATE (fire-and-forget).
