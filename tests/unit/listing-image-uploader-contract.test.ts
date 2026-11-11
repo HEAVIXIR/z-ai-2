@@ -8,18 +8,20 @@ describe("Listing image upload contract", () => {
 
   it("uploads real files through the permission-checked media endpoint", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
-    expect(source).toContain('fetch("/api/admin/upload"');
+    expect(source).toContain('fetch("/api/media/staging"');
     expect(source).toContain('body.append("file", prepared.file)');
     expect(source).toContain("prepareImageForUpload(source)");
     expect(source).toContain("result?.url");
     expect(source).not.toContain("placeholder-");
+    expect(source).toContain('accept="image/jpeg,image/png,image/webp"');
+    expect(source).toContain("SUPPORTED_IMAGE_TYPES.has(source.type)");
   });
 
   it("renders actual uploaded image URLs and supports removal", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
     expect(source).toContain("<img");
     expect(source).toContain("onChange(images.filter");
-    expect(source).toContain("maxImages = 30");
+    expect(source).toContain("maxImages = 10");
   });
 
   it("uses the real uploader in the listing wizard instead of placeholder URLs", () => {
