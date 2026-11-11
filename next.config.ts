@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
@@ -116,6 +117,21 @@ const nextConfig: NextConfig = {
           // Keep Next's static generation to one worker in this adapter-only path.
           cpus: 1,
         },
+        // Proven on Next.js 16.4.5 + OpenNext + Prisma Worker clients:
+        // Webpack asyncWASM avoids Turbopack's broad WASM loader glob scan.
+        webpack(config) {
+          config.parallelism = 4;
+          config.experiments = {
+            ...config.experiments,
+            asyncWebAssembly: true,
+          };
+          config.resolve.alias = {
+            ...config.resolve.alias,
+            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+          };
+          return config;
+        },
         outputFileTracingExcludes: {
           "/*": [
             "./src/lib/generated/worker-client/**/*.ts",
@@ -139,6 +155,7 @@ const nextConfig: NextConfig = {
             "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
           ],
         },
+        // Keep the alias for any explicitly opted-in local Turbopack diagnostics.
         turbopack: {
           resolveAlias: {
             "@/lib/db": "./src/lib/db.worker.ts",
