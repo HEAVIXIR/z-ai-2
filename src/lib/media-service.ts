@@ -44,6 +44,7 @@ export type MediaStatus = "ACTIVE" | "STAGED" | "ATTACHED";
 export interface MediaAsset {
   id: string;
   filename: string;
+  originalFilename: string | null;
   /** Stable internal URL; resolves through the private B2 read gate. */
   url: string;
   /** Compatibility field; this is an opaque B2 object key, not a disk path. */
@@ -193,6 +194,7 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
   const sidecar: AssetSidecar = {
     id: assetId,
     filename: safeName,
+    originalFilename: (input.originalFilename ?? "").replace(/[\\/]/g, "_").replace(/[\\u0000-\\u001F\\u007F]/g, "").slice(0, 255) || null,
     url: "/api/media/" + assetId,
     relativePath: key,
     mimeType: optimized.mime,
