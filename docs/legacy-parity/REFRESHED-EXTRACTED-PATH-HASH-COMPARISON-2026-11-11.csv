@@ -36,7 +36,7 @@ source_path,target_path,source_git_blob_sha,target_git_blob_sha,status,historica
 "extracted/prisma/prisma/legacy-sqlite/store-schema.prisma","prisma/legacy-sqlite/store-schema.prisma","44295a8bd829fde7055b25ebe197abccb5642628","44295a8bd829fde7055b25ebe197abccb5642628","IDENTICAL",""
 "extracted/prisma/prisma/migrate-passwords.ts","prisma/migrate-passwords.ts","a4506264e6eb97cacbba434a41dbac9b5106d310","a4506264e6eb97cacbba434a41dbac9b5106d310","IDENTICAL",""
 "extracted/prisma/prisma/migrations/0_init/migration.sql","prisma/migrations/0_init/migration.sql","e4458d860055a5ebafd1009932984f34a1ae6b1f","","MISSING","PRESERVE_AS_REFERENCE"
-"extracted/prisma/prisma/migrations/README.md","prisma/migrations/README.md","f181cb02987932261b5cfb1515d39bfce38f053d","863bead0a0a50d79a1b1604deded6625efff1ed4","DIFFERENT",""
+"extracted/prisma/prisma/migrations/README.md","prisma/migrations/README.md","f181cb02987932261b5cfb1515d39bfce38f053d","863bead0a0a50d79a1b1604deded6625efff1ed4","DIFFERENT","ADAPT_THEN_INTEGRATE"
 "extracted/prisma/prisma/migrations/migration_lock.toml","prisma/migrations/migration_lock.toml","eb59987cdaa1552b2a0a47768294da1c2354ee7c","044d57cdb0d5b5bff3475112359a4ee70439bf78","DIFFERENT",""
 "extracted/prisma/prisma/run-ai-agents.ts","prisma/run-ai-agents.ts","e67bb034d050debd383a5c4201ee98587ecc6734","e67bb034d050debd383a5c4201ee98587ecc6734","IDENTICAL",""
 "extracted/prisma/prisma/schema.prisma","prisma/schema.prisma","334fe506f4114a19ec1d2f4649ebecb9d8e40e41","e5cd55139b4693ba4d73c2eab39a938bd9ae3773","DIFFERENT",""
