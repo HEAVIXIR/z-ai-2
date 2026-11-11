@@ -4,8 +4,6 @@ import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
 import resizeImage, { initResize } from "@jsquash/resize";
-import wasmFeatureDetect from "wasm-feature-detect";
-const { simd } = wasmFeatureDetect;
 import JPEG_DEC_WASM_URL from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import PNG_WASM_URL from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
 import WEBP_DEC_WASM_URL from "@jsquash/webp/codec/dec/webp_dec.wasm";
@@ -63,12 +61,10 @@ async function initializeCodecs(): Promise<void> {
       loadInlineWasm(PNG_WASM_URL),
       loadInlineWasm(WEBP_DEC_WASM_URL),
       loadInlineWasm(RESIZE_WASM_URL),
-      simd(),
     ])
-      .then(async ([jpegWasm, pngWasm, webpDecodeWasm, resizeWasm, supportsSimd]) => {
-        const webpEncodeWasm = await loadInlineWasm(
-          supportsSimd ? WEBP_ENC_SIMD_WASM_URL : WEBP_ENC_WASM_URL,
-        );
+      .then(async ([jpegWasm, pngWasm, webpDecodeWasm, resizeWasm]) => {
+        // Use the portable scalar encoder in Node/Vitest and Workerd alike.
+n        const webpEncodeWasm = await loadInlineWasm(WEBP_ENC_WASM_URL);
         await Promise.all([
           initJpegDecode(jpegWasm),
           initPngDecode(pngWasm),
