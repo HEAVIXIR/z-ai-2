@@ -237,6 +237,7 @@ jobs:
           --no-file-parallelism
           --exclude tests/integration/store-audit-outbox-resilience.test.ts
           --exclude tests/integration/store-inventory-return-atomicity.test.ts
+          --exclude tests/integration/e5-full-rehearsal-real.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
@@ -547,6 +548,19 @@ jobs:
           export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bunx prisma db push --schema=prisma/schema.prisma
           bun run db:seed-rbac
+      - name: E5 backup/restore/rollback rehearsal (TLS PostgreSQL 17)
+        env:
+          HEAVIX_RUN_E5_REAL_DB_TESTS: '1'
+        run: |
+          set -euo pipefail
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          export PGHOST=localhost
+          export PGPORT="$HEAVIX_TLS_VALID_PORT"
+          export PGUSER="$(id -un)"
+          export PGSSLMODE=verify-full
+          export PGSSLROOTCERT="$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          export DATABASE_URL="postgresql://${PGUSER}@${PGHOST}:${PGPORT}/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${PGSSLROOTCERT}"
+          bunx vitest run --config vitest.integration.config.ts tests/integration/e5-full-rehearsal-real.test.ts --reporter=verbose
       - name: Create isolated MISSING-role classification fixture
         run: |
           set -euo pipefail
