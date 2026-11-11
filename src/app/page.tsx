@@ -26,6 +26,7 @@ import RecommendationsSection from "@/components/home/RecommendationsSection";
 import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
 import { mergeHomepageSections } from "@/lib/homepage/sections";
+import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
 
 type TickerBrand = {
   id: string;
@@ -438,7 +439,8 @@ export default async function HomePage() {
               subtitle: section.subtitle ?? undefined,
               description: section.description ?? undefined,
             };
-            switch (key) {
+            const content = (() => {
+              switch (key) {
               case "hero":
                 return (
                   <div key={section.id}>
@@ -575,7 +577,13 @@ export default async function HomePage() {
                 );
               default:
                 return null;
-            }
+              }
+            })();
+            return (
+              <HomepageSectionFrame key={section.id} sectionKey={key} config={section.config}>
+                {content}
+              </HomepageSectionFrame>
+            );
           })}
       </main>
       <Footer
