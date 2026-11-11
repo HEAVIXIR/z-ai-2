@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
+import { getAsset } from "@/lib/media-service";
 import {
   constantTimeEqual,
   extractBearerToken,
@@ -215,13 +216,19 @@ export async function GET(request: Request) {
   const storeClosed = store.status === "rejected" &&
     store.reason instanceof Error &&
     store.reason.message === "Missing Cloudflare Worker secret: STORE_DATABASE_URL";
-  const passed = appClosed && storeClosed;
+  // Import and exercise the media service in Workerd without B2 credentials.
+  // An invalid opaque id must be rejected before any object-storage request.
+  const invalidMediaAsset = await getAsset("not-a-valid-media-id");
+  const mediaServiceModuleLoaded = invalidMediaAsset === null;
+  const passed = appClosed && storeClosed && mediaServiceModuleLoaded;
   return json({
     result: passed ? "PASS" : "FAIL",
     mode: "SMOKE_ONLY",
     realApplicationAliasesImported: true,
     appFailsClosedWithoutBinding: appClosed,
     storeFailsClosedWithoutBinding: storeClosed,
+    mediaServiceModuleLoaded,
+    mediaReadGateRejectsInvalidId: invalidMediaAsset === null,
     databaseConnectionsAttempted: false,
     writesPerformed: false,
   }, passed ? 200 : 503);
