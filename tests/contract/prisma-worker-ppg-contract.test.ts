@@ -189,7 +189,8 @@ describe("Prisma Postgres workerd client contract", () => {
       expect(identityGuard).toBeLessThan(probe.indexOf("const migrations = await"));
       expect(identityGuard).toBeLessThan(probe.indexOf("const transaction = await"));
     }
-  });});
+  });
+});
 
 describe("Cloudflare Next build descriptor diagnostics", () => {
   it("samples the Next build process tree without changing build semantics", () => {
