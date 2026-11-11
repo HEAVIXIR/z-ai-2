@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { adminGuard } from "@/lib/admin-guard";
+import { can } from "@/lib/authorization";
 import { getAsset, getAssetReadUrl } from "@/lib/media-service";
 
 export const runtime = "nodejs";
@@ -21,28 +21,31 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const asset = await getAsset(id);
     if (!asset) return new NextResponse(null, { status: 404 });
 
-    const user = await getCurrentUser();
-    const admin = await adminGuard("media.read");
-    const isAdmin = admin !== null && admin !== false;
-
+    let isPublic = asset.visibility === "PUBLIC";
     let listingOwnerId: string | null = null;
-    let listingIsPublic = false;
-    const listingImage = await db.listingImage.findFirst({
-      where: { url: asset.url },
-      select: { listing: { select: { sellerId: true, status: true } } },
-    });
-    if (listingImage?.listing) {
-      listingOwnerId = listingImage.listing.sellerId;
-      listingIsPublic = listingImage.listing.status === "PUBLISHED";
+    if (!isPublic) {
+      const listingImage = await db.listingImage.findFirst({
+        where: { url: asset.url },
+        select: { listing: { select: { sellerId: true, status: true } } },
+      });
+      if (listingImage?.listing) {
+        listingOwnerId = listingImage.listing.sellerId;
+        isPublic = listingImage.listing.status === "PUBLISHED";
+      }
     }
 
-    const isPublic = asset.visibility === "PUBLIC" || listingIsPublic;
-    const isOwner =
-      !!user &&
-      (asset.uploadedBy === user.id || listingOwnerId === user.id);
-    if (!isPublic && !isOwner && !isAdmin) {
-      // Avoid leaking the existence of staged/private media.
-      return new NextResponse(null, { status: 404 });
+    if (!isPublic) {
+      const user = await getCurrentUser();
+      const isOwner = !!user && (
+        asset.uploadedBy === user.id || listingOwnerId === user.id
+      );
+      const isMediaAdmin = !!user && !isOwner
+        ? await can(user.id, "media.read")
+        : false;
+      if (!isOwner && !isMediaAdmin) {
+        // Avoid leaking the existence of staged/private media.
+        return new NextResponse(null, { status: 404 });
+      }
     }
 
     const signedUrl = await getAssetReadUrl(id);
