@@ -105,18 +105,45 @@ const isCloudflareBuild =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
   typescript: {
     ignoreBuildErrors: false,
     tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
   webpack(config) {
-    // jSquash ships WASM binaries as URL assets. Keep them as embedded data
-    // URLs in both Node/Docker and Cloudflare builds; treating them as async
-    // WebAssembly modules exposes Emscripten internals as fake imports.
+    const jsquashWasm = /node_modules[\\/]@jsquash[\\/]/;
+    type MutableRule = {
+      test?: RegExp;
+      generator?: { filename?: string };
+      exclude?: RegExp | MutableRule["exclude"][];
+      oneOf?: MutableRule[];
+      rules?: MutableRule[];
+    };
+    const patchDefaultAssetRules = (rules: MutableRule[]) => {
+      for (const rule of rules) {
+        if (
+          rule.test instanceof RegExp &&
+          rule.test.test("codec.wasm") &&
+          rule.generator?.filename
+        ) {
+          const existing = Array.isArray(rule.exclude)
+            ? rule.exclude
+            : rule.exclude
+              ? [rule.exclude]
+              : [];
+          rule.exclude = [...existing, jsquashWasm];
+        }
+        if (rule.oneOf) patchDefaultAssetRules(rule.oneOf);
+        if (rule.rules) patchDefaultAssetRules(rule.rules);
+      }
+    };
+    // Next's built-in static-asset rule sets generator.filename. Exclude only
+    // jSquash binaries from that rule before applying the data-URL rule below.
+    patchDefaultAssetRules(config.module.rules as unknown as MutableRule[]);
     config.module.rules.push({
       test: /\\.wasm$/,
-      include: /node_modules[\\/]@jsquash[\\/]/,
+      include: jsquashWasm,
       type: "asset/inline",
     });
     if (isCloudflareBuild) {
