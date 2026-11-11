@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
@@ -126,8 +127,8 @@ const nextConfig: NextConfig = {
           };
           config.resolve.alias = {
             ...config.resolve.alias,
-            "@/lib/db": "./src/lib/db.worker.ts",
-            "@/lib/store-db": "./src/lib/store-db.worker.ts",
+            "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+            "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
           };
           return config;
         },
