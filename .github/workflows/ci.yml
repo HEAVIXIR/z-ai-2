@@ -40,6 +40,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -61,7 +75,7 @@ jobs:
         run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_anchor_test;"
       - name: Push schemas
@@ -183,7 +197,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           bash scripts/test-paired-backup-restore-ci.sh 2>&1 | tee "$RUNNER_TEMP/paired-backup-restore-output.txt"
       - name: Upload reproducible Store/Outbox evidence
         if: always()
@@ -245,7 +259,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           bash scripts/test-migration-baseline-adoption.sh
       - name: Production build
         run: bun run build
@@ -278,6 +292,20 @@ jobs:
       ADMIN_PASSWORD: "ci-password-not-real"
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -289,7 +317,7 @@ jobs:
           bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
       - name: Push schemas
         run: |
@@ -334,6 +362,20 @@ jobs:
       ADMIN_PASSWORD: "ci-password-not-real"
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker exec -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "$@"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -345,7 +387,7 @@ jobs:
           bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
       - name: Push schemas
         run: |
