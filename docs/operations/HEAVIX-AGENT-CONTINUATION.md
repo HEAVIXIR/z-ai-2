@@ -171,3 +171,15 @@ Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, 
 - Any investigation or repair of listing uploads, media management, persistence, public URLs, access control, and upload tests must first inspect and preserve the existing Backblaze B2 integration and its current credentials/configuration. Never print or expose secret values.
 - Before changing media code, identify the actual B2 bucket, endpoint/region, key handling, public/private URL strategy, upload/delete flows and Preview-vs-Production configuration from the repository and connected infrastructure. Do not invent bucket names or assume that a local filesystem is the intended persistent store.
 - This is a durable architecture decision. Every future agent/session must read this checkpoint before touching media upload or storage.
+
+
+
+### Media/runtime repair checkpoint — 2026-11-11
+
+- B2 remains the authoritative media object store; R2 is not to be introduced.
+- The recovery branch now contains a B2 S3-compatible adapter, private seller staging, stable `/api/media/{assetId}` URLs, owner checks, a max-10 listing-image contract, B2 sidecar metadata, and copy-to-final-object logic. Seller uploads stage at `heavix-media/staging/{userId}/{assetId}.{ext}`; successful attachment copies to `heavix-media/objects/YYYY/MM/{assetId}.{ext}`, updates metadata, then deletes the staging key. Admin Media Library uploads are private; content uploads through the compatibility admin upload endpoint are public by explicit route behavior.
+- The active Workerd smoke test proved Sharp cannot load in the Worker. A replacement using single-threaded jSquash WebAssembly is under Draft PR #310: https://github.com/HEAVIXIR/z-ai-2/pull/310. It is not merged until typecheck, unit/security tests, OpenNext build, Workerd runtime smoke, artifact inspection and Wrangler dry-run all pass.
+- jSquash accepts static JPEG/PNG/WebP only; animated WebP, GIF and BMP are rejected rather than silently flattened. This is deliberate Worker-compatibility behavior.
+- B2 mocked tests are being added. No live B2 object operation has been performed. The six B2 Preview Base values were reported by the owner, but their injection into the active Worker runtime remains unverified; the active script binding list did not show B2 bindings. Never read or print secrets.
+- Preview App/Store database OID allowlist variables `HEAVIX_APP_PREVIEW_DATABASE_OID` and `HEAVIX_STORE_PREVIEW_DATABASE_OID` are still not present in the active Worker binding list. Real database identity proof remains blocked; no database connection or write has been performed.
+- Cloudflare branch `proof/jsquash-worker-image-2026-11-11` is now explicitly excluded from the non-production Build trigger. See the quota runbook for the accidental trigger incident and mandatory branch-exclusion-before-push rule.
