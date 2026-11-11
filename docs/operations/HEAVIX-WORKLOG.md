@@ -273,3 +273,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - No source files were copied or modified; no app behavior changed.
 - Current code commit remains `cecd4b6601d17e757b018271ba6d49d75c7fdc1a`; later commits are documentation-only. The last verified green CI run #42982227259 applies to that code commit; no new exact-head CI result is claimed for the subsequent documentation commits.
 - Next: review 321 changed files and 17 adaptations by risk/domain; then continue B2 media and full responsive-web acceptance.
+
+## 2026-11-11 — B2 media architecture decision
+
+- Confirmed the current media service is local-filesystem + JSON sidecar, not durable B2 storage.
+- Confirmed the seller uploader calls the admin-only `/api/admin/upload` endpoint; ordinary seller upload is not implemented through that route.
+- Confirmed the UI default allows 30 images while listing POST silently persists only 10; this must become one shared 10-image contract with explicit API rejection.
+- Confirmed the uploader submits `entityType=Listing` before a listing ID exists; new seller flow must use staging and owner-checked finalization.
+- Confirmed the Prisma schema has `ListingImage` but no `MediaAsset` model; initial design keeps metadata sidecars in B2 and uses ListingImage as the authoritative listing association.
+- Recorded private-bucket, server-only S3 adapter, stable internal media URL, short-lived signed GET, staging ownership, version-aware cleanup, and least-privilege key design in `docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md`.
+- Backblaze official docs confirm bucket/prefix-scoped standard keys; planned capabilities are listFiles/readFiles/writeFiles/deleteFiles. Avoid List Buckets and therefore do not grant listAllBucketNames unless a tested SDK operation proves it is required.
+- No B2 key was created/configured, no B2 object changed, no CORS/lifecycle setting changed, and no live upload test performed.
+- Waiting on owner-supplied non-secret Account ID and full Bucket ID plus secure creation/configuration of the dedicated bucket-scoped key; never request the key secret in chat.

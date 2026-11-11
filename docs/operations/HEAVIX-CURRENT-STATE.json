@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T09:10:00.000Z",
+  "updated_at_utc": "2026-11-11T09:20:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -146,34 +146,33 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Review the 321 changed extracted files in risk/domain batches and refresh the 17-item ADAPT_THEN_INTEGRATE backlog against current contracts. Start with Prisma/data/security/media and compare each legacy capability to its current implementation before making any code changes; then continue B2 seller-media architecture and the 22-area product parity/acceptance work.",
+    "task": "Implement the server-only B2 S3 adapter and dedicated seller upload/staging/finalization path against the recorded design; in parallel continue the 321 differing-file review by risk/domain. Do not enable live B2 operations until the owner supplies non-secret bucket metadata and configures the dedicated bucket/prefix-scoped key securely.",
     "first_paths_to_read": [
-      "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.md",
-      "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.csv",
-      "docs/legacy-parity/VALUE-BASED-DISPOSITION-2026-10-27.md",
-      "docs/legacy-parity/INTEGRATION-PROPOSAL-FOR-SENIOR-DIRECTOR-2026-10-28.md",
-      "prisma/schema.prisma",
-      "prisma/store/schema.prisma",
+      "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
       "src/lib/media-service.ts",
+      "src/lib/upload-security.ts",
+      "src/lib/media-image-optimizer.ts",
       "src/app/api/admin/upload/route.ts",
       "src/app/api/admin/media/route.ts",
+      "src/app/api/admin/media/[id]/route.ts",
       "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/listings/route.ts",
+      "prisma/schema.prisma",
       "package.json"
     ],
     "required_tests": [
-      "Current-contract tests for each adapted legacy capability.",
-      "Prisma migration and generated-client compatibility checks; no legacy SQLite migration execution.",
-      "B2 media upload/read-back/delete using dedicated non-production heavix-dev-assets bucket.",
-      "Seller least-privilege upload and ownership.",
-      "Unified image-count contract without silent truncation.",
-      "Responsive desktop/tablet/mobile critical journeys."
+      "Mocked B2 adapter tests and fail-closed config tests.",
+      "Seller auth, CSRF, rate-limit, magic-byte, dimension and size tests.",
+      "Cross-seller asset ownership and staged-asset finalization tests.",
+      "10-image accept / 11-image reject contract tests.",
+      "B2 live upload/readback/SHA-256/delete-version proof in the dedicated media bucket only.",
+      "Responsive desktop/tablet/mobile listing creation and image management."
     ],
     "do_not": [
       "Do not use heavix-db-backups for media.",
       "Do not enable or migrate to Cloudflare R2.",
-      "Do not expose B2 secrets.",
-      "Do not import files just because hashes differ.",
+      "Do not expose B2 secrets in chat or logs.",
+      "Do not alter bucket lifecycle, versioning, CORS or existing objects without approval.",
       "Do not deploy or write Preview DB before App/Store DB identity proof.",
       "Do not change Production, DNS or stable Worker.",
       "Do not implement native iOS/Android in current web release."
@@ -411,5 +410,30 @@
       "csv_disposition_fix_commit": "c311854b689cb3876407f30fa401ba180301a3f4",
       "interpretation": "Hash/path comparison only; different hashes are not automatically defects and missing paths must follow historical disposition. No files copied."
     }
+  },
+  "latest_b2_media_design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
+  "b2_media_status": {
+    "status": "ARCHITECTURE DECIDED; IMPLEMENTATION AND LIVE PROOF PENDING",
+    "bucket": "heavix-dev-assets",
+    "bucket_id_prefix": "356",
+    "endpoint": "s3.us-east-005.backblazeb2.com",
+    "region": "us-east-005",
+    "access": "private",
+    "key_scope": "heavix-dev-assets only; prefix heavix-media/",
+    "required_capabilities": [
+      "listFiles",
+      "readFiles",
+      "writeFiles",
+      "deleteFiles"
+    ],
+    "owner_inputs_needed": [
+      "Account ID",
+      "full Bucket ID",
+      "application key name and scope confirmation",
+      "confirmation credentials stored securely"
+    ],
+    "secret_handling": "Never request or store Application Key secret in chat.",
+    "blocker": "No dedicated media app key or B2 runtime configuration confirmed; no B2 media adapter/proof yet.",
+    "design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md"
   }
 }
