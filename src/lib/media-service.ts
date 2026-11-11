@@ -23,7 +23,7 @@ import {
 } from "@/lib/b2-media-storage";
 import { validateImageBuffer, sanitizeFilename } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
-import { logAudit } from "@/lib/audit";
+import { logAudit, type AuditActorType } from "@/lib/audit";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
@@ -146,6 +146,7 @@ export interface UploadAssetInput {
   originalFilename?: string;
   /** Admin-managed assets are public; seller uploads must explicitly be private. */
   visibility?: MediaVisibility;
+  actorType?: AuditActorType;
 }
 
 export interface UploadAssetResult {
@@ -208,7 +209,7 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
 
   await logAudit({
     actorId: input.uploadedBy ?? null,
-    actorType: "ADMIN",
+    actorType: input.actorType ?? (input.uploadedBy ? "USER" : "SYSTEM"),
     action: "media.upload",
     entityType: "MediaAsset",
     entityId: assetId,
@@ -291,6 +292,7 @@ export async function attachAsset(
   entityType: string,
   entityId: string,
   userId: string | null,
+  actorType: AuditActorType = "USER",
 ): Promise<{ ok: boolean; asset?: MediaAsset; error?: string }> {
   if (!ALLOWED_ENTITY_TYPES.has(entityType)) {
     return { ok: false, error: "نوع موجودیت نامعتبر است." };
@@ -314,7 +316,7 @@ export async function attachAsset(
 
   await logAudit({
     actorId: userId ?? null,
-    actorType: "ADMIN",
+    actorType,
     action: "media.attach",
     entityType: "MediaAsset",
     entityId: assetId,
