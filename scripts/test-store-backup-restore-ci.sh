@@ -20,6 +20,29 @@ if [[ "$PGHOST" != "localhost" && "$PGHOST" != "127.0.0.1" ]]; then
   exit 2
 fi
 
+# The CI psql shim runs inside the service container. Explicitly use its
+# postgres OS account so socket-authenticated calls never default to root.
+if [[ -n "${POSTGRES_CONTAINER_ID:-}" ]]; then
+  psql() {
+    local -a args=()
+    local sql_file=""
+    while (($#)); do
+      if [[ "$1" == "-f" && $# -ge 2 ]]; then
+        sql_file="$2"
+        shift 2
+      else
+        args+=("$1")
+        shift
+      fi
+    done
+    if [[ -n "$sql_file" ]]; then
+      docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+    else
+      docker exec --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+    fi
+  }
+fi
+
 SOURCE_DB="heavix_store_backup_source_proof"
 RESTORE_DB="heavix_store_backup_restore_proof"
 TMP="$(mktemp -d)"
