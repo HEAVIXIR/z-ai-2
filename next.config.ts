@@ -158,6 +158,7 @@ const nextConfig: NextConfig = {
       });
     };
     inspectRules(config.module.rules as unknown as MutableRule[]);
+    console.log("HEAVIX_MODULE_GENERATOR", JSON.stringify(config.module.generator));
     console.log("HEAVIX_WASM_RULE_DIAGNOSTICS", JSON.stringify(wasmRuleDiagnostics));
     config.module.rules.push({
       test: /\.wasm$/,
