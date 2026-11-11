@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T07:30:00.000Z",
+  "updated_at_utc": "2026-11-11T07:35:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -137,7 +137,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Trace the complete seller listing media path and locate the owner-confirmed Backblaze B2 media integration/configuration; fix the seller authorization boundary and persistent B2 adapter without changing storage architecture. Then reconcile image-count and brand validation contracts.",
+    "task": "Continue P0 seller listing/media audit and B2 adapter discovery; then complete legacy/current/benchmark parity area by area. Keep responsive web across desktop/tablet/mobile in scope. Native iOS/Android remain future phase after web acceptance.",
     "first_paths_to_read": [
       "src/components/listings/ListingImageUploader.tsx",
       "src/app/api/admin/upload/route.ts",
@@ -148,17 +148,19 @@
       "all B2-related workflows/config and legacy Z media paths"
     ],
     "required_tests": [
-      "Seller (non-admin) upload authorization is least-privilege and ownership-bound",
-      "B2 upload/read/delete persistence survives Worker restart and returns correct public/private URL",
-      "Listing create with 1, multiple and max images persists every accepted image; no silent truncation",
-      "Brand selection and request-new-brand behavior are consistent end-to-end",
-      "Read-after-write listing detail renders persisted media"
+      "Seller upload least-privilege authorization and ownership",
+      "B2 durable upload/read/delete",
+      "Listing image count contract without silent truncation",
+      "Consistent brand selection/request behavior",
+      "Listing read-after-write",
+      "Responsive desktop/tablet/mobile journeys"
     ],
     "do_not": [
       "Do not enable or migrate to Cloudflare R2",
       "Do not expose B2 secrets or invent bucket names",
       "Do not deploy or write Preview DB before App/Store DB identity proof",
-      "Do not change Production, DNS or stable Worker"
+      "Do not change Production, DNS or stable Worker",
+      "Do not implement native iOS/Android in current web release"
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
@@ -170,7 +172,7 @@
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
     "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
   },
-  "latest_code_head_sha": "e3ab121018c10f1a5134f6f70e65bb52c0dec966",
+  "latest_code_head_sha": "937db951246a5bb82e354e4d14d5d747d6364025",
   "latest_ci_run": {
     "id": 42914986140,
     "sha": "01452ed",
@@ -192,22 +194,22 @@
     ]
   },
   "latest_verified_ci_run": {
-    "id": 42977975042,
-    "sha": "abd88eced783ae528c364da0f215832073601227",
+    "id": 42978976169,
+    "sha": "e89be0581b20cf8dd3ff384b8c988c1472166a82",
     "status": "completed",
     "conclusion": "success",
     "jobs": [
-      "verify",
       "phase-tests",
-      "tls-proof",
       "audit-transaction",
       "Cloudflare compatibility (report-only)",
-      "docker-build-proof"
+      "docker-build-proof",
+      "tls-proof",
+      "verify"
     ],
     "skipped": [
       "Legacy archive inventory (read-only)"
     ],
-    "note": "Verified job-level results. This is CI evidence only, not Preview runtime acceptance."
+    "note": "All listed required jobs passed on exact checkpoint commit. CI green is not equivalent to Preview functional acceptance."
   },
   "confirmed_blockers": [
     "ListingImageUploader targets /api/admin/upload, whose route requires requireAdmin(media.upload); seller upload is not proven and expected to be denied for non-admin sellers.",
@@ -215,5 +217,27 @@
     "Preview App DB and Store DB identities, and Production isolation, remain NOT VERIFIED.",
     "Listing image UI limit 30 vs POST /api/listings slice(0,10) requires reconciliation; no silent truncation.",
     "Brand free-text fallback conflicts with brandId validation and needs a real moderated request flow or strict registered-brand policy."
-  ]
+  ],
+  "platform_roadmap": {
+    "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
+    "commit": "937db951246a5bb82e354e4d14d5d747d6364025",
+    "owner_decision": "Complete and accept responsive web across desktop, tablet and mobile first; only then begin separate native iOS and Android apps.",
+    "current_scope": "Responsive web only",
+    "native_apps": "Future phase; do not implement in current web release",
+    "architecture_preparation": [
+      "API-first domain contracts",
+      "Stable schemas and validation",
+      "Client-independent business logic",
+      "Secure authentication and server-side authorization",
+      "Backblaze B2 durable media contracts",
+      "Shared design tokens and documented brand rules"
+    ]
+  },
+  "preview_latest_observation": {
+    "source": "GitHub PR #307 Cloudflare Workers bot deployment comment",
+    "deployment_commit": "e89be0581b20cf8dd3ff384b8c988c1472166a82",
+    "status": "Cloudflare Preview deployment reported successful",
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "note": "Deployment event is confirmed from PR bot comment; do not infer database identity, isolation, or end-to-end functional acceptance from deployment success."
+  }
 }
