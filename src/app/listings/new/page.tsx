@@ -97,6 +97,7 @@ export default function NewListingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [imagesUploading, setImagesUploading] = useState(false);
 
   // Form state — V1.1
   const [transactionType, setTransactionType] = useState<string>("SALE");
@@ -315,6 +316,7 @@ export default function NewListingPage() {
     if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
+      if (imagesUploading) return false;
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -1123,7 +1125,7 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      <ListingImageUploader images={images} onChange={setImages} />
+                      <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
                     </div>
                   </div>
                 )}
@@ -1239,7 +1241,7 @@ export default function NewListingPage() {
                   ) : (
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || imagesUploading}
                       className="flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-8 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {submitting ? (
