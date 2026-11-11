@@ -4,11 +4,11 @@ import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
 import resizeImage, { initResize } from "@jsquash/resize";
-import JPEG_DEC_WASM_URL from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
-import PNG_WASM_URL from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
-import WEBP_DEC_WASM_URL from "@jsquash/webp/codec/dec/webp_dec.wasm";
-import WEBP_ENC_WASM_URL from "@jsquash/webp/codec/enc/webp_enc.wasm";
-import RESIZE_WASM_URL from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
+import JPEG_DEC_WASM from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
+import PNG_WASM from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
+import WEBP_DEC_WASM from "@jsquash/webp/codec/dec/webp_dec.wasm";
+import WEBP_ENC_WASM from "@jsquash/webp/codec/enc/webp_enc.wasm";
+import RESIZE_WASM from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 import type { ImageType } from "@/lib/upload-security";
 
 const MAX_INPUT_PIXELS = 12_000_000;
@@ -37,54 +37,20 @@ function toArrayBuffer(buffer: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-async function loadInlineWasm(dataUrl: string): Promise<ArrayBuffer> {
-  if (!dataUrl.startsWith("data:")) {
-    const response = await fetch(dataUrl);
-    if (!response.ok) throw new Error("Unable to load image codec.");
-    return response.arrayBuffer();
-  }
-  const separator = dataUrl.indexOf(",");
-  if (separator < 0) throw new Error("Invalid embedded image codec.");
-  const binary = atob(dataUrl.slice(separator + 1));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
-}
-
 async function initializeCodecs(): Promise<void> {
   if (!codecsReady) {
+    // Webpack's asyncWebAssembly module imports are compiled at build time.
+    // Workerd forbids dynamic WebAssembly.compile/instantiate from byte buffers.
     codecsReady = Promise.all([
-      loadInlineWasm(JPEG_DEC_WASM_URL),
-      loadInlineWasm(PNG_WASM_URL),
-      loadInlineWasm(WEBP_DEC_WASM_URL),
-      loadInlineWasm(RESIZE_WASM_URL),
+      initJpegDecode(JPEG_DEC_WASM),
+      initPngDecode(PNG_WASM),
+      initPngEncode(PNG_WASM),
+      initWebpDecode(WEBP_DEC_WASM),
+      initWebpEncode(WEBP_ENC_WASM),
+      initResize(RESIZE_WASM),
     ])
-      .then(async ([jpegBytes, pngBytes, webpDecodeBytes, resizeBytes]) => {
-        // jSquash init expects a compiled WebAssembly.Module. Passing raw
-        // ArrayBuffer is interpreted as Emscripten options and falls back to
-        // fetch(import.meta.url), which fails in Node/Vitest and Workerd.
-        const [jpegWasm, pngWasm, webpDecodeWasm, resizeWasm, webpEncodeBytes] =
-          await Promise.all([
-            WebAssembly.compile(jpegBytes),
-            WebAssembly.compile(pngBytes),
-            WebAssembly.compile(webpDecodeBytes),
-            WebAssembly.compile(resizeBytes),
-            loadInlineWasm(WEBP_ENC_WASM_URL),
-          ]);
-        const webpEncodeWasm = await WebAssembly.compile(webpEncodeBytes);
-        await Promise.all([
-          initJpegDecode(jpegWasm),
-          initPngDecode(pngWasm),
-          initPngEncode(pngWasm),
-          initWebpDecode(webpDecodeWasm),
-          initWebpEncode(webpEncodeWasm),
-          initResize(resizeWasm),
-        ]);
-      })
+      .then(() => undefined)
       .catch((error) => {
-        // Allow a later request to retry a transient WASM initialization error.
         codecsReady = null;
         throw error;
       });
