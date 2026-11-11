@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T07:50:00.000Z",
+  "updated_at_utc": "2026-11-11T08:00:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -97,7 +97,10 @@
     "Verified exact PR #307 head b74d23b9014ac42437d62181b06ffd1fcfcd9be4 CI run #42979858320: all six main jobs passed; legacy archive inventory was skipped.",
     "Audited seller image upload, admin upload authorization, local filesystem media service, package dependencies and listing POST; confirmed seller upload gate, local disk persistence and 30-vs-10 image truncation.",
     "Searched current repository for B2 media adapter; only explicit B2 configuration found is the paired encrypted database-backup workflow using bucket heavix-db-backups.",
-    "Recorded the unresolved difference between historical HEAVIXIR/z 13-archive/899-path audit and dellk00k/z extracted 10-archive/845-file snapshot; refresh/reconciliation required before parity or merge claims."
+    "Recorded the unresolved difference between historical HEAVIXIR/z 13-archive/899-path audit and dellk00k/z extracted 10-archive/845-file snapshot; refresh/reconciliation required before parity or merge claims.",
+    "Owner clarified that prior legacy Z audits and partial transfer into dellk00k/z are an unfinished continuation of the same end-to-end migration effort; future agents must recover prior audit history and continue without treating the extracted repository as a fresh unrelated project.",
+    "Owner identified two existing Backblaze B2 buckets: heavix-db-backups is the private database-backup bucket (bucket ID suffix 0411, 12 current files, 2.1 MB); a second private assets bucket is reported with a name transcribed as heavix-dev-assets pending exact spelling verification (bucket ID prefix 356, Keep all versions, 2 current files, 43 bytes). Both use s3.us-east-005.backblazeb2.com and encryption is enabled.",
+    "Selected the second B2 assets bucket as the intended dedicated development media bucket, subject to exact bucket-name/full-ID and access-policy/CORS/credential-scope verification; database backup bucket must never be used for media."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -141,7 +144,7 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Continue P0 B2 media and seller listing remediation; first reconcile the actual media bucket/config and the two legacy source snapshots, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
+    "task": "Continue end-to-end Z migration from prior audit/transfer history; reconcile the two legacy snapshots and all previously transferred files, verify the owner-identified dedicated B2 development assets bucket, then implement the B2 adapter and seller-safe upload while refreshing legacy/current/benchmark parity area by area.",
     "first_paths_to_read": [
       "src/lib/media-service.ts",
       "src/app/api/admin/upload/route.ts",
@@ -261,7 +264,7 @@
     "note": "Deployment event only; application behavior, Preview App/Store DB identities, isolation and end-to-end acceptance remain unverified."
   },
   "media_storage_audit": {
-    "status": "BLOCKED — source-level findings verified; B2 media integration not located or proven",
+    "status": "BLOCKED — owner has identified the existing dedicated development assets bucket; exact bucket name/full ID and operational access configuration still require read-only verification",
     "verified_findings": [
       "ListingImageUploader calls /api/admin/upload.",
       "The upload API requires requireAdmin(media.upload); ordinary seller upload is not supported by this endpoint.",
@@ -282,12 +285,41 @@
       "Do not deploy or write Preview DB before DB identity and isolation gates pass."
     ],
     "next_steps": [
-      "Reconcile actual media bucket/config and recover local-test evidence if available.",
+      "Verify the exact spelling and full bucket ID of the owner-reported development assets bucket; preserve heavix-db-backups exclusively for database backups.",
+      "Inspect bucket access policy, CORS, lifecycle/versioning, encryption, least-privilege application key scope and public/private URL/read strategy without exposing secrets.",
+      "Recover prior PC upload/download test command/log if available and determine whether it targeted this bucket.",
       "Implement server-only B2 adapter with explicit media-specific configuration and fail-closed behavior.",
       "Implement seller-safe staged upload and ownership-bound listing finalization.",
       "Align UI/API image limits and reject over-limit requests instead of silently truncating.",
-      "Add protected non-production B2 upload/read-back/delete proof."
-    ]
+      "After non-production authorization is confirmed, run protected upload/read-back SHA-256/delete/absence proof."
+    ],
+    "owner_reported_buckets": {
+      "backup_bucket": {
+        "name": "heavix-db-backups",
+        "purpose": "Database backups only",
+        "privacy": "private",
+        "bucket_id_suffix": "0411",
+        "lifecycle": "custom lifecycle rules",
+        "snapshots": 0,
+        "current_files": 12,
+        "current_size": "2.1 MB",
+        "endpoint": "s3.us-east-005.backblazeb2.com",
+        "encryption_enabled": true
+      },
+      "development_assets_bucket": {
+        "name_as_transcribed_pending_exact_confirmation": "heavix-dev-assets",
+        "purpose": "Dedicated HEAVIX development media/assets",
+        "privacy": "private",
+        "bucket_id_prefix": "356",
+        "lifecycle": "keep all versions",
+        "snapshots": 0,
+        "current_files": 2,
+        "current_size": "43 bytes",
+        "endpoint": "s3.us-east-005.backblazeb2.com",
+        "encryption_enabled": true,
+        "decision": "Intended media bucket; do not perform live writes until exact name/full ID, CORS, scoped credentials and read/URL policy are verified."
+      }
+    }
   },
   "legacy_parity_refresh": {
     "status": "IN PROGRESS — prior audit is historical and must be refreshed against current main/recovery head",
@@ -314,12 +346,14 @@
       "caveat": "Reconcile archive manifests, paths and hashes against HEAVIXIR/z's 13-archive/899-path snapshot; do not assume they are identical."
     },
     "required_method": [
+      "Treat earlier chats, audit documents and partial file transfers into dellk00k/z as one continuous unfinished migration program; reconstruct the history and resume from the last evidenced state.",
       "Reconcile the two legacy source snapshots and provenance manifests.",
       "Refresh file-level comparisons against current main and the active recovery branch.",
       "Trace every legacy capability/API through UI, authorization/ownership, validation/service, persistence, Admin, public/seller UI, tests and responsive desktop/tablet/mobile behavior.",
       "Adapt useful behavior to current PostgreSQL, RBAC, security and runtime contracts; never bulk-copy incompatible source.",
       "Keep INTEGRATE, ADAPT_THEN_INTEGRATE, PRESERVE_AS_REFERENCE and SAFE_ARCHIVE dispositions with provenance.",
       "Merge only after per-area acceptance, exact-head CI, Preview DB identity proof and E2E validation."
-    ]
+    ],
+    "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
   }
 }
