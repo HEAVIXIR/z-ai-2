@@ -63,7 +63,7 @@ describe("seller B2 media staging contract", () => {
     expect(adapter).toContain('const EXPECTED_PREFIX = "heavix-media/"');
     expect(adapter).toContain('const EXPECTED_REGION = "us-east-005"');
     expect(adapter).toContain('const EXPECTED_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"');
-    expect(adapter).toContain('process.env["B2_APPLICATION_KEY"]');
+    expect(adapter).toContain('requiredEnv("B2_APPLICATION_KEY")');
     expect(adapter).toContain("createB2MediaReadUrl");
   });
 });
