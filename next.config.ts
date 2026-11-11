@@ -134,7 +134,7 @@ const nextConfig: NextConfig = {
           // jSquash's wasm-bindgen modules need their binary bytes passed to
           // init(); do not let Webpack treat their imports as async wasm modules.
           config.module.rules.push({
-            test: /\\.wasm$/,
+            test: /\.wasm$/,
             include: /node_modules[\\/]@jsquash[\\/]/,
             type: "asset/inline",
           });
