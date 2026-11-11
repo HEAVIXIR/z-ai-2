@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T08:50:00.000Z",
+  "updated_at_utc": "2026-11-11T08:56:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "d2f68100ded4c0c1fbdcf81d6e8cdcb93de0e1f7",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "0db03c5bcc481c2fba5a3afb31f55034c308e7fa",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -44,7 +44,11 @@
     "Active Worker runtime has only DATABASE_URL and STORE_DATABASE_URL secret bindings; no B2 runtime bindings are present. Secret values were not read.",
     "Owner reports six B2 values saved under Previews Base; these are not active on the current Worker while Previews are disabled and no branch Preview exists.",
     "Live smoke test of existing Worker: root HTTP success but incomplete/empty sections; /api/health 503; /api/services 500; /services 404. Active version is still the pre-recovery deployment.",
-    "Current media-service remains local filesystem + JSON sidecars; seller uploader still targets admin-only endpoint; listing POST silently slices images to 10."
+    "Current media-service remains local filesystem + JSON sidecars; seller uploader still targets admin-only endpoint; listing POST silently slices images to 10.",
+    "Recovery branch lacks the OpenNext/Worker Prisma runtime stack; it still uses Prisma 6.11.1 and Node Prisma clients. The required Worker runtime files exist only on the divergent infra branch.",
+    "Infra branch is 213 commits ahead and 11 behind main; recovery branch is 173 commits ahead of main. Whole-branch merge/cherry-pick is unsafe.",
+    "Historical App/Store Workerd Preview database proof #42872987144 passed on infra commit 07b6de155284dd7813335201552acf4efbb6ad90, but has not been rerun on recovery and does not prove current Worker secrets.",
+    "Prisma 6.19.3 + PPG adapter 7.10.1 exact published compatibility matrix remains an open verification item."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -113,7 +117,9 @@
     "Verified exact-head GitHub Actions run #42986374509 and all six blocking jobs.",
     "Audited Cloudflare Workers Builds configuration, active Worker deployment/version, runtime binding names, secret names, branch Preview status and deploy/build no-op guards without reading secret values.",
     "Ran read-only live smoke tests on the existing Preview URL and recorded current HTTP outcomes.",
-    "Updated append-only worklog with exact CI, Cloudflare, Preview and B2 configuration evidence."
+    "Updated append-only worklog with exact CI, Cloudflare, Preview and B2 configuration evidence.",
+    "Compared recovery and infra branch divergence and identified minimal Cloudflare runtime stack required for a safe port.",
+    "Reviewed historical PR #191/#200 and exact scope of prior Workerd database proof."
   ],
   "not_done_and_not_to_be_claimed": [
     "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
@@ -161,39 +167,49 @@
   "next_action": {
     "priority": "P0",
     "branch": "recovery/heavix-full-product-integration-2026-11-11",
-    "task": "Implement the server-only Backblaze B2 S3-compatible media adapter and seller-owned staging/finalization path on the recovery branch; add mocked storage/security/ownership/image-count tests. In parallel, prepare the Cloudflare Preview build configuration, but do not enable Previews or deploy until App/Store database identity and Preview resource isolation are proven.",
-    "first_paths_to_read": [
-      "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
-      "src/lib/media-service.ts",
-      "src/lib/upload-security.ts",
-      "src/lib/media-image-optimizer.ts",
-      "src/app/api/admin/upload/route.ts",
-      "src/app/api/admin/media/route.ts",
-      "src/app/api/admin/media/[id]/route.ts",
-      "src/components/listings/ListingImageUploader.tsx",
-      "src/app/api/listings/route.ts",
-      "prisma/schema.prisma",
+    "task": "Port the minimal, compatible Cloudflare/OpenNext/Prisma Worker runtime stack from the infra branch into recovery in small reviewed batches. Do not merge/cherry-pick the whole 213-commit infra branch. Preserve Node/Docker behavior and all deploy guards. Verify exact package compatibility, run exact-head CI, OpenNext build + no-DB real-route smoke, then rerun the read-only App/Store Preview identity proof on the recovery head. Only after this runtime gate proceed with B2 adapter and seller-owned media staging/finalization.",
+    "source_branches": {
+      "active_recovery": "recovery/heavix-full-product-integration-2026-11-11",
+      "reference_infra": "infra/prisma6-cloudflare-runtime",
+      "infra_pr": 191,
+      "opennext_proof_pr": 200
+    },
+    "first_files_to_review": [
       "package.json",
-      "bun.lock"
+      "bun.lock",
+      "prisma/schema.prisma",
+      "prisma/store/schema.prisma",
+      "next.config.ts",
+      "wrangler.jsonc",
+      "open-next.config.ts",
+      "tsconfig.worker.json",
+      "src/lib/prisma-worker-clients.ts",
+      "src/lib/prisma-worker-proxy.ts",
+      "src/lib/db.worker.ts",
+      "src/lib/store-db.worker.ts",
+      "scripts/run-prisma-workerd-proof.mjs",
+      "scripts/run-opennext-runtime-proof.mjs",
+      "docs/deployment/CLOUDFLARE-PREVIEW-RECOVERY.md"
     ],
-    "required_tests": [
-      "Mocked B2 adapter tests and fail-closed configuration tests.",
-      "Seller auth, CSRF, rate-limit, magic-byte, dimension and size tests.",
-      "Cross-seller asset ownership and staged-asset finalization tests.",
-      "10-image accept / 11-image reject contract tests.",
-      "B2 live upload/readback/SHA-256/delete-version proof in the dedicated media bucket only, after scope verification.",
-      "Responsive desktop/tablet/mobile listing creation and image management.",
-      "Exact-head CI and artifact provenance; no Worker deployment until DB identity gates pass."
+    "required_gates": [
+      "Inspect published peerDependencies/engines and prove the exact Prisma + PPG adapter version set; do not assume the infra branch's historical pairing is vendor-supported solely because an old proof passed.",
+      "Generate separate App and Store Workerd clients without breaking Node/Docker clients.",
+      "Add Worker-only aliases and runtime bindings; keep Production deploy command fail-closed.",
+      "Cloudflare Workers Build must execute a real OpenNext build, produce .open-next/worker.js and route manifest, and publish auditable build artifacts.",
+      "OpenNext real-route smoke in Workerd with no DB credentials must pass on the recovery exact HEAD.",
+      "Read-only App/Store Preview identity proof must pass on the recovery exact HEAD using independently allow-listed system identifiers and migration fingerprints.",
+      "No Cloudflare Preview enablement or deployment until all prior gates pass and owner approves the one-time Preview migration switch.",
+      "Then implement B2 adapter and seller upload staging/finalization with mocked tests and a dedicated B2 object proof."
     ],
     "do_not": [
-      "Do not use heavix-db-backups for media.",
-      "Do not enable or migrate to Cloudflare R2.",
-      "Do not expose B2 secrets in chat, GitHub, or logs.",
-      "Do not alter bucket lifecycle, versioning, CORS or existing objects without approval.",
-      "Do not enable Worker Previews or change deploy commands until Preview DB identities and isolation are proven.",
-      "Do not modify Production settings, DNS, or stable Worker.",
-      "Do not run migrations, seeds, or writes against Preview/Production DB.",
-      "Do not implement native iOS/Android in current web release."
+      "Do not merge PR #191 or #200 wholesale into PR #307.",
+      "Do not merge or cherry-pick the entire infra branch.",
+      "Do not enable Worker Previews or change deploy commands until exact-head runtime and database isolation proofs pass.",
+      "Do not modify Production settings, stable Worker, DNS, or Production DB.",
+      "Do not read or log any secret values.",
+      "Do not perform DB migrations, seeds, or writes.",
+      "Do not use the DB backup bucket for media or introduce R2.",
+      "Do not begin native iOS/Android before web parity is accepted."
     ]
   },
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
