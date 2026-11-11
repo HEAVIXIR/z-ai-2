@@ -106,36 +106,8 @@ const isCloudflareBuild =
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@jsquash/jpeg", "@jsquash/png", "@jsquash/resize", "@jsquash/webp"],
-  // jSquash codecs use build-time async WebAssembly modules. This avoids
-  // runtime WebAssembly.compile(), which Cloudflare Workerd intentionally blocks.
+  // Cloudflare injects jSquash codec binaries through Wrangler wasm_modules.
   webpack(config) {
-    const jsquashWasm = /node_modules[\\/]@jsquash[\\/]/;
-    type MutableRule = {
-      test?: RegExp;
-      exclude?: RegExp | RegExp[];
-      oneOf?: MutableRule[];
-      rules?: MutableRule[];
-    };
-    const excludeJsquashFromDefaultWasmRules = (rules: MutableRule[]) => {
-      for (const rule of rules) {
-        if (rule.test instanceof RegExp && rule.test.test("codec.wasm")) {
-          const existing = Array.isArray(rule.exclude)
-            ? rule.exclude
-            : rule.exclude
-              ? [rule.exclude]
-              : [];
-          rule.exclude = [...existing, jsquashWasm];
-        }
-        if (rule.oneOf) excludeJsquashFromDefaultWasmRules(rule.oneOf);
-        if (rule.rules) excludeJsquashFromDefaultWasmRules(rule.rules);
-      }
-    };
-    excludeJsquashFromDefaultWasmRules(config.module.rules as unknown as MutableRule[]);
-    config.module.rules.push({
-      test: /\\.wasm$/,
-      include: jsquashWasm,
-      type: "webassembly/async",
-    });
     if (isCloudflareBuild) {
       config.parallelism = 4;
       config.experiments = {
