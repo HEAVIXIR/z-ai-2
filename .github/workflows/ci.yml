@@ -53,6 +53,7 @@ jobs:
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
@@ -305,6 +306,7 @@ jobs:
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
@@ -375,6 +377,7 @@ jobs:
           PSQL
           chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
           echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
