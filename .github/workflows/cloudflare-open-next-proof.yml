@@ -79,6 +79,22 @@ jobs:
           test -s .open-next/.build/durable-objects/bucket-cache-purge.js
           echo "PASS: Worker entrypoint, runtime modules, durable objects, and assets exist"
 
+      - name: Run Wrangler deploy dry-run only
+        shell: bash
+        env:
+          DATABASE_URL: "postgresql://dry-run.invalid:5432/app"
+          STORE_DATABASE_URL: "postgresql://dry-run.invalid:5432/store"
+          HEAVIX_APP_PREVIEW_DATABASE_OID: "1"
+          HEAVIX_STORE_PREVIEW_DATABASE_OID: "2"
+          HEAVIX_ENV: preview
+          NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+          NODE_ENV: production
+        run: |
+          set -euo pipefail
+          bunx wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/heavix-wrangler-dry-run"
+          test -d "$RUNNER_TEMP/heavix-wrangler-dry-run"
+          echo "PASS: Wrangler packaged the Worker without uploading or deploying"
+
       - name: Execute no-database Workerd runtime smoke
         env:
           HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
