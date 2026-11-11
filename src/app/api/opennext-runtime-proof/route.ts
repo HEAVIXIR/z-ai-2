@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { storeDb } from "@/lib/store-db";
 import { getAsset } from "@/lib/media-service";
+import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
 import {
   constantTimeEqual,
   extractBearerToken,
@@ -220,7 +221,13 @@ export async function GET(request: Request) {
   // An invalid opaque id must be rejected before any object-storage request.
   const invalidMediaAsset = await getAsset("not-a-valid-media-id");
   const mediaServiceModuleLoaded = invalidMediaAsset === null;
-  const passed = appClosed && storeClosed && mediaServiceModuleLoaded;
+  const sharp = (await import("sharp")).default;
+  const tinyPng = await sharp({
+    create: { width: 1, height: 1, channels: 4, background: { r: 8, g: 16, b: 24, alpha: 1 } },
+  }).png().toBuffer();
+  const optimizedMedia = await optimizeImageBuffer(tinyPng, "png");
+  const mediaImageOptimizerWorks = optimizedMedia.buffer.length > 0;
+  const passed = appClosed && storeClosed && mediaServiceModuleLoaded && mediaImageOptimizerWorks;
   return json({
     result: passed ? "PASS" : "FAIL",
     mode: "SMOKE_ONLY",
@@ -229,6 +236,7 @@ export async function GET(request: Request) {
     storeFailsClosedWithoutBinding: storeClosed,
     mediaServiceModuleLoaded,
     mediaReadGateRejectsInvalidId: invalidMediaAsset === null,
+    mediaImageOptimizerWorks,
     databaseConnectionsAttempted: false,
     writesPerformed: false,
   }, passed ? 200 : 503);
