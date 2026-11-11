@@ -138,6 +138,8 @@ try {
   assert.equal(body.realApplicationAliasesImported, true);
   assert.equal(body.appFailsClosedWithoutBinding, true);
   assert.equal(body.storeFailsClosedWithoutBinding, true);
+  assert.equal(body.mediaServiceModuleLoaded, true);
+  assert.equal(body.mediaReadGateRejectsInvalidId, true);
   assert.equal(body.databaseConnectionsAttempted, false);
   assert.equal(body.writesPerformed, false);
 
@@ -172,6 +174,8 @@ try {
       "actual App Router route imported @/lib/db and @/lib/store-db",
       "route executed in OpenNext Worker request context",
       "both production-path proxies failed closed without DB bindings",
+      "B2 media service and its optimizer module imported in Workerd without credentials",
+      "invalid media IDs rejected before any B2 request",
       "no database connection or write was attempted",
     ],
     databaseMode: "SMOKE_ONLY",
