@@ -179,7 +179,7 @@ async function signature(
 async function signedRequest(
   method: "GET" | "PUT" | "DELETE",
   key: string,
-  options: { body?: Uint8Array | string; contentType?: string; query?: Array<[string, string]> } = {},
+  options: { body?: Uint8Array | string; contentType?: string; query?: Array<[string, string]>; extraHeaders?: Record<string, string> } = {},
 ): Promise<Response> {
   const config = getB2MediaConfig();
   if (key) assertMediaKey(key, config);
@@ -201,6 +201,9 @@ async function signedRequest(
     "x-amz-date": timestamp.full,
   };
   if (options.contentType) headersToSign["content-type"] = options.contentType;
+  for (const [name, value] of Object.entries(options.extraHeaders ?? {})) {
+    headersToSign[name.toLowerCase()] = value.trim();
+  }
 
   const headerNames = Object.keys(headersToSign).sort();
   const canonicalHeaders = headerNames
@@ -224,12 +227,11 @@ async function signedRequest(
     "AWS4-HMAC-SHA256 Credential=" + config.keyId + "/" + scope +
     ", SignedHeaders=" + signedHeaders + ", Signature=" + sig;
 
-  const headers = new Headers({
-    "x-amz-content-sha256": payloadHash,
-    "x-amz-date": timestamp.full,
-    authorization,
-  });
-  if (options.contentType) headers.set("content-type", options.contentType);
+  const headers = new Headers();
+  for (const name of headerNames) {
+    if (name !== "host") headers.set(name, headersToSign[name]);
+  }
+  headers.set("authorization", authorization);
 
   const url = config.endpoint + canonicalUri + (query ? "?" + query : "");
   const response = await fetch(url, {
@@ -267,6 +269,22 @@ export async function getB2MediaObject(key: string): Promise<Uint8Array> {
 
 export async function deleteB2MediaObject(key: string): Promise<void> {
   await signedRequest("DELETE", key);
+}
+
+/** Copy a staged object to its final key within the same private bucket. */
+export async function copyB2MediaObject(sourceKey: string, destinationKey: string): Promise<void> {
+  const config = getB2MediaConfig();
+  assertMediaKey(sourceKey, config);
+  assertMediaKey(destinationKey, config);
+  if (sourceKey === destinationKey) return;
+  const encodedSource = "/" + [config.bucket, ...sourceKey.split("/")].map(encodeRfc3986).join("/");
+  const response = await signedRequest("PUT", destinationKey, {
+    extraHeaders: { "x-amz-copy-source": encodedSource },
+  });
+  const body = await response.text();
+  if (/<Error[\s>]/i.test(body)) {
+    throw new Error("B2 object copy failed.");
+  }
 }
 
 /** List only object names beneath the approved prefix; never calls ListBuckets. */
