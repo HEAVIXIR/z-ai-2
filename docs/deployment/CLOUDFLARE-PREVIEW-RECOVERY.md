@@ -326,3 +326,12 @@ Read-only recheck of the current runtime PR branch found:
 - A separate Cloudflare Build `69a49f21-67dc-4df2-bbc5-911ca7d1be9f` was observed on recovery-branch commit `d5f034178918d0b44f83aca7986d82cbada10915`; it was still running at the latest inspection and its logs had not advanced beyond the optimized Next.js build phase. It is not a build of this infra branch.
 
 No speculative bundler, concurrency, memory, cache, or timeout change is authorized by this evidence. Do not retry Cloudflare Builds as a debugging loop. Reconstruct the owner-confirmed prior successful remediation first, preserve the known-good Preview version #17, and obtain explicit owner approval before any further quota-consuming Cloudflare Build. Release remains blocked until both actual Worker database bindings are proven against the App Preview and Store Preview physical PostgreSQL identities and allow-lists.
+
+
+## 2026-11-11 — Recovery-branch Cloudflare Build timeout (separate candidate)
+
+- Cloudflare Build `69a49f21-67dc-4df2-bbc5-911ca7d1be9f` was for recovery branch `recovery/heavix-full-product-integration-2026-11-11`, exact commit `d5f034178918d0b44f83aca7986d82cbada10915`; it is not a build of `infra/prisma6-cloudflare-runtime`.
+- The Build ended `terminated` at `2026-11-11T09:58:56.638Z`. Its final log lines remained in Next.js 16.4.5 Turbopack's optimized production build phase, with the non-fatal CSS selector warning around `#F58220`, followed by `Build took too long and was timed out`.
+- No OpenNext completion marker, Worker artifact, or deployment was produced. The configured deploy command was the explicit no-op guard `HEAVIX_PREVIEW_DEPLOY_BLOCKED_PENDING_RUNTIME_AND_DATABASE_HEALTH_PROOF`.
+- Do not retry this Build automatically or use another Cloudflare Build to experiment with bundlers/concurrency. The owner-reported quota constraint remains in force; recover the exact prior successful remediation and obtain explicit owner approval before another quota-consuming Build.
+- The existing Preview version #17 remains the rollback baseline. The active Worker's App/Store database bindings remain unverified; this Build failure does not relax the database-identity release gate.
