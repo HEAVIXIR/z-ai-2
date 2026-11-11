@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,12 @@ function isolatedEnv(extra = {}) {
     "HEAVIX_BACKUP_EXECUTION_ENABLED",
     "CLOUDFLARE_API_TOKEN",
     "CLOUDFLARE_API_KEY",
+    "B2_KEY_ID",
+    "B2_APPLICATION_KEY",
+    "B2_BUCKET_NAME",
+    "B2_MEDIA_PREFIX",
+    "B2_REGION",
+    "B2_S3_ENDPOINT",
   ]) delete env[key];
   return env;
 }
@@ -66,12 +72,16 @@ function stop(processRef) {
   } catch {}
 }
 
-const build = start("bun", ["run", "build:cloudflare"], {
-  cwd: root,
-  env: isolatedEnv({ HEAVIX_BUILD_TARGET: "cloudflare" }),
-});
-const buildResult = await waitForExit(build, "cloudflare-build");
-assert.equal(buildResult.code, 0, "Cloudflare/OpenNext build failed.");
+if (process.env.HEAVIX_SKIP_OPENNEXT_BUILD === "1") {
+  await access(resolve(root, ".open-next/worker.js"));
+} else {
+  const build = start("bun", ["run", "build:cloudflare"], {
+    cwd: root,
+    env: isolatedEnv({ HEAVIX_BUILD_TARGET: "cloudflare" }),
+  });
+  const buildResult = await waitForExit(build, "cloudflare-build");
+  assert.equal(buildResult.code, 0, "Cloudflare/OpenNext build failed.");
+}
 
 const tempRoot = await mkdtemp(resolve(tmpdir(), "heavix-opennext-proof-"));
 let preview;
@@ -91,6 +101,12 @@ try {
       HEAVIX_PREVIEW_PROOF_GATE_TOKEN: proofGateToken,
       NODE_ENV: "production",
       HEAVIX_BACKUP_EXECUTION_ENABLED: "false",
+      B2_KEY_ID: "0055d132b1dcc410000000004",
+      B2_APPLICATION_KEY: "ci-only-dummy-application-key-material",
+      B2_BUCKET_NAME: "heavix-dev-assets",
+      B2_MEDIA_PREFIX: "heavix-media/",
+      B2_REGION: "us-east-005",
+      B2_S3_ENDPOINT: "https://s3.us-east-005.backblazeb2.com",
     },
     workers_dev: false,
     observability: { enabled: false },
@@ -139,6 +155,7 @@ try {
   assert.equal(body.appFailsClosedWithoutBinding, true);
   assert.equal(body.storeFailsClosedWithoutBinding, true);
   assert.equal(body.mediaServiceModuleLoaded, true);
+  assert.equal(body.b2MediaConfigWorks, true);
   assert.equal(body.mediaReadGateRejectsInvalidId, true);
   assert.equal(body.mediaImageOptimizerWorks, true);
   assert.equal(body.databaseConnectionsAttempted, false);
@@ -175,9 +192,10 @@ try {
       "actual App Router route imported @/lib/db and @/lib/store-db",
       "route executed in OpenNext Worker request context",
       "both production-path proxies failed closed without DB bindings",
-      "B2 media service and its optimizer module imported in Workerd without credentials",
+      "B2 media service and optimizer imported with CI-only dummy bindings; no remote storage request was made",
       "invalid media IDs rejected before any B2 request",
       "jSquash WebAssembly image decode/optimization executes in Workerd without native host dependencies",
+      "B2 runtime bindings populate process.env and match the fixed bucket/prefix scope without making a network request",
       "no database connection or write was attempted",
     ],
     databaseMode: "SMOKE_ONLY",
