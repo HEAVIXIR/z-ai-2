@@ -15,6 +15,8 @@ const wasmDataUrlPlugin = {
 };
 
 export default defineConfig({
+  // Keep the jSquash WASM codec modules inline; Node fetch cannot load file: URLs.
+  assetsInlineLimit: 50_000_000,
   plugins: [wasmDataUrlPlugin],
   ssr: {
     noExternal: [/@jsquash\//],
