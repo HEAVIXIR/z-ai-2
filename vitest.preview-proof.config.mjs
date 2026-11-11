@@ -17,7 +17,7 @@ const wasmDataUrlPlugin = {
 export default defineConfig({
   plugins: [wasmDataUrlPlugin],
   ssr: {
-    noExternal: [/^@jsquash\\//],
+    noExternal: [/^@jsquash\//],
   },
   test: {
     environment: "node",
