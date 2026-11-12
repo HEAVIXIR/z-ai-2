@@ -93,12 +93,12 @@ export default function Hero({
 
   return (
     <section className="relative isolate overflow-hidden" style={{ backgroundColor: overlayColor, ...heroStyle }}>
-      <div className="absolute inset-0 -z-10">
+      <div className="absolute inset-0 z-0">
         {slides.map((src, i) => (<div key={i} className="absolute inset-0 transition-opacity duration-1000" style={{ backgroundImage: `url(${src})`, backgroundSize: "cover", backgroundPosition: "center", opacity: i === slide ? slideOpacity : 0 }} />))}
         <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${overlayColor}b3, ${overlayColor}80, ${overlayColor})` }} />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(245,130,32,0.15),transparent_70%)]" />
       </div>
-      <div className="mx-auto flex min-h-[clamp(560px,78vh,820px)] max-w-[1440px] flex-col gap-8 px-5 py-24 lg:flex-row lg:items-center lg:px-10 xl:px-16" style={contentWrapStyle}>
+      <div className="relative z-10 mx-auto flex min-h-[clamp(560px,78vh,820px)] max-w-[1440px] flex-col gap-8 px-5 py-24 lg:flex-row lg:items-center lg:px-10 xl:px-16" style={contentWrapStyle}>
         <div className="order-1 flex-1 lg:order-2" style={contentColStyle}>
           <div dir="rtl" className={`flex flex-col gap-5 ${alignClass[cfg.badgeAlign || "center"] || alignClass.center}`}>
             {cfg.badge && (<span className="inline-flex items-center gap-2 rounded-full border border-[#F58220]/40 bg-[#F58220]/10 px-4 py-1.5 font-bold text-[#F58220]" style={badgeStyle}><ShieldCheck className="h-3.5 w-3.5" />{cfg.badge}</span>)}
