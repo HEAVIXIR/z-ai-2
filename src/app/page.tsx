@@ -322,10 +322,10 @@ export default async function HomePage() {
         ];
 
   // Only display configured, real statistics. Never manufacture business figures.
-  const statItems: StatItem[] = activeStats.map((s) => ({
-    value: s.value,
-    label: s.labelFa,
-  }));
+  const statItems: StatItem[] =
+    activeStats.length > 0
+      ? activeStats.map((s) => ({ value: s.value, label: s.labelFa }))
+      : heroStats.map((s) => ({ value: s.value, label: s.label }));
 
 
   const liveCount = toFa(activeListings);
@@ -603,6 +603,8 @@ export default async function HomePage() {
                 return null;
               }
             })();
+            // Skip inactive-data sections instead of emitting empty CMS frames.
+            if (!content) return null;
             return (
               <HomepageSectionFrame key={section.id} sectionKey={key} config={section.config}>
                 {content}
