@@ -64,7 +64,7 @@ describe("Prisma Postgres workerd client contract", () => {
   it("keeps Node Prisma entrypoints separate from the Worker PPG adapter", () => {
     const nodeMain = read("src/lib/db.ts");
     const nodeStore = read("src/lib/store-db.ts");
-    expect(nodeMain).toContain("require('@prisma/client')");
+    expect(nodeMain).toContain('import { PrismaClient } from "@prisma/client";');
     expect(nodeMain).not.toContain("@prisma/adapter-ppg");
     expect(nodeMain).not.toContain("worker-client");
     expect(nodeStore).toContain("@/lib/generated/store-client");
