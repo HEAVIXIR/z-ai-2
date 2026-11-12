@@ -48,7 +48,7 @@ const marker = "/* HEAVIX_PRECOMPILED_WASM_MODULES_V2 */";
 
 const imports = Object.entries(wasmFiles)
   .map(([name, relativePath]) => {
-    const specifier = "../" + relativePath.replaceAll("\", "/");
+    const specifier = "../" + relativePath.replaceAll("\\", "/");
     return "import " + name + " from " + JSON.stringify(specifier) + ";";
   })
   .join("\n");
