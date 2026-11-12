@@ -94,7 +94,15 @@ export default function Hero({
   return (
     <section className="relative isolate overflow-hidden" style={{ backgroundColor: overlayColor, ...heroStyle }}>
       <div className="absolute inset-0 z-0">
-        {slides.map((src, i) => (<div key={i} className="absolute inset-0 transition-opacity duration-1000" style={{ backgroundImage: `url(${src})`, backgroundSize: "cover", backgroundPosition: "center", opacity: i === slide ? slideOpacity : 0 }} />))}
+        <div
+          className="absolute inset-0 transition-opacity duration-1000"
+          style={{
+            backgroundImage: `url(${slides[slide] || slides[0]})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            opacity: slideOpacity,
+          }}
+        />
         <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${overlayColor}b3, ${overlayColor}80, ${overlayColor})` }} />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(245,130,32,0.15),transparent_70%)]" />
       </div>
