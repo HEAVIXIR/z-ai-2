@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import Hero, { type HeroStat, type HeroCardListing } from "@/components/home/Hero";
 import HeroSearch from "@/components/home/HeroSearch";
+import CinematicIndustrialHero, { parseCinematicHeroConfig } from "@/components/home/CinematicIndustrialHero";
 import type { CategoryWithCount } from "@/components/home/CategoriesSection";
 import MachineCategoriesSection, { type MachineCategoryCard } from "@/components/home/MachineCategoriesSection";
 import StatsSection, { type StatItem } from "@/components/home/StatsSection";
@@ -444,23 +445,46 @@ export default async function HomePage() {
               case "hero":
                 return (
                   <div key={section.id}>
-                    <Hero
-                      stats={heroStats}
-                      config={heroCfg}
-                      cardServicesListing={heroCardServicesListing}
-                      cardFeaturedListing={heroCardFeaturedListing}
-                      cardExclusiveListing={heroCardExclusiveListing}
-                    />
-                    <HeroSearch
-                      categories={categories.map((c) => ({
-                        id: c.id,
-                        name: c.name,
-                        slug: c.slug,
-                        parentId: c.parentId,
-                      }))}
-                      brands={allBrands.map((b) => ({ id: b.id, name: b.name, slug: b.slug }))}
-                      liveCount={liveCount}
-                    />
+                    {heroConfig?.activeTemplate === "cinematic-industrial" ? (
+                      <>
+                        <CinematicIndustrialHero
+                          stats={heroStats}
+                          config={parseCinematicHeroConfig(heroConfig.cinematicConfig)}
+                        />
+                        {parseCinematicHeroConfig(heroConfig.cinematicConfig).showSearch !== false && (
+                          <HeroSearch
+                            categories={categories.map((c) => ({
+                              id: c.id,
+                              name: c.name,
+                              slug: c.slug,
+                              parentId: c.parentId,
+                            }))}
+                            brands={allBrands.map((b) => ({ id: b.id, name: b.name, slug: b.slug }))}
+                            liveCount={liveCount}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Hero
+                          stats={heroStats}
+                          config={heroCfg}
+                          cardServicesListing={heroCardServicesListing}
+                          cardFeaturedListing={heroCardFeaturedListing}
+                          cardExclusiveListing={heroCardExclusiveListing}
+                        />
+                        <HeroSearch
+                          categories={categories.map((c) => ({
+                            id: c.id,
+                            name: c.name,
+                            slug: c.slug,
+                            parentId: c.parentId,
+                          }))}
+                          brands={allBrands.map((b) => ({ id: b.id, name: b.name, slug: b.slug }))}
+                          liveCount={liveCount}
+                        />
+                      </>
+                    )}
                   </div>
                 );
               case "categories":
