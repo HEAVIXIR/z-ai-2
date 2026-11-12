@@ -297,6 +297,18 @@ for (const file of files) {
     });
   }
 }
+const webpackWasmPrefix = ".next/server/chunks/static/wasm/";
+const serverFunctionWasmPrefix = ".open-next/server-functions/default/static/wasm/";
+const webpackEmittedWasmFiles = [...wasmCandidates.values()]
+  .map((file) => file.file)
+  .filter((file) => file.startsWith(webpackWasmPrefix))
+  .map((file) => file.slice(webpackWasmPrefix.length));
+const serverFunctionWasmFiles = [...wasmCandidates.values()]
+  .map((file) => file.file)
+  .filter((file) => file.startsWith(serverFunctionWasmPrefix))
+  .map((file) => file.slice(serverFunctionWasmPrefix.length));
+const missingWebpackWasmInServerFunction = webpackEmittedWasmFiles
+  .filter((file) => !serverFunctionWasmFiles.includes(file));
 const wasmSummary = {
   searchRoots: wasmSearchRoots,
   fileCount: wasmCandidates.size,
@@ -306,6 +318,9 @@ const wasmSummary = {
     "src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
     "src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
   ].filter((path) => !wasmCandidates.has(resolve(root, path))),
+  webpackEmittedWasmFiles,
+  serverFunctionWasmFiles,
+  missingWebpackWasmInServerFunction,
   knownMissingRuntimeAssetHash: "8ebbfac88bf403d0",
 };
 
@@ -362,6 +377,7 @@ const reviewRequired = forbiddenCount > 0 ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
   unsupportedExternalNodeTcpImports.length > 0 ||
+  wasmSummary.missingWebpackWasmInServerFunction.length > 0 ||
   !assetSummary.withinFreePlanLimits;
 const verdict = reviewRequired
   ? "REVIEW_REQUIRED"
