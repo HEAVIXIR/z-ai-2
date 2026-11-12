@@ -17,16 +17,10 @@ await access(workerPath);
 // Next/Webpack emits Prisma's query-compiler WASM under .next/server/chunks/static/wasm.
 // OpenNext traces the generated client source files, but the Worker runtime's readAll()
 // loader resolves the emitted hash under /bundle/static/wasm. Copy those emitted files
-// into the server-function bundle root so that readAll() can resolve them in workerd.
+// into the Worker bundle root. Wrangler resolves /bundle/static/wasm from
+// .open-next/static/wasm (not server-functions/default/static/wasm).
 const nextStaticWasmDir = path.join(root, ".next", "server", "chunks", "static", "wasm");
-const serverFunctionWasmDir = path.join(
-  root,
-  ".open-next",
-  "server-functions",
-  "default",
-  "static",
-  "wasm",
-);
+const workerBundleWasmDir = path.join(root, ".open-next", "static", "wasm");
 const webpackWasmFiles = (await readdir(nextStaticWasmDir).catch(() => []))
   .filter((file) => file.toLowerCase().endsWith(".wasm"));
 if (webpackWasmFiles.length === 0) {
@@ -34,15 +28,15 @@ if (webpackWasmFiles.length === 0) {
     "No Webpack-emitted WASM assets found at .next/server/chunks/static/wasm; refusing to produce an incomplete OpenNext Worker bundle.",
   );
 }
-await mkdir(serverFunctionWasmDir, { recursive: true });
+await mkdir(workerBundleWasmDir, { recursive: true });
 for (const file of webpackWasmFiles) {
   const bytes = await readFile(path.join(nextStaticWasmDir, file));
-  await writeFile(path.join(serverFunctionWasmDir, file), bytes);
+  await writeFile(path.join(workerBundleWasmDir, file), bytes);
 }
 console.log(
   "Copied " +
     webpackWasmFiles.length +
-    " Webpack-emitted WASM assets into OpenNext server function bundle",
+    " Webpack-emitted WASM assets into OpenNext Worker bundle root (.open-next/static/wasm)",
 );
 
 for (const relativePath of Object.values(wasmFiles)) {

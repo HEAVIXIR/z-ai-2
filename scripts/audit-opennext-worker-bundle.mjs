@@ -298,17 +298,22 @@ for (const file of files) {
   }
 }
 const webpackWasmPrefix = ".next/server/chunks/static/wasm/";
-const serverFunctionWasmPrefix = ".open-next/server-functions/default/static/wasm/";
+const workerBundleWasmPrefix = ".open-next/static/wasm/";
 const webpackEmittedWasmFiles = [...wasmCandidates.values()]
   .map((file) => file.file)
   .filter((file) => file.startsWith(webpackWasmPrefix))
   .map((file) => file.slice(webpackWasmPrefix.length));
-const serverFunctionWasmFiles = [...wasmCandidates.values()]
+const workerBundleWasmFiles = [...wasmCandidates.values()]
   .map((file) => file.file)
-  .filter((file) => file.startsWith(serverFunctionWasmPrefix))
-  .map((file) => file.slice(serverFunctionWasmPrefix.length));
-const missingWebpackWasmInServerFunction = webpackEmittedWasmFiles
-  .filter((file) => !serverFunctionWasmFiles.includes(file));
+  .filter((file) => file.startsWith(workerBundleWasmPrefix))
+  .map((file) => file.slice(workerBundleWasmPrefix.length));
+const missingWebpackWasmInWorkerBundle = webpackEmittedWasmFiles
+  .filter((file) => !workerBundleWasmFiles.includes(file));
+const runtimeWasmReferences = [...new Set(wasmReferences.flatMap(({ matches }) =>
+  matches.flatMap((match) => [...match.matchAll(/static\\/wasm\\/([^"'?\\s]+)/g)].map((item) => item[1])),
+))];
+const missingRuntimeWasmReferences = runtimeWasmReferences
+  .filter((file) => !workerBundleWasmFiles.includes(file));
 const wasmSummary = {
   searchRoots: wasmSearchRoots,
   fileCount: wasmCandidates.size,
@@ -319,8 +324,10 @@ const wasmSummary = {
     "src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
   ].filter((path) => !wasmCandidates.has(resolve(root, path))),
   webpackEmittedWasmFiles,
-  serverFunctionWasmFiles,
-  missingWebpackWasmInServerFunction,
+  workerBundleWasmFiles,
+  missingWebpackWasmInWorkerBundle,
+  runtimeWasmReferences,
+  missingRuntimeWasmReferences,
   knownMissingRuntimeAssetHash: "8ebbfac88bf403d0",
 };
 
@@ -377,7 +384,8 @@ const reviewRequired = forbiddenCount > 0 ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
   unsupportedExternalNodeTcpImports.length > 0 ||
-  wasmSummary.missingWebpackWasmInServerFunction.length > 0 ||
+  wasmSummary.missingWebpackWasmInWorkerBundle.length > 0 ||
+  wasmSummary.missingRuntimeWasmReferences.length > 0 ||
   !assetSummary.withinFreePlanLimits;
 const verdict = reviewRequired
   ? "REVIEW_REQUIRED"
