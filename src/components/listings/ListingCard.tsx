@@ -37,6 +37,7 @@ export default function ListingCard({ l }: { l: ListingCardData }) {
   return (
     <Link
       href={`/listings/${l.slug}`}
+      prefetch={false}
       className="group block h-full overflow-hidden rounded-3xl border border-white/10 bg-[#111] transition-all duration-500 hover:-translate-y-2 hover:border-[#F58220]/40 hover:shadow-[0_25px_60px_rgba(0,0,0,.45)]"
     >
       {/* Image */}
