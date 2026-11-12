@@ -1,6 +1,11 @@
 name: HEAVIX Preview B2 media object proof
 
 on:
+  push:
+    branches:
+      - recovery/heavix-full-product-integration-2026-11-11
+    paths:
+      - .github/workflows/b2-media-preview-proof.yml
   workflow_dispatch:
     inputs:
       target:
