@@ -48,7 +48,7 @@ const marker = "/* HEAVIX_PRECOMPILED_WASM_MODULES_V2 */";
 
 const imports = Object.entries(wasmFiles)
   .map(([name, relativePath]) => {
-    const specifier = "../" + relativePath.replaceAll("\\", "/");
+    const specifier = "../" + relativePath.replaceAll("\", "/");
     return "import " + name + " from " + JSON.stringify(specifier) + ";";
   })
   .join("\n");
@@ -120,7 +120,7 @@ function patchPrismaWasmLoader(input, label) {
   const patchedLoader =
     "k.v=(exports,moduleId,hash,imports)=>Promise.resolve().then(()=>{" +
     "const module=globalThis.__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__?.[hash];" +
-    "if(!module)throw new Error(\\"Missing precompiled Prisma WASM module: \\"+hash);" +
+    "if(!module)throw new Error(\"Missing precompiled Prisma WASM module: \"+hash);" +
     "return WebAssembly.instantiate(module,imports)" +
     "}).then(instance=>Object.assign(exports,instance.exports))";
   return input.slice(0, start) + patchedLoader + input.slice(end);

@@ -407,7 +407,7 @@ for (const file of loaderScanFiles) {
     staticWasmPathOccurrences: [...content.matchAll(/static\/wasm/g)].length,
     queryCompilerReferences: [...content.matchAll(/query_compiler_bg/g)].length,
     patchedPrismaWasmLoaderOccurrences: [...content.matchAll(/__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__/g)].length,
-    filesystemWasmLoaderOccurrences: [...content.matchAll(/readFile[^;]{0,300}static\\/wasm/g)].length,
+    filesystemWasmLoaderOccurrences: [...content.matchAll(/readFile[^;]{0,300}static\/wasm/g)].length,
   };
   const samples = [];
   for (const marker of ["static/wasm", "query_compiler_bg", "readAll", "loadWasmChunk", "compileStreaming"]) {
@@ -436,6 +436,8 @@ const wasmLoaderSummary = {
 console.log("HEAVIX_WASM_LOADER_AUDIT " + JSON.stringify(wasmLoaderSummary));
 
 const reviewRequired = forbiddenCount > 0 ||
+  wasmLoaderSummary.patchedPrismaWasmLoaderOccurrences < 2 ||
+  wasmLoaderSummary.filesystemWasmLoaderOccurrences > 0 ||
   dryRunStatus !== "SUCCESS" ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
