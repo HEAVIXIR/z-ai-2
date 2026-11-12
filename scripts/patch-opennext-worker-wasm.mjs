@@ -34,7 +34,7 @@ const wasmFiles = {
   PNG_WASM: "../node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm",
   WEBP_DEC_WASM: "../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm",
   WEBP_ENC_WASM: "../node_modules/@jsquash/webp/codec/enc/webp_enc.wasm",
-  RESIZE_WASM: "../node_modules/@jsquash/resize/codec/pkg/squoosh_resize_bg.wasm",
+  RESIZE_WASM: "../node_modules/@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm",
 };
 
 const imports = Object.entries(wasmFiles)
