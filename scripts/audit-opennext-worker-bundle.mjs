@@ -394,6 +394,8 @@ const wasmLoaderTotals = {
   readAllOccurrences: 0,
   staticWasmPathOccurrences: 0,
   queryCompilerReferences: 0,
+  patchedPrismaWasmLoaderOccurrences: 0,
+  filesystemWasmLoaderOccurrences: 0,
 };
 for (const file of loaderScanFiles) {
   const content = await readFile(file, "utf8").catch(() => "");
@@ -404,6 +406,8 @@ for (const file of loaderScanFiles) {
     readAllOccurrences: [...content.matchAll(/\breadAll\b/g)].length,
     staticWasmPathOccurrences: [...content.matchAll(/static\/wasm/g)].length,
     queryCompilerReferences: [...content.matchAll(/query_compiler_bg/g)].length,
+    patchedPrismaWasmLoaderOccurrences: [...content.matchAll(/__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__/g)].length,
+    filesystemWasmLoaderOccurrences: [...content.matchAll(/readFile[^;]{0,300}static\\/wasm/g)].length,
   };
   const samples = [];
   for (const marker of ["static/wasm", "query_compiler_bg", "readAll", "loadWasmChunk", "compileStreaming"]) {
