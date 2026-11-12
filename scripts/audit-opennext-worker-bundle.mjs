@@ -405,8 +405,23 @@ for (const file of loaderScanFiles) {
     staticWasmPathOccurrences: [...content.matchAll(/static\/wasm/g)].length,
     queryCompilerReferences: [...content.matchAll(/query_compiler_bg/g)].length,
   };
+  const samples = [];
+  for (const marker of ["static/wasm", "query_compiler_bg", "readAll", "loadWasmChunk", "compileStreaming"]) {
+    const index = content.indexOf(marker);
+    if (index >= 0) {
+      samples.push({
+        marker,
+        excerpt: content.slice(Math.max(0, index - 180), Math.min(content.length, index + 320))
+          .replace(/\s+/g, " ")
+          .slice(0, 500),
+      });
+    }
+  }
+  counts.samples = samples;
   for (const key of Object.keys(wasmLoaderTotals)) wasmLoaderTotals[key] += counts[key];
-  if (Object.values(counts).slice(1).some((count) => count > 0)) wasmLoaderFiles.push(counts);
+  if (Object.keys(wasmLoaderTotals).some((key) => counts[key] > 0) || samples.length > 0) {
+    wasmLoaderFiles.push(counts);
+  }
 }
 const wasmLoaderSummary = {
   workerFile: dryRunWorkerPath ? relative(root, dryRunWorkerPath) : null,
