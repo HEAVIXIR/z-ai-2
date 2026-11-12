@@ -134,50 +134,57 @@ export default async function HomePage() {
     getCachedHeroConfig(),
   ]);
 
-  // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 5): build the
-  // MachineCategoriesSection data based on HomeCategoryConfig.
-  // Generation 1 → L1 children of the machinery root.
-  // Generation 2 → L2 children of the selected L1 parent.
-  const machineCategoryCards: MachineCategoryCard[] = await (async () => {
-    const machinery = await getCachedMachineryRoot();
-    if (!machinery) return [];
+  /* Run all independent post-configuration reads concurrently.
+     This includes category cards, trusted brands, configured statistics,
+     and optional hero listing cards. */
+  const heroCardListingIds = [
+    heroConfig?.cardServicesListingId,
+    heroConfig?.cardFeaturedListingId,
+    heroConfig?.cardExclusiveListingId,
+  ].filter((id): id is string => typeof id === "string" && id.length > 0);
 
-    let where: any;
-    if (homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId) {
-      where = { parentId: homeCategoryConfig.parentId, active: true };
-    } else {
-      where = { parentId: machinery.id, active: true };
-    }
-    const rows = await getCachedL1Children(
-      homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
-        ? homeCategoryConfig.parentId
-        : machinery.id,
-    );
-    return rows.map((c) => ({
-      id: c.id,
-      name: c.name,
-      nameEn: c.nameEn,
-      slug: c.slug,
-      icon: c.icon,
-      imageUrl: c.imageUrl,
-      description: c.description,
-      listingCount: c._count.listings,
-    }));
-  })();
-
-  // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 6): fetch featured /
-  // showOnHomepage brands for the TrustedBrandsSection ticker.
-  const trustedBrandRows = await (async () => {
-    const [displayBrands, featuredBrands] = await Promise.all([
-      getCachedBrandDisplayIds(),
-      getCachedFeaturedBrandIds(),
-    ]);
-    const ids = Array.from(new Set<string>([
-      ...displayBrands.map((d) => d.brandId),
-      ...featuredBrands.map((b) => b.id),
-    ]));
-    return ids.length ? getCachedTrustedBrands(ids) : [];
-  })();
+  const [machineCategoryCards, trustedBrandRows, activeStats, heroCardListingRows] = await Promise.all([
+    (async (): Promise<MachineCategoryCard[]> => {
+      const machinery = await getCachedMachineryRoot();
+      if (!machinery) return [];
+      const parentId =
+        homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
+          ? homeCategoryConfig.parentId
+          : machinery.id;
+      const rows = await getCachedL1Children(parentId);
+      return rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        nameEn: c.nameEn,
+        slug: c.slug,
+        icon: c.icon,
+        imageUrl: c.imageUrl,
+        description: c.description,
+        listingCount: c._count.listings,
+      }));
+    })(),
+    (async () => {
+      const [displayBrands, featuredBrands] = await Promise.all([
+        getCachedBrandDisplayIds(),
+        getCachedFeaturedBrandIds(),
+      ]);
+      const ids = Array.from(new Set<string>([
+        ...displayBrands.map((d) => d.brandId),
+        ...featuredBrands.map((b) => b.id),
+      ]));
+      return ids.length ? getCachedTrustedBrands(ids) : [];
+    })(),
+    getActiveStats({ listings: activeListings, brands: brandCount }),
+    heroCardListingIds.length > 0
+      ? db.listing.findMany({
+          where: { id: { in: heroCardListingIds }, status: "PUBLISHED" },
+          include: {
+            brand: { select: { name: true } },
+            images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const, take: 1 },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
   const trustedBrands: TrustedBrand[] = trustedBrandRows.map((b) => ({
     id: b.id,
     name: b.name,
@@ -271,11 +278,6 @@ export default async function HomePage() {
     sortOrder: h.sortOrder,
   }));
 
-  // FIX-STATS: dynamic homepage stats — admin-configured via SiteStat rows.
-  // Falls back to live DB counts when nothing is configured yet so the page
-  // never renders empty panels.
-  const activeStats = await getActiveStats();
-
   const heroStats: HeroStat[] =
     activeStats.length > 0
       ? activeStats.slice(0, 4).map((s) => ({ value: s.value, label: s.labelFa }))
@@ -300,21 +302,6 @@ export default async function HomePage() {
      + price + link) instead of a static image. Each lookup is defensive: a
      deleted/non-PUBLISHED listing is silently dropped (the Hero component
      then falls back to the static card image). */
-  const heroCardListingIds = [
-    heroConfig?.cardServicesListingId,
-    heroConfig?.cardFeaturedListingId,
-    heroConfig?.cardExclusiveListingId,
-  ].filter((id): id is string => typeof id === "string" && id.length > 0);
-
-  const heroCardListingRows = heroCardListingIds.length > 0
-    ? await db.listing.findMany({
-        where: { id: { in: heroCardListingIds }, status: "PUBLISHED" },
-        include: {
-          brand: { select: { name: true } },
-          images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const, take: 1 },
-        },
-      })
-    : [];
 
   const mapHeroCardListing = (id: string | null | undefined): HeroCardListing | null => {
     if (!id) return null;
