@@ -61,9 +61,9 @@ type HomeListingRow = Prisma.ListingGetPayload<{
 }>;
 
 export default async function HomePage() {
-  // Fetch brand + category data first
-  // HBR Taxonomy V1.1: home categories section shows CATALOG layer only.
-  const [allBrands, allCategories] = await Promise.all([
+  // Load independent homepage configuration and taxonomy queries together.
+  // This avoids serial database round-trips before the listing queries can start.
+  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
     db.brand.findMany({
       where: { active: true },
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
@@ -75,23 +75,15 @@ export default async function HomePage() {
       orderBy: [{ sortOrder: "asc" }],
       include: { _count: { select: { listings: { where: { status: "PUBLISHED" } } } } },
     }),
+    db.homeCategoryConfig.findUnique({ where: { id: "main" } }),
+    db.siteSettings.findUnique({ where: { id: "main" } }),
   ]);
 
-  // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 5): fetch HomeCategoryConfig
-  // so MachineCategoriesSection can decide which generation (L1 or L2) to
-  // render. Falls back to { generation: 1, parentId: null } when no config
-  // row exists yet (admin hasn't visited /admin/home/categories).
-  const homeCategoryConfigRow = await db.homeCategoryConfig.findUnique({
-    where: { id: "main" },
-  });
+  // Falls back to generation 1 when no admin configuration exists.
   const homeCategoryConfig = {
     generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
     parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
   };
-
-  // FIX-ANIMATIONS-BRANDS — fetch SiteSettings early so the verified
-  // section query can respect the admin's verifiedOnly toggle.
-  const siteSettings = await db.siteSettings.findUnique({ where: { id: "main" } });
 
   // Fetch listing data
   // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
@@ -99,7 +91,11 @@ export default async function HomePage() {
   // verified filter off.
   const verifiedOnlyFlag =
     siteSettings?.verifiedSectionVerifiedOnly ?? true;
-  const [featuredRows, verifiedRows, latestRows] = await Promise.all([
+  const [
+    featuredRows, verifiedRows, latestRows,
+    activeListings, brandCount, categoryCount, featuredCount,
+    requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
+  ] = await Promise.all([
     db.listing.findMany({
       where: { status: "PUBLISHED", featured: true },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
@@ -120,12 +116,6 @@ export default async function HomePage() {
       take: 10,
       include: listingInclude as any,
     }),
-  ]);
-
-  // Fetch counts + extra data
-  // NOTE: siteSettings is fetched above (before the listing query) so the
-  // verified-section query can read its verifiedOnly flag.
-  const [activeListings, brandCount, categoryCount, featuredCount, requestRows, articleRows, hotSearchRows, homeSections, heroConfig] = await Promise.all([
     db.listing.count({ where: { status: "PUBLISHED" } }),
     db.brand.count({ where: { active: true } }),
     db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } }),
