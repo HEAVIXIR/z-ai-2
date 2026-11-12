@@ -31,6 +31,14 @@
       "B2_MEDIA_PREFIX": "heavix-media/",
       "B2_REGION": "us-east-005",
       "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
+    },
+    "observability": {
+      "enabled": true,
+      "logs": {
+        "enabled": true,
+        "persist": true,
+        "head_sampling_rate": 1
+      }
     }
   },
   "secrets": {
