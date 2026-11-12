@@ -385,15 +385,33 @@ const bundleMetaAudit = {
 
 const dryRunFiles = await walkAllFiles(dryRunOutDir).catch(() => []);
 const dryRunWorkerPath = dryRunFiles.find((file) => file.split(sep).pop() === "worker.js") ?? null;
-const dryRunWorkerText = dryRunWorkerPath
-  ? await readFile(dryRunWorkerPath, "utf8").catch(() => "")
-  : "";
+const dryRunJsFiles = dryRunFiles.filter((file) => /\.(?:m?js|cjs)$/.test(file));
+const wasmLoaderFiles = [];
+const wasmLoaderTotals = {
+  loadWasmChunkOccurrences: 0,
+  compileStreamingOccurrences: 0,
+  readAllOccurrences: 0,
+  staticWasmPathOccurrences: 0,
+  queryCompilerReferences: 0,
+};
+for (const file of dryRunJsFiles) {
+  const content = await readFile(file, "utf8").catch(() => "");
+  const counts = {
+    file: relative(root, file),
+    loadWasmChunkOccurrences: [...content.matchAll(/\bloadWasmChunk\b/g)].length,
+    compileStreamingOccurrences: [...content.matchAll(/(?:WebAssembly\.)?compileStreaming\b/g)].length,
+    readAllOccurrences: [...content.matchAll(/\breadAll\b/g)].length,
+    staticWasmPathOccurrences: [...content.matchAll(/static\/wasm/g)].length,
+    queryCompilerReferences: [...content.matchAll(/query_compiler_bg/g)].length,
+  };
+  for (const key of Object.keys(wasmLoaderTotals)) wasmLoaderTotals[key] += counts[key];
+  if (Object.values(counts).slice(1).some((count) => count > 0)) wasmLoaderFiles.push(counts);
+}
 const wasmLoaderSummary = {
   workerFile: dryRunWorkerPath ? relative(root, dryRunWorkerPath) : null,
-  loadWasmChunkOccurrences: (dryRunWorkerText.match(/\bloadWasmChunk\b/g) ?? []).length,
-  compileStreamingOccurrences: (dryRunWorkerText.match(/(?:WebAssembly\.)?compileStreaming\b/g) ?? []).length,
-  readAllStaticWasmOccurrences: (dryRunWorkerText.match(/readAll[^;\n]{0,180}static\/wasm/g) ?? []).length,
-  queryCompilerWasmModuleReferences: (dryRunWorkerText.match(/query_compiler_bg\.wasm\?module/g) ?? []).length,
+  scannedJavaScriptFiles: dryRunJsFiles.length,
+  ...wasmLoaderTotals,
+  files: wasmLoaderFiles.slice(0, 25),
 };
 console.log("HEAVIX_WASM_LOADER_AUDIT " + JSON.stringify(wasmLoaderSummary));
 
