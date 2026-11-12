@@ -288,7 +288,7 @@ for (const rootPath of wasmSearchRoots) {
 const wasmReferences = [];
 for (const file of files) {
   const content = await readFile(file, "utf8").catch(() => "");
-  const matches = [...content.matchAll(/(?:static\\/wasm\\/|query_compiler_bg\\.wasm|loadWasmChunk)[^"'\\s]*/g)]
+  const matches = [...content.matchAll(/(?:static\/wasm\/|query_compiler_bg\.wasm|loadWasmChunk)[^"'\s]*/g)]
     .map((match) => match[0]);
   if (matches.length) {
     wasmReferences.push({
