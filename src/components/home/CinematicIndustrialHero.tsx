@@ -43,21 +43,21 @@ export default function CinematicIndustrialHero({
   const overlay = Math.max(0.35, Math.min(0.9, Number(config.overlay ?? 0.62)));
   return (
     <section dir="ltr" className="relative isolate min-h-[570px] overflow-hidden bg-[#080a0d] text-white md:min-h-[620px]">
-      <div className="absolute inset-0 -z-20 bg-cover bg-center" style={{ backgroundImage: `url("${background}")`, backgroundPosition: config.backgroundPosition || "center 48%" }} />
-      <div className="absolute inset-0 -z-10" style={{ background: `linear-gradient(90deg,rgba(5,7,10,.12),rgba(5,7,10,${overlay}) 76%),linear-gradient(0deg,rgba(4,5,7,.94),rgba(4,5,7,.08) 65%)` }} />
-      <div className="pointer-events-none absolute inset-y-0 left-0 -z-0 hidden w-[43%] bg-gradient-to-r from-transparent via-black/10 to-black/40 lg:block" />
-      <div className="relative mx-auto grid min-h-[570px] max-w-[1600px] grid-cols-1 gap-5 px-4 pb-24 pt-10 sm:px-7 md:min-h-[620px] md:px-10 lg:grid-cols-[minmax(0,1fr)_250px] lg:items-center lg:gap-7 lg:px-12 lg:pb-28">
+      <div className="absolute inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: `url("${background}")`, backgroundPosition: config.backgroundPosition || "center 48%" }} />
+      <div className="absolute inset-0 z-10" style={{ background: `linear-gradient(90deg,rgba(5,7,10,.12),rgba(5,7,10,${overlay}) 76%),linear-gradient(0deg,rgba(4,5,7,.94),rgba(4,5,7,.08) 65%)` }} />
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 hidden w-[43%] bg-gradient-to-r from-transparent via-black/10 to-black/40 lg:block" />
+      <div className="relative z-20 mx-auto grid min-h-[570px] max-w-[1600px] grid-cols-1 gap-5 px-4 pb-24 pt-10 sm:px-7 md:min-h-[620px] md:px-10 lg:grid-cols-[minmax(0,1fr)_250px] lg:items-center lg:gap-7 lg:px-12 lg:pb-28">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[1.05fr_1fr_1fr]">
           {cards.map((card, index) => (
             <a key={card.id} href={card.href || "/listings"} className={`group relative isolate flex min-h-[250px] overflow-hidden rounded-[22px] border border-[#d7c39a]/30 bg-[#101317]/65 shadow-[0_22px_65px_rgba(0,0,0,.48)] backdrop-blur-md transition duration-500 hover:-translate-y-1 hover:border-[#d7b875]/70 ${index === 0 ? "sm:col-span-2 lg:col-span-1 lg:min-h-[345px]" : "lg:min-h-[315px]"}`}>
-              <div className="absolute inset-0 -z-10 bg-cover bg-center transition duration-700 group-hover:scale-105" style={{ backgroundImage: `linear-gradient(0deg,rgba(0,0,0,.82),rgba(0,0,0,.08) 65%),url("${card.image || background}")` }} />
+              <div className="absolute inset-0 z-0 bg-cover bg-center transition duration-700 group-hover:scale-105" style={{ backgroundImage: `linear-gradient(0deg,rgba(0,0,0,.82),rgba(0,0,0,.08) 65%),url("${card.image || background}")` }} />
               {index === 0 && <div className="pointer-events-none absolute -left-8 top-0 -z-0 h-full w-1/3 bg-cover bg-left opacity-35 mix-blend-screen" style={{ backgroundImage: `url("${background}")` }} />}
-              <div className="relative mt-auto w-full p-5 sm:p-6">
+              <div className="relative z-10 mt-auto w-full p-5 sm:p-6">
                 <div className="mb-2 text-[10px] font-semibold tracking-[.22em] text-[#dfc58f] sm:text-xs">{card.eyebrow}</div>
                 <h2 dir="rtl" className="text-xl font-black tracking-wide text-white drop-shadow-lg sm:text-2xl">{card.title}</h2>
                 <div className="mt-4 h-px w-12 bg-gradient-to-r from-[#f2d59a] to-transparent transition-all group-hover:w-24" />
               </div>
-              <div className="pointer-events-none absolute inset-0 rounded-[22px] ring-1 ring-inset ring-white/10" />
+              <div className="pointer-events-none absolute inset-0 z-20 rounded-[22px] ring-1 ring-inset ring-white/10" />
             </a>
           ))}
         </div>
@@ -78,7 +78,7 @@ export default function CinematicIndustrialHero({
           </aside>
         )}
       </div>
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-black/90 to-transparent" />
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-28 bg-gradient-to-t from-black/90 to-transparent" />
     </section>
   );
 }
