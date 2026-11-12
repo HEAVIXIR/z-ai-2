@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build --webpack",
-    "build:cloudflare": "HEAVIX_BUILD_TARGET=cloudflare opennextjs-cloudflare build --noMinify && bun scripts/patch-opennext-worker-wasm.mjs",
+    "build:cloudflare": "bun scripts/patch-prisma-worker-wasm-imports.mjs && HEAVIX_BUILD_TARGET=cloudflare opennextjs-cloudflare build --noMinify && bun scripts/patch-opennext-worker-wasm.mjs",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

@@ -396,6 +396,8 @@ const wasmLoaderTotals = {
   queryCompilerReferences: 0,
   patchedPrismaWasmLoaderOccurrences: 0,
   filesystemWasmLoaderOccurrences: 0,
+  directPrismaWasmImportOccurrences: 0,
+  queryCompilerWasmModuleReferences: 0,
 };
 for (const file of loaderScanFiles) {
   const content = await readFile(file, "utf8").catch(() => "");
@@ -408,9 +410,11 @@ for (const file of loaderScanFiles) {
     queryCompilerReferences: [...content.matchAll(/query_compiler_bg/g)].length,
     patchedPrismaWasmLoaderOccurrences: [...content.matchAll(/__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__/g)].length,
     filesystemWasmLoaderOccurrences: [...content.matchAll(/readFile[^;]{0,300}static\/wasm/g)].length,
+    directPrismaWasmImportOccurrences: [...content.matchAll(/\.\.\/src\/lib\/generated\/(?:worker-client|store-worker-client)\/internal\/query_compiler_bg\.wasm/g)].length,
+    queryCompilerWasmModuleReferences: [...content.matchAll(/query_compiler_bg\.wasm\?module/g)].length,
   };
   const samples = [];
-  for (const marker of ["static/wasm", "query_compiler_bg", "readAll", "loadWasmChunk", "compileStreaming"]) {
+  for (const marker of ["static/wasm", "query_compiler_bg", "getQueryCompilerWasmModule", "?module", "__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__", "readAll", "loadWasmChunk", "compileStreaming"]) {
     const index = content.indexOf(marker);
     if (index >= 0) {
       samples.push({
@@ -436,8 +440,9 @@ const wasmLoaderSummary = {
 console.log("HEAVIX_WASM_LOADER_AUDIT " + JSON.stringify(wasmLoaderSummary));
 
 const reviewRequired = forbiddenCount > 0 ||
-  wasmLoaderSummary.patchedPrismaWasmLoaderOccurrences < 2 ||
-  wasmLoaderSummary.filesystemWasmLoaderOccurrences > 0 ||
+  wasmLoaderSummary.patchedPrismaWasmLoaderOccurrences < 3 ||
+  wasmLoaderSummary.directPrismaWasmImportOccurrences < 2 ||
+  wasmLoaderSummary.queryCompilerWasmModuleReferences > 0 ||
   dryRunStatus !== "SUCCESS" ||
   sizeGate !== "WITHIN_LIMIT" ||
   forbiddenPackageInputs.length > 0 ||
