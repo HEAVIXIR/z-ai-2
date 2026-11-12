@@ -383,6 +383,20 @@ const bundleMetaAudit = {
     .slice(0, 15),
 };
 
+const dryRunFiles = await walkAllFiles(dryRunOutDir).catch(() => []);
+const dryRunWorkerPath = dryRunFiles.find((file) => file.split(sep).pop() === "worker.js") ?? null;
+const dryRunWorkerText = dryRunWorkerPath
+  ? await readFile(dryRunWorkerPath, "utf8").catch(() => "")
+  : "";
+const wasmLoaderSummary = {
+  workerFile: dryRunWorkerPath ? relative(root, dryRunWorkerPath) : null,
+  loadWasmChunkOccurrences: (dryRunWorkerText.match(/\\bloadWasmChunk\\b/g) ?? []).length,
+  compileStreamingOccurrences: (dryRunWorkerText.match(/(?:WebAssembly\\.)?compileStreaming\\b/g) ?? []).length,
+  readAllStaticWasmOccurrences: (dryRunWorkerText.match(/readAll[^;\\n]{0,180}static\\/wasm/g) ?? []).length,
+  queryCompilerWasmModuleReferences: (dryRunWorkerText.match(/query_compiler_bg\\.wasm\\?module/g) ?? []).length,
+};
+console.log("HEAVIX_WASM_LOADER_AUDIT " + JSON.stringify(wasmLoaderSummary));
+
 const reviewRequired = forbiddenCount > 0 ||
   dryRunStatus !== "SUCCESS" ||
   sizeGate !== "WITHIN_LIMIT" ||
@@ -425,6 +439,7 @@ const report = {
   },
   assets: assetSummary,
   wasmAssets: wasmSummary,
+  wasmLoader: wasmLoaderSummary,
   startupCheck,
   expectedPpgMarkers: expectedSummary,
   diagnostics,
