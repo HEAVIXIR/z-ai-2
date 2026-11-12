@@ -48,6 +48,7 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const allowed = [
+      "activeTemplate", "cinematicConfig",
       "badge", "title1", "highlight", "subtitle", "buttonText", "buttonLink",
       "secondBtnText", "secondBtnLink", "slide1", "slide2", "slide3",
       "cardServicesImg", "cardFeaturedImg", "cardExclusiveImg", "animationType",
