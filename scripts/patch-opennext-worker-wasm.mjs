@@ -57,9 +57,26 @@ const imports = Object.entries(wasmFiles)
   })
   .join("\n");
 
+// Wrangler only includes files in its module graph. Prisma's runtime uses
+// readAll("/bundle/static/wasm/<hash>.wasm"), so merely copying the emitted
+// assets is insufficient: explicitly import each emitted module from the
+// Worker entrypoint to force it into the final bundle.
+const prismaWasmNames = webpackWasmFiles.map((_, index) => `PRISMA_QUERY_COMPILER_WASM_${index}`);
+const prismaWasmImports = webpackWasmFiles
+  .map((file, index) =>
+    `import ${prismaWasmNames[index]} from ${JSON.stringify("./static/wasm/" + file)};`,
+  )
+  .join("\n");
+const prismaWasmRegistry = [
+  "globalThis.__HEAVIX_PRISMA_QUERY_COMPILER_WASM_MODULES__ = Object.freeze([",
+  ...prismaWasmNames.map((name) => "  " + name + ","),
+  "]);",
+].join("\n");
+
 const bootstrap = [
   marker,
   imports,
+  prismaWasmImports,
   "globalThis.__HEAVIX_WASM_MODULES__ = Object.freeze({",
   "  JPEG_DEC_WASM,",
   "  PNG_WASM,",
@@ -67,6 +84,7 @@ const bootstrap = [
   "  WEBP_ENC_WASM,",
   "  RESIZE_WASM,",
   "});",
+  prismaWasmRegistry,
 ].join("\n");
 
 await writeFile(workerPath, bootstrap + "\n" + source, "utf8");

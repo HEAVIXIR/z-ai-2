@@ -314,6 +314,9 @@ const runtimeWasmReferences = [...new Set(wasmReferences.flatMap(({ matches }) =
 ))];
 const missingRuntimeWasmReferences = runtimeWasmReferences
   .filter((file) => !workerBundleWasmFiles.includes(file));
+const workerEntryText = await readFile(workerEntry, "utf8");
+const missingPrismaWasmImports = workerBundleWasmFiles
+  .filter((file) => !workerEntryText.includes(`./static/wasm/${file}`));
 const wasmSummary = {
   searchRoots: wasmSearchRoots,
   fileCount: wasmCandidates.size,
@@ -328,6 +331,7 @@ const wasmSummary = {
   missingWebpackWasmInWorkerBundle,
   runtimeWasmReferences,
   missingRuntimeWasmReferences,
+  missingPrismaWasmImports,
   knownMissingRuntimeAssetHash: "8ebbfac88bf403d0",
 };
 
@@ -386,6 +390,7 @@ const reviewRequired = forbiddenCount > 0 ||
   unsupportedExternalNodeTcpImports.length > 0 ||
   wasmSummary.missingWebpackWasmInWorkerBundle.length > 0 ||
   wasmSummary.missingRuntimeWasmReferences.length > 0 ||
+  wasmSummary.missingPrismaWasmImports.length > 0 ||
   !assetSummary.withinFreePlanLimits;
 const verdict = reviewRequired
   ? "REVIEW_REQUIRED"
