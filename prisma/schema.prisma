@@ -1457,6 +1457,9 @@ model HomePageSection {
 }
 
 model HeroConfig {
+  // HEAVIX selectable hero templates; classic remains the backward-compatible default.
+  activeTemplate   String?  @default("classic")
+  cinematicConfig  String?
   id              String   @id @default("main")
   badge           String?
   title1          String?
