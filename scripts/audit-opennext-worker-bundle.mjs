@@ -310,7 +310,7 @@ const workerBundleWasmFiles = [...wasmCandidates.values()]
 const missingWebpackWasmInWorkerBundle = webpackEmittedWasmFiles
   .filter((file) => !workerBundleWasmFiles.includes(file));
 const runtimeWasmReferences = [...new Set(wasmReferences.flatMap(({ matches }) =>
-  matches.flatMap((match) => [...match.matchAll(/static\\/wasm\\/([^"'?\\s]+)/g)].map((item) => item[1])),
+  matches.flatMap((match) => [...match.matchAll(/static\/wasm\/([^"'?\s]+)/g)].map((item) => item[1])),
 ))];
 const missingRuntimeWasmReferences = runtimeWasmReferences
   .filter((file) => !workerBundleWasmFiles.includes(file));
