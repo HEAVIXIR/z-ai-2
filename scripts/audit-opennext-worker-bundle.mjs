@@ -262,6 +262,53 @@ const assetSummary = {
     assetStats.every((file) => file.bytes <= assetIndividualLimitBytes),
 };
 
+const wasmSearchRoots = [
+  ".next/server",
+  ".open-next/server-functions",
+  ".open-next",
+  "src/lib/generated/worker-client",
+  "src/lib/generated/store-worker-client",
+  "node_modules/@prisma",
+  "node_modules/.prisma",
+];
+const wasmCandidates = new Map();
+for (const rootPath of wasmSearchRoots) {
+  const directory = resolve(root, rootPath);
+  const candidates = await walkAllFiles(directory).catch(() => []);
+  for (const file of candidates) {
+    if (extname(file).toLowerCase() !== ".wasm") continue;
+    const bytes = await readFile(file);
+    wasmCandidates.set(file, {
+      file: relative(root, file),
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }
+}
+const wasmReferences = [];
+for (const file of files) {
+  const content = await readFile(file, "utf8").catch(() => "");
+  const matches = [...content.matchAll(/(?:static\\/wasm\\/|query_compiler_bg\\.wasm|loadWasmChunk)[^"'\\s]*/g)]
+    .map((match) => match[0]);
+  if (matches.length) {
+    wasmReferences.push({
+      file: relative(root, file),
+      matches: [...new Set(matches)].slice(0, 20),
+    });
+  }
+}
+const wasmSummary = {
+  searchRoots: wasmSearchRoots,
+  fileCount: wasmCandidates.size,
+  files: [...wasmCandidates.values()].sort((a, b) => a.file.localeCompare(b.file)),
+  references: wasmReferences,
+  missingExpectedQueryCompilerFiles: [
+    "src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
+    "src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+  ].filter((path) => !wasmCandidates.has(resolve(root, path))),
+  knownMissingRuntimeAssetHash: "8ebbfac88bf403d0",
+};
+
 const metafilePath = resolve(auditRoot, "wrangler-bundle-meta.json");
 let metafile = null;
 try {
