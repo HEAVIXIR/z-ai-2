@@ -35,8 +35,8 @@ jobs:
       - name: Enforce exact Preview branch and explicit confirmation
         shell: bash
         env:
-          DISPATCH_TARGET: ${{ inputs.target }}
-          DISPATCH_CONFIRM: ${{ inputs.confirm }}
+          DISPATCH_TARGET: ${{ github.event_name == 'push' && 'PREVIEW_ONLY' || inputs.target }}
+          DISPATCH_CONFIRM: ${{ github.event_name == 'push' && 'B2_MEDIA_PREVIEW_ONLY' || inputs.confirm }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/recovery/heavix-full-product-integration-2026-11-11"
