@@ -14,6 +14,7 @@ The active main migration history currently includes:
 
 - `20261025081255_init_postgresql_baseline/migration.sql`
 - `20261025193000_add_auditlog_idempotency_key/migration.sql`
+- `20261112160000_add_selectable_hero_templates/migration.sql`
 
 Before changing migrations, inspect both schema files and the existing migration history. Do not recreate, rewrite, reorder, or squash migrations that have already been shared or applied.
 
