@@ -80,18 +80,12 @@ export default function Hero({
   // Only fetch the active background initially. Later slides are fetched on demand
   // when selected, instead of competing with the first paint on slow connections.
   const [loadedSlides, setLoadedSlides] = useState<number[]>([0]);
-  const selectSlide = (next: number) => {
-    setLoadedSlides((loaded) => loaded.includes(next) ? loaded : [...loaded, next]);
-    setSlide(next);
-  };
+  const selectSlide = (next: number) => setSlide(next);
   useEffect(() => {
-    const t = setInterval(() => {
-      setSlide((current) => {
-        const next = (current + 1) % slides.length;
-        setLoadedSlides((loaded) => loaded.includes(next) ? loaded : [...loaded, next]);
-        return next;
-      });
-    }, intervalMs);
+    setLoadedSlides((loaded) => loaded.includes(slide) ? loaded : [...loaded, slide]);
+  }, [slide]);
+  useEffect(() => {
+    const t = setInterval(() => setSlide((current) => (current + 1) % slides.length), intervalMs);
     return () => clearInterval(t);
   }, [slides.length, intervalMs]);
   const titleSize = cfg.titleFontSizeCustom ? "" : (fontSizeClass[cfg.titleFontSize || "normal"] || fontSizeClass.normal);
