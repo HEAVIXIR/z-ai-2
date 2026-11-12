@@ -390,10 +390,10 @@ const dryRunWorkerText = dryRunWorkerPath
   : "";
 const wasmLoaderSummary = {
   workerFile: dryRunWorkerPath ? relative(root, dryRunWorkerPath) : null,
-  loadWasmChunkOccurrences: (dryRunWorkerText.match(/\\bloadWasmChunk\\b/g) ?? []).length,
-  compileStreamingOccurrences: (dryRunWorkerText.match(/(?:WebAssembly\\.)?compileStreaming\\b/g) ?? []).length,
-  readAllStaticWasmOccurrences: (dryRunWorkerText.match(/readAll[^;\\n]{0,180}static\\/wasm/g) ?? []).length,
-  queryCompilerWasmModuleReferences: (dryRunWorkerText.match(/query_compiler_bg\\.wasm\\?module/g) ?? []).length,
+  loadWasmChunkOccurrences: (dryRunWorkerText.match(/\bloadWasmChunk\b/g) ?? []).length,
+  compileStreamingOccurrences: (dryRunWorkerText.match(/(?:WebAssembly\.)?compileStreaming\b/g) ?? []).length,
+  readAllStaticWasmOccurrences: (dryRunWorkerText.match(/readAll[^;\n]{0,180}static\/wasm/g) ?? []).length,
+  queryCompilerWasmModuleReferences: (dryRunWorkerText.match(/query_compiler_bg\.wasm\?module/g) ?? []).length,
 };
 console.log("HEAVIX_WASM_LOADER_AUDIT " + JSON.stringify(wasmLoaderSummary));
 
