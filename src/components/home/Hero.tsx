@@ -199,6 +199,7 @@ function TiltedImageCard({
     return (
       <Link
         href={`/listings/${listing.slug}`}
+        prefetch={false}
         className={`group relative block w-32 overflow-hidden rounded-2xl border border-white/10 bg-[#111] transition-all duration-500 hover:border-[#F58220]/50 sm:w-36 lg:w-40 ${tilt}`}
         style={cardStyle}
         title={listing.title}
