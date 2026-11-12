@@ -385,7 +385,8 @@ const bundleMetaAudit = {
 
 const dryRunFiles = await walkAllFiles(dryRunOutDir).catch(() => []);
 const dryRunWorkerPath = dryRunFiles.find((file) => file.split(sep).pop() === "worker.js") ?? null;
-const dryRunJsFiles = dryRunFiles.filter((file) => /\.(?:m?js|cjs)$/.test(file));
+const loaderScanFiles = [...new Set([...files, ...dryRunFiles])]
+  .filter((file) => codeExtensions.has(extname(file)));
 const wasmLoaderFiles = [];
 const wasmLoaderTotals = {
   loadWasmChunkOccurrences: 0,
@@ -394,7 +395,7 @@ const wasmLoaderTotals = {
   staticWasmPathOccurrences: 0,
   queryCompilerReferences: 0,
 };
-for (const file of dryRunJsFiles) {
+for (const file of loaderScanFiles) {
   const content = await readFile(file, "utf8").catch(() => "");
   const counts = {
     file: relative(root, file),
@@ -409,7 +410,7 @@ for (const file of dryRunJsFiles) {
 }
 const wasmLoaderSummary = {
   workerFile: dryRunWorkerPath ? relative(root, dryRunWorkerPath) : null,
-  scannedJavaScriptFiles: dryRunJsFiles.length,
+  scannedJavaScriptFiles: loaderScanFiles.length,
   ...wasmLoaderTotals,
   files: wasmLoaderFiles.slice(0, 25),
 };
