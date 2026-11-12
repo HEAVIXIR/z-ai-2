@@ -26,7 +26,11 @@
     "vars": {
       "HEAVIX_ENV": "preview",
       "NODE_ENV": "production",
-      "HEAVIX_BACKUP_EXECUTION_ENABLED": "false"
+      "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
+      "B2_BUCKET_NAME": "heavix-dev-assets",
+      "B2_MEDIA_PREFIX": "heavix-media/",
+      "B2_REGION": "us-east-005",
+      "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
     }
   },
   "secrets": {
