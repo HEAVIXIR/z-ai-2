@@ -91,6 +91,7 @@ export default async function ListingsPage({
         icon: true,
         level: true,
         layer: true,
+        sortOrder: true,
       },
     }),
     db.country.findFirst({
