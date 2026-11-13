@@ -177,3 +177,33 @@ describe("Phase 4 — /api/saved-searches POST contract", () => {
     expect(c).toMatch(/logAudit/);
   });
 });
+
+
+// ════════════════════════════════════════════════════════════
+// 5. Public listings page — application industry filter semantics
+// ════════════════════════════════════════════════════════════
+describe("Public listings page — application industry filter", () => {
+  const PAGE = "src/app/listings/page.tsx";
+
+  it("resolves industry filters through CategoryApplicationIndustry mappings", () => {
+    const c = read(PAGE);
+    expect(c).toMatch(/db\\.categoryApplicationIndustry\\.findMany/);
+    expect(c).toMatch(/applicationIndustry:\\s*\\{\\s*is:/);
+    expect(c).toMatch(/category:\\s*\\{\\s*is:\\s*\\{\\s*active:\\s*true,\\s*layer:\\s*["']CATALOG["']/);
+    expect(c).toMatch(/categoryId:\\s*\\{\\s*in:\\s*industryCategoryRows\\.map/);
+  });
+
+  it("combines industry category IDs with existing AND filters", () => {
+    const c = read(PAGE);
+    expect(c).toMatch(/where\\.AND\\s*=\\s*\\(where\\.AND/);
+    expect(c).toMatch(/where\\.AND as any\\[\\]\\)\\.push/);
+    expect(c).not.toMatch(/where\\.industry\\s*=/);
+  });
+
+  it("does not claim all results are inspected or report a page slice as the total", () => {
+    const c = read(PAGE);
+    expect(c).toContain("در این صفحه {toFa(listings.length)} آگهی نمایش داده می‌شود");
+    expect(c).not.toContain("همه دستگاه‌ها دارای کارشناسی هویکس");
+    expect(c).not.toContain("آگهی یافت شد");
+  });
+});
