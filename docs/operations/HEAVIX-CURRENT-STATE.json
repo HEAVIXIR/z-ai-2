@@ -1,0 +1,621 @@
+{
+  "project": "HEAVIX",
+  "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
+  "updated_at_utc": "2026-11-11T22:38:00.000Z",
+  "repository": "HEAVIXIR/z-ai-2",
+  "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
+  "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "6e6983efe66154321998e9ce5d623d1885222c24",
+  "legacy_reference": {
+    "repository": "dellk00k/z",
+    "branch": "legacy/extracted-archives",
+    "commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "usage": "Read-only reference; compare file-by-file; never bulk-copy."
+  },
+  "preview": {
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "must_preserve_existing_url": true,
+    "deployment_status": "Recovery candidate NOT DEPLOYED. Existing Worker heavix-preview remains active deployment 9c079e5b-e3df-4295-80e0-e930d2d25552, version #17 063ce438-ca3a-4482-b416-9260b780bccf at 100% traffic. previews_enabled=false; Preview list empty. Current read-only smoke: root timeout, /api/health 503, /api/services 500, /services 404, /api/opennext-runtime-proof 404.",
+    "database_identity_app": "NOT VERIFIED",
+    "database_identity_store": "NOT VERIFIED",
+    "production_isolation": "NOT VERIFIED"
+  },
+  "production_and_dns": {
+    "production_changes_allowed": false,
+    "dns_changes_allowed": false,
+    "stable_worker_replacement_allowed": false
+  },
+  "cloudflare_quota": {
+    "last_user_report": "Owner-reported: more than 2,000 of 3,000 monthly Cloudflare Build units had been consumed by 2026-11-11; exact dashboard count not independently verified. No speculative or automatic Cloudflare retries.",
+    "policy": "Avoid unnecessary builds/deployments; recovery branch is explicitly excluded from the non-production Cloudflare Build trigger. Prefer GitHub/local checks first."
+  },
+  "verified_findings": [
+    "Current main homepage uses PageRenderer and a five-widget default fallback.",
+    "Legacy homepage route rendered 17 section keys.",
+    "Published HOME AdminPage layout can override the code fallback; actual Preview DB selection remains unverified.",
+    "All 26 legacy-matched homepage component files exist in current source; 18 identical and 8 differ.",
+    "The eight differing components are ActiveRequestsSection.tsx, BrandsSection.tsx, CtaSection.tsx, Hero.tsx, RecommendationsSection.tsx, StatsSection.tsx, VerifiedMachinesCarousel.tsx, VerifiedMachinesGallery.tsx.",
+    "Current tree includes routes/modules for Sell in 7 Days, Companies, Store, Services, Knowledge, Taxonomy and Admin; completeness is not yet proven.",
+    "Public GET /api/homepage-sections was flagged for read-side-effect audit; exact current behavior must be inspected.",
+    "Legacy extracted snapshot reports 10 archives and 845 files, with db.zip, upload.zip and bun.zip quarantined.",
+    "Exact PR #307 head d2f68100ded4c0c1fbdcf81d6e8cdcb93de0e1f7 passed GitHub Actions run #42986374509: verify, phase-tests, tls-proof, audit-transaction and docker-build-proof all passed; Cloudflare compatibility report-only passed; legacy archive inventory skipped.",
+    "Cloudflare Workers Builds is connected to main, branch Previews are disabled, Preview list is empty, and both configured deploy commands are explicit no-op safety guards.",
+    "Cloudflare build command skips successfully when no open-next.config.ts/js/mjs exists; the latest reported successful build was not a Next.js build or Worker deployment.",
+    "Active Worker runtime has only DATABASE_URL and STORE_DATABASE_URL secret bindings; no B2 runtime bindings are present. Secret values were not read.",
+    "Owner reports six B2 values saved under Previews Base; these are not active on the current Worker while Previews are disabled and no branch Preview exists.",
+    "Live smoke test of existing Worker: root HTTP success but incomplete/empty sections; /api/health 503; /api/services 500; /services 404. Active version is still the pre-recovery deployment.",
+    "Current media-service remains local filesystem + JSON sidecars; seller uploader still targets admin-only endpoint; listing POST silently slices images to 10.",
+    "Recovery branch lacks the OpenNext/Worker Prisma runtime stack; it still uses Prisma 6.11.1 and Node Prisma clients. The required Worker runtime files exist only on the divergent infra branch.",
+    "Infra branch is 213 commits ahead and 11 behind main; recovery branch is 173 commits ahead of main. Whole-branch merge/cherry-pick is unsafe.",
+    "Historical App/Store Workerd Preview database proof #42872987144 passed on infra commit 07b6de155284dd7813335201552acf4efbb6ad90, but has not been rerun on recovery and does not prove current Worker secrets.",
+    "Prisma 6.19.3 + PPG adapter 7.10.1 exact published compatibility matrix remains an open verification item.",
+    "infra/prisma6-cloudflare-runtime current head was 65a2bb444eab9d80983feea70557a2e2213e67ef before a documentation-only recovery note was added; PR #191 remains Draft/unmerged. Exact-head CI run #42883319569 succeeded, but its DB-backed Preview proof was skipped; the latest independent approval is on older commit 3bf2333 and is stale.",
+    "Cloudflare Build 2326072d-1e24-45ec-9899-1fa9101ece37 on infra commit 4171f6e631086fe90f3b3b639dda4308613882c2 terminated after the Next.js 16.4.5 Turbopack optimized production build stalled and logged `Build took too long and was timed out`; no OpenNext artifact or Worker deployment resulted.",
+    "Older Cloudflare Build 1eacbd94-d31e-4969-b01a-88c50d707bfa succeeded on infra commit 3bf2333fde4f81473ce0d14c99cbd653a386c2e2 using Next.js 16.4.5 Webpack; this is older-head evidence and does not authorize changing the current WASM-sensitive bundler.",
+    "Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f is still running on recovery commit d5f034178918d0b44f83aca7986d82cbada10915; logs remain at the optimized Next.js build phase, and the deploy command is a no-op guard.",
+    "Recovery PR #307 current head is 4beff75222e70763d54fb778f7afa7e344b503e3. CI run #42998197252 passed on that exact head; OpenNext real-route proof run #42998197018 remains in progress. The previous proof attempt was interrupted during OpenNext bundling, and its retry was canceled when the PR head advanced.",
+    "Cloudflare GET for the active Worker secret bindings returned only name and type for DATABASE_URL and STORE_DATABASE_URL; no secret values were returned. The active Worker has no deployed /api/opennext-runtime-proof route or proof-mode/token/App-Store OID configuration.",
+    "Historical Workerd DB proof #42872987144 used protected GitHub Actions connection secrets; it does not prove the active Cloudflare Worker secret values or their target resources.",
+    "Read-only stable URL smoke against the existing version #17 returned root timeout, /api/health 503, /api/services 500, /services 404 and /api/opennext-runtime-proof 404.",
+    "The Cloudflare recovery document was updated on infra PR #191 in documentation-only commit 8cc293e849be4271f778a75b7f7158e2d356c8ab to record the exact Build timeout and distinguish it from the older Webpack success."
+  ],
+  "completed_in_previous_sessions": [
+    "Created isolated recovery branch from main.",
+    "Created full product integration plan.",
+    "Created legacy-to-current inventory audit with homepage regression evidence."
+  ],
+  "completed_in_this_checkpoint": [
+    "Created mandatory cross-agent continuation protocol.",
+    "Created machine-readable current-state checkpoint.",
+    "Created append-only worklog entry describing this handoff.",
+    "Verified all three continuity files were committed to the recovery branch.",
+    "Added root AGENTS.md so coding agents discover the continuation protocol before changing files.",
+    "Re-verified the active branch and read the continuity protocol/state/worklog before continuing.",
+    "Changed public GET /api/homepage-sections to read-only; removed request-time auto-seeding and added safe JSON parsing plus generic 503 handling.",
+    "Added handler-level tests for populated/empty/error cases and asserted public GET never invokes createMany.",
+    "Inspected current PageRenderer registry, Prisma HomePageSection model, admin section API, legacy homepage route and CI workflow; documented why legacy page cannot be copied wholesale.",
+    "Restored the original 17-section homepage orchestration in src/app/page.tsx using existing current-tree components.",
+    "Extracted canonical 17-section defaults/merge into src/lib/homepage/sections.ts; DB-configured rows and explicit disabled states are preserved, missing rows are virtual defaults only.",
+    "Removed all request-time HomePageSection writes from the homepage route; source scan shows zero Prisma mutation calls in src/app/page.tsx.",
+    "Removed a hard-coded 31-province statistic; homepage stats use configured real SiteStat data and live DB counts only.",
+    "Added unit tests for canonical section registry and merge semantics.",
+    "Recorded renderer decision: root homepage uses full section composition; PageRenderer/PageBuilder remain for custom pages and preview flows.",
+    "Fixed unauthenticated userId-based Store order enumeration with fail-closed session and ownership checks.",
+    "Removed phone-only guest order enumeration; guest retrieval now requires phone plus exact order number and returns at most one matching order.",
+    "Updated guest Store order dialog to request phone and order number.",
+    "Added security tests for unauthenticated/cross-user/own-user/admin and guest phone-only/exact-order cases.",
+    "Added source-level route/security readiness matrix; identified missing public /services landing route (API/home/admin service capability exists) and remaining metadata gaps.",
+    "Added public /services directory backed by active Service records and links into the existing SERVICE_REQUEST listings workflow.",
+    "Removed placeholder service cards from homepage when there are no active Service records.",
+    "Changed public GET /api/services to return a generic 503 instead of raw database errors.",
+    "GitHub Actions run #42910341544 confirmed Typecheck and Lint pass on commit 4f960dc7ff90848c99358cc672d163159cc55492.",
+    "Run #42910341544 also confirmed phase-tests, tls-proof, audit-transaction and Cloudflare compatibility report-only jobs pass.",
+    "Fixed Vitest mock hoisting errors in both newly added homepage and Store security tests using vi.hoisted().",
+    "Added public /services directory and metadata/noindex handling for model, auctions, and Sell-in-7-Days routes.",
+    "Aligned /admin/homepage-layout with the restored 17-section homepage: GET now exposes canonical defaults and bulk PUT upserts by stable key.",
+    "Updated admin labels for all canonical hyphenated section keys, including recommendations and trusted-brands.",
+    "Added contract test for admin visibility and stable-key persistence.",
+    "Public homepage sections API now merges canonical defaults in memory and preserves explicit inactive admin rows while remaining read-only.",
+    "Admin homepage editor now lists and persists all 17 canonical sections through stable-key upserts.",
+    "Updated obsolete root homepage data-source test to reflect the 17-section root while preserving PageBuilder custom-widget registry checks.",
+    "Guest Store order reference now has a CSPRNG suffix; guest lookup requires phone plus exact order number and Store order API responses are private/no-store.",
+    "Public /services directory now shares the active category navigation and configured SiteSettings footer with the rest of HEAVIX.",
+    "Protected detailed Store health endpoint with getCurrentUser + store.read.",
+    "Protected detailed Marketplace health endpoint with getCurrentUser + analytics.read.",
+    "Added handler-level tests and updated the global auth-boundary contract to require route-level authorization for admin health endpoints despite middleware health-probe bypass.",
+    "Audited Store Admin API permission patterns and confirmed RBAC in the sampled procurement, rentals, services, payments, orders, returns, shipments and AI scraper routes.",
+    "Corrected Store Control Plane inventory: Procurement and Services have shared Admin pages; Rentals uses Universal Resource Engine at /admin/resources/rentals. Store Admin includes 16 Store-prefixed pages and 52 API handlers.",
+    "Confirmed complete Docker proof job success on run #42910792713: Docker image build, image verification, Caddy syntax, Compose interpolation and real Caddy-to-app connectivity all passed.",
+    "Confirmed Typecheck, Lint and Security Tests passed on the same checkpoint; the only verify failure was the obsolete homepage data-source contract, now rewritten.",
+    "Read-only Cloudflare audit verified existing Worker script heavix-preview, active deployment/version IDs, 100% traffic, HEAVIX_ENV=preview and NODE_ENV=production; secret values were not retrieved.",
+    "Recorded current Cloudflare Preview Worker active deployment/version and Preview environment vars without reading secret values.",
+    "Corrected Store Control Plane audit to reflect shared Admin routes and Universal Resource Engine rather than falsely marking global pages missing.",
+    "Recorded exact branch head, draft PR URL and queued exact-head CI run for seamless handoff.",
+    "Homepage ServicesSection now links to /services and SERVICE_REQUEST, and its stale placeholder-fallback comment was corrected.",
+    "Exact-head PR #307 CI verified successful: run #42971293294 on 45d86f1c7df9d644e4d33431ba5013e0a30646b7; all required jobs passed.",
+    "Read-only Cloudflare Worker settings audit confirmed heavix-preview has secret_text bindings DATABASE_URL and STORE_DATABASE_URL and HEAVIX_ENV=preview; secret values not read or modified.",
+    "Verified exact PR #307 head b74d23b9014ac42437d62181b06ffd1fcfcd9be4 CI run #42979858320: all six main jobs passed; legacy archive inventory was skipped.",
+    "Audited seller image upload, admin upload authorization, local filesystem media service, package dependencies and listing POST; confirmed seller upload gate, local disk persistence and 30-vs-10 image truncation.",
+    "Searched current repository for B2 media adapter; only explicit B2 configuration found is the paired encrypted database-backup workflow using bucket heavix-db-backups.",
+    "Recorded the unresolved difference between historical HEAVIXIR/z 13-archive/899-path audit and dellk00k/z extracted 10-archive/845-file snapshot; refresh/reconciliation required before parity or merge claims.",
+    "Owner clarified that prior legacy Z audits and partial transfer into dellk00k/z are an unfinished continuation of the same end-to-end migration effort; future agents must recover prior audit history and continue without treating the extracted repository as a fresh unrelated project.",
+    "Owner identified two existing Backblaze B2 buckets: heavix-db-backups is the private database-backup bucket (bucket ID suffix 0411, 12 current files, 2.1 MB); a second private assets bucket is reported with a name transcribed as heavix-dev-assets pending exact spelling verification (bucket ID prefix 356, Keep all versions, 2 current files, 43 bytes). Both use s3.us-east-005.backblazeb2.com and encryption is enabled.",
+    "Selected the second B2 assets bucket as the intended dedicated development media bucket, subject to exact bucket-name/full-ID and access-policy/CORS/credential-scope verification; database backup bucket must never be used for media.",
+    "Owner explicitly confirmed the exact Backblaze B2 development assets bucket name as heavix-dev-assets; no spelling ambiguity remains.",
+    "Owner confirmed that the execution agent does not have direct Backblaze console access and authorized a guided handoff: request precise non-secret identifiers/settings from the owner when needed, while instructing them to enter application keys only into local secure environment variables or the appropriate secret manager, never into chat.",
+    "Verified exact-head GitHub Actions run #42986374509 and all six blocking jobs.",
+    "Audited Cloudflare Workers Builds configuration, active Worker deployment/version, runtime binding names, secret names, branch Preview status and deploy/build no-op guards without reading secret values.",
+    "Ran read-only live smoke tests on the existing Preview URL and recorded current HTTP outcomes.",
+    "Updated append-only worklog with exact CI, Cloudflare, Preview and B2 configuration evidence.",
+    "Compared recovery and infra branch divergence and identified minimal Cloudflare runtime stack required for a safe port.",
+    "Reviewed historical PR #191/#200 and exact scope of prior Workerd database proof.",
+    "Read the active recovery branch continuation protocol, current-state checkpoint, worklog, integration plan, legacy inventory, Cloudflare quota runbook, project principles, architecture overview and homepage visual-parity specification.",
+    "Inspected infra/prisma6-cloudflare-runtime head 65a2bb444eab9d80983feea70557a2e2213e67ef, PR #191 reviews and exact-head CI run #42883319569; confirmed DB proof skipped and independent approval stale.",
+    "Inspected Cloudflare Build 2326072d-1e24-45ec-9899-1fa9101ece37 failure logs and older successful Build 1eacbd94-d31e-4969-b01a-88c50d707bfa; documented the distinction in docs/deployment/CLOUDFLARE-PREVIEW-RECOVERY.md on infra PR #191.",
+    "Monitored Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f on recovery commit d5f034178918d0b44f83aca7986d82cbada10915; it remained running with no log progress beyond the optimized build phase.",
+    "Verified recovery PR #307 head 4beff75222e70763d54fb778f7afa7e344b503e3; CI run #42998197252 passed and OpenNext run #42998197018 remained in progress.",
+    "Verified Cloudflare secret-binding metadata exposes no secret values and that actual Worker App/Store DB identity remains NOT VERIFIED.",
+    "Performed read-only smoke checks against the existing stable Preview URL; no recovery candidate was deployed.",
+    "No Cloudflare Build was triggered or retried; no Worker configuration or secrets changed; no database connection, migration, seed or write; no Production or DNS changes.",
+    "Polled the pre-existing Cloudflare Build 69a49f21-67dc-4df2-bbc5-911ca7d1be9f; it is stopped. Its final logs show Next.js 16.4.5 (Turbopack) timed out during optimized production build after dependency restore and NFT patch; no deployment occurred.",
+    "Verified GitHub OpenNext artifact proof run #43010880902 completed successfully: Webpack build, complete bundle verification, no-database Workerd smoke and artifact upload all passed. Artifact #13849664588 is 26,418,563 bytes with digest sha256:7418ab71b120329a0fc9becd438d34a014d77e0833233aa303efc32210a4ca18.",
+    "Ported the proven Cloudflare Webpack profile from the successful proof branch into the active recovery branch: Next config Webpack parallelism 4, asyncWASM, App/Store worker aliases; explicit Webpack OpenNext build command; diagnostics default to Webpack; fixed duplicate notification read property.",
+    "Added the reusable exact-head OpenNext/Workerd artifact proof workflow to the recovery branch.",
+    "Added recovery/heavix-full-product-integration-2026-11-11 to the non-production Cloudflare Build trigger branch exclusions and read back the trigger to verify it. Build and deploy commands were not changed.",
+    "No Cloudflare Build, Worker upload/deployment, database connection/write, B2 object operation, Production change or DNS change was performed.",
+    "Compared extracted legacy and recovery Git trees: all 145 legacy page routes and 278 legacy API handlers are present; no missing legacy static image assets after path normalization.",
+    "Recorded absent legacy source-file dispositions and rejected unsafe legacy direct-ZAI AI gateway and unreviewed legacy seed/migration scripts.",
+    "Verified exact-head CI #43109607418 and OpenNext Workerd proof #43109607496 are completed/success.",
+    "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog.",
+    "Updated the historical legacy inventory audit with an explicit recovery-branch correction to prevent stale main-branch findings being treated as current.",
+    "Ran read-only browser-rendered live Preview sweep across public routes and APIs; documented HTTP outcomes and empty-data states in the parity audit."
+  ],
+  "not_done_and_not_to_be_claimed": [
+    "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
+    "OTP/high-entropy one-time guest order access token is not implemented; order number is currently used as a bearer lookup factor.",
+    "Docker production build still fails in generated Store Prisma dynamic filesystem tracing; not fixed.",
+    "Standalone public /services landing page has not been implemented; confirm scope and ServiceRequest contract first.",
+    "SEO metadata gaps for model, auctions and Sell-in-7-Days registration/tracking routes remain.",
+    "No Preview deployment or Preview App/Store DB identity verification.",
+    "No Production or DNS changes.",
+    "The new /services route and Store guest lookup changes are awaiting exact-head CI and Preview runtime validation.",
+    "The Security tests job failed on the 4f960 checkpoint due vi.mock hoisting; the fix is committed but not yet CI-verified.",
+    "The Docker image build step passed on the 4f960 checkpoint, but final Caddy/Compose/connectivity proof had not completed at inspection time.",
+    "Latest exact-head CI after service, SEO and mock changes is pending.",
+    "Admin homepage editor changes and the latest SEO/Services changes are awaiting exact-head CI.",
+    "Exact latest-head CI after public homepage API, admin editor, contract-test, and Store privacy changes is pending.",
+    "Docker Caddy-to-app connectivity proof has not yet been observed passing on the inspected run.",
+    "Latest exact-head CI after Services header/footer wiring and subsequent Store/homepage changes is pending.",
+    "Latest Store/Marketplace health RBAC tests and auth-boundary updates are awaiting exact-head CI.",
+    "Detailed route/action coverage for logistics dashboard and all procurement/rental/service state transitions still needs verification.",
+    "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI.",
+    "The corrected homepage contract suite and later Store/Marketplace health RBAC changes have not yet passed a new exact-head CI run.",
+    "Actual App and Store PostgreSQL system identities behind Cloudflare secret bindings DATABASE_URL and STORE_DATABASE_URL remain unverified.",
+    "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets.",
+    "Exact-head CI after the ServicesSection discoverability change is pending.",
+    "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending.",
+    "Store Admin navigation seed changes for Procurement/Rentals/Service Providers are committed but not applied to Preview DB; run only after DB identity verification.",
+    "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending.",
+    "Admin navigation RBAC bypass and stale seed permission aliases are fixed in code and tested, but latest CI is pending.",
+    "Admin navigation seed additions are not yet applied to Preview DB; apply only after database identity verification.",
+    "Admin navigation permission alias normalization is complete at source level (44 keys, 0 missing), but exact-head CI and Preview seed verification remain pending.",
+    "Live Preview verification confirmed current Worker is still old/incomplete: root not 17-section; /api/health 503; /api/services 500; /services 404; /sell-in-7-days, /knowledge, /auctions, /rentals, /listings 500; /companies empty; /store partial/empty.",
+    "Recovery branch has not been deployed. Preview App/Store database identities remain unverified. No Production/DNS changes.",
+    "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted.",
+    "Older GitHub Actions runs created before the new concurrency group remain active/queued; no cancel-workflow-run action is exposed by the GitHub connector.",
+    "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched.",
+    "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled.",
+    "CI run #42915285217 failed two contract assertions (Rentals audit permission still rentals.manage; homepage test falsely matched local helper filename site-stats). Both source/test issues are fixed in commits d5e80c3 and 7d2c067.",
+    "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete.",
+    "GitHub Actions proof secrets are not independently proven identical to live Cloudflare Worker secret bindings; proof workflow not dispatched.",
+    "Recovery branch d2f68100 has not been deployed; the Cloudflare Build bot success comment represented a guarded no-op build, not a new active Worker deployment.",
+    "Worker Previews are disabled and there is no branch Preview environment; owner-reported B2 Preview Base settings are not active runtime bindings yet.",
+    "No B2 media adapter, seller staging/finalization flow, B2 upload/readback/hash/delete proof, or durable media persistence exists.",
+    "Preview App/Store database identities and Production isolation remain unverified."
+  ],
+  "next_action": "Use authorized GitHub Actions workflow_dispatch to run the existing protected read-only Preview App/Store DB identity proof; then prove the actual active Worker binding targets and run a bounded live B2 object proof. Do not deploy before these gates.",
+  "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
+  "latest_exact_head_ci_run": {
+    "id": 42971293294,
+    "sha": "45d86f1c7df9d644e4d33431ba5013e0a30646b7",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
+    "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
+  },
+  "latest_code_head_sha": "578fffc21a24a2c879eb5b73e483827c85db434d",
+  "latest_ci_run": {
+    "id": 42979858320,
+    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
+    "jobs": [
+      "verify",
+      "phase-tests",
+      "audit-transaction",
+      "tls-proof",
+      "docker-build-proof",
+      "Cloudflare compatibility (report-only)"
+    ],
+    "skipped": [
+      "Legacy archive inventory (read-only)"
+    ],
+    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
+  },
+  "benchmark_audit": {
+    "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
+    "commit": "e3ab121018c10f1a5134f6f70e65bb52c0dec966",
+    "status": "baseline established; repeated per-area audit in progress",
+    "references": [
+      "Machinio",
+      "Mascus",
+      "MachineryTrader",
+      "Kitmondo",
+      "Surplex",
+      "MachineTools.com",
+      "Machineseeker"
+    ]
+  },
+  "latest_verified_ci_run": {
+    "id": 42979858320,
+    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
+    "jobs": [
+      "verify",
+      "phase-tests",
+      "audit-transaction",
+      "tls-proof",
+      "docker-build-proof",
+      "Cloudflare compatibility (report-only)"
+    ],
+    "skipped": [
+      "Legacy archive inventory (read-only)"
+    ],
+    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
+  },
+  "confirmed_blockers": [
+    "ListingImageUploader targets /api/admin/upload, whose route requires requireAdmin(media.upload); seller upload is not proven and expected to be denied for non-admin sellers.",
+    "src/lib/media-service.ts persists files to local public/uploads via node:fs; operational Backblaze B2 media integration has not yet been located/proven in the repository.",
+    "Preview App DB and Store DB identities, and Production isolation, remain NOT VERIFIED.",
+    "Listing image UI limit 30 vs POST /api/listings slice(0,10) requires reconciliation; no silent truncation.",
+    "Brand free-text fallback conflicts with brandId validation and needs a real moderated request flow or strict registered-brand policy."
+  ],
+  "platform_roadmap": {
+    "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
+    "commit": "937db951246a5bb82e354e4d14d5d747d6364025",
+    "owner_decision": "Complete and accept responsive web across desktop, tablet and mobile first; only then begin separate native iOS and Android apps.",
+    "current_scope": "Responsive web only",
+    "native_apps": "Future phase; do not implement in current web release",
+    "architecture_preparation": [
+      "API-first domain contracts",
+      "Stable schemas and validation",
+      "Client-independent business logic",
+      "Secure authentication and server-side authorization",
+      "Backblaze B2 durable media contracts",
+      "Shared design tokens and documented brand rules"
+    ]
+  },
+  "preview_latest_observation": {
+    "source": "GitHub PR #307 Cloudflare Workers bot deployment comment",
+    "deployment_commit": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+    "status": "Cloudflare Preview deployment reported successful",
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "note": "Deployment event only; application behavior, Preview App/Store DB identities, isolation and end-to-end acceptance remain unverified."
+  },
+  "media_storage_audit": {
+    "status": "BLOCKED — dedicated development media bucket name confirmed by owner; operational configuration and credentials must be safely verified through owner-guided steps",
+    "verified_findings": [
+      "ListingImageUploader calls /api/admin/upload.",
+      "The upload API requires requireAdmin(media.upload); ordinary seller upload is not supported by this endpoint.",
+      "media-service.ts persists files and sidecar JSON under public/uploads using node:fs; it is not durable B2 object storage.",
+      "package.json has no @aws-sdk/client-s3 dependency; current-branch search found no S3Client or media-specific B2 adapter.",
+      "The only explicit B2 configuration found is prisma-preview-backup-to-b2.yml for encrypted DB backup and bucket heavix-db-backups; it is not the media bucket.",
+      "POST /api/listings uses body.images.slice(0, 10), while the uploader permits 30 images, silently truncating the remainder."
+    ],
+    "not_verified": [
+      "Full bucket ID and Account ID; owner reported only bucket ID prefix 356.",
+      "Application key name, scope and permissions; key material must never be sent in chat.",
+      "Bucket access policy, CORS, lifecycle/versioning details beyond owner-reported Keep all versions, and public/private URL/read strategy.",
+      "Whether the prior PC upload/download test targeted this bucket; no reproducible evidence found.",
+      "Durable media upload/read/delete, seller authorization/ownership and listing attachment."
+    ],
+    "safety": [
+      "Do not reuse the database-backup bucket for media.",
+      "Do not expose or retrieve secret values.",
+      "Do not enable or migrate to Cloudflare R2.",
+      "Do not deploy or write Preview DB before DB identity and isolation gates pass."
+    ],
+    "next_steps": [
+      "Use the exact owner-confirmed media bucket name heavix-dev-assets; preserve heavix-db-backups exclusively for database backups.",
+      "When configuration is needed, guide the owner step by step to retrieve Account ID, full Bucket ID, endpoint/region, and application key name/scope from Backblaze B2. Do not ask for secret key material in chat.",
+      "Specify least-privilege application key scope and have the owner enter key ID/secret only into a local secure environment or GitHub/Cloudflare secret manager as appropriate; never print, echo, commit, or log secret values.",
+      "Verify bucket access policy, CORS, lifecycle/versioning, encryption and public/private URL/read strategy before live media writes.",
+      "Recover prior PC upload/download test command/log if available and determine whether it targeted this bucket.",
+      "Implement server-only B2 adapter with explicit media-specific configuration and fail-closed behavior.",
+      "Implement seller-safe staged upload and ownership-bound listing finalization.",
+      "Align UI/API image limits and reject over-limit requests instead of silently truncating.",
+      "After non-production authorization is confirmed, run protected upload/read-back SHA-256/delete/absence proof."
+    ],
+    "owner_reported_buckets": {
+      "backup_bucket": {
+        "name": "heavix-db-backups",
+        "purpose": "Database backups only",
+        "privacy": "private",
+        "bucket_id_suffix": "0411",
+        "lifecycle": "custom lifecycle rules",
+        "snapshots": 0,
+        "current_files": 12,
+        "current_size": "2.1 MB",
+        "endpoint": "s3.us-east-005.backblazeb2.com",
+        "encryption_enabled": true
+      },
+      "development_assets_bucket": {
+        "purpose": "Dedicated HEAVIX development media/assets",
+        "privacy": "private",
+        "bucket_id_prefix": "356",
+        "lifecycle": "keep all versions",
+        "snapshots": 0,
+        "current_files": 2,
+        "current_size": "43 bytes",
+        "endpoint": "s3.us-east-005.backblazeb2.com",
+        "encryption_enabled": true,
+        "decision": "Confirmed dedicated HEAVIX development media/assets bucket. Do not perform live writes until full bucket ID, CORS, scoped credentials and read/URL policy are verified.",
+        "name": "heavix-dev-assets",
+        "owner_name_confirmation": "Owner explicitly confirmed exact spelling: heavix-dev-assets."
+      }
+    }
+  },
+  "legacy_parity_refresh": {
+    "status": "IN PROGRESS — prior audit is historical and must be refreshed against current main/recovery head",
+    "historical_audit": {
+      "repository": "HEAVIXIR/z",
+      "source_commit": "217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
+      "archive_count": 13,
+      "unique_paths": 899,
+      "dispositions": {
+        "integrate": 845,
+        "adapt_then_integrate": 17,
+        "preserve_as_reference": 19,
+        "safe_archive": 18
+      },
+      "compared_target_at_time": "z-ai-2/main@833bec6169a214319857b2ac1cfadfa6bf195a88",
+      "caveat": "Historical disposition is not current branch parity evidence."
+    },
+    "second_snapshot_to_reconcile": {
+      "repository": "dellk00k/z",
+      "branch": "legacy/extracted-archives",
+      "commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e",
+      "reported_archive_count": 10,
+      "reported_file_count": 845,
+      "caveat": "Reconcile archive manifests, paths and hashes against HEAVIXIR/z's 13-archive/899-path snapshot; do not assume they are identical."
+    },
+    "required_method": [
+      "Treat earlier chats, audit documents and partial file transfers into dellk00k/z as one continuous unfinished migration program; reconstruct the history and resume from the last evidenced state.",
+      "Reconcile the two legacy source snapshots and provenance manifests.",
+      "Refresh file-level comparisons against current main and the active recovery branch.",
+      "Trace every legacy capability/API through UI, authorization/ownership, validation/service, persistence, Admin, public/seller UI, tests and responsive desktop/tablet/mobile behavior.",
+      "Adapt useful behavior to current PostgreSQL, RBAC, security and runtime contracts; never bulk-copy incompatible source.",
+      "Keep INTEGRATE, ADAPT_THEN_INTEGRATE, PRESERVE_AS_REFERENCE and SAFE_ARCHIVE dispositions with provenance.",
+      "Merge only after per-area acceptance, exact-head CI, Preview DB identity proof and E2E validation."
+    ],
+    "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
+  },
+  "latest_documentation_checkpoint_commit_sha": "c311854b689cb3876407f30fa401ba180301a3f4",
+  "legacy_snapshot_reconciliation": {
+    "status": "SOURCE ARCHIVE IDENTITY VERIFIED; FILE-LEVEL CURRENT-BRANCH PARITY STILL IN PROGRESS",
+    "source_repository": "HEAVIXIR/z",
+    "source_commit": "217f98ecc800aa64ae4739d27ed2aeb95dd260ed",
+    "extracted_repository": "dellk00k/z",
+    "extracted_branch": "legacy/extracted-archives",
+    "extracted_commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "verified_facts": [
+      "All 13 root ZIP archives have matching Git blob SHA and byte size in both repositories.",
+      "Extraction README identifies 10 extracted archive families and quarantines db.zip, upload.zip and bun.zip.",
+      "Extracted tree has 844 payload files plus three bookkeeping files.",
+      "SHA-256 manifest has 845 entries including its own empty-file self-entry; 844 payload paths match extracted blobs exactly once.",
+      "Historical 899-path disposition totals (845 INTEGRATE, 17 ADAPT_THEN_INTEGRATE, 19 PRESERVE_AS_REFERENCE, 18 SAFE_ARCHIVE) refer to comparison against target 833bec6, not extracted file count."
+    ],
+    "not_verified": [
+      "Normalized path+SHA-256 comparison of 844 extracted payloads against active recovery branch.",
+      "Fresh archive-level scanner run; latest green CI #42982227259 skipped Legacy archive inventory (read-only).",
+      "Refreshed 17-item adaptation backlog against current branch head."
+    ],
+    "evidence_document": "docs/legacy-parity/LEGACY-SOURCE-AND-EXTRACTION-RECONCILIATION-2026-11-11.md",
+    "evidence_commit": "87bb83190c6ce62565964db83ed2d810656a67cc",
+    "path_hash_comparison": {
+      "target_head": "714678ca6920cc10fbb4696b203753df8244bbab",
+      "extracted_payload_files": 844,
+      "results": {
+        "identical": 494,
+        "different": 321,
+        "missing": 29,
+        "unmapped": 0
+      },
+      "missing_path_dispositions": {
+        "adapt_then_integrate": 16,
+        "preserve_as_reference": 13
+      },
+      "additional_adaptation_path": "prisma/migrations/README.md",
+      "additional_adaptation_status": "DIFFERENT at existing target path; historical disposition ADAPT_THEN_INTEGRATE",
+      "comparison_csv": "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.csv",
+      "comparison_report": "docs/legacy-parity/REFRESHED-EXTRACTED-PATH-HASH-COMPARISON-2026-11-11.md",
+      "report_commit": "a6103524797c2bef842eeace7de68987f0e73da9",
+      "csv_disposition_fix_commit": "c311854b689cb3876407f30fa401ba180301a3f4",
+      "interpretation": "Hash/path comparison only; different hashes are not automatically defects and missing paths must follow historical disposition. No files copied."
+    }
+  },
+  "latest_b2_media_design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
+  "b2_media_status": {
+    "status": "ARCHITECTURE DECIDED; IMPLEMENTATION AND LIVE PROOF PENDING",
+    "bucket": "heavix-dev-assets",
+    "bucket_id_prefix": "356",
+    "endpoint": "s3.us-east-005.backblazeb2.com",
+    "region": "us-east-005",
+    "access": "private",
+    "key_scope": "heavix-dev-assets only; prefix heavix-media/",
+    "required_capabilities": [
+      "listFiles",
+      "readFiles",
+      "writeFiles",
+      "deleteFiles"
+    ],
+    "owner_inputs_needed": [
+      "Account ID",
+      "full Bucket ID",
+      "application key name and scope confirmation",
+      "confirmation credentials stored securely"
+    ],
+    "secret_handling": "Never request or store Application Key secret in chat.",
+    "blocker": "No dedicated media app key or B2 runtime configuration confirmed; no B2 media adapter/proof yet.",
+    "design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md"
+  },
+  "b2_media_key_provisioning": {
+    "status": "OWNER_CONFIRMED_PLAN_LIMITATION_ACCEPTED_PENDING_BUCKET_SCOPE_CONFIRMATION",
+    "key_name": "heavix-dev-assets-media-preview",
+    "key_id": "0055d132b1dcc410000000004",
+    "bucket_name": "heavix-dev-assets",
+    "prefix": "heavix-media/",
+    "expiration": "none",
+    "capabilities_as_reported": [
+      "deleteFiles",
+      "listBuckets",
+      "listFiles",
+      "readBucketEncryption",
+      "readBucketLifecycleRules",
+      "readBucketLogging",
+      "readBucketNotifications",
+      "readBucketReplications",
+      "readBuckets",
+      "readFiles",
+      "shareFiles",
+      "writeBucketEncryption",
+      "writeBucketLifecycleRules",
+      "writeBucketLogging",
+      "writeBucketNotifications",
+      "writeBucketReplications",
+      "writeBuckets",
+      "writeFiles"
+    ],
+    "owner_confirmed_limitation": "Current Backblaze plan/UI does not permit granular capability selection; full capability set is the only available key option. Do not ask owner to recreate/edit a reduced-capability key.",
+    "secret_shared_in_chat": false,
+    "bucket_scope": "Needs confirmation that Allow Access to Bucket(s) is set to the single heavix-dev-assets bucket, not All.",
+    "prefix_scope": "Owner reports exact namePrefix heavix-media/.",
+    "runtime_constraints": [
+      "Server-side only; never expose key to browser/client",
+      "Use only object operations under heavix-media/",
+      "No bucket administration, configuration, account-wide enumeration, or key-management API calls",
+      "Hard-code bucket and prefix; reject object keys outside prefix",
+      "Separate media credential from DB backup credentials",
+      "No live test until exact bucket scope is confirmed"
+    ],
+    "next_step": "Confirm the UI bucket selector is set to the single heavix-dev-assets bucket (not All). Then configure secret only in secure runtime environment and perform random-object upload/readback SHA-256/delete proof within heavix-media/."
+  },
+  "last_live_smoke": {
+    "url": "https://heavix-preview.heavixir.workers.dev",
+    "root": "TIMEOUT",
+    "/api/health": 503,
+    "/api/services": 500,
+    "/services": 404,
+    "/api/opennext-runtime-proof": 404,
+    "classification": "Pre-deployment observations of existing active version #17; not a smoke test of the recovery candidate."
+  },
+  "last_github_runs": {
+    "recovery_head": "4beff75222e70763d54fb778f7afa7e344b503e3",
+    "pr307_ci": {
+      "run_id": 43109607418,
+      "conclusion": "success",
+      "exact_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f"
+    },
+    "pr307_opennext": {
+      "run_id": 43109607496,
+      "status": "completed",
+      "conclusion": "success",
+      "exact_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f"
+    },
+    "infra_head_before_recovery_doc_update": "65a2bb444eab9d80983feea70557a2e2213e67ef",
+    "infra_pr191_ci": {
+      "run_id": 42883319569,
+      "conclusion": "success",
+      "preview_db_proof": "skipped"
+    },
+    "webpack_artifact_proof": {
+      "run_id": 43010880902,
+      "commit": "8d0f0a58f55864d4a246717c39aec19a6b0a90d8",
+      "status": "completed",
+      "conclusion": "success",
+      "artifact_id": 13849664588,
+      "artifact_name": "heavix-open-next-webpack-6baee22f25e169536dba96fb7621123d7a13c791",
+      "artifact_size_bytes": 26418563,
+      "artifact_digest": "sha256:7418ab71b120329a0fc9becd438d34a014d77e0833233aa303efc32210a4ca18",
+      "checks": [
+        "Webpack OpenNext build",
+        "complete Worker/runtime/assets bundle verification",
+        "no-database Workerd smoke",
+        "artifact upload"
+      ]
+    },
+    "recovery_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f",
+    "opennext_audit_artifact_digest": "sha256:8a0b1023e941b28578cecf442ef95fa434d94e069bdf6a899cdb171b128c5534"
+  },
+  "last_cloudflare_builds": {
+    "infra_timeout": {
+      "build_id": "2326072d-1e24-45ec-9899-1fa9101ece37",
+      "branch": "infra/prisma6-cloudflare-runtime",
+      "commit": "4171f6e631086fe90f3b3b639dda4308613882c2",
+      "status": "terminated",
+      "cause": "Build took too long and was timed out during Next.js 16.4.5 Turbopack optimized production build; no OpenNext artifact."
+    },
+    "older_success": {
+      "build_id": "1eacbd94-d31e-4969-b01a-88c50d707bfa",
+      "branch": "infra/prisma6-cloudflare-runtime",
+      "commit": "3bf2333fde4f81473ce0d14c99cbd653a386c2e2",
+      "status": "success",
+      "qualification": "Older-head success; log used Next.js 16.4.5 Webpack; not evidence for current head."
+    },
+    "recovery_running": {
+      "build_id": "69a49f21-67dc-4df2-bbc5-911ca7d1be9f",
+      "branch": "recovery/heavix-full-product-integration-2026-11-11",
+      "commit": "d5f034178918d0b44f83aca7986d82cbada10915",
+      "status": "stopped",
+      "last_log": "2026-11-11T09:58:56Z; Next.js 16.4.5 (Turbopack) timed out during optimized production build; no deployment."
+    }
+  },
+  "blockers": [
+    "ACTUAL WORKER DB IDENTITY NOT VERIFIED: active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL targets have not been proven to be the allow-listed Preview App and Store databases. Secret names are not identity evidence. The protected GitHub Workerd proof workflow has not been dispatched in this session, and GitHub secret proof alone must be tied to the actual Worker bindings.",
+    "LIVE B2 OBJECT OPERATIONS NOT VERIFIED: no real upload/download/SHA-256/delete proof has been performed against the dedicated heavix-dev-assets bucket.",
+    "PREVIEW RELEASE NOT PERFORMED: active Worker still serves the previous deployment; candidate is not deployed. Runtime/browser/data/visual acceptance across product journeys remains pending.",
+    "ACTIVE PREVIEW RUNTIME/DATA FAILURES: old Worker returns 503 for /api/health, 500 for multiple product pages/APIs, 404 for /services, and empty/partial Companies/Store/homepage data. Recovery source route parity does not fix the active Worker until safe Preview runtime/database binding and data acceptance are completed."
+  ],
+  "last_verified_legacy_parity": {
+    "audited_at_utc": "2026-11-11T22:30:00.000Z",
+    "legacy_repository": "dellk00k/z",
+    "legacy_commit": "bbb1f4947e4b1a05e39f7b510c5c7801d52389e7",
+    "recovery_code_commit": "5e1ad2341d713221840d335fa318a74ce9e5668f",
+    "legacy_page_routes": 145,
+    "current_page_routes": 173,
+    "missing_legacy_page_routes": 0,
+    "legacy_api_routes": 278,
+    "current_api_routes": 365,
+    "missing_legacy_api_routes": 0,
+    "missing_legacy_static_image_assets": 0,
+    "absent_legacy_application_source_files": 4,
+    "dispositions": {
+      "compare_page_client": "Current /compare route contains the client experience; no duplicate component needed.",
+      "listing_price_intelligence": "Current PriceEstimateCard + price-engine/price-compare-service replace the legacy component.",
+      "price_intelligence_library": "Current price-engine/price-compare-service replace the legacy library contract.",
+      "ai_gateway_service": "Legacy direct ZAI SDK service rejected; current validated gateway architecture retained because legacy auth/policy/budget enforcement is best-effort."
+    },
+    "audit_document": "docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md",
+    "audit_commit": "2772a12fd5cf5b29c2713b4f14a1be2176b28ebe",
+    "qualification": "Source-tree parity only; does not prove live Preview routes, real data, visual parity, RBAC journeys or object storage.",
+    "inventory_correction": "The older HEAVIX-LEGACY-TO-CURRENT-INVENTORY document now explicitly distinguishes its historical main-branch regression from the restored recovery branch.",
+    "live_preview_sweep": {
+      "observed_at_local": "2026-11-12T02:00:00+03:30",
+      "active_worker_only": true,
+      "results": {
+        "/": "200 old shell with empty/placeholder sections",
+        "/api/health": 503,
+        "/api/services": 500,
+        "/services": 404,
+        "/sell-in-7-days": 500,
+        "/knowledge": 500,
+        "/auctions": 500,
+        "/rentals": 500,
+        "/listings": 500,
+        "/api/listings": 500,
+        "/market-insights": 500,
+        "/brands": 500,
+        "/transport/request": 500,
+        "/companies": "200 but no company records/content",
+        "/store": "200 partial/empty; USD rate displayed as 0",
+        "/compare": "200 comparison UI loads but listing API is 500",
+        "/admin": "login required"
+      },
+      "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
+    }
+  },
+  "documentation_head": "6e6983efe66154321998e9ce5d623d1885222c24"
+}

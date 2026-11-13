@@ -50,6 +50,9 @@ if (
 export const SITE_BASE_URL: string = RAW_SITE_URL;
 
 /** Site display name (Persian). */
+/** True only when this deployment is explicitly configured as a Preview environment. */
+export const IS_PREVIEW_DEPLOYMENT = process.env.HEAVIX_ENV === "preview";
+
 export const SITE_NAME = "هویکس";
 
 /**

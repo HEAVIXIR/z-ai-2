@@ -77,7 +77,17 @@ export default function Hero({
   const slides = [cfg.slide1 || "/images/hero/hero-construction.png", cfg.slide2 || "/images/hero/hero-mining.png", cfg.slide3 || "/images/hero/hero-road.png"].filter(Boolean);
   const intervalMs = (() => { const n = parseInt(cfg.slideIntervalCustom || "", 10); return !Number.isNaN(n) && n >= 1000 && n <= 60000 ? n : 5000; })();
   const [slide, setSlide] = useState(0);
-  useEffect(() => { const t = setInterval(() => setSlide((s) => (s + 1) % slides.length), intervalMs); return () => clearInterval(t); }, [slides.length, intervalMs]);
+  // Only fetch the active background initially. Later slides are fetched on demand
+  // when selected, instead of competing with the first paint on slow connections.
+  const [loadedSlides, setLoadedSlides] = useState<number[]>([0]);
+  const selectSlide = (next: number) => setSlide(next);
+  useEffect(() => {
+    setLoadedSlides((loaded) => loaded.includes(slide) ? loaded : [...loaded, slide]);
+  }, [slide]);
+  useEffect(() => {
+    const t = setInterval(() => setSlide((current) => (current + 1) % slides.length), intervalMs);
+    return () => clearInterval(t);
+  }, [slides.length, intervalMs]);
   const titleSize = cfg.titleFontSizeCustom ? "" : (fontSizeClass[cfg.titleFontSize || "normal"] || fontSizeClass.normal);
   const sWidth = cfg.statsWidthCustom ? "" : (statsWidthClass[cfg.statsWidth || "normal"] || statsWidthClass.normal);
   const slideOpacity = (() => { const n = parseFloat(cfg.slideOpacityCustom || ""); return Number.isNaN(n) ? 0.55 : Math.max(0, Math.min(1, n)); })();
@@ -93,12 +103,23 @@ export default function Hero({
 
   return (
     <section className="relative isolate overflow-hidden" style={{ backgroundColor: overlayColor, ...heroStyle }}>
-      <div className="absolute inset-0 -z-10">
-        {slides.map((src, i) => (<div key={i} className="absolute inset-0 transition-opacity duration-1000" style={{ backgroundImage: `url(${src})`, backgroundSize: "cover", backgroundPosition: "center", opacity: i === slide ? slideOpacity : 0 }} />))}
+      <div className="absolute inset-0 z-0">
+        {slides.map((src, i) => (
+          <div
+            key={i}
+            className="absolute inset-0 transition-opacity duration-1000"
+            style={{
+              backgroundImage: loadedSlides.includes(i) ? `url(${src})` : "none",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              opacity: i === slide ? slideOpacity : 0,
+            }}
+          />
+        ))}
         <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${overlayColor}b3, ${overlayColor}80, ${overlayColor})` }} />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_-10%,rgba(245,130,32,0.15),transparent_70%)]" />
       </div>
-      <div className="mx-auto flex min-h-[clamp(560px,78vh,820px)] max-w-[1440px] flex-col gap-8 px-5 py-24 lg:flex-row lg:items-center lg:px-10 xl:px-16" style={contentWrapStyle}>
+      <div className="relative z-10 mx-auto flex min-h-[clamp(560px,78vh,820px)] max-w-[1440px] flex-col gap-8 px-5 py-24 lg:flex-row lg:items-center lg:px-10 xl:px-16" style={contentWrapStyle}>
         <div className="order-1 flex-1 lg:order-2" style={contentColStyle}>
           <div dir="rtl" className={`flex flex-col gap-5 ${alignClass[cfg.badgeAlign || "center"] || alignClass.center}`}>
             {cfg.badge && (<span className="inline-flex items-center gap-2 rounded-full border border-[#F58220]/40 bg-[#F58220]/10 px-4 py-1.5 font-bold text-[#F58220]" style={badgeStyle}><ShieldCheck className="h-3.5 w-3.5" />{cfg.badge}</span>)}
@@ -109,7 +130,7 @@ export default function Hero({
               <Link href={cfg.secondBtnLink || "/listings"} className="rounded-xl border border-white/20 bg-white/5 text-sm font-bold text-white backdrop-blur transition hover:bg-white/10" style={btnStyle}>{cfg.secondBtnText || "مشاهده آگهی‌ها"}</Link>
             </div>
           </div>
-          <div className={`mt-6 flex gap-2 ${alignClass[cfg.buttonAlign || "center"] || alignClass.center}`}>{slides.map((_, i) => (<button key={i} onClick={() => setSlide(i)} className={`h-1.5 rounded-full transition-all ${i === slide ? "w-8 bg-[#F58220]" : "w-1.5 bg-white/30"}`} aria-label={`اسلاید ${i + 1}`} />))}</div>
+          <div className={`mt-6 flex gap-2 ${alignClass[cfg.buttonAlign || "center"] || alignClass.center}`}>{slides.map((_, i) => (<button key={i} onClick={() => selectSlide(i)} className={`h-1.5 rounded-full transition-all ${i === slide ? "w-8 bg-[#F58220]" : "w-1.5 bg-white/30"}`} aria-label={`اسلاید ${i + 1}`} />))}</div>
         </div>
         <div className="order-2 flex flex-1 items-start justify-center lg:order-3 lg:justify-end" style={cfg.cardGapCustom ? { gap: cfg.cardGapCustom } : undefined}>
           <TiltedImageCard
@@ -178,6 +199,7 @@ function TiltedImageCard({
     return (
       <Link
         href={`/listings/${listing.slug}`}
+        prefetch={false}
         className={`group relative block w-32 overflow-hidden rounded-2xl border border-white/10 bg-[#111] transition-all duration-500 hover:border-[#F58220]/50 sm:w-36 lg:w-40 ${tilt}`}
         style={cardStyle}
         title={listing.title}

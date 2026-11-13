@@ -5,6 +5,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator workerClient {
+  provider   = "prisma-client"
+  output     = "../src/lib/generated/worker-client"
+  engineType = "client"
+  runtime    = "workerd"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -1450,6 +1457,9 @@ model HomePageSection {
 }
 
 model HeroConfig {
+  // HEAVIX selectable hero templates; classic remains the backward-compatible default.
+  activeTemplate   String?  @default("classic")
+  cinematicConfig  String?
   id              String   @id @default("main")
   badge           String?
   title1          String?

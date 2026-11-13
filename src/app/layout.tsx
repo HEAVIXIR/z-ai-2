@@ -4,9 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import MobileNav from "@/components/layout/MobileNav";
 import { SITE_BASE_URL } from "@/lib/site-config";
 
-const VAZIRMATN_URL =
-  "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
-
 export const metadata: Metadata = {
   // STEP 13.00: SITE_BASE_URL is the single source of truth for the
   // canonical domain. Previously this used a local fallback string;
@@ -51,9 +48,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
-      <head>
-        <link href={VAZIRMATN_URL} rel="stylesheet" type="text/css" />
-      </head>
       <body className="min-h-screen bg-[#0b0b0b] pb-16 text-white antialiased lg:pb-0">
         {children}
         <MobileNav />

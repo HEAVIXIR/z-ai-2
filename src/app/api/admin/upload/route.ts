@@ -62,6 +62,7 @@ export async function POST(req: Request) {
     const result = await uploadAsset({
       file: Buffer.from(await file.arrayBuffer()),
       uploadedBy: user?.id ?? null,
+      actorType: "ADMIN",
       originalFilename: file.name,
       altText,
       entityType,

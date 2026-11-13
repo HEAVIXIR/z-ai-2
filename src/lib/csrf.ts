@@ -27,18 +27,20 @@ function toOrigin(value: string | null | undefined): string | null {
 }
 
 /**
- * Build the allowlist only from deployment configuration, never from the
- * incoming request URL/Host headers. Vercel supplies these hostnames for the
- * active deployment/branch/project, which permits known aliases without
- * trusting a client-controlled host value as an allowed origin.
+ * Build the allowlist only from deployment configuration and explicitly
+ * trusted deployment origins, never from incoming request URL/Host headers.
+ * The Cloudflare branch Preview origin is exact and scoped to this Preview;
+ * do not replace it with a workers.dev wildcard or trust arbitrary hosts.
  */
 function allowedOrigins(): Set<string> {
   const allowed = new Set<string>();
   const configured = [
     process.env.NEXTAUTH_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    "https://recovery-heavix-full-product-integration-2026-11-heavix-preview.heavixir.workers.dev",
   ];
 
   for (const value of configured) {

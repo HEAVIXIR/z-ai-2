@@ -39,8 +39,34 @@ import { checkCsrf } from "@/lib/csrf";
 // Helpers — build a Request with specific method + headers.
 // ─────────────────────────────────────────────────────────────
 
-const TRUSTED_ORIGIN =
-  (process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/+$/, "");
+// Keep this contract test hermetic: deployment-level allowlist variables may
+// be present in CI, but these cases intentionally exercise only localhost.
+const TRUSTED_ORIGIN = "http://localhost:3000";
+const ORIGIN_ENV_KEYS = [
+  "NEXTAUTH_URL",
+  "NEXT_PUBLIC_SITE_URL",
+  "VERCEL_URL",
+  "VERCEL_BRANCH_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+] as const;
+const ORIGINAL_ORIGIN_ENV = Object.fromEntries(
+  ORIGIN_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof ORIGIN_ENV_KEYS)[number], string | undefined>;
+
+beforeAll(() => {
+  process.env.NEXTAUTH_URL = TRUSTED_ORIGIN;
+  for (const key of ORIGIN_ENV_KEYS) {
+    if (key !== "NEXTAUTH_URL") delete process.env[key];
+  }
+});
+
+afterAll(() => {
+  for (const key of ORIGIN_ENV_KEYS) {
+    const original = ORIGINAL_ORIGIN_ENV[key];
+    if (original === undefined) delete process.env[key];
+    else process.env[key] = original;
+  }
+});
 
 function makeReq(
   method: string,

@@ -1,14 +1,14 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 /* ============================================================
    HEAVIX — sitemap.ts (P2-28)
    HEAVIX-P0-IMPLEMENTATION-PLAN.md P2-28
    ------------------------------------------------------------
-   Next.js metadata-route sitemap. Public, cached 1 hour via
-   `revalidate = 3600`. Includes:
+   Next.js metadata-route sitemap. Generated at request time because
+   this route reads the request-scoped Cloudflare Prisma binding. Includes:
      • static pages (/, /listings, /brands, /store)
      • all active categories
      • all active brands
@@ -21,7 +21,8 @@ import { SITE_BASE_URL } from "@/lib/site-config";
    "https://havix.ir" is removed.
    ============================================================ */
 
-export const revalidate = 3600; // 1 hour
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const runtime = "nodejs";
 
 const STATIC_PATHS: { url: string; priority: number; changeFreq: string }[] = [
@@ -73,6 +74,8 @@ async function getSEOOverridesByType(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  if (IS_PREVIEW_DEPLOYMENT) return [];
+
   const base = SITE_BASE_URL;
 
   // Fetch all public entities in parallel.

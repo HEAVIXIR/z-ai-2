@@ -1,0 +1,108 @@
+name: HEAVIX Preview B2 media object proof
+
+on:
+  push:
+    branches:
+      - recovery/heavix-full-product-integration-2026-11-11
+    paths:
+      - .github/workflows/b2-media-preview-proof.yml
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Dedicated Preview media bucket only
+        required: true
+        type: choice
+        options: [PREVIEW_ONLY]
+      confirm:
+        description: Type B2_MEDIA_PREVIEW_ONLY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-preview-b2-media-proof
+  cancel-in-progress: false
+
+jobs:
+  b2-media-proof:
+    if: github.ref == 'refs/heads/recovery/heavix-full-product-integration-2026-11-11'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Enforce exact Preview branch and explicit confirmation
+        shell: bash
+        env:
+          DISPATCH_TARGET: ${{ github.event_name == 'push' && 'PREVIEW_ONLY' || inputs.target }}
+          DISPATCH_CONFIRM: ${{ github.event_name == 'push' && 'B2_MEDIA_PREVIEW_ONLY' || inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/recovery/heavix-full-product-integration-2026-11-11"
+          test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "B2_MEDIA_PREVIEW_ONLY"
+          echo "Preview-only media proof gates passed."
+
+      - name: Verify isolated media credentials are present
+        shell: bash
+        env:
+          B2_MEDIA_KEY_ID: ${{ secrets.B2_MEDIA_KEY_ID }}
+          B2_MEDIA_APPLICATION_KEY: ${{ secrets.B2_MEDIA_APPLICATION_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$B2_MEDIA_KEY_ID"
+          test -n "$B2_MEDIA_APPLICATION_KEY"
+          test "${#B2_MEDIA_KEY_ID}" -ge 20
+          test "${#B2_MEDIA_APPLICATION_KEY}" -ge 20
+          echo "Dedicated B2 media credentials are present; values remain redacted."
+
+      - name: Upload, read back, SHA-256 verify, and delete one isolated proof object
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_MEDIA_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_MEDIA_APPLICATION_KEY }}
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
+          B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+          B2_BUCKET: heavix-dev-assets
+        run: |
+          set -euo pipefail
+          command -v aws >/dev/null
+          WORK="$RUNNER_TEMP/heavix-b2-media-proof"
+          mkdir -m 700 -p "$WORK"
+          OBJECT_KEY="heavix-media/proof/github-actions/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/probe.bin"
+          cleanup() {
+            aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api delete-object \
+              --bucket "$B2_BUCKET" --key "$OBJECT_KEY" >/dev/null 2>&1 || true
+            rm -rf "$WORK"
+          }
+          trap cleanup EXIT
+
+          printf 'HEAVIX-B2-MEDIA-PROOF\nrun=%s\nattempt=%s\ncommit=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" > "$WORK/probe.bin"
+          sha256sum "$WORK/probe.bin" | awk '{print $1}' > "$WORK/source.sha256"
+
+          aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api put-object \
+            --bucket "$B2_BUCKET" --key "$OBJECT_KEY" --body "$WORK/probe.bin" \
+            --content-type application/octet-stream >/dev/null
+          echo "PASS: isolated proof object uploaded under approved media prefix."
+
+          aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api head-object \
+            --bucket "$B2_BUCKET" --key "$OBJECT_KEY" >/dev/null
+          aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api get-object \
+            --bucket "$B2_BUCKET" --key "$OBJECT_KEY" "$WORK/readback.bin" >/dev/null
+          sha256sum "$WORK/readback.bin" | awk '{print $1}' > "$WORK/readback.sha256"
+          cmp -s "$WORK/source.sha256" "$WORK/readback.sha256"
+          echo "PASS: B2 read-back SHA-256 matches uploaded bytes."
+
+          aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api delete-object \
+            --bucket "$B2_BUCKET" --key "$OBJECT_KEY" >/dev/null
+          if aws --endpoint-url "$B2_ENDPOINT" --region "$AWS_REGION" s3api head-object \
+            --bucket "$B2_BUCKET" --key "$OBJECT_KEY" >/dev/null 2>&1; then
+            echo "FAIL: proof object remains addressable after delete."
+            exit 1
+          fi
+          echo "PASS: exact proof object is no longer addressable after delete."
+          echo "No existing media objects, database backup objects, bucket settings, or production resources were touched."

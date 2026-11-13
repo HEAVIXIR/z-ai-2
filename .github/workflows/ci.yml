@@ -6,6 +6,12 @@ on:
   push:
     branches: [main, 'feature/**']
 
+# Keep only the newest CI run for a given PR/branch. This prevents obsolete
+# commits from occupying all runners while a newer recovery commit is waiting.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
   # Any failure fails the workflow and blocks merge.
@@ -34,6 +40,35 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -51,9 +86,11 @@ jobs:
         run: |
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
+      - name: Typecheck Worker-specific Prisma clients
+        run: bun run typecheck:worker
       - name: Create store and isolated anchor test databases
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_anchor_test;"
       - name: Push schemas
@@ -175,7 +212,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           bash scripts/test-paired-backup-restore-ci.sh 2>&1 | tee "$RUNNER_TEMP/paired-backup-restore-output.txt"
       - name: Upload reproducible Store/Outbox evidence
         if: always()
@@ -200,6 +237,7 @@ jobs:
           --no-file-parallelism
           --exclude tests/integration/store-audit-outbox-resilience.test.ts
           --exclude tests/integration/store-inventory-return-atomicity.test.ts
+          --exclude tests/integration/e5-full-rehearsal-real.test.ts
       - name: All contract + unit tests
         run: bunx vitest run tests/contract/ tests/unit/
       - name: E2E smoke tests
@@ -237,7 +275,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           bash scripts/test-migration-baseline-adoption.sh
       - name: Production build
         run: bun run build
@@ -270,6 +308,35 @@ jobs:
       ADMIN_PASSWORD: "ci-password-not-real"
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -281,7 +348,7 @@ jobs:
           bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
       - name: Push schemas
         run: |
@@ -326,6 +393,35 @@ jobs:
       ADMIN_PASSWORD: "ci-password-not-real"
     steps:
       - uses: actions/checkout@v4
+      - name: Use PostgreSQL service container client (no apt/DNS dependency)
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/postgres-client-bin"
+          cat > "$RUNNER_TEMP/postgres-client-bin/psql" <<'PSQL'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          sql_file=""
+          while (($#)); do
+            if [[ "$1" == "-f" && $# -ge 2 ]]; then
+              sql_file="$2"
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          if [[ -n "$sql_file" ]]; then
+            exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+          fi
+          exec docker exec -i --user postgres -e "PGPASSWORD=${PGPASSWORD:-postgres}" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+          PSQL
+          chmod +x "$RUNNER_TEMP/postgres-client-bin/psql"
+          echo "$RUNNER_TEMP/postgres-client-bin" >> "$GITHUB_PATH"
+          echo "POSTGRES_CONTAINER_ID=$POSTGRES_CONTAINER_ID" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/postgres-client-bin/psql" --version
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -337,7 +433,7 @@ jobs:
           bunx prisma generate --schema=prisma/store/schema.prisma
       - name: Create store test database
         run: |
-          sudo apt-get install -y postgresql-client
+          echo "Using psql from the PostgreSQL service container"
           PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE heavix_store_test;"
       - name: Push schemas
         run: |
@@ -452,6 +548,20 @@ jobs:
           export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
           bunx prisma db push --schema=prisma/schema.prisma
           bun run db:seed-rbac
+      - name: E5 backup/restore/rollback rehearsal (TLS PostgreSQL 17)
+        env:
+          HEAVIX_RUN_E5_REAL_DB_TESTS: '1'
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+          source "$HEAVIX_TLS_PG_ROOT/pg-env.sh"
+          export PGHOST=localhost
+          export PGPORT="$HEAVIX_TLS_VALID_PORT"
+          export PGUSER="$(id -un)"
+          export PGSSLMODE=verify-full
+          export PGSSLROOTCERT="$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          export DATABASE_URL="postgresql://${PGUSER}@${PGHOST}:${PGPORT}/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=${PGSSLROOTCERT}"
+          bunx vitest run --config vitest.integration.config.ts tests/integration/e5-full-rehearsal-real.test.ts --reporter=verbose
       - name: Create isolated MISSING-role classification fixture
         run: |
           set -euo pipefail
@@ -650,3 +760,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  prisma-workerd-smoke:
+    name: Workerd runtime smoke (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+    steps:
+      - name: Checkout exact PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate isolated App and Store Worker clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Execute no-database Workerd smoke proof
+        run: bun run test:workerd

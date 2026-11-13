@@ -1,132 +1,585 @@
-/**
- * HEAVIX Homepage — Track T-C: Full PageRenderer Migration
- *
- * This page is fully driven by PageRenderer. A published AdminPage with
- * pageType=HOME takes precedence; otherwise the reference-aligned default
- * layout below is rendered through the same maintained widget registry.
- */
-
 import { db } from "@/lib/db";
-import { PageRenderer } from "@/components/page-renderer/page-renderer";
+import type { Prisma } from "@prisma/client";
+import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import Hero, { type HeroStat, type HeroCardListing } from "@/components/home/Hero";
+import HeroSearch from "@/components/home/HeroSearch";
+import CinematicIndustrialHero, { parseCinematicHeroConfig } from "@/components/home/CinematicIndustrialHero";
+import type { CategoryWithCount } from "@/components/home/CategoriesSection";
+import MachineCategoriesSection, { type MachineCategoryCard } from "@/components/home/MachineCategoriesSection";
+import StatsSection, { type StatItem } from "@/components/home/StatsSection";
+import FeaturedMachinesSection from "@/components/home/FeaturedMachinesSection";
+import type { FeaturedListing } from "@/components/home/FeaturedMachineCard";
+import VerifiedMachinesCarousel from "@/components/home/VerifiedMachinesCarousel";
+import LatestAdsSection, { type LatestAd } from "@/components/home/LatestAdsSection";
+import Sell7Section from "@/components/home/Sell7Section";
+import WhyUsSection from "@/components/home/WhyUsSection";
+import BrandsSection from "@/components/home/BrandsSection";
+import TrustedBrandsSection, { type TrustedBrand } from "@/components/home/TrustedBrandsSection";
+import CtaSection from "@/components/home/CtaSection";
+import ExclusiveSaleSection from "@/components/home/ExclusiveSaleSection";
+import ServicesSection from "@/components/home/ServicesSection";
+import ActiveRequestsSection, { type ActiveRequest } from "@/components/home/ActiveRequestsSection";
+import KnowledgeSection, { type KnowledgeCard } from "@/components/home/KnowledgeSection";
+import HotSearchesSection, { type HotSearchItem } from "@/components/home/HotSearchesSection";
+import RecommendationsSection from "@/components/home/RecommendationsSection";
+import ScrollReveal from "@/components/ScrollReveal";
+import { getActiveStats } from "@/lib/site-stats";
+import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
+import { mergeHomepageSections } from "@/lib/homepage/sections";
+import {
+  getCachedTopBrands,
+  getCachedHomePageSections,
+  getCachedCatalogCategories,
+  getCachedHomeCategoryConfig,
+  getCachedSiteSettings,
+  getCachedBrandCount,
+  getCachedActiveRequests,
+  getCachedArticles,
+  getCachedHotSearches,
+  getCachedHeroConfig,
+  getCachedMachineryRoot,
+  getCachedL1Children,
+  getCachedBrandDisplayIds,
+  getCachedFeaturedBrandIds,
+  getCachedTrustedBrands,
+} from "@/lib/homepage-cached-queries";
+
+type TickerBrand = {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string | null;
+  nameEn?: string | null;
+  listingCount?: number;
+};
 
 export const dynamic = "force-dynamic";
 
-// Default homepage layout follows the supplied HEAVIX visual reference:
-// dark machinery hero, orange-highlighted headline, two clear actions,
-// floating search panel, featured listings, and catalog categories.
-const DEFAULT_HOME_LAYOUT = {
-  sections: [
-    {
-      title: "Hero",
-      rows: [{
-        widgets: [{
-          key: "hero",
-          props: {
-            title: "خرید، فروش و اجاره",
-            title1: "خرید، فروش و اجاره",
-            highlight: "ماشین‌آلات سنگین",
-            badge: "بازار تخصصی ماشین‌آلات سنگین",
-            subtitle: "خرید، فروش و اجاره ماشین‌آلات سنگین، قطعات و خدمات صنعتی در ایران.",
-            buttonText: "ثبت آگهی رایگان",
-            buttonLink: "/listings/new",
-            secondBtnText: "مشاهده آگهی‌ها",
-            secondBtnLink: "/listings",
-            slide1: "/images/hero/hero-construction.png",
-            slide2: "/images/hero/hero-mining.png",
-            slide3: "/images/hero/hero-road.png",
-            cardServicesImg: "/images/hero/card-services.png",
-            cardFeaturedImg: "/images/hero/card-featured.png",
-            cardExclusiveImg: "/images/hero/card-exclusive.png",
-            titleFontSize: "normal",
-            statsWidth: "normal",
-            overlayColorCustom: "#0b0b0b",
-            slideOpacityCustom: "0.55",
-            slideIntervalCustom: "5000",
-          },
-        }],
-      }],
-    },
-    {
-      title: "Search",
-      rows: [{
-        widgets: [{
-          key: "search-box",
-          props: {
-            placeholder: "نام مدل، برند یا توضیحات... مانند PC220",
-            showFilters: true,
-          },
-        }],
-      }],
-    },
-    {
-      title: "Featured Listings",
-      rows: [{
-        widgets: [{
-          key: "listing-grid",
-          props: { title: "آگهی‌های منتخب", limit: 8, columns: "4" },
-          dataSource: "listing.featured",
-        }],
-      }],
-    },
-    {
-      title: "Categories",
-      rows: [{
-        widgets: [{
-          key: "category-grid",
-          props: { title: "دسته‌بندی‌ها", limit: 12, columns: "4" },
-          dataSource: "taxonomy.categories",
-        }],
-      }],
-    },
-    {
-      title: "Trust",
-      rows: [{
-        widgets: [{
-          key: "trust-badges",
-          props: { title: "چرا هویکس؟" },
-        }],
-      }],
-    },
-  ],
-};
+const listingInclude = {
+  brand: { select: { name: true } },
+  category: { select: { icon: true } },
+  images: {
+    orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
+    take: 1,
+  },
+} satisfies Prisma.ListingInclude;
+
+type HomeListingRow = Prisma.ListingGetPayload<{
+  include: typeof listingInclude;
+}>;
 
 export default async function HomePage() {
-  // Try to load a published homepage AdminPage.
-  let layout: unknown = DEFAULT_HOME_LAYOUT;
+  // Load independent homepage configuration and taxonomy queries together.
+  // This avoids serial database round-trips before the listing queries can start.
+  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
+    getCachedTopBrands(),
+    getCachedCatalogCategories(),
+    getCachedHomeCategoryConfig(),
+    getCachedSiteSettings(),
+  ]);
 
-  try {
-    const publishedPage = await db.adminPage.findFirst({
-      where: { pageType: "HOME", status: "PUBLISHED" },
-      include: {
-        versions: {
-          where: { status: "PUBLISHED" },
-          orderBy: { version: "desc" },
-          take: 1,
-        },
-      },
-    });
+  // Falls back to generation 1 when no admin configuration exists.
+  const homeCategoryConfig = {
+    generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
+    parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
+  };
 
-    if (publishedPage?.publishedVersionId) {
-      const publishedVersion = await db.adminPageVersion.findUnique({
-        where: { id: publishedPage.publishedVersionId },
-      });
-      if (publishedVersion?.layout) {
-        layout = publishedVersion.layout;
-      }
-    }
-  } catch {
-    // DB unavailable — use default layout (PageRenderer handles gracefully).
-  }
+  // Fetch listing data
+  // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
+  // (default) or fall back to latest-published when the admin turns the
+  // verified filter off.
+  const verifiedOnlyFlag =
+    siteSettings?.verifiedSectionVerifiedOnly ?? true;
+  const [
+    featuredRows, verifiedRows, latestRows,
+    activeListings, brandCount, categoryCount, featuredCount,
+    requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
+  ] = await Promise.all([
+    db.listing.findMany({
+      where: { status: "PUBLISHED", featured: true },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
+      take: 8,
+      include: listingInclude,
+    }),
+    db.listing.findMany({
+      where: verifiedOnlyFlag
+        ? { status: "PUBLISHED", verified: true }
+        : { status: "PUBLISHED" },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
+      take: 8,
+      include: listingInclude as any,
+    }),
+    db.listing.findMany({
+      where: { status: "PUBLISHED", showInLatest: true },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      take: 10,
+      include: listingInclude as any,
+    }),
+    db.listing.count({ where: { status: "PUBLISHED" } }),
+    getCachedBrandCount(),
+    db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } }),
+    db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
+    getCachedActiveRequests(),
+    getCachedArticles(),
+    getCachedHotSearches(),
+    getCachedHomePageSections(),
+    getCachedHeroConfig(),
+  ]);
+  const resolvedHomeSections = mergeHomepageSections(homeSections);
+
+  /* Run all independent post-configuration reads concurrently.
+     This includes category cards, trusted brands, configured statistics,
+     and optional hero listing cards. */
+  const heroCardListingIds = [
+    heroConfig?.cardServicesListingId,
+    heroConfig?.cardFeaturedListingId,
+    heroConfig?.cardExclusiveListingId,
+  ].filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  const [machineCategoryCards, trustedBrandRows, activeStats, heroCardListingRows] = await Promise.all([
+    (async (): Promise<MachineCategoryCard[]> => {
+      const machinery = await getCachedMachineryRoot();
+      if (!machinery) return [];
+      const parentId =
+        homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
+          ? homeCategoryConfig.parentId
+          : machinery.id;
+      const rows = await getCachedL1Children(parentId);
+      return rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        nameEn: c.nameEn,
+        slug: c.slug,
+        icon: c.icon,
+        imageUrl: c.imageUrl,
+        description: c.description,
+        listingCount: c._count.listings,
+      }));
+    })(),
+    (async () => {
+      const [displayBrands, featuredBrands] = await Promise.all([
+        getCachedBrandDisplayIds(),
+        getCachedFeaturedBrandIds(),
+      ]);
+      const ids = Array.from(new Set<string>([
+        ...displayBrands.map((d) => d.brandId),
+        ...featuredBrands.map((b) => b.id),
+      ]));
+      return ids.length ? getCachedTrustedBrands(ids) : [];
+    })(),
+    getActiveStats({ listings: activeListings, brands: brandCount }),
+    heroCardListingIds.length > 0
+      ? db.listing.findMany({
+          where: { id: { in: heroCardListingIds }, status: "PUBLISHED" },
+          include: {
+            brand: { select: { name: true } },
+            images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const, take: 1 },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const trustedBrands: TrustedBrand[] = trustedBrandRows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    nameEn: b.nameEn,
+    logoUrl: b.logoUrl,
+    country: b.country,
+    listingCount: b._count.listings,
+  }));
+
+  // Map data
+  const categories: CategoryWithCount[] = allCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    nameEn: c.nameEn,
+    slug: c.slug,
+    icon: c.icon,
+    imageUrl: c.imageUrl,
+    featured: c.featured,
+    parentId: c.parentId,
+    listingCount: c._count.listings,
+  }));
+
+  const tickerBrands: TickerBrand[] = allBrands.map((b) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    logoUrl: b.logoUrl,
+    nameEn: b.nameEn,
+    listingCount: b._count.listings,
+  }));
+
+  const mapListing = (l: HomeListingRow) => ({
+    id: l.id,
+    slug: l.slug,
+    title: l.title,
+    shortDesc: l.shortDesc,
+    description: l.description,
+    brandName: l.brand?.name ?? null,
+    price: l.price,
+    priceType: l.priceType,
+    image: l.images[0]?.url ?? null,
+    icon: l.category?.icon ?? null,
+    year: l.year,
+    city: l.city,
+    province: l.province,
+    workingHours: l.workingHours,
+    condition: l.condition,
+    featured: l.featured,
+    verified: l.verified,
+    viewCount: l.viewCount,
+    publishedAt: l.publishedAt?.toISOString() ?? null,
+  });
+
+  // The shared listingInclude is validated against Prisma above. Narrow the
+  // three Promise.all result arrays to that exact relation payload at this boundary.
+  const featuredListings: FeaturedListing[] = (featuredRows as unknown as HomeListingRow[]).map(mapListing);
+  const verifiedListings: FeaturedListing[] = (verifiedRows as unknown as HomeListingRow[]).map(mapListing);
+  const latestAds: LatestAd[] = (latestRows as unknown as HomeListingRow[]).map(mapListing);
+
+  const activeRequests: ActiveRequest[] = requestRows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    category: r.category,
+    brandPref: r.brandPref,
+    transaction: r.transaction,
+    budgetMin: r.budgetMin ? r.budgetMin.toString() : null,
+    budgetMax: r.budgetMax ? r.budgetMax.toString() : null,
+    city: r.city,
+    deadline: r.deadline,
+    verified: r.verified,
+    publishedAt: r.publishedAt?.toISOString() ?? null,
+  }));
+
+  const knowledgeCards: KnowledgeCard[] = articleRows.map((a) => ({
+    id: a.id,
+    slug: a.slug,
+    title: a.title,
+    excerpt: a.excerpt,
+    category: a.category,
+    coverImage: a.coverImage,
+    viewCount: a.viewCount,
+  }));
+
+  const hotSearches: HotSearchItem[] = hotSearchRows.map((h) => ({
+    id: h.id,
+    term: h.term,
+    link: h.link,
+    count: h.count,
+    sortOrder: h.sortOrder,
+  }));
+
+  const heroStats: HeroStat[] =
+    activeStats.length > 0
+      ? activeStats.slice(0, 4).map((s) => ({ value: s.value, label: s.labelFa }))
+      : [
+          { value: `${toFa(activeListings)}+`, label: "آگهی فعال" },
+          { value: `${toFa(brandCount)}+`, label: "برند معتبر" },
+          { value: `${toFa(categoryCount)}`, label: "دسته‌بندی" },
+          { value: `${toFa(featuredCount)}`, label: "آگهی ویژه" },
+        ];
+
+  // Only display configured, real statistics. Never manufacture business figures.
+  const statItems: StatItem[] =
+    activeStats.length > 0
+      ? activeStats.map((s) => ({ value: s.value, label: s.labelFa }))
+      : heroStats.map((s) => ({ value: s.value, label: s.label }));
+
+
+  const liveCount = toFa(activeListings);
+
+  /* FIX-LISTINGS-HERO — fetch the listings referenced by the hero's tilted
+     cards so the homepage hero can render real listing data (image + title
+     + price + link) instead of a static image. Each lookup is defensive: a
+     deleted/non-PUBLISHED listing is silently dropped (the Hero component
+     then falls back to the static card image). */
+
+  const mapHeroCardListing = (id: string | null | undefined): HeroCardListing | null => {
+    if (!id) return null;
+    const l = heroCardListingRows.find((r) => r.id === id);
+    if (!l) return null;
+    return {
+      slug: l.slug,
+      title: l.title,
+      price: l.price ? l.price.toString() : null,
+      priceType: l.priceType,
+      image: l.images[0]?.url ?? null,
+      brandName: l.brand?.name ?? null,
+    };
+  };
+  const heroCardServicesListing = mapHeroCardListing(heroConfig?.cardServicesListingId);
+  const heroCardFeaturedListing = mapHeroCardListing(heroConfig?.cardFeaturedListingId);
+  const heroCardExclusiveListing = mapHeroCardListing(heroConfig?.cardExclusiveListingId);
+
+  const heroCfg = heroConfig ? {
+    badge: heroConfig.badge,
+    title1: heroConfig.title1,
+    highlight: heroConfig.highlight,
+    subtitle: heroConfig.subtitle,
+    buttonText: heroConfig.buttonText,
+    buttonLink: heroConfig.buttonLink,
+    secondBtnText: heroConfig.secondBtnText,
+    secondBtnLink: heroConfig.secondBtnLink,
+    slide1: heroConfig.slide1,
+    slide2: heroConfig.slide2,
+    slide3: heroConfig.slide3,
+    cardServicesImg: heroConfig.cardServicesImg,
+    cardFeaturedImg: heroConfig.cardFeaturedImg,
+    cardExclusiveImg: heroConfig.cardExclusiveImg,
+    cardServicesListingId: heroConfig.cardServicesListingId,
+    cardFeaturedListingId: heroConfig.cardFeaturedListingId,
+    cardExclusiveListingId: heroConfig.cardExclusiveListingId,
+    animationType: heroConfig.animationType,
+    statsWidth: heroConfig.statsWidth,
+    cardHeight: heroConfig.cardHeight,
+    cardWidth: heroConfig.cardWidth,
+    titleFontSize: heroConfig.titleFontSize,
+    badgeAlign: heroConfig.badgeAlign,
+    titleAlign: heroConfig.titleAlign,
+    highlightAlign: heroConfig.highlightAlign,
+    subtitleAlign: heroConfig.subtitleAlign,
+    buttonAlign: heroConfig.buttonAlign,
+    statsWidthCustom: heroConfig.statsWidthCustom,
+    statsPaddingCustom: heroConfig.statsPaddingCustom,
+    statsGapCustom: heroConfig.statsGapCustom,
+    cardWidthCustom: heroConfig.cardWidthCustom,
+    cardHeightCustom: heroConfig.cardHeightCustom,
+    cardGapCustom: heroConfig.cardGapCustom,
+    cardRadiusCustom: heroConfig.cardRadiusCustom,
+    titleFontSizeCustom: heroConfig.titleFontSizeCustom,
+    subtitleFontSizeCustom: heroConfig.subtitleFontSizeCustom,
+    badgeFontSizeCustom: heroConfig.badgeFontSizeCustom,
+    buttonPaddingYCustom: heroConfig.buttonPaddingYCustom,
+    buttonPaddingXCustom: heroConfig.buttonPaddingXCustom,
+    heroMinHeightCustom: heroConfig.heroMinHeightCustom,
+    contentMaxWidthCustom: heroConfig.contentMaxWidthCustom,
+    contentGapCustom: heroConfig.contentGapCustom,
+    slideOpacityCustom: heroConfig.slideOpacityCustom,
+    slideIntervalCustom: heroConfig.slideIntervalCustom,
+    overlayColorCustom: heroConfig.overlayColorCustom,
+  } : null;
 
   return (
-    <>
-      <Header />
-      <main>
-        <PageRenderer layout={layout} userId={null} />
+    <div className="site-theme flex min-h-screen flex-col bg-[#0b0b0b]">
+      <Header
+        categories={categories}
+        siteSettings={
+          siteSettings
+            ? {
+                logoUrl: siteSettings.logoUrl,
+                logoAnimationDurationMs: siteSettings.logoAnimationDurationMs,
+              }
+            : undefined
+        }
+      />
+      <main className="flex-1">
+        {resolvedHomeSections
+          .filter((s) => s.active)
+          .sort((a, b) => a.order - b.order)
+          .map((section) => {
+            const key = section.key as string;
+            const cms = {
+              title: section.title,
+              subtitle: section.subtitle ?? undefined,
+              description: section.description ?? undefined,
+            };
+            const content = (() => {
+              switch (key) {
+              case "hero":
+                return (
+                  <div key={section.id}>
+                    {heroConfig?.activeTemplate === "cinematic-industrial" ? (
+                      <>
+                        <CinematicIndustrialHero
+                          stats={heroStats}
+                          config={parseCinematicHeroConfig(heroConfig.cinematicConfig)}
+                        />
+                        {parseCinematicHeroConfig(heroConfig.cinematicConfig).showSearch !== false && (
+                          <HeroSearch
+                            categories={categories.map((c) => ({
+                              id: c.id,
+                              name: c.name,
+                              slug: c.slug,
+                              parentId: c.parentId,
+                            }))}
+                            brands={allBrands.map((b) => ({ id: b.id, name: b.name, slug: b.slug }))}
+                            liveCount={liveCount}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Hero
+                          stats={heroStats}
+                          config={heroCfg}
+                          cardServicesListing={heroCardServicesListing}
+                          cardFeaturedListing={heroCardFeaturedListing}
+                          cardExclusiveListing={heroCardExclusiveListing}
+                        />
+                        <HeroSearch
+                          categories={categories.map((c) => ({
+                            id: c.id,
+                            name: c.name,
+                            slug: c.slug,
+                            parentId: c.parentId,
+                          }))}
+                          brands={allBrands.map((b) => ({ id: b.id, name: b.name, slug: b.slug }))}
+                          liveCount={liveCount}
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              case "categories":
+                return (
+                  <ScrollReveal key={section.id}>
+                    <MachineCategoriesSection
+                      categories={machineCategoryCards}
+                      config={homeCategoryConfig}
+                      cmsConfig={cms}
+                    />
+                  </ScrollReveal>
+                );
+              case "hot-searches":
+                return hotSearches.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={80}>
+                    <HotSearchesSection items={hotSearches} cmsConfig={cms} />
+                  </ScrollReveal>
+                ) : null;
+              case "stats":
+                return (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <StatsSection items={statItems} cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              case "recommendations":
+                return (
+                  <ScrollReveal key={section.id} delay={120}>
+                    <RecommendationsSection />
+                  </ScrollReveal>
+                );
+              case "verified-machines":
+                return verifiedListings.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={120}>
+                    <VerifiedMachinesCarousel
+                      listings={verifiedListings}
+                      cmsConfig={cms}
+                      limit={siteSettings?.verifiedSectionLimit ?? undefined}
+                    />
+                  </ScrollReveal>
+                ) : null;
+              case "featured-machines":
+                return featuredListings.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={150}>
+                    <FeaturedMachinesSection listings={featuredListings} cmsConfig={cms} />
+                  </ScrollReveal>
+                ) : null;
+              case "active-requests":
+                return activeRequests.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <ActiveRequestsSection requests={activeRequests} cmsConfig={cms} />
+                  </ScrollReveal>
+                ) : null;
+              case "exclusive-sale":
+                return (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <ExclusiveSaleSection cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              case "services":
+                return (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <ServicesSection cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              case "latest-ads":
+                return latestAds.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <LatestAdsSection ads={latestAds} cmsConfig={cms} />
+                  </ScrollReveal>
+                ) : null;
+              case "sell7":
+                return (
+                  <ScrollReveal key={section.id} id="sell7">
+                    <Sell7Section cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              case "why-us":
+                return (
+                  <ScrollReveal key={section.id} id="about" delay={100}>
+                    <WhyUsSection cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              case "brands":
+                return (
+                  <ScrollReveal key={section.id} id="brands">
+                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} />
+                  </ScrollReveal>
+                );
+              case "trusted-brands":
+                return trustedBrands.length > 0 ? (
+                  <TrustedBrandsSection
+                    key={section.id}
+                    brands={trustedBrands}
+                    totalBrands={brandCount}
+                    title={siteSettings?.trustedBrandsTitle ?? undefined}
+                    subtitle={siteSettings?.trustedBrandsSubtitle ?? undefined}
+                    description={siteSettings?.trustedBrandsDescription ?? undefined}
+                    tickerSpeed={
+                      siteSettings?.trustedBrandsTickerSpeed ?? undefined
+                    }
+                  />
+                ) : null;
+              case "knowledge":
+                return knowledgeCards.length > 0 ? (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <KnowledgeSection articles={knowledgeCards} cmsConfig={cms} />
+                  </ScrollReveal>
+                ) : null;
+              case "cta":
+                return (
+                  <ScrollReveal key={section.id} delay={100}>
+                    <CtaSection cmsConfig={cms} />
+                  </ScrollReveal>
+                );
+              default:
+                return null;
+              }
+            })();
+            // Skip inactive-data sections instead of emitting empty CMS frames.
+            if (!content) return null;
+            return (
+              <HomepageSectionFrame key={section.id} sectionKey={key} config={section.config}>
+                {content}
+              </HomepageSectionFrame>
+            );
+          })}
       </main>
-      <Footer />
-    </>
+      <Footer
+        settings={
+          siteSettings
+            ? {
+                about: siteSettings.about,
+                phone: siteSettings.phone,
+                email: siteSettings.email,
+                address: siteSettings.address,
+                workingHours: siteSettings.workingHours,
+                copyright: siteSettings.copyright,
+                newsletterEnabled: siteSettings.newsletterEnabled,
+                footerLogoUrl: siteSettings.footerLogoUrl,
+                footerLogoHeight: siteSettings.footerLogoHeight ?? 48,
+                footerLogoPosition: siteSettings.footerLogoPosition ?? "center",
+                footerHeavixLogoUrl: siteSettings.footerHeavixLogoUrl,
+                footerMekanixLogoUrl: siteSettings.footerMekanixLogoUrl,
+                footerAriaLogoUrl: siteSettings.footerAriaLogoUrl,
+              }
+            : null
+        }
+      />
+    </div>
   );
 }

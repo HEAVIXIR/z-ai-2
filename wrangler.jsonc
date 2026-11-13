@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "heavix-preview",
+  "main": ".open-next/worker.js",
+  // Keep the established preview runtime date pinned. Populate process.env
+  // from Worker bindings for the Prisma 6 PPG adapter path.
+  "compatibility_date": "2026-10-28",
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  // Homepage rendering performs multiple PostgreSQL round trips. Smart
+  // Placement optimizes fetch execution near the observed backend; static
+  // assets remain served from the nearest edge location.
+  "placement": { "mode": "smart" },
+  "vars": {
+    "HEAVIX_ENV": "preview",
+    "NODE_ENV": "production",
+    "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
+    "B2_BUCKET_NAME": "heavix-dev-assets",
+    "B2_MEDIA_PREFIX": "heavix-media/",
+    "B2_REGION": "us-east-005",
+    "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
+  },
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": false },
+  "previews": {
+    "vars": {
+      "HEAVIX_ENV": "preview",
+      "NODE_ENV": "production",
+      "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
+      "B2_BUCKET_NAME": "heavix-dev-assets",
+      "B2_MEDIA_PREFIX": "heavix-media/",
+      "B2_REGION": "us-east-005",
+      "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
+    },
+    "observability": {
+      "enabled": true,
+      "logs": { "enabled": true, "persist": true, "head_sampling_rate": 1 },
+      "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 }
+    }
+  },
+  "secrets": {
+    "required": [
+      "DATABASE_URL",
+      "STORE_DATABASE_URL",
+      "HEAVIX_APP_PREVIEW_DATABASE_OID",
+      "HEAVIX_STORE_PREVIEW_DATABASE_OID",
+      "B2_KEY_ID",
+      "B2_APPLICATION_KEY"
+    ]
+  }
+}

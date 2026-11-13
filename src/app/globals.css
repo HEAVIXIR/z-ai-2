@@ -502,3 +502,29 @@ section {
     transform: translateX(20px);
   }
 }
+
+
+/* Admin-controlled homepage section presentation. Empty settings preserve legacy visuals. */
+.hp-section-frame { position: relative; width: 100%; }
+
+@keyframes hp-section-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hp-section-slide-up { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes hp-section-zoom { from { opacity: .65; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes hp-section-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.hp-section-motion-fade { animation: hp-section-fade var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-slide-up { animation: hp-section-slide-up var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-zoom { animation: hp-section-zoom var(--hp-motion-duration,700ms) ease both; animation-delay: var(--hp-motion-delay,0ms); }
+.hp-section-motion-float { animation: hp-section-float var(--hp-motion-duration,700ms) ease-in-out infinite; animation-delay: var(--hp-motion-delay,0ms); }
+@media (prefers-reduced-motion: reduce) { .hp-section-frame[class*="hp-section-motion-"] { animation: none !important; } }
+
+/* Only override legacy component styling when an admin explicitly sets that token. */
+.hp-section-frame[style*="--hp-heading-color"] h1,
+.hp-section-frame[style*="--hp-heading-color"] h2,
+.hp-section-frame[style*="--hp-heading-color"] h3 { color: var(--hp-heading-color) !important; }
+.hp-section-frame[style*="--hp-heading-size"] h2,
+.hp-section-frame[style*="--hp-heading-size"] h3 { font-size: var(--hp-heading-size) !important; }
+.hp-section-frame[style*="--hp-content-max-width"] .mx-auto[class*="max-w-"] { max-width: var(--hp-content-max-width) !important; }
+.hp-section-frame[style*="--hp-card-gap"] .grid { gap: var(--hp-card-gap) !important; }
+.hp-section-frame[style*="--hp-card-columns"] .grid { grid-template-columns: repeat(var(--hp-card-columns), minmax(0, 1fr)) !important; }
+.hp-section-frame[style*="--hp-image-radius"] img { border-radius: var(--hp-image-radius) !important; }
+.hp-section-frame[style*="--hp-accent-color"] .text-\\[\\#F58220\\] { color: var(--hp-accent-color) !important; }

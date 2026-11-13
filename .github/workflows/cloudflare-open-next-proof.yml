@@ -1,0 +1,177 @@
+name: Cloudflare OpenNext Webpack Proof
+
+on:
+  pull_request:
+    branches:
+      - 'recovery/**'
+    paths:
+      - 'next.config.ts'
+      - 'open-next.config.ts'
+      - 'scripts/cloudflare-next-build-diagnostics.mjs'
+      - 'scripts/patch-next-nft-concurrency.cjs'
+      - 'scripts/patch-opennext-worker-wasm.mjs'
+      - 'src/lib/db.worker.ts'
+      - 'src/lib/store-db.worker.ts'
+      - 'src/lib/notifications.ts'
+      - 'src/lib/media-image-optimizer.ts'
+      - 'src/lib/b2-media-storage.ts'
+      - 'src/app/api/listings/route.ts'
+      - 'src/app/api/admin/media/**'
+      - 'src/lib/upload-security.ts'
+      - 'src/lib/media-service.ts'
+      - 'src/app/api/media/**'
+      - 'src/components/admin/MediaUploader.tsx'
+      - 'wrangler.jsonc'
+      - 'scripts/run-opennext-runtime-proof.mjs'
+      - 'vitest.preview-proof.config.ts'
+      - 'tests/security/**'
+      - 'tests/admin-backup-readiness.test.ts'
+      - 'src/app/api/opennext-runtime-proof/route.ts'
+      - 'src/components/listings/ListingImageUploader.tsx'
+      - 'tests/unit/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'src/lib/generated/worker-client/**'
+      - 'src/lib/generated/store-worker-client/**'
+      - '.github/workflows/cloudflare-open-next-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: heavix-cloudflare-open-next-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  open-next-webpack:
+    name: OpenNext build with Worker Prisma Webpack async-WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Resolve and install Bun dependencies
+        run: |
+          set -euo pipefail
+          bun install
+          bun install --frozen-lockfile
+
+      - name: Commit resolved Bun lockfile to same-repository proof branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'proof/')
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- bun.lock; then
+            git add bun.lock
+            git commit -m "chore(deps): refresh Bun lockfile"
+            git push origin "HEAD:refs/heads/${PR_HEAD_REF}"
+          fi
+
+      - name: Upload resolved Bun lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-bun-lockfile-${{ github.sha }}
+          path: bun.lock
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Generate App and Store Worker Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Typecheck application and Worker runtime
+        run: |
+          bun run typecheck
+          bun run typecheck:worker
+
+      - name: Lint application
+        run: bun run lint
+
+      - name: Run deterministic Preview proof and security suites
+        run: |
+          bun run test:preview-proof
+          bun run test:security
+
+      - name: Run the exact Cloudflare Preview OpenNext build profile
+        shell: bash
+        env:
+          HEAVIX_BUILD_TARGET: cloudflare
+          HEAVIX_ENV: preview
+          NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+          NODE_ENV: production
+          HEAVIX_NEXT_BUNDLER: webpack
+          UV_THREADPOOL_SIZE: "4"
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"
+          test "$HEAVIX_ENV" = "preview"
+          test "$NEXT_PUBLIC_SITE_URL" = "https://heavix-preview.heavixir.workers.dev"
+          node scripts/patch-next-nft-concurrency.cjs
+          bunx opennextjs-cloudflare build --noMinify
+          bun scripts/patch-opennext-worker-wasm.mjs
+
+      - name: Verify complete deployable OpenNext Worker bundle
+        run: |
+          set -euo pipefail
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+          test -s .open-next/cloudflare/init.js
+          test -s .open-next/middleware/handler.mjs
+          test -s .open-next/server-functions/default/handler.mjs
+          test -s .open-next/.build/durable-objects/queue.js
+          test -s .open-next/.build/durable-objects/sharded-tag-cache.js
+          test -s .open-next/.build/durable-objects/bucket-cache-purge.js
+          echo "PASS: Worker entrypoint, runtime modules, durable objects, and assets exist"
+
+      - name: Run Wrangler deploy dry-run only
+        shell: bash
+        env:
+          DATABASE_URL: "postgresql://dry-run.invalid:5432/app"
+          STORE_DATABASE_URL: "postgresql://dry-run.invalid:5432/store"
+          B2_KEY_ID: "0055d132b1dcc410000000004"
+          B2_APPLICATION_KEY: "ci-only-dummy-application-key-material"
+          HEAVIX_APP_PREVIEW_DATABASE_OID: "1"
+          HEAVIX_STORE_PREVIEW_DATABASE_OID: "2"
+          HEAVIX_ENV: preview
+          NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+          NODE_ENV: production
+        run: |
+          set -euo pipefail
+          bunx wrangler deploy --dry-run --config wrangler.jsonc --outdir "$RUNNER_TEMP/heavix-wrangler-dry-run"
+          test -d "$RUNNER_TEMP/heavix-wrangler-dry-run"
+          echo "PASS: Wrangler packaged the Worker without uploading or deploying"
+
+      - name: Execute no-database Workerd runtime smoke
+        env:
+          HEAVIX_RUNTIME_PROOF_TARGET: SMOKE_ONLY
+        run: bun run test:workerd
+
+      - name: Execute OpenNext media optimizer and B2 binding smoke in Workerd
+        env:
+          HEAVIX_SKIP_OPENNEXT_BUILD: "1"
+        run: bun scripts/run-opennext-runtime-proof.mjs
+
+      - name: Upload complete OpenNext proof artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-open-next-webpack-${{ github.sha }}
+          path: .open-next/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import ListingImageUploader from "@/components/listings/ListingImageUploader";
 import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
@@ -19,7 +20,6 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  ImagePlus,
   Key,
   Layers3,
   Loader2,
@@ -97,6 +97,7 @@ export default function NewListingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [imagesUploading, setImagesUploading] = useState(false);
 
   // Form state — V1.1
   const [transactionType, setTransactionType] = useState<string>("SALE");
@@ -315,6 +316,7 @@ export default function NewListingPage() {
     if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
+      if (imagesUploading) return false;
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -1123,61 +1125,7 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      <div>
-                        <label className="mb-1.5 block text-xs font-bold text-white/60">
-                          تصاویر دستگاه *
-                        </label>
-                        <label className="flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/10 bg-black/30 text-center transition hover:border-[#F58220]/40">
-                          <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
-                          <span className="text-sm font-bold text-white/60">
-                            تصاویر دستگاه را اینجا بکشید یا کلیک کنید
-                          </span>
-                          <span className="mt-1 text-[11px] text-white/30">PNG, JPG تا ۱۰ مگابایت</span>
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []);
-                              const placeholders = files.map(
-                                (_, i) => `/uploads/placeholder-${Date.now()}-${i}.jpg`,
-                              );
-                              setImages((prev) => [...prev, ...placeholders].slice(0, 30));
-                            }}
-                          />
-                        </label>
-
-                        {images.length > 0 && (
-                          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
-                            {images.map((img, i) => (
-                              <div
-                                key={i}
-                                className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/40"
-                              >
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
-                                  <span className="text-3xl">🖼️</span>
-                                </div>
-                                {i === 0 && (
-                                  <span className="absolute right-1 top-1 rounded bg-[#F58220] px-1.5 py-0.5 text-[8px] font-black text-white">
-                                    اصلی
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
-                                  className="absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white/70 transition hover:bg-red-500 hover:text-white"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <p className="mt-3 text-[11px] text-white/35">
-                          {images.length} تصویر انتخاب شده. حداقل یک تصویر الزامی است.
-                        </p>
-                      </div>
+                      <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
                     </div>
                   </div>
                 )}
@@ -1293,7 +1241,7 @@ export default function NewListingPage() {
                   ) : (
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || imagesUploading}
                       className="flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-8 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {submitting ? (

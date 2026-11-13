@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { mergeHomepageSections } from "@/lib/homepage/sections";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +23,15 @@ export async function GET() {
     );
   }
   try {
-    const sections = await db.homePageSection.findMany({
+    const rows = await db.homePageSection.findMany({
       orderBy: { order: "asc" },
     });
-    return NextResponse.json({ sections });
-  } catch (err: any) {
+    return NextResponse.json({ sections: mergeHomepageSections(rows) });
+  } catch (err) {
+    console.error("[admin/homepage-sections GET] failed", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { error: "بارگذاری تنظیمات صفحه اصلی موقتاً ممکن نیست" },
+      { status: 503 },
     );
   }
 }
@@ -62,12 +64,18 @@ export async function PUT(req: Request) {
     const body = await req.json().catch(() => ({}));
     if (Array.isArray(body.sections)) {
       const updatedSections = await Promise.all(
-        body.sections.map(async (s: any) =>
-          db.homePageSection.update({
-            where: { id: String(s.id) },
-            data: sectionData(s),
-          }),
-        ),
+        body.sections.map(async (s: any) => {
+          const data = sectionData(s);
+          if (!data.key || typeof data.key !== "string") {
+            throw new Error("Every homepage section must have a valid key");
+          }
+          // Stable unique key also handles virtual default IDs.
+          return db.homePageSection.upsert({
+            where: { key: data.key },
+            create: data,
+            update: data,
+          });
+        }),
       );
       for (const u of updatedSections) {
         await logAudit({

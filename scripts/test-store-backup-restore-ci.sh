@@ -20,6 +20,62 @@ if [[ "$PGHOST" != "localhost" && "$PGHOST" != "127.0.0.1" ]]; then
   exit 2
 fi
 
+# The CI psql shim runs inside the service container. Explicitly use its
+# postgres OS account so socket-authenticated calls never default to root.
+if [[ -n "${POSTGRES_CONTAINER_ID:-}" ]]; then
+  psql() {
+    local -a args=()
+    local sql_file=""
+    while (($#)); do
+      if [[ "$1" == "-f" && $# -ge 2 ]]; then
+        sql_file="$2"
+        shift 2
+      else
+        args+=("$1")
+        shift
+      fi
+    done
+    if [[ -n "$sql_file" ]]; then
+      docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}" < "$sql_file"
+    else
+      docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" psql "${args[@]}"
+    fi
+  }
+fi
+
+
+  pg_dump() {
+    local -a args=()
+    local output_file=""
+    while (($#)); do
+      case "$1" in
+        --file=*) output_file="${1#--file=}"; shift ;;
+        -f)
+          [[ $# -ge 2 ]] || { echo "pg_dump: -f requires a file" >&2; return 2; }
+          output_file="$2"; shift 2 ;;
+        *) args+=("$1"); shift ;;
+      esac
+    done
+    if [[ -n "$output_file" ]]; then
+      docker exec --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" pg_dump "${args[@]}" > "$output_file"
+    else
+      docker exec --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" pg_dump "${args[@]}"
+    fi
+  }
+  pg_restore() {
+    local -a args=()
+    local dump_file=""
+    while (($#)); do
+      args+=("$1")
+      dump_file="$1"
+      shift
+    done
+    [[ -n "$dump_file" && -f "$dump_file" ]] || { echo "pg_restore: dump file missing" >&2; return 2; }
+    unset 'args[${#args[@]}-1]'
+    docker exec -i --user postgres -e "PGPASSWORD=$PGPASSWORD" "$POSTGRES_CONTAINER_ID" pg_restore "${args[@]}" < "$dump_file"
+  }
+  export -f psql pg_dump pg_restore
+
 SOURCE_DB="heavix_store_backup_source_proof"
 RESTORE_DB="heavix_store_backup_restore_proof"
 TMP="$(mktemp -d)"
