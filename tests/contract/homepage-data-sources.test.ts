@@ -5,17 +5,23 @@ import { getDataSource, getWidget } from "../../src/lib/admin/page-builder/widge
 
 const root = process.cwd();
 const homepageSource = readFileSync(path.join(root, "src/app/page.tsx"), "utf8");
+const cachedQueriesSource = readFileSync(path.join(root, "src/lib/homepage-cached-queries.ts"), "utf8");
 
 describe("public homepage renderer contracts", () => {
-  it("uses the canonical database-backed 17-section homepage composition", () => {
-    expect(homepageSource).toContain("getHomepageSections()");
-    expect(homepageSource).toContain("mergeHomepageSections(rows)");
+  it("uses the canonical database-backed homepage composition and cached independent sources", () => {
+    expect(homepageSource).toContain("getCachedHomePageSections()");
+    expect(homepageSource).toContain("getCachedCatalogCategories()");
+    expect(homepageSource).toContain("getCachedTopBrands()");
+    expect(homepageSource).toContain("getCachedActiveRequests()");
+    expect(homepageSource).toContain("getCachedArticles()");
     expect(homepageSource).toContain("db.listing.findMany");
-    expect(homepageSource).toContain("db.category.findMany");
-    expect(homepageSource).toContain("db.brand.findMany");
-    expect(homepageSource).toContain("db.buyRequest.findMany");
-    expect(homepageSource).toContain("db.article.findMany");
     expect(homepageSource).toContain("getActiveStats");
+
+    expect(cachedQueriesSource).toContain("db.homePageSection.findMany");
+    expect(cachedQueriesSource).toContain("db.category.findMany");
+    expect(cachedQueriesSource).toContain("db.brand.findMany");
+    expect(cachedQueriesSource).toContain("db.buyRequest.findMany");
+    expect(cachedQueriesSource).toContain("db.article.findMany");
   });
 
   it("keeps PageBuilder data sources registered for custom pages and preview flows", () => {
