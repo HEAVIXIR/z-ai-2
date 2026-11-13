@@ -30,6 +30,11 @@ function parseCompat(raw: string | null | undefined): unknown[] {
 }
 
 export async function GET(req: Request) {
+  const routeStartedAt = performance.now();
+  let rateMs = 0;
+  let catalogMs = 0;
+  let enrichmentMs = 0;
+
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
@@ -41,7 +46,33 @@ export async function GET(req: Request) {
     const onlyDiscount = url.searchParams.get("onlyDiscount") === "true";
     const limit = Math.min(200, Number(url.searchParams.get("limit")) || 100);
 
-    const eff = await getEffectiveRate();
+    // Rate lookup and catalog reads are independent; do not serialize their I/O.
+    const [eff, [items, total]] = await Promise.all([
+      (async () => {
+        const startedAt = performance.now();
+        const result = await getEffectiveRate();
+        rateMs = performance.now() - startedAt;
+        return result;
+      })(),
+      (async () => {
+        const startedAt = performance.now();
+        const result = await Promise.all([
+          storeDb.part.findMany({
+            where,
+            orderBy,
+            take: limit,
+            include: {
+              category: { select: { id: true, name: true, slug: true } },
+              brand: { select: { id: true, name: true, country: true } },
+              carModels: { select: { id: true, brand: true, model: true, yearFrom: true, yearTo: true } },
+            },
+          }),
+          storeDb.part.count({ where }),
+        ]);
+        catalogMs = performance.now() - startedAt;
+        return result;
+      })(),
+    ]);
     const withMargin = eff.rate * (1 + (eff.marginPercent || 0) / 100);
 
     const where: any = { active: true };
@@ -70,26 +101,28 @@ export async function GET(req: Request) {
               ? { soldCount: "desc" }
               : { createdAt: "desc" };
 
-    const [items, total] = await Promise.all([
-      storeDb.part.findMany({
-        where,
-        orderBy,
-        take: limit,
-        include: {
-          category: { select: { id: true, name: true, slug: true } },
-          brand: { select: { id: true, name: true, country: true } },
-          carModels: { select: { id: true, brand: true, model: true, yearFrom: true, yearTo: true } },
-        },
-      }),
-      storeDb.part.count({ where }),
+    // Reviews and wishlist counts are also independent. Skip both when the
+    // filtered catalog is empty instead of issuing empty-IN database queries.
+    const partIds = items.map((p) => p.id);
+    const enrichmentStartedAt = performance.now();
+    const [reviews, grouped] = await Promise.all([
+      partIds.length > 0
+        ? storeDb.review.findMany({
+            where: { partId: { in: partIds }, approved: true },
+            select: { partId: true, rating: true },
+          })
+        : Promise.resolve([]),
+      partIds.length > 0
+        ? storeDb.wishlist.groupBy({
+            by: ["partId"],
+            where: { partId: { in: partIds } },
+            _count: { partId: true },
+          })
+        : Promise.resolve([]),
     ]);
+    enrichmentMs = performance.now() - enrichmentStartedAt;
 
     // Light-weight review aggregation (SQLite has no native groupBy avg)
-    const partIds = items.map((p) => p.id);
-    const reviews = await storeDb.review.findMany({
-      where: { partId: { in: partIds }, approved: true },
-      select: { partId: true, rating: true },
-    });
     const ratingMap = new Map<string, { sum: number; count: number }>();
     for (const r of reviews) {
       const cur = ratingMap.get(r.partId) || { sum: 0, count: 0 };
@@ -99,14 +132,7 @@ export async function GET(req: Request) {
     }
 
     const wishlistCountMap = new Map<string, number>();
-    if (partIds.length > 0) {
-      const grouped = await storeDb.wishlist.groupBy({
-        by: ["partId"],
-        where: { partId: { in: partIds } },
-        _count: { partId: true },
-      });
-      for (const g of grouped) wishlistCountMap.set(g.partId, g._count.partId);
-    }
+    for (const g of grouped) wishlistCountMap.set(g.partId, g._count.partId);
 
     const parts = items.map((p) => {
       const priceIrr = usdToIrr(p.priceUsd, eff);
@@ -154,7 +180,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       parts,
       total,
       currency: {
@@ -165,6 +191,13 @@ export async function GET(req: Request) {
         withMargin,
       },
     });
+    // Server-side timings let us separate rate, catalog and enrichment latency
+    // in browser/network diagnostics without logging query data or personal data.
+    response.headers.set(
+      "Server-Timing",
+      `rate;dur=${rateMs.toFixed(1)}, catalog;dur=${catalogMs.toFixed(1)}, enrichment;dur=${enrichmentMs.toFixed(1)}, total;dur=${(performance.now() - routeStartedAt).toFixed(1)}`,
+    );
+    return response;
   } catch (e: any) {
     console.error("[api/store/parts GET] error:", e);
     return NextResponse.json(
