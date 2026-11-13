@@ -9,16 +9,14 @@ const DB_CHECK_TIMEOUT_MS = 8_000;
 /* ============================================================
    GET /api/health — liveness + readiness check.
 
-   Returns 200 if the application process is alive and the main
-   database is reachable. Does NOT expose secrets, connection
-   strings, or internal details.
+   Returns 200 when the main application database is reachable.
+   Does NOT expose secrets, connection strings, or internal details.
 
-   Response: { status: "ok" | "degraded", checks: { db: "up" | "down" } }
+   Response: { status: "ok" | "degraded", checks: { db, storeDb } }
 
-   The store database is checked best-effort — if it's down, the
-   health status is "degraded" (not "down") because the main
-   marketplace functionality (listings, search, auth) does not
-   depend on the store DB.
+   The store database is checked best-effort and does not affect
+   the overall status because marketplace core functionality does
+   not depend on the store DB.
 
    Both database checks run concurrently and have a bounded wait.
    Promise.race bounds this response; it does not cancel an underlying
@@ -54,7 +52,7 @@ async function checkAppDb(): Promise<"up" | "down"> {
   } catch (error) {
     console.warn(
       "[health] App DB check failed:",
-      error instanceof Error ? error.message : "unknown error",
+      error instanceof Error ? error.name : "unknown error",
     );
     return "down";
   }
@@ -74,7 +72,7 @@ async function checkStoreDb(): Promise<"up" | "down"> {
   } catch (error) {
     console.warn(
       "[health] Store DB check failed:",
-      error instanceof Error ? error.message : "unknown error",
+      error instanceof Error ? error.name : "unknown error",
     );
     return "down";
   }
