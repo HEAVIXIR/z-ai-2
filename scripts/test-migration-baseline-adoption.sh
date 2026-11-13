@@ -72,11 +72,11 @@ for pair in "main:$MAIN_FRESH:$MAIN_EXISTING" "store:$STORE_FRESH:$STORE_EXISTIN
     --schema-only --no-owner --no-privileges --exclude-table=public._prisma_migrations >"$TMP/$name-existing.raw.sql"
   sed -E \
     -e '/^\\(un)?restrict[[:space:]]+/d' \
-    -e '/^ALTER TABLE ONLY .* ALTER COLUMN .* SET \\(pg_attver=[0-9]+\\);$/d' \
+    -e '/^ALTER TABLE ONLY .* ALTER COLUMN .* SET [(]pg_attver=[0-9]+[)];$/d' \
     "$TMP/$name-fresh.raw.sql" >"$TMP/$name-fresh.sql"
   sed -E \
     -e '/^\\(un)?restrict[[:space:]]+/d' \
-    -e '/^ALTER TABLE ONLY .* ALTER COLUMN .* SET \\(pg_attver=[0-9]+\\);$/d' \
+    -e '/^ALTER TABLE ONLY .* ALTER COLUMN .* SET [(]pg_attver=[0-9]+[)];$/d' \
     "$TMP/$name-existing.raw.sql" >"$TMP/$name-existing.sql"
   diff -u "$TMP/$name-fresh.sql" "$TMP/$name-existing.sql"
   echo "✓ $name existing-schema adoption matches fresh migration schema; sentinel row survived."
