@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/authorization";
-import { getAsset, getAssetReadUrl } from "@/lib/media-service";
+import { getAsset } from "@/lib/media-service";
+import { createB2MediaReadUrl } from "@/lib/b2-media-storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +49,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
       }
     }
 
-    const signedUrl = await getAssetReadUrl(id);
+    // The asset sidecar is already loaded above; sign its key directly.
+    const signedUrl = await createB2MediaReadUrl(asset.relativePath, 300);
     if (!signedUrl) return new NextResponse(null, { status: 404 });
 
     return NextResponse.redirect(signedUrl, {
