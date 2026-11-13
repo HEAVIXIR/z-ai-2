@@ -46,34 +46,13 @@ export async function GET(req: Request) {
     const onlyDiscount = url.searchParams.get("onlyDiscount") === "true";
     const limit = Math.min(200, Number(url.searchParams.get("limit")) || 100);
 
-    // Rate lookup and catalog reads are independent; do not serialize their I/O.
-    const [eff, [items, total]] = await Promise.all([
-      (async () => {
-        const startedAt = performance.now();
-        const result = await getEffectiveRate();
-        rateMs = performance.now() - startedAt;
-        return result;
-      })(),
-      (async () => {
-        const startedAt = performance.now();
-        const result = await Promise.all([
-          storeDb.part.findMany({
-            where,
-            orderBy,
-            take: limit,
-            include: {
-              category: { select: { id: true, name: true, slug: true } },
-              brand: { select: { id: true, name: true, country: true } },
-              carModels: { select: { id: true, brand: true, model: true, yearFrom: true, yearTo: true } },
-            },
-          }),
-          storeDb.part.count({ where }),
-        ]);
-        catalogMs = performance.now() - startedAt;
-        return result;
-      })(),
-    ]);
-    const withMargin = eff.rate * (1 + (eff.marginPercent || 0) / 100);
+    // Start rate retrieval early; the catalog query is started once its filters are built.
+    const ratePromise = (async () => {
+      const startedAt = performance.now();
+      const result = await getEffectiveRate();
+      rateMs = performance.now() - startedAt;
+      return result;
+    })();
 
     const where: any = { active: true };
     if (q) {
@@ -100,6 +79,27 @@ export async function GET(req: Request) {
             : sort === "bestseller"
               ? { soldCount: "desc" }
               : { createdAt: "desc" };
+
+    // Rate and catalog reads are independent; wait for both together.
+    const catalogStartedAt = performance.now();
+    const [eff, [items, total]] = await Promise.all([
+      ratePromise,
+      Promise.all([
+        storeDb.part.findMany({
+          where,
+          orderBy,
+          take: limit,
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+            brand: { select: { id: true, name: true, country: true } },
+            carModels: { select: { id: true, brand: true, model: true, yearFrom: true, yearTo: true } },
+          },
+        }),
+        storeDb.part.count({ where }),
+      ]),
+    ]);
+    catalogMs = performance.now() - catalogStartedAt;
+    const withMargin = eff.rate * (1 + (eff.marginPercent || 0) / 100);
 
     // Reviews and wishlist counts are also independent. Skip both when the
     // filtered catalog is empty instead of issuing empty-IN database queries.
