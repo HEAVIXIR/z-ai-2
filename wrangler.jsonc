@@ -6,6 +6,10 @@
   // from Worker bindings for the Prisma 6 PPG adapter path.
   "compatibility_date": "2026-10-28",
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  // Homepage rendering performs multiple PostgreSQL round trips. Smart
+  // Placement optimizes fetch execution near the observed backend; static
+  // assets remain served from the nearest edge location.
+  "placement": { "mode": "smart" },
   "vars": {
     "HEAVIX_ENV": "preview",
     "NODE_ENV": "production",
@@ -15,13 +19,8 @@
     "B2_REGION": "us-east-005",
     "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
   },
-  "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
-  },
-  "observability": {
-    "enabled": false
-  },
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": false },
   "previews": {
     "vars": {
       "HEAVIX_ENV": "preview",
@@ -34,11 +33,7 @@
     },
     "observability": {
       "enabled": true,
-      "logs": {
-        "enabled": true,
-        "persist": true,
-        "head_sampling_rate": 1
-      }
+      "logs": { "enabled": true, "persist": true, "head_sampling_rate": 1 }
     }
   },
   "secrets": {
