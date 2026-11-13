@@ -43,10 +43,11 @@ export default function ListingCard({ l }: { l: ListingCardData }) {
       {/* Image */}
       <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
         {l.image ? (
-           
           <img
             src={l.image}
             alt={l.title}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
           />
         ) : (
