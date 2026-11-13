@@ -13,7 +13,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingCard, { type ListingCardData } from "@/components/listings/ListingCard";
 import SavedSearchButton from "@/components/listings/SavedSearchButton";
-import { ArrowRight, Search, X, ShieldCheck, Sliders } from "lucide-react";
+import { ArrowRight, Search, X, Sliders } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +72,7 @@ export default async function ListingsPage({
 
   // HBR Taxonomy V1.1 — only CATALOG categories in the filter sidebar.
   // Resolve Iran for the province cascade.
-  const [allBrands, allActiveCategories, iran, allIndustries] = await Promise.all([
+  const [allBrands, allActiveCategories, iran, allIndustries, industryCategoryRows] = await Promise.all([
     db.brand.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -108,6 +108,17 @@ export default async function ListingsPage({
       orderBy: [{ sortOrder: "asc" }, { nameFa: "asc" }],
       select: { id: true, key: true, nameFa: true },
     }),
+    // Resolve industry → catalog categories in the same initial query batch.
+    // The selected industry is supplied by ID or canonical key.
+    sp.industry
+      ? db.categoryApplicationIndustry.findMany({
+          where: {
+            applicationIndustry: { is: { OR: [{ id: sp.industry }, { key: sp.industry }] } },
+            category: { is: { active: true, layer: "CATALOG" } },
+          },
+          select: { categoryId: true },
+        })
+      : Promise.resolve([] as { categoryId: string }[]),
   ]);
   const catalogCategories = allActiveCategories
     .filter((category) => category.layer === "CATALOG")
@@ -244,6 +255,14 @@ export default async function ListingsPage({
   // HBR V1.1 location filter (Listing.province/city are String? — store IDs).
   if (sp.province) where.province = sp.province;
   if (sp.city) where.city = sp.city;
+  if (sp.industry) {
+    // Application industry is modeled through CategoryApplicationIndustry,
+    // not as a direct Listing column. Keep it additive with category/attribute filters.
+    where.AND = (where.AND as any[] | undefined) ?? [];
+    (where.AND as any[]).push({
+      categoryId: { in: industryCategoryRows.map((row) => row.categoryId) },
+    });
+  }
 
   /* ── Dynamic attribute filters ──
      Parse `attr.KEY_min`, `attr.KEY_max`, `attr.KEY` from search params
@@ -407,11 +426,7 @@ export default async function ListingsPage({
                   بازار ماشین‌آلات سنگین
                 </h1>
                 <p className="mt-2 text-sm text-white/45">
-                  {toFa(listings.length)} آگهی{listings.length !== 1 ? " فعال" : ""} یافت شد
-                  <span className="mr-2 inline-flex items-center gap-1 text-emerald-400/80">
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    همه دستگاه‌ها دارای کارشناسی هویکس
-                  </span>
+                  در این صفحه {toFa(listings.length)} آگهی نمایش داده می‌شود
                 </p>
               </div>
               <SavedSearchButton
