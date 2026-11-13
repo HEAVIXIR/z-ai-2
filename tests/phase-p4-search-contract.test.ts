@@ -187,17 +187,17 @@ describe("Public listings page — application industry filter", () => {
 
   it("resolves industry filters through CategoryApplicationIndustry mappings", () => {
     const c = read(PAGE);
-    expect(c).toMatch(/db\\.categoryApplicationIndustry\\.findMany/);
-    expect(c).toMatch(/applicationIndustry:\\s*\\{\\s*is:/);
-    expect(c).toMatch(/category:\\s*\\{\\s*is:\\s*\\{\\s*active:\\s*true,\\s*layer:\\s*["']CATALOG["']/);
-    expect(c).toMatch(/categoryId:\\s*\\{\\s*in:\\s*industryCategoryRows\\.map/);
+    expect(c).toContain("db.categoryApplicationIndustry.findMany");
+    expect(c).toContain("applicationIndustry: { is:");
+    expect(c).toContain('category: { is: { active: true, layer: "CATALOG" } }');
+    expect(c).toContain("categoryId: { in: industryCategoryRows.map");
   });
 
   it("combines industry category IDs with existing AND filters", () => {
     const c = read(PAGE);
-    expect(c).toMatch(/where\\.AND\\s*=\\s*\\(where\\.AND/);
-    expect(c).toMatch(/where\\.AND as any\\[\\]\\)\\.push/);
-    expect(c).not.toMatch(/where\\.industry\\s*=/);
+    expect(c).toContain("where.AND = (where.AND as any[] | undefined) ?? []");
+    expect(c).toContain("(where.AND as any[]).push({");
+    expect(c).not.toContain("where.industry =");
   });
 
   it("does not claim all results are inspected or report a page slice as the total", () => {
