@@ -287,6 +287,9 @@ export default function StorePage() {
         <Hero
           featured={featured}
           currencyRate={currency?.rate || 0}
+          currencySource={currency?.source ?? null}
+          partsCount={parts.length}
+          categoriesCount={categories.length}
           onSelectPart={(p) => { setOpenPart(p); setPartDialogOpen(true) }}
           onSeeAll={() => document.getElementById('parts-section')?.scrollIntoView({ behavior: 'smooth' })}
           onOpenMechanics={() => setMechanicsOpen(true)}
