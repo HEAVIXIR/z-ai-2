@@ -82,7 +82,7 @@ export default async function ListingsPage({
     // Derive the two views in memory instead of issuing duplicate category queries.
     db.category.findMany({
       where: { active: true },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      orderBy: { sortOrder: "asc" },
       select: {
         id: true,
         name: true,
@@ -108,7 +108,9 @@ export default async function ListingsPage({
       select: { id: true, key: true, nameFa: true },
     }),
   ]);
-  const catalogCategories = allActiveCategories.filter((category) => category.layer === "CATALOG");
+  const catalogCategories = allActiveCategories
+    .filter((category) => category.layer === "CATALOG")
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "fa"));
   const headerCats = allActiveCategories.map(({ id, name, slug, parentId, icon }) => ({
     id, name, slug, parentId, icon,
   }));
