@@ -54,8 +54,11 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain('asset.visibility === "PUBLIC"');
     expect(route).toContain('listingImage.listing.status === "PUBLISHED"');
     expect(route).toContain("listingOwnerId === user.id");
-    expect(route).toContain("getAssetReadUrl(id)");
+    expect(route).toContain('import { createB2MediaReadUrl } from "@/lib/b2-media-storage"');
+    expect(route).toContain("createB2MediaReadUrl(asset.relativePath, 300)");
+    expect(route).not.toContain("getAssetReadUrl(id)");
     expect(route).toContain('status: 404');
+    expect(route).toContain('"private, no-store"');
   });
 
   it("pins the object-storage adapter to the dedicated media bucket and prefix", () => {
