@@ -26,10 +26,10 @@ import HotSearchesSection, { type HotSearchItem } from "@/components/home/HotSea
 import RecommendationsSection from "@/components/home/RecommendationsSection";
 import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
-import { mergeHomepageSections } from "@/lib/homepage/sections";
 import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
 import {
   getCachedTopBrands,
+  getCachedHomePageSections,
   getCachedCatalogCategories,
   getCachedHomeCategoryConfig,
   getCachedSiteSettings,
@@ -53,13 +53,6 @@ type TickerBrand = {
   nameEn?: string | null;
   listingCount?: number;
 };
-
-async function getHomepageSections() {
-  // Read all configured rows so an admin-disabled section stays disabled.
-  // Missing defaults are composed in memory only; public rendering never seeds.
-  const rows = await db.homePageSection.findMany({ orderBy: { order: "asc" } });
-  return mergeHomepageSections(rows);
-}
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +123,7 @@ export default async function HomePage() {
     getCachedActiveRequests(),
     getCachedArticles(),
     getCachedHotSearches(),
-    getHomepageSections(),
+    getCachedHomePageSections(),
     getCachedHeroConfig(),
   ]);
 
