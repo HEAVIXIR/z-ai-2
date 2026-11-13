@@ -72,14 +72,16 @@ export default async function ListingsPage({
 
   // HBR Taxonomy V1.1 — only CATALOG categories in the filter sidebar.
   // Resolve Iran for the province cascade.
-  const [allBrands, catalogCategories, headerCats, iran, allIndustries] = await Promise.all([
+  const [allBrands, allActiveCategories, iran, allIndustries] = await Promise.all([
     db.brand.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, slug: true },
     }),
+    // One category read serves both the CATALOG filter tree and the global header.
+    // Derive the two views in memory instead of issuing duplicate category queries.
     db.category.findMany({
-      where: { active: true, layer: "CATALOG" },
+      where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -88,12 +90,8 @@ export default async function ListingsPage({
         parentId: true,
         icon: true,
         level: true,
+        layer: true,
       },
-    }),
-    db.category.findMany({
-      where: { active: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, name: true, slug: true, parentId: true, icon: true },
     }),
     db.country.findFirst({
       where: { OR: [{ code: "IR" }, { name: "ایران" }] },
@@ -110,6 +108,10 @@ export default async function ListingsPage({
       select: { id: true, key: true, nameFa: true },
     }),
   ]);
+  const catalogCategories = allActiveCategories.filter((category) => category.layer === "CATALOG");
+  const headerCats = allActiveCategories.map(({ id, name, slug, parentId, icon }) => ({
+    id, name, slug, parentId, icon,
+  }));
 
   // Resolve cities for the currently selected province (cascading).
   let cities: { id: string; name: string }[] = [];
