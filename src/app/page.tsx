@@ -27,6 +27,7 @@ import RecommendationsSection from "@/components/home/RecommendationsSection";
 import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
 import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
+import { mergeHomepageSections } from "@/lib/homepage/sections";
 import {
   getCachedTopBrands,
   getCachedHomePageSections,
@@ -126,6 +127,7 @@ export default async function HomePage() {
     getCachedHomePageSections(),
     getCachedHeroConfig(),
   ]);
+  const resolvedHomeSections = mergeHomepageSections(homeSections);
 
   /* Run all independent post-configuration reads concurrently.
      This includes category cards, trusted brands, configured statistics,
@@ -375,7 +377,7 @@ export default async function HomePage() {
         }
       />
       <main className="flex-1">
-        {homeSections
+        {resolvedHomeSections
           .filter((s) => s.active)
           .sort((a, b) => a.order - b.order)
           .map((section) => {
