@@ -1176,7 +1176,7 @@ function CategoriesTab({
         const response = await fetch(`/api/taxonomy/brands/${brand.id}/categories`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ categoryId, isActive: true }),
+          body: JSON.stringify({ categoryId }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !payload?.success) {
