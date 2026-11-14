@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * preceding wizard step and are persisted as first-class Listing relations.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -59,6 +59,33 @@ export async function GET(
 
     const categoryIds = ancestryLeafFirst.reverse();
     const depthByCategory = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+
+    const url = new URL(req.url);
+    const modelId = url.searchParams.get("modelId")?.trim() || null;
+    let selectedModel: { id: string; brandId: string } | null = null;
+    if (modelId) {
+      const model = await db.productModel.findUnique({
+        where: { id: modelId },
+        select: {
+          id: true,
+          brandId: true,
+          categoryId: true,
+          status: true,
+          modelCategories: { select: { categoryId: true } },
+        },
+      });
+      const modelMatchesCategory =
+        !!model &&
+        (model.categoryId === selected.id ||
+          model.modelCategories.some((link) => link.categoryId === selected.id));
+      if (!model || model.status !== "ACTIVE" || !modelMatchesCategory) {
+        return NextResponse.json(
+          { error: "مدل انتخاب‌شده به دسته‌بندی فعال متصل نیست." },
+          { status: 400 },
+        );
+      }
+      selectedModel = { id: model.id, brandId: model.brandId };
+    }
 
     const links = await db.categoryAttribute.findMany({
       where: { categoryId: { in: categoryIds } },
@@ -133,6 +160,52 @@ export async function GET(
       });
     }
 
+    // Optional model-specific links are the final, most-specific layer.
+    // They can add fields or override required/filter/sort behavior for a
+    // particular ProductModel without changing the shared machine template.
+    if (selectedModel) {
+      const modelLinks = await db.productModelAttribute.findMany({
+        where: { modelId: selectedModel.id },
+        include: {
+          attribute: {
+            include: {
+              options: {
+                orderBy: [{ sortOrder: "asc" }, { value: "asc" }],
+              },
+            },
+          },
+        },
+      });
+      for (const link of modelLinks) {
+        const attribute = link.attribute;
+        const key = attribute.key ?? attribute.id;
+        if (key === "brand" || key === "model") continue;
+        merged.set(key, {
+          id: attribute.id,
+          key: attribute.key,
+          labelFa: attribute.labelFa ?? attribute.name,
+          labelEn: attribute.labelEn ?? attribute.nameEn ?? null,
+          type: attribute.type,
+          unit: attribute.unit,
+          required: link.required,
+          filterable: link.filterable,
+          searchable: link.searchable,
+          sortable: link.sortable,
+          displayOrder: link.displayOrder,
+          sourceDepth: categoryIds.length,
+          sortOrder: attribute.sortOrder,
+          visibleOnCard: attribute.visibleOnCard,
+          visibleOnDetail: attribute.visibleOnDetail,
+          options: attribute.options.map((option) => ({
+            id: option.id,
+            value: option.value,
+            label: option.label,
+            sortOrder: option.sortOrder,
+          })),
+        });
+      }
+    }
+
     const attributes = [...merged.values()]
       .sort((a, b) =>
         a.sourceDepth - b.sourceDepth ||
@@ -147,6 +220,7 @@ export async function GET(
 
     return NextResponse.json({
       categoryId: selected.id,
+      modelId: selectedModel?.id ?? null,
       ancestry: categoryIds,
       attributes,
     });
