@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import {
@@ -65,7 +66,7 @@ export default async function TaxonomyBrandsPage({
           ],
         }
       : {}),
-  };
+  } satisfies Prisma.BrandWhereInput;
 
   // Load one bounded page; the count keeps the full 600+ brand catalog navigable.
   const [brands, totalBrands, industries, categoriesCount] = await Promise.all([
