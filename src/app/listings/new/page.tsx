@@ -228,6 +228,9 @@ export default function NewListingPage() {
     setBrandOpen(false);
     setModelId("");
     setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttrErrors({});
   };
 
   // ── Fetch models when brand changes ──
@@ -357,7 +360,7 @@ export default function NewListingPage() {
       // onAttributesLoaded callback.
       const defs = attributeDefs.length > 0
         ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId) ?? [] : []);
+        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
       const payload = buildAttributePayload(defs, attributes);
       if (payload.length > 0 && data.id) {
         try {
@@ -573,6 +576,7 @@ export default function NewListingPage() {
                     <div className="mt-6">
                       <AttributeFields
                         categoryId={categoryId || null}
+                        modelId={modelId || null}
                         values={attributes}
                         onChange={(next) => {
                           setAttributes(next);
@@ -700,7 +704,12 @@ export default function NewListingPage() {
                         <div className="relative">
                           <select
                             value={modelId}
-                            onChange={(e) => setModelId(e.target.value)}
+                            onChange={(e) => {
+                              setModelId(e.target.value);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttrErrors({});
+                            }}
                             disabled={!brandId || modelsLoading}
                             className={inputCls}
                           >
