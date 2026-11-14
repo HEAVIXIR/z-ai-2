@@ -65,6 +65,20 @@ describe("listing attribute validation", () => {
     });
   });
 
+  it("rejects a text payload for a SELECT attribute instead of persisting an empty selection", async () => {
+    const db = createDb();
+    const result = await validateListingAttributeValues(
+      db,
+      { categoryId: "leaf-1", modelId: null },
+      [{ attributeId: "attr-1", textValue: "loader" }],
+      false,
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "لطفاً یک گزینهٔ معتبر برای این ویژگی انتخاب کنید.",
+    });
+  });
+
   it("rejects an option that belongs to a different attribute", async () => {
     const db = createDb();
     const result = await validateListingAttributeValues(
