@@ -106,7 +106,11 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "invalid_company" }, { status: 400 });
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyValue: unknown = await req.json().catch(() => null);
+    if (!bodyValue || typeof bodyValue !== "object" || Array.isArray(bodyValue)) {
+      return NextResponse.json({ ok: false, error: "invalid_invitation" }, { status: 400 });
+    }
+    const body = bodyValue as Record<string, unknown>;
     const emailNormalized = normalizeInvitationEmail(
       typeof body.email === "string" ? body.email : "",
     );
