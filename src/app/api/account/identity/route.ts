@@ -40,7 +40,6 @@ export async function GET() {
       db.userRole.findMany({
         where: { userId: user.id },
         select: { role: { select: { key: true } } },
-        orderBy: { createdAt: "asc" },
       }),
     ]);
 
