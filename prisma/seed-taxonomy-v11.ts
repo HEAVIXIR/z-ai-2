@@ -685,6 +685,9 @@ async function main() {
     console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
     return;
   }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
   // 1. TransactionTypes
