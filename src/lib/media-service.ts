@@ -245,10 +245,20 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
   try {
     await putB2MediaObject(key, new Uint8Array(optimized.buffer), optimized.mime);
     await writeSidecar(sidecar);
-  } catch {
-    // Best-effort removal creates a B2 delete marker; bucket version retention
-    // remains unchanged and no existing object/version is touched.
-    await deleteB2MediaObject(key).catch(() => {});
+  } catch (error) {
+    // Compensate both writes because a timed-out PUT may have succeeded even
+    // when its response was lost. Version history remains governed by B2.
+    const cleanup = await Promise.allSettled([
+      deleteB2MediaObject(key),
+      deleteB2MediaObject(metadataKey(assetId)),
+    ]);
+    if (cleanup.some((result) => result.status === "rejected")) {
+      console.error("[media] failed upload cleanup incomplete", { assetId });
+    }
+    console.error("[media] B2 upload/sidecar write failed", {
+      assetId,
+      error: (error as Error)?.message,
+    });
     return { ok: false, error: "ذخیره‌سازی رسانه در فضای پایدار ناموفق بود." };
   }
 
@@ -400,7 +410,14 @@ export async function attachAsset(
     finalKey = objectKey(asset.id, asset.ext, Number.isNaN(uploadedAt.getTime()) ? new Date() : uploadedAt);
     try {
       await copyB2MediaObject(asset.relativePath, finalKey);
-    } catch {
+    } catch (error) {
+      await deleteB2MediaObject(finalKey).catch((cleanupError) => {
+        console.error("[media] failed copy cleanup incomplete", {
+          assetId,
+          error: (cleanupError as Error)?.message,
+        });
+      });
+      console.error("[media] B2 staging copy failed", { assetId, error: (error as Error)?.message });
       return { ok: false, error: "انتقال رسانه از فضای موقت به فضای نهایی B2 ناموفق بود." };
     }
   }
@@ -414,8 +431,18 @@ export async function attachAsset(
   };
   try {
     await writeSidecar(updated);
-  } catch {
-    // Keep the staging source in place so the existing stable URL still works.
+  } catch (error) {
+    // Keep the original staging object/sidecar as the source of truth and
+    // remove any final copy whose metadata could not be committed.
+    if (finalKey !== asset.relativePath) {
+      await deleteB2MediaObject(finalKey).catch((cleanupError) => {
+        console.error("[media] failed metadata rollback cleanup", {
+          assetId,
+          error: (cleanupError as Error)?.message,
+        });
+      });
+    }
+    console.error("[media] B2 sidecar update failed", { assetId, error: (error as Error)?.message });
     return { ok: false, error: "به‌روزرسانی متادیتای رسانه ناموفق بود." };
   }
 
