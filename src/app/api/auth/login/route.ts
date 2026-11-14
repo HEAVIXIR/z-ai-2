@@ -3,6 +3,7 @@ import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { isAdmin } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -14,8 +15,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   // F-006: CSRF defense — fail-closed Origin/Referer verification.
-  // Browser POST without a verifiable same-origin Origin/Referer is
-  // rejected with 403 before any DB / rate-limit / password work.
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
@@ -64,6 +63,54 @@ export async function POST(req: Request) {
         { error: "ابتدا ایمیل خود را با کد ارسال‌شده تأیید کنید." },
         { status: 403 },
       );
+    }
+
+    // Preview-only owner bootstrap: exact allowlisted, verified account must
+    // successfully authenticate with its password before receiving ADMIN.
+    const ownerEmail = process.env.HEAVIX_OWNER_EMAIL?.trim().toLowerCase();
+    if (ownerEmail && user.email.toLowerCase() === ownerEmail && !(await isAdmin(user.id))) {
+      const adminRole = await db.role.findUnique({
+        where: { key: "ADMIN" },
+        select: { id: true },
+      });
+      if (!adminRole) {
+        throw new Error('RBAC ADMIN role is missing; run the RBAC seed before owner bootstrap.');
+      }
+
+      const previousRole = user.role;
+      await db.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { role: "ADMIN" },
+        });
+
+        const replaceableRoles = await tx.userRole.findMany({
+          where: { userId: user.id, role: { key: { in: ["ADMIN", "SELLER", "BUYER"] } } },
+          select: { id: true },
+        });
+        if (replaceableRoles.length) {
+          await tx.userRole.deleteMany({
+            where: { id: { in: replaceableRoles.map((r) => r.id) } },
+          });
+        }
+
+        await tx.userRole.upsert({
+          where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
+          create: { userId: user.id, roleId: adminRole.id },
+          update: {},
+        });
+      });
+
+      await logAudit({
+        actorId: user.id,
+        actorType: "SYSTEM",
+        action: "user.role.owner_bootstrap",
+        entityType: "User",
+        entityId: user.id,
+        before: { role: previousRole },
+        after: { role: "ADMIN", roleKey: "ADMIN" },
+        reason: "Verified owner account authenticated; Preview-only HEAVIX_OWNER_EMAIL allowlist",
+      });
     }
 
     await db.user.update({
