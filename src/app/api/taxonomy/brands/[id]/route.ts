@@ -117,8 +117,7 @@ export async function PATCH(req: Request, { params }: Params) {
         accentColor?: string | null;
         displayOrder?: number;
       };
-      try {
-        await db.brandDisplay.upsert({
+      await db.brandDisplay.upsert({
           where: { brandId: id },
           create: {
             brandId: id,
@@ -140,7 +139,6 @@ export async function PATCH(req: Request, { params }: Params) {
                 : undefined,
           },
         });
-      }
     }
 
     // SEO — persist the editor payload into the canonical BrandSEO relation.
