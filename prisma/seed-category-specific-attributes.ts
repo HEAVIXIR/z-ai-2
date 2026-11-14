@@ -2652,13 +2652,19 @@ templates.push(
 
 // AttributeDefinition.key is globally unique. Preserve an existing compatible
 // definition; namespace incompatible variants by category to prevent global clobbering.
-const fieldSignature = (field: Pick<Field, "type" | "unit" | "fa" | "en" | "options">): string =>
+const fieldSignature = (field: Pick<Field, "type" | "unit" | "fa" | "en" | "options" | "filterable" | "searchable" | "sortable" | "card">): string =>
   JSON.stringify({
     type: field.type,
     unit: field.unit ?? null,
     fa: field.fa,
     en: field.en,
     options: field.options ?? [],
+    filterable: !!field.filterable,
+    searchable: !!field.searchable,
+    sortable: !!field.sortable,
+    visibleOnCard: !!field.card,
+    seoRelevant: !!field.filterable,
+    aiRelevant: !!field.filterable || !!field.searchable,
   });
 
 async function buildResolvedFieldKeyMap(): Promise<{
@@ -2685,6 +2691,10 @@ async function buildResolvedFieldKeyMap(): Promise<{
       fa: attribute.labelFa ?? attribute.name,
       en: attribute.labelEn ?? attribute.nameEn ?? "",
       options: attribute.options.map((option) => option.value),
+      filterable: attribute.filterable,
+      searchable: attribute.searchable,
+      sortable: attribute.sortable,
+      card: attribute.visibleOnCard,
     }));
   }
 
