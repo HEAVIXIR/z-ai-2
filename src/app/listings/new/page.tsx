@@ -109,6 +109,7 @@ export default function NewListingPage() {
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributesLoaded, setAttributesLoaded] = useState(false);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
@@ -239,6 +240,7 @@ export default function NewListingPage() {
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
+    setAttributesLoaded(false);
     setAttrErrors({});
   };
 
@@ -297,6 +299,7 @@ export default function NewListingPage() {
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
+    setAttributesLoaded(false);
     setAttrErrors({});
   };
 
@@ -308,7 +311,7 @@ export default function NewListingPage() {
       // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
-      return Object.keys(errs).length === 0;
+      return attributesLoaded && Object.keys(errs).length === 0;
     }
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
@@ -613,6 +616,7 @@ export default function NewListingPage() {
                             setCategoryPath(selectedPath);
                             setAttributes({});
                             setAttributeDefs([]);
+                            setAttributesLoaded(false);
                             setAttrErrors({});
                             setModelId("");
                           }}
@@ -641,7 +645,7 @@ export default function NewListingPage() {
                           setAttrErrors(validateAttributeFields(attributeDefs, next));
                         }}
                         errors={attrErrors}
-                        onAttributesLoaded={(defs) => setAttributeDefs(defs)}
+                        onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributesLoaded(true); }}
                       />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
@@ -671,6 +675,12 @@ export default function NewListingPage() {
                             onChange={(e) => {
                               setBrandQuery(e.target.value);
                               setBrandId("");
+                              setModelId("");
+                              setModels([]);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttributesLoaded(false);
+                              setAttrErrors({});
                               setForm((f) => ({ ...f, brandLabel: e.target.value }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
@@ -767,6 +777,7 @@ export default function NewListingPage() {
                               setModelId(e.target.value);
                               setAttributes({});
                               setAttributeDefs([]);
+                              setAttributesLoaded(false);
                               setAttrErrors({});
                             }}
                             disabled={!brandId || modelsLoading}
