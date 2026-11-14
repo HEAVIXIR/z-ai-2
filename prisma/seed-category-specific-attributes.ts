@@ -2921,6 +2921,9 @@ async function main() {
     console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
     return;
   }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
   const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment"];
   const coverageRoots = await db.category.findMany({
     where: { slug: { in: coverageRootSlugs }, active: true, layer: "CATALOG" },
