@@ -5,6 +5,7 @@ import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingImageUploader from "@/components/listings/ListingImageUploader";
+import CascadingCategoryPicker, { type CategoryPathItem } from "@/components/listings/CascadingCategoryPicker";
 import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
@@ -145,11 +146,7 @@ export default function NewListingPage() {
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
-  const [selectedRootId, setSelectedRootId] = useState<string>("");
-  const [selectedChildId, setSelectedChildId] = useState<string>("");
-  // TaxPath-based grandchild lookup: childId -> children
-  // We don't have grandchildren in the V1.1 taxonomy endpoint (only level 0+1),
-  // so we lazily fetch a category's children from the public category API.
+  const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
 
   // Brand typeahead state (alias-aware, hits /api/brands/search).
   const [brandQuery, setBrandQuery] = useState("");
@@ -267,39 +264,6 @@ export default function NewListingPage() {
   }, [brandId, categoryId]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  // ── Cascade: when a root is selected, populate its children ──
-  const onPickRoot = (root: TaxRoot) => {
-    setSelectedRootId(root.id);
-    setCategoryId(root.id);
-    setChildCats(root.children ?? []);
-    setSelectedChildId("");
-    setGrandchildCats([]);
-  };
-
-  const onPickChild = (child: TaxChild) => {
-    setSelectedChildId(child.id);
-    setCategoryId(child.id);
-    setGrandchildCats([]);
-    // Try to fetch grandchildren via the public category endpoint.
-    // The endpoint may not return children, so we silently no-op on failure.
-    (async () => {
-      try {
-        const res = await fetch(`/api/taxonomy/categories/${child.id}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { category?: { children?: TaxChild[] } };
-        if (data.category?.children && data.category.children.length > 0) {
-          setGrandchildCats(data.category.children);
-        }
-      } catch {
-        /* no-op */
-      }
-    })();
-  };
-
-  const onPickGrandchild = (gc: TaxChild) => {
-    setCategoryId(gc.id);
-  };
 
   const isRent = transactionType === "RENT";
   const isAuction = transactionType === "AUCTION";
@@ -580,88 +544,19 @@ export default function NewListingPage() {
                         در حال بارگذاری دسته‌بندی‌ها… اگر ظاهر نشد، ابتدا دسته‌های کاتالوگ را در پنل مدیریت اضافه کنید.
                       </div>
                     ) : (
-                      <div className="mt-6 space-y-6">
-                        {/* Level 0 — roots */}
-                        <div>
-                          <label className={labelCls}>دسته اصلی</label>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {catalogRoots.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => onPickRoot(c)}
-                                className={`flex flex-col items-center gap-2 rounded-2xl border p-4 transition ${
-                                  selectedRootId === c.id
-                                    ? "border-[#F58220] bg-[#F58220]/10"
-                                    : "border-white/10 bg-black/30 hover:border-white/25"
-                                }`}
-                              >
-                                <span className="text-2xl">{c.icon ?? "🚜"}</span>
-                                <span className="text-xs font-bold text-white">{c.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Level 1 — children */}
-                        {childCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {childCats.map((sub) => (
-                                <button
-                                  key={sub.id}
-                                  type="button"
-                                  onClick={() => onPickChild(sub)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    selectedChildId === sub.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {sub.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Level 2 — grandchildren (if any) */}
-                        {grandchildCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیر-زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {grandchildCats.map((gc) => (
-                                <button
-                                  key={gc.id}
-                                  type="button"
-                                  onClick={() => onPickGrandchild(gc)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    categoryId === gc.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {gc.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {categoryId && (
-                          <div className="rounded-xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-3 text-[11px] text-white/60">
-                            دستهٔ انتخاب‌شده:{" "}
-                            <span className="font-bold text-[#F58220]">
-                              {catalogRoots.find((r) => r.id === selectedRootId)?.name ?? ""}
-                              {selectedChildId ? " / " : ""}
-                              {childCats.find((c) => c.id === selectedChildId)?.name ?? ""}
-                              {grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                ? " / " + grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                : ""}
-                            </span>
-                          </div>
-                        )}
+                      <div className="mt-6">
+                        <CascadingCategoryPicker
+                          roots={catalogRoots}
+                          value={categoryId}
+                          onChange={(id, selectedPath) => {
+                            setCategoryId(id);
+                            setCategoryPath(selectedPath);
+                            setAttributes({});
+                            setAttributeDefs([]);
+                            setAttrErrors({});
+                            setModelId("");
+                          }}
+                        />
                       </div>
                     )}
                   </div>
@@ -1142,10 +1037,7 @@ export default function NewListingPage() {
                       <ReviewRow label="نوع معامله" value={transactionType} />
                       <ReviewRow
                         label="دسته‌بندی"
-                        value={
-                          catalogRoots.find((r) => r.id === selectedRootId)?.name ??
-                          "—"
-                        }
+                        value={categoryPath.map((item) => item.name).join(" / ") || "—"}
                       />
                       <ReviewRow label="برند" value={form.brandLabel || "—"} />
                       <ReviewRow label="مدل" value={models.find((m) => m.id === modelId)?.name ?? "—"} />
