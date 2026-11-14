@@ -10,17 +10,42 @@ The legacy `prisma/seed.ts` is now dry-run by default, requires `--apply` and `H
 
 ## Legacy data parity gate — currently NOT satisfied
 
-The repository's historical HEAVIX snapshot records **539 categories, 405 attributes, and 629 canonical brands**. The current canonical seed source is not yet a full restoration of that dataset:
+The 22 September 2026 Master Execution Plan records a historical snapshot of **539 Categories, 405 Attributes, and 629 Brands**. These are documented project figures, not a fresh database export. Other project references report 295 total categories and a machine-only tree of 16 L1 + 174 L2 + 97 L3 nodes (287); the scopes and snapshots must be reconciled before treating 539 as a verified universal target.
 
-- The V1.1 category tree currently contains 279 category slugs.
-- The separate service/mineral taxonomy contributes 40 additional unique slugs (319 unique slugs across both sources); this leaves at least 220 categories unaccounted for against the 539-row legacy baseline so additions and intentional replacements are documented.
-- The two current brand seed batches contain approximately 211 brand records combined, leaving at least 418 canonical brands unaccounted for against the 629-row legacy baseline.
-- The old `seed-brands-300.ts` is only preserved as a reference document; its original executable content has not been extracted and hash-verified.
-- Brand Phase A/B populate brand identity, aliases, and industry links, but do not restore the complete legacy `BrandCategory` graph. `seed-catalog.ts` creates category links only for its seeded model/brand pairs; it is not a replacement for the full category-to-brand mapping.
-- The current catalog seed contains 35 model entries; the historical snapshot reported 24 models and 8 brand-to-model associations. These sources must be reconciled rather than blindly combined.
-- The Preview database audit currently shows only 16 categories, 10 brands, 0 models, 0 transaction types, 0 service types, 0 application industries, 0 attribute definitions, and 0 category-attribute links.
+### Category source recovery audit (read-only)
 
-**Do not run the canonical seed sequence or mark catalog restoration complete yet.** First recover and verify the complete legacy brand dataset (at least 629 canonical brand rows), then reconcile categories, brand industries, aliases, brand/category links, and model mappings. The read-only verifier now fails closed below 539 categories or 629 brands, so a demo-sized seed cannot be mistaken for a successful restoration.
+The repository contains a previously excluded machine taxonomy source that is useful for recovery, but must not be applied as a second competing tree:
+
+- `prisma/seed-machine-taxonomy.ts`: 303 category slug entries in the legacy 16-group machine tree.
+- `prisma/seed-taxonomy-v11.ts`: 279 category slug entries in the newer V1.1 taxonomy.
+- `prisma/seed-service-and-mineral-taxonomy.ts`: 41 slug entries, of which 40 are additional unique slugs after overlap.
+- Combined source union: **531 unique candidate slugs**.
+- The sources contain **92 repeated slugs**; **52 repeated slugs have different Persian labels** between source definitions. Parent paths and layer assignments also need reconciliation.
+
+This reduces the apparent gap against the 539-row snapshot to 8 candidate slugs, but **531 is not a verified final category count**. The older machine tree and V1.1 tree differ in hierarchy and naming, and the 539/295/287 figures do not yet share a proven scope. Do not concatenate or execute both trees blindly.
+
+### Brand source recovery audit (read-only)
+
+- `prisma/seed-brands-a.ts`: 197 brand object rows.
+- `prisma/seed-brands-b.ts`: 433 brand object rows.
+- Combined: 630 source rows and **605 unique canonical slugs** after the seed's English-name slugification; 24 slug values repeat (25 extra rows).
+- This is 24 below the documented 629-brand snapshot before any other verified legacy source is recovered.
+- `prisma/seed.ts` contains 45 demo brands; 8 are not in Phase A/B, but this file is demo-only and must not be used to claim canonical brand parity.
+- The original executable `seed-brands-300.ts` is not present in the current source history as executable content; only a reference document remains. Its full data and hash have not been recovered.
+- Brand Phase A/B create identity, aliases, families, and industry links, but do not restore the complete historical `BrandCategory` graph. `seed-catalog.ts` adds only model/brand/category links for its own seeded model pairs.
+
+### Attribute and model parity
+
+- The historical snapshot reports 405 AttributeDefinitions.
+- `seed-category-specific-attributes.ts` and `seed-service-mineral-attributes.ts` define form templates; template/field-call counts are not interchangeable with the final unique `AttributeDefinition` count.
+- `seed-attribute-catalog.ts` is a legacy broad updater that can overwrite attribute metadata and category-link settings; it is excluded from the canonical sequence.
+- The current catalog seed contains 35 model entries, while the historical snapshot reports 24 models and 8 brand-to-model associations. Reconcile identities and relationships rather than assuming either count is authoritative.
+
+### Current isolated Preview DB audit
+
+The read-only audit currently shows: Category=16 (all root-level), Brand=10, ProductModel=0, TransactionType=0, ServiceType=0, ApplicationIndustry=0, AttributeDefinition=0, and CategoryAttribute=0. The exact binding between this Prisma Preview project and the deployed Cloudflare Worker has not been independently proven.
+
+**Do not run the canonical seed sequence or mark restoration complete yet.** Recover and reconcile the original source records, names, parent paths, brand aliases/families, industries, BrandCategory links, models, attributes, and options first. The read-only verifier remains fail-closed against the documented 539-category / 629-brand snapshot until the baseline scope itself is resolved.
 
 ## Required schema first
 
