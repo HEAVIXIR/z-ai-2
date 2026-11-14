@@ -1265,7 +1265,7 @@ function ModelsTab({
 
   const flatten = (nodes: any[]): any[] =>
     nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
-  const categoryOptions = flatten(categories);
+  const categoryOptions = flatten(categories).filter((category) => category.layer === "CATALOG");
 
   const createModel = async (event: React.FormEvent) => {
     event.preventDefault();
