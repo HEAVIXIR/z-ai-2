@@ -33,6 +33,7 @@ function collectPlan(nodes: N[], parentSlug: string, layer: string, domain: stri
 }
 async function main(){
  if(!process.argv.includes("--apply")){console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");return;}
+ if(process.env.HEAVIX_ENV!=="preview")throw new Error("Refusing to seed: HEAVIX_ENV must be exactly preview.");
  const root=await db.category.findUnique({where:{slug:"services"},select:{id:true,slug:true,taxPath:true,level:true,layer:true,domain:true}});
  if(!root)throw new Error('Run seed-taxonomy-v11.ts first; services root missing');
  if(root.layer!=="SERVICE"||root.domain!=="SERVICE")throw new Error('The services root must have layer=SERVICE and domain=SERVICE; no writes were made');
