@@ -74,6 +74,32 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
   }
 }
 
+/**
+ * Required audit write for operations that must not report success without
+ * a durable audit row. Unlike logAudit(), this helper deliberately throws.
+ */
+export async function logAuditStrict(params: LogAuditParams): Promise<void> {
+  const h = await headers();
+  const ip = params.ip ?? (h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || null);
+  const ua = params.userAgent ?? (h.get('user-agent') || null);
+
+  await db.auditLog.create({
+    data: {
+      actorId: params.actorId ?? null,
+      actorType: params.actorType ?? 'USER',
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId ?? null,
+      beforeJson: safeStringify(params.before),
+      afterJson: safeStringify(params.after),
+      ip: ip ?? null,
+      userAgent: ua,
+      requestId: params.requestId ?? null,
+      reason: params.reason ?? null,
+    },
+  });
+}
+
 // Keep the old `audit()` function for backward compat (maps to logAudit)
 export async function audit(ctx: {
   actorId?: string | null;
