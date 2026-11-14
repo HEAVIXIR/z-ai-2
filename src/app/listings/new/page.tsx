@@ -853,8 +853,8 @@ export default function NewListingPage() {
                       icon={<PackageCheck className="h-5 w-5" />}
                       title="جزئیات آگهی"
                       subtitle={
-                        isServiceRequest
-                          ? "شرح درخواست، اطلاعات تماس و مستندات اختیاری"
+                        isServiceFlow
+                          ? (isServiceOffer ? "شرح خدمت قابل ارائه، اطلاعات تماس و نمونه‌کارهای اختیاری" : "شرح درخواست، اطلاعات تماس و مستندات اختیاری")
                           : isRent
                             ? "دوره اجاره، قیمت اجاره و تصاویر"
                             : isAuction
@@ -863,7 +863,7 @@ export default function NewListingPage() {
                       }
                     />
                     <div className="mt-6 space-y-5">
-                      {!isServiceRequest && (
+                      {!isServiceFlow && (
                         <div className="grid gap-5 sm:grid-cols-2">
                           <div>
                             <label className={labelCls}>سال ساخت</label>
