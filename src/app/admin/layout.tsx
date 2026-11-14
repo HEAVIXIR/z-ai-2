@@ -31,6 +31,7 @@ export default async function AdminLayout({
   }
 
   return (
+    <ReactQueryProvider>
     <div
       dir="rtl"
       className="min-h-screen bg-zinc-100 text-zinc-900"
@@ -96,9 +97,10 @@ export default async function AdminLayout({
 
         {/* Page content */}
         <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-          <ReactQueryProvider>{children}</ReactQueryProvider>
+          {children}
         </main>
       </div>
     </div>
+    </ReactQueryProvider>
   );
 }
