@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/brands/search?q=...
+ * GET /api/brands/search?q=...&categoryId=...
  *
  * Public, no-auth, alias-aware brand search.
  *
@@ -27,7 +27,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ brands: [] });
     }
 
-    const brands = await searchBrands(rawQ, { take: 20 });
+    const categoryId = url.searchParams.get("categoryId")?.trim() || undefined;
+    const brands = await searchBrands(rawQ, { take: 20, categoryId });
 
     // Backward-compat: the original endpoint returned `_count: { listings }`.
     // Map `listingsCount` back to that shape so existing clients
