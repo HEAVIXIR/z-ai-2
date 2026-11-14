@@ -117,6 +117,8 @@ jobs:
           bunx tsx prisma/seed-services.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
+      - name: Verify canonical taxonomy bootstrap
+        run: bun run db:verify-taxonomy
       - name: Create read-only PostgreSQL role (STEP 15.51)
         run: |
           # CR-15.51-04: Generate random password, never hard-coded
