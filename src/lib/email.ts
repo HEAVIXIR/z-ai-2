@@ -1,11 +1,8 @@
 import { randomBytes } from "node:crypto";
 
-/* ============================================================
-   HEAVIX email utility — SMTP or Gmail API OAuth2 delivery.
-   Preferred: SMTP when fully configured.
-   Alternative: Gmail API OAuth2 requires four GMAIL_OAUTH_* variables.
-   No OTP is ever written to logs or API responses.
-   ============================================================ */
+/* HEAVIX email utility — SMTP or Gmail API OAuth2 delivery.
+   SMTP is preferred. Gmail API OAuth2 is the no-DNS alternative.
+   No OTP is ever written to logs or API responses. */
 
 export interface SendEmailArgs {
   to: string;
@@ -36,7 +33,7 @@ export const isEmailDeliveryConfigured = (): boolean =>
 
 function assertSafeHeader(value: string, label: string): void {
   if (/[\r\n]/.test(value)) {
-    throw new Error(\`Invalid \${label} header\`);
+    throw new Error("Invalid " + label + " header");
   }
 }
 
@@ -103,34 +100,34 @@ async function sendWithGmailApi(args: SendEmailArgs): Promise<void> {
   const tokenData = (await tokenResponse.json()) as { access_token?: string };
   if (!tokenData.access_token) throw new Error("Email delivery is unavailable");
 
-  const boundary = \`heavix_\${randomBytes(16).toString("hex")}\`;
-  const html = args.html ?? \`<pre>\${escapeHtml(args.text)}</pre>\`;
-  const encodedSubject = \`=?UTF-8?B?\${Buffer.from(args.subject, "utf8").toString("base64")} ?=\`.replace(" ?=", "?=");
+  const boundary = "heavix_" + randomBytes(16).toString("hex");
+  const html = args.html ?? "<pre>" + escapeHtml(args.text) + "</pre>";
+  const encodedSubject = "=?UTF-8?B?" + Buffer.from(args.subject, "utf8").toString("base64") + "?=";
   const mime = [
-    \`From: HEAVIX <\${GMAIL_SENDER_EMAIL}>\`,
-    \`To: \${args.to}\`,
-    \`Subject: \${encodedSubject}\`,
+    "From: HEAVIX <" + GMAIL_SENDER_EMAIL + ">",
+    "To: " + args.to,
+    "Subject: " + encodedSubject,
     "MIME-Version: 1.0",
-    \`Content-Type: multipart/alternative; boundary="\${boundary}"\`,
+    'Content-Type: multipart/alternative; boundary="' + boundary + '"',
     "",
-    \`--\${boundary}\`,
+    "--" + boundary,
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
     "",
     base64Mime(args.text),
-    \`--\${boundary}\`,
+    "--" + boundary,
     'Content-Type: text/html; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
     "",
     base64Mime(html),
-    \`--\${boundary}--\`,
+    "--" + boundary + "--",
     "",
   ].join("\r\n");
 
   const sendResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
-      Authorization: \`Bearer \${tokenData.access_token}\`,
+      Authorization: "Bearer " + tokenData.access_token,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ raw: Buffer.from(mime, "utf8").toString("base64url") }),
@@ -162,23 +159,22 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     text: [
       "با سلام،",
       "",
-      \`کد تأیید ایمیل شما در هویکس: \${code}\`,
+      "کد تأیید ایمیل شما در هویکس: " + code,
       "",
       "این کد تا ۱۰ دقیقه معتبر است.",
       "اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.",
       "",
       "— تیم هویکس",
     ].join("\n"),
-    html: \`
-      <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">
-        <h2 style="color:#F58220;margin:0 0 16px">HEAVIX — تأیید ایمیل</h2>
-        <p style="font-size:14px;color:#333">با سلام،</p>
-        <p style="font-size:14px;color:#333">کد تأیید ایمیل شما:</p>
-        <p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#0b0b0b;text-align:center;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:16px;margin:16px 0">\${code}</p>
-        <p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p>
-        <hr style="border:none;border-top:1px solid #eee;margin:20px 0" />
-        <p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p>
-      </div>
-    \`,
+    html:
+      '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">' +
+      '<h2 style="color:#F58220;margin:0 0 16px">HEAVIX — تأیید ایمیل</h2>' +
+      '<p style="font-size:14px;color:#333">با سلام،</p>' +
+      '<p style="font-size:14px;color:#333">کد تأیید ایمیل شما:</p>' +
+      '<p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#0b0b0b;text-align:center;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:16px;margin:16px 0">' +
+      code +
+      '</p><p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p>' +
+      '<hr style="border:none;border-top:1px solid #eee;margin:20px 0" />' +
+      '<p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>',
   });
 }
