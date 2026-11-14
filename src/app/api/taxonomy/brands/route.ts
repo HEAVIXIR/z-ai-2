@@ -152,8 +152,8 @@ export async function POST(req: Request) {
               confidence: Number(a.confidence) || 80,
             },
           });
-        } catch {
-          // ignore individual alias upsert failures
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
@@ -166,8 +166,8 @@ export async function POST(req: Request) {
           await db.brandIndustry.create({
             data: { brandId: brand.id, industry: key },
           });
-        } catch {
-          // ignore duplicates
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
@@ -180,8 +180,8 @@ export async function POST(req: Request) {
           await db.brandDomain.create({
             data: { brandId: brand.id, domain: d },
           });
-        } catch {
-          // ignore duplicates
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
