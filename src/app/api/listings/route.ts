@@ -430,8 +430,12 @@ export async function POST(req: Request) {
       );
     }
 
-    if (rawImages.length === 0 && rawAssetIds.length === 0) {
-      return NextResponse.json({ error: "حداقل یک تصویر برای آگهی الزامی است." }, { status: 400 });
+    if (
+      rawImages.length === 0 &&
+      rawAssetIds.length === 0 &&
+      transactionType.key !== "SERVICE_REQUEST"
+    ) {
+      return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
     }
 
     const imageUrlsAreStableB2Urls = rawImages.every((image: any) =>
