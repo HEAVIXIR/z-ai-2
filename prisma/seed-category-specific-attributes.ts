@@ -1939,7 +1939,10 @@ templates.push(
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
   cloneTemplate("mining-dump-truck", "haul-truck", "Industrial Haul Truck", ["rated_payload_ton", "body_volume"]),
-  cloneTemplate("rigid-mining-truck", "off-highway-truck", "Off Highway Truck", ["rated_payload_ton", "gross_vehicle_weight"]),
+  cloneTemplate("rigid-mining-truck", "off-highway-truck", "Off Highway Truck", ["rated_payload_ton", "gross_vehicle_weight"], [
+    f("rated_payload_ton", "ظرفیت بار مفید", "Rated Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
+    f("gross_vehicle_weight", "وزن ناخالص خودرو", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
+  ]),
   cloneTemplate("mining-dump-truck", "mining-truck", "Mining Truck", ["rated_payload_ton", "body_volume"]),
   { slug: "industrial-tractor", label: "Industrial Tractor", required: ["drawbar_pull", "engine_power_kw"], fields: [
     f("drawbar_pull", "نیروی کشش", "Drawbar Pull", "DECIMAL", { unit: "KN" }),
