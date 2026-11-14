@@ -35,6 +35,7 @@ export default function CascadingCategoryPicker({ roots, value, onChange }: Prop
   }, [roots, path, childrenByParent]);
 
   const select = async (node: CategoryPathItem, level: number) => {
+    const currentRequest = ++requestId.current;
     const nextPath = [...path.slice(0, level), node];
     setPath(nextPath);
     setError(null);
@@ -48,7 +49,6 @@ export default function CascadingCategoryPicker({ roots, value, onChange }: Prop
 
     if (Object.prototype.hasOwnProperty.call(childrenByParent, node.id)) return;
 
-    const currentRequest = ++requestId.current;
     setLoadingParent(node.id);
     try {
       const response = await fetch(`/api/taxonomy/categories/${encodeURIComponent(node.id)}`, {
