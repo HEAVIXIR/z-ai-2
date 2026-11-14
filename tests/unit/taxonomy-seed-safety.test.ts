@@ -80,8 +80,8 @@ describe("Preview taxonomy seed safety contracts", () => {
       path.resolve(process.cwd(), "scripts/verify-taxonomy-bootstrap.ts"),
       "utf8",
     );
-    expect(verifier).toContain("categories < 295");
-    expect(verifier).toContain("brands < 600");
+    expect(verifier).toContain("categories < 539");
+    expect(verifier).toContain("brands < 629");
   });
 
 });
