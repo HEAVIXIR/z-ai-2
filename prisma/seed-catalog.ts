@@ -256,6 +256,14 @@ const EDGES: EdgeSeed[] = [
 // Seed runner
 // ────────────────────────────────────────────────────────────
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   console.log("▸ P0-CATALOG-SEED — starting…");
 
   // ── Look up brand IDs ─────────────────────────────────────
