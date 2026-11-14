@@ -63,7 +63,7 @@ Read-only checks should confirm:
 - AttributeDefinition and CategoryAttribute rows are nonzero.
 - 12 Service rows.
 
-Also verify the listing wizard can load each active transaction type, navigate nested categories, filter models by brand/category, and render category-specific attributes before allowing the user to continue.
+Run the read-only verifier after all seed commands: `bun run db:verify-taxonomy`. It checks minimum counts and confirms the `ProductModelAttribute` table is present.\n\nAlso verify the listing wizard can load each active transaction type, navigate nested categories, filter models by brand/category, and render category-specific attributes before allowing the user to continue.
 
 ## Safety
 
