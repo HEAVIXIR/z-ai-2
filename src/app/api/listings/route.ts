@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
+import { categoryLayerForTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
@@ -362,7 +363,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const transactionTypeKey = String(body.transactionType ?? body.listingType ?? "SALE").trim().toUpperCase();
+    const rawTransactionType = body.transactionType ?? body.listingType;
+    if (!rawTransactionType) {
+      return NextResponse.json({ error: "نوع معامله الزامی است." }, { status: 400 });
+    }
+    const transactionTypeKey = String(rawTransactionType).trim().toUpperCase();
     const transactionType = await db.transactionType.findUnique({
       where: { key: transactionTypeKey },
       select: { id: true, key: true, active: true },
@@ -372,7 +377,7 @@ export async function POST(req: Request) {
     }
 
     if (body.categoryId) {
-      const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
+      const expectedLayer = categoryLayerForTransactionType(transactionType.key);
       const category = await db.category.findFirst({
         where: { id: String(body.categoryId), active: true },
         select: {
@@ -444,9 +449,9 @@ export async function POST(req: Request) {
     }
 
     if (
+      requiresListingImage(transactionType.key) &&
       rawImages.length === 0 &&
-      rawAssetIds.length === 0 &&
-      transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"
+      rawAssetIds.length === 0
     ) {
       return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
     }
@@ -459,6 +464,11 @@ export async function POST(req: Request) {
         { error: "تصاویر آگهی باید ابتدا از مسیر امن بارگذاری رسانه ثبت شوند." },
         { status: 400 },
       );
+    }
+
+    const parsedPrice = parseBig(body.price);
+    if (requiresListingPrice(transactionType.key) && (parsedPrice === null || parsedPrice <= 0n)) {
+      return NextResponse.json({ error: "برای فروش و اجاره، قیمت معتبر و بیشتر از صفر الزامی است." }, { status: 400 });
     }
 
     const imageAssetIds: string[] = rawAssetIds.length
@@ -576,7 +586,7 @@ export async function POST(req: Request) {
       title,
       description: body.description ?? null,
       shortDesc: body.shortDesc ?? null,
-      price: parseBig(body.price),
+      price: parsedPrice,
       priceType: body.priceType || "NEGOTIABLE",
       listingType: transactionType.key,
       transactionTypeId: transactionType.id,
