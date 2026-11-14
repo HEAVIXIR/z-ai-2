@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 const BUSINESS_TYPES = [
   ["DEALER", "فروشنده / نمایندگی ماشین‌آلات و تجهیزات"],
@@ -42,7 +42,7 @@ export default function CompanyRegistrationForm() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
     setSubmitting(true);
