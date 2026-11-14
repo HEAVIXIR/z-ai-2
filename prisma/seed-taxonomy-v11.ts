@@ -216,7 +216,20 @@ const TREE: CatSeed[] = [
         name: "۰۱.۰۶ لیفتراک و تجهیزات انبار", nameEn: "Forklift & Warehouse",
         slug: "forklift-warehouse", layer: "CATALOG", icon: "📦", domain: "MACHINE", sortOrder: 6,
         children: [
-          { name: "لیفتراک",     nameEn: "Forklift",      slug: "forklift",      layer: "CATALOG", sortOrder: 1, appIndustries: ["FACTORY", "PORT_MARINE"] },
+          {
+            name: "لیفتراک", nameEn: "Forklift", slug: "forklift", layer: "CATALOG",
+            sortOrder: 1, appIndustries: ["FACTORY", "PORT_MARINE"],
+            children: [
+              { name: "لیفتراک دیزلی", nameEn: "Diesel Forklift", slug: "diesel-forklift", layer: "CATALOG", sortOrder: 1 },
+              { name: "لیفتراک برقی", nameEn: "Electric Forklift", slug: "electric-forklift", layer: "CATALOG", sortOrder: 2 },
+              { name: "لیفتراک LPG", nameEn: "LPG Forklift", slug: "lpg-forklift", layer: "CATALOG", sortOrder: 3 },
+              { name: "لیفتراک بنزینی", nameEn: "Gasoline Forklift", slug: "gasoline-forklift", layer: "CATALOG", sortOrder: 4 },
+              { name: "لیفتراک سنگین", nameEn: "Heavy Duty Forklift", slug: "heavy-duty-forklift", layer: "CATALOG", sortOrder: 5 },
+              { name: "لیفتراک آفرود", nameEn: "Rough Terrain Forklift", slug: "rough-terrain-forklift", layer: "CATALOG", sortOrder: 6 },
+              { name: "لیفتراک جانبی", nameEn: "Side Loader Forklift", slug: "side-loader-forklift", layer: "CATALOG", sortOrder: 7 },
+              { name: "لیفتراک کانتینری", nameEn: "Container Forklift", slug: "container-forklift", layer: "CATALOG", sortOrder: 8 },
+            ],
+          },
           { name: "ریچ‌تراک",    nameEn: "Reach Truck",   slug: "reach-truck",   layer: "CATALOG", sortOrder: 2, appIndustries: ["FACTORY"] },
           { name: "پالت‌تراک",   nameEn: "Pallet Truck",  slug: "pallet-truck",  layer: "CATALOG", sortOrder: 3, appIndustries: ["FACTORY"] },
           { name: "استکر",       nameEn: "Stacker",       slug: "stacker",       layer: "CATALOG", sortOrder: 4, appIndustries: ["FACTORY"] },
