@@ -934,7 +934,7 @@ export default function NewListingPage() {
                           </div>
                           <div>
                             <label className={labelCls}>
-                              {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
                               {!isAuction && !isRequestFlow && "*"}
                             </label>
                             <input
