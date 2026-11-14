@@ -4,10 +4,12 @@ import { validateListingAttributeValues } from "@/lib/listing-attributes";
 function createDb() {
   return {
     category: {
-      findUnique: vi.fn(async () => ({ parentId: null })),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({
+        parentId: where.id === "leaf-1" ? "parent-1" : null,
+      })),
     },
     categoryAttribute: {
-      findMany: vi.fn(async () => [{ attributeId: "attr-1" }]),
+      findMany: vi.fn(async () => [{ categoryId: "leaf-1", attributeId: "attr-1", required: false }]),
     },
     productModelAttribute: {
       findMany: vi.fn(async () => []),
@@ -96,7 +98,7 @@ describe("listing attribute validation", () => {
   it("rejects creation when a required category attribute is missing", async () => {
     const db = createDb();
     db.categoryAttribute.findMany.mockResolvedValue([
-      { attributeId: "attr-1", required: true },
+      { categoryId: "leaf-1", attributeId: "attr-1", required: true },
     ]);
     const result = await validateListingAttributeValues(
       db,
@@ -109,6 +111,22 @@ describe("listing attribute validation", () => {
       ok: false,
       error: "لطفاً تمام ویژگی‌های الزامی این دسته‌بندی را تکمیل کنید.",
     });
+  });
+
+  it("lets a more-specific category make an inherited required attribute optional", async () => {
+    const db = createDb();
+    db.categoryAttribute.findMany.mockResolvedValue([
+      { categoryId: "parent-1", attributeId: "attr-1", required: true },
+      { categoryId: "leaf-1", attributeId: "attr-1", required: false },
+    ]);
+    const result = await validateListingAttributeValues(
+      db,
+      { categoryId: "leaf-1" },
+      [],
+      false,
+      true,
+    );
+    expect(result).toEqual({ ok: true, values: [] });
   });
 
   it("returns an empty normalized payload without querying the catalog when no scope exists", async () => {
