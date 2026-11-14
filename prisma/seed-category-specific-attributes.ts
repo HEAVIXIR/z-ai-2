@@ -2735,7 +2735,39 @@ async function main() {
     },
     select: { id: true, slug: true, active: true, layer: true },
   });
-  const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const categoryBySlug = new Map(categories.map((category) => [category.slug, category.slug]));
+
+  // Enforce one dedicated template for every active terminal category under machinery.
+  const activeCatalogCategories = await db.category.findMany({
+    where: { active: true, layer: "CATALOG" },
+    select: { id: true, slug: true, parentId: true },
+  });
+  const descendantIds = new Set<string>([root.id]);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const category of activeCatalogCategories) {
+      if (category.parentId && descendantIds.has(category.parentId) && !descendantIds.has(category.id)) {
+        descendantIds.add(category.id);
+        expanded = true;
+      }
+    }
+  }
+  const machineCategories = activeCatalogCategories.filter((category) => descendantIds.has(category.id));
+  const categoriesWithChildren = new Set(
+    machineCategories.map((category) => category.parentId).filter((id): id is string => !!id),
+  );
+  const terminalCategories = machineCategories.filter((category) => !categoriesWithChildren.has(category.id));
+  const templateSlugSet = new Set(templates.map((template) => template.slug));
+  const missingTerminalForms = terminalCategories
+    .filter((category) => !templateSlugSet.has(category.slug))
+    .map((category) => category.slug);
+  if (missingTerminalForms.length) {
+    throw new Error(
+      `Missing dedicated forms for terminal machinery categories; seed aborted before writes: ${missingTerminalForms.join(", ")}`,
+    );
+  }
+
   const skippedInactiveRetired = templates
     .map((template) => template.slug)
     .filter((slug) => RETIRED_MACHINE_TEMPLATE_SLUGS.has(slug) && !categoryBySlug.has(slug));
@@ -2791,6 +2823,9 @@ async function main() {
 
   console.log(JSON.stringify({
     templatesDefined: templates.length,
+    machineCategoriesAudited: machineCategories.length,
+    terminalCategoriesAudited: terminalCategories.length,
+    terminalFormsCovered: terminalCategories.length - missingTerminalForms.length,
     conflictingGlobalFieldKeyCount: fieldKeyPlan.conflictingKeyCount,
     namespacedFieldDefinitionCount: fieldKeyPlan.namespacedFieldCount,
     templatesApplied: applied.length,
