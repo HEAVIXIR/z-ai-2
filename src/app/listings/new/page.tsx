@@ -576,6 +576,7 @@ export default function NewListingPage() {
                         <CascadingCategoryPicker
                           roots={categoryRoots}
                           value={categoryId}
+                          selectedPath={categoryPath}
                           onChange={(id, selectedPath) => {
                             setCategoryId(id);
                             setCategoryPath(selectedPath);
