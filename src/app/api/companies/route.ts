@@ -144,6 +144,15 @@ export async function POST(req: Request) {
         select: { id: true, roleKey: true, status: true, isPrimary: true },
       });
 
+      const verification = await tx.companyVerification.create({
+        data: {
+          companyId: created.id,
+          status: "PENDING",
+          verificationType: "BUSINESS",
+        },
+        select: { id: true, status: true, submittedAt: true },
+      });
+
       await tx.userCommercialPersona.upsert({
         where: { userId_personaKey: { userId: user.id, personaKey: businessType } },
         create: { userId: user.id, personaKey: businessType, isPrimary: false, status: "PENDING_REVIEW" },
@@ -163,6 +172,8 @@ export async function POST(req: Request) {
             businessType: created.businessType,
             status: created.status,
             ownerMembershipId: membership.id,
+            verificationId: verification.id,
+            verificationStatus: verification.status,
           }),
           ip: getClientIp(req),
           userAgent: req.headers.get("user-agent")?.slice(0, 512) ?? null,
@@ -170,13 +181,14 @@ export async function POST(req: Request) {
         },
       });
 
-      return { company: created, membership };
+      return { company: created, membership, verification };
     });
 
     return NextResponse.json({
       ok: true,
       company: company.company,
       membership: company.membership,
+      verification: { status: company.verification.status, submittedAt: company.verification.submittedAt.toISOString() },
       onboardingStatus: "PENDING_REVIEW",
     }, { status: 201 });
   } catch (error) {
