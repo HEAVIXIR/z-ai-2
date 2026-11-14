@@ -49,7 +49,7 @@ export default function MachineCategoriesSection({
 }) {
   if (!categories || categories.length === 0) return null;
 
-  const isL2 = config.generation === 2;
+  const isL2 = false;
   // Take up to 12 categories; duplicate for the seamless marquee loop.
   const base = categories.slice(0, 12);
   const loop = base.length >= 6 ? [...base, ...base] : [...base, ...base, ...base];
@@ -77,16 +77,14 @@ export default function MachineCategoriesSection({
         {/* Header */}
         <div className="mb-12 flex flex-col items-center text-center">
           <span className="text-xs font-bold uppercase tracking-[0.3em] text-[#F58220]">
-            {cmsConfig?.subtitle || (isL2 ? "MACHINERY FAMILIES" : "Categories")}
+            {cmsConfig?.subtitle || "MAIN CATEGORIES"}
           </span>
           <h2 className="mt-3 text-3xl font-black text-white lg:text-5xl">
-            {cmsConfig?.title || "دسته‌بندی ماشین‌آلات"}
+            {cmsConfig?.title || "دسته‌بندی‌های اصلی HEAVIX"}
           </h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-white/45">
             {cmsConfig?.description ||
-              (isL2
-                ? "خانواده‌های تخصصی ماشین‌آلات را کاوش کنید"
-                : "ماشین‌آلات موردنظر خود را در گروه‌های تخصصی پیدا کنید")}
+              "از میان والدهای اصلی بازار صنعتی هویکس، حوزهٔ موردنظر را انتخاب کنید"}
           </p>
         </div>
       </div>
