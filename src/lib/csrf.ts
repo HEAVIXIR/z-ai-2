@@ -33,8 +33,13 @@ function allowedOrigins(): Set<string> {
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    "https://recovery-heavix-full-product-integration-2026-11-heavix-preview.heavixir.workers.dev",
   ];
+
+  // Exact Cloudflare Preview origin only when this Worker is explicitly marked
+  // as Preview. Never trust arbitrary workers.dev subdomains.
+  if (process.env.HEAVIX_ENV === "preview") {
+    allowed.add("https://heavix-preview.heavixir.workers.dev");
+  }
 
   for (const value of configured) {
     if (!value) continue;
