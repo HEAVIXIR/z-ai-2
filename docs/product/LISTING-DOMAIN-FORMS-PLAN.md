@@ -44,7 +44,7 @@ Run these only against an explicitly confirmed Preview database after backup and
 
 ## Free-first infrastructure and service budget contract (launch window)
 
-The first 6–12 months of HEAVIX launch must be designed around free-tier service usage. The initial capacity target is at least 10,000 listing/content views without requiring a paid plan or a paid upgrade to keep core marketplace journeys working.
+The first 6–12 months of HEAVIX launch must be designed around free-tier service usage. The initial capacity target is at least 10,000 listing/content views per calendar month, sustained throughout the first 6–12 months, without requiring a paid plan or a paid upgrade to keep core marketplace journeys working.
 
 This is a hard architecture constraint for every new service, SDK, API, storage provider and background job:
 
@@ -57,7 +57,7 @@ This is a hard architecture constraint for every new service, SDK, API, storage 
 - No paid resource, billing activation, plan upgrade or production service migration may be assumed. Any such change requires an explicit cost/approval review first.
 - Record a service decision entry for each dependency: purpose, free allowance, expected usage at 10,000 views, quota risks, fallback, data portability and estimated cost if the allowance is exceeded.
 
-The 10,000-view target is a launch capacity requirement, not a claim that any provider guarantees unlimited free traffic. Until the product owner specifies whether 10,000 means monthly views or cumulative views over the launch window, capacity reviews must state the assumption explicitly and must not silently interpret it as monthly traffic.
+The 10,000-view target means 10,000 listing/content page views per month (not cumulative views across the launch window). Capacity reviews must additionally state their assumptions for unique visitors, image requests per view, API requests per view, average asset sizes, geographic distribution and peak-to-average traffic. Do not equate page views with unique users or with total HTTP requests.
 
 Acceptance gates:
 - Core listing publication, listing detail, taxonomy and contact flows remain usable within documented free-tier quotas for the agreed launch scenario.
