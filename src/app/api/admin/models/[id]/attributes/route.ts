@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,9 @@ export async function GET(_req: Request, { params }: RouteArgs) {
 }
 
 export async function PUT(req: Request, { params }: RouteArgs) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   const auth = await requireAdminPermission("taxonomy.write");
   if (auth.error) return auth.error;
 
