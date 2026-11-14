@@ -19,7 +19,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "_not_authenticated" }, { status: 401 });
     }
 
-    const [personas, memberships] = await Promise.all([
+    const [personas, memberships, platformRoles] = await Promise.all([
       db.userCommercialPersona.findMany({
         where: { userId: user.id, status: "ACTIVE" },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
@@ -37,6 +37,11 @@ export async function GET() {
           },
         },
       }),
+      db.userRole.findMany({
+        where: { userId: user.id },
+        select: { role: { select: { key: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
     ]);
 
     return NextResponse.json({
@@ -50,7 +55,7 @@ export async function GET() {
         },
         commercialPersonas: personas,
         companyMemberships: memberships,
-        platformRole: user.role || "BUYER",
+        platformRoles: platformRoles.map((entry) => entry.role.key),
       },
     });
   } catch (error) {
