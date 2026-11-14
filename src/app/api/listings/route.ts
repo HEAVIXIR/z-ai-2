@@ -627,13 +627,10 @@ export async function POST(req: Request) {
     // Listing, optional machine passport, and image rows commit together.
     // This prevents orphan listings when nested media-row creation fails.
     const listing = await db.$transaction(async (tx) => {
-      return tx.listing.create({
+      const created = await tx.listing.create({
         data: {
           ...data,
           ...(serialNumber ? { passport: { create: { serialNumber } } } : {}),
-          ...(attributeValidation.values.length
-            ? { attributeValues: { create: attributeValidation.values } }
-            : {}),
           ...(stagedAssets.length
             ? {
                 images: {
@@ -648,6 +645,18 @@ export async function POST(req: Request) {
             : {}),
         },
       });
+
+      // createMany uses scalar foreign keys and stays inside this same
+      // transaction, so an attribute write failure rolls the listing back.
+      if (attributeValidation.values.length) {
+        await tx.listingAttributeValue.createMany({
+          data: attributeValidation.values.map((value) => ({
+            ...value,
+            listingId: created.id,
+          })),
+        });
+      }
+      return created;
     });
 
     if (stagedAssets.length) {
