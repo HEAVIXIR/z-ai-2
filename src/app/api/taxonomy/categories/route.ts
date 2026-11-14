@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export async function GET(req: Request) {
 */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
     if (!body.name) {
@@ -92,18 +94,27 @@ export async function POST(req: Request) {
     }
     const slug = body.slug ? await uniqueSlug(db.category, body.slug) : await uniqueSlug(db.category, body.name);
 
-    // Determine level
-    let level = 0;
-    if (body.parentId) {
-      const parent = await db.category.findUnique({ where: { id: String(body.parentId) } });
-      if (parent) level = (parent.level ?? 0) + 1;
-    }
-
-    // Normalize layer
+    // Normalize layer before validating the parent so the hierarchy cannot
+    // silently mix SERVICE and CATALOG branches.
     const validLayers = ["CATALOG", "MARKETPLACE", "SERVICE", "FALLBACK"];
     const layer = body.layer && validLayers.includes(String(body.layer).toUpperCase())
       ? String(body.layer).toUpperCase()
       : "CATALOG";
+
+    let level = 0;
+    if (body.parentId) {
+      const parent = await db.category.findUnique({
+        where: { id: String(body.parentId) },
+        select: { id: true, level: true, layer: true },
+      });
+      if (!parent) {
+        return NextResponse.json({ error: "دسته والد یافت نشد." }, { status: 400 });
+      }
+      if (parent.layer !== layer) {
+        return NextResponse.json({ error: "لایه دسته باید با دسته والد یکسان باشد." }, { status: 400 });
+      }
+      level = (parent.level ?? 0) + 1;
+    }
 
     const category = await db.category.create({
       data: {
