@@ -63,6 +63,32 @@ The definitive `seed-machine-taxonomy.ts` had a safety gap: it deactivated legac
 
 These protections have not been runtime-tested and the seed has not been executed.
 
+
+## Missing terminal form matrix — 198 remaining
+
+The following are terminal slugs in the definitive tree with no direct form mapping yet. This list is the work queue for the next form-catalog pass.
+
+| L1 family | Missing terminal categories |
+|---|---|
+| Road construction (47) | `excavator-long-reach`, `excavator-mining`, `excavator-demolition`, `excavator-material-handling`, `excavator-spider`, `excavator-zero-tail-swing`, `excavator-long-radius`, `excavator-telescopic`, `excavator-special`, `compact-loader`, `industrial-loader`, `underground-loader`, `multi-purpose-loader`, `dozer-track`, `dozer-wheel`, `mini-dozer`, `heavy-dozer`, `mining-dozer`, `pipe-dozer`, `angle-dozer`, `swamp-dozer`, `motor-grader`, `compact-grader`, `heavy-grader`, `mining-grader`, `quarry-grader`, `gps-grader`, `backhoe-loader-standard`, `backhoe-4wd`, `backhoe-center-mount`, `backhoe-side-shift`, `compact-backhoe`, `industrial-backhoe`, `motor-scraper`, `towed-scraper`, `open-bowl-scraper`, `elevating-scraper`, `twin-engine-scraper`, `mining-scraper`, `soil-roller`, `asphalt-roller`, `combination-roller`, `grading-earthmoving`, `piling-foundation`, `site-haulage`, `multi-purpose-civil`, `other-civil` |
+| Mining machinery (25) | `rigid-mining-truck`, `articulated-mining-truck`, `underground-dump-truck`, `electric-mining-truck`, `diesel-mining-truck`, `hybrid-mining-truck`, `ultra-class-mining-truck`, `hydraulic-shovel`, `electric-rope-shovel`, `mining-shovel`, `front-shovel`, `backhoe-shovel`, `mining-loader-machine`, `loading-machinery`, `mining-transport`, `underground-machinery`, `diesel-lhd`, `electric-lhd`, `battery-lhd`, `low-profile-lhd`, `mining-drilling`, `blasting-machinery`, `mine-maintenance`, `mobile-processing`, `mine-services` |
+| Drilling (4) | `dth-drill`, `top-hammer-drill`, `water-well-drill`, `drilling-accessories` |
+| Crushing / processing (14) | `cubiti-crusher`, `hammer-crusher`, `gyratory-crusher`, `roll-crusher`, `feeder`, `conveyor`, `scalper`, `washing-plant`, `sand-washer`, `hydrocyclone`, `magnetic-equipment`, `crushing-line`, `screening-line`, `mobile-processing-line` |
+| Concrete / asphalt (16) | `truck-mounted-pump`, `trailer-pump`, `line-pump`, `boom-pump`, `stationary-pump`, `shotcrete`, `concrete-production`, `concrete-placing`, `track-paver`, `wheel-paver`, `mini-paver`, `highway-paver`, `asphalt-plant`, `asphalt-distributor`, `asphalt-recycling`, `bitumen-equipment` |
+| Cranes / lifting (6) | `telescopic-crane`, `rough-terrain-crane`, `industrial-crane`, `winch`, `hoist`, `lifting-equipment` |
+| Forklift / material handling (5) | `stackers`, `telehandler`, `material-handler`, `container-handler`, `warehouse-equipment` |
+| Industrial haulage (7) | `site-dump-truck`, `site-transport`, `haul-truck`, `off-highway-truck`, `mining-truck`, `industrial-tractor`, `project-transport` |
+| Port / marine (9) | `port-reach-stacker`, `empty-container-handler`, `straddle-carrier`, `port-crane`, `ship-loader`, `ship-unloader`, `mobile-harbor-crane`, `port-loading-equipment`, `marine-service-equipment` |
+| Recycling / waste (11) | `shredder-machine`, `industrial-shredder`, `baler`, `sorting-machine`, `recycling-plant`, `waste-compactor`, `glass-recycling`, `plastic-recycling`, `metal-recycling`, `construction-waste-recycling`, `asphalt-recycling-machine` |
+| Tunnel / underground (9) | `tbm`, `roadheader`, `tunnel-jumbo`, `underground-lhd`, `underground-truck-machine`, `bolter`, `scaling-machine`, `underground-utility-vehicle`, `tunnel-equipment` |
+| Heavy industrial (9) | `steel-machinery`, `cement-machinery`, `mineral-processing-machinery`, `stone-cutting-machinery`, `glass-machinery`, `ceramic-machinery`, `industrial-production`, `industrial-packaging`, `heavy-factory-equipment` |
+| Power / energy (15) | `diesel-generator`, `gas-generator`, `natural-gas-generator`, `bi-fuel-generator`, `hybrid-generator`, `mobile-generator`, `silent-generator`, `containerized-generator`, `trailer-generator`, `pump`, `power-pack`, `portable-power`, `industrial-welding`, `project-lighting`, `industrial-hvac` |
+| Municipal / environment (9) | `garbage-truck`, `street-sweeper`, `street-washer`, `vacuum-truck`, `snow-plow`, `salt-spreader`, `municipal-service-truck`, `heavy-green-space`, `environmental-machinery` |
+| Special project (7) | `industrial-rescue`, `military-engineering`, `industrial-fire-truck`, `airport-machinery`, `special-project-machinery`, `custom-machinery`, `prototype-machinery` |
+| Other specialist (5) | `new-special`, `unknown-machine`, `combination-machine`, `custom-machine`, `needs-review` |
+
+For L2 families with L3 children, the intended implementation is a complete family form on L2 plus subtype-specific additions/overrides on L3. For terminal L2 families, the L2 category receives the complete form. This yields a complete composed form for every selectable terminal category without duplicating all shared attributes.
+
 ## Design rules for the definitive forms
 
 1. Every selectable terminal machine/equipment type must render a distinct composed form.
