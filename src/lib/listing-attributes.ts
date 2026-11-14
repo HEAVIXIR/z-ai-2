@@ -34,7 +34,7 @@ export async function validateListingAttributeValues(
   const attrIds = Array.from(
     new Set(values.map((value) => String(value?.attributeId ?? "")).filter(Boolean)),
   );
-  if (attrIds.length !== values.length || attrIds.length === 0) {
+  if (attrIds.length !== values.length) {
     return { ok: false, error: "attributeId is required for each value" };
   }
 
