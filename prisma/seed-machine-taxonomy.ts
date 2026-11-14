@@ -2,7 +2,7 @@
    Root: existing category slug="machinery" (name="۰۱ ماشین‌آلات")
    Restructures the machinery tree to match the definitive reference document:
    - 16 L1 groups (level=1, parentId=machinery)
-   - ~181 L2 families (level=2)
+   - ~182 L2 families (level=2)
    - ~104 L3 variants (level=3)
 
    CRITICAL RULES:
