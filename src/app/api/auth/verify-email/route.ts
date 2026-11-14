@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { verifyPassword } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { VERIFY } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -58,26 +59,53 @@ export async function POST(req: Request) {
     }
 
     const rec = await db.verificationCode.findFirst({
-      where: { userId: user.id, code, type: "EMAIL" },
+      where: {
+        userId: user.id,
+        type: "EMAIL",
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: "desc" },
     });
     if (!rec) {
-      return NextResponse.json({ error: "کد تأیید نامعتبر است" }, { status: 400 });
-    }
-    if (rec.used) {
-      return NextResponse.json({ error: "کد تأیید قبلاً استفاده شده است" }, { status: 400 });
-    }
-    if (rec.expiresAt.getTime() < Date.now()) {
-      return NextResponse.json({ error: "کد منقضی شده است؛ کد تازه درخواست کنید." }, { status: 400 });
+      return NextResponse.json({ error: "کد تأیید نامعتبر یا منقضی شده است" }, { status: 400 });
     }
 
-    await db.$transaction([
-      db.verificationCode.update({ where: { id: rec.id }, data: { used: true } }),
-      db.user.update({
+    // New records contain bcrypt hashes. Accept only still-unexpired legacy
+    // plaintext rows during their short remaining lifetime for rollout safety.
+    const matches = rec.code.startsWith("$2")
+      ? await verifyPassword(code, rec.code)
+      : rec.code === code;
+    if (!matches) {
+      return NextResponse.json({ error: "کد تأیید نامعتبر است" }, { status: 400 });
+    }
+
+    // Conditional UPDATE is the single-use gate: concurrent requests race
+    // on used=false and only one transaction can consume the challenge.
+    const activated = await db.$transaction(async (tx) => {
+      const consumed = await tx.verificationCode.updateMany({
+        where: {
+          id: rec.id,
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
+        data: { used: true },
+      });
+      if (consumed.count !== 1) return false;
+
+      await tx.user.update({
         where: { id: user.id },
         data: { emailVerified: true, status: "ACTIVE" },
-      }),
-    ]);
+      });
+      return true;
+    });
+
+    if (!activated) {
+      return NextResponse.json(
+        { error: "کد تأیید قبلاً استفاده شده یا منقضی شده است" },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
