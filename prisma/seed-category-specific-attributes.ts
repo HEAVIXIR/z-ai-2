@@ -2570,18 +2570,43 @@ templates.push(
 
 );
 
-// AttributeDefinition.key is globally unique. Keep one canonical key signature
-// and namespace incompatible variants by category to prevent type/unit/option clobbering.
-const fieldSignature = (field: Field): string => JSON.stringify({
-  type: field.type,
-  unit: field.unit ?? null,
-  fa: field.fa,
-  en: field.en,
-  options: field.options ?? [],
-});
-const canonicalFieldSignatureByKey = new Map<string, string>();
-const conflictingFieldKeys = new Set<string>();
-{
+// AttributeDefinition.key is globally unique. Preserve an existing compatible
+// definition; namespace incompatible variants by category to prevent global clobbering.
+const fieldSignature = (field: Pick<Field, "type" | "unit" | "fa" | "en" | "options">): string =>
+  JSON.stringify({
+    type: field.type,
+    unit: field.unit ?? null,
+    fa: field.fa,
+    en: field.en,
+    options: field.options ?? [],
+  });
+
+async function buildResolvedFieldKeyMap(): Promise<{
+  byTemplateAndKey: Map<string, string>;
+  conflictingKeyCount: number;
+  namespacedFieldCount: number;
+}> {
+  const allKeys = [...new Set(templates.flatMap((template) => template.fields.map((field) => field.key)))];
+  const existing = await db.attributeDefinition.findMany({
+    where: { key: { in: allKeys } },
+    include: {
+      options: {
+        orderBy: { sortOrder: "asc" },
+        select: { value: true },
+      },
+    },
+  });
+  const existingByKey = new Map(existing.map((attribute) => [
+    attribute.key!,
+    fieldSignature({
+      type: attribute.type as AttrType,
+      unit: attribute.unit ?? undefined,
+      fa: attribute.labelFa ?? attribute.name,
+      en: attribute.labelEn ?? attribute.nameEn ?? "",
+      options: attribute.options.map((option) => option.value),
+    }),
+  ]));
+
   const signaturesByKey = new Map<string, Map<string, { count: number; firstSeen: number }>>();
   let sequence = 0;
   for (const template of templates) {
@@ -2598,18 +2623,43 @@ const conflictingFieldKeys = new Set<string>();
       sequence++;
     }
   }
+
+  const byTemplateAndKey = new Map<string, string>();
+  const resolvedSignatures = new Map<string, string>();
+  let namespacedFieldCount = 0;
   for (const [key, signatures] of signaturesByKey) {
-    if (signatures.size > 1) conflictingFieldKeys.add(key);
-    const canonical = [...signatures.entries()].sort((a, b) =>
-      b[1].count - a[1].count || a[1].firstSeen - b[1].firstSeen
-    )[0];
-    canonicalFieldSignatureByKey.set(key, canonical[0]);
+    const existingSignature = existingByKey.get(key);
+    const compatibleExisting = existingSignature && signatures.has(existingSignature);
+    const canonical = compatibleExisting
+      ? existingSignature
+      : existingSignature
+        ? null
+        : [...signatures.entries()].sort((a, b) =>
+            b[1].count - a[1].count || a[1].firstSeen - b[1].firstSeen
+          )[0][0];
+
+    for (const template of templates) {
+      for (const field of template.fields) {
+        if (field.key !== key) continue;
+        const signature = fieldSignature(field);
+        const resolvedKey = canonical === signature ? key : `${template.slug}__${key}`;
+        const previousSignature = resolvedSignatures.get(resolvedKey);
+        if (previousSignature && previousSignature !== signature) {
+          throw new Error(`Resolved AttributeDefinition key collision: ${resolvedKey}`);
+        }
+        resolvedSignatures.set(resolvedKey, signature);
+        byTemplateAndKey.set(`${template.slug}:${key}`, resolvedKey);
+        if (resolvedKey !== key) namespacedFieldCount++;
+      }
+    }
   }
+
+  return {
+    byTemplateAndKey,
+    conflictingKeyCount: [...signaturesByKey.values()].filter((signatures) => signatures.size > 1).length,
+    namespacedFieldCount,
+  };
 }
-const resolvedFieldKey = (templateSlug: string, field: Field): string =>
-  canonicalFieldSignatureByKey.get(field.key) === fieldSignature(field)
-    ? field.key
-    : `${templateSlug}__${field.key}`;
 
 async function upsertField(field: Field): Promise<string> {
   const data = {
@@ -2698,6 +2748,7 @@ async function main() {
   }
 
   const activeTemplates = templates.filter((template) => categoryBySlug.has(template.slug));
+  const fieldKeyPlan = await buildResolvedFieldKeyMap();
   const applied: { slug: string; fields: number }[] = [];
 
   for (const template of activeTemplates) {
@@ -2706,7 +2757,9 @@ async function main() {
     const required = new Set(template.required ?? []);
     for (let order = 0; order < template.fields.length; order++) {
       const field = template.fields[order];
-      const attributeId = await upsertField({ ...field, key: resolvedFieldKey(template.slug, field) });
+      const resolvedKey = fieldKeyPlan.byTemplateAndKey.get(`${template.slug}:${field.key}`);
+      if (!resolvedKey) throw new Error(`Missing resolved field key for ${template.slug}.${field.key}`);
+      const attributeId = await upsertField({ ...field, key: resolvedKey });
       await db.categoryAttribute.upsert({
         where: {
           categoryId_attributeId: {
@@ -2737,8 +2790,8 @@ async function main() {
 
   console.log(JSON.stringify({
     templatesDefined: templates.length,
-    conflictingGlobalFieldKeys: [...conflictingFieldKeys],
-    conflictingGlobalFieldKeyCount: conflictingFieldKeys.size,
+    conflictingGlobalFieldKeyCount: fieldKeyPlan.conflictingKeyCount,
+    namespacedFieldDefinitionCount: fieldKeyPlan.namespacedFieldCount,
     templatesApplied: applied.length,
     missingCategorySlugs: missing,
     applied,
