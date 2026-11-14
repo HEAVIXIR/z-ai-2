@@ -98,7 +98,7 @@ const templates: Template[] = [
     f("capacity_at_max_reach", "ظرفیت در حداکثر دسترسی", "Capacity at Maximum Reach", "DECIMAL", { unit: "KG" }),
     f("boom_sections", "تعداد قطعات بوم", "Boom Sections", "INTEGER"),
     f("stabilizer_type", "نوع تثبیت‌کننده", "Stabilizer Type", "TEXT"),
-    f("attachment_type", "نوع متعلقه", "Attachment Type", "MULTI_SELECT"),
+    f("attachment_type", "نوع متعلقه", "Attachment Type", "MULTI_SELECT", { options: ["باکت", "شاخک", "گرپل", "اوگر", "بریکر", "پلتفرم", "ریپر", "تیغه"] }),
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
   ]},
 
@@ -677,7 +677,7 @@ const templates: Template[] = [
   ]},
   { slug: "harvesting-equipment", label: "Harvesting Equipment", required: ["working_width", "crop_type"], fields: [
     f("implement_type", "نوع دستگاه برداشت", "Implement Type", "SELECT", { options: ["دروگر", "هد کمباین", "چاپر", "بیلر", "برداشت پنبه"] }),
-    f("crop_type", "نوع محصول", "Crop Type", "MULTI_SELECT"),
+    f("crop_type", "نوع محصول", "Crop Type", "MULTI_SELECT", { options: ["گندم", "جو", "ذرت", "برنج", "پنبه", "نیشکر", "علوفه", "محصولات باغی", "سبزیجات"] }),
     f("working_width", "عرض کار", "Working Width", "DECIMAL", { unit: "M" }),
     f("field_capacity", "ظرفیت برداشت مزرعه‌ای", "Field Capacity", "DECIMAL", { unit: "HA/H" }),
     f("power_requirement", "توان موردنیاز", "Power Requirement", "DECIMAL", { unit: "HP" }),
