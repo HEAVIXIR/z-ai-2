@@ -2,8 +2,8 @@
    Root: existing category slug="machinery" (name="۰۱ ماشین‌آلات")
    Restructures the machinery tree to match the definitive reference document:
    - 16 L1 groups (level=1, parentId=machinery)
-   - ~172 L2 families (level=2)
-   - ~97 L3 variants (level=3)
+   - ~182 L2 families (level=2)
+   - ~104 L3 variants (level=3)
 
    CRITICAL RULES:
    - NEVER delete categories that have listings (9 categories: excavator, loader,
@@ -290,7 +290,7 @@ const TREE: L1[] = [
     ],
   },
 
-  // ─── 06 cranes-lifting (14 L2) ──────────────────────────
+  // ─── 06 cranes-lifting (15 L2) ──────────────────────────
   {
     name: "۰۶ جرثقیل، بالابر و لیفتینگ",
     slug: "cranes-lifting",
@@ -310,6 +310,7 @@ const TREE: L1[] = [
       { name: "وینچ", slug: "winch" },
       { name: "بالابر", slug: "hoist" },
       { name: "تجهیزات لیفتینگ", slug: "lifting-equipment" },
+      { name: "سکوی کار در ارتفاع", slug: "aerial-platform" },
     ],
   },
 
@@ -437,7 +438,7 @@ const TREE: L1[] = [
     ],
   },
 
-  // ─── 13 power-energy (8 L2) ─────────────────────────────
+  // ─── 13 power-energy (17 L2) ─────────────────────────────
   {
     name: "۱۳ نیرو، انرژی و تأسیسات سیار",
     slug: "power-energy",
@@ -465,6 +466,26 @@ const TREE: L1[] = [
       { name: "تجهیزات جوشکاری صنعتی", slug: "industrial-welding" },
       { name: "تجهیزات روشنایی پروژه", slug: "project-lighting" },
       { name: "تجهیزات سرمایش و گرمایش صنعتی", slug: "industrial-hvac" },
+      { name: "پمپ‌های صنعتی", slug: "industrial-pumps" },
+      { name: "فن‌های صنعتی", slug: "industrial-fans" },
+      { name: "دیگ‌های بخار", slug: "boilers" },
+      { name: "تجهیزات تهویه مطبوع", slug: "hvac-equipment" },
+      { name: "تجهیزات برش صنعتی", slug: "cutting-equipment" },
+      { name: "ترانسفورماتورها", slug: "transformers" },
+      { name: "تابلوهای برق و سوئیچگیر", slug: "switchgears" },
+      {
+        name: "تجهیزات جایگاه سوخت",
+        slug: "fuel-station-equipment",
+        l3: [
+          { name: "دیسپنسر سوخت", slug: "fuel-dispenser" },
+          { name: "مخزن ذخیره سوخت", slug: "fuel-storage-tank" },
+          { name: "پمپ مستغرق سوخت", slug: "submersible-fuel-pump" },
+          { name: "پایش مخزن و تشخیص نشتی", slug: "tank-monitoring-system" },
+          { name: "فیلتراسیون سوخت", slug: "fuel-filtration" },
+          { name: "شلنگ و نازل سوخت", slug: "fuel-hose-nozzle" },
+          { name: "بازیابی بخارات سوخت", slug: "vapour-recovery-equipment" },
+        ],
+      },
     ],
   },
 
