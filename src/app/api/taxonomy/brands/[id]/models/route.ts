@@ -71,7 +71,7 @@ export async function POST(
 
     const slugify = (value: string) =>
       value.toString().trim().toLowerCase()
-        .replace(/[^\\w\\u0600-\\u06FF-]+/g, "-")
+        .replace(/[^\w\u0600-\u06FF-]+/g, "-")
         .replace(/^-+|-+$/g, "");
     const baseSlug = slugify(body.slug || body.nameEn || name);
     if (!baseSlug) return NextResponse.json({ error: "شناسه مدل قابل ساخت نیست." }, { status: 400 });
