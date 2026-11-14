@@ -76,15 +76,23 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
     const nextPath = [...path.slice(0, level), node];
     setPath(nextPath);
     setError(null);
-    onChange(node.id, nextPath);
+
+    // A category is submittable only when it is a terminal node.
+    // Clear the parent selection while checking whether it has children.
+    onChange("", nextPath);
 
     const embedded = node.children;
     if (embedded) {
       setChildrenByParent((current) => ({ ...current, [node.id]: embedded }));
+      if (embedded.length === 0) onChange(node.id, nextPath);
       return;
     }
 
-    if (Object.prototype.hasOwnProperty.call(childrenByParent, node.id)) return;
+    if (Object.prototype.hasOwnProperty.call(childrenByParent, node.id)) {
+      const cachedChildren = childrenByParent[node.id] ?? [];
+      if (cachedChildren.length === 0) onChange(node.id, nextPath);
+      return;
+    }
 
     setLoadingParent(node.id);
     try {
@@ -96,10 +104,9 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
         category?: { children?: CategoryPathItem[] };
       };
       if (currentRequest !== requestId.current) return;
-      setChildrenByParent((current) => ({
-        ...current,
-        [node.id]: payload.category?.children ?? [],
-      }));
+      const children = payload.category?.children ?? [];
+      setChildrenByParent((current) => ({ ...current, [node.id]: children }));
+      if (children.length === 0) onChange(node.id, nextPath);
     } catch (cause) {
       if (currentRequest === requestId.current) {
         setError(cause instanceof Error ? cause.message : "خطا در دریافت دسته‌بندی‌ها");
@@ -153,9 +160,12 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
         </p>
       )}
 
-      {value && (
+      {path.length > 0 && (
         <div className="rounded-xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-3 text-[11px] text-white/60">
           مسیر انتخاب‌شده: <span className="font-bold text-[#F58220]">{selectedPath}</span>
+          {!value && !loadingParent && !error && (
+            <p className="mt-2 text-white/45">برای ادامه، آخرین زیرشاخه را انتخاب کنید؛ ثبت روی دستهٔ مادر مجاز نیست.</p>
+          )}
         </div>
       )}
     </div>
