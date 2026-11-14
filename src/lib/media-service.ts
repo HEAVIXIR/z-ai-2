@@ -317,6 +317,28 @@ export async function attachAsset(
   const asset = await getAsset(assetId);
   if (!asset) return { ok: false, error: "رسانه یافت نشد." };
 
+  // Idempotent retry is allowed only for the exact same destination.
+  if (asset.status === "ATTACHED") {
+    if (asset.entityType === entityType && asset.entityId === entityId) {
+      return { ok: true, asset };
+    }
+    return { ok: false, error: "این رسانه قبلاً به موجودیت دیگری متصل شده است." };
+  }
+
+  // Seller attachment is restricted to the original owner's private staging
+  // asset. Never allow an active/public or unowned asset to be rebound through
+  // this path; administrative media flows must use their dedicated controls.
+  if (
+    asset.status !== "STAGED" ||
+    asset.visibility !== "PRIVATE" ||
+    asset.entityId !== null ||
+    !asset.relativePath.includes("/staging/") ||
+    !userId ||
+    asset.uploadedBy !== userId
+  ) {
+    return { ok: false, error: "مالکیت یا وضعیت رسانه برای اتصال معتبر نیست." };
+  }
+
   let finalKey = asset.relativePath;
   const uploadedAt = new Date(asset.uploadedAt);
   if (asset.status === "STAGED" && asset.relativePath.includes("/staging/")) {
