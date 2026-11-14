@@ -367,7 +367,7 @@ export async function POST(req: Request) {
     }
 
     if (body.categoryId) {
-      const expectedLayer = transactionType.key === "SERVICE_REQUEST" ? "SERVICE" : "CATALOG";
+      const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
       const category = await db.category.findFirst({
         where: { id: String(body.categoryId), active: true },
         select: { id: true, layer: true },
@@ -433,7 +433,7 @@ export async function POST(req: Request) {
     if (
       rawImages.length === 0 &&
       rawAssetIds.length === 0 &&
-      transactionType.key !== "SERVICE_REQUEST"
+      transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"
     ) {
       return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
     }
