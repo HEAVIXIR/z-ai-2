@@ -142,6 +142,7 @@ async function main() {
     throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
   }
   console.log("🌱 Seeding HEAVIX demo fixtures in the verified Preview environment…");
+  console.log("NOTE: legacy demo seed only adds demo brands, machine categories, and sample listings; it does not seed transaction/service types, model catalog, industries, or dynamic attributes.");
 
   /* Brands */
   for (let i = 0; i < BRANDS.length; i++) {
