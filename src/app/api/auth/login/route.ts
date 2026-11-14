@@ -59,6 +59,12 @@ export async function POST(req: Request) {
     if (user.status === "BLOCKED") {
       return NextResponse.json({ error: "حساب کاربری شما مسدود شده است" }, { status: 403 });
     }
+    if (!user.emailVerified || user.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "ابتدا ایمیل خود را با کد ارسال‌شده تأیید کنید." },
+        { status: 403 },
+      );
+    }
 
     await db.user.update({
       where: { id: user.id },
