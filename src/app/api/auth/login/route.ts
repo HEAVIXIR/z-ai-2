@@ -67,8 +67,14 @@ export async function POST(req: Request) {
 
     // Preview-only owner bootstrap: exact allowlisted, verified account must
     // successfully authenticate with its password before receiving ADMIN.
+    const isPreviewDeployment = process.env.HEAVIX_ENV === "preview";
     const ownerEmail = process.env.HEAVIX_OWNER_EMAIL?.trim().toLowerCase();
-    if (ownerEmail && user.email.toLowerCase() === ownerEmail && !(await isAdmin(user.id))) {
+    if (
+      isPreviewDeployment &&
+      ownerEmail &&
+      user.email.toLowerCase() === ownerEmail &&
+      !(await isAdmin(user.id))
+    ) {
       const adminRole = await db.role.findUnique({
         where: { key: "ADMIN" },
         select: { id: true },
