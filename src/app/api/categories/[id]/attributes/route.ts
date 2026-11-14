@@ -4,30 +4,21 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* ============================================================
-   GET /api/categories/[id]/attributes — PUBLIC
-
-   Returns all attributes linked to a category (via
-   CategoryAttribute) with the AttributeDefinition + options +
-   link-level overrides MERGED into the response. This is the
-   endpoint the dynamic listing form uses.
-
-   The link-level overrides (required, filterable, searchable,
-   sortable, displayOrder) take precedence over the
-   attribute-level defaults.
-
-   Response shape:
-   {
-     attributes: [{
-       id, key, labelFa, labelEn, type, unit,
-       required, filterable, searchable, sortable,
-       visibleOnCard, visibleOnDetail,
-       displayOrder,
-       options: [{ id, value, label }]
-     }]
-   }
-   ============================================================ */
-
+/**
+ * GET /api/categories/[id]/attributes — public, read-only.
+ *
+ * Resolves the selected category's complete ancestry and composes the
+ * HBR three-layer attribute catalog:
+ *   machinery/global -> domain (e.g. road-construction) -> machine type
+ *   (e.g. loader, crane, excavator) -> optional subtype.
+ *
+ * The nearest category link wins for link-level flags. This lets a leaf
+ * override required/filterable/order settings without duplicating the
+ * global and domain definitions.
+ *
+ * Brand and model are intentionally omitted: those are selected in the
+ * preceding wizard step and are persisted as first-class Listing relations.
+ */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -38,25 +29,39 @@ export async function GET(
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
 
-    // Accept either the category id or its slug for convenience.
-    const category = await db.category.findFirst({
-      where: { OR: [{ id }, { slug: id }] },
-      select: { id: true },
+    const selected = await db.category.findFirst({
+      where: { OR: [{ id }, { slug: id }], active: true },
+      select: { id: true, parentId: true },
     });
-    if (!category) {
-      return NextResponse.json(
-        { error: "Category not found" },
-        { status: 404 },
-      );
+    if (!selected) {
+      return NextResponse.json({ error: "Category not found or inactive" }, { status: 404 });
     }
 
+    // Follow the real parent relation; do not assume a fixed tree depth.
+    const ancestryLeafFirst: string[] = [selected.id];
+    const seen = new Set<string>(ancestryLeafFirst);
+    let parentId = selected.parentId;
+    let depth = 0;
+    while (parentId && depth < 16) {
+      if (seen.has(parentId)) {
+        return NextResponse.json({ error: "Invalid category ancestry" }, { status: 409 });
+      }
+      seen.add(parentId);
+      const parent = await db.category.findUnique({
+        where: { id: parentId },
+        select: { id: true, parentId: true, active: true },
+      });
+      if (!parent || !parent.active) break;
+      ancestryLeafFirst.push(parent.id);
+      parentId = parent.parentId;
+      depth += 1;
+    }
+
+    const categoryIds = ancestryLeafFirst.reverse();
+    const depthByCategory = new Map(categoryIds.map((categoryId, index) => [categoryId, index]));
+
     const links = await db.categoryAttribute.findMany({
-      where: { categoryId: category.id },
-      orderBy: [
-        { displayOrder: "asc" },
-        { attribute: { sortOrder: "asc" } },
-        { attribute: { name: "asc" } },
-      ],
+      where: { categoryId: { in: categoryIds } },
       include: {
         attribute: {
           include: {
@@ -68,33 +73,86 @@ export async function GET(
       },
     });
 
-    const attributes = links.map((l) => ({
-      id: l.attribute.id,
-      key: l.attribute.key,
-      labelFa: l.attribute.labelFa ?? l.attribute.name,
-      labelEn: l.attribute.labelEn ?? l.attribute.nameEn ?? null,
-      type: l.attribute.type,
-      unit: l.attribute.unit,
-      // link-level overrides win
-      required: l.required,
-      filterable: l.filterable,
-      searchable: l.searchable,
-      sortable: l.sortable,
-      displayOrder: l.displayOrder,
-      // attribute-level display flags (no link override)
-      visibleOnCard: l.attribute.visibleOnCard,
-      visibleOnDetail: l.attribute.visibleOnDetail,
-      options: l.attribute.options.map((o) => ({
-        id: o.id,
-        value: o.value,
-        label: o.label,
-      })),
-    }));
+    // Process from broadest ancestor to most-specific leaf so the latter
+    // overrides link-level flags and display order for shared attributes.
+    links.sort((a, b) =>
+      (depthByCategory.get(a.categoryId) ?? 0) - (depthByCategory.get(b.categoryId) ?? 0) ||
+      a.displayOrder - b.displayOrder ||
+      a.attribute.sortOrder - b.attribute.sortOrder ||
+      a.attribute.name.localeCompare(b.attribute.name, "fa"),
+    );
 
-    return NextResponse.json({ attributes });
-  } catch (err: any) {
+    const merged = new Map<string, {
+      id: string;
+      key: string | null;
+      labelFa: string;
+      labelEn: string | null;
+      type: string;
+      unit: string | null;
+      required: boolean;
+      filterable: boolean;
+      searchable: boolean;
+      sortable: boolean;
+      displayOrder: number;
+      sourceDepth: number;
+      sortOrder: number;
+      visibleOnCard: boolean;
+      visibleOnDetail: boolean;
+      options: Array<{ id: string; value: string; label: string | null; sortOrder: number }>;
+    }>();
+
+    for (const link of links) {
+      const attribute = link.attribute;
+      const key = attribute.key ?? attribute.id;
+      // Brand/model are handled by the dedicated linked selectors before
+      // this technical-specification step.
+      if (key === "brand" || key === "model") continue;
+
+      merged.set(key, {
+        id: attribute.id,
+        key: attribute.key,
+        labelFa: attribute.labelFa ?? attribute.name,
+        labelEn: attribute.labelEn ?? attribute.nameEn ?? null,
+        type: attribute.type,
+        unit: attribute.unit,
+        required: link.required,
+        filterable: link.filterable,
+        searchable: link.searchable,
+        sortable: link.sortable,
+        displayOrder: link.displayOrder,
+        sourceDepth: depthByCategory.get(link.categoryId) ?? 0,
+        sortOrder: attribute.sortOrder,
+        visibleOnCard: attribute.visibleOnCard,
+        visibleOnDetail: attribute.visibleOnDetail,
+        options: attribute.options.map((option) => ({
+          id: option.id,
+          value: option.value,
+          label: option.label,
+          sortOrder: option.sortOrder,
+        })),
+      });
+    }
+
+    const attributes = [...merged.values()]
+      .sort((a, b) =>
+        a.sourceDepth - b.sourceDepth ||
+        a.displayOrder - b.displayOrder ||
+        a.sortOrder - b.sortOrder ||
+        a.labelFa.localeCompare(b.labelFa, "fa"),
+      )
+      .map(({ sourceDepth: _sourceDepth, sortOrder: _sortOrder, ...attribute }) => ({
+        ...attribute,
+        options: attribute.options.map(({ sortOrder: _optionOrder, ...option }) => option),
+      }));
+
+    return NextResponse.json({
+      categoryId: selected.id,
+      ancestry: categoryIds,
+      attributes,
+    });
+  } catch (err: unknown) {
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: err instanceof Error ? err.message : "Server error" },
       { status: 500 },
     );
   }
