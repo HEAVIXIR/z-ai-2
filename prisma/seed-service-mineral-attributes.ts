@@ -163,7 +163,8 @@ async function main(){
  if(missing.length)throw new Error("Missing category forms; no attributes were written: "+missing.join(", "));
  await linkFields(serviceRoot.id,commonService,"services");
  await linkFields(mineralRoot.id,commonMineral,"minerals-materials");
- const mineralSupplySlugs=new Set(["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"]);\n for(const form of forms){const category=categoryBySlug.get(form.slug)!;const fields=mineralSupplySlugs.has(form.slug)?[...commonMineral,...form.fields]:form.fields;await linkFields(category.id,fields,form.slug);}
+ const mineralSupplySlugs=new Set(["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"]);
+ for(const form of forms){const category=categoryBySlug.get(form.slug)!;const fields=mineralSupplySlugs.has(form.slug)?[...commonMineral,...form.fields]:form.fields;await linkFields(category.id,fields,form.slug);}
  console.log(JSON.stringify({commonServiceFields:commonService.length,commonMineralFields:commonMineral.length,formsApplied:forms.length,missingForms:[]},null,2));
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
