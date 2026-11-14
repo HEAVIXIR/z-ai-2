@@ -183,7 +183,7 @@ export async function PUT(req: Request, { params }: Args) {
         : Promise.resolve([]),
       listing.modelId
         ? db.productModelAttribute.findMany({
-            where: { modelId: listing.modelId },
+            where: { modelId: listing.modelId, categoryId: listing.categoryId ?? "" },
             select: { attributeId: true },
           })
         : Promise.resolve([]),
