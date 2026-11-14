@@ -182,7 +182,7 @@ export async function POST(req: Request, context: RouteContext) {
     }
 
     const inviteUrl = new URL("/company/invitations/accept", appUrl);
-    inviteUrl.searchParams.set("token", token);
+    inviteUrl.hash = new URLSearchParams({ token }).toString();
     const safeCompanyName = escapeHtml(company.name);
     const safeRole = escapeHtml(roleKey);
     const delivered = await sendEmail({
