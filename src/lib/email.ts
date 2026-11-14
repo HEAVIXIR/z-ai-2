@@ -26,24 +26,10 @@ const SMTP_FROM =
 export const isSmtpConfigured = (): boolean =>
   Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS);
 
-/** Low-level send. Falls back to console logging when SMTP is not set. */
+/** Send through SMTP only; OTPs are never written to application logs. */
 export async function sendEmail(args: SendEmailArgs): Promise<void> {
   if (!isSmtpConfigured()) {
-    // ── Dev / sandbox fallback ──────────────────────────────────
-    // Print a clearly-delimited block so the code can be picked out
-    // of `dev.log` while developing without a real SMTP server.
-    console.log(
-      [
-        "────────────── [HEAVIX EMAIL — DEV FALLBACK] ──────────────",
-        `To:      ${args.to}`,
-        `From:    ${SMTP_FROM}`,
-        `Subject: ${args.subject}`,
-        "Body:",
-        args.text,
-        "───────────────────────────────────────────────────────────",
-      ].join("\n"),
-    );
-    return;
+    throw new Error("Email delivery is not configured");
   }
 
   // ── Production: lazy-load nodemailer so the dependency is only
@@ -65,10 +51,9 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
       text: args.text,
       html: args.html ?? args.text,
     });
-  } catch (err) {
-    // Log but don't throw — verification codes shouldn't take down
-    // the request. The caller still returns the devCode in dev mode.
-    console.error("[HEAVIX EMAIL] send failed:", err);
+  } catch {
+    console.error("[HEAVIX EMAIL] delivery failed");
+    throw new Error("Email delivery failed");
   }
 }
 
