@@ -150,6 +150,13 @@ export async function POST(req: Request) {
         update: {},
       });
 
+      // Commercial persona is independent from platform RBAC.
+      // Every new person starts as INDIVIDUAL; organization personas
+      // require a separate organization membership/verification flow.
+      await tx.userCommercialPersona.create({
+        data: { userId: u.id, personaKey: "INDIVIDUAL", isPrimary: true, status: "ACTIVE" },
+      });
+
       return u;
     });
 
