@@ -370,10 +370,20 @@ export async function POST(req: Request) {
       const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
       const category = await db.category.findFirst({
         where: { id: String(body.categoryId), active: true },
-        select: { id: true, layer: true },
+        select: {
+          id: true,
+          layer: true,
+          children: { where: { active: true }, select: { id: true }, take: 1 },
+        },
       });
       if (!category) {
         return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (category.children.length > 0) {
+        return NextResponse.json(
+          { error: "فقط انتخاب آخرین زیرشاخه برای ثبت آگهی مجاز است." },
+          { status: 400 },
+        );
       }
       if (category.layer !== expectedLayer) {
         return NextResponse.json(
