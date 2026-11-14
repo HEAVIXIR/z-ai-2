@@ -161,14 +161,8 @@ async function main() {
         active: true,
         featured: !!s.featured,
       },
-      update: {
-        nameFa: s.nameFa,
-        nameEn: s.nameEn,
-        description: s.description,
-        icon: s.icon,
-        sortOrder: s.sortOrder,
-        // Intentionally NOT updating active/featured — admin edits preserved.
-      },
+      // Preserve existing administrator-managed service metadata on reruns.
+      update: {},
     });
     if ((res as any).createdAt && (res as any).updatedAt) {
       // Can't easily distinguish create vs update here; just count by checking
