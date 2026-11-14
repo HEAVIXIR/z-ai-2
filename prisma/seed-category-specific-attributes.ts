@@ -197,7 +197,7 @@ const templates: Template[] = [
   ]},
 
   // DRILLING — parameters are method-specific; configuration values stay optional.
-  { slug: "rotary-drill", label: "Rotary Drilling Rig", required: ["drilling_diameter_min", "max_drilling_depth", "rotation_torque"], fields: [
+  { slug: "rotary-drill", label: "Rotary Drilling Rig", required: ["drilling_diameter_min", "max_drilling_depth", "rotation_torque_knm"], fields: [
     f("drilling_diameter_min", "حداقل قطر حفاری", "Minimum Drilling Diameter", "DECIMAL", { unit: "MM" }),
     f("drilling_diameter_max", "حداکثر قطر حفاری", "Maximum Drilling Diameter", "DECIMAL", { unit: "MM", filterable: true, card: true }),
     f("max_drilling_depth", "حداکثر عمق حفاری", "Maximum Drilling Depth", "DECIMAL", { unit: "M", filterable: true }),
@@ -307,7 +307,7 @@ const templates: Template[] = [
   ]},
 
   // MINING and MATERIAL PROCESSING.
-  { slug: "mining-excavator-machine", label: "Mining Excavator", required: ["operating_weight", "bucket_capacity", "engine_power"], fields: [
+  { slug: "mining-excavator-machine", label: "Mining Excavator", required: ["operating_weight", "bucket_capacity", "engine_power_kw"], fields: [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true, card: true }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
@@ -375,7 +375,7 @@ const templates: Template[] = [
     f("amplitude", "دامنه ارتعاش", "Amplitude", "DECIMAL", { unit: "MM" }),
     f("gradeability", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
   ]},
-  { slug: "double-drum-roller", label: "Double Drum Roller", required: ["operating_weight", "working_width"], fields: [
+  { slug: "double-drum-roller", label: "Double Drum Roller", required: ["operating_weight", "working_width_mm"], fields: [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true }),
     f("working_width_mm", "عرض کوبش", "Working Width", "DECIMAL", { unit: "MM", filterable: true, card: true }),
     f("drum_diameter", "قطر درام", "Drum Diameter", "DECIMAL", { unit: "MM" }),
@@ -383,7 +383,7 @@ const templates: Template[] = [
     f("centrifugal_force", "نیروی گریز از مرکز", "Centrifugal Force", "DECIMAL", { unit: "KN" }),
     f("travel_speed", "سرعت حرکت", "Travel Speed", "DECIMAL", { unit: "KMH" }),
   ]},
-  { slug: "pneumatic-roller", label: "Pneumatic Tire Roller", required: ["operating_weight", "working_width"], fields: [
+  { slug: "pneumatic-roller", label: "Pneumatic Tire Roller", required: ["operating_weight", "working_width_mm"], fields: [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true }),
     f("working_width_mm", "عرض کوبش", "Working Width", "DECIMAL", { unit: "MM" }),
     f("tire_count", "تعداد تایر", "Tire Count", "INTEGER"),
@@ -649,7 +649,7 @@ const templates: Template[] = [
     f("working_pressure", "فشار کاری", "Working Pressure", "DECIMAL", { unit: "BAR" }),
     f("control_system", "سیستم کنترل", "Control System", "TEXT"),
   ]},
-  { slug: "irrigation-system", label: "Irrigation System", required: ["irrigated_area", "flow_rate"], fields: [
+  { slug: "irrigation-system", label: "Irrigation System", required: ["irrigated_area", "design_flow_rate_m3h"], fields: [
     f("irrigation_type", "نوع آبیاری", "Irrigation Type", "SELECT", { options: ["قطره‌ای", "بارانی", "محوری", "خطی", "سطحی"] }),
     f("irrigated_area", "مساحت تحت پوشش", "Irrigated Area", "DECIMAL", { unit: "HA" }),
     f("design_flow_rate_m3h", "دبی طراحی", "Design Flow Rate", "DECIMAL", { unit: "M3/H" }),
@@ -658,7 +658,7 @@ const templates: Template[] = [
     f("filter_type", "نوع فیلتراسیون", "Filter Type", "TEXT"),
     f("automation_level", "سطح اتوماسیون", "Automation Level", "SELECT", { options: ["دستی", "نیمه‌خودکار", "هوشمند"] }),
   ]},
-  { slug: "tillage-equipment", label: "Tillage Equipment", required: ["working_width", "working_depth"], fields: [
+  { slug: "tillage-equipment", label: "Tillage Equipment", required: ["working_width", "working_depth_cm"], fields: [
     f("implement_type", "نوع ادوات", "Implement Type", "SELECT", { options: ["گاوآهن", "دیسک", "چیزل", "زیرشکن", "روتیواتور", "لولر"] }),
     f("working_width", "عرض کار", "Working Width", "DECIMAL", { unit: "M" }),
     f("working_depth_cm", "عمق کار", "Working Depth", "DECIMAL", { unit: "CM" }),
@@ -780,7 +780,7 @@ const templates: Template[] = [
     f("mast_type", "نوع دکل", "Mast Type", "TEXT"),
     f("operator_type", "نوع اپراتوری", "Operator Type", "SELECT", { options: ["پیاده‌رو", "سوارشو", "سکودار"] }),
     f("aisle_width", "عرض راهرو", "Aisle Width", "DECIMAL", { unit: "MM" }),
-    f("battery_capacity", "ظرفیت باتری", "Battery Capacity", "DECIMAL", { unit: "AH" }),
+    f("battery_capacity_ah", "ظرفیت باتری", "Battery Capacity", "DECIMAL", { unit: "AH" }),
   ]},
   { slug: "other-forklift", label: "Other Warehouse Handling Equipment", required: ["equipment_type"], fields: [
     f("equipment_type", "نوع تجهیزات انبار", "Equipment Type", "TEXT"),
@@ -1053,10 +1053,10 @@ const templates: Template[] = [
     f("drive_type", "نوع محرک", "Drive Type", "SELECT", { options: ["هیدرولیک", "مکانیکی"] }),
     f("host_machine_class", "کلاس ماشین میزبان", "Host Machine Class", "TEXT"),
   ]},
-  { slug: "ripper", label: "Ripper Attachment", required: ["shank_count", "working_depth"], fields: [
+  { slug: "ripper", label: "Ripper Attachment", required: ["shank_count", "working_depth_mm"], fields: [
     f("shank_count", "تعداد ناخن", "Shank Count", "INTEGER"),
     f("working_depth_mm", "عمق کاری", "Working Depth", "DECIMAL", { unit: "MM" }),
-    f("working_width", "عرض کاری", "Working Width", "DECIMAL", { unit: "MM" }),
+    f("working_width_mm", "عرض کاری", "Working Width", "DECIMAL", { unit: "MM" }),
     f("tooth_type", "نوع ناخن", "Tooth Type", "TEXT"),
     f("host_machine_weight", "وزن ماشین میزبان", "Host Machine Weight", "TEXT"),
     f("attachment_weight", "وزن متعلقه", "Attachment Weight", "DECIMAL", { unit: "KG" }),
@@ -1102,7 +1102,7 @@ const templates: Template[] = [
     f("operating_pressure", "فشار کاری", "Operating Pressure", "DECIMAL", { unit: "BAR" }),
   ]},
 
-  { slug: "tractor-truck", label: "Tractor Truck", required: ["gross_vehicle_weight", "engine_power", "axle_configuration"], fields: [
+  { slug: "tractor-truck", label: "Tractor Truck", required: ["gross_vehicle_weight", "engine_power_kw", "axle_configuration"], fields: [
     f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON", filterable: true }),
     f("gross_combination_weight", "وزن ناخالص ترکیبی", "Gross Combination Weight", "DECIMAL", { unit: "TON" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
@@ -1132,7 +1132,7 @@ const templates: Template[] = [
     f("suspension_type", "نوع تعلیق", "Suspension Type", "TEXT"),
     f("brake_system", "سیستم ترمز", "Brake System", "TEXT"),
   ]},
-  { slug: "pickup", label: "Pickup Truck", required: ["payload_capacity", "engine_power", "drive_configuration"], fields: [
+  { slug: "pickup", label: "Pickup Truck", required: ["payload_capacity", "engine_power_kw", "drive_configuration"], fields: [
     f("payload_capacity", "ظرفیت بار مفید", "Payload Capacity", "DECIMAL", { unit: "KG", filterable: true }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
     f("engine_torque", "گشتاور موتور", "Engine Torque", "DECIMAL", { unit: "NM" }),
