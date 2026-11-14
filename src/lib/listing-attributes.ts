@@ -154,10 +154,12 @@ export async function validateListingAttributeValues(
       dateValue,
       optionId: value.optionId === undefined || value.optionId === null || value.optionId === "" ? null : String(value.optionId),
       unit: value.unit === undefined || value.unit === null || value.unit === "" ? null : String(value.unit),
-      sourceType:
-        value.sourceType === undefined || value.sourceType === null
-          ? isAdmin ? "ADMIN_VERIFIED" : "SELLER_INPUT"
-          : String(value.sourceType),
+      // Sellers cannot self-assert ADMIN_VERIFIED or AI provenance.
+      sourceType: isAdmin
+        ? value.sourceType === undefined || value.sourceType === null
+          ? "ADMIN_VERIFIED"
+          : String(value.sourceType)
+        : "SELLER_INPUT",
       confidence: confidence === null ? null : Math.max(0, Math.min(1, confidence)),
       sourceReference: value.sourceReference === undefined || value.sourceReference === null ? null : String(value.sourceReference),
       verifiedAt: isAdmin ? new Date() : null,
