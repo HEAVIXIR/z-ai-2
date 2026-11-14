@@ -56,7 +56,7 @@ export async function validateListingAttributeValues(
     allowedCategoryIds.length
       ? db.categoryAttribute.findMany({
           where: { categoryId: { in: allowedCategoryIds } },
-          select: { attributeId: true, required: true },
+          select: { categoryId: true, attributeId: true, required: true },
         })
       : Promise.resolve([]),
     listing.modelId
@@ -70,10 +70,26 @@ export async function validateListingAttributeValues(
     ...categoryLinks.map((link: { attributeId: string }) => link.attributeId),
     ...modelLinks.map((link: { attributeId: string }) => link.attributeId),
   ]);
+  // Match the category-attribute API: the nearest category link wins.
+  // allowedCategoryIds is leaf-first, so process root-to-leaf and let each
+  // more-specific link replace the previous required flag.
+  const categoryDepth = new Map(allowedCategoryIds.map((id, index) => [id, index]));
+  const effectiveRequired = new Map<string, boolean>();
+  const orderedCategoryLinks = [...categoryLinks].sort(
+    (a: { categoryId: string }, b: { categoryId: string }) =>
+      (categoryDepth.get(b.categoryId) ?? 0) - (categoryDepth.get(a.categoryId) ?? 0),
+  );
+  for (const link of orderedCategoryLinks as Array<{
+    categoryId: string;
+    attributeId: string;
+    required?: boolean;
+  }>) {
+    effectiveRequired.set(link.attributeId, Boolean(link.required));
+  }
   const requiredAttributeIds = new Set(
-    categoryLinks
-      .filter((link: { required?: boolean }) => link.required)
-      .map((link: { attributeId: string }) => link.attributeId),
+    [...effectiveRequired.entries()]
+      .filter(([, required]) => required)
+      .map(([attributeId]) => attributeId),
   );
   // Model-level flags override category defaults for attributes explicitly
   // configured on that model.
