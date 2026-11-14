@@ -1234,6 +1234,9 @@ model Company {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   users       User[]   @relation("CompanyUsers")
+  memberships CompanyMembership[]
+  invitations CompanyInvitation[]
+  businessType String?
   listings    Listing[] @relation("CompanyListings")
   claims      CompanyClaim[]
   // P1-17 — Company verification lifecycle (additive)
@@ -1628,6 +1631,10 @@ model User {
   sessions       Session[]
   verificationCodes VerificationCode[]
   userRoles      UserRole[]
+  commercialPersonas UserCommercialPersona[]
+  companyMemberships CompanyMembership[]
+  sentCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationAcceptedBy")
   // P2-24 — Recommendation Engine (additive)
   recommendations UserRecommendation[] @relation("UserRecommendations")
   // P1-MESSAGING — Conversation participant + message sender relations
@@ -1793,6 +1800,73 @@ model UserRole {
 
   @@unique([userId, roleId])
 }
+
+
+
+// ════════════════════════════════════════════════════════════
+// INDUSTRIAL MARKETPLACE IDENTITY — additive account architecture
+// Commercial personas are separate from platform RBAC roles.
+// Company remains the canonical organization entity for compatibility.
+// ════════════════════════════════════════════════════════════
+
+model UserCommercialPersona {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personaKey String  // INDIVIDUAL | DEALER | MANUFACTURER | IMPORTER_DISTRIBUTOR | RENTAL_COMPANY | AUCTION_HOUSE | BROKER | SERVICE_PROVIDER | FLEET_OPERATOR | PUBLIC_ORGANIZATION
+  isPrimary Boolean  @default(false)
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE | PENDING_REVIEW
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, personaKey])
+  @@index([personaKey, status])
+}
+
+model CompanyMembership {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleKey   String   // OWNER | ORG_ADMIN | SALES_MANAGER | SALES_REP | INVENTORY_MANAGER | BUYER | FINANCE | SERVICE_MANAGER | TECHNICIAN | VIEWER
+  status    String   @default("ACTIVE") // INVITED | ACTIVE | SUSPENDED | REMOVED
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([companyId, userId])
+  @@index([userId, status])
+  @@index([companyId, status])
+}
+
+// Company invitations are separate from memberships until the invited person
+// proves control of the exact email address and accepts the single-use token.
+model CompanyInvitation {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailNormalized String
+  roleKey        String
+  tokenHash      String   @unique
+  // Non-null only while one invitation for this company/email is pending.
+  // A unique nullable key prevents concurrent duplicate pending invitations.
+  activeKey      String?  @unique
+  status         String   @default("PENDING") // PENDING | ACCEPTED | REVOKED | EXPIRED | DELIVERY_FAILED
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  invitedById    String?
+  invitedBy      User?    @relation("CompanyInvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedById   String?
+  acceptedBy     User?    @relation("CompanyInvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId, status, expiresAt])
+  @@index([emailNormalized, status])
+  @@index([invitedById])
+  @@index([acceptedById])
+}
+
 
 // ════════════════════════════════════════════════════════════
 // P1 — CATALOG ENTITIES (Product / Machine / Part / Attachment)
