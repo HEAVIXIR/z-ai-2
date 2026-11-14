@@ -1771,6 +1771,239 @@ templates.push(
   ]},
 );
 
+
+templates.push(
+  // Concrete pumping / placing subtypes.
+  cloneTemplate("concrete-pump", "truck-mounted-pump", "Truck Mounted Concrete Pump", ["concrete_output", "max_pumping_pressure"], [
+    f("truck_chassis_axle_count", "تعداد محور شاسی", "Truck Chassis Axle Count", "INTEGER"),
+    f("boom_reach_vertical", "برد عمودی بوم", "Vertical Boom Reach", "DECIMAL", { unit: "M" }),
+    f("boom_reach_horizontal", "برد افقی بوم", "Horizontal Boom Reach", "DECIMAL", { unit: "M" }),
+    f("outrigger_span", "فاصله بازشدگی جک‌ها", "Outrigger Span", "DECIMAL", { unit: "M" }),
+  ]),
+  cloneTemplate("concrete-pump", "trailer-pump", "Trailer Concrete Pump", ["concrete_output", "max_pumping_pressure"], [
+    f("trailer_configuration", "پیکربندی تریلر", "Trailer Configuration", "TEXT"),
+    f("towing_vehicle_requirement", "نیازمندی کشنده", "Towing Vehicle Requirement", "TEXT"),
+    f("delivery_line_length", "طول خط انتقال", "Delivery Line Length", "DECIMAL", { unit: "M" }),
+  ]),
+  cloneTemplate("concrete-pump", "line-pump", "Line Concrete Pump", ["concrete_output", "max_pumping_pressure"], [
+    f("delivery_line_length", "طول خط انتقال", "Delivery Line Length", "DECIMAL", { unit: "M" }),
+    f("max_aggregate_size", "حداکثر اندازه سنگدانه", "Maximum Aggregate Size", "DECIMAL", { unit: "MM" }),
+    f("pipeline_diameter_mm", "قطر خط لوله", "Pipeline Diameter", "DECIMAL", { unit: "MM" }),
+  ]),
+  cloneTemplate("concrete-pump", "boom-pump", "Boom Concrete Pump", ["concrete_output", "boom_reach_vertical"], [
+    f("boom_section_count", "تعداد سکشن بوم", "Boom Section Count", "INTEGER"),
+    f("boom_fold_type", "نوع تا شدن بوم", "Boom Fold Type", "TEXT"),
+    f("outrigger_span", "فاصله بازشدگی جک‌ها", "Outrigger Span", "DECIMAL", { unit: "M" }),
+  ]),
+  cloneTemplate("concrete-pump", "stationary-pump", "Stationary Concrete Pump", ["concrete_output", "max_pumping_pressure"], [
+    f("delivery_line_length", "طول خط انتقال", "Delivery Line Length", "DECIMAL", { unit: "M" }),
+    f("pipeline_diameter_mm", "قطر خط لوله", "Pipeline Diameter", "DECIMAL", { unit: "MM" }),
+    f("electric_or_diesel", "نوع محرک", "Power Configuration", "SELECT", { options: ["برقی", "دیزلی"] }),
+  ]),
+  cloneTemplate("shotcrete-machine", "shotcrete", "Shotcrete Equipment", ["concrete_output", "spraying_method"]),
+  cloneTemplate("batching-plant", "concrete-production", "Concrete Production Plant", ["plant_capacity", "mixer_capacity"], [
+    f("aggregate_dosing_system", "سامانه توزین سنگدانه", "Aggregate Dosing System", "TEXT"),
+    f("cement_dosing_accuracy", "دقت توزین سیمان", "Cement Dosing Accuracy", "TEXT"),
+  ]),
+  cloneTemplate("concrete-pump", "concrete-placing", "Concrete Placing Equipment", ["concrete_output"], [
+    f("placing_method", "روش بتن‌ریزی", "Placing Method", "SELECT", { options: ["پمپاژ", "نوار نقاله", "اسکیپ", "باکت جرثقیلی"] }),
+    f("placing_reach", "برد بتن‌ریزی", "Placing Reach", "DECIMAL", { unit: "M" }),
+  ]),
+
+  // Asphalt paving and plant subtypes.
+  cloneTemplate("asphalt-finisher", "track-paver", "Tracked Asphalt Paver", ["paving_width", "paving_capacity"], [
+    f("track_shoe_width", "عرض زنجیر", "Track Shoe Width", "DECIMAL", { unit: "MM" }),
+    f("traction_force", "نیروی کشش", "Traction Force", "DECIMAL", { unit: "KN" }),
+  ]),
+  cloneTemplate("asphalt-finisher", "wheel-paver", "Wheeled Asphalt Paver", ["paving_width", "paving_capacity"], [
+    f("tire_configuration", "آرایش تایر", "Tire Configuration", "TEXT"),
+    f("travel_speed", "سرعت حرکت", "Travel Speed", "DECIMAL", { unit: "KMH" }),
+  ]),
+  cloneTemplate("asphalt-finisher", "mini-paver", "Mini Asphalt Paver", ["paving_width", "paving_capacity"], [
+    f("minimum_paving_width", "حداقل عرض پخش", "Minimum Paving Width", "DECIMAL", { unit: "M" }),
+    f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+  ]),
+  cloneTemplate("asphalt-finisher", "highway-paver", "Highway Asphalt Paver", ["paving_width", "paving_capacity"], [
+    f("maximum_paving_width", "حداکثر عرض پخش", "Maximum Paving Width", "DECIMAL", { unit: "M" }),
+    f("highway_paving_capacity", "ظرفیت پخش جاده‌ای", "Highway Paving Capacity", "DECIMAL", { unit: "T/H" }),
+    f("screed_extension_type", "نوع افزایش عرض اتو", "Screed Extension Type", "TEXT"),
+  ]),
+  { slug: "asphalt-plant", label: "Asphalt Mixing Plant", required: ["plant_capacity", "mixer_type", "drying_drum_capacity"], fields: [
+    f("plant_capacity", "ظرفیت تولید آسفالت", "Plant Capacity", "DECIMAL", { unit: "T/H", filterable: true }),
+    f("plant_configuration", "پیکربندی کارخانه", "Plant Configuration", "SELECT", { options: ["Batch", "Drum Mix", "Continuous"] }),
+    f("mixer_type", "نوع میکسر", "Mixer Type", "TEXT"),
+    f("drying_drum_capacity", "ظرفیت درام خشک‌کن", "Drying Drum Capacity", "DECIMAL", { unit: "T/H" }),
+    f("burner_fuel_type", "نوع سوخت مشعل", "Burner Fuel Type", "TEXT"),
+    f("bitumen_tank_capacity", "ظرفیت مخزن قیر", "Bitumen Tank Capacity", "DECIMAL", { unit: "L" }),
+    f("aggregate_bins", "تعداد مخازن مصالح", "Aggregate Bins", "INTEGER"),
+    f("baghouse_filter", "فیلتر غبارگیر کیسه‌ای", "Baghouse Filter", "BOOLEAN"),
+  ]},
+  { slug: "asphalt-distributor", label: "Asphalt Distributor", required: ["tank_capacity", "spray_width", "spray_rate"], fields: [
+    f("tank_capacity", "ظرفیت مخزن قیر", "Tank Capacity", "DECIMAL", { unit: "L", filterable: true }),
+    f("spray_width", "عرض پاشش", "Spray Width", "DECIMAL", { unit: "M" }),
+    f("spray_rate", "نرخ پاشش", "Spray Rate", "DECIMAL", { unit: "L/M2" }),
+    f("spray_bar_nozzle_count", "تعداد نازل‌های لوله پاشش", "Spray Bar Nozzle Count", "INTEGER"),
+    f("heating_system", "سیستم گرم‌کن", "Heating System", "TEXT"),
+    f("pump_flow_lpm", "دبی پمپ", "Pump Flow", "DECIMAL", { unit: "LPM" }),
+  ]},
+  { slug: "asphalt-recycling", label: "Asphalt Recycling Machine", required: ["milling_width", "recycling_depth"], fields: [
+    f("milling_width", "عرض بازیافت/تراش", "Milling Width", "DECIMAL", { unit: "M" }),
+    f("recycling_depth", "عمق بازیافت", "Recycling Depth", "DECIMAL", { unit: "MM" }),
+    f("recycling_capacity", "ظرفیت بازیافت", "Recycling Capacity", "DECIMAL", { unit: "T/H" }),
+    f("binder_dosing_system", "سامانه تزریق قیر/بایندر", "Binder Dosing System", "TEXT"),
+    f("mixing_chamber_type", "نوع محفظه اختلاط", "Mixing Chamber Type", "TEXT"),
+  ]},
+  { slug: "bitumen-equipment", label: "Bitumen Handling Equipment", required: ["equipment_type", "heating_method"], fields: [
+    f("equipment_type", "نوع تجهیزات قیر", "Equipment Type", "SELECT", { options: ["مخزن", "پمپ انتقال", "سیستم گرمایش", "واحد امولسیون", "توزین"] }),
+    f("heating_method", "روش گرمایش", "Heating Method", "SELECT", { options: ["روغن داغ", "برقی", "مشعل مستقیم"] }),
+    f("storage_capacity_l", "ظرفیت ذخیره", "Storage Capacity", "DECIMAL", { unit: "L" }),
+    f("temperature_range", "محدوده دمای کاری", "Operating Temperature Range", "TEXT"),
+    f("transfer_flow_lpm", "دبی انتقال", "Transfer Flow", "DECIMAL", { unit: "LPM" }),
+    f("insulation_type", "نوع عایق", "Insulation Type", "TEXT"),
+  ]},
+
+  // Crane configurations and lifting machinery.
+  cloneTemplate("mobile-crane", "telescopic-crane", "Telescopic Boom Crane", ["max_load_capacity", "boom_length"], [
+    f("boom_section_count", "تعداد سکشن بوم", "Boom Section Count", "INTEGER"),
+    f("telescopic_extension_time", "زمان بازشدن بوم", "Telescopic Extension Time", "DECIMAL", { unit: "S" }),
+    f("boom_extension_system", "سامانه تلسکوپی", "Boom Extension System", "TEXT"),
+  ]),
+  cloneTemplate("wheel-crane", "rough-terrain-crane", "Rough Terrain Crane", ["max_load_capacity", "boom_length"], [
+    f("four_wheel_drive", "چهارچرخ محرک", "Four Wheel Drive", "BOOLEAN"),
+    f("all_wheel_steer", "فرمان‌پذیری تمام چرخ‌ها", "All Wheel Steering", "BOOLEAN"),
+    f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
+  ]),
+  cloneTemplate("overhead-crane", "industrial-crane", "Industrial Crane", ["lifting_capacity", "span"], [
+    f("duty_class", "کلاس کاری", "Duty Class", "TEXT"),
+    f("duty_cycle", "چرخه کاری", "Duty Cycle", "TEXT"),
+    f("lifting_mechanism", "مکانیزم بالابری", "Lifting Mechanism", "TEXT"),
+  ]),
+  { slug: "winch", label: "Industrial Winch", required: ["line_pull", "rope_capacity"], fields: [
+    f("line_pull", "نیروی کشش خط", "Line Pull", "DECIMAL", { unit: "KN", filterable: true }),
+    f("rope_capacity", "ظرفیت طول سیم‌بکسل", "Rope Capacity", "DECIMAL", { unit: "M" }),
+    f("rope_diameter_mm", "قطر سیم‌بکسل", "Rope Diameter", "DECIMAL", { unit: "MM" }),
+    f("drum_speed", "سرعت درام", "Drum Speed", "DECIMAL", { unit: "M/MIN" }),
+    f("brake_type", "نوع ترمز", "Brake Type", "TEXT"),
+    f("drive_power_kw", "توان محرک", "Drive Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  { slug: "hoist", label: "Industrial Hoist", required: ["lifting_capacity", "lifting_height"], fields: [
+    f("lifting_capacity", "ظرفیت بالابری", "Lifting Capacity", "DECIMAL", { unit: "TON", filterable: true }),
+    f("lifting_height", "ارتفاع بالابری", "Lifting Height", "DECIMAL", { unit: "M" }),
+    f("hoist_type", "نوع بالابر", "Hoist Type", "SELECT", { options: ["سیمی", "زنجیری", "برقی", "دستی"] }),
+    f("lifting_speed", "سرعت بالابری", "Lifting Speed", "DECIMAL", { unit: "M/MIN" }),
+    f("duty_class", "کلاس کاری", "Duty Class", "TEXT"),
+    f("trolley_included", "دارای ترولی", "Trolley Included", "BOOLEAN"),
+  ]},
+  { slug: "lifting-equipment", label: "Lifting Equipment", required: ["equipment_type", "safe_working_load"], fields: [
+    f("equipment_type", "نوع تجهیزات لیفتینگ", "Equipment Type", "TEXT"),
+    f("safe_working_load", "بار کاری ایمن", "Safe Working Load", "DECIMAL", { unit: "TON" }),
+    f("lifting_height", "ارتفاع بالابری", "Lifting Height", "DECIMAL", { unit: "M" }),
+    f("drive_type", "نوع محرک", "Drive Type", "TEXT"),
+    f("safety_certification", "گواهی ایمنی", "Safety Certification", "TEXT"),
+  ]},
+
+  // Forklift and warehouse handling subtypes.
+  cloneTemplate("stacker", "stackers", "Warehouse Stackers", ["load_capacity", "lift_height"]),
+  cloneTemplate("telehandler-loader", "telehandler", "Telehandler", ["rated_lifting_capacity_kg", "max_lift_height", "max_forward_reach"]),
+  { slug: "material-handler", label: "Industrial Material Handler", required: ["operating_weight", "boom_reach"], fields: [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+    f("boom_reach", "برد بوم", "Boom Reach", "DECIMAL", { unit: "M" }),
+    f("grapple_capacity", "ظرفیت گراپل", "Grapple Capacity", "DECIMAL", { unit: "KG" }),
+    f("cab_elevation", "ارتفاع کابین", "Cab Elevation", "DECIMAL", { unit: "M" }),
+    f("hydraulic_flow", "دبی هیدرولیک", "Hydraulic Flow", "DECIMAL", { unit: "LPM" }),
+    f("undercarriage_type", "نوع شاسی", "Undercarriage Type", "SELECT", { options: ["چرخ‌دار", "زنجیری"] }),
+  ]},
+  cloneTemplate("container-forklift", "container-handler", "Container Handler", ["lifting_capacity", "container_size", "lift_height"], [
+    f("spreader_rotation", "چرخش اسپریدر", "Spreader Rotation", "DECIMAL", { unit: "DEG" }),
+    f("stacking_rows", "تعداد ردیف چیدمان", "Stacking Rows", "INTEGER"),
+  ]),
+  { slug: "warehouse-equipment", label: "Warehouse Material Handling Equipment", required: ["equipment_type", "load_capacity"], fields: [
+    f("equipment_type", "نوع تجهیزات انبار", "Equipment Type", "TEXT"),
+    f("load_capacity", "ظرفیت حمل", "Load Capacity", "DECIMAL", { unit: "KG" }),
+    f("lift_height", "ارتفاع بالابری", "Lift Height", "DECIMAL", { unit: "M" }),
+    f("aisle_width_mm", "عرض راهرو", "Aisle Width", "DECIMAL", { unit: "MM" }),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+  ]},
+
+  // Industrial haulage families.
+  cloneTemplate("mining-dump-truck", "site-dump-truck", "Construction Site Dump Truck", ["rated_payload_ton", "body_volume"]),
+  { slug: "site-transport", label: "Construction Site Transport Vehicle", required: ["payload_capacity", "drive_configuration"], fields: [
+    f("payload_capacity", "ظرفیت بار مفید", "Payload Capacity", "DECIMAL", { unit: "TON" }),
+    f("drive_configuration", "آرایش محرک", "Drive Configuration", "TEXT"),
+    f("ground_clearance_mm", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
+    f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  cloneTemplate("mining-dump-truck", "haul-truck", "Industrial Haul Truck", ["rated_payload_ton", "body_volume"]),
+  cloneTemplate("rigid-mining-truck", "off-highway-truck", "Off Highway Truck", ["rated_payload_ton", "gross_vehicle_weight"]),
+  cloneTemplate("mining-dump-truck", "mining-truck", "Mining Truck", ["rated_payload_ton", "body_volume"]),
+  { slug: "industrial-tractor", label: "Industrial Tractor", required: ["drawbar_pull", "engine_power_kw"], fields: [
+    f("drawbar_pull", "نیروی کشش", "Drawbar Pull", "DECIMAL", { unit: "KN" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+    f("transmission_type", "نوع گیربکس", "Transmission Type", "TEXT"),
+    f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
+    f("tire_type", "نوع تایر", "Tire Type", "TEXT"),
+    f("hydraulic_lift_capacity", "ظرفیت بالابر هیدرولیک", "Hydraulic Lift Capacity", "DECIMAL", { unit: "TON" }),
+  ]},
+  { slug: "project-transport", label: "Heavy Project Transport Equipment", required: ["payload_capacity", "axle_line_count"], fields: [
+    f("payload_capacity", "ظرفیت حمل", "Payload Capacity", "DECIMAL", { unit: "TON" }),
+    f("axle_line_count", "تعداد خطوط محور", "Axle Line Count", "INTEGER"),
+    f("deck_length", "طول عرشه", "Deck Length", "DECIMAL", { unit: "M" }),
+    f("deck_width", "عرض عرشه", "Deck Width", "DECIMAL", { unit: "M" }),
+    f("hydraulic_suspension", "تعلیق هیدرولیکی", "Hydraulic Suspension", "BOOLEAN"),
+    f("steering_mode", "حالت فرمان‌پذیری", "Steering Mode", "TEXT"),
+  ]},
+
+  // Port and marine cargo handling.
+  cloneTemplate("reach-stacker", "port-reach-stacker", "Port Reach Stacker", ["lifting_capacity", "stacking_height", "container_size"]),
+  cloneTemplate("reach-stacker", "empty-container-handler", "Empty Container Handler", ["lifting_capacity", "stacking_height", "container_size"], [
+    f("empty_container_stack_height", "ارتفاع چیدمان کانتینر خالی", "Empty Container Stack Height", "INTEGER", { unit: "ROWS" }),
+    f("spreader_type", "نوع اسپریدر", "Spreader Type", "TEXT"),
+  ]),
+  { slug: "straddle-carrier", label: "Straddle Carrier", required: ["container_size", "lifting_capacity", "travel_speed"], fields: [
+    f("container_size", "ابعاد کانتینر", "Container Size", "MULTI_SELECT", { options: ["20ft", "40ft", "45ft"] }),
+    f("lifting_capacity", "ظرفیت حمل", "Lifting Capacity", "DECIMAL", { unit: "TON" }),
+    f("stacking_height", "ارتفاع چیدمان", "Stacking Height", "INTEGER", { unit: "ROWS" }),
+    f("travel_speed", "سرعت حرکت", "Travel Speed", "DECIMAL", { unit: "KMH" }),
+    f("drive_type", "نوع محرک", "Drive Type", "SELECT", { options: ["دیزلی", "هیبریدی", "برقی"] }),
+    f("steering_mode", "حالت فرمان‌پذیری", "Steering Mode", "TEXT"),
+  ]},
+  cloneTemplate("marine-crane", "port-crane", "Port Crane", ["max_load_capacity", "max_outreach"]),
+  { slug: "ship-loader", label: "Ship Loader", required: ["throughput_tph", "loading_reach"], fields: [
+    f("throughput_tph", "ظرفیت بارگیری", "Loading Throughput", "DECIMAL", { unit: "T/H" }),
+    f("loading_reach", "برد بارگیری", "Loading Reach", "DECIMAL", { unit: "M" }),
+    f("boom_conveyor_width_mm", "عرض نوار بوم", "Boom Conveyor Width", "DECIMAL", { unit: "MM" }),
+    f("ship_size_compatibility", "سازگاری ابعاد کشتی", "Ship Size Compatibility", "TEXT"),
+    f("dust_suppression", "سیستم کنترل گردوغبار", "Dust Suppression", "BOOLEAN"),
+  ]},
+  { slug: "ship-unloader", label: "Ship Unloader", required: ["throughput_tph", "unloading_method"], fields: [
+    f("throughput_tph", "ظرفیت تخلیه", "Unloading Throughput", "DECIMAL", { unit: "T/H" }),
+    f("unloading_method", "روش تخلیه", "Unloading Method", "SELECT", { options: ["مکنده", "باکتی", "نوار نقاله", "Grab"] }),
+    f("grab_capacity_m3", "ظرفیت گراب", "Grab Capacity", "DECIMAL", { unit: "M3" }),
+    f("boom_reach", "برد بوم", "Boom Reach", "DECIMAL", { unit: "M" }),
+    f("dust_suppression", "سیستم کنترل گردوغبار", "Dust Suppression", "BOOLEAN"),
+  ]},
+  cloneTemplate("mobile-crane", "mobile-harbor-crane", "Mobile Harbor Crane", ["max_load_capacity", "boom_length"], [
+    f("port_duty_cycle", "چرخه کاری بندری", "Port Duty Cycle", "TEXT"),
+    f("ship_side_reach", "برد سمت کشتی", "Ship Side Reach", "DECIMAL", { unit: "M" }),
+  ]),
+  { slug: "port-loading-equipment", label: "Port Loading Equipment", required: ["equipment_type", "throughput_tph"], fields: [
+    f("equipment_type", "نوع تجهیزات بارگیری بندر", "Equipment Type", "TEXT"),
+    f("throughput_tph", "ظرفیت بارگیری", "Loading Throughput", "DECIMAL", { unit: "T/H" }),
+    f("cargo_type", "نوع محموله", "Cargo Type", "MULTI_SELECT", { options: ["کانتینر", "فله خشک", "فله مایع", "عمومی", "خودرو"] }),
+    f("conveyor_or_grab", "روش انتقال", "Transfer Method", "TEXT"),
+    f("drive_power_kw", "توان محرک", "Drive Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  { slug: "marine-service-equipment", label: "Marine Service Equipment", required: ["equipment_type", "working_capacity"], fields: [
+    f("equipment_type", "نوع تجهیزات خدمات دریایی", "Equipment Type", "TEXT"),
+    f("working_capacity", "ظرفیت کاری", "Working Capacity", "TEXT"),
+    f("marine_environment_rating", "رتبه محیط دریایی", "Marine Environment Rating", "TEXT"),
+    f("corrosion_protection", "حفاظت خوردگی", "Corrosion Protection", "TEXT"),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+  ]},
+);
+
 async function upsertField(field: Field): Promise<string> {
   const data = {
     key: field.key,
