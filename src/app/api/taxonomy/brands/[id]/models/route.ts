@@ -101,7 +101,7 @@ export async function POST(
       // Preserve an existing admin-disabled link rather than silently reactivating it.
       await tx.brandCategory.upsert({
         where: { brandId_categoryId: { brandId: id, categoryId } },
-        create: { brandId: id, categoryId, isActive: true },
+        create: { brandId: id, categoryId },
         update: {},
       });
       return created;
