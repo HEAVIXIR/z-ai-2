@@ -45,7 +45,9 @@ export async function sendEmailWithResult(args: SendEmailArgs): Promise<boolean>
         "───────────────────────────────────────────────────────────",
       ].join("\n"),
     );
-    return process.env.NODE_ENV !== "production";
+    // A console fallback is not successful delivery. Invitation links are
+    // bearer credentials and are deliberately redacted from local logs.
+    return false;
   }
 
   // ── Production: lazy-load nodemailer so the dependency is only
