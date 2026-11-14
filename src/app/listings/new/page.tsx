@@ -43,18 +43,18 @@ import {
    Steps:
    1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST
    2. دسته‌بندی (Category)          — CATALOG only, cascading root → child → grandchild
-   2.5. ویژگی‌ها (Attributes)        — dynamic from /api/categories/[id]/attributes
    3. برند و مدل                     — brand typeahead + model select (filtered by brand)
-   4. موقعیت (Location)              — country/province/city cascading
-   5. جزئیات                          — title, description, price/rental period, images, contact
-   6. بازبینی و تأیید                — review + POST /api/listings
+   4. مشخصات فنی دستگاه               — dynamic inherited attributes for selected machine/category
+   5. موقعیت (Location)              — country/province/city cascading
+   6. جزئیات                          — title, description, price/rental period, images, contact
+   7. بازبینی و تأیید                — review + POST /api/listings
    ============================================================ */
 
 const STEP_LABELS = [
   "نوع معامله",
   "دسته‌بندی",
-  "ویژگی‌ها",
   "برند و مدل",
+  "مشخصات فنی",
   "موقعیت",
   "جزئیات",
   "تکمیل",
@@ -271,13 +271,13 @@ export default function NewListingPage() {
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) {
-      // Required attributes must be filled before proceeding.
+    if (step === 3) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 4) {
+      // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
       return Object.keys(errs).length === 0;
     }
-    if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
@@ -562,13 +562,13 @@ export default function NewListingPage() {
                   </div>
                 )}
 
-                {/* ───── STEP 3: ATTRIBUTES (dynamic) ───── */}
-                {step === 3 && (
+                {/* ───── STEP 4: TECHNICAL ATTRIBUTES (after brand/model) ───── */}
+                {step === 4 && (
                   <div>
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
                       title="ویژگی‌های دستگاه"
-                      subtitle="ویژگی‌های اختصاصی دستهٔ انتخاب‌شده را پر کنید"
+                      subtitle={`فرم فنی متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "دستگاه"} — ${form.brandLabel || "برند انتخاب‌شده"} ${models.find((m) => m.id === modelId)?.name ?? ""}`}
                     />
                     <div className="mt-6">
                       <AttributeFields
@@ -590,8 +590,8 @@ export default function NewListingPage() {
                   </div>
                 )}
 
-                {/* ───── STEP 4: BRAND + MODEL + BASIC INFO ───── */}
-                {step === 4 && (
+                {/* ───── STEP 3: BRAND + MODEL + BASIC INFO ───── */}
+                {step === 3 && (
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
