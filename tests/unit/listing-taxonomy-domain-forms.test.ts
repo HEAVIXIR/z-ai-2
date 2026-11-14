@@ -51,6 +51,16 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(seed).not.toContain('attributeDefinition.upsert({where:{key:x.key}');
   });
 
+  it("validates typed listing attribute values and option ownership at the API boundary", () => {
+    const route = read("src/app/api/listings/[id]/attributes/route.ts");
+    expect(route).toContain("options: { select: { id: true } }");
+    expect(route).toContain("optionIds.has(String(value.optionId))");
+    expect(route).toContain("selectedOptions.some((optionId) => !optionIds.has(optionId))");
+    expect(route).toContain("Number.isFinite(Number(value.numberValue))");
+    expect(route).toContain("Number.isNaN(new Date(value.dateValue).getTime())");
+    expect(route).toContain('v.booleanValue === true || v.booleanValue === "true"');
+  });
+
   it("preflights supplemental taxonomy slug collisions before moving any existing category", () => {
     const seed = read("prisma/seed-service-and-mineral-taxonomy.ts");
     expect(seed).toContain("type PlannedCategory");
