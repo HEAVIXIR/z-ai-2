@@ -307,6 +307,7 @@ export default function NewListingPage() {
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
+      if (isServiceRequest) return true; // service requests may be published without price or images
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -848,63 +849,67 @@ export default function NewListingPage() {
                       icon={<PackageCheck className="h-5 w-5" />}
                       title="جزئیات آگهی"
                       subtitle={
-                        isRent
-                          ? "دوره اجاره، قیمت اجاره و تصاویر"
-                          : isAuction
-                            ? "قیمت پایه مزایده و تصاویر"
-                            : "قیمت، تصاویر و اطلاعات تماس"
+                        isServiceRequest
+                          ? "شرح درخواست، اطلاعات تماس و مستندات اختیاری"
+                          : isRent
+                            ? "دوره اجاره، قیمت اجاره و تصاویر"
+                            : isAuction
+                              ? "قیمت پایه مزایده و تصاویر"
+                              : "قیمت، تصاویر و اطلاعات تماس"
                       }
                     />
                     <div className="mt-6 space-y-5">
-                      <div className="grid gap-5 sm:grid-cols-2">
-                        <div>
-                          <label className={labelCls}>سال ساخت</label>
-                          <input
-                            value={form.year}
-                            onChange={(e) => set("year", e.target.value)}
-                            placeholder="مثلاً: 2019"
-                            dir="ltr"
-                            className={inputCls}
-                          />
+                      {!isServiceRequest && (
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <div>
+                            <label className={labelCls}>سال ساخت</label>
+                            <input
+                              value={form.year}
+                              onChange={(e) => set("year", e.target.value)}
+                              placeholder="مثلاً: 2019"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>ساعت کارکرد</label>
+                            <input
+                              value={form.hours}
+                              onChange={(e) => set("hours", e.target.value)}
+                              placeholder="مثلاً: 4200"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>
+                              {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {!isAuction && "*"}
+                            </label>
+                            <input
+                              value={form.price}
+                              onChange={(e) => set("price", e.target.value)}
+                              placeholder="مثلاً: 8500000000"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>نوع قیمت</label>
+                            <select
+                              value={isAuction ? "AUCTION" : form.priceType}
+                              onChange={(e) => set("priceType", e.target.value)}
+                              disabled={isAuction}
+                              className={inputCls}
+                            >
+                              <option value="NEGOTIABLE">توافقی</option>
+                              <option value="FIXED">مقطوع</option>
+                              <option value="CALL_FOR_PRICE">تماس بگیرید</option>
+                              <option value="AUCTION">مزایده</option>
+                            </select>
+                          </div>
                         </div>
-                        <div>
-                          <label className={labelCls}>ساعت کارکرد</label>
-                          <input
-                            value={form.hours}
-                            onChange={(e) => set("hours", e.target.value)}
-                            placeholder="مثلاً: 4200"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>
-                            {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                            {!isAuction && "*"}
-                          </label>
-                          <input
-                            value={form.price}
-                            onChange={(e) => set("price", e.target.value)}
-                            placeholder="مثلاً: 8500000000"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>نوع قیمت</label>
-                          <select
-                            value={isAuction ? "AUCTION" : form.priceType}
-                            onChange={(e) => set("priceType", e.target.value)}
-                            disabled={isAuction}
-                            className={inputCls}
-                          >
-                            <option value="NEGOTIABLE">توافقی</option>
-                            <option value="FIXED">مقطوع</option>
-                            <option value="CALL_FOR_PRICE">تماس بگیرید</option>
-                            <option value="AUCTION">مزایده</option>
-                          </select>
-                        </div>
-                      </div>
+                      )}
 
                       {/* Rental period (only for RENT) */}
                       {isRent && (
