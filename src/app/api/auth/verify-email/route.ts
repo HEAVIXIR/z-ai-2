@@ -8,22 +8,15 @@ import { checkCsrf } from "@/lib/csrf";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* POST /api/auth/verify-email  (FIX 7)
-   Body: { userId, code }
-   - Verifies the latest EMAIL-type VerificationCode for the user
-   - On success: marks code used and sets emailVerified = true.
-   - Email confirmation is the only verification required to activate an account.
-   - Mobile is mandatory profile data but is not verified during signup.
-
-   Rate-limited: VERIFY preset (10 / hour / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
+/* POST /api/auth/verify-email
+   Accepts { userId, code } for the original registration flow or
+   { email, code } for the persistent recovery flow.
 */
 export async function POST(req: Request) {
-  // F-006: CSRF defense — fail-closed Origin/Referer verification.
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
-    // ── Rate limit (P0-6) ──
     const ip = getClientIp(req);
     const rl = rateLimit({
       key: rateLimitKey(ip, VERIFY.label),
@@ -45,15 +38,19 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const userId = String(body.userId ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
     const code = String(body.code ?? "").trim();
 
-    if (!userId || !code) {
-      return NextResponse.json({ error: "userId و code الزامی است" }, { status: 400 });
+    if ((!userId && !email) || !code) {
+      return NextResponse.json({ error: "ایمیل و کد تأیید الزامی است" }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } });
+    const user = userId
+      ? await db.user.findUnique({ where: { id: userId } })
+      : await db.user.findUnique({ where: { email } });
+
     if (!user) {
-      return NextResponse.json({ error: "کاربر یافت نشد" }, { status: 404 });
+      return NextResponse.json({ error: "حسابی با این ایمیل پیدا نشد" }, { status: 404 });
     }
 
     if (user.emailVerified) {
@@ -71,10 +68,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "کد تأیید قبلاً استفاده شده است" }, { status: 400 });
     }
     if (rec.expiresAt.getTime() < Date.now()) {
-      return NextResponse.json({ error: "کد منقضی شده است" }, { status: 400 });
+      return NextResponse.json({ error: "کد منقضی شده است؛ کد تازه درخواست کنید." }, { status: 400 });
     }
 
-    // Email confirmation activates the account; mobileVerified intentionally remains false.
     await db.$transaction([
       db.verificationCode.update({ where: { id: rec.id }, data: { used: true } }),
       db.user.update({
