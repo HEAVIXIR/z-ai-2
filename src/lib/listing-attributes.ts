@@ -27,8 +27,8 @@ export async function validateListingAttributeValues(
   listing: { categoryId?: string | null; modelId?: string | null },
   incoming: unknown[],
   isAdmin = false,
+  enforceRequired = false,
 ): Promise<ListingAttributeValidation> {
-  if (incoming.length === 0) return { ok: true, values: [] };
 
   const values = incoming as Array<Record<string, unknown>>;
   const attrIds = Array.from(
@@ -56,13 +56,13 @@ export async function validateListingAttributeValues(
     allowedCategoryIds.length
       ? db.categoryAttribute.findMany({
           where: { categoryId: { in: allowedCategoryIds } },
-          select: { attributeId: true },
+          select: { attributeId: true, required: true },
         })
       : Promise.resolve([]),
     listing.modelId
       ? db.productModelAttribute.findMany({
           where: { modelId: listing.modelId, categoryId: listing.categoryId ?? "" },
-          select: { attributeId: true },
+          select: { attributeId: true, required: true },
         })
       : Promise.resolve([]),
   ]);
@@ -70,6 +70,37 @@ export async function validateListingAttributeValues(
     ...categoryLinks.map((link: { attributeId: string }) => link.attributeId),
     ...modelLinks.map((link: { attributeId: string }) => link.attributeId),
   ]);
+  const requiredAttributeIds = new Set(
+    categoryLinks
+      .filter((link: { required?: boolean }) => link.required)
+      .map((link: { attributeId: string }) => link.attributeId),
+  );
+  // Model-level flags override category defaults for attributes explicitly
+  // configured on that model.
+  for (const link of modelLinks as Array<{ attributeId: string; required?: boolean }>) {
+    if (link.required) requiredAttributeIds.add(link.attributeId);
+    else requiredAttributeIds.delete(link.attributeId);
+  }
+
+  if (enforceRequired) {
+    const supplied = new Map(values.map((value) => [String(value.attributeId ?? ""), value]));
+    const missingRequired = [...requiredAttributeIds].filter((attributeId) => {
+      const value = supplied.get(attributeId);
+      if (!value) return true;
+      return ![
+        value.textValue,
+        value.numberValue,
+        value.booleanValue,
+        value.dateValue,
+        value.optionId,
+      ].some((item) => item !== undefined && item !== null && item !== "");
+    });
+    if (missingRequired.length > 0) {
+      return { ok: false, error: "لطفاً تمام ویژگی‌های الزامی این دسته‌بندی را تکمیل کنید." };
+    }
+  }
+
+  if (incoming.length === 0) return { ok: true, values: [] };
   const outOfScope = attrIds.filter((attributeId) => !allowedAttributeIds.has(attributeId));
   if (outOfScope.length > 0) {
     return { ok: false, error: "یکی از ویژگی‌ها به دسته‌بندی یا مدل این آگهی متصل نیست." };
