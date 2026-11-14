@@ -155,3 +155,25 @@ I. Production: separate explicit approval after Preview acceptance. No Productio
 - Existing user sessions, listings and historical relations remain intact after additive migration.
 - All privileged actions are auditable; sensitive secrets and documents are not logged.
 - Preview tests pass before any Production rollout.
+
+
+## 12. Company invitation lifecycle
+
+The additive implementation adds a separate `CompanyInvitation` record. A pending invitation is not itself a membership.
+
+- Only an ACTIVE user with a verified email and an ACTIVE `OWNER` or `ORG_ADMIN` membership can issue invitations.
+- `OWNER` cannot be assigned through an invitation. Only an `OWNER` may invite an `ORG_ADMIN`; organization-admin elevation is not self-service.
+- The invitation email is normalized, and acceptance requires an ACTIVE user with a verified email that exactly matches the invited address.
+- Tokens contain 256 bits of randomness. Only a SHA-256 digest is stored; the bearer token is placed in the URL fragment so it is not sent in HTTP requests or Referer headers.
+- Invitations expire after 72 hours, can be accepted once, and can be revoked by an authorized organization administrator.
+- A nullable unique `activeKey` prevents concurrent pending invitations for the same company/email. The key is cleared on acceptance, revocation, expiry, or delivery failure.
+- Invitation creation, acceptance, and revocation are written to `AuditLog`. Email delivery failure is fail-closed and does not leave an active invitation.
+- Invitation endpoints are rate-limited and protected by the canonical user session and CSRF checks.
+
+Routes:
+- `GET/POST /api/companies/:companyId/invitations`
+- `POST /api/companies/:companyId/invitations/:invitationId/revoke`
+- `POST /api/company-invitations/accept`
+- `/company/invitations/accept` (acceptance UI)
+
+The migration is additive and remains unapplied until the actual Preview database target is identified and independently verified.
