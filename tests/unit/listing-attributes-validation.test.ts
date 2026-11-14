@@ -79,7 +79,25 @@ describe("listing attribute validation", () => {
     });
   });
 
-  it("returns an empty normalized payload without querying the catalog", async () => {
+  it("rejects creation when a required category attribute is missing", async () => {
+    const db = createDb();
+    db.categoryAttribute.findMany.mockResolvedValue([
+      { attributeId: "attr-1", required: true },
+    ]);
+    const result = await validateListingAttributeValues(
+      db,
+      { categoryId: "leaf-1" },
+      [],
+      false,
+      true,
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "لطفاً تمام ویژگی‌های الزامی این دسته‌بندی را تکمیل کنید.",
+    });
+  });
+
+  it("returns an empty normalized payload without querying the catalog when no scope exists", async () => {
     const db = createDb();
     const result = await validateListingAttributeValues(db, {}, [], false);
     expect(result).toEqual({ ok: true, values: [] });
