@@ -599,7 +599,7 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
-                      title="ویژگی‌های دستگاه"
+                      title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات فنی دستگاه"}
                       subtitle={`فرم فنی متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "دستگاه"} — ${form.brandLabel || "برند انتخاب‌شده"} ${models.find((m) => m.id === modelId)?.name ?? ""}`}
                     />
                     <div className="mt-6">
