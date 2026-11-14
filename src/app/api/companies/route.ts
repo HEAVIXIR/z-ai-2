@@ -9,7 +9,6 @@ import { isCommercialPersonaKey } from "@/lib/identity/standard";
 import { COMPANY_CREATE } from "@/lib/rate-limit-presets";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { rateLimitKey, getClientIp } from "@/lib/request-context";
-import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
