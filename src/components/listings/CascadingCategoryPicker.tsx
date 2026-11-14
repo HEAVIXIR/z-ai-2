@@ -36,6 +36,7 @@ export default function CascadingCategoryPicker({ roots, value, onChange }: Prop
 
   const select = async (node: CategoryPathItem, level: number) => {
     const currentRequest = ++requestId.current;
+    setLoadingParent(null);
     const nextPath = [...path.slice(0, level), node];
     setPath(nextPath);
     setError(null);
