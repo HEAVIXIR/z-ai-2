@@ -117,6 +117,17 @@ async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
   const isCompatible=(candidate:typeof base)=>!!candidate &&
    candidate.type===x.type &&
    candidate.unit===(x.unit??null) &&
+   candidate.name===x.fa &&
+   candidate.nameEn===x.en &&
+   (candidate.labelFa??candidate.name)===x.fa &&
+   (candidate.labelEn??candidate.nameEn)===x.en &&
+   candidate.filterable===!!x.filterable &&
+   candidate.searchable===true &&
+   candidate.sortable===false &&
+   candidate.visibleOnCard===!!x.filterable &&
+   candidate.visibleOnDetail===true &&
+   candidate.seoRelevant===!!x.filterable &&
+   candidate.aiRelevant===true &&
    JSON.stringify([...candidate.options].sort((a,b)=>a.sortOrder-b.sortOrder).map(o=>o.value))===JSON.stringify(optionValues);
   // AttributeDefinition.key is globally unique. Reuse only compatible
   // storage definitions; namespace a collision to this category leaf.
