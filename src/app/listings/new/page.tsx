@@ -796,30 +796,32 @@ export default function NewListingPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className={labelCls}>وضعیت دستگاه</label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { v: "NEW", l: "نو" },
-                            { v: "USED", l: "کارکرده" },
-                            { v: "REFURBISHED", l: "بازسازی‌شده" },
-                            { v: "FOR_PARTS", l: "قطعات" },
-                          ].map((o) => (
-                            <button
-                              key={o.v}
-                              type="button"
-                              onClick={() => set("condition", o.v)}
-                              className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
-                                form.condition === o.v
-                                  ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                  : "border-white/10 text-white/60 hover:text-white"
-                              }`}
-                            >
-                              {o.l}
-                            </button>
-                          ))}
+                      {!isServiceRequest && (
+                        <div>
+                          <label className={labelCls}>وضعیت دستگاه</label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { v: "NEW", l: "نو" },
+                              { v: "USED", l: "کارکرده" },
+                              { v: "REFURBISHED", l: "بازسازی‌شده" },
+                              { v: "FOR_PARTS", l: "قطعات" },
+                            ].map((o) => (
+                              <button
+                                key={o.v}
+                                type="button"
+                                onClick={() => set("condition", o.v)}
+                                className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                                  form.condition === o.v
+                                    ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
+                                    : "border-white/10 text-white/60 hover:text-white"
+                                }`}
+                              >
+                                {o.l}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
