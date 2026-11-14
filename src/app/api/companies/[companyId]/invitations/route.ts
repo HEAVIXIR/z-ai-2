@@ -143,10 +143,15 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "company_unavailable" }, { status: 404 });
     }
 
-    const invitee = await db.user.findUnique({
+    const invitees = await db.user.findMany({
       where: { email: { equals: emailNormalized, mode: "insensitive" } },
+      take: 2,
       select: { id: true, status: true },
     });
+    if (invitees.length > 1) {
+      return NextResponse.json({ ok: false, error: "invitee_identity_ambiguous" }, { status: 409 });
+    }
+    const invitee = invitees[0];
     if (invitee?.status === "BLOCKED") {
       return NextResponse.json({ ok: false, error: "invitee_account_unavailable" }, { status: 409 });
     }
@@ -181,7 +186,7 @@ export async function POST(req: Request, context: RouteContext) {
     const token = createCompanyInvitationToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + COMPANY_INVITATION_TTL_MS);
-    let invitation;
+    let invitation: { id: string; emailNormalized: string; roleKey: string; expiresAt: Date };
     try {
       invitation = await db.$transaction(async (tx) => {
         const created = await tx.companyInvitation.create({
