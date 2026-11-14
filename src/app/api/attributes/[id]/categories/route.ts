@@ -104,6 +104,7 @@ export async function POST(req: Request, { params }: Args) {
    ============================================================ */
 export async function DELETE(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const url = new URL(req.url);
