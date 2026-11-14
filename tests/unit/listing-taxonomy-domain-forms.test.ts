@@ -36,6 +36,7 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(seed).toContain("candidate.type===x.type");
     expect(seed).toContain("candidate.unit===(x.unit??null)");
     expect(seed).toContain("candidate.options");
+    expect(seed).toContain('["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"].includes(form.slug)');
     expect(seed).toContain("const resolvedKey=base && !isCompatible(base)");
     expect(seed).toContain("if(existing && !isCompatible(existing))");
     expect(seed).not.toContain('attributeDefinition.upsert({where:{key:x.key}');
