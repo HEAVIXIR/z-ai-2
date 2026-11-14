@@ -27,7 +27,7 @@ export async function GET() {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: err?.code === "P2002" ? 409 : 500 },
+      { status: 500 },
     );
   }
 }
@@ -56,19 +56,19 @@ export async function POST(req: Request) {
     const type = await db.serviceType.create({
       data: {
         key: String(body.key).trim().toUpperCase(),
-        nameFa: String(body.nameFa),
-        nameEn: body.nameEn ?? null,
-        description: body.description ?? null,
-        icon: body.icon ?? null,
+        nameFa: String(body.nameFa).trim(),
+        nameEn: body.nameEn == null ? null : String(body.nameEn).trim(),
+        description: body.description == null ? null : String(body.description).trim(),
+        icon: body.icon == null ? null : String(body.icon).trim(),
         active: body.active !== false,
-        sortOrder: Number(body.sortOrder) || 0,
+        sortOrder: Number.isInteger(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
       },
     });
     return NextResponse.json({ ok: true, type });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }
