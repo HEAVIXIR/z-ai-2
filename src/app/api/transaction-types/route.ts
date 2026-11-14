@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const types = await db.transactionType.findMany({
+      where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { nameFa: "asc" }],
       select: {
         id: true,
@@ -33,16 +35,19 @@ export async function GET() {
 /* POST /api/transaction-types — admin create. */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
-    if (!body.key || !body.nameFa) {
+    const key = String(body.key ?? "").trim().toUpperCase();
+    const nameFa = String(body.nameFa ?? "").trim();
+    if (!key || !nameFa) {
       return NextResponse.json(
         { error: "key and nameFa are required" },
         { status: 400 },
       );
     }
     const dup = await db.transactionType.findUnique({
-      where: { key: String(body.key) },
+      where: { key },
     });
     if (dup) {
       return NextResponse.json(
@@ -52,8 +57,8 @@ export async function POST(req: Request) {
     }
     const type = await db.transactionType.create({
       data: {
-        key: String(body.key),
-        nameFa: String(body.nameFa),
+        key,
+        nameFa,
         nameEn: body.nameEn ?? null,
         description: body.description ?? null,
         icon: body.icon ?? null,
