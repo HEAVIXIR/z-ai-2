@@ -12,11 +12,8 @@ export const dynamic = "force-dynamic";
    Body: { userId, code }
    - Verifies the latest EMAIL-type VerificationCode for the user
    - On success: marks code used and sets emailVerified = true.
-   - If this is the FIRST verification and mobile is already
-     verified (or the user passes the legacy mobile code path),
-     also activate the account (status ACTIVE).
-   - Mobile verification is handled separately (existing flow);
-     this route is scoped to EMAIL codes only.
+   - Email confirmation is the only verification required to activate an account.
+   - Mobile is mandatory profile data but is not verified during signup.
 
    Rate-limited: VERIFY preset (10 / hour / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
 */
@@ -77,27 +74,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "کد منقضی شده است" }, { status: 400 });
     }
 
-    // Activate account fully only when both verifications are done.
-    // If mobileVerified is already true, flip status → ACTIVE.
-    // Otherwise keep PENDING until mobile is verified too.
-    const nowActive = user.mobileVerified;
+    // Email confirmation activates the account; mobileVerified intentionally remains false.
     await db.$transaction([
       db.verificationCode.update({ where: { id: rec.id }, data: { used: true } }),
       db.user.update({
         where: { id: user.id },
-        data: {
-          emailVerified: true,
-          status: nowActive ? "ACTIVE" : user.status,
-        },
+        data: { emailVerified: true, status: "ACTIVE" },
       }),
     ]);
 
     return NextResponse.json({
       ok: true,
-      message: nowActive
-        ? "ایمیل تأیید شد و حساب فعال شد"
-        : "ایمیل تأیید شد. لطفاً موبایل خود را نیز تأیید کنید.",
-      activated: nowActive,
+      message: "ایمیل تأیید شد و حساب شما فعال شد.",
+      activated: true,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
