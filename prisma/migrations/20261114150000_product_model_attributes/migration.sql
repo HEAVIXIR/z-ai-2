@@ -5,6 +5,7 @@
 CREATE TABLE "ProductModelAttribute" (
   "id" TEXT NOT NULL,
   "modelId" TEXT NOT NULL,
+  "categoryId" TEXT NOT NULL,
   "attributeId" TEXT NOT NULL,
   "required" BOOLEAN NOT NULL DEFAULT false,
   "filterable" BOOLEAN NOT NULL DEFAULT false,
@@ -16,8 +17,11 @@ CREATE TABLE "ProductModelAttribute" (
   CONSTRAINT "ProductModelAttribute_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "ProductModelAttribute_modelId_attributeId_key"
-  ON "ProductModelAttribute"("modelId", "attributeId");
+CREATE UNIQUE INDEX "ProductModelAttribute_modelId_categoryId_attributeId_key"
+  ON "ProductModelAttribute"("modelId", "categoryId", "attributeId");
+
+CREATE INDEX "ProductModelAttribute_modelId_categoryId_idx"
+  ON "ProductModelAttribute"("modelId", "categoryId");
 
 CREATE INDEX "ProductModelAttribute_attributeId_idx"
   ON "ProductModelAttribute"("attributeId");
@@ -25,6 +29,11 @@ CREATE INDEX "ProductModelAttribute_attributeId_idx"
 ALTER TABLE "ProductModelAttribute"
   ADD CONSTRAINT "ProductModelAttribute_modelId_fkey"
   FOREIGN KEY ("modelId") REFERENCES "ProductModel"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ProductModelAttribute"
+  ADD CONSTRAINT "ProductModelAttribute_categoryId_fkey"
+  FOREIGN KEY ("categoryId") REFERENCES "Category"("id")
   ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ProductModelAttribute"
