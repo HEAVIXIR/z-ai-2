@@ -144,6 +144,7 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
+  const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
   const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
@@ -167,8 +168,12 @@ export default function NewListingPage() {
       try {
         const res = await fetch("/api/taxonomy", { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { catalogRoots?: TaxRoot[] };
+        const data = (await res.json()) as {
+          catalogRoots?: TaxRoot[];
+          serviceRoots?: TaxRoot[];
+        };
         if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
+        if (alive && data.serviceRoots) setServiceRoots(data.serviceRoots);
       } catch {
         /* swallow */
       }
@@ -270,11 +275,29 @@ export default function NewListingPage() {
 
   const isRent = transactionType === "RENT";
   const isAuction = transactionType === "AUCTION";
+  const isServiceRequest = transactionType === "SERVICE_REQUEST";
+  const categoryRoots = isServiceRequest ? serviceRoots : catalogRoots;
+
+  const handleTransactionTypeChange = (nextType: string) => {
+    if (nextType === transactionType) return;
+    setTransactionType(nextType);
+    setCategoryId("");
+    setCategoryPath([]);
+    setBrandId("");
+    setBrandQuery("");
+    setBrandResults([]);
+    setBrandOpen(false);
+    setModelId("");
+    setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttrErrors({});
+  };
 
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 3) return (isServiceRequest || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
       // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
@@ -523,7 +546,7 @@ export default function NewListingPage() {
                       subtitle="نوع معامله‌ای که می‌خواهید ثبت کنید را انتخاب کنید"
                     />
                     <div className="mt-6">
-                      <TransactionTypePicker value={transactionType} onChange={setTransactionType} />
+                      <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
                     </div>
                     <p className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-5 text-white/50">
                       نوع معامله فیلد جریان را تعیین می‌کند: «فروش» و «اجاره» برای کاتالوگ ماشین‌آلات،
@@ -538,18 +561,20 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Layers3 className="h-5 w-5" />}
-                      title="دسته‌بندی کاتالوگ"
-                      subtitle="دسته، زیردسته و زیر-زیردسته دستگاه را انتخاب کنید (فقط لایه CATALOG)"
+                      title={isServiceRequest ? "دسته‌بندی خدمات" : "دسته‌بندی دستگاه و کالا"}
+                      subtitle={isServiceRequest
+                        ? "حوزه خدمت، زیرحوزه و خدمت تخصصی موردنظر را انتخاب کنید"
+                        : "نوع دستگاه، زیرشاخه و زیرنوع تخصصی را انتخاب کنید"}
                     />
 
-                    {catalogRoots.length === 0 ? (
+                    {categoryRoots.length === 0 ? (
                       <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
                         در حال بارگذاری دسته‌بندی‌ها… اگر ظاهر نشد، ابتدا دسته‌های کاتالوگ را در پنل مدیریت اضافه کنید.
                       </div>
                     ) : (
                       <div className="mt-6">
                         <CascadingCategoryPicker
-                          roots={catalogRoots}
+                          roots={categoryRoots}
                           value={categoryId}
                           onChange={(id, selectedPath) => {
                             setCategoryId(id);
@@ -599,12 +624,14 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
-                      title="برند، مدل و اطلاعات پایه"
-                      subtitle="برند، مدل، عنوان و توضیحات آگهی"
+                      title={isServiceRequest ? "اطلاعات درخواست خدمت" : "برند، مدل و اطلاعات پایه"}
+                      subtitle={isServiceRequest
+                        ? "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است"
+                        : "برند و مدل دستگاه را انتخاب و اطلاعات آگهی را تکمیل کنید"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>برند *</label>
+                        <label className={labelCls}>{isServiceRequest ? "برند مرتبط (اختیاری)" : "برند *"}</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
