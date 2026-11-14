@@ -62,4 +62,17 @@ describe("Preview taxonomy seed safety contracts", () => {
     }
   });
 
+  it("restricts the legacy machine taxonomy rewrite to Preview", () => {
+    const source = readSeed("seed-machine-taxonomy.ts");
+    expect(source).toContain('process.argv.includes("--apply")');
+    expect(source).toContain('process.env.HEAVIX_ENV !== "preview"');
+  });
+
+  it("blocks the legacy broad attribute updater unless explicitly double-confirmed in Preview", () => {
+    const source = readSeed("seed-attribute-catalog.ts");
+    expect(source).toContain('process.argv.includes("--legacy-overwrite")');
+    expect(source).toContain('process.argv.includes("--confirm-legacy-overwrite")');
+    expect(source).toContain('process.env.HEAVIX_ENV !== "preview"');
+  });
+
 });
