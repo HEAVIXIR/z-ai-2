@@ -2715,7 +2715,7 @@ templates.push(
     f("attachment_weight_kg", "وزن متعلقه", "Attachment Weight", "DECIMAL", { unit: "KG" }),
     f("material_grade", "گرید فولاد", "Material Grade", "TEXT"),
   ]},
-  { slug: "rock-bucket", label: "Rock Excavation Bucket", required: ["bucket_capacity_m3", "bucket_width_mm", "wear_plate_grade"], fields: [
+  { slug: "rock-bucket", label: "Rock Excavation Bucket", required: ["bucket_capacity_m3", "bucket_width_mm"], fields: [
     f("bucket_capacity_m3", "ظرفیت باکت سنگی", "Rock Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true }),
     f("bucket_width_mm", "عرض باکت", "Bucket Width", "DECIMAL", { unit: "MM" }),
     f("wear_plate_grade", "گرید ورق ضدسایش", "Wear Plate Grade", "TEXT"),
