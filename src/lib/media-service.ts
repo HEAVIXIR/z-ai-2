@@ -119,11 +119,11 @@ function parseSidecar(bytes: Uint8Array): AssetSidecar | null {
       Number(parsed.size) <= 0 ||
       typeof parsed.uploadedAt !== "string" ||
       !Number.isFinite(Date.parse(parsed.uploadedAt)) ||
-      !(parsed.uploadedBy === null || typeof parsed.uploadedBy === "string") ||
-      !(parsed.entityType === null || (typeof parsed.entityType === "string" && ALLOWED_ENTITY_TYPES.has(parsed.entityType))) ||
-      !(parsed.entityId === null || typeof parsed.entityId === "string") ||
-      !(parsed.altText === null || typeof parsed.altText === "string") ||
-      !(parsed.originalFilename === null || typeof parsed.originalFilename === "string") ||
+      !(parsed.uploadedBy === undefined || parsed.uploadedBy === null || typeof parsed.uploadedBy === "string") ||
+      !(parsed.entityType === undefined || parsed.entityType === null || (typeof parsed.entityType === "string" && ALLOWED_ENTITY_TYPES.has(parsed.entityType))) ||
+      !(parsed.entityId === undefined || parsed.entityId === null || typeof parsed.entityId === "string") ||
+      !(parsed.altText === undefined || parsed.altText === null || typeof parsed.altText === "string") ||
+      !(parsed.originalFilename === undefined || parsed.originalFilename === null || typeof parsed.originalFilename === "string") ||
       (parsed.visibility !== "PUBLIC" && parsed.visibility !== "PRIVATE") ||
       (parsed.status !== "ACTIVE" && parsed.status !== "STAGED" && parsed.status !== "ATTACHED")
     ) {
@@ -145,6 +145,9 @@ function parseSidecar(bytes: Uint8Array): AssetSidecar | null {
     return {
       ...(parsed as AssetSidecar),
       originalFilename: typeof parsed.originalFilename === "string" ? parsed.originalFilename.slice(0, 255) : null,
+      uploadedBy: typeof parsed.uploadedBy === "string" ? parsed.uploadedBy : null,
+      entityType: typeof parsed.entityType === "string" ? parsed.entityType : null,
+      entityId: typeof parsed.entityId === "string" ? parsed.entityId : null,
       altText: typeof parsed.altText === "string" ? parsed.altText.slice(0, 500) : null,
     };
   } catch {
