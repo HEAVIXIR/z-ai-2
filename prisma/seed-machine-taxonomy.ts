@@ -604,10 +604,14 @@ async function main() {
     where: { slug: { in: OLD_L1_TO_DEACTIVATE } },
     select: { id: true, slug: true, active: true },
   });
-  const oldL1ListingCounts = await Promise.all(oldL1Categories.map(async (category) => ({
-    slug: category.slug,
-    count: await db.listing.count({ where: { categoryId: category.id } }),
-  })));
+  const oldL1ListingCounts = await Promise.all(oldL1Categories.map(async (category) => {
+    const descendants = await collectDescendantCategoryIds(category.id);
+    const categoryIds = [category.id, ...descendants];
+    return {
+      slug: category.slug,
+      count: await db.listing.count({ where: { categoryId: { in: categoryIds } } }),
+    };
+  }));
   const unsafeOldL1 = oldL1ListingCounts.filter((item) => item.count > 0);
 
   console.log(`📋 Listings attached anywhere under machinery (BEFORE): ${listingsBefore.length}`);
@@ -737,10 +741,14 @@ async function main() {
 
       if (!treeSlugs.has(child.slug) && child.active) {
         // This slug is not in the new TREE and is currently active.
-        // Safety: NEVER deactivate if it has listings.
-        const listingCount = await db.listing.count({ where: { categoryId: child.id } });
+        // Safety: never deactivate a parent or leaf if ANY descendant has listings.
+        const descendantIds = await collectDescendantCategoryIds(child.id);
+        const protectedIds = [child.id, ...descendantIds];
+        const listingCount = await db.listing.count({
+          where: { categoryId: { in: protectedIds } },
+        });
         if (listingCount > 0) {
-          // Preserved with listings — keep active.
+          // Preserve the whole branch so listings never sit under an inactive parent.
           continue;
         }
         await db.category.update({ where: { id: child.id }, data: { active: false } });
