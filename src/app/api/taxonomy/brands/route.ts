@@ -78,7 +78,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: err?.code === "P2002" ? 409 : 500 },
+      { status: 500 },
     );
   }
 }
@@ -180,7 +180,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }
