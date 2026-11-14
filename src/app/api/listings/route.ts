@@ -660,13 +660,22 @@ export async function POST(req: Request) {
       return created;
     });
 
+    const mediaPendingIds: string[] = [];
     if (stagedAssets.length) {
-      // ListingImage is the authorization source of truth. Sidecar attachment
-      // is a metadata index and is repaired best-effort if B2 metadata is offline.
+      // ListingImage is the durable relationship. A B2/sidecar failure must
+      // never turn a committed listing into an HTTP failure (which invites
+      // duplicate submissions); keep the staged asset discoverable for retry.
       for (const asset of stagedAssets) {
-        const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
-        if (!attached.ok) {
-          console.error("[listings] media sidecar attachment needs repair", { assetId: asset.id, listingId: listing.id });
+        try {
+          const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
+          if (!attached.ok) mediaPendingIds.push(asset.id);
+        } catch (mediaError) {
+          mediaPendingIds.push(asset.id);
+          console.error("[listings] media attachment deferred for retry", {
+            assetId: asset.id,
+            listingId: listing.id,
+            error: mediaError instanceof Error ? mediaError.message : "unknown",
+          });
         }
       }
     }
@@ -689,6 +698,8 @@ export async function POST(req: Request) {
       id: listing.id,
       slug: listing.slug,
       status: listing.status,
+      mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaPendingIds.length,
     });
   } catch (err: any) {
     trackError(err, { endpoint: "POST /api/listings" });
