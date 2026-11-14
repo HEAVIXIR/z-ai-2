@@ -2749,6 +2749,25 @@ templates.push(
     f("hammer_mounting_type", "نوع نصب", "Mounting Type", "TEXT"),
   ]},
 
+
+  { slug: "electric-motors", label: "Industrial Electric Motor", required: ["motor_type", "rated_power_kw", "rated_voltage_v", "frequency_hz"], fields: [
+    f("motor_type", "نوع موتور", "Motor Type", "SELECT", { options: ["القایی قفس سنجابی", "القایی روتور سیم‌پیچی", "سنکرون", "مغناطیس دائم", "ضدانفجار", "سروو"] }),
+    f("rated_power_kw", "توان نامی", "Rated Power", "DECIMAL", { unit: "KW", filterable: true, card: true }),
+    f("rated_voltage_v", "ولتاژ نامی", "Rated Voltage", "DECIMAL", { unit: "V", filterable: true }),
+    f("frequency_hz", "فرکانس نامی", "Rated Frequency", "DECIMAL", { unit: "HZ" }),
+    f("phase_count", "تعداد فاز", "Phase Count", "INTEGER"),
+    f("rated_speed_rpm", "سرعت نامی", "Rated Speed", "DECIMAL", { unit: "RPM" }),
+    f("rated_torque_nm", "گشتاور نامی", "Rated Torque", "DECIMAL", { unit: "NM" }),
+    f("efficiency_class", "کلاس بازده", "Efficiency Class", "SELECT", { options: ["IE1", "IE2", "IE3", "IE4", "IE5"] }),
+    f("enclosure_ip_rating", "درجه حفاظت IP", "Enclosure IP Rating", "TEXT"),
+    f("insulation_class", "کلاس عایقی", "Insulation Class", "SELECT", { options: ["B", "F", "H"] }),
+    f("duty_class", "نوع کارکرد", "Duty Class", "SELECT", { options: ["S1", "S2", "S3", "S4", "S5", "S6"] }),
+    f("mounting_arrangement", "نحوه نصب", "Mounting Arrangement", "TEXT"),
+    f("cooling_method", "روش خنک‌کاری", "Cooling Method", "TEXT"),
+    f("frame_size", "سایز فریم", "Frame Size", "TEXT"),
+    f("starting_method", "روش راه‌اندازی", "Starting Method", "SELECT", { options: ["مستقیم", "ستاره-مثلث", "سافت‌استارتر", "درایو فرکانس متغیر"] }),
+  ]},
+
 );
 
 // AttributeDefinition.key is globally unique. Preserve an existing compatible
