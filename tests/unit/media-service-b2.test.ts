@@ -65,7 +65,10 @@ vi.mock("@/lib/media-image-optimizer", () => ({
 
 vi.mock("@/lib/audit", () => ({
   logAudit: vi.fn(async () => undefined),
+  logAuditStrict: vi.fn(async () => undefined),
 }));
+
+import { logAuditStrict } from "@/lib/audit";
 
 import {
   attachAsset,
@@ -217,6 +220,21 @@ describe("B2-backed media service", () => {
       new TextEncoder().encode(JSON.stringify({ ...base, visibility: "PRIVATE", status: "ACTIVE" })),
     );
     expect(await getAsset(id)).toBeNull();
+  });
+
+  it("rolls back uploaded B2 objects when the required audit write fails", async () => {
+    vi.mocked(logAuditStrict).mockRejectedValueOnce(new Error("audit unavailable"));
+    const result = await uploadAsset({
+      file: Buffer.from("seller image"),
+      uploadedBy: "seller_audit_failure",
+      entityType: "Listing",
+      visibility: "PRIVATE",
+      actorType: "USER",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(b2State.objects.size).toBe(0);
+    expect(b2State.deleteCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("rejects an invalid asset id without touching B2", async () => {
