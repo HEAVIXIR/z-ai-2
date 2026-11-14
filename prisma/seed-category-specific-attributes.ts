@@ -2359,7 +2359,7 @@ templates.push(
   cloneTemplate("hvac-equipment", "industrial-hvac", "Industrial HVAC Equipment", ["cooling_capacity", "equipment_type"], [
     f("industrial_duty_rating", "رتبه کارکرد صنعتی", "Industrial Duty Rating", "TEXT"),
     f("corrosion_protection", "حفاظت خوردگی", "Corrosion Protection", "TEXT"),
-  ]},
+  ]),
 
   // Municipal and environmental machinery.
   { slug: "garbage-truck", label: "Garbage Collection Truck", required: ["body_volume_m3", "compaction_ratio"], fields: [
