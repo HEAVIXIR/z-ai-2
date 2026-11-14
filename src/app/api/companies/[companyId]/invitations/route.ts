@@ -30,7 +30,7 @@ function escapeHtml(value: string): string {
 }
 
 function configuredAppUrl(): URL | null {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL;
+  const raw = process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   if (!raw) return null;
   try {
     const url = new URL(raw);
@@ -57,10 +57,6 @@ export async function GET(_req: Request, context: RouteContext) {
     }
 
     const now = new Date();
-    await db.companyInvitation.updateMany({
-      where: { companyId, status: "PENDING", expiresAt: { lte: now } },
-      data: { status: "EXPIRED", activeKey: null },
-    });
     const invitations = await db.companyInvitation.findMany({
       where: { companyId, status: "PENDING", expiresAt: { gt: now } },
       orderBy: { createdAt: "desc" },
@@ -151,6 +147,9 @@ export async function POST(req: Request, context: RouteContext) {
       where: { email: { equals: emailNormalized, mode: "insensitive" } },
       select: { id: true, status: true },
     });
+    if (invitee?.status === "BLOCKED") {
+      return NextResponse.json({ ok: false, error: "invitee_account_unavailable" }, { status: 409 });
+    }
     if (invitee) {
       const existingMembership = await db.companyMembership.findUnique({
         where: { companyId_userId: { companyId, userId: invitee.id } },
