@@ -39,8 +39,6 @@ import {
   getCachedArticles,
   getCachedHotSearches,
   getCachedHeroConfig,
-  getCachedMachineryRoot,
-  getCachedL1Children,
   getCachedBrandDisplayIds,
   getCachedFeaturedBrandIds,
   getCachedTrustedBrands,
@@ -140,23 +138,21 @@ export default async function HomePage() {
 
   const [machineCategoryCards, trustedBrandRows, activeStats, heroCardListingRows] = await Promise.all([
     (async (): Promise<MachineCategoryCard[]> => {
-      const machinery = await getCachedMachineryRoot();
-      if (!machinery) return [];
-      const parentId =
-        homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
-          ? homeCategoryConfig.parentId
-          : machinery.id;
-      const rows = await getCachedL1Children(parentId);
-      return rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        nameEn: c.nameEn,
-        slug: c.slug,
-        icon: c.icon,
-        imageUrl: c.imageUrl,
-        description: c.description,
-        listingCount: c._count.listings,
-      }));
+      // Main category display is intentionally parent-only (level 0).
+      // Child/grandchild taxonomy remains in the database for filtering,
+      // listing assignment and admin tree management.
+      return allCategories
+        .filter((c) => c.parentId === null && c.level === 0)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          nameEn: c.nameEn,
+          slug: c.slug,
+          icon: c.icon,
+          imageUrl: c.imageUrl,
+          description: c.description,
+          listingCount: c._count.listings,
+        }));
     })(),
     (async () => {
       const [displayBrands, featuredBrands] = await Promise.all([
