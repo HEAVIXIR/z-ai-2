@@ -1235,6 +1235,7 @@ model Company {
   updatedAt   DateTime @updatedAt
   users       User[]   @relation("CompanyUsers")
   memberships CompanyMembership[]
+  invitations CompanyInvitation[]
   businessType String?
   listings    Listing[] @relation("CompanyListings")
   claims      CompanyClaim[]
@@ -1632,6 +1633,8 @@ model User {
   userRoles      UserRole[]
   commercialPersonas UserCommercialPersona[]
   companyMemberships CompanyMembership[]
+  sentCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationAcceptedBy")
   // P2-24 — Recommendation Engine (additive)
   recommendations UserRecommendation[] @relation("UserRecommendations")
   // P1-MESSAGING — Conversation participant + message sender relations
@@ -1834,6 +1837,36 @@ model CompanyMembership {
   @@index([userId, status])
   @@index([companyId, status])
 }
+
+// Company invitations are separate from memberships until the invited person
+// proves control of the exact email address and accepts the single-use token.
+model CompanyInvitation {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailNormalized String
+  roleKey        String
+  tokenHash      String   @unique
+  // Non-null only while one invitation for this company/email is pending.
+  // A unique nullable key prevents concurrent duplicate pending invitations.
+  activeKey      String?  @unique
+  status         String   @default("PENDING") // PENDING | ACCEPTED | REVOKED | EXPIRED | DELIVERY_FAILED
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  invitedById    String?
+  invitedBy      User?    @relation("CompanyInvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedById   String?
+  acceptedBy     User?    @relation("CompanyInvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId, status, expiresAt])
+  @@index([emailNormalized, status])
+  @@index([invitedById])
+  @@index([acceptedById])
+}
+
 
 // ════════════════════════════════════════════════════════════
 // P1 — CATALOG ENTITIES (Product / Machine / Part / Attachment)
