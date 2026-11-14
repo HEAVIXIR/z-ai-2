@@ -326,7 +326,7 @@ async function main() {
     });
     await db.brandCategory.upsert({
       where: { brandId_categoryId: { brandId, categoryId } },
-      create: { brandId, categoryId, isActive: true },
+      create: { brandId, categoryId },
       update: {},
     });
     modelKeyToId.set(`${m.brand}:${m.name}`, created.id);
