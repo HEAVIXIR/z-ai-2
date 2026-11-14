@@ -1522,44 +1522,44 @@ templates.push(
   ]},
 
   // Mining haulage variants inherit the mining-dump-truck family fields.
-  { slug: "rigid-mining-truck", label: "Rigid Mining Dump Truck", required: ["rated_payload_ton", "body_volume"], fields: [
+  { slug: "rigid-mining-truck", label: "Rigid Mining Dump Truck", required: ["rigid_frame_type"], fields: [
     f("rigid_frame_type", "نوع شاسی صلب", "Rigid Frame Type", "TEXT"),
     f("front_axle_load", "بار محور جلو", "Front Axle Load", "DECIMAL", { unit: "TON" }),
     f("rear_axle_load", "بار محور عقب", "Rear Axle Load", "DECIMAL", { unit: "TON" }),
     f("dump_body_type", "نوع اتاق کمپرسی", "Dump Body Type", "SELECT", { options: ["استاندارد", "سنگین معدن", "گرم‌شونده"] }),
   ]},
-  { slug: "articulated-mining-truck", label: "Articulated Mining Truck", required: ["rated_payload_ton", "articulation_angle"], fields: [
+  { slug: "articulated-mining-truck", label: "Articulated Mining Truck", required: ["articulation_angle"], fields: [
     f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
     f("all_wheel_drive", "محرک تمام چرخ", "All Wheel Drive", "BOOLEAN"),
     f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
   ]},
-  { slug: "underground-dump-truck", label: "Underground Dump Truck", required: ["rated_payload_ton", "overall_height_mm"], fields: [
+  { slug: "underground-dump-truck", label: "Underground Dump Truck", required: ["overall_height_mm"], fields: [
     f("overall_height_mm", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
     f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
     f("low_profile_body", "اتاق کم‌ارتفاع", "Low Profile Body", "BOOLEAN"),
     f("underground_clearance", "فاصله آزاد تونل", "Underground Clearance", "DECIMAL", { unit: "M" }),
   ]},
-  { slug: "electric-mining-truck", label: "Electric Mining Truck", required: ["rated_payload_ton", "battery_capacity_kwh"], fields: [
+  { slug: "electric-mining-truck", label: "Electric Mining Truck", required: ["battery_capacity_kwh"], fields: [
     f("battery_capacity_kwh", "ظرفیت باتری", "Battery Capacity", "DECIMAL", { unit: "KWH" }),
     f("motor_power_kw", "توان موتور محرک", "Drive Motor Power", "DECIMAL", { unit: "KW" }),
     f("charging_time", "زمان شارژ", "Charging Time", "DECIMAL", { unit: "HOUR" }),
     f("regenerative_braking", "ترمز احیاکننده", "Regenerative Braking", "BOOLEAN"),
   ]},
-  { slug: "diesel-mining-truck", label: "Diesel Mining Truck", required: ["rated_payload_ton", "engine_power_kw"], fields: [
+  { slug: "diesel-mining-truck", label: "Diesel Mining Truck", required: ["engine_power_kw"], fields: [
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
     f("fuel_tank_capacity", "ظرفیت مخزن سوخت", "Fuel Tank Capacity", "DECIMAL", { unit: "L" }),
     f("fuel_consumption", "مصرف سوخت", "Fuel Consumption", "TEXT"),
     f("emission_standard", "استاندارد آلایندگی", "Emission Standard", "TEXT"),
   ]},
-  { slug: "hybrid-mining-truck", label: "Hybrid Mining Truck", required: ["rated_payload_ton", "hybrid_drive_type"], fields: [
+  { slug: "hybrid-mining-truck", label: "Hybrid Mining Truck", required: ["hybrid_drive_type"], fields: [
     f("hybrid_drive_type", "نوع سامانه هیبرید", "Hybrid Drive Type", "SELECT", { options: ["دیزل-الکتریک", "باتری-الکتریک", "سری", "موازی"] }),
     f("battery_capacity_kwh", "ظرفیت باتری", "Battery Capacity", "DECIMAL", { unit: "KWH" }),
     f("regenerative_braking", "ترمز احیاکننده", "Regenerative Braking", "BOOLEAN"),
     f("engine_power_kw", "توان موتور احتراقی", "Combustion Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
-  { slug: "ultra-class-mining-truck", label: "Ultra Class Mining Truck", required: ["rated_payload_ton", "gross_vehicle_weight"], fields: [
+  { slug: "ultra-class-mining-truck", label: "Ultra Class Mining Truck", required: ["gross_vehicle_weight"], fields: [
     f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
     f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
     f("tire_size", "سایز تایر", "Tire Size", "TEXT"),
@@ -1581,7 +1581,7 @@ templates.push(
     f("hoist_rope_pull", "کشش سیم‌بکسل بالابر", "Hoist Rope Pull", "DECIMAL", { unit: "KN" }),
     f("crowd_force", "نیروی پیشروی", "Crowd Force", "DECIMAL", { unit: "KN" }),
     f("swing_speed", "سرعت گردش", "Swing Speed", "DECIMAL", { unit: "RPM" }),
-    f("power_supply_voltage", "ولتاژ تغذیه", "Power Supply Voltage", "DECIMAL", { unit: "KV" }),
+    f("shovel_power_supply_voltage_kv", "ولتاژ تغذیه", "Power Supply Voltage", "DECIMAL", { unit: "KV" }),
     f("cable_reel_type", "نوع کابل‌جمع‌کن", "Cable Reel Type", "TEXT"),
   ]},
   cloneTemplate("hydraulic-shovel", "mining-shovel", "Mining Shovel", ["shovel_capacity", "digging_force"]),
@@ -1621,7 +1621,7 @@ templates.push(
     f("emission_standard", "استاندارد آلایندگی", "Emission Standard", "TEXT"),
   ]),
   cloneTemplate("lhd", "electric-lhd", "Electric Load Haul Dump", ["bucket_capacity", "payload_capacity"], [
-    f("power_supply_voltage", "ولتاژ تغذیه", "Power Supply Voltage", "DECIMAL", { unit: "V" }),
+    f("lhd_power_supply_voltage_v", "ولتاژ تغذیه", "Power Supply Voltage", "DECIMAL", { unit: "V" }),
     f("cable_length", "طول کابل", "Cable Length", "DECIMAL", { unit: "M" }),
   ]),
   cloneTemplate("lhd", "battery-lhd", "Battery Electric Load Haul Dump", ["bucket_capacity", "payload_capacity"], [
