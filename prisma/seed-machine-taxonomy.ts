@@ -599,6 +599,9 @@ async function main() {
   // The taxonomy rewrite changes parent paths and deactivates legacy groups.
   // It is read-only by default. Writes require an explicit --apply argument.
   const apply = process.argv.includes("--apply");
+  if (apply && process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing legacy taxonomy rewrite: HEAVIX_ENV must be exactly preview.");
+  }
 
   // 1. Locate machinery root (must already exist)
   const root = await db.category.findUnique({ where: { slug: "machinery" } });
