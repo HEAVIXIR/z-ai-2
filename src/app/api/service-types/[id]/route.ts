@@ -25,11 +25,17 @@ export async function PATCH(req: Request, { params }: Args) {
     const allowed = ["nameFa", "nameEn", "description", "icon", "active", "sortOrder"];
     for (const k of allowed) {
       if (k in body) {
-        if (k === "active") data[k] = Boolean(body[k]);
-        else if (k === "sortOrder") const value = Number(body[k]);
-          if (!Number.isInteger(value)) return NextResponse.json({ error: "sortOrder must be an integer" }, { status: 400 });
+        if (k === "active") {
+          data[k] = Boolean(body[k]);
+        } else if (k === "sortOrder") {
+          const value = Number(body[k]);
+          if (!Number.isInteger(value)) {
+            return NextResponse.json({ error: "sortOrder must be an integer" }, { status: 400 });
+          }
           data[k] = value;
-        else data[k] = body[k] == null ? null : String(body[k]).trim();
+        } else {
+          data[k] = body[k] == null ? null : String(body[k]).trim();
+        }
       }
     }
     if (body.key && body.key !== existing.key) {
