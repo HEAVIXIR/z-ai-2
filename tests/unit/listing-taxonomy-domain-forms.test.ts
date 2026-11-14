@@ -35,6 +35,14 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(seed).toContain("const isCompatible=(candidate:typeof base)");
     expect(seed).toContain("candidate.type===x.type");
     expect(seed).toContain("candidate.unit===(x.unit??null)");
+    expect(seed).toContain("candidate.name===x.fa");
+    expect(seed).toContain("candidate.nameEn===x.en");
+    expect(seed).toContain('(candidate.labelFa??candidate.name)===x.fa');
+    expect(seed).toContain('(candidate.labelEn??candidate.nameEn)===x.en');
+    expect(seed).toContain("candidate.filterable===!!x.filterable");
+    expect(seed).toContain("candidate.searchable===true");
+    expect(seed).toContain("candidate.visibleOnCard===!!x.filterable");
+    expect(seed).toContain("candidate.seoRelevant===!!x.filterable");
     expect(seed).toContain("candidate.options");
     expect(seed).toContain('new Set(["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"])');
     expect(seed).toContain("mineralSupplySlugs.has(form.slug)");
