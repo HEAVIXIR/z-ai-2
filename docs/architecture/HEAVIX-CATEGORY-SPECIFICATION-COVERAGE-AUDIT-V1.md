@@ -1,59 +1,95 @@
 # HEAVIX Category-Specific Specification Coverage Audit — V1
 
-## Executive finding
+## Executive result
 
-The current listing form architecture correctly loads attributes from the selected category and its ancestors, but the catalog seed is not a complete category-to-form map.
+The listing wizard now has a category-driven technical form foundation. The form unit is the **terminal machine/equipment type**, not the commercial model.
 
-Repository evidence on branch `feat/listing-wizard-end-to-end-2026-11-14`:
-- The original `prisma/seed-taxonomy-v11.ts` declared 238 category slugs; this branch now extends it to 279 unique slugs, adding compact-loader subtypes, additional drilling/crane/roller/concrete subtypes, and a fuel-station-equipment branch.
-- `prisma/seed-attribute-catalog.ts` contains 44 `CatLink` blocks.
-- The legacy catalog has 44 broad `CatLink` blocks. A new exact-slug catalog adds 128 subtype templates. Together, 203 distinct slugs are named directly; 83 taxonomy slugs still have no direct template mapping. Most remaining slugs are parent nodes, services, logistics, trading/auction/RFQ, materials, parts, or fallback categories; the remaining leaf categories must be classified before declaring complete coverage.
-- The legacy seed helper has now been changed to resolve and attach every existing slug candidate, rather than stopping at the first. This fixes the silent first-match defect for crusher, drilling, screen, conveyor, asphalt, pump, parts, and agricultural blocks. The new `seed-category-specific-attributes.ts` uses one exact slug per template and preflights every required category and field key before its first database write.
-- The active V1.1 taxonomy and the older `seed-machine-taxonomy.ts` are not equivalent: the latter declares 286 slugs and includes additional machine subtypes (e.g. skid steer, compact track loader, crawler/truck/all-terrain cranes, core/RC/jumbo drills, concrete pumps, rollers). Do not assume those older slugs exist in the active 238-category tree.
+Static repository audit on branch `feat/listing-wizard-end-to-end-2026-11-14`:
+- Active taxonomy seed: **279 unique category slugs** (the original file had 238).
+- Legacy catalog: **44 broad CatLink blocks**.
+- New exact catalog: **128 unique one-slug templates** in `prisma/seed-category-specific-attributes.ts`.
+- Combined direct mapping: **203 distinct slugs**.
+- Remaining 83 slugs are primarily parent nodes, service/logistics/trading/auction/RFQ/material/part categories and fallbacks. They must be classified by domain; they must not receive generic machine engine/operating-hour fields simply to inflate coverage.
+- The old multi-slug seed defect is fixed: every existing slug candidate is now linked, rather than only the first existing slug.
+- The new exact-form seed preflights category existence, duplicate template slugs, duplicate field keys, missing required fields, and taxonomy coverage before the first database write.
 
-## Design decision
+## What was added
 
-1. The **terminal machine category** owns the base technical form. Forms are per machine type/subtype, not per commercial model.
-2. A leaf form composes: global identity fields + domain/common fields + the exact leaf template. Parent forms may contribute genuinely common fields; child forms add or override subtype-specific fields.
-3. Brand/model remain a separate step. A model-specific override is optional metadata, never a substitute for a complete category form.
-4. Use explicit, exact slug-to-template mappings. Never put unrelated slugs into a list and assume one generic template has been attached to all of them.
-5. Only machine/equipment categories receive machine technical templates. Service, material, transaction, and spare-part categories need their own distinct schemas and must not inherit machine operating-hour/engine fields indiscriminately.
-6. Keep unknown/configuration-dependent values optional. Do not invent technical defaults. Show units, valid ranges/options, and source provenance where available.
-7. A category with no verified dedicated template must be marked as a coverage gap, not silently shown a generic form as if complete.
+### Taxonomy expansion
 
-## Current high-priority coverage gaps
+The active V1.1 taxonomy was expanded from 238 to 279 unique slugs. Added or expanded groups include:
+- Loader subtypes: wheel loader, track loader, skid steer, compact track loader, telehandler.
+- Drilling: core, RC, geotechnical, blast-hole, underground, jumbo, oil/gas, in addition to rotary, DTH, Top Hammer and water-well.
+- Cranes: crawler, truck-mounted, all-terrain and marine, in addition to tower, wheel, chain, mobile and overhead.
+- Road rollers: single drum, double drum, vibratory and pneumatic.
+- Concrete: concrete pump, batching plant, transit mixer, concrete mixer and shotcrete.
+- Fuel-station equipment: dispenser, storage tank, submersible fuel pump, tank monitoring/leak detection, filtration, hoses/nozzles and vapour recovery.
+- Forklifts: diesel, electric, LPG, gasoline, heavy-duty, rough-terrain, side-loader and container variants.
 
-| Family | Active taxonomy examples | Required independent forms |
-|---|---|---|
-| Compact loaders | loader (currently broad parent) | skid steer, compact track loader, wheel loader, track loader, telehandler |
-| Cranes & lifting | crane, tower-crane, wheel-crane, chain-crane, mobile-crane, overhead-crane, gantry-crane | tower, mobile/wheeled, crawler/chain, truck/all-terrain where taxonomy supports it, overhead, gantry, port/marine |
-| Drilling | drill-rig, rotary-drill, dth, top-hammer, water-well-drilling | rotary, DTH, top hammer, core/RC, water well, oil/gas, geotechnical, blast-hole, underground/jumbo |
-| Mining | mining-excavator-machine, mining-loader, dump-truck, lhd, shovel | mining excavator, underground LHD, mining loader, rigid/articulated/underground haul truck, hydraulic/electric rope shovel |
-| Crushing & processing | jaw-crusher, cone-crusher, impact-crusher, cubic-crusher, screen, conveyor-belt, complete-line | jaw, cone, impact, hammer/gyratory where present, screen, feeder, conveyor, washing/processing line |
-| Road construction | scraper, road-roller, asphalt-finisher, asphalt-machinery, concrete-machinery | scraper, roller subtypes, asphalt paver/finisher, distributor/plant/recycling, concrete pump/mixer/batching/shotcrete |
-| Warehouse & port | forklift, reach-truck, pallet-truck, stacker, reach-stacker, gantry-crane | counterbalance forklift by fuel, reach truck, pallet truck, stacker, reach stacker, container handler |
-| Industrial equipment | generator, compressor, aerial-platform, industrial-pumps, industrial-fans, boilers, HVAC, welding/cutting, transformers/switchgear | generator variants, compressors, MEWP, pump classes, fans, boilers, HVAC, welding/cutting, electrical power equipment |
-| Fuel-station systems | absent as a dedicated active taxonomy branch | dispenser, UST/AST tanks, submersible/suction pumps, ATG/leak detection, piping/valves, hoses/nozzles, filtration, vapour recovery |
+### Exact category templates
 
-## External specification research used
+The 128 exact templates cover:
+- Compact loaders and excavator subtypes.
+- Crane engineering configurations and load-chart-related fields.
+- Drilling methods and rigs, including hole diameter/depth, rotation/feed, air supply, rods, compressor, dust collection and underground configuration.
+- Mining loaders, mining excavators, LHD and crushing/processing equipment.
+- Roller subtypes, asphalt pavers, concrete pumps, batching plants, mixers and shotcrete.
+- Fuel dispensers, storage tanks, submersible pumps, monitoring/leak detection, filtration, hose/nozzle and vapour recovery.
+- Aerial platforms, industrial fans, boilers, HVAC, welding/cutting, transformers and switchgear.
+- Agricultural implements, forestry machines, recycling lines, sorters, port/warehouse equipment, forklift variants, attachments and commercial fleet categories.
 
-- RitchieSpecs crawler-crane data exposes distinct Engine, Operational, Transmission, Undercarriage, Boom, and Dimensions groups. Useful fields include gross power, power RPM, torque, operating weight, fuel/hydraulic capacity, voltage, travel speed, track shoe width/count, boom sections/heights/angle, working radius, gradeability, and transport dimensions: https://ritchiespecs.com/model/link-belt-tcc1100-crawler-crane
-- Kaishan's DTH series comparison uses hole diameter, economical drilling depth, engine/total power, weight, pressure, and gradeability, and explicitly flags model/configuration-dependent compressor, rod-handling, and dust-collection equipment: https://www.kaishandrilling.com/en/products/surface-dth-drilling-rigs/kt-series
-- JCB's skid-steer product material distinguishes rated operating capacity and wheeled skid steer vs compact track loader, supporting a dedicated compact-loader form rather than a generic wheel-loader form: https://www.jcb.com/en-US/products/machines/skid-steer-loader/
-- SSSI's retail-fuelling equipment taxonomy separates dispensers, pumps/piping, storage tanks, venting/vapour recovery, islands/protection, filtration/fuel quality, monitoring and proving/calibration: https://sssi-ltd.com/en/retail-fuelling.html
-- OPW's underground storage equipment catalogue is an additional manufacturer reference for below-ground station equipment: https://www.opwglobal.com/products/us/retail-fueling-products/underground-storage-tank-equipment
+### Technical integrity
 
-## Implementation status
+Repeated attribute keys must have one canonical unit because `AttributeDefinition` is shared globally. The new catalog therefore separates incompatible dimensions with distinct keys (for example kW vs legacy HP, kilogram-rated capacity vs ton-rated capacity, millimetres vs metres, degrees vs percent, Ah vs kWh). Static checks found:
+- All 128 template slugs exist in the active taxonomy.
+- No duplicate template slugs.
+- No missing required field keys or duplicate field keys within a template.
+- No unit conflicts among repeated new template keys.
+- No unit conflicts between new template keys and legacy shared attribute definitions.
+- Every MULTI_SELECT field has explicit options.
 
-This audit is repository/source review plus external product-specification research. It does not prove that any seed has been run in the Preview database. The additive category-template seed introduced alongside this audit is not executed here. No migration, database write, deployment, or Production change is authorized or performed by this work.
+These are static source checks only, not TypeScript compilation, Prisma validation or runtime acceptance tests.
+
+## Why these are separate forms
+
+Examples:
+- Skid steer requires rated operating capacity, tipping load, lift path, auxiliary hydraulic flow/pressure and attachment interface; a wheel loader's bucket capacity/breakout/dump geometry is not an adequate substitute.
+- Crawler crane needs track shoe width, track gauge, ground pressure and crawler travel; tower crane needs jib/tip load, mast, hook height and trolley/hoist/slew speeds; mobile/truck cranes need carrier, axle, outrigger and road-travel attributes.
+- DTH needs hole diameter, economical depth, air pressure/flow, hammer/rod configuration, compressor and dust collection; rotary, top-hammer, core, RC, well and underground drilling require different parameter groups.
+- Fuel-station equipment is not one generic pump form: dispensers, tanks, submersible pumps, ATG/leak detection, filtration, hose/nozzle and vapour recovery have distinct specifications.
+
+## External specification research
+
+- RitchieSpecs crawler-crane data separates Engine, Operational, Transmission, Undercarriage, Boom and Dimensions. It includes gross power/RPM, torque, operating weight, fuel/hydraulic capacity, voltage, travel speed, track shoe width/count, boom sections/heights/angle, working radius, gradeability and transport dimensions: https://ritchiespecs.com/model/link-belt-tcc1100-crawler-crane
+- Kaishan's DTH series comparison uses hole diameter, economical drilling depth, engine/total power, weight, pressure and gradeability. It flags configuration-dependent compressor, rod-handling and dust-collection equipment: https://www.kaishandrilling.com/en/products/surface-dth-drilling-rigs/kt-series
+- JCB distinguishes rated operating capacity and wheeled skid steer versus compact track loader, supporting a dedicated compact-loader form: https://www.jcb.com/en-US/products/machines/skid-steer-loader/
+- SSSI separates retail-fuelling equipment into dispensers, pumps/piping, storage tanks, venting/vapour recovery, islands/protection, filtration/fuel quality, monitoring and proving/calibration: https://sssi-ltd.com/en/retail-fuelling.html
+- OPW provides an additional manufacturer catalogue for below-ground fuel-station equipment: https://www.opwglobal.com/products/us/retail-fueling-products/underground-storage-tank-equipment
+
+## Remaining unmapped categories
+
+The remaining 83 direct-unmapped slugs are not 83 missing machine forms. They include:
+- Parent nodes with mapped children: mining-machinery, underground-machinery, crushing-screening, cranes-lifting, forklift-warehouse, conveying, recycling, port-machinery, forestry-machinery, industrial-machinery, vehicles, parts, attachments, agriculture and fuel-station-equipment.
+- Parts families requiring a separate parts specification design: electrical-parts, undercarriage, final-drive, swing-motor, cooling-system, wear-parts, other-parts.
+- Service/inspection/repair categories, logistics/transport categories, materials, trading, auctions, wanted/RFQ categories and fallback nodes.
+
+Those non-machine leaf categories need their own domain schemas if HEAVIX wants complete coverage across the entire marketplace. They should not inherit machine technical forms.
+
+## Safety and execution status
+
+- Neither `seed-attribute-catalog.ts` nor `seed-category-specific-attributes.ts` has been run against a database in this work.
+- No migration was applied.
+- No Preview or Production database was written.
+- No Cloudflare or Vercel build/deployment was run.
+- The listing PR remains Draft and unmerged.
+- A read-only audit must first verify that the actual Preview Worker is connected to the intended Preview database branch. Only then should the taxonomy and attribute seeds be considered for Preview execution.
 
 ## Acceptance criteria
 
-- Every active terminal machine/equipment slug has an explicit form mapping or a documented, reviewed exception.
-- Forms are distinct where engineering purpose and measurable specification differ.
-- Every form has field key, Persian and English labels, correct data type, unit, filter/search/card metadata, and carefully selected required fields.
-- Required fields are not so strict that uncommon configurations become impossible to list.
-- Category selection rejects parent/intermediate nodes.
-- API inheritance merges parent-common fields with leaf-specific fields deterministically.
-- Automated tests cover slug mapping, parent inheritance, subtype overrides, required validation, and non-machine category isolation.
-- A read-only Preview audit confirms actual category rows and form links before any seed or migration is run.
+1. Every terminal machine/equipment category has an explicit exact form or a documented reviewed exception.
+2. Forms are distinct where engineering purpose and measurable specifications differ.
+3. Parent-common fields inherit; leaf-specific fields add/override deterministically.
+4. Required fields are realistic and do not reject uncommon configurations.
+5. Units are canonical per attribute key; model overrides never redefine the category form.
+6. Tests cover slug mapping, parent inheritance, subtype overrides, required validation, attribute persistence and non-machine isolation.
+7. Preview database category rows and attribute links are verified read-only before any seed/migration.
