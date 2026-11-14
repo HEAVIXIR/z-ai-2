@@ -119,6 +119,11 @@ export async function POST(req: Request) {
     }
 
     // Create user (PENDING, bcrypt-hashed password, role forced to BUYER).
+    // Hash the short-lived email OTP before any account writes.
+    const emailCode = String(randomInt(100000, 1000000));
+    const emailCodeHash = await hashPassword(emailCode);
+    const emailExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
     const user = await db.$transaction(async (tx) => {
       // 1. Create the User row (legacy `role` column = "BUYER")
       const u = await tx.user.create({
@@ -146,21 +151,21 @@ export async function POST(req: Request) {
         update: {},
       });
 
+      // Keep the pending account and its verification challenge atomic.
+      await tx.verificationCode.create({
+        data: {
+          userId: u.id,
+          code: emailCodeHash,
+          type: "EMAIL",
+          expiresAt: emailExpiresAt,
+          used: false,
+        },
+      });
+
       return u;
     });
 
     // Email is the sole activation factor; mobile remains mandatory profile data.
-    const emailCode = String(randomInt(100000, 1000000));
-    const emailExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await db.verificationCode.create({
-      data: {
-        userId: user.id,
-        code: emailCode,
-        type: "EMAIL",
-        expiresAt: emailExpiresAt,
-        used: false,
-      },
-    });
 
     // Never claim delivery when SMTP is unavailable; never expose OTPs in API responses.
     let emailDelivery = true;
