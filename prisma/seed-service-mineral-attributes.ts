@@ -1,0 +1,181 @@
+import { PrismaClient } from "@prisma/client";
+const db = new PrismaClient();
+type T="TEXT"|"LONG_TEXT"|"INTEGER"|"DECIMAL"|"BOOLEAN"|"SELECT"|"MULTI_SELECT";
+type F={key:string;fa:string;en:string;type:T;unit?:string;required?:boolean;filterable?:boolean;options?:string[]};
+type Form={slug:string;fields:F[]};
+const f=(key:string,fa:string,en:string,type:T,extra:Partial<F>={}):F=>({key,fa,en,type,...extra});
+const commonService:F[]=[
+ f("service_scope","دامنه خدمت","Service Scope","LONG_TEXT",{required:true}),
+ f("supported_industries","صنایع تحت پوشش","Supported Industries","MULTI_SELECT",{options:["معدن","راهسازی","عمران","نفت و گاز","پتروشیمی","کارخانه","بندر","کشاورزی"]}),
+ f("onsite_service","ارائه خدمت در محل","On-site Service","BOOLEAN"),
+ f("service_area","محدوده جغرافیایی خدمت","Service Area","TEXT",{required:true,filterable:true}),
+ f("response_time_hours","زمان پاسخ‌گویی","Response Time","INTEGER",{unit:"HOUR"}),
+ f("team_size","تعداد نیروی متخصص","Team Size","INTEGER"),
+ f("service_capacity","ظرفیت انجام خدمت","Service Capacity","TEXT"),
+ f("warranty_terms","شرایط ضمانت خدمت","Service Warranty","TEXT"),
+ f("certifications","مجوزها و گواهی‌ها","Certifications","LONG_TEXT"),
+ f("service_price_basis","مبنای قیمت‌گذاری","Pricing Basis","SELECT",{options:["ساعتی","روزانه","پروژه‌ای","به‌ازای تن","به‌ازای دستگاه","توافقی"]})
+];
+const commonMineral:F[]=[
+ f("mineral_type","نوع ماده معدنی","Mineral Type","TEXT",{required:true,filterable:true}),
+ f("product_grade","عیار یا گرید محصول","Product Grade","TEXT",{required:true,filterable:true}),
+ f("quantity_tons","تناژ قابل عرضه","Available Quantity","DECIMAL",{unit:"TON",required:true,filterable:true}),
+ f("monthly_capacity_tons","ظرفیت ماهانه تأمین","Monthly Supply Capacity","DECIMAL",{unit:"TON"}),
+ f("moisture_percent","رطوبت","Moisture","DECIMAL",{unit:"%",filterable:true}),
+ f("size_distribution","دانه‌بندی","Size Distribution","TEXT"),
+ f("chemical_analysis","آنالیز شیمیایی","Chemical Analysis","LONG_TEXT"),
+ f("origin_mine","معدن یا مبدأ استخراج","Mine / Origin","TEXT"),
+ f("delivery_terms","شرایط تحویل","Delivery Terms","SELECT",{options:["تحویل معدن","تحویل کارخانه","تحویل انبار","تحویل بندر","تحویل مقصد"]}),
+ f("monthly_supply","تداوم تأمین ماهانه","Recurring Monthly Supply","BOOLEAN")
+];
+const forms:Form[]=[
+ {slug:"excavator-repair",fields:[f("machine_make_models","برندها و مدل‌های تحت پوشش","Supported Makes & Models","LONG_TEXT",{required:true}),f("excavator_repair_scope","دامنه تعمیر بیل مکانیکی","Excavator Repair Scope","MULTI_SELECT",{options:["موتور","پمپ هیدرولیک","شیر کنترل","زیربندی","برق و ECU","گردان و گیربکس","بوم و استیک","بازسازی کامل"]}),f("max_machine_weight_ton","حداکثر وزن دستگاه تحت پوشش","Max Machine Weight","DECIMAL",{unit:"TON"}),f("field_diagnostics","عیب‌یابی در محل","Field Diagnostics","BOOLEAN"),f("overhaul_capability","توان بازسازی کامل","Overhaul Capability","BOOLEAN")]},
+ {slug:"loader-repair",fields:[f("loader_types_supported","انواع لودر تحت پوشش","Supported Loader Types","MULTI_SELECT",{options:["چرخ لاستیکی","زنجیری","اسکیداستیر","کامپکت ترک","معدنی","زیرزمینی"]}),f("loader_repair_scope","دامنه تعمیر لودر","Loader Repair Scope","MULTI_SELECT",{options:["موتور","گیربکس","اکسل","هیدرولیک","فرمان","باکت و بازو","برق"]}),f("loader_payload_range","محدوده ظرفیت بار","Payload Range","TEXT"),f("field_service_radius_km","شعاع اعزام تعمیرکار","Field Service Radius","DECIMAL",{unit:"KM"})]},
+ {slug:"bulldozer-repair",fields:[f("dozer_classes","کلاس بولدوزر تحت پوشش","Dozer Classes","TEXT"),f("undercarriage_service","تعمیر زیربندی","Undercarriage Service","BOOLEAN"),f("blade_ripper_repair","تعمیر تیغه و ریپر","Blade & Ripper Repair","BOOLEAN"),f("powertrain_repair","تعمیر پاورترین","Powertrain Repair","BOOLEAN")]},
+ {slug:"grader-repair",fields:[f("grader_classes","کلاس گریدر تحت پوشش","Grader Classes","TEXT"),f("circle_moldboard_repair","تعمیر دایره و مولدبورد","Circle & Moldboard Repair","BOOLEAN"),f("articulation_repair","تعمیر مفصل‌بندی","Articulation Repair","BOOLEAN")]},
+ {slug:"road-roller-repair",fields:[f("roller_types","انواع غلطک تحت پوشش","Roller Types","MULTI_SELECT",{options:["تک‌درام","دو‌درام","پاچه‌بزی","پنوماتیک","آسفالت"]}),f("vibration_system_repair","تعمیر سیستم ویبره","Vibration System Repair","BOOLEAN"),f("drum_reconditioning","بازسازی درام","Drum Reconditioning","BOOLEAN")]},
+ {slug:"wagon-drill-repair",fields:[f("drill_types_supported","انواع دستگاه حفاری تحت پوشش","Supported Drill Types","MULTI_SELECT",{options:["دریل واگن","DTH","Top Hammer","RC","Core Drill","Jumbo"]}),f("compressor_service","تعمیر کمپرسور","Compressor Service","BOOLEAN"),f("hydraulic_feed_repair","تعمیر سیستم فید هیدرولیک","Hydraulic Feed Repair","BOOLEAN")]},
+ {slug:"mining-truck-repair",fields:[f("truck_payload_range","محدوده ظرفیت دامپتراک","Truck Payload Range","TEXT"),f("electric_drive_repair","تعمیر سیستم درایو الکتریکی","Electric Drive Repair","BOOLEAN"),f("brake_system_repair","تعمیر سیستم ترمز","Brake System Repair","BOOLEAN"),f("mine_site_access","امکان فعالیت در معدن","Mine Site Access","BOOLEAN")]},
+ {slug:"shovel-repair",fields:[f("shovel_types","انواع شاول تحت پوشش","Shovel Types","MULTI_SELECT",{options:["هیدرولیکی","برقی کابلی","مکانیکی"]}),f("rope_and_hoist_service","تعمیر سیم‌بکسل و وینچ","Rope & Hoist Service","BOOLEAN"),f("boom_structure_repair","تعمیر سازه بوم","Boom Structure Repair","BOOLEAN")]},
+ {slug:"industrial-pump-repair",fields:[f("pump_types","انواع پمپ تحت پوشش","Pump Types","MULTI_SELECT",{options:["گریز از مرکز","دنده‌ای","پیستونی","اسکرو","دیافراگمی","مستغرق"]}),f("max_flow_m3h","حداکثر دبی قابل پشتیبانی","Maximum Flow","DECIMAL",{unit:"M3/H"}),f("max_pressure_bar","حداکثر فشار کاری","Maximum Pressure","DECIMAL",{unit:"BAR"}),f("alignment_and_vibration","هم‌محوری و آنالیز ارتعاش","Alignment & Vibration","BOOLEAN")]},
+ {slug:"generator-repair",fields:[f("generator_power_range","محدوده توان ژنراتور","Generator Power Range","TEXT"),f("controller_brands","برند کنترلرهای تحت پوشش","Supported Controller Brands","TEXT"),f("load_bank_test","تست بانک بار","Load Bank Testing","BOOLEAN"),f("alternator_rewinding","سیم‌پیچی آلترناتور","Alternator Rewinding","BOOLEAN")]},
+ {slug:"compressor-repair",fields:[f("compressor_types","انواع کمپرسور","Compressor Types","MULTI_SELECT",{options:["اسکرو","پیستونی","سانتریفیوژ","روتاری","بوستر"]}),f("max_pressure_bar","حداکثر فشار قابل پشتیبانی","Maximum Pressure","DECIMAL",{unit:"BAR"}),f("air_end_overhaul","تعمیر اساسی ایراند","Air-end Overhaul","BOOLEAN")]},
+ {slug:"fuel-station-repair",fields:[f("dispenser_brands","برند دیسپنسرهای تحت پوشش","Dispenser Brands","TEXT"),f("meter_calibration","کالیبراسیون میتر","Meter Calibration","BOOLEAN"),f("tank_leak_test","تست نشتی مخزن","Tank Leak Test","BOOLEAN"),f("hazardous_area_certification","گواهی کار در محیط مستعد انفجار","Hazardous Area Certification","TEXT")]},
+ {slug:"iron-ore-supply",fields:[f("fe_percent","درصد آهن Fe","Fe Content","DECIMAL",{unit:"%",required:true,filterable:true}),f("sio2_percent","سیلیس SiO2","Silica","DECIMAL",{unit:"%"}),f("al2o3_percent","آلومینا Al2O3","Alumina","DECIMAL",{unit:"%"}),f("phosphorus_percent","فسفر P","Phosphorus","DECIMAL",{unit:"%"}),f("iron_ore_form","شکل محصول","Product Form","SELECT",{options:["دانه‌بندی","کنسانتره","گندله","آگلومره"]})]},
+ {slug:"copper-supply",fields:[f("cu_percent","درصد مس Cu","Copper Content","DECIMAL",{unit:"%",required:true,filterable:true}),f("sulfur_percent","گوگرد S","Sulfur","DECIMAL",{unit:"%"}),f("arsenic_ppm","آرسنیک","Arsenic","DECIMAL",{unit:"PPM"}),f("copper_product_form","شکل محصول","Copper Product Form","SELECT",{options:["سنگ معدن","کنسانتره","کاتد","شمش"]})]},
+ {slug:"coal-supply",fields:[f("calorific_value_kcal","ارزش حرارتی","Calorific Value","DECIMAL",{unit:"KCAL/KG",required:true,filterable:true}),f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"}),f("volatile_matter_percent","مواد فرار","Volatile Matter","DECIMAL",{unit:"%"}),f("coal_rank","رتبه زغال","Coal Rank","SELECT",{options:["حرارتی","کک‌شو","نیمه‌کک‌شو"]})]},
+ {slug:"mineral-processing-service",fields:[f("processing_method","روش فرآوری","Processing Method","MULTI_SELECT",{options:["فلوتاسیون","ثقلی","مغناطیسی","لیچینگ","خردایش و دانه‌بندی"]}),f("throughput_tph","ظرفیت فرآوری","Throughput","DECIMAL",{unit:"T/H",required:true}),f("recovery_rate_percent","بازیابی","Recovery Rate","DECIMAL",{unit:"%"}),f("feed_specification","مشخصات خوراک","Feed Specification","LONG_TEXT")]},
+ {slug:"mineral-assay-lab",fields:[f("assay_methods","روش‌های آنالیز","Assay Methods","MULTI_SELECT",{options:["XRF","XRD","Fire Assay","ICP","شیمی تر","دانه‌بندی"]}),f("sample_capacity_per_day","ظرفیت نمونه در روز","Daily Sample Capacity","INTEGER"),f("accreditation","استاندارد و اعتبار آزمایشگاه","Lab Accreditation","TEXT"),f("turnaround_days","زمان تحویل نتیجه","Turnaround Time","INTEGER",{unit:"DAY"})]},
+ {slug:"lhd-repair",fields:[f("lhd_types","انواع LHD تحت پوشش","LHD Types","MULTI_SELECT",{options:["دیزلی","برقی","باتری","Low Profile"]}),f("bucket_rebuild","بازسازی باکت","Bucket Rebuild","BOOLEAN"),f("articulation_joint_repair","تعمیر مفصل مرکزی","Articulation Joint Repair","BOOLEAN"),f("underground_safety_systems","تعمیر سامانه‌های ایمنی زیرزمینی","Underground Safety Systems","LONG_TEXT")]},
+ {slug:"drilling-equipment-repair",fields:[f("drill_technology","فناوری حفاری","Drilling Technology","MULTI_SELECT",{options:["DTH","Top Hammer","Rotary","RC","Core","Jumbo"]}),f("drill_rod_threading","تعمیر و رزوه‌کاری راد","Drill Rod & Threading","BOOLEAN"),f("compressor_rebuild","بازسازی کمپرسور","Compressor Rebuild","BOOLEAN"),f("mast_alignment","تنظیم دکل حفاری","Mast Alignment","BOOLEAN")]},
+ {slug:"dimension-stone-supply",fields:[f("stone_types","نوع سنگ","Stone Types","MULTI_SELECT",{options:["مرمر","گرانیت","تراورتن","مرمریت","چینی","بازالت"]}),f("stone_block_dimensions","ابعاد کوپ یا اسلب","Block / Slab Dimensions","TEXT"),f("surface_finish","نوع فرآوری سطح","Surface Finish","MULTI_SELECT",{options:["خام","صیقلی","چرمی","تیشه‌ای","بوش‌همر"]}),f("color_grade","رنگ و سورت","Color & Grade","TEXT")]},
+ {slug:"sand-gravel-supply",fields:[f("aggregate_type","نوع مصالح","Aggregate Type","MULTI_SELECT",{options:["ماسه طبیعی","ماسه شکسته","شن نخودی","شن بادامی","مخلوط"]}),f("grading_standard","استاندارد دانه‌بندی","Grading Standard","TEXT"),f("fineness_modulus","مدول نرمی","Fineness Modulus","DECIMAL"),f("clay_percent","درصد خاک و رس","Clay Content","DECIMAL",{unit:"%"})]},
+ {slug:"cement-clinker-supply",fields:[f("cement_type","نوع سیمان یا کلینکر","Cement / Clinker Type","SELECT",{options:["کلینکر","تیپ ۱","تیپ ۲","تیپ ۵","پوزولانی","سفید"]}),f("so3_percent","درصد SO3","SO3","DECIMAL",{unit:"%"}),f("blaine_cm2g","نرمی بلین","Blaine Fineness","INTEGER",{unit:"CM2/G"}),f("compressive_strength_mpa","مقاومت فشاری","Compressive Strength","DECIMAL",{unit:"MPA"})]},
+ {slug:"mine-exploration-surveying",fields:[f("exploration_stage","مرحله اکتشاف","Exploration Stage","SELECT",{options:["شناسایی","پی‌جویی","اکتشاف عمومی","اکتشاف تفصیلی"]}),f("survey_methods","روش‌های برداشت","Survey Methods","MULTI_SELECT",{options:["ژئوفیزیک","ژئوشیمی","نقشه‌برداری","مدل‌سازی سه‌بعدی","سنجش از دور"]}),f("licensed_experts","کارشناسان دارای صلاحیت","Licensed Experts","INTEGER"),f("deliverables","خروجی و گزارش تحویلی","Deliverables","LONG_TEXT")]},
+ {slug:"exploration-drilling",fields:[f("drilling_depth_m","عمق حفاری","Drilling Depth","DECIMAL",{unit:"M",required:true}),f("drilling_diameter_mm","قطر حفاری","Drilling Diameter","DECIMAL",{unit:"MM"}),f("core_recovery_percent","درصد بازیابی مغزه","Core Recovery","DECIMAL",{unit:"%"}),f("drilling_methods","روش حفاری","Drilling Methods","MULTI_SELECT",{options:["مغزه‌گیری","RC","DTH","پودری"]})]},
+ {slug:"mining-contracting",fields:[f("contracting_scope","دامنه پیمانکاری","Contracting Scope","MULTI_SELECT",{options:["باطله‌برداری","استخراج","بارگیری","حمل","آتشباری","نگهداری"]}),f("monthly_overburden_m3","ظرفیت ماهانه باطله‌برداری","Monthly Overburden","DECIMAL",{unit:"M3"}),f("monthly_ore_tons","ظرفیت ماهانه استخراج ماده معدنی","Monthly Ore","DECIMAL",{unit:"TON"}),f("fleet_summary","ترکیب ناوگان و تجهیزات","Fleet Summary","LONG_TEXT"),f("hse_certification","گواهی‌های HSE","HSE Certifications","TEXT")]},
+ {slug:"mineral-haulage-service",fields:[f("haulage_capacity_tons","ظرفیت حمل","Haulage Capacity","DECIMAL",{unit:"TON",required:true}),f("fleet_types","انواع ناوگان","Fleet Types","MULTI_SELECT",{options:["دامپتراک","کامیون کمپرسی","تریلی","واگن ریلی"]}),f("route_distance_km","مسافت مسیر","Route Distance","DECIMAL",{unit:"KM"}),f("loading_unloading_assets","تجهیزات بارگیری و تخلیه","Loading / Unloading Assets","TEXT")]}
+];
+
+const generatedFormEntries = [
+ ...[
+  ["machine-valuation",[f("valuation_method","روش ارزش‌گذاری","Valuation Method","SELECT",{options:["بازارمحور","هزینه‌محور","درآمدمحور","ترکیبی"]}),f("asset_scope","دامنه دارایی","Asset Scope","MULTI_SELECT",{options:["ماشین‌آلات","خط تولید","ناوگان","تجهیزات صنعتی"]}),f("report_standard","استاندارد گزارش","Report Standard","TEXT")]],
+  ["brand-valuation",[f("brand_scope","دامنه برند","Brand Scope","TEXT"),f("valuation_framework","چارچوب ارزش‌گذاری","Valuation Framework","TEXT"),f("market_comparables","تعداد نمونه‌های مقایسه","Market Comparables","INTEGER")]],
+  ["market-research",[f("research_sector","بخش مورد مطالعه","Research Sector","TEXT",{required:true}),f("research_scope","دامنه تحقیق","Research Scope","LONG_TEXT"),f("deliverable_format","قالب خروجی","Deliverable Format","MULTI_SELECT",{options:["گزارش","داشبورد","داده خام","ارائه مدیریتی"]})]],
+  ["expert-report",[f("report_type","نوع گزارش کارشناسی","Report Type","SELECT",{options:["فنی","مالی","وضعیت سلامت","پیش از خرید","بیمه‌ای"]}),f("inspection_standards","استانداردهای ارزیابی","Inspection Standards","TEXT"),f("turnaround_days","زمان تحویل","Turnaround Time","INTEGER",{unit:"DAY"})]],
+  ["machine-inspection",[f("inspection_scope","دامنه بازرسی","Inspection Scope","MULTI_SELECT",{options:["فنی","ایمنی","سازه","موتور","هیدرولیک","برق","عملکرد"]}),f("inspection_checklist","چک‌لیست و استاندارد","Inspection Checklist","TEXT"),f("report_with_photos","گزارش تصویری","Photo Report","BOOLEAN")]],
+  ["vehicle-inspection",[f("vehicle_classes","کلاس خودرو","Vehicle Classes","MULTI_SELECT",{options:["کامیون","کشنده","اتوبوس","خودروی کار","تریلر"]}),f("inspection_scope","دامنه بازرسی","Inspection Scope","LONG_TEXT"),f("roadworthiness_test","تست قابلیت تردد","Roadworthiness Test","BOOLEAN")]],
+  ["parts-inspection",[f("part_families","گروه قطعات","Part Families","TEXT"),f("inspection_methods","روش‌های آزمون","Inspection Methods","MULTI_SELECT",{options:["ابعادی","ترک‌یابی","متالورژی","سختی‌سنجی","NDT"]}),f("traceability_report","گزارش ردیابی","Traceability Report","BOOLEAN")]],
+  ["technical-audit",[f("audit_standard","استاندارد ممیزی","Audit Standard","TEXT"),f("audit_scope","دامنه ممیزی","Audit Scope","LONG_TEXT"),f("risk_register","ثبت ریسک و عدم انطباق","Risk Register","BOOLEAN")]],
+  ["engine-repair",[f("engine_families","خانواده موتور","Engine Families","MULTI_SELECT",{options:["دیزلی","گازسوز","بنزینی","دریایی","صنعتی"]}),f("engine_power_range","محدوده توان موتور","Engine Power Range","TEXT"),f("overhaul_service","تعمیر اساسی","Overhaul Service","BOOLEAN"),f("ecu_diagnostics","عیب‌یابی ECU","ECU Diagnostics","BOOLEAN")]],
+  ["hydraulic-repair",[f("hydraulic_components","قطعات تحت پوشش","Hydraulic Components","MULTI_SELECT",{options:["پمپ","موتور","شیر","جک","هیدرواستاتیک","سیلندر"]}),f("test_bench_capacity","ظرفیت میز تست","Test Bench Capacity","TEXT"),f("pressure_test_bar","حداکثر فشار تست","Test Pressure","DECIMAL",{unit:"BAR"})]],
+  ["electrical-repair",[f("electrical_systems","سامانه‌های تحت پوشش","Electrical Systems","MULTI_SELECT",{options:["استارت و شارژ","سیم‌کشی","ECU","سنسورها","کنترلر","موتور الکتریکی"]}),f("diagnostic_tools","تجهیزات عیب‌یابی","Diagnostic Tools","TEXT"),f("voltage_range","محدوده ولتاژ","Voltage Range","TEXT")]],
+  ["transmission-repair",[f("transmission_types","انواع انتقال قدرت","Transmission Types","MULTI_SELECT",{options:["دستی","اتوماتیک","Power Shift","CVT","هیدرواستاتیک"]}),f("torque_capacity","ظرفیت گشتاور","Torque Capacity","TEXT"),f("bench_testing","تست روی میز","Bench Testing","BOOLEAN")]],
+  ["body-repair",[f("body_work_types","خدمات بدنه","Body Work Types","MULTI_SELECT",{options:["جوشکاری","صافکاری","بازسازی سازه","رنگ","ترمیم ترک"]}),f("max_component_size","حداکثر ابعاد قطعه","Maximum Component Size","TEXT"),f("structural_welding_cert","صلاحیت جوش سازه‌ای","Structural Welding Certification","TEXT")]],
+  ["field-repair",[f("mobile_workshop","کارگاه سیار","Mobile Workshop","BOOLEAN"),f("dispatch_radius_km","شعاع اعزام","Dispatch Radius","DECIMAL",{unit:"KM"}),f("emergency_response_hours","زمان اعزام اضطراری","Emergency Response","INTEGER",{unit:"HOUR"}),f("supported_machine_classes","کلاس ماشین‌آلات تحت پوشش","Supported Machine Classes","TEXT")]],
+  ["scheduled-service",[f("service_interval_basis","مبنای دوره سرویس","Service Interval Basis","SELECT",{options:["ساعت کارکرد","روز","ماه","کیلومتر"]}),f("service_packages","بسته‌های سرویس","Service Packages","TEXT"),f("consumables_included","اقلام مصرفی شامل می‌شود","Consumables Included","BOOLEAN")]],
+  ["preventive-maintenance",[f("maintenance_program","برنامه نگهداری","Maintenance Program","LONG_TEXT"),f("condition_monitoring","پایش وضعیت","Condition Monitoring","MULTI_SELECT",{options:["آنالیز روغن","ارتعاش","ترموگرافی","بازرسی دوره‌ای"]}),f("planned_downtime_hours","توقف برنامه‌ریزی‌شده","Planned Downtime","INTEGER",{unit:"HOUR"})]],
+  ["oil-change",[f("oil_grades","گرید روغن","Oil Grades","MULTI_SELECT",{options:["15W-40","10W-40","Hydraulic ISO 46","Gear 80W-90","سفارشی"]}),f("oil_analysis","آنالیز روغن کارکرده","Used Oil Analysis","BOOLEAN"),f("waste_oil_collection","جمع‌آوری روغن مستعمل","Waste Oil Collection","BOOLEAN")]],
+  ["calibration",[f("instrument_types","تجهیزات قابل کالیبراسیون","Instrument Types","MULTI_SELECT",{options:["فشار","دما","دبی","گشتاور","وزن","سرعت"]}),f("calibration_range","محدوده کالیبراسیون","Calibration Range","TEXT"),f("traceable_certificate","گواهی قابل ردیابی","Traceable Certificate","BOOLEAN")]],
+  ["diagnostics",[f("diagnostic_systems","سامانه‌های عیب‌یابی","Diagnostic Systems","MULTI_SELECT",{options:["موتور","گیربکس","هیدرولیک","برق","CAN Bus","کنترلر"]}),f("supported_brands","برندهای پشتیبانی‌شده","Supported Brands","TEXT"),f("remote_diagnostics","عیب‌یابی از راه دور","Remote Diagnostics","BOOLEAN")]]
+ ],
+ ...[
+  ["stone-block",[f("stone_type","نوع سنگ","Stone Type","TEXT"),f("block_dimensions","ابعاد کوپ","Block Dimensions","TEXT"),f("block_weight_ton","وزن کوپ","Block Weight","DECIMAL",{unit:"TON"}),f("quarry_origin","معدن مبدأ","Quarry Origin","TEXT")]],
+  ["sand",[f("sand_type","نوع ماسه","Sand Type","SELECT",{options:["طبیعی","شسته","شکسته","سیلیسی"]}),f("fineness_modulus","مدول نرمی","Fineness Modulus","DECIMAL"),f("silt_percent","درصد لای","Silt Content","DECIMAL",{unit:"%"})]],
+  ["gravel",[f("gravel_size_mm","اندازه شن","Gravel Size","TEXT"),f("gravel_type","نوع شن","Gravel Type","SELECT",{options:["طبیعی","شکسته","رودخانه‌ای"]}),f("abrasion_loss_percent","افت لس‌آنجلس","Los Angeles Abrasion","DECIMAL",{unit:"%"})]],
+  ["cement-clinker",[f("clinker_type","نوع کلینکر","Clinker Type","SELECT",{options:["تیپ ۱","تیپ ۲","تیپ ۵","سفید"]}),f("free_lime_percent","آهک آزاد","Free Lime","DECIMAL",{unit:"%"}),f("alumina_modulus","مدول آلومینا","Alumina Modulus","DECIMAL")]],
+  ["gypsum",[f("gypsum_purity_percent","خلوص گچ","Gypsum Purity","DECIMAL",{unit:"%",required:true}),f("crystal_water_percent","آب تبلور","Crystal Water","DECIMAL",{unit:"%"}),f("gypsum_form","شکل محصول","Product Form","SELECT",{options:["سنگ گچ","پودر","گچ پخته"]})]],
+  ["limestone",[f("caco3_percent","درصد کربنات کلسیم","CaCO3","DECIMAL",{unit:"%"}),f("mgo_percent","درصد اکسید منیزیم","MgO","DECIMAL",{unit:"%"}),f("limestone_size","دانه‌بندی","Size","TEXT")]],
+  ["marble",[f("marble_color","رنگ مرمر","Marble Color","TEXT"),f("block_or_slab","کوپ یا اسلب","Block or Slab","SELECT",{options:["کوپ","اسلب","تایل"]}),f("surface_finish","پرداخت سطح","Surface Finish","TEXT")]],
+  ["granite",[f("granite_color","رنگ گرانیت","Granite Color","TEXT"),f("compressive_strength_mpa","مقاومت فشاری","Compressive Strength","DECIMAL",{unit:"MPA"}),f("block_or_slab","کوپ یا اسلب","Block or Slab","SELECT",{options:["کوپ","اسلب","تایل"]})]],
+  ["basalt",[f("basalt_application","کاربرد بازالت","Basalt Application","MULTI_SELECT",{options:["سنگدانه","الیاف","سنگ ساختمانی","مصالح راهسازی"]}),f("density_kg_m3","چگالی","Density","DECIMAL",{unit:"KG/M3"}),f("size_distribution","دانه‌بندی","Size Distribution","TEXT")]],
+  ["ceramic",[f("ceramic_type","نوع سرامیک","Ceramic Type","TEXT"),f("water_absorption_percent","جذب آب","Water Absorption","DECIMAL",{unit:"%"}),f("firing_temperature_c","دمای پخت","Firing Temperature","DECIMAL",{unit:"C"})]],
+  ["glass",[f("glass_type","نوع شیشه","Glass Type","SELECT",{options:["فلوت","سکوریت","لمینیت","دوجداره","صنعتی"]}),f("glass_thickness_mm","ضخامت","Thickness","DECIMAL",{unit:"MM"}),f("transparency","شفافیت","Transparency","TEXT")]],
+  ["steel-materials",[f("steel_grade","گرید فولاد","Steel Grade","TEXT",{required:true}),f("product_form","شکل محصول","Product Form","SELECT",{options:["ورق","میلگرد","تیرآهن","نبشی","لوله","شمش","کلاف"]}),f("thickness_or_diameter_mm","ضخامت یا قطر","Thickness / Diameter","DECIMAL",{unit:"MM"})]],
+  ["other-materials",[f("material_specification","مشخصات ماده","Material Specification","LONG_TEXT",{required:true}),f("standard_code","استاندارد محصول","Product Standard","TEXT"),f("test_certificate","گواهی آزمون","Test Certificate","BOOLEAN")]],
+  ["iron-ore-concentrate",[f("fe_percent","درصد آهن Fe","Fe Content","DECIMAL",{unit:"%",required:true,filterable:true}),f("sio2_percent","سیلیس","Silica","DECIMAL",{unit:"%"}),f("phosphorus_percent","فسفر","Phosphorus","DECIMAL",{unit:"%"}),f("particle_size_p80","اندازه ذرات P80","Particle Size P80","DECIMAL",{unit:"MICRON"})]],
+  ["sized-iron-ore",[f("fe_percent","درصد آهن Fe","Fe Content","DECIMAL",{unit:"%",required:true}),f("lump_fines_ratio","نسبت کلوخه به نرمه","Lump / Fines Ratio","TEXT"),f("size_range_mm","محدوده دانه‌بندی","Size Range","TEXT")]],
+  ["iron-ore-pellets",[f("fe_percent","درصد آهن Fe","Fe Content","DECIMAL",{unit:"%",required:true}),f("pellet_diameter_mm","قطر گندله","Pellet Diameter","DECIMAL",{unit:"MM"}),f("compressive_strength_n_pellet","استحکام فشاری","Compressive Strength","DECIMAL",{unit:"N/PELLET"}),f("reduction_index","شاخص احیاپذیری","Reduction Index","DECIMAL")]],
+  ["iron-ore-sinter",[f("fe_percent","درصد آهن Fe","Fe Content","DECIMAL",{unit:"%",required:true}),f("sinter_basicity","بازیسیته","Basicity","DECIMAL"),f("sinter_size_mm","اندازه محصول","Product Size","TEXT")]],
+  ["copper-concentrate",[f("cu_percent","درصد مس Cu","Copper Content","DECIMAL",{unit:"%",required:true}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"}),f("arsenic_ppm","آرسنیک","Arsenic","DECIMAL",{unit:"PPM"})]],
+  ["copper-cathode",[f("cu_purity_percent","خلوص مس","Copper Purity","DECIMAL",{unit:"%",required:true}),f("cathode_grade","گرید کاتد","Cathode Grade","SELECT",{options:["Grade A","Grade B"]}),f("bundle_weight_kg","وزن بسته","Bundle Weight","DECIMAL",{unit:"KG"})]],
+  ["thermal-coal",[f("calorific_value_kcal","ارزش حرارتی","Calorific Value","DECIMAL",{unit:"KCAL/KG",required:true}),f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"})]],
+  ["coking-coal",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"}),f("fluidity_ddpm","سیالیت","Fluidity","DECIMAL",{unit:"DDPM"}),f("csr_percent","استحکام کک CSR","CSR","DECIMAL",{unit:"%"})]],
+  ["coal-concentrate",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%",required:true}),f("moisture_percent","رطوبت","Moisture","DECIMAL",{unit:"%"}),f("volatile_matter_percent","مواد فرار","Volatile Matter","DECIMAL",{unit:"%"})]]
+ ],
+].map((entry) => [entry[0] as string, entry[1] as F[]] as [string, F[]]);
+const generatedForms: Form[] = generatedFormEntries.map(([slug, fields]) => ({ slug, fields }));
+forms.push(...generatedForms);
+async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
+ for(let i=0;i<fields.length;i++){
+  const x=fields[i];
+  const optionValues=[...(x.options??[])];
+  const base=await db.attributeDefinition.findUnique({
+   where:{key:x.key},
+   include:{options:{select:{value:true,sortOrder:true}}},
+  });
+  const isCompatible=(candidate:typeof base)=>!!candidate &&
+   candidate.type===x.type &&
+   candidate.unit===(x.unit??null) &&
+   candidate.name===x.fa &&
+   candidate.nameEn===x.en &&
+   (candidate.labelFa??candidate.name)===x.fa &&
+   (candidate.labelEn??candidate.nameEn)===x.en &&
+   candidate.filterable===!!x.filterable &&
+   candidate.searchable===true &&
+   candidate.sortable===false &&
+   candidate.visibleOnCard===!!x.filterable &&
+   candidate.visibleOnDetail===true &&
+   candidate.seoRelevant===!!x.filterable &&
+   candidate.aiRelevant===true &&
+   JSON.stringify([...candidate.options].sort((a,b)=>a.sortOrder-b.sortOrder).map(o=>o.value))===JSON.stringify(optionValues);
+  // AttributeDefinition.key is globally unique. Reuse only compatible
+  // storage definitions; namespace a collision to this category leaf.
+  const resolvedKey=base && !isCompatible(base)
+   ? `${scopeSlug.replace(/[^a-z0-9-]/gi,"-")}_${x.key}`
+   : x.key;
+  const existing=resolvedKey===x.key
+   ? base
+   : await db.attributeDefinition.findUnique({
+      where:{key:resolvedKey},
+      include:{options:{select:{value:true,sortOrder:true}}},
+     });
+  if(existing && !isCompatible(existing)){
+   throw new Error(`Incompatible global attribute key ${resolvedKey} for category ${scopeSlug}`);
+  }
+  const a=existing??await db.attributeDefinition.create({
+   data:{
+    key:resolvedKey,name:x.fa,nameEn:x.en,labelFa:x.fa,labelEn:x.en,
+    type:x.type,unit:x.unit??null,required:false,filterable:!!x.filterable,
+    searchable:true,sortable:false,visibleOnCard:!!x.filterable,
+    visibleOnDetail:true,seoRelevant:!!x.filterable,aiRelevant:true,
+   },
+  });
+  if(!existing){
+   for(let j=0;j<optionValues.length;j++){
+    const value=optionValues[j];
+    await db.attributeOption.create({data:{attributeId:a.id,value,label:value,sortOrder:j}});
+   }
+  }
+  await db.categoryAttribute.upsert({
+   where:{categoryId_attributeId:{categoryId,attributeId:a.id}},
+   create:{categoryId,attributeId:a.id,required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
+   update:{required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
+  });
+ }
+}
+async function main(){
+ const serviceRoot=await db.category.findUnique({where:{slug:"services"},select:{id:true}});
+ const mineralRoot=await db.category.findUnique({where:{slug:"minerals-materials"},select:{id:true}});
+ if(!serviceRoot||!mineralRoot)throw new Error("Missing service/mineral taxonomy roots; seed taxonomy first");
+ const categories=await db.category.findMany({where:{slug:{in:forms.map(form=>form.slug)}},select:{id:true,slug:true}});
+ const categoryBySlug=new Map(categories.map(category=>[category.slug,category]));
+ const missing=forms.map(form=>form.slug).filter(slug=>!categoryBySlug.has(slug));
+ if(missing.length)throw new Error("Missing category forms; no attributes were written: "+missing.join(", "));
+ await linkFields(serviceRoot.id,commonService,"services");
+ await linkFields(mineralRoot.id,commonMineral,"minerals-materials");
+ const mineralSupplySlugs=new Set(["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"]);
+ for(const form of forms){const category=categoryBySlug.get(form.slug)!;const fields=mineralSupplySlugs.has(form.slug)?[...commonMineral,...form.fields]:form.fields;await linkFields(category.id,fields,form.slug);}
+ console.log(JSON.stringify({commonServiceFields:commonService.length,commonMineralFields:commonMineral.length,formsApplied:forms.length,missingForms:[]},null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
