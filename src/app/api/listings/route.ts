@@ -420,12 +420,10 @@ export async function POST(req: Request) {
       if (!body.brandId || model.brandId !== String(body.brandId)) {
         return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
       }
-      if (
-        body.categoryId &&
-        model.categoryId &&
-        model.categoryId !== String(body.categoryId) &&
-        !model.modelCategories.some((link) => link.categoryId === String(body.categoryId))
-      ) {
+      const modelCategoryMatches =
+        model.categoryId === String(body.categoryId) ||
+        model.modelCategories.some((link) => link.categoryId === String(body.categoryId));
+      if (body.categoryId && !modelCategoryMatches) {
         return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی انتخابی متصل نیست." }, { status: 400 });
       }
     }
