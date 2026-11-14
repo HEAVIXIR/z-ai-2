@@ -206,6 +206,7 @@ export async function GET() {
       groups: resultGroups,
       standalone: resultStandalone,
       mode: "rbac",
+      source: hasStoredNavigation ? "merged-database-canonical" : "canonical-defaults",
     },
   });
 }
