@@ -1288,8 +1288,12 @@ async function main() {
   }
 
   const categories = await db.category.findMany({
-    where: { slug: { in: templates.map((template) => template.slug) } },
-    select: { id: true, slug: true },
+    where: {
+      slug: { in: templates.map((template) => template.slug) },
+      active: true,
+      layer: "CATALOG",
+    },
+    select: { id: true, slug: true, active: true, layer: true },
   });
   const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
   const missing = templates
@@ -1297,7 +1301,7 @@ async function main() {
     .filter((slug) => !categoryBySlug.has(slug));
   if (missing.length) {
     throw new Error(
-      `Missing taxonomy categories; seed aborted before writes: ${missing.join(", ")}`,
+      `Missing or inactive CATALOG categories; seed aborted before writes: ${missing.join(", ")}`,
     );
   }
 
