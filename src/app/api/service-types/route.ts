@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const types = await db.serviceType.findMany({
+      where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { nameFa: "asc" }],
       select: {
         id: true,
@@ -25,7 +27,7 @@ export async function GET() {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }
@@ -33,6 +35,7 @@ export async function GET() {
 /* POST /api/service-types — admin create. */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
     if (!body.key || !body.nameFa) {
@@ -42,7 +45,7 @@ export async function POST(req: Request) {
       );
     }
     const dup = await db.serviceType.findUnique({
-      where: { key: String(body.key) },
+      where: { key: String(body.key).trim().toUpperCase() },
     });
     if (dup) {
       return NextResponse.json(
@@ -52,7 +55,7 @@ export async function POST(req: Request) {
     }
     const type = await db.serviceType.create({
       data: {
-        key: String(body.key),
+        key: String(body.key).trim().toUpperCase(),
         nameFa: String(body.nameFa),
         nameEn: body.nameEn ?? null,
         description: body.description ?? null,
