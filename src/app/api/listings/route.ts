@@ -557,6 +557,7 @@ export async function POST(req: Request) {
       },
       Array.isArray(body.attributeValues) ? body.attributeValues : [],
       false,
+      true,
     );
     if (!attributeValidation.ok) {
       return NextResponse.json({ error: attributeValidation.error }, { status: 400 });
