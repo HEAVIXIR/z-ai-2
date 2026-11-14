@@ -623,7 +623,7 @@ async function main() {
   });
   const oldL1Categories = await db.category.findMany({
     where: { slug: { in: OLD_L1_TO_DEACTIVATE } },
-    select: { id: true, slug: true, active: true },
+    select: { id: true, slug: true },
   });
   const oldL1ListingCounts = await Promise.all(oldL1Categories.map(async (category) => {
     const descendants = await collectDescendantCategoryIds(category.id);
@@ -726,7 +726,15 @@ async function main() {
   let deactivated = 0;
   for (const slug of OLD_L1_TO_DEACTIVATE) {
     const cat = await db.category.findUnique({ where: { slug } });
-    if (cat) {
+    if (cat && cat.active) {
+      const descendants = await collectDescendantCategoryIds(cat.id);
+      const protectedIds = [cat.id, ...descendants];
+      const listingCount = await db.listing.count({
+        where: { categoryId: { in: protectedIds } },
+      });
+      if (listingCount > 0) {
+        throw new Error(`Refusing to deactivate ${slug}: ${listingCount} listings remain in its branch.`);
+      }
       await db.category.update({ where: { id: cat.id }, data: { active: false } });
       deactivated++;
       console.log(`   ✗ Deactivated old L1: ${slug} (id=${cat.id})`);
