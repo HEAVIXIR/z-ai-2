@@ -174,6 +174,63 @@ export async function validateListingAttributeValues(
       return { ok: false, error: "مقدار بله/خیر ویژگی معتبر نیست." };
     }
 
+    const hasText = value.textValue !== undefined && value.textValue !== null && value.textValue !== "";
+    const hasNumber = numberValue !== null;
+    const hasBoolean = value.booleanValue !== undefined && value.booleanValue !== null;
+    const hasDate = dateValue !== null;
+    const hasOption = value.optionId !== undefined && value.optionId !== null && value.optionId !== "";
+    const incompatible = (allowed: string[]) =>
+      (hasText && !allowed.includes("text")) ||
+      (hasNumber && !allowed.includes("number")) ||
+      (hasBoolean && !allowed.includes("boolean")) ||
+      (hasDate && !allowed.includes("date")) ||
+      (hasOption && !allowed.includes("option"));
+
+    switch (attribute.type) {
+      case "BOOLEAN":
+        if (!hasBoolean || incompatible(["boolean"])) {
+          return { ok: false, error: "مقدار بله/خیر ویژگی با نوع آن سازگار نیست." };
+        }
+        break;
+      case "SELECT":
+        if (!hasOption || incompatible(["option"])) {
+          return { ok: false, error: "لطفاً یک گزینهٔ معتبر برای این ویژگی انتخاب کنید." };
+        }
+        break;
+      case "MULTI_SELECT":
+      case "RANGE":
+        if (!hasText || incompatible(["text"])) {
+          return { ok: false, error: "مقدار متنی ویژگی با نوع آن سازگار نیست." };
+        }
+        break;
+      case "DATE":
+      case "DATETIME":
+        if (!hasDate || incompatible(["date"])) {
+          return { ok: false, error: "مقدار تاریخ ویژگی با نوع آن سازگار نیست." };
+        }
+        break;
+      case "INTEGER":
+      case "YEAR":
+        if (!hasNumber || !Number.isInteger(numberValue) || incompatible(["number"])) {
+          return { ok: false, error: "مقدار این ویژگی باید عدد صحیح باشد." };
+        }
+        break;
+      case "DECIMAL":
+      case "NUMBER":
+      case "CURRENCY":
+      case "UNIT":
+      case "SIZE":
+      case "WEIGHT":
+        if (!hasNumber || incompatible(["number"])) {
+          return { ok: false, error: "مقدار عددی ویژگی با نوع آن سازگار نیست." };
+        }
+        break;
+      default:
+        if (!hasText || incompatible(["text"])) {
+          return { ok: false, error: "مقدار متنی ویژگی با نوع آن سازگار نیست." };
+        }
+    }
+
     normalized.push({
       attributeId,
       textValue: value.textValue === undefined || value.textValue === null ? null : String(value.textValue),
