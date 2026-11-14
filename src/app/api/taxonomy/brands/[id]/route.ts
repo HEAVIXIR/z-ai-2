@@ -140,9 +140,28 @@ export async function PATCH(req: Request, { params }: Params) {
                 : undefined,
           },
         });
-      } catch {
-        // BrandDisplay upsert is best-effort — don't fail the whole PATCH.
       }
+    }
+
+    // SEO — persist the editor payload into the canonical BrandSEO relation.
+    if (body.seo && typeof body.seo === "object") {
+      const seo = body.seo as {
+        metaTitle?: string | null;
+        metaDescription?: string | null;
+        keywords?: string | null;
+        ogImage?: string | null;
+      };
+      const seoData = {
+        metaTitle: seo.metaTitle?.trim() || null,
+        metaDescription: seo.metaDescription?.trim() || null,
+        keywords: seo.keywords?.trim() || null,
+        ogImage: seo.ogImage?.trim() || null,
+      };
+      await db.brandSEO.upsert({
+        where: { brandId: id },
+        create: { brandId: id, ...seoData },
+        update: seoData,
+      });
     }
 
     // Domain links — replace strategy
@@ -155,8 +174,8 @@ export async function PATCH(req: Request, { params }: Params) {
             await db.brandDomain.create({
               data: { brandId: id, domain: d },
             });
-          } catch {
-            // ignore duplicates
+          } catch (error: any) {
+            if (error?.code !== "P2002") throw error;
           }
         }
       }
@@ -195,8 +214,8 @@ export async function PATCH(req: Request, { params }: Params) {
               confidence: Number(a.confidence) || 80,
             },
           });
-        } catch {
-          // ignore individual alias upsert failures
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
       // Delete aliases whose normalized value isn't in payload
@@ -235,8 +254,8 @@ export async function PATCH(req: Request, { params }: Params) {
           await db.brandIndustry.create({
             data: { brandId: id, industry: key },
           });
-        } catch {
-          // ignore duplicates
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
