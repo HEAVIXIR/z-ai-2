@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 export type CategoryPathItem = {
@@ -14,15 +14,51 @@ export type CategoryPathItem = {
 type Props = {
   roots: CategoryPathItem[];
   value: string;
+  selectedPath?: CategoryPathItem[];
   onChange: (id: string, path: CategoryPathItem[]) => void;
 };
 
-export default function CascadingCategoryPicker({ roots, value, onChange }: Props) {
+export default function CascadingCategoryPicker({ roots, value, selectedPath, onChange }: Props) {
   const [path, setPath] = useState<CategoryPathItem[]>([]);
   const [childrenByParent, setChildrenByParent] = useState<Record<string, CategoryPathItem[]>>({});
   const [loadingParent, setLoadingParent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+
+  // Restore the selected hierarchy when the user returns to this wizard step.
+  useEffect(() => {
+    const restoredPath = selectedPath ?? [];
+    setPath((current) =>
+      current.map((item) => item.id).join("/") === restoredPath.map((item) => item.id).join("/")
+        ? current
+        : restoredPath,
+    );
+
+    let alive = true;
+    (async () => {
+      const hydrated: Record<string, CategoryPathItem[]> = {};
+      await Promise.all(restoredPath.map(async (node) => {
+        if (node.children) {
+          hydrated[node.id] = node.children;
+          return;
+        }
+        try {
+          const response = await fetch(`/api/taxonomy/categories/${encodeURIComponent(node.id)}`, {
+            cache: "no-store",
+          });
+          if (!response.ok) return;
+          const payload = await response.json() as { category?: { children?: CategoryPathItem[] } };
+          hydrated[node.id] = payload.category?.children ?? [];
+        } catch {
+          // Keep the saved selection visible even if a child list cannot be restored.
+        }
+      }));
+      if (alive) setChildrenByParent((current) => ({ ...current, ...hydrated }));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [selectedPath]);
 
   const levels = useMemo(() => {
     const result: CategoryPathItem[][] = [roots];
