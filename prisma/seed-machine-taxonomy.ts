@@ -616,7 +616,7 @@ async function main() {
     }
   }
 
-  const beforeCategoryIds = await collectDescendantCategoryIds(root.id);
+  const beforeCategoryIds = [root.id, ...(await collectDescendantCategoryIds(root.id))];
   const listingsBefore = await db.listing.findMany({
     where: { categoryId: { in: beforeCategoryIds } },
     select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true } } },
@@ -638,7 +638,7 @@ async function main() {
   console.log(`📋 Listings attached anywhere under machinery (BEFORE): ${listingsBefore.length}`);
   console.log(`📦 Current machinery descendant categories: ${beforeCategoryIds.length}`);
   console.log(`🧭 Target definitive tree slugs: ${treeSlugs.size}`);
-  console.log(`⚠ Legacy L1 categories with direct listings: ${unsafeOldL1.map((x) => `${x.slug}=${x.count}`).join(", ") || "none"}`);
+  console.log(`⚠ Legacy L1 branches containing listings: ${unsafeOldL1.map((x) => `${x.slug}=${x.count}`).join(", ") || "none"}`);
 
   if (!apply) {
     console.log("\nDRY RUN ONLY — no database rows were changed.");
@@ -786,7 +786,7 @@ async function main() {
   );
 
   // 5. Verify listings are still attached (NEVER deleted)
-  const afterCategoryIds = await collectDescendantCategoryIds(root.id);
+  const afterCategoryIds = [root.id, ...(await collectDescendantCategoryIds(root.id))];
   const listingsAfter = await db.listing.findMany({
     where: { categoryId: { in: afterCategoryIds } },
     select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true, active: true } } },
