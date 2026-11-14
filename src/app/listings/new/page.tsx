@@ -345,6 +345,7 @@ export default function NewListingPage() {
         rentalPeriod: isRent ? form.rentalPeriod : undefined,
         province: location.provinceId || undefined,
         city: location.cityId || undefined,
+        countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
         brandId: brandId || undefined,
