@@ -13,11 +13,12 @@ Repository docs and the public mega-menu comments refer to the 16-L1 structure. 
 
 Static parsing of `seed-machine-taxonomy.ts`:
 - 16 L1 groups.
-- 172 L2 families.
-- 97 L3 variants.
-- 243 selectable terminal categories (146 L2 leaves + 97 L3 leaves).
-- The current 128 exact-form template slugs overlap with 55 slugs in this definitive tree.
-- Of those, only 45 map to terminal categories; the other 10 are family/parent nodes.
+- 181 L2 families, of which 15 have L3 children and 166 are terminal L2 categories.
+- 104 L3 variants.
+- **270 selectable terminal categories** (166 L2 leaves + 104 L3 leaves).
+- The current 128 exact-form template slugs overlap with 70 slugs in this definitive tree.
+- Of those, 64 map to terminal categories; 6 are family/parent nodes.
+- Including the legacy multi-slug catalog, 72 terminal categories have a direct mapping.
 - Thus **198 of the 270 terminal categories still lack a directly mapped exact form** in the definitive tree. Some may receive inherited legacy fields, but inheritance alone is not proof of a complete subtype-specific form.
 
 The 128-template catalog was initially built against the broader V1.1 taxonomy. It must be reconciled to the definitive 16-group machine tree before it is considered production-ready. Some V1.1-only templates belong to separate vehicle/agriculture/attachment roots; others use aliases that must map to canonical machine slugs rather than remain attached to retired duplicate categories. Do not interpret the earlier V1.1 counts (279 taxonomy slugs, 203 direct mappings) as coverage of the definitive tree.
