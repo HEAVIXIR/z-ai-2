@@ -1193,6 +1193,33 @@ const templates: Template[] = [
     f("operating_pressure", "فشار کاری", "Operating Pressure", "DECIMAL", { unit: "BAR" }),
     f("attachment_weight", "وزن متعلقه", "Attachment Weight", "DECIMAL", { unit: "KG" }),
   ]},
+
+  { slug: "transport-vehicle", label: "Transport Vehicle", required: ["vehicle_configuration", "gross_vehicle_weight"], fields: [
+    f("vehicle_configuration", "پیکربندی وسیله نقلیه", "Vehicle Configuration", "TEXT"),
+    f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON", filterable: true }),
+    f("payload_capacity", "ظرفیت بار مفید", "Payload Capacity", "DECIMAL", { unit: "TON" }),
+    f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+    f("fuel_type", "نوع سوخت", "Fuel Type", "TEXT"),
+    f("body_type", "نوع اتاق/کاربری", "Body Type", "TEXT"),
+  ]},
+  { slug: "specialized-vehicle", label: "Specialized Vehicle", required: ["specialized_application", "gross_vehicle_weight"], fields: [
+    f("specialized_application", "کاربری تخصصی", "Specialized Application", "TEXT", { searchable: true }),
+    f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
+    f("payload_capacity", "ظرفیت بار/تجهیزات", "Payload or Equipment Capacity", "TEXT"),
+    f("body_configuration", "پیکربندی بدنه", "Body Configuration", "TEXT"),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+    f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
+    f("compliance_standards", "استانداردهای تخصصی", "Specialist Compliance", "TEXT"),
+  ]},
+  { slug: "other-machinery", label: "Other Machinery", required: ["machine_type", "technical_description"], fields: [
+    f("machine_type", "نوع ماشین‌آلات", "Machine Type", "TEXT", { searchable: true }),
+    f("technical_description", "شرح مشخصات فنی", "Technical Description", "LONG_TEXT"),
+    f("operating_capacity", "ظرفیت عملیاتی", "Operating Capacity", "TEXT"),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+    f("overall_dimensions", "ابعاد کلی", "Overall Dimensions", "TEXT"),
+  ]},
 ];
 
 async function upsertField(field: Field): Promise<string> {
