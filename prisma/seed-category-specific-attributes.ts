@@ -2735,7 +2735,7 @@ async function main() {
     },
     select: { id: true, slug: true, active: true, layer: true },
   });
-  const categoryBySlug = new Map(categories.map((category) => [category.slug, category.slug]));
+  const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
 
   // Enforce one dedicated template for every active terminal category under machinery.
   const activeCatalogCategories = await db.category.findMany({
