@@ -211,6 +211,10 @@ const STANDALONES: Standalone[] = [
 ];
 
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
   console.log('→ Seeding AdminNavigationGroup + AdminNavigationItem …');
 
   // 1. Upsert groups
@@ -218,7 +222,8 @@ async function main() {
     const group = await prisma.adminNavigationGroup.upsert({
       where: { key: g.key },
       create: { key: g.key, titleFa: g.titleFa, titleEn: g.key, icon: g.icon, sortOrder: g.sortOrder },
-      update: { titleFa: g.titleFa, icon: g.icon, sortOrder: g.sortOrder },
+      // Existing navigation labels and order may be administrator-managed.
+      update: {},
     });
 
     // 2. Upsert items within this group
@@ -236,13 +241,8 @@ async function main() {
           permissionKey: item.permissionKey,
           groupId: group.id,
         },
-        update: {
-          titleFa: item.titleFa,
-          href: item.href,
-          sortOrder: i,
-          permissionKey: item.permissionKey,
-          groupId: group.id,
-        },
+        // Existing items are preserved; the API supplies missing canonical items.
+        update: {},
       });
     }
   }
@@ -261,13 +261,7 @@ async function main() {
         permissionKey: s.permissionKey,
         groupId: null,
       },
-      update: {
-        titleFa: s.titleFa,
-        href: s.href,
-        icon: s.icon,
-        sortOrder: s.sortOrder,
-        permissionKey: s.permissionKey,
-      },
+      update: {},
     });
   }
 
