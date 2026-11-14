@@ -2897,7 +2897,9 @@ async function upsertField(field: Field): Promise<string> {
   const attr = await db.attributeDefinition.upsert({
     where: { key: field.key },
     create: data,
-    update: data,
+    // Existing definitions may contain administrator-managed labels and rules.
+    // Seeds are additive: never overwrite a definition after it exists.
+    update: {},
   });
 
   for (let i = 0; i < (field.options ?? []).length; i++) {
@@ -2905,12 +2907,7 @@ async function upsertField(field: Field): Promise<string> {
     const existing = await db.attributeOption.findFirst({
       where: { attributeId: attr.id, value },
     });
-    if (existing) {
-      await db.attributeOption.update({
-        where: { id: existing.id },
-        data: { label: value, sortOrder: i },
-      });
-    } else {
+    if (!existing) {
       await db.attributeOption.create({
         data: { attributeId: attr.id, value, label: value, sortOrder: i },
       });
@@ -2920,6 +2917,10 @@ async function upsertField(field: Field): Promise<string> {
 }
 
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
   const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment"];
   const coverageRoots = await db.category.findMany({
     where: { slug: { in: coverageRootSlugs }, active: true, layer: "CATALOG" },
@@ -3032,13 +3033,8 @@ async function main() {
           sortable: !!field.sortable,
           displayOrder: order,
         },
-        update: {
-          required: required.has(field.key),
-          filterable: !!field.filterable,
-          searchable: !!field.searchable,
-          sortable: !!field.sortable,
-          displayOrder: order,
-        },
+        // Preserve administrator-managed per-category field settings.
+        update: {},
       });
     }
     applied.push({ slug: template.slug, fields: template.fields.length });
