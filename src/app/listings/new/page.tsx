@@ -41,7 +41,7 @@ import {
    /listings/new — HBR Taxonomy V1.1 listing wizard.
 
    Steps:
-   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST
+   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST/SERVICE_OFFER
    2. دسته‌بندی (Category)          — CATALOG only, cascading root → child → grandchild
    3. برند و مدل                     — brand typeahead + model select (filtered by brand)
    4. مشخصات فنی دستگاه               — dynamic inherited attributes for selected machine/category
@@ -276,7 +276,9 @@ export default function NewListingPage() {
   const isRent = transactionType === "RENT";
   const isAuction = transactionType === "AUCTION";
   const isServiceRequest = transactionType === "SERVICE_REQUEST";
-  const categoryRoots = isServiceRequest ? serviceRoots : catalogRoots;
+  const isServiceOffer = transactionType === "SERVICE_OFFER";
+  const isServiceFlow = isServiceRequest || isServiceOffer;
+  const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
 
   const handleTransactionTypeChange = (nextType: string) => {
     if (nextType === transactionType) return;
@@ -297,7 +299,7 @@ export default function NewListingPage() {
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) return (isServiceRequest || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 3) return (isServiceFlow || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
       // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
@@ -307,7 +309,7 @@ export default function NewListingPage() {
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
-      if (isServiceRequest) return true; // service requests may be published without price or images
+      if (isServiceRequest || isServiceOffer) return true; // service listings can publish without product price or gallery
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -562,8 +564,8 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Layers3 className="h-5 w-5" />}
-                      title={isServiceRequest ? "دسته‌بندی خدمات" : "دسته‌بندی دستگاه و کالا"}
-                      subtitle={isServiceRequest
+                      title={isServiceFlow ? "دسته‌بندی خدمات" : "دسته‌بندی دستگاه و کالا"}
+                      subtitle={isServiceFlow
                         ? "حوزه خدمت، زیرحوزه و خدمت تخصصی موردنظر را انتخاب کنید"
                         : "نوع دستگاه، زیرشاخه و زیرنوع تخصصی را انتخاب کنید"}
                     />
@@ -626,14 +628,14 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
-                      title={isServiceRequest ? "اطلاعات درخواست خدمت" : "برند، مدل و اطلاعات پایه"}
-                      subtitle={isServiceRequest
-                        ? "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است"
+                      title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "برند، مدل و اطلاعات پایه"}
+                      subtitle={isServiceFlow
+                        ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
                         : "برند و مدل دستگاه را انتخاب و اطلاعات آگهی را تکمیل کنید"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>{isServiceRequest ? "برند مرتبط (اختیاری)" : "برند *"}</label>
+                        <label className={labelCls}>{isServiceFlow ? "برند مرتبط (اختیاری)" : "برند *"}</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
@@ -796,7 +798,7 @@ export default function NewListingPage() {
                         />
                       </div>
 
-                      {!isServiceRequest && (
+                      {!isServiceFlow && (
                         <div>
                           <label className={labelCls}>وضعیت دستگاه</label>
                           <div className="flex flex-wrap gap-2">
