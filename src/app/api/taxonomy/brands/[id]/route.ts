@@ -25,7 +25,15 @@ export async function GET(_req: Request, { params }: Params) {
         media: { orderBy: { sortOrder: "asc" } },
         seo: true,
         display: true,
-        models: { orderBy: { sortOrder: "asc" } },
+        models: {
+          orderBy: { sortOrder: "asc" },
+          include: {
+            category: { select: { id: true, name: true, slug: true } },
+            modelCategories: {
+              include: { category: { select: { id: true, name: true, slug: true } } },
+            },
+          },
+        },
         aliases: { orderBy: { confidence: "desc" } },
         industries: true,
         brandFamily: { select: { id: true, name: true, slug: true } },
