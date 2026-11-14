@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
-import { sendEmail } from "@/lib/email";
+import { sendEmailWithResult } from "@/lib/email";
 import { trackError } from "@/lib/error-tracking";
 import { getActiveCompanyMembership } from "@/lib/identity/company-access";
 import {
@@ -43,6 +43,45 @@ function configuredAppUrl(): URL | null {
 }
 
 /** POST /api/companies/:companyId/invitations */
+/** GET /api/companies/:companyId/invitations — pending invitations only. */
+export async function GET(_req: Request, context: RouteContext) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.status !== "ACTIVE" || !user.emailVerified) {
+      return NextResponse.json({ ok: false, error: "verified_account_required" }, { status: 403 });
+    }
+    const { companyId } = await context.params;
+    const membership = await getActiveCompanyMembership(user.id, companyId);
+    if (!membership || !["OWNER", "ORG_ADMIN"].includes(membership.roleKey)) {
+      return NextResponse.json({ ok: false, error: "company_permission_denied" }, { status: 403 });
+    }
+
+    const now = new Date();
+    await db.companyInvitation.updateMany({
+      where: { companyId, status: "PENDING", expiresAt: { lte: now } },
+      data: { status: "EXPIRED", activeKey: null },
+    });
+    const invitations = await db.companyInvitation.findMany({
+      where: { companyId, status: "PENDING", expiresAt: { gt: now } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        emailNormalized: true,
+        roleKey: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        invitedBy: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    return NextResponse.json({ ok: true, invitations });
+  } catch (error) {
+    trackError(error, { endpoint: "GET /api/companies/[companyId]/invitations" });
+    return NextResponse.json({ ok: false, error: "invitations_unavailable" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request, context: RouteContext) {
   if (!checkCsrf(req)) {
     return NextResponse.json({ ok: false, error: "csrf_failed" }, { status: 403 });
@@ -109,7 +148,7 @@ export async function POST(req: Request, context: RouteContext) {
     }
 
     const invitee = await db.user.findUnique({
-      where: { email: emailNormalized },
+      where: { email: { equals: emailNormalized, mode: "insensitive" } },
       select: { id: true, status: true },
     });
     if (invitee) {
@@ -185,7 +224,7 @@ export async function POST(req: Request, context: RouteContext) {
     inviteUrl.hash = new URLSearchParams({ token }).toString();
     const safeCompanyName = escapeHtml(company.name);
     const safeRole = escapeHtml(roleKey);
-    const delivered = await sendEmail({
+    const delivered = await sendEmailWithResult({
       to: emailNormalized,
       subject: "دعوت عضویت در سازمان — HEAVIX",
       text: [
