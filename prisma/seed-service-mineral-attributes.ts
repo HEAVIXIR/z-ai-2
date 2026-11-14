@@ -106,21 +106,64 @@ const generatedFormEntries = [
 ].map((entry) => [entry[0] as string, entry[1] as F[]] as [string, F[]]);
 const generatedForms: Form[] = generatedFormEntries.map(([slug, fields]) => ({ slug, fields }));
 forms.push(...generatedForms);
-async function linkFields(categoryId:string,fields:F[]){
- for(let i=0;i<fields.length;i++){const x=fields[i];const data={key:x.key,name:x.fa,nameEn:x.en,labelFa:x.fa,labelEn:x.en,type:x.type,unit:x.unit??null,required:false,filterable:!!x.filterable,searchable:true,sortable:false,visibleOnCard:!!x.filterable,visibleOnDetail:true,seoRelevant:!!x.filterable,aiRelevant:true};
-  const a=await db.attributeDefinition.upsert({where:{key:x.key},create:data,update:data});
-  for(let j=0;j<(x.options??[]).length;j++){const value=x.options![j];const old=await db.attributeOption.findFirst({where:{attributeId:a.id,value}});if(old)await db.attributeOption.update({where:{id:old.id},data:{label:value,sortOrder:j}});else await db.attributeOption.create({data:{attributeId:a.id,value,label:value,sortOrder:j}});}
-  await db.categoryAttribute.upsert({where:{categoryId_attributeId:{categoryId,attributeId:a.id}},create:{categoryId,attributeId:a.id,required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},update:{required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i}});
+async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
+ for(let i=0;i<fields.length;i++){
+  const x=fields[i];
+  const optionValues=[...(x.options??[])].sort();
+  const base=await db.attributeDefinition.findUnique({
+   where:{key:x.key},
+   include:{options:{select:{value:true}}},
+  });
+  const isCompatible=(candidate:typeof base)=>!!candidate &&
+   candidate.type===x.type &&
+   candidate.unit===(x.unit??null) &&
+   JSON.stringify(candidate.options.map(o=>o.value).sort())===JSON.stringify(optionValues);
+  // AttributeDefinition.key is globally unique. Reuse only compatible
+  // storage definitions; namespace a collision to this category leaf.
+  const resolvedKey=base && !isCompatible(base)
+   ? `${scopeSlug.replace(/[^a-z0-9-]/gi,"-")}_${x.key}`
+   : x.key;
+  const existing=resolvedKey===x.key
+   ? base
+   : await db.attributeDefinition.findUnique({
+      where:{key:resolvedKey},
+      include:{options:{select:{value:true}}},
+     });
+  if(existing && !isCompatible(existing)){
+   throw new Error(`Incompatible global attribute key ${resolvedKey} for category ${scopeSlug}`);
+  }
+  const a=existing??await db.attributeDefinition.create({
+   data:{
+    key:resolvedKey,name:x.fa,nameEn:x.en,labelFa:x.fa,labelEn:x.en,
+    type:x.type,unit:x.unit??null,required:false,filterable:!!x.filterable,
+    searchable:true,sortable:false,visibleOnCard:!!x.filterable,
+    visibleOnDetail:true,seoRelevant:!!x.filterable,aiRelevant:true,
+   },
+  });
+  for(let j=0;j<optionValues.length;j++){
+   const value=optionValues[j];
+   const old=await db.attributeOption.findFirst({where:{attributeId:a.id,value}});
+   if(old)await db.attributeOption.update({where:{id:old.id},data:{label:value,sortOrder:j}});
+   else await db.attributeOption.create({data:{attributeId:a.id,value,label:value,sortOrder:j}});
+  }
+  await db.categoryAttribute.upsert({
+   where:{categoryId_attributeId:{categoryId,attributeId:a.id}},
+   create:{categoryId,attributeId:a.id,required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
+   update:{required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
+  });
  }
 }
 async function main(){
  const serviceRoot=await db.category.findUnique({where:{slug:"services"},select:{id:true}});
  const mineralRoot=await db.category.findUnique({where:{slug:"minerals-materials"},select:{id:true}});
  if(!serviceRoot||!mineralRoot)throw new Error("Missing service/mineral taxonomy roots; seed taxonomy first");
- await linkFields(serviceRoot.id,commonService); await linkFields(mineralRoot.id,commonMineral);
- const missing:string[]=[];let applied=0;
- for(const form of forms){const c=await db.category.findUnique({where:{slug:form.slug},select:{id:true}});if(!c){missing.push(form.slug);continue;}await linkFields(c.id,form.fields);applied++;}
- console.log(JSON.stringify({commonServiceFields:commonService.length,commonMineralFields:commonMineral.length,formsApplied:applied,missingForms:missing},null,2));
- if(missing.length)throw new Error("Missing category forms: "+missing.join(", "));
+ const categories=await db.category.findMany({where:{slug:{in:forms.map(form=>form.slug)}},select:{id:true,slug:true}});
+ const categoryBySlug=new Map(categories.map(category=>[category.slug,category]));
+ const missing=forms.map(form=>form.slug).filter(slug=>!categoryBySlug.has(slug));
+ if(missing.length)throw new Error("Missing category forms; no attributes were written: "+missing.join(", "));
+ await linkFields(serviceRoot.id,commonService,"services");
+ await linkFields(mineralRoot.id,commonMineral,"minerals-materials");
+ for(const form of forms){const category=categoryBySlug.get(form.slug)!;await linkFields(category.id,form.fields,form.slug);}
+ console.log(JSON.stringify({commonServiceFields:commonService.length,commonMineralFields:commonMineral.length,formsApplied:forms.length,missingForms:[]},null,2));
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
