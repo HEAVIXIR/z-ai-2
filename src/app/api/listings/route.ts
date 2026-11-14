@@ -356,9 +356,9 @@ export async function POST(req: Request) {
     if (!title || title.length < 3) {
       return NextResponse.json({ error: "عنوان آگهی معتبر نیست" }, { status: 400 });
     }
-    if (!body.brandId && !body.categoryId) {
+    if (!body.categoryId) {
       return NextResponse.json(
-        { error: "برند یا دسته‌بندی الزامی است" },
+        { error: "دسته‌بندی الزامی است؛ انتخاب برند اختیاری است." },
         { status: 400 },
       );
     }
