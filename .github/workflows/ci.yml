@@ -104,9 +104,17 @@ jobs:
       - name: Seed RBAC
         run: bun run db:seed-rbac
       - name: Seed catalog data
+        env:
+          HEAVIX_ENV: preview
         run: |
-          bun run db:seed-brands-a
-          bun run db:seed-brands-b
+          bunx tsx prisma/seed-brands-a.ts --apply
+          bunx tsx prisma/seed-brands-b.ts --apply
+          bunx tsx prisma/seed-taxonomy-v11.ts --apply
+          bunx tsx prisma/seed-service-and-mineral-taxonomy.ts --apply
+          bunx tsx prisma/seed-category-specific-attributes.ts --apply
+          bunx tsx prisma/seed-service-mineral-attributes.ts --apply
+          bunx tsx prisma/seed-catalog.ts --apply
+          bunx tsx prisma/seed-services.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: Create read-only PostgreSQL role (STEP 15.51)
@@ -355,10 +363,12 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
+        env:
+          HEAVIX_ENV: preview
         run: |
           bun run db:seed-rbac
-          bun run db:seed-brands-a
-          bun run db:seed-brands-b
+          bunx tsx prisma/seed-brands-a.ts --apply
+          bunx tsx prisma/seed-brands-b.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: audit-transaction-real (real status, no masking)
@@ -440,10 +450,12 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
+        env:
+          HEAVIX_ENV: preview
         run: |
           bun run db:seed-rbac
-          bun run db:seed-brands-a
-          bun run db:seed-brands-b
+          bunx tsx prisma/seed-brands-a.ts --apply
+          bunx tsx prisma/seed-brands-b.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: Seed phase catalog (STEP 13.53 P2-B)
