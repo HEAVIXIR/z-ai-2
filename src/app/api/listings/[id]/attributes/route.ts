@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
+import { validateListingAttributeValues } from "@/lib/listing-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -143,200 +144,29 @@ export async function PUT(req: Request, { params }: Args) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const incoming: any[] = Array.isArray(body?.values) ? body.values : [];
-    if (incoming.length === 0) {
+    const incoming: unknown[] = Array.isArray(body?.values) ? body.values : [];
+    const validation = await validateListingAttributeValues(
+      db,
+      { categoryId: listing.categoryId, modelId: listing.modelId },
+      incoming,
+      isAdmin,
+    );
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    if (validation.values.length === 0) {
       return NextResponse.json({ ok: true, count: 0 });
     }
 
-    // Validate that all attributeIds exist
-    const attrIds = Array.from(
-      new Set(incoming.map((v) => String(v.attributeId)).filter(Boolean)),
+    const ops = validation.values.map((value) =>
+      db.listingAttributeValue.upsert({
+        where: {
+          listingId_attributeId: { listingId: id, attributeId: value.attributeId },
+        },
+        create: { listingId: id, ...value },
+        update: value,
+      }),
     );
-    if (attrIds.length === 0) {
-      return NextResponse.json(
-        { error: "attributeId is required for each value" },
-        { status: 400 },
-      );
-    }
-    // Restrict writes to the selected category's inherited attribute
-    // catalog plus the selected model's explicit overrides.
-    const allowedCategoryIds: string[] = [];
-    let categoryCursor = listing.categoryId;
-    const seenCategories = new Set<string>();
-    for (let depth = 0; categoryCursor && depth < 16; depth += 1) {
-      if (seenCategories.has(categoryCursor)) break;
-      seenCategories.add(categoryCursor);
-      allowedCategoryIds.push(categoryCursor);
-      const parent = await db.category.findUnique({
-        where: { id: categoryCursor },
-        select: { parentId: true },
-      });
-      categoryCursor = parent?.parentId ?? null;
-    }
-
-    const [categoryLinks, modelLinks] = await Promise.all([
-      allowedCategoryIds.length
-        ? db.categoryAttribute.findMany({
-            where: { categoryId: { in: allowedCategoryIds } },
-            select: { attributeId: true },
-          })
-        : Promise.resolve([]),
-      listing.modelId
-        ? db.productModelAttribute.findMany({
-            where: { modelId: listing.modelId, categoryId: listing.categoryId ?? "" },
-            select: { attributeId: true },
-          })
-        : Promise.resolve([]),
-    ]);
-    const allowedAttributeIds = new Set([
-      ...categoryLinks.map((link) => link.attributeId),
-      ...modelLinks.map((link) => link.attributeId),
-    ]);
-    const outOfScope = attrIds.filter((attributeId) => !allowedAttributeIds.has(attributeId));
-    if (outOfScope.length > 0) {
-      return NextResponse.json(
-        { error: "یکی از ویژگی‌ها به دسته‌بندی یا مدل این آگهی متصل نیست." },
-        { status: 400 },
-      );
-    }
-
-    const attrs = await db.attributeDefinition.findMany({
-      where: { id: { in: attrIds } },
-      select: { id: true, type: true, options: { select: { id: true } } },
-    });
-    const attrMap = new Map(attrs.map((a) => [a.id, a]));
-    const missing = attrIds.filter((aid) => !attrMap.has(aid));
-    if (missing.length) {
-      return NextResponse.json(
-        { error: `Unknown attributeId: ${missing.join(", ")}` },
-        { status: 400 },
-      );
-    }
-
-    // Validate typed values at the API boundary. Never persist an option
-    // belonging to another attribute or a non-finite numeric/date value.
-    for (const value of incoming) {
-      if (!value || !value.attributeId) continue;
-      const attribute = attrMap.get(String(value.attributeId));
-      if (!attribute) continue;
-      const optionIds = new Set(attribute.options.map((option) => option.id));
-      if (attribute.type === "SELECT" && value.optionId != null && value.optionId !== "" && !optionIds.has(String(value.optionId))) {
-        return NextResponse.json({ error: "گزینهٔ انتخاب‌شده متعلق به این ویژگی نیست." }, { status: 400 });
-      }
-      if (attribute.type === "MULTI_SELECT" && value.textValue != null && value.textValue !== "") {
-        const selectedOptions = String(value.textValue).split(",").filter(Boolean);
-        if (selectedOptions.some((optionId) => !optionIds.has(optionId))) {
-          return NextResponse.json({ error: "یکی از گزینه‌های چندانتخابی متعلق به این ویژگی نیست." }, { status: 400 });
-        }
-      }
-      if (value.numberValue !== undefined && value.numberValue !== null && value.numberValue !== "" && !Number.isFinite(Number(value.numberValue))) {
-        return NextResponse.json({ error: "مقدار عددی ویژگی معتبر نیست." }, { status: 400 });
-      }
-      if (value.dateValue !== undefined && value.dateValue !== null && value.dateValue !== "" && Number.isNaN(new Date(value.dateValue).getTime())) {
-        return NextResponse.json({ error: "تاریخ ویژگی معتبر نیست." }, { status: 400 });
-      }
-      if (value.confidence !== undefined && value.confidence !== null && !Number.isFinite(Number(value.confidence))) {
-        return NextResponse.json({ error: "درجهٔ اطمینان ویژگی معتبر نیست." }, { status: 400 });
-      }
-      if (attribute.type === "BOOLEAN" && value.booleanValue !== undefined && value.booleanValue !== null && ![true, false, "true", "false"].includes(value.booleanValue)) {
-        return NextResponse.json({ error: "مقدار بله/خیر ویژگی معتبر نیست." }, { status: 400 });
-      }
-    }
-    // Build the upsert operations
-    const ops = incoming
-      .filter((v) => v && v.attributeId && attrMap.has(String(v.attributeId)))
-      .map((v) => {
-        const aid = String(v.attributeId);
-        const dateValue =
-          v.dateValue === undefined || v.dateValue === null || v.dateValue === ""
-            ? null
-            : new Date(v.dateValue);
-        return db.listingAttributeValue.upsert({
-          where: {
-            listingId_attributeId: { listingId: id, attributeId: aid },
-          },
-          create: {
-            listingId: id,
-            attributeId: aid,
-            textValue:
-              v.textValue === undefined || v.textValue === null
-                ? null
-                : String(v.textValue),
-            numberValue:
-              v.numberValue === undefined || v.numberValue === null || v.numberValue === ""
-                ? null
-                : Number(v.numberValue),
-            booleanValue:
-              v.booleanValue === undefined || v.booleanValue === null
-                ? null
-                : (v.booleanValue === true || v.booleanValue === "true"),
-            dateValue: isNaN(dateValue?.getTime() ?? NaN) ? null : dateValue,
-            optionId:
-              v.optionId === undefined || v.optionId === null || v.optionId === ""
-                ? null
-                : String(v.optionId),
-            unit:
-              v.unit === undefined || v.unit === null || v.unit === ""
-                ? null
-                : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
-            verifiedAt: isAdmin ? new Date() : null,
-            verifiedBy: isAdmin ? "admin" : null,
-          },
-          update: {
-            textValue:
-              v.textValue === undefined || v.textValue === null
-                ? null
-                : String(v.textValue),
-            numberValue:
-              v.numberValue === undefined || v.numberValue === null || v.numberValue === ""
-                ? null
-                : Number(v.numberValue),
-            booleanValue:
-              v.booleanValue === undefined || v.booleanValue === null
-                ? null
-                : (v.booleanValue === true || v.booleanValue === "true"),
-            dateValue: isNaN(dateValue?.getTime() ?? NaN) ? null : dateValue,
-            optionId:
-              v.optionId === undefined || v.optionId === null || v.optionId === ""
-                ? null
-                : String(v.optionId),
-            unit:
-              v.unit === undefined || v.unit === null || v.unit === ""
-                ? null
-                : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
-            verifiedAt: isAdmin ? new Date() : null,
-            verifiedBy: isAdmin ? "admin" : null,
-          },
-        });
-      });
 
     await db.$transaction(ops);
 
