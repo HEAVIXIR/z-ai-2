@@ -75,4 +75,13 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(source).toContain('process.env.HEAVIX_ENV !== "preview"');
   });
 
+  it("does not accept a demo-sized catalog as a complete legacy import", () => {
+    const verifier = readFileSync(
+      path.resolve(process.cwd(), "scripts/verify-taxonomy-bootstrap.ts"),
+      "utf8",
+    );
+    expect(verifier).toContain("categories < 295");
+    expect(verifier).toContain("brands < 600");
+  });
+
 });
