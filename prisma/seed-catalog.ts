@@ -311,13 +311,8 @@ async function main() {
       : rawSlug;
     const created = await db.productModel.upsert({
       where: { brandId_slug: { brandId, slug } },
-      update: {
-        name: m.name,
-        nameEn: m.nameEn,
-        categoryId,
-        description: m.description,
-        status: "ACTIVE",
-      },
+      // Preserve existing administrator-managed model fields on reruns.
+      update: {},
       create: {
         brandId,
         categoryId,
@@ -328,6 +323,11 @@ async function main() {
         status: "ACTIVE",
         sortOrder: 0,
       },
+    });
+    await db.brandCategory.upsert({
+      where: { brandId_categoryId: { brandId, categoryId } },
+      create: { brandId, categoryId, isActive: true },
+      update: {},
     });
     modelKeyToId.set(`${m.brand}:${m.name}`, created.id);
   }
@@ -343,14 +343,8 @@ async function main() {
     const slug = slugifyEn(p.canonicalName);
     const created = await db.product.upsert({
       where: { slug },
-      update: {
-        categoryId,
-        brandId,
-        modelId,
-        canonicalName: p.canonicalName,
-        description: p.description,
-        status: "ACTIVE",
-      },
+      // Preserve existing product metadata on reruns.
+      update: {},
       create: {
         categoryId,
         brandId,
