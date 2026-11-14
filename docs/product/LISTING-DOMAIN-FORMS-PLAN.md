@@ -65,3 +65,23 @@ Acceptance gates:
 - A quota-exhaustion/failure fallback is defined and tested for every critical external service.
 - The team can inspect usage and receive an early warning before any free-tier ceiling is crossed.
 
+### Initial workload model for 10,000 monthly page views
+
+The first capacity model treats 10,000 as total public page views/month across HEAVIX (not 10,000 unique visitors). This is a planning baseline, not measured production traffic.
+
+- Average traffic: about 333 page views/day, or 0.116 page views/second averaged across a 30-day month. Capacity tests must also include burst traffic; use a provisional 10× average burst until real traffic distributions are available.
+- Do not translate page views directly into unique visitors, HTTP requests, image requests or database operations. Measure each independently.
+- Code audit finding: the listing detail server-render path currently performs two detached database writes per detail-page render: Listing.viewCount increment and an AnalyticsEvent LISTING_VIEW insert. At 10,000 listing-detail views/month this implies approximately 20,000 database write operations/month before retries, other event types, indexes and normal marketplace mutations.
+- The AnalyticsEvent table currently has indexes on eventType, userId, listingId and createdAt; event retention and archival/aggregation policy must be defined before traffic or event volume grows.
+- The current trackEvent() helper intentionally detaches the insert promise. A detached promise is not a durable queue: serverless/runtime termination can interrupt work after the response. Reliability must be validated in the deployed runtime before analytics is treated as an exact billing or business source of truth.
+- Avoid adding a second independent page-view counter or analytics provider without first deciding which metric is canonical. viewCount and AnalyticsEvent currently both record the same listing detail render for different consumers.
+
+Before launch, measure:
+1. Page-view distribution across home, listing index, listing detail, service, category and content pages.
+2. Median and p95 HTML/API bytes per view; image count, responsive variant size and cache-hit ratio.
+3. Database reads and writes per route, including the two listing-detail view writes above.
+4. Peak requests/second, serverless duration/concurrency and database connection pressure.
+5. Monthly storage growth, image egress and analytics-event row growth.
+
+No provider quota is declared sufficient based on this estimate alone. Validate the actual selected provider's current free-tier terms and run a load test against a representative Preview environment before launch.
+
