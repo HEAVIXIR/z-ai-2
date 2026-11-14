@@ -167,13 +167,13 @@ export async function GET() {
 
   const hasStoredNavigation = storedGroups.length > 0 || storedStandalone.length > 0;
 
-  const filterItems = (items: typeof groups[number]["items"]) =>
+  const filterItems = (items: NavigationItem[]) =>
     items.filter((item) => {
       if (!item.permissionKey) return true;
       return userPermissions.has(item.permissionKey);
     });
 
-  const resultGroups = groups
+  const resultGroups = sourceGroups
     .map((group) => ({
       key: group.key,
       titleFa: group.titleFa,
@@ -191,7 +191,7 @@ export async function GET() {
     }))
     .filter((group) => group.items.length > 0);
 
-  const resultStandalone = filterItems(standalone).map((item) => ({
+  const resultStandalone = filterItems(sourceStandalone).map((item) => ({
     key: item.key,
     titleFa: item.titleFa,
     titleEn: item.titleEn,
