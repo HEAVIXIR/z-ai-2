@@ -12,6 +12,18 @@ import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
 
+const RETIRED_MACHINE_TEMPLATE_SLUGS = new Set([
+  "wheel-crane", "chain-crane", "dth", "top-hammer", "water-well-drilling",
+  "long-reach", "mining-excavator", "drill", "other-drilling", "other-crane",
+  "stacker", "telehandler-loader", "other-forklift", "complete-line",
+  "recycling-line", "sorter", "harvester", "forwarder", "forestry",
+  "other-forestry-machinery", "special-machinery", "other-industrial-machinery",
+  "other-port-machinery", "mining-equipment", "other-road-construction",
+  "other-conveying", "other-recycling", "other-industrial-equipment",
+  "other-special-machinery", "welding-equipment", "other-machinery",
+]);
+
+
 type AttrType =
   | "TEXT" | "LONG_TEXT" | "INTEGER" | "DECIMAL" | "BOOLEAN"
   | "SELECT" | "MULTI_SELECT" | "RANGE" | "YEAR" | "DATE"
@@ -1296,18 +1308,22 @@ async function main() {
     select: { id: true, slug: true, active: true, layer: true },
   });
   const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const skippedInactiveRetired = templates
+    .map((template) => template.slug)
+    .filter((slug) => RETIRED_MACHINE_TEMPLATE_SLUGS.has(slug) && !categoryBySlug.has(slug));
   const missing = templates
     .map((template) => template.slug)
-    .filter((slug) => !categoryBySlug.has(slug));
+    .filter((slug) => !categoryBySlug.has(slug) && !RETIRED_MACHINE_TEMPLATE_SLUGS.has(slug));
   if (missing.length) {
     throw new Error(
-      `Missing or inactive CATALOG categories; seed aborted before writes: ${missing.join(", ")}`,
+      `Missing or inactive non-retired CATALOG categories; seed aborted before writes: ${missing.join(", ")}`,
     );
   }
 
+  const activeTemplates = templates.filter((template) => categoryBySlug.has(template.slug));
   const applied: { slug: string; fields: number }[] = [];
 
-  for (const template of templates) {
+  for (const template of activeTemplates) {
     const category = categoryBySlug.get(template.slug)!;
 
     const required = new Set(template.required ?? []);
