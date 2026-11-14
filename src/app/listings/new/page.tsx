@@ -308,7 +308,7 @@ export default function NewListingPage() {
     if (step === 2) return Boolean(categoryId);
     if (step === 3) return form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
-      // Technical specs are intentionally collected only after category + brand + model.
+      // Category-specific attributes are loaded before the user can continue; brand/model are optional.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
       return attributesLoaded && Object.keys(errs).length === 0;
