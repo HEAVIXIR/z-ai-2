@@ -785,18 +785,8 @@ async function upsertBrand(b: BrandSeed) {
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
     },
-    update: {
-      name: b.name,
-      nameEn: b.nameEn,
-      country: b.country ?? null,
-      type,
-      status,
-      verification: "DATABASE_VERIFIED",
-      website: b.website ?? null,
-      featured: !!b.featured,
-      brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
-      parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
-    },
+    // Preserve existing administrator-managed brand fields on reruns.
+    update: {},
   });
 
   // Industries — upsert each (idempotent; never removes existing rows)
@@ -851,13 +841,13 @@ async function main() {
 
   console.log("Seeding industries...");
   for (const ind of INDUSTRIES) {
-    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: ind });
+    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: {} });
   }
   console.log(`  ✓ ${INDUSTRIES.length} industries`);
 
   console.log("Seeding families...");
   for (const f of FAMILIES) {
-    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: f });
+    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: {} });
   }
   console.log(`  ✓ ${FAMILIES.length} families`);
 
