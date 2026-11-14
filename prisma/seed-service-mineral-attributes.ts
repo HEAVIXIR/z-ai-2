@@ -109,7 +109,7 @@ forms.push(...generatedForms);
 async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
  for(let i=0;i<fields.length;i++){
   const x=fields[i];
-  const optionValues=[...(x.options??[])].sort();
+  const optionValues=[...(x.options??[])];\n  const normalizedOptionValues=[...optionValues].sort();
   const base=await db.attributeDefinition.findUnique({
    where:{key:x.key},
    include:{options:{select:{value:true}}},
@@ -117,7 +117,7 @@ async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
   const isCompatible=(candidate:typeof base)=>!!candidate &&
    candidate.type===x.type &&
    candidate.unit===(x.unit??null) &&
-   JSON.stringify(candidate.options.map(o=>o.value).sort())===JSON.stringify(optionValues);
+   JSON.stringify(candidate.options.map(o=>o.value).sort())===JSON.stringify(normalizedOptionValues);
   // AttributeDefinition.key is globally unique. Reuse only compatible
   // storage definitions; namespace a collision to this category leaf.
   const resolvedKey=base && !isCompatible(base)
