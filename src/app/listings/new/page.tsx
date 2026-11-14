@@ -97,6 +97,9 @@ export default function NewListingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
+  const [mediaRepairListingId, setMediaRepairListingId] = useState<string | null>(null);
+  const [mediaWarning, setMediaWarning] = useState<string | null>(null);
+  const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imagesUploading, setImagesUploading] = useState(false);
 
@@ -385,12 +388,48 @@ export default function NewListingPage() {
         return;
       }
 
+      if (data.mediaStatus === "PENDING" && data.id) {
+        setMediaRepairListingId(String(data.id));
+        setMediaWarning(
+          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. آگهی ذخیره شده؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
+        );
+      }
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       setSubmitError(err?.message ?? "خطای شبکه — اتصال اینترنت را بررسی کنید.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const retryMediaAttachment = async () => {
+    if (!mediaRepairListingId || mediaRepairing) return;
+    setMediaRepairing(true);
+    setMediaWarning(null);
+    try {
+      const response = await fetch(
+        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`,
+        { method: "POST" },
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) {
+        throw new Error(result.error ?? "بازیابی تصاویر ناموفق بود.");
+      }
+      if (Number(result.pendingCount) > 0) {
+        setMediaWarning(
+          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ آگهی شما ذخیره شده است.`,
+        );
+      } else {
+        setMediaWarning("همه تصاویر با موفقیت به آگهی متصل شدند.");
+        setMediaRepairListingId(null);
+      }
+    } catch (error) {
+      setMediaWarning(
+        error instanceof Error ? error.message : "بازیابی تصاویر با خطا مواجه شد.",
+      );
+    } finally {
+      setMediaRepairing(false);
     }
   };
 
@@ -421,6 +460,22 @@ export default function NewListingPage() {
                 آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ
                 آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد.
               </p>
+              {mediaWarning && (
+                <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
+                  <div>{mediaWarning}</div>
+                  {mediaRepairListingId && (
+                    <button
+                      type="button"
+                      onClick={retryMediaAttachment}
+                      disabled={mediaRepairing}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#F58220] px-4 py-2 font-bold text-white disabled:opacity-60"
+                    >
+                      {mediaRepairing && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {mediaRepairing ? "در حال بازیابی..." : "تلاش مجدد برای اتصال تصاویر"}
+                    </button>
+                  )}
+                </div>
+              )}
               {attributeWarning && (
                 <div className="mx-auto mt-5 flex max-w-md items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
