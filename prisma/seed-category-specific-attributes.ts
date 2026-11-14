@@ -2456,7 +2456,160 @@ templates.push(
     f("supporting_document_available", "مدرک پشتیبان موجود", "Supporting Document Available", "BOOLEAN"),
     f("review_required", "نیازمند بررسی فنی", "Technical Review Required", "BOOLEAN"),
   ]},
+
+  // Missing terminal taxonomy families identified by the 270-leaf coverage audit.
+  { slug: "mini-excavator", label: "Mini Excavator", required: ["operating_weight", "bucket_capacity", "max_digging_depth"], fields: [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true, card: true }),
+    f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true, card: true }),
+    f("max_digging_depth", "حداکثر عمق حفاری", "Maximum Digging Depth", "DECIMAL", { unit: "M", filterable: true }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+    f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
+    f("overall_height_mm", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
+    f("tail_swing_type", "نوع گردش عقب", "Tail Swing Type", "SELECT", { options: ["Zero Tail Swing", "Reduced Tail Swing", "Conventional"] }),
+    f("auxiliary_hydraulic_flow_lpm", "دبی هیدرولیک کمکی", "Auxiliary Hydraulic Flow", "DECIMAL", { unit: "LPM" }),
+    f("track_width_mm", "عرض زنجیر", "Track Width", "DECIMAL", { unit: "MM" }),
+  ]},
+  { slug: "asphalt-machinery", label: "Asphalt Construction Machinery", required: ["asphalt_machine_type", "working_or_production_capacity"], fields: [
+    f("asphalt_machine_type", "نوع ماشین‌آلات آسفالت", "Asphalt Machine Type", "SELECT", { options: ["کارخانه آسفالت", "فینیشر", "اسکریدر و میلینگ", "قیرپاش", "بازیافت آسفالت", "توزیع‌کننده آسفالت", "تجهیزات تراکم آسفالت", "سایر"] }),
+    f("working_or_production_capacity", "ظرفیت کاری یا تولید", "Working or Production Capacity", "TEXT"),
+    f("paving_width_m", "عرض پخش", "Paving Width", "DECIMAL", { unit: "M" }),
+    f("paving_thickness_mm", "ضخامت پخش", "Paving Thickness", "DECIMAL", { unit: "MM" }),
+    f("plant_capacity_tph", "ظرفیت کارخانه", "Plant Capacity", "DECIMAL", { unit: "T/H", filterable: true }),
+    f("mixing_temperature_c", "دمای اختلاط", "Mixing Temperature", "DECIMAL", { unit: "C" }),
+    f("installed_power_kw", "توان نصب‌شده", "Installed Power", "DECIMAL", { unit: "KW" }),
+    f("heating_system", "سیستم گرمایش", "Heating System", "TEXT"),
+    f("mobility_configuration", "پیکربندی نصب و جابه‌جایی", "Mobility Configuration", "SELECT", { options: ["ثابت", "متحرک", "نیمه‌متحرک"] }),
+  ]},
+  { slug: "concrete-machinery", label: "Concrete Construction Machinery", required: ["concrete_machine_type", "rated_capacity"], fields: [
+    f("concrete_machine_type", "نوع ماشین‌آلات بتن", "Concrete Machine Type", "SELECT", { options: ["بچینگ پلانت", "پمپ بتن", "میکسر بتن", "فینیشر بتن", "توزیع‌کننده بتن", "بچینگ سیار", "کارخانه قطعات پیش‌ساخته", "تجهیزات شاتکریت", "سایر"] }),
+    f("rated_capacity", "ظرفیت نامی", "Rated Capacity", "TEXT"),
+    f("concrete_output_m3h", "ظرفیت تولید یا پمپاژ بتن", "Concrete Output", "DECIMAL", { unit: "M3/H", filterable: true }),
+    f("aggregate_bin_count", "تعداد مخازن سنگدانه", "Aggregate Bin Count", "INTEGER"),
+    f("mixer_volume_l", "حجم میکسر", "Mixer Volume", "DECIMAL", { unit: "L" }),
+    f("pump_pressure_bar", "فشار پمپاژ", "Pumping Pressure", "DECIMAL", { unit: "BAR" }),
+    f("placing_boom_reach_m", "برد بوم بتن‌ریزی", "Placing Boom Reach", "DECIMAL", { unit: "M" }),
+    f("installed_power_kw", "توان نصب‌شده", "Installed Power", "DECIMAL", { unit: "KW" }),
+    f("installation_configuration", "پیکربندی نصب", "Installation Configuration", "SELECT", { options: ["ثابت", "متحرک", "تریلری", "کامیونی"] }),
+  ]},
+  { slug: "mine-services", label: "Mining Service and Support Machinery", required: ["mine_service_equipment_type", "operating_capacity"], fields: [
+    f("mine_service_equipment_type", "نوع تجهیزات خدمات معدن", "Mine Service Equipment Type", "SELECT", { options: ["خودروی سرویس و تعمیرات", "سوخت‌رسان معدن", "آب‌پاش و کنترل گردوغبار", "روغن‌کاری سیار", "خودروی امداد", "حمل نفرات", "تجهیزات تهویه", "تجهیزات ایمنی و نجات", "سایر"] }),
+    f("operating_capacity", "ظرفیت عملیاتی", "Operating Capacity", "TEXT"),
+    f("tank_capacity_l", "ظرفیت مخزن", "Tank Capacity", "DECIMAL", { unit: "L" }),
+    f("service_bay_count", "تعداد ایستگاه سرویس", "Service Bay Count", "INTEGER"),
+    f("vehicle_payload_ton", "ظرفیت حمل", "Vehicle Payload", "DECIMAL", { unit: "TON" }),
+    f("mine_compatibility", "سازگاری با محیط معدن", "Mine Compatibility", "TEXT"),
+    f("fire_suppression_system", "سامانه اطفای حریق", "Fire Suppression System", "BOOLEAN"),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+  ]},
+  { slug: "drill-rig", label: "General Purpose Drilling Rig", required: ["drilling_method", "max_drilling_depth_m", "max_hole_diameter_mm"], fields: [
+    f("drilling_rig_type", "نوع دستگاه حفاری", "Drilling Rig Type", "SELECT", { options: ["سطحی", "زیرزمینی", "اکتشافی", "ژئوتکنیک", "چاه آب", "حفاری افقی", "حفاری عمیق", "چندمنظوره"] }),
+    f("drilling_method", "روش حفاری", "Drilling Method", "SELECT", { options: ["چرخشی", "DTH", "Top Hammer", "مغزه‌گیری", "اوگر", "RC", "گل‌گردشی", "حفاری افقی"] }),
+    f("max_drilling_depth_m", "حداکثر عمق حفاری", "Maximum Drilling Depth", "DECIMAL", { unit: "M", filterable: true }),
+    f("max_hole_diameter_mm", "حداکثر قطر گمانه", "Maximum Hole Diameter", "DECIMAL", { unit: "MM", filterable: true }),
+    f("rotary_torque_nm", "گشتاور هد چرخشی", "Rotary Torque", "DECIMAL", { unit: "NM" }),
+    f("rotation_speed_rpm", "سرعت دوران", "Rotation Speed", "DECIMAL", { unit: "RPM" }),
+    f("feed_force_kn", "نیروی پیشروی", "Feed Force", "DECIMAL", { unit: "KN" }),
+    f("pullback_force_kn", "نیروی بیرون‌کشی", "Pullback Force", "DECIMAL", { unit: "KN" }),
+    f("feed_stroke_mm", "طول کورس پیشروی", "Feed Stroke", "DECIMAL", { unit: "MM" }),
+    f("mast_length_m", "طول دکل", "Mast Length", "DECIMAL", { unit: "M" }),
+    f("power_pack_kw", "توان واحد محرک", "Power Pack", "DECIMAL", { unit: "KW" }),
+    f("air_compressor_capacity_m3_min", "ظرفیت کمپرسور هوا", "Air Compressor Capacity", "DECIMAL", { unit: "M3/MIN" }),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+  ]},
+  { slug: "screen", label: "Screening and Sizing Equipment", required: ["screen_type", "screening_capacity_tph", "screen_area_m2"], fields: [
+    f("screen_type", "نوع سرند", "Screen Type", "SELECT", { options: ["ویبره‌ای", "ترومل", "فلیپ‌فلو", "گریزلی", "دورانی", "آبگیر", "چندطبقه"] }),
+    f("screening_capacity_tph", "ظرفیت دانه‌بندی", "Screening Capacity", "DECIMAL", { unit: "T/H", filterable: true }),
+    f("screen_area_m2", "سطح سرند", "Screen Area", "DECIMAL", { unit: "M2" }),
+    f("deck_count", "تعداد طبقات", "Deck Count", "INTEGER"),
+    f("screening_cut_sizes_mm", "اندازه دانه‌بندی خروجی", "Screening Cut Sizes", "TEXT"),
+    f("feed_size_max_mm", "حداکثر اندازه خوراک", "Maximum Feed Size", "DECIMAL", { unit: "MM" }),
+    f("vibration_frequency_hz", "فرکانس ارتعاش", "Vibration Frequency", "DECIMAL", { unit: "HZ" }),
+    f("drive_power_kw", "توان محرک", "Drive Power", "DECIMAL", { unit: "KW" }),
+    f("wet_or_dry_screening", "نوع فرآیند", "Screening Process", "SELECT", { options: ["خشک", "تر", "قابل تبدیل"] }),
+  ]},
+  { slug: "heavy-haulage", label: "Heavy Haulage and Modular Transport", required: ["transport_payload_ton", "axle_line_count", "deck_length_m"], fields: [
+    f("transport_payload_ton", "ظرفیت بار قابل حمل", "Transport Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
+    f("axle_line_count", "تعداد خطوط محور", "Axle Line Count", "INTEGER"),
+    f("axle_count_total", "تعداد کل محورها", "Total Axle Count", "INTEGER"),
+    f("deck_length_m", "طول سطح بارگیری", "Deck Length", "DECIMAL", { unit: "M" }),
+    f("deck_width_m", "عرض سطح بارگیری", "Deck Width", "DECIMAL", { unit: "M" }),
+    f("deck_height_m", "ارتفاع سطح بارگیری", "Deck Height", "DECIMAL", { unit: "M" }),
+    f("steering_type", "نوع فرمان‌پذیری", "Steering Type", "SELECT", { options: ["مکانیکی", "هیدرولیکی", "الکترونیکی", "چندمحوره مستقل"] }),
+    f("suspension_type", "نوع تعلیق", "Suspension Type", "SELECT", { options: ["هیدرولیکی", "پنوماتیکی", "مکانیکی"] }),
+    f("modular_configuration", "پیکربندی مدولار", "Modular Configuration", "TEXT"),
+    f("power_pack_included", "واحد پاورپک همراه", "Power Pack Included", "BOOLEAN"),
+    f("gross_combination_weight_ton", "وزن ناخالص ترکیبی", "Gross Combination Weight", "DECIMAL", { unit: "TON" }),
+  ]},
+  { slug: "compressor", label: "Industrial Air Compressor", required: ["compressor_type", "free_air_delivery_m3_min", "working_pressure_bar"], fields: [
+    f("compressor_type", "نوع کمپرسور", "Compressor Type", "SELECT", { options: ["اسکرو", "پیستونی", "سانتریفیوژ", "اسکرال", "لوب", "پرتابل حفاری", "گاز فرایندی"] }),
+    f("free_air_delivery_m3_min", "دبی هوای آزاد", "Free Air Delivery", "DECIMAL", { unit: "M3/MIN", filterable: true, card: true }),
+    f("working_pressure_bar", "فشار کاری", "Working Pressure", "DECIMAL", { unit: "BAR", filterable: true, card: true }),
+    f("maximum_pressure_bar", "حداکثر فشار", "Maximum Pressure", "DECIMAL", { unit: "BAR" }),
+    f("motor_power_kw", "توان موتور", "Motor Power", "DECIMAL", { unit: "KW", filterable: true }),
+    f("drive_type", "نوع محرک", "Drive Type", "SELECT", { options: ["الکتریکی", "دیزلی", "گازی"] }),
+    f("lubrication_type", "نوع روغن‌کاری", "Lubrication Type", "SELECT", { options: ["روغنی", "بدون روغن"] }),
+    f("cooling_method", "روش خنک‌کاری", "Cooling Method", "SELECT", { options: ["هواخنک", "آب‌خنک"] }),
+    f("receiver_tank_volume_l", "حجم مخزن هوا", "Receiver Tank Volume", "DECIMAL", { unit: "L" }),
+    f("duty_cycle_percent", "ضریب کارکرد", "Duty Cycle", "DECIMAL", { unit: "%" }),
+    f("noise_level_dba", "سطح صدا", "Noise Level", "DECIMAL", { unit: "DBA" }),
+  ]},
+  { slug: "industrial-pumps", label: "Industrial Process Pumps", required: ["industrial_pump_type", "pump_flow_m3h", "pump_head_m"], fields: [
+    f("industrial_pump_type", "نوع پمپ صنعتی", "Industrial Pump Type", "SELECT", { options: ["گریز از مرکز", "چندمرحله‌ای", "دنده‌ای", "اسکرو", "پیستونی", "دیافراگمی", "لوب", "مستغرق", "دوغاب‌کش", "دوزینگ"] }),
+    f("pump_flow_m3h", "دبی پمپ", "Pump Flow", "DECIMAL", { unit: "M3/H", filterable: true, card: true }),
+    f("pump_head_m", "هد پمپ", "Pump Head", "DECIMAL", { unit: "M", filterable: true, card: true }),
+    f("differential_pressure_bar", "اختلاف فشار", "Differential Pressure", "DECIMAL", { unit: "BAR" }),
+    f("pump_efficiency_percent", "بازده پمپ", "Pump Efficiency", "DECIMAL", { unit: "%" }),
+    f("npsh_required_m", "هد مکش مثبت خالص موردنیاز", "NPSH Required", "DECIMAL", { unit: "M" }),
+    f("impeller_type", "نوع پروانه", "Impeller Type", "SELECT", { options: ["بسته", "نیمه‌باز", "باز", "گردابی", "چندمرحله‌ای"] }),
+    f("wetted_material", "جنس قطعات در تماس با سیال", "Wetted Material", "TEXT"),
+    f("seal_type", "نوع آب‌بند", "Seal Type", "SELECT", { options: ["مکانیکی", "بسته‌بندی", "مگنتی", "بدون آب‌بند"] }),
+    f("solid_handling_size_mm", "حداکثر اندازه ذرات جامد", "Solids Handling Size", "DECIMAL", { unit: "MM" }),
+    f("motor_power_kw", "توان موتور", "Motor Power", "DECIMAL", { unit: "KW" }),
+    f("pump_speed_rpm", "سرعت دورانی", "Pump Speed", "DECIMAL", { unit: "RPM" }),
+  ]},
+
 );
+
+// AttributeDefinition.key is globally unique. Keep one canonical key signature
+// and namespace incompatible variants by category to prevent type/unit/option clobbering.
+const fieldSignature = (field: Field): string => JSON.stringify({
+  type: field.type,
+  unit: field.unit ?? null,
+  fa: field.fa,
+  en: field.en,
+  options: field.options ?? [],
+});
+const canonicalFieldSignatureByKey = new Map<string, string>();
+const conflictingFieldKeys = new Set<string>();
+{
+  const signaturesByKey = new Map<string, Map<string, { count: number; firstSeen: number }>>();
+  let sequence = 0;
+  for (const template of templates) {
+    for (const field of template.fields) {
+      const signature = fieldSignature(field);
+      let signatures = signaturesByKey.get(field.key);
+      if (!signatures) {
+        signatures = new Map();
+        signaturesByKey.set(field.key, signatures);
+      }
+      const current = signatures.get(signature);
+      if (current) current.count++;
+      else signatures.set(signature, { count: 1, firstSeen: sequence });
+      sequence++;
+    }
+  }
+  for (const [key, signatures] of signaturesByKey) {
+    if (signatures.size > 1) conflictingFieldKeys.add(key);
+    const canonical = [...signatures.entries()].sort((a, b) =>
+      b[1].count - a[1].count || a[1].firstSeen - b[1].firstSeen
+    )[0];
+    canonicalFieldSignatureByKey.set(key, canonical[0]);
+  }
+}
+const resolvedFieldKey = (templateSlug: string, field: Field): string =>
+  canonicalFieldSignatureByKey.get(field.key) === fieldSignature(field)
+    ? field.key
+    : `${templateSlug}__${field.key}`;
 
 async function upsertField(field: Field): Promise<string> {
   const data = {
@@ -2553,7 +2706,7 @@ async function main() {
     const required = new Set(template.required ?? []);
     for (let order = 0; order < template.fields.length; order++) {
       const field = template.fields[order];
-      const attributeId = await upsertField(field);
+      const attributeId = await upsertField({ ...field, key: resolvedFieldKey(template.slug, field) });
       await db.categoryAttribute.upsert({
         where: {
           categoryId_attributeId: {
@@ -2584,6 +2737,8 @@ async function main() {
 
   console.log(JSON.stringify({
     templatesDefined: templates.length,
+    conflictingGlobalFieldKeys: [...conflictingFieldKeys],
+    conflictingGlobalFieldKeyCount: conflictingFieldKeys.size,
     templatesApplied: applied.length,
     missingCategorySlugs: missing,
     applied,
