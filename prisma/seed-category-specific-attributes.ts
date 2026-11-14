@@ -57,8 +57,8 @@ const templates: Template[] = [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("travel_speed", "سرعت حرکت", "Travel Speed", "DECIMAL", { unit: "KMH" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW", filterable: true }),
-    f("overall_width", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
-    f("overall_height", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
+    f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
+    f("overall_height_mm", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
     f("cab_type", "نوع کابین", "Cab Type", "SELECT", { options: ["کابین بسته", "سایبان", "بدون کابین"] }),
   ]},
   { slug: "compact-track-loader", label: "Compact Track Loader", required: ["rated_operating_capacity", "ground_pressure"], fields: [
@@ -324,7 +324,7 @@ const templates: Template[] = [
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
     f("dump_height", "ارتفاع تخلیه", "Dump Height", "DECIMAL", { unit: "M" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
-    f("ground_clearance", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
+    f("ground_clearance_mm", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
   ]},
   { slug: "lhd", label: "Load Haul Dump (LHD)", required: ["bucket_capacity", "payload_capacity", "machine_width"], fields: [
     f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true }),
@@ -839,7 +839,7 @@ const templates: Template[] = [
     f("boom_reach", "برد جرثقیل بارگیری", "Loading Crane Reach", "DECIMAL", { unit: "M" }),
     f("grapple_area", "سطح گیرش گراپل", "Grapple Area", "DECIMAL", { unit: "M2" }),
     f("drive_configuration", "آرایش محرک", "Drive Configuration", "SELECT", { options: ["6x6", "8x8", "6x8"] }),
-    f("ground_clearance", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
+    f("ground_clearance_mm", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
   { slug: "production-line", label: "Industrial Production Line", required: ["line_type", "production_capacity"], fields: [
@@ -965,8 +965,8 @@ const templates: Template[] = [
     f("capacity", "ظرفیت", "Capacity", "TEXT"),
   ]},
 
-  { slug: "diesel-forklift", label: "Diesel Forklift", required: ["lifting_capacity", "lift_height", "load_center"], fields: [
-    f("lifting_capacity", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true, card: true }),
+  { slug: "diesel-forklift", label: "Diesel Forklift", required: ["rated_lifting_capacity_kg", "lift_height", "load_center"], fields: [
+    f("rated_lifting_capacity_kg", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true, card: true }),
     f("load_center", "مرکز بار", "Load Center", "DECIMAL", { unit: "MM" }),
     f("lift_height", "ارتفاع بالابری", "Lift Height", "DECIMAL", { unit: "M", filterable: true }),
     f("mast_type", "نوع دکل", "Mast Type", "TEXT"),
@@ -975,8 +975,8 @@ const templates: Template[] = [
     f("transmission_type", "نوع گیربکس", "Transmission Type", "TEXT"),
     f("tire_type", "نوع تایر", "Tire Type", "SELECT", { options: ["بادی", "سوپرالاستیک"] }),
   ]},
-  { slug: "electric-forklift", label: "Electric Forklift", required: ["lifting_capacity", "lift_height", "battery_voltage"], fields: [
-    f("lifting_capacity", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true, card: true }),
+  { slug: "electric-forklift", label: "Electric Forklift", required: ["rated_lifting_capacity_kg", "lift_height", "battery_voltage"], fields: [
+    f("rated_lifting_capacity_kg", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true, card: true }),
     f("load_center", "مرکز بار", "Load Center", "DECIMAL", { unit: "MM" }),
     f("lift_height", "ارتفاع بالابری", "Lift Height", "DECIMAL", { unit: "M" }),
     f("battery_voltage", "ولتاژ باتری", "Battery Voltage", "INTEGER", { unit: "V" }),
@@ -994,8 +994,8 @@ const templates: Template[] = [
     f("mast_type", "نوع دکل", "Mast Type", "TEXT"),
     f("tire_type", "نوع تایر", "Tire Type", "SELECT", { options: ["بادی", "سوپرالاستیک"] }),
   ]},
-  { slug: "gasoline-forklift", label: "Gasoline Forklift", required: ["lifting_capacity", "lift_height"], fields: [
-    f("lifting_capacity", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true }),
+  { slug: "gasoline-forklift", label: "Gasoline Forklift", required: ["rated_lifting_capacity_kg", "lift_height"], fields: [
+    f("rated_lifting_capacity_kg", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true }),
     f("load_center", "مرکز بار", "Load Center", "DECIMAL", { unit: "MM" }),
     f("lift_height", "ارتفاع بالابری", "Lift Height", "DECIMAL", { unit: "M" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
@@ -1011,12 +1011,12 @@ const templates: Template[] = [
     f("axle_load", "بار محوری", "Axle Load", "DECIMAL", { unit: "TON" }),
     f("tire_size", "سایز تایر", "Tire Size", "TEXT"),
   ]},
-  { slug: "rough-terrain-forklift", label: "Rough Terrain Forklift", required: ["lifting_capacity", "gradeability", "four_wheel_drive"], fields: [
-    f("lifting_capacity", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true }),
+  { slug: "rough-terrain-forklift", label: "Rough Terrain Forklift", required: ["rated_lifting_capacity_kg", "gradeability", "four_wheel_drive"], fields: [
+    f("rated_lifting_capacity_kg", "ظرفیت باربرداری", "Rated Capacity", "DECIMAL", { unit: "KG", filterable: true }),
     f("lift_height", "ارتفاع بالابری", "Lift Height", "DECIMAL", { unit: "M" }),
     f("gradeability", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
     f("four_wheel_drive", "چهارچرخ محرک", "Four Wheel Drive", "BOOLEAN"),
-    f("ground_clearance", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
+    f("ground_clearance_mm", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
     f("tire_type", "نوع تایر", "Tire Type", "TEXT"),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
