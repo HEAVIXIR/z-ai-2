@@ -1,12 +1,9 @@
 /* ============================================================
-   HEAVIX email utility — production-ready signature, sandbox-safe.
+   HEAVIX email utility — SMTP delivery with fail-closed OTP handling.
    ------------------------------------------------------------
    In production: configure SMTP env vars (SMTP_HOST, SMTP_PORT,
-   SMTP_USER, SMTP_PASS, SMTP_FROM) and install `nodemailer`, then
-   `sendVerificationEmail` will route through SMTP. Otherwise
-   (dev/sandbox), the code is logged to the server console so the
-   developer can read it from `dev.log` and complete the
-   verification flow.
+   SMTP_USER, SMTP_PASS, SMTP_FROM). If SMTP is unavailable or fails,
+   the operation fails; verification codes are never written to logs.
    ============================================================ */
 
 export interface SendEmailArgs {
@@ -33,9 +30,7 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
   }
 
   // ── Production: lazy-load nodemailer so the dependency is only
-  //    required when SMTP is actually configured. The dynamic
-  //    import keeps this module working in the sandbox where
-  //    nodemailer isn't installed. ─────────────────────────────
+  //    required when SMTP is actually configured. ─────────────
   try {
     const mod = (await import("nodemailer")) as typeof import("nodemailer");
     const transporter = mod.createTransport({
