@@ -104,7 +104,8 @@ export default function NewListingPage() {
   const [imagesUploading, setImagesUploading] = useState(false);
 
   // Form state — V1.1
-  const [transactionType, setTransactionType] = useState<string>("SALE");
+  // The first step is valid only after an active transaction type is loaded and selected.
+  const [transactionType, setTransactionType] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
@@ -302,7 +303,7 @@ export default function NewListingPage() {
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) return (isServiceFlow || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 3) return form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
       // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
@@ -658,11 +659,11 @@ export default function NewListingPage() {
                       title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "برند، مدل و اطلاعات پایه"}
                       subtitle={isServiceFlow
                         ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
-                        : "برند و مدل دستگاه را انتخاب و اطلاعات آگهی را تکمیل کنید"}
+                        : "در صورت ارتباط برند و مدل را انتخاب کنید و اطلاعات آگهی را تکمیل کنید"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>{isServiceFlow ? "برند مرتبط (اختیاری)" : "برند *"}</label>
+                        <label className={labelCls}>"برند مرتبط (اختیاری)"</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
