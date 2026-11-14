@@ -16,6 +16,7 @@ import AttributeFields, {
   getCachedAttributes,
 } from "@/components/listings/AttributeFields";
 import { toFa } from "@/lib/format";
+import { isMarketplaceTransactionType, isRequestTransactionType } from "@/lib/transaction-type-routing";
 import {
   ArrowRight,
   ArrowLeft,
@@ -149,6 +150,7 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
+  const [marketplaceRoots, setMarketplaceRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
@@ -175,9 +177,11 @@ export default function NewListingPage() {
         if (!res.ok) return;
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
+          marketplaceRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
         };
         if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
+        if (alive && data.marketplaceRoots) setMarketplaceRoots(data.marketplaceRoots);
         if (alive && data.serviceRoots) setServiceRoots(data.serviceRoots);
       } catch {
         /* swallow */
@@ -284,7 +288,9 @@ export default function NewListingPage() {
   const isServiceRequest = transactionType === "SERVICE_REQUEST";
   const isServiceOffer = transactionType === "SERVICE_OFFER";
   const isServiceFlow = isServiceRequest || isServiceOffer;
-  const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
+  const isMarketplaceFlow = isMarketplaceTransactionType(transactionType);
+  const isRequestFlow = isRequestTransactionType(transactionType);
+  const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;
 
   const handleTransactionTypeChange = (nextType: string) => {
     if (nextType === transactionType) return;
@@ -316,7 +322,7 @@ export default function NewListingPage() {
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
-      if (isServiceRequest || isServiceOffer) return true; // service listings can publish without product price or gallery
+      if (isServiceFlow || isRequestFlow) return true; // service, wanted, and RFQ flows do not require price or gallery
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -894,6 +900,8 @@ export default function NewListingPage() {
                       subtitle={
                         isServiceFlow
                           ? (isServiceOffer ? "شرح خدمت قابل ارائه، اطلاعات تماس و نمونه‌کارهای اختیاری" : "شرح درخواست، اطلاعات تماس و مستندات اختیاری")
+                          : isRequestFlow
+                            ? "شرح درخواست خرید یا استعلام قیمت؛ بودجه و تصاویر اختیاری هستند"
                           : isRent
                             ? "دوره اجاره، قیمت اجاره و تصاویر"
                             : isAuction
@@ -927,7 +935,7 @@ export default function NewListingPage() {
                           <div>
                             <label className={labelCls}>
                               {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                              {!isAuction && "*"}
+                              {!isAuction && !isRequestFlow && "*"}
                             </label>
                             <input
                               value={form.price}
@@ -1105,6 +1113,7 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
+                      {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای درخواست خرید و استعلام قیمت، افزودن تصویر اختیاری است.</p>}
                       <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
                     </div>
                   </div>
