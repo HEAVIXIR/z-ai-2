@@ -34,7 +34,10 @@ export async function getActiveCompanyMembership(
   if (!membership || membership.status !== "ACTIVE") return null;
   if (!isCompanyMembershipRoleKey(membership.roleKey)) return null;
 
-  return membership;
+  // Prisma stores roleKey as String; the guard above validates it against the
+  // canonical vocabulary, so expose the narrowed domain type to callers.
+  const roleKey: CompanyMembershipRoleKey = membership.roleKey;
+  return { ...membership, roleKey };
 }
 
 /**
