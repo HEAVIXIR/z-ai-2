@@ -10,15 +10,15 @@ The legacy `prisma/seed.ts` is now dry-run by default, requires `--apply` and `H
 
 ## Legacy data parity gate — currently NOT satisfied
 
-The repository's historical HEAVIX snapshot records **295 categories and 629+ canonical brands**. The current canonical seed source is not yet a full restoration of that dataset:
+The repository's historical HEAVIX snapshot records **539 categories, 405 attributes, and 629 canonical brands**. The current canonical seed source is not yet a full restoration of that dataset:
 
 - The V1.1 category tree currently contains 279 category slugs.
-- The separate service/mineral taxonomy contributes 40 additional unique slugs (319 unique slugs across both sources); these must be reconciled against the 295-row legacy baseline so additions and intentional replacements are documented.
-- The two current brand seed batches contain approximately 211 brand records combined, not 629+.
+- The separate service/mineral taxonomy contributes 40 additional unique slugs (319 unique slugs across both sources); this leaves at least 220 categories unaccounted for against the 539-row legacy baseline so additions and intentional replacements are documented.
+- The two current brand seed batches contain approximately 211 brand records combined, leaving at least 418 canonical brands unaccounted for against the 629-row legacy baseline.
 - The old `seed-brands-300.ts` is only preserved as a reference document; its original executable content has not been extracted and hash-verified.
 - The Preview database audit currently shows only 16 categories, 10 brands, 0 models, 0 transaction types, 0 service types, 0 application industries, 0 attribute definitions, and 0 category-attribute links.
 
-**Do not run the canonical seed sequence or mark catalog restoration complete yet.** First recover and verify the complete legacy brand dataset (at least 600 canonical brand rows), then reconcile categories, brand industries, aliases, brand/category links, and model mappings. The read-only verifier now fails closed below 295 categories or 600 brands, so a demo-sized seed cannot be mistaken for a successful restoration.
+**Do not run the canonical seed sequence or mark catalog restoration complete yet.** First recover and verify the complete legacy brand dataset (at least 629 canonical brand rows), then reconcile categories, brand industries, aliases, brand/category links, and model mappings. The read-only verifier now fails closed below 539 categories or 629 brands, so a demo-sized seed cannot be mistaken for a successful restoration.
 
 ## Required schema first
 
