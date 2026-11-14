@@ -482,6 +482,72 @@ export async function POST(req: Request) {
       stagedAssets.push(asset);
     }
 
+    // Resolve canonical location IDs and verify the hierarchy instead of
+    // persisting opaque IDs into the legacy province/city text columns.
+    const requestedProvinceId = body.provinceId ? String(body.provinceId) : null;
+    const requestedCityId = body.cityId ? String(body.cityId) : null;
+    const requestedCountryId = body.countryId ? String(body.countryId) : null;
+
+    const selectedCity = requestedCityId
+      ? await db.city.findUnique({
+          where: { id: requestedCityId },
+          select: {
+            id: true,
+            name: true,
+            province: { select: { id: true, name: true, countryId: true } },
+          },
+        })
+      : null;
+    if (requestedCityId && !selectedCity) {
+      return NextResponse.json({ error: "شهر انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+
+    const selectedProvince = requestedProvinceId
+      ? await db.province.findUnique({
+          where: { id: requestedProvinceId },
+          select: { id: true, name: true, countryId: true },
+        })
+      : selectedCity?.province ?? null;
+    if (requestedProvinceId && !selectedProvince) {
+      return NextResponse.json({ error: "استان انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+    if (selectedCity && selectedProvince?.id !== selectedCity.province.id) {
+      return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+
+    const resolvedCountryId = selectedProvince?.countryId ?? requestedCountryId;
+    if (requestedCountryId && selectedProvince && requestedCountryId !== selectedProvince.countryId) {
+      return NextResponse.json({ error: "استان با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+    if (resolvedCountryId) {
+      const country = await db.country.findUnique({
+        where: { id: resolvedCountryId },
+        select: { id: true },
+      });
+      if (!country) {
+        return NextResponse.json({ error: "کشور انتخاب‌شده معتبر نیست." }, { status: 400 });
+      }
+    }
+
+    // A caller may associate a listing with a company only when that company
+    // is active and the authenticated user is actually linked to it.
+    const companyId = body.companyId ? String(body.companyId) : null;
+    if (companyId) {
+      const membership = await db.company.findFirst({
+        where: {
+          id: companyId,
+          status: "ACTIVE",
+          users: { some: { id: user.id } },
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        return NextResponse.json({ error: "شما مجاز به ثبت آگهی برای این شرکت نیستید." }, { status: 403 });
+      }
+    }
+
+    const serialNumber = String(body.serialNumber ?? "").trim();
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -496,8 +562,11 @@ export async function POST(req: Request) {
       listingType: transactionType.key,
       transactionTypeId: transactionType.id,
       condition: body.condition || "USED",
-      province: body.province ?? null,
-      city: body.city ?? null,
+      province: selectedProvince?.name ?? (requestedProvinceId ? null : body.province ?? null),
+      city: selectedCity?.name ?? (requestedCityId ? null : body.city ?? null),
+      countryId: resolvedCountryId,
+      provinceId: selectedProvince?.id ?? null,
+      cityId: selectedCity?.id ?? null,
       year: body.year ? parseNumber(body.year) : null,
       workingHours: body.workingHours ? parseNumber(body.workingHours) : null,
       status: "PENDING",
@@ -510,9 +579,11 @@ export async function POST(req: Request) {
       categoryId: body.categoryId || null,
       modelId: body.modelId || null,
       sellerId: user.id, // W-03 FIX: from authenticated session only (never null, never from body)
-      companyId: body.companyId || null,
-      publishedAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      companyId,
+      // A pending moderation record is not published and its lifetime has
+      // not started. Publication code sets both timestamps when approved.
+      publishedAt: null,
+      expiresAt: null,
     };
 
     // P2-5b — Rental fields (additive; only stored when listingType=RENT).
@@ -539,18 +610,30 @@ export async function POST(req: Request) {
       }
     }
 
-    const listing = await db.listing.create({ data });
+    // Listing, optional machine passport, and image rows commit together.
+    // This prevents orphan listings when nested media-row creation fails.
+    const listing = await db.$transaction(async (tx) => {
+      return tx.listing.create({
+        data: {
+          ...data,
+          ...(serialNumber ? { passport: { create: { serialNumber } } } : {}),
+          ...(stagedAssets.length
+            ? {
+                images: {
+                  create: stagedAssets.map((asset, idx) => ({
+                    url: asset.url,
+                    alt: asset.altText,
+                    isPrimary: idx === 0,
+                    sortOrder: idx,
+                  })),
+                },
+              }
+            : {}),
+        },
+      });
+    });
 
     if (stagedAssets.length) {
-      await db.listingImage.createMany({
-        data: stagedAssets.map((asset, idx) => ({
-          listingId: listing.id,
-          url: asset.url,
-          alt: asset.altText,
-          isPrimary: idx === 0,
-          sortOrder: idx,
-        })),
-      });
       // ListingImage is the authorization source of truth. Sidecar attachment
       // is a metadata index and is repaired best-effort if B2 metadata is offline.
       for (const asset of stagedAssets) {
