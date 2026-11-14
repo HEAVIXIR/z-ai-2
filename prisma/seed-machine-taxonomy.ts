@@ -9,13 +9,14 @@
    - NEVER delete categories that have listings (9 categories: excavator, loader,
      bulldozer, grader, road-roller, concrete-machinery, dump-truck, crane, forklift).
    - Upsert by slug. Update name/parent/sortOrder/level/taxPath. Create new if missing.
-   - Old L1 groups that don't fit the new 16-group structure → mark active:false
-     (forestry-machinery, conveying, drilling-rigs, crushing-screening,
-      forklift-warehouse, recycling, port-machinery, industrial-machinery,
-      special-machinery).
+   - Old L1 groups that don't fit the new 16-group structure are deactivated only
+     when their entire descendant branch has no listings.
+   - Parent categories are preserved if any descendant has listings.
    - layer="CATALOG", domain="MACHINE" for all entries.
+   - Read-only dry-run is the default; all writes require the explicit --apply flag.
 
-   Run: bunx tsx prisma/seed-machine-taxonomy.ts
+   Dry run: bunx tsx prisma/seed-machine-taxonomy.ts
+   Apply after verified backup/DB target and review: bunx tsx prisma/seed-machine-taxonomy.ts --apply
 */
 
 import { PrismaClient } from "@prisma/client";
