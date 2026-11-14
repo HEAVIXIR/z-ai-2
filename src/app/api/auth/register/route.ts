@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { toEnDigits } from "@/lib/format";
 import { sendVerificationEmail } from "@/lib/email";
@@ -22,14 +23,9 @@ export const dynamic = "force-dynamic";
      ability to set the role. Only an admin can elevate a user via the
      admin users API.
    - Creates user with status PENDING and a 7-day `verificationDeadline`
-   - Creates TWO verification codes:
-       • MOBILE — 5-digit, 10-min expiry  (existing flow)
-       • EMAIL  — 6-digit, 10-min expiry  (new)
-   - Sends the email code via `sendVerificationEmail` (sandbox: log)
-   - Returns { ok, userId, devMobileCode, devEmailCode }
-     The dev* codes are only returned because this is a sandbox/dev
-     environment without a real SMS/email gateway — production would
-     omit them and rely on actual delivery.
+   - Mobile is mandatory profile data but is NOT verified during signup.
+   - Creates one EMAIL verification code (6 digits, 10-minute expiry).
+   - Never creates/sends a mobile verification code or returns an OTP.
 
    Rate-limited: REGISTER preset (5 / hour / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
 */
@@ -153,45 +149,35 @@ export async function POST(req: Request) {
       return u;
     });
 
-    // MOBILE verification code — 5-digit, 10-min expiry
-    const devMobileCode = String(Math.floor(10000 + Math.random() * 90000));
-    const mobileExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await db.verificationCode.create({
-      data: {
-        userId: user.id,
-        code: devMobileCode,
-        type: "MOBILE",
-        expiresAt: mobileExpiresAt,
-        used: false,
-      },
-    });
-
-    // EMAIL verification code — 6-digit, 10-min expiry (FIX 7)
-    const devEmailCode = String(Math.floor(100000 + Math.random() * 900000));
+    // Email is the sole activation factor; mobile remains mandatory profile data.
+    const emailCode = String(randomInt(100000, 1000000));
     const emailExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.verificationCode.create({
       data: {
         userId: user.id,
-        code: devEmailCode,
+        code: emailCode,
         type: "EMAIL",
         expiresAt: emailExpiresAt,
         used: false,
       },
     });
 
-    // Send the email code (sandbox: logged to server console)
+    // Never claim delivery when SMTP is unavailable; never expose OTPs in API responses.
+    let emailDelivery = true;
     try {
-      await sendVerificationEmail(user.email, devEmailCode);
-    } catch (e) {
-      console.error("[register] sendVerificationEmail failed:", e);
-      // Don't fail the registration — the user can use resend-verification.
+      await sendVerificationEmail(user.email, emailCode);
+    } catch {
+      emailDelivery = false;
+      console.error("[register] verification email delivery failed");
     }
 
-    const showDevCodes = process.env.DEV_AUTH_CODES === "true";
     return NextResponse.json({
       ok: true,
       userId: user.id,
-      ...(showDevCodes ? { devMobileCode, devEmailCode } : {}),
+      emailDelivery,
+      message: emailDelivery
+        ? "کد تأیید به ایمیل شما ارسال شد."
+        : "حساب ایجاد شد، اما ارسال ایمیل انجام نشد. تنظیمات ایمیل باید تکمیل شود.",
       verificationDeadline: verificationDeadline.toISOString(),
     });
   } catch (err: any) {
