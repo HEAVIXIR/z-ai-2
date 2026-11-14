@@ -6,7 +6,7 @@ import {
   isCompanyInvitationToken,
   isValidInvitationEmail,
   normalizeInvitationEmail,
-} from "../../src/lib/identity/invitations";
+} from "../src/lib/identity/invitations";
 
 describe("company invitation token contract", () => {
   it("creates high-entropy URL-safe tokens and stores only a digest", () => {
