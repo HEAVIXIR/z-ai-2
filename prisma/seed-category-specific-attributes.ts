@@ -1281,6 +1281,7 @@ templates.push(
   ]),
   cloneTemplate("excavator-chain", "excavator-zero-tail-swing", "Zero Tail Swing Excavator", ["tail_swing_radius", "overall_width_mm"], [
     f("tail_swing_radius", "شعاع گردش انتهای دستگاه", "Tail Swing Radius", "DECIMAL", { unit: "MM" }),
+    f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
     f("counterweight_profile", "پروفیل وزنه تعادل", "Counterweight Profile", "SELECT", { options: ["Zero Tail", "Reduced Tail", "Conventional"] }),
   ]),
   cloneTemplate("long-reach", "excavator-long-radius", "Long Radius Excavator", ["boom_reach", "max_digging_depth"]),
@@ -1372,6 +1373,7 @@ templates.push(
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
   cloneTemplate("motor-grader", "compact-grader", "Compact Motor Grader", ["moldboard_width", "operating_weight"], [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
     f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
   ]),
@@ -1384,6 +1386,7 @@ templates.push(
     f("heavy_duty_axle", "محور تقویت‌شده", "Heavy Duty Axle", "BOOLEAN"),
   ]),
   cloneTemplate("motor-grader", "quarry-grader", "Quarry Grader", ["moldboard_width", "operating_weight"], [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
     f("rock_guard", "محافظ سنگ", "Rock Guard", "BOOLEAN"),
     f("axle_load", "بار محوری", "Axle Load", "DECIMAL", { unit: "TON" }),
   ]),
