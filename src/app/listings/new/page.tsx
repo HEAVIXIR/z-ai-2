@@ -663,7 +663,7 @@ export default function NewListingPage() {
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>"برند مرتبط (اختیاری)"</label>
+                        <label className={labelCls}>برند مرتبط (اختیاری)</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
