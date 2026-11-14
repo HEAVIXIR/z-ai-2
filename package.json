@@ -48,6 +48,7 @@
     "db:seed-listing-images": "tsx prisma/seed-listing-images.ts",
     "db:seed-site-stats": "tsx prisma/seed-site-stats.ts",
     "db:seed-services": "tsx prisma/seed-services.ts",
+    "db:verify-taxonomy": "tsx scripts/verify-taxonomy-bootstrap.ts",
     "db:seed-catalog": "tsx prisma/seed-catalog.ts",
     "db:seed-p2": "tsx prisma/seed-p2-auction-company-rental.ts",
     "gen:sale-images": "tsx prisma/generate-sale-images.ts",
