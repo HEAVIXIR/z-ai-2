@@ -5,10 +5,10 @@
 The current listing form architecture correctly loads attributes from the selected category and its ancestors, but the catalog seed is not a complete category-to-form map.
 
 Repository evidence on branch `feat/listing-wizard-end-to-end-2026-11-14`:
-- `prisma/seed-taxonomy-v11.ts` declares 238 category slugs.
+- The original `prisma/seed-taxonomy-v11.ts` declared 238 category slugs; this branch now extends it to 271 unique slugs, adding compact-loader subtypes, additional drilling/crane/roller/concrete subtypes, and a fuel-station-equipment branch.
 - `prisma/seed-attribute-catalog.ts` contains 44 `CatLink` blocks.
-- 157 taxonomy slugs are not directly named in any `slugCandidates` array. Some receive inherited fields from ancestors; this count is a direct-link gap, not a claim that all 157 render empty forms.
-- The seed helper `resolveCategory(slugCandidates)` returns on the first existing slug. Therefore a block listing several slugs attaches only to the first existing category. For example, the Drill Rig block lists `drill-rig`, `drilling-rigs`, `rotary-drill`, `dth`, `top-hammer`, `water-well-drilling`, and `drilling-machine`, but only one of those receives the block from that iteration. Similar risk exists for crusher, screen, conveyor, asphalt, pump, parts, and agricultural blocks.
+- The legacy catalog has 44 broad `CatLink` blocks. A new exact-slug catalog adds 64 subtype templates. Together, 140 distinct slugs are named directly; 138 taxonomy slugs still have no direct template mapping. Many are parents, fallback categories, services, materials, or parts and should not all receive machine forms. The remaining machine/equipment leaves still require a complete coverage pass.
+- The legacy seed helper has now been changed to resolve and attach every existing slug candidate, rather than stopping at the first. This fixes the silent first-match defect for crusher, drilling, screen, conveyor, asphalt, pump, parts, and agricultural blocks. The new `seed-category-specific-attributes.ts` uses one exact slug per template and preflights every required category and field key before its first database write.
 - The active V1.1 taxonomy and the older `seed-machine-taxonomy.ts` are not equivalent: the latter declares 286 slugs and includes additional machine subtypes (e.g. skid steer, compact track loader, crawler/truck/all-terrain cranes, core/RC/jumbo drills, concrete pumps, rollers). Do not assume those older slugs exist in the active 238-category tree.
 
 ## Design decision
