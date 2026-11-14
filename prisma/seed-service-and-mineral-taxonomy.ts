@@ -24,11 +24,39 @@ async function insert(parentId:string,path:string,nodes:N[],level:number,layer:s
   if(n.children?.length)await insert(row.id,taxPath,n.children,level+1,layer,domain);
  }
 }
+type PlannedCategory = { slug: string; parentSlug: string; layer: string; domain: string };
+function collectPlan(nodes: N[], parentSlug: string, layer: string, domain: string, out: PlannedCategory[]) {
+ for (const node of nodes) {
+  out.push({ slug: node.slug, parentSlug, layer, domain });
+  if (node.children?.length) collectPlan(node.children, node.slug, layer, domain, out);
+ }
+}
 async function main(){
- const root=await db.category.findUnique({where:{slug:"services"},select:{id:true,taxPath:true,level:true}});
+ const root=await db.category.findUnique({where:{slug:"services"},select:{id:true,slug:true,taxPath:true,level:true,layer:true,domain:true}});
  if(!root)throw new Error('Run seed-taxonomy-v11.ts first; services root missing');
+ if(root.layer!=="SERVICE"||root.domain!=="SERVICE")throw new Error('The services root must have layer=SERVICE and domain=SERVICE; no writes were made');
+ const mineralRoots=await db.category.findMany({where:{slug:{in:Object.keys(minerals)}},select:{id:true,slug:true,taxPath:true,level:true,layer:true,domain:true}});
+ const mineralRootBySlug=new Map(mineralRoots.map(p=>[p.slug,p]));
+ const plan:PlannedCategory[]=[];
+ collectPlan(tree,root.slug,"SERVICE","SERVICE",plan);
+ for(const [slug,nodes] of Object.entries(minerals)){
+  const p=mineralRootBySlug.get(slug);
+  if(p)collectPlan(nodes,slug,p.layer??"CATALOG",p.domain??"MATERIAL",plan);
+ }
+ const slugs=plan.map(x=>x.slug);
+ if(new Set(slugs).size!==slugs.length)throw new Error("Duplicate category slug in supplemental taxonomy plan; no writes were made");
+ const existing=await db.category.findMany({where:{slug:{in:slugs}},select:{id:true,slug:true,parentId:true,layer:true,domain:true}});
+ const existingBySlug=new Map(existing.map(x=>[x.slug,x]));
+ for(const item of plan){
+  const row=existingBySlug.get(item.slug);
+  if(!row)continue;
+  const expectedParent=mineralRootBySlug.get(item.parentSlug)??existingBySlug.get(item.parentSlug)??(item.parentSlug===root.slug?root:null);
+  if(!expectedParent||row.parentId!==expectedParent.id||row.layer!==item.layer||row.domain!==item.domain){
+   throw new Error(`Category slug collision or parent/layer/domain mismatch for "${item.slug}" (expected parent "${item.parentSlug}", layer "${item.layer}", domain "${item.domain}"); no writes were made`);
+  }
+ }
  await insert(root.id,root.taxPath??"services",tree,(root.level??0)+1,"SERVICE","SERVICE");
- for(const [slug,nodes] of Object.entries(minerals)){const p=await db.category.findUnique({where:{slug},select:{id:true,taxPath:true,level:true,layer:true,domain:true}});if(p)await insert(p.id,p.taxPath??slug,nodes,(p.level??1)+1,p.layer??"CATALOG",p.domain??"MATERIAL");}
+ for(const [slug,nodes] of Object.entries(minerals)){const p=mineralRootBySlug.get(slug);if(p)await insert(p.id,p.taxPath??slug,nodes,(p.level??1)+1,p.layer??"CATALOG",p.domain??"MATERIAL");}
  await db.transactionType.upsert({where:{key:"SERVICE_OFFER"},create:{key:"SERVICE_OFFER",nameFa:"ارائه خدمات",nameEn:"Service Offer",icon:"wrench",sortOrder:2,active:true},update:{nameFa:"ارائه خدمات",nameEn:"Service Offer",icon:"wrench",sortOrder:2,active:true}});
  console.log("Supplemental service and mineral taxonomy seeded");
 }
