@@ -557,8 +557,25 @@ async function upsertCat(
 // ────────────────────────────────────────────────────────────
 // MAIN
 // ────────────────────────────────────────────────────────────
+async function collectDescendantCategoryIds(parentId: string): Promise<string[]> {
+  const children = await db.category.findMany({
+    where: { parentId },
+    select: { id: true },
+  });
+  const ids: string[] = [];
+  for (const child of children) {
+    ids.push(child.id);
+    ids.push(...(await collectDescendantCategoryIds(child.id)));
+  }
+  return ids;
+}
+
 async function main() {
   console.log("🌱 MACHINE-TAXONOMY-SEED: definitive machine taxonomy restructure...\n");
+
+  // The taxonomy rewrite changes parent paths and deactivates legacy groups.
+  // It is read-only by default. Writes require an explicit --apply argument.
+  const apply = process.argv.includes("--apply");
 
   // 1. Locate machinery root (must already exist)
   const root = await db.category.findUnique({ where: { slug: "machinery" } });
@@ -567,19 +584,54 @@ async function main() {
       'machinery root category not found. Run seed-taxonomy-v11.ts first to create the "machinery" root.'
     );
   }
-  // Normalize root: taxPath="machinery", level=0
+
+  // Build the complete target slug set before touching any row.
+  const treeSlugs = new Set<string>();
+  for (const l1 of TREE) {
+    treeSlugs.add(l1.slug);
+    for (const l2 of l1.l2) {
+      treeSlugs.add(l2.slug);
+      if (l2.l3) for (const l3 of l2.l3) treeSlugs.add(l3.slug);
+    }
+  }
+
+  const beforeCategoryIds = await collectDescendantCategoryIds(root.id);
+  const listingsBefore = await db.listing.findMany({
+    where: { categoryId: { in: beforeCategoryIds } },
+    select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true } } },
+  });
+  const oldL1Categories = await db.category.findMany({
+    where: { slug: { in: OLD_L1_TO_DEACTIVATE } },
+    select: { id: true, slug: true, active: true },
+  });
+  const oldL1ListingCounts = await Promise.all(oldL1Categories.map(async (category) => ({
+    slug: category.slug,
+    count: await db.listing.count({ where: { categoryId: category.id } }),
+  })));
+  const unsafeOldL1 = oldL1ListingCounts.filter((item) => item.count > 0);
+
+  console.log(`📋 Listings attached anywhere under machinery (BEFORE): ${listingsBefore.length}`);
+  console.log(`📦 Current machinery descendant categories: ${beforeCategoryIds.length}`);
+  console.log(`🧭 Target definitive tree slugs: ${treeSlugs.size}`);
+  console.log(`⚠ Legacy L1 categories with direct listings: ${unsafeOldL1.map((x) => `${x.slug}=${x.count}`).join(", ") || "none"}`);
+
+  if (!apply) {
+    console.log("\nDRY RUN ONLY — no database rows were changed.");
+    console.log("Review the counts and any legacy L1 listings. Re-run with --apply only after explicit approval.");
+    return;
+  }
+  if (unsafeOldL1.length > 0) {
+    throw new Error(
+      `Refusing taxonomy rewrite: legacy L1 categories still have direct listings: ${unsafeOldL1.map((x) => x.slug).join(", ")}. Map/migrate those listings first.`,
+    );
+  }
+
+  // 2. Normalize root only after read-only preflight succeeds.
   await db.category.update({
     where: { id: root.id },
     data: { taxPath: "machinery", level: 0, layer: "CATALOG", domain: "MACHINE" },
   });
-  console.log(`✓ Root: ${root.slug} (id=${root.id}) taxPath=machinery level=0\n`);
-
-  // 2. Snapshot listings-on-categories BEFORE restructure (for verification)
-  const listingsBefore = await db.listing.findMany({
-    where: { category: { parent: { parentId: root.id } } },
-    select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true } } },
-  });
-  console.log(`📋 Listings attached to machinery-tree categories (BEFORE): ${listingsBefore.length}`);
+  console.log(`✓ Root: ${root.slug} taxPath=machinery level=0\n`);
   const beforeByCatSlug = new Map<string, number>();
   for (const l of listingsBefore) {
     const s = l.category?.slug ?? "(null)";
@@ -664,15 +716,6 @@ async function main() {
   // (e.g. Persian-suffixed slugs like `excavator-بیل-زنجیری` with stale level=1)
   // that are now superseded by the definitive taxonomy. Categories with listings
   // are ALWAYS preserved (rule #1).
-  const treeSlugs = new Set<string>();
-  for (const l1 of TREE) {
-    treeSlugs.add(l1.slug);
-    for (const l2 of l1.l2) {
-      treeSlugs.add(l2.slug);
-      if (l2.l3) for (const l3 of l2.l3) treeSlugs.add(l3.slug);
-    }
-  }
-
   // Walk every active category whose ancestor chain leads back to machinery root.
   // We do this by traversing the tree level by level (SQLite has no recursive CTE
   // via Prisma, so we walk manually).
@@ -714,8 +757,9 @@ async function main() {
   );
 
   // 5. Verify listings are still attached (NEVER deleted)
+  const afterCategoryIds = await collectDescendantCategoryIds(root.id);
   const listingsAfter = await db.listing.findMany({
-    where: { category: { parent: { parentId: root.id } } },
+    where: { categoryId: { in: afterCategoryIds } },
     select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true, active: true } } },
   });
   console.log(`📋 Listings attached to machinery-tree categories (AFTER): ${listingsAfter.length}`);
