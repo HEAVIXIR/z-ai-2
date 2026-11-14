@@ -116,11 +116,10 @@ export async function POST(req: Request) {
       level = (parent.level ?? 0) + 1;
     }
 
-    const industryKeys = [...new Set(
-      (Array.isArray(body.appIndustries) ? body.appIndustries : [])
-        .map((value: unknown) => String(value).trim())
-        .filter(Boolean),
-    )];
+    const industryValues: unknown[] = Array.isArray(body.appIndustries) ? body.appIndustries : [];
+    const industryKeys: string[] = Array.from(new Set(
+      industryValues.map((value) => String(value).trim()).filter((value) => value.length > 0),
+    ));
     const industries = industryKeys.length
       ? await db.applicationIndustry.findMany({
           where: { OR: [{ key: { in: industryKeys } }, { id: { in: industryKeys } }] },
