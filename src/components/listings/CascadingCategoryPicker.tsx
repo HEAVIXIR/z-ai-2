@@ -116,7 +116,7 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
     }
   };
 
-  const selectedPath = path.map((item) => item.name).join(" / ");
+  const selectedPathLabel = path.map((item) => item.name).join(" / ");
 
   return (
     <div className="space-y-5">
@@ -162,7 +162,7 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
 
       {path.length > 0 && (
         <div className="rounded-xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-3 text-[11px] text-white/60">
-          مسیر انتخاب‌شده: <span className="font-bold text-[#F58220]">{selectedPath}</span>
+          مسیر انتخاب‌شده: <span className="font-bold text-[#F58220]">{selectedPathLabel}</span>
           {!value && !loadingParent && !error && (
             <p className="mt-2 text-white/45">برای ادامه، آخرین زیرشاخه را انتخاب کنید؛ ثبت روی دستهٔ مادر مجاز نیست.</p>
           )}
