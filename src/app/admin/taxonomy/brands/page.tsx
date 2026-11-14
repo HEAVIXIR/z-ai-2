@@ -52,20 +52,25 @@ export default async function TaxonomyBrandsPage({
   const requestedPage = Number.parseInt(sp.page || "1", 10);
   const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
   const where = {
-        ...(statusFilter ? { status: statusFilter } : {}),
-        ...(typeFilter ? { type: typeFilter } : {}),
-        ...(verificationFilter ? { verification: verificationFilter } : {}),
-        ...(industryFilter ? { industries: { some: { industry: industryFilter } } } : {}),
-        ...(q
-          ? {
-              OR: [
-                { name: { contains: q } },
-                { nameEn: { contains: q } },
-                { shortName: { contains: q } },
-              ],
-            }
-          : {}),
-      },
+    ...(statusFilter ? { status: statusFilter } : {}),
+    ...(typeFilter ? { type: typeFilter } : {}),
+    ...(verificationFilter ? { verification: verificationFilter } : {}),
+    ...(industryFilter ? { industries: { some: { industry: industryFilter } } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q } },
+            { nameEn: { contains: q } },
+            { shortName: { contains: q } },
+          ],
+        }
+      : {}),
+  };
+
+  // Load one bounded page; the count keeps the full 600+ brand catalog navigable.
+  const [brands, totalBrands, industries, categoriesCount] = await Promise.all([
+    db.brand.findMany({
+      where,
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       include: {
         domains: { select: { domain: true } },
