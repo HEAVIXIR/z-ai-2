@@ -357,6 +357,62 @@ export async function POST(req: Request) {
       );
     }
 
+    const transactionTypeKey = String(body.transactionType ?? body.listingType ?? "SALE").trim().toUpperCase();
+    const transactionType = await db.transactionType.findUnique({
+      where: { key: transactionTypeKey },
+      select: { id: true, key: true, active: true },
+    });
+    if (!transactionType || !transactionType.active) {
+      return NextResponse.json({ error: "نوع معامله معتبر یا فعال نیست." }, { status: 400 });
+    }
+
+    if (body.categoryId) {
+      const category = await db.category.findFirst({
+        where: { id: String(body.categoryId), active: true },
+        select: { id: true },
+      });
+      if (!category) {
+        return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+    }
+
+    if (body.brandId) {
+      const brand = await db.brand.findUnique({
+        where: { id: String(body.brandId) },
+        select: { id: true, active: true, status: true },
+      });
+      if (!brand || !brand.active || brand.status !== "ACTIVE") {
+        return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+    }
+
+    if (body.modelId) {
+      const model = await db.productModel.findUnique({
+        where: { id: String(body.modelId) },
+        select: {
+          id: true,
+          brandId: true,
+          categoryId: true,
+          status: true,
+          modelCategories: { select: { categoryId: true } },
+        },
+      });
+      if (!model || model.status !== "ACTIVE") {
+        return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (!body.brandId || model.brandId !== String(body.brandId)) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
+      }
+      if (
+        body.categoryId &&
+        model.categoryId &&
+        model.categoryId !== String(body.categoryId) &&
+        !model.modelCategories.some((link) => link.categoryId === String(body.categoryId))
+      ) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی انتخابی متصل نیست." }, { status: 400 });
+      }
+    }
+
     // Listing image contract: one shared maximum of 10. Never silently slice.
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
@@ -418,7 +474,8 @@ export async function POST(req: Request) {
       shortDesc: body.shortDesc ?? null,
       price: parseBig(body.price),
       priceType: body.priceType || "NEGOTIABLE",
-      listingType: body.listingType || "SALE",
+      listingType: transactionType.key,
+      transactionTypeId: transactionType.id,
       condition: body.condition || "USED",
       province: body.province ?? null,
       city: body.city ?? null,
