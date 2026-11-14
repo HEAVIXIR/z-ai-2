@@ -2596,16 +2596,17 @@ async function buildResolvedFieldKeyMap(): Promise<{
       },
     },
   });
-  const existingByKey = new Map(existing.map((attribute) => [
-    attribute.key!,
-    fieldSignature({
+  const existingByKey = new Map<string, string>();
+  for (const attribute of existing) {
+    if (!attribute.key) continue;
+    existingByKey.set(attribute.key, fieldSignature({
       type: attribute.type as AttrType,
       unit: attribute.unit ?? undefined,
       fa: attribute.labelFa ?? attribute.name,
       en: attribute.labelEn ?? attribute.nameEn ?? "",
       options: attribute.options.map((option) => option.value),
-    }),
-  ]));
+    }));
+  }
 
   const signaturesByKey = new Map<string, Map<string, { count: number; firstSeen: number }>>();
   let sequence = 0;
