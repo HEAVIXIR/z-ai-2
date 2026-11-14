@@ -163,7 +163,7 @@ async function main(){
  if(missing.length)throw new Error("Missing category forms; no attributes were written: "+missing.join(", "));
  await linkFields(serviceRoot.id,commonService,"services");
  await linkFields(mineralRoot.id,commonMineral,"minerals-materials");
- for(const form of forms){const category=categoryBySlug.get(form.slug)!;await linkFields(category.id,form.fields,form.slug);}
+ for(const form of forms){const category=categoryBySlug.get(form.slug)!;if(["iron-ore-supply","copper-supply","coal-supply","dimension-stone-supply","sand-gravel-supply","cement-clinker-supply"].includes(form.slug))await linkFields(category.id,commonMineral,form.slug);await linkFields(category.id,form.fields,form.slug);}
  console.log(JSON.stringify({commonServiceFields:commonService.length,commonMineralFields:commonMineral.length,formsApplied:forms.length,missingForms:[]},null,2));
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
