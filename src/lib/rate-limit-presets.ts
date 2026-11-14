@@ -105,6 +105,14 @@ export const COMPANY_INVITATION_ACCEPT: RateLimitPreset = {
   label: "company-invitation-accept",
 };
 
+/** Organization onboarding — 3 attempts per hour per authenticated user. */
+export const COMPANY_CREATE: RateLimitPreset = {
+  limit: 3,
+  windowMs: HOUR,
+  scope: "user",
+  label: "company-create",
+};
+
 /**
  * Convenience map for runtime lookup by name (useful if a future
  * dispatcher selects presets dynamically).
@@ -119,6 +127,7 @@ export const RATE_LIMIT_PRESETS = {
   MESSAGING,
   COMPANY_INVITATION,
   COMPANY_INVITATION_ACCEPT,
+  COMPANY_CREATE,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;
