@@ -11,13 +11,18 @@ describe("Preview taxonomy seed safety contracts", () => {
     "seed-service-and-mineral-taxonomy.ts",
     "seed-service-mineral-attributes.ts",
     "seed-category-specific-attributes.ts",
-  ])("%s requires an explicit --apply before writes", (name) => {
+    "seed-brands-a.ts",
+    "seed-brands-b.ts",
+    "seed-catalog.ts",
+    "seed-services.ts",
+  ])("%s requires explicit --apply and Preview environment before writes", (name) => {
     const source = readSeed(name);
     const mainStart = source.indexOf("async function main");
     expect(mainStart).toBeGreaterThanOrEqual(0);
     const main = source.slice(mainStart, mainStart + 700);
     expect(main).toContain('process.argv.includes("--apply")');
     expect(main).toContain("DRY RUN");
+    expect(main).toContain('process.env.HEAVIX_ENV');
   });
 
   it("does not reactivate disabled transaction, service, or industry records", () => {
@@ -36,4 +41,25 @@ describe("Preview taxonomy seed safety contracts", () => {
     const source = readSeed("seed-service-mineral-attributes.ts");
     expect(source).toContain("update:{}");
   });
+  it("links seeded models to their brand/category pairs without overwriting existing links", () => {
+    const source = readSeed("seed-catalog.ts");
+    expect(source).toContain("db.brandCategory.upsert");
+    expect(source).toContain("where: { brandId_categoryId: { brandId, categoryId } }");
+    expect(source).toContain("update: {},");
+  });
+
+  it("preserves existing brand and service metadata on seed reruns", () => {
+    for (const name of ["seed-brands-a.ts", "seed-brands-b.ts", "seed-services.ts"]) {
+      const source = readSeed(name);
+      expect(source).toContain("update: {},");
+    }
+  });
+
+  it("keeps the catalog and brand seeds additive", () => {
+    for (const name of ["seed-brands-a.ts", "seed-brands-b.ts", "seed-catalog.ts", "seed-services.ts"]) {
+      const source = readSeed(name);
+      expect(source).not.toMatch(/db\\.(?:brand|productModel|product|service)\\.deleteMany/);
+    }
+  });
+
 });
