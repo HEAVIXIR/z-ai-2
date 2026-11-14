@@ -109,7 +109,7 @@ forms.push(...generatedForms);
 async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
  for(let i=0;i<fields.length;i++){
   const x=fields[i];
-  const optionValues=[...(x.options??[])];\n
+  const optionValues=[...(x.options??[])];
   const base=await db.attributeDefinition.findUnique({
    where:{key:x.key},
    include:{options:{select:{value:true,sortOrder:true}}},
