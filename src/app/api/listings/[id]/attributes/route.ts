@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 
 export const runtime = "nodejs";
@@ -112,6 +113,9 @@ export async function GET(_req: Request, { params }: Args) {
    Returns: { ok: true, count }
    ============================================================ */
 export async function PUT(req: Request, { params }: Args) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     if (!id) {
@@ -129,7 +133,7 @@ export async function PUT(req: Request, { params }: Args) {
 
     const listing = await db.listing.findUnique({
       where: { id },
-      select: { id: true, sellerId: true },
+      select: { id: true, sellerId: true, categoryId: true, modelId: true },
     });
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -154,6 +158,48 @@ export async function PUT(req: Request, { params }: Args) {
         { status: 400 },
       );
     }
+    // Restrict writes to the selected category's inherited attribute
+    // catalog plus the selected model's explicit overrides.
+    const allowedCategoryIds: string[] = [];
+    let categoryCursor = listing.categoryId;
+    const seenCategories = new Set<string>();
+    for (let depth = 0; categoryCursor && depth < 16; depth += 1) {
+      if (seenCategories.has(categoryCursor)) break;
+      seenCategories.add(categoryCursor);
+      allowedCategoryIds.push(categoryCursor);
+      const parent = await db.category.findUnique({
+        where: { id: categoryCursor },
+        select: { parentId: true },
+      });
+      categoryCursor = parent?.parentId ?? null;
+    }
+
+    const [categoryLinks, modelLinks] = await Promise.all([
+      allowedCategoryIds.length
+        ? db.categoryAttribute.findMany({
+            where: { categoryId: { in: allowedCategoryIds } },
+            select: { attributeId: true },
+          })
+        : Promise.resolve([]),
+      listing.modelId
+        ? db.productModelAttribute.findMany({
+            where: { modelId: listing.modelId },
+            select: { attributeId: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const allowedAttributeIds = new Set([
+      ...categoryLinks.map((link) => link.attributeId),
+      ...modelLinks.map((link) => link.attributeId),
+    ]);
+    const outOfScope = attrIds.filter((attributeId) => !allowedAttributeIds.has(attributeId));
+    if (outOfScope.length > 0) {
+      return NextResponse.json(
+        { error: "یکی از ویژگی‌ها به دسته‌بندی یا مدل این آگهی متصل نیست." },
+        { status: 400 },
+      );
+    }
+
     const attrs = await db.attributeDefinition.findMany({
       where: { id: { in: attrIds } },
       select: { id: true, type: true },
