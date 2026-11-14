@@ -15,20 +15,36 @@ type RouteArgs = { params: Promise<{ id: string }> };
  * Manages model-specific specification overrides. Category ancestry remains
  * the base template; these rows are the final model-specific layer.
  */
-export async function GET(_req: Request, { params }: RouteArgs) {
+export async function GET(req: Request, { params }: RouteArgs) {
   const auth = await requireAdminPermission("taxonomy.write");
   if (auth.error) return auth.error;
 
   try {
     const { id } = await params;
+    const categoryId = new URL(req.url).searchParams.get("categoryId")?.trim();
+    if (!categoryId) {
+      return NextResponse.json({ error: "categoryId is required" }, { status: 400 });
+    }
     const model = await db.productModel.findUnique({
       where: { id },
-      select: { id: true, name: true, brandId: true },
+      select: {
+        id: true,
+        name: true,
+        brandId: true,
+        categoryId: true,
+        modelCategories: { select: { categoryId: true } },
+      },
     });
     if (!model) return NextResponse.json({ error: "Model not found" }, { status: 404 });
+    const modelMatchesCategory =
+      model.categoryId === categoryId ||
+      model.modelCategories.some((link) => link.categoryId === categoryId);
+    if (!modelMatchesCategory) {
+      return NextResponse.json({ error: "Model is not linked to this category" }, { status: 400 });
+    }
 
     const attributes = await db.productModelAttribute.findMany({
-      where: { modelId: id },
+      where: { modelId: id, categoryId },
       include: {
         attribute: {
           select: { id: true, key: true, name: true, labelFa: true, labelEn: true, type: true, unit: true },
@@ -37,7 +53,7 @@ export async function GET(_req: Request, { params }: RouteArgs) {
       orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
     });
 
-    return NextResponse.json({ model, attributes });
+    return NextResponse.json({ model, categoryId, attributes });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Server error" },
@@ -57,11 +73,26 @@ export async function PUT(req: Request, { params }: RouteArgs) {
     const { id } = await params;
     const model = await db.productModel.findUnique({
       where: { id },
-      select: { id: true },
+      select: {
+        id: true,
+        categoryId: true,
+        modelCategories: { select: { categoryId: true } },
+      },
     });
     if (!model) return NextResponse.json({ error: "Model not found" }, { status: 404 });
 
     const body = await req.json().catch(() => ({}));
+    const categoryId = String(body?.categoryId ?? "").trim();
+    if (!categoryId) {
+      return NextResponse.json({ error: "categoryId is required" }, { status: 400 });
+    }
+    const modelMatchesCategory =
+      model.categoryId === categoryId ||
+      model.modelCategories.some((link) => link.categoryId === categoryId);
+    if (!modelMatchesCategory) {
+      return NextResponse.json({ error: "Model is not linked to this category" }, { status: 400 });
+    }
+
     if (!Array.isArray(body?.attributes) || body.attributes.length > 100) {
       return NextResponse.json(
         { error: "attributes must be an array with at most 100 entries" },
@@ -97,10 +128,10 @@ export async function PUT(req: Request, { params }: RouteArgs) {
     }
 
     await db.$transaction(async (tx) => {
-      await tx.productModelAttribute.deleteMany({ where: { modelId: id } });
+      await tx.productModelAttribute.deleteMany({ where: { modelId: id, categoryId } });
       if (rows.length > 0) {
         await tx.productModelAttribute.createMany({
-          data: rows.map((row) => ({ modelId: id, ...row })),
+          data: rows.map((row) => ({ modelId: id, categoryId, ...row })),
         });
       }
     });
