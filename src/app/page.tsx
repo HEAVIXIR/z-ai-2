@@ -32,7 +32,6 @@ import {
   getCachedTopBrands,
   getCachedHomePageSections,
   getCachedCatalogCategories,
-  getCachedHomeCategoryConfig,
   getCachedSiteSettings,
   getCachedBrandCount,
   getCachedActiveRequests,
@@ -71,18 +70,11 @@ type HomeListingRow = Prisma.ListingGetPayload<{
 export default async function HomePage() {
   // Load independent homepage configuration and taxonomy queries together.
   // This avoids serial database round-trips before the listing queries can start.
-  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
+  const [allBrands, allCategories, siteSettings] = await Promise.all([
     getCachedTopBrands(),
     getCachedCatalogCategories(),
-    getCachedHomeCategoryConfig(),
     getCachedSiteSettings(),
   ]);
-
-  // Falls back to generation 1 when no admin configuration exists.
-  const homeCategoryConfig = {
-    generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
-    parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
-  };
 
   // Fetch listing data
   // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
