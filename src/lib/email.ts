@@ -14,6 +14,8 @@ export interface SendEmailArgs {
   subject: string;
   text: string;
   html?: string;
+  /** Redact message body in local fallback logs when it contains bearer links/tokens. */
+  sensitive?: boolean;
 }
 
 const SMTP_HOST = process.env.SMTP_HOST ?? "";
@@ -27,7 +29,7 @@ export const isSmtpConfigured = (): boolean =>
   Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS);
 
 /** Low-level send. Falls back to console logging when SMTP is not set. */
-export async function sendEmail(args: SendEmailArgs): Promise<void> {
+export async function sendEmail(args: SendEmailArgs): Promise<boolean> {
   if (!isSmtpConfigured()) {
     // ── Dev / sandbox fallback ──────────────────────────────────
     // Print a clearly-delimited block so the code can be picked out
@@ -39,11 +41,11 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
         `From:    ${SMTP_FROM}`,
         `Subject: ${args.subject}`,
         "Body:",
-        args.text,
+        args.sensitive ? "[redacted sensitive message body]" : args.text,
         "───────────────────────────────────────────────────────────",
       ].join("\n"),
     );
-    return;
+    return process.env.NODE_ENV !== "production";
   }
 
   // ── Production: lazy-load nodemailer so the dependency is only
@@ -65,10 +67,12 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
       text: args.text,
       html: args.html ?? args.text,
     });
+    return true;
   } catch (err) {
     // Log but don't throw — verification codes shouldn't take down
     // the request. The caller still returns the devCode in dev mode.
     console.error("[HEAVIX EMAIL] send failed:", err);
+    return false;
   }
 }
 
