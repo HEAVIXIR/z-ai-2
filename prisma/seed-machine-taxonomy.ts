@@ -218,6 +218,7 @@ const TREE: L1[] = [
       { name: "Oil & Gas Drilling", slug: "oil-gas-drilling" },
       { name: "Geotechnical Drill", slug: "geotechnical-drill" },
       { name: "Blast Hole Drill", slug: "blast-hole-drill" },
+      { name: "دریل واگن", slug: "wagon-drill" },
       { name: "Underground Drill", slug: "underground-drill" },
       { name: "Jumbo Drill", slug: "jumbo-drill" },
       { name: "Drilling Accessories", slug: "drilling-accessories" },
