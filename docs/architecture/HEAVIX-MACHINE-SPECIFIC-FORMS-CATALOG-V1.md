@@ -61,7 +61,7 @@ These sources inform category coverage and technical field selection; they do no
 
 ## Validation and release gates
 
-- Static taxonomy audit: 270 terminal categories in the current taxonomy seed; all 270 now have exact templates in this branch.
+- Static taxonomy audit: 271 terminal categories in the current taxonomy seed (including the new `wagon-drill` leaf); all 271 have exact templates. The catalog currently defines 337 family and subtype form templates.
 - Static template checks: duplicate template slugs = 0; missing required keys = 0 across explicit and cloned templates; field types are restricted to the declared `AttrType` union; SELECT/MULTI_SELECT fields have explicit options.
 - Runtime seed preflight: checks active category presence, terminal-leaf coverage, per-template duplicate fields and required-field membership, and global key compatibility before the first write.
 - Not yet run: TypeScript compile, Prisma validation, unit/E2E tests, database seed, Preview acceptance, or deployment.
