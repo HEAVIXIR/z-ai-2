@@ -1,13 +1,13 @@
 # HEAVIX Category-Specific Specification Coverage Audit — V1
 
-## Critical finding: two competing taxonomy trees
+## Critical finding: two taxonomy layers that are not yet reconciled
 
-The repository contains two different machine-taxonomy definitions:
+The repository contains a broader V1.1 catalog seed and a separate definitive machine-subtree seed:
 
 1. `prisma/seed-taxonomy-v11.ts`: the current V1.1-style taxonomy. On this branch it contains 279 unique slugs after the first expansion.
 2. `prisma/seed-machine-taxonomy.ts`: explicitly describes itself as the **definitive machine taxonomy restructure**, with 16 L1 groups, 181 L2 families and 104 L3 variants (302 unique slugs including the `machinery` root after adding industrial utilities and fuel-station equipment).
 
-Repository docs and the public mega-menu comments refer to the 16-L1 structure. Therefore the 16-group tree is the strongest source-of-truth candidate for the machine catalog, but the actual Preview database state has not been verified. Do not run either seed against a database until the live Preview DB target and taxonomy state are verified read-only.
+Repository docs and public mega-menu comments refer to the 16-L1 structure. The best current interpretation is that V1.1 defines the broader marketplace roots while the 16-group seed refines the `machinery` subtree. Their slug ownership and execution order still need explicit reconciliation; the actual Preview database state has not been verified. Do not run either seed against a database until the live Preview DB target and taxonomy state are verified read-only.
 
 ## Definitive tree coverage audit
 
