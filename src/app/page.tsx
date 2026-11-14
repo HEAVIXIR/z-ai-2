@@ -151,7 +151,9 @@ export default async function HomePage() {
           icon: c.icon,
           imageUrl: c.imageUrl,
           description: c.description,
-          listingCount: c._count.listings,
+          listingCount: allCategories
+            .filter((descendant) => descendant.taxPath === c.taxPath || Boolean(c.taxPath && descendant.taxPath?.startsWith(`${c.taxPath}.`)))
+            .reduce((total, descendant) => total + descendant._count.listings, 0),
         }));
     })(),
     (async () => {
@@ -435,7 +437,7 @@ export default async function HomePage() {
                   <ScrollReveal key={section.id}>
                     <MachineCategoriesSection
                       categories={machineCategoryCards}
-                      config={homeCategoryConfig}
+                      config={{ generation: 1, parentId: null }}
                       cmsConfig={cms}
                     />
                   </ScrollReveal>
