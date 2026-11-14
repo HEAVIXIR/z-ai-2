@@ -21,7 +21,7 @@ export async function GET() {
 
     const [personas, memberships, platformRoles] = await Promise.all([
       db.userCommercialPersona.findMany({
-        where: { userId: user.id, status: "ACTIVE" },
+        where: { userId: user.id, status: { in: ["ACTIVE", "PENDING_REVIEW"] } },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         select: { personaKey: true, isPrimary: true, status: true, createdAt: true },
       }),
