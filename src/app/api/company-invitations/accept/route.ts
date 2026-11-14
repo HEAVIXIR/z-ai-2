@@ -37,7 +37,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    const bodyValue: unknown = await req.json().catch(() => null);
+    if (!bodyValue || typeof bodyValue !== "object" || Array.isArray(bodyValue)) {
+      return NextResponse.json({ ok: false, error: "invalid_or_expired_invitation" }, { status: 404 });
+    }
+    const body = bodyValue as Record<string, unknown>;
     const token = body.token;
     if (!isCompanyInvitationToken(token)) {
       return NextResponse.json({ ok: false, error: "invalid_or_expired_invitation" }, { status: 404 });
