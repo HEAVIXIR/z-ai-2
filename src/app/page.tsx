@@ -32,15 +32,12 @@ import {
   getCachedTopBrands,
   getCachedHomePageSections,
   getCachedCatalogCategories,
-  getCachedHomeCategoryConfig,
   getCachedSiteSettings,
   getCachedBrandCount,
   getCachedActiveRequests,
   getCachedArticles,
   getCachedHotSearches,
   getCachedHeroConfig,
-  getCachedMachineryRoot,
-  getCachedL1Children,
   getCachedBrandDisplayIds,
   getCachedFeaturedBrandIds,
   getCachedTrustedBrands,
@@ -73,18 +70,11 @@ type HomeListingRow = Prisma.ListingGetPayload<{
 export default async function HomePage() {
   // Load independent homepage configuration and taxonomy queries together.
   // This avoids serial database round-trips before the listing queries can start.
-  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
+  const [allBrands, allCategories, siteSettings] = await Promise.all([
     getCachedTopBrands(),
     getCachedCatalogCategories(),
-    getCachedHomeCategoryConfig(),
     getCachedSiteSettings(),
   ]);
-
-  // Falls back to generation 1 when no admin configuration exists.
-  const homeCategoryConfig = {
-    generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
-    parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
-  };
 
   // Fetch listing data
   // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
@@ -140,23 +130,23 @@ export default async function HomePage() {
 
   const [machineCategoryCards, trustedBrandRows, activeStats, heroCardListingRows] = await Promise.all([
     (async (): Promise<MachineCategoryCard[]> => {
-      const machinery = await getCachedMachineryRoot();
-      if (!machinery) return [];
-      const parentId =
-        homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
-          ? homeCategoryConfig.parentId
-          : machinery.id;
-      const rows = await getCachedL1Children(parentId);
-      return rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        nameEn: c.nameEn,
-        slug: c.slug,
-        icon: c.icon,
-        imageUrl: c.imageUrl,
-        description: c.description,
-        listingCount: c._count.listings,
-      }));
+      // Main category display is intentionally parent-only (level 0).
+      // Child/grandchild taxonomy remains in the database for filtering,
+      // listing assignment and admin tree management.
+      return allCategories
+        .filter((c) => c.parentId === null && c.level === 0)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          nameEn: c.nameEn,
+          slug: c.slug,
+          icon: c.icon,
+          imageUrl: c.imageUrl,
+          description: c.description,
+          listingCount: allCategories
+            .filter((descendant) => descendant.taxPath === c.taxPath || Boolean(c.taxPath && descendant.taxPath?.startsWith(`${c.taxPath}.`)))
+            .reduce((total, descendant) => total + descendant._count.listings, 0),
+        }));
     })(),
     (async () => {
       const [displayBrands, featuredBrands] = await Promise.all([
@@ -439,7 +429,7 @@ export default async function HomePage() {
                   <ScrollReveal key={section.id}>
                     <MachineCategoriesSection
                       categories={machineCategoryCards}
-                      config={homeCategoryConfig}
+                      config={{ generation: 1, parentId: null }}
                       cmsConfig={cms}
                     />
                   </ScrollReveal>
