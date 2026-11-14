@@ -731,15 +731,42 @@ async function main() {
   const root = await db.category.findUnique({ where: { slug: "machinery" } });
   if (!root) throw new Error('Active taxonomy root "machinery" is missing; aborting.');
 
+  // Validate the complete seed before the first write: no partial catalog update.
+  const duplicateTemplateSlugs = templates
+    .map((template) => template.slug)
+    .filter((slug, index, all) => all.indexOf(slug) !== index);
+  if (duplicateTemplateSlugs.length) {
+    throw new Error(`Duplicate template slugs: ${duplicateTemplateSlugs.join(", ")}`);
+  }
+  for (const template of templates) {
+    const keys = template.fields.map((field) => field.key);
+    const duplicates = keys.filter((key, index, all) => all.indexOf(key) !== index);
+    const missingRequired = (template.required ?? []).filter((key) => !keys.includes(key));
+    if (duplicates.length || missingRequired.length) {
+      throw new Error(
+        `Invalid template ${template.slug}: duplicate fields [${duplicates.join(", ")}], missing required fields [${missingRequired.join(", ")}]`,
+      );
+    }
+  }
+
+  const categories = await db.category.findMany({
+    where: { slug: { in: templates.map((template) => template.slug) } },
+    select: { id: true, slug: true },
+  });
+  const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const missing = templates
+    .map((template) => template.slug)
+    .filter((slug) => !categoryBySlug.has(slug));
+  if (missing.length) {
+    throw new Error(
+      `Missing taxonomy categories; seed aborted before writes: ${missing.join(", ")}`,
+    );
+  }
+
   const applied: { slug: string; fields: number }[] = [];
-  const missing: string[] = [];
 
   for (const template of templates) {
-    const category = await db.category.findUnique({ where: { slug: template.slug } });
-    if (!category) {
-      missing.push(template.slug);
-      continue;
-    }
+    const category = categoryBySlug.get(template.slug)!;
 
     const required = new Set(template.required ?? []);
     for (let order = 0; order < template.fields.length; order++) {
