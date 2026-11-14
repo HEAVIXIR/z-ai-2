@@ -22,7 +22,7 @@ export async function GET(
   const links = await db.brandCategory.findMany({
     where: { brandId: id },
     include: { category: true },
-    orderBy: { displayOrder: "asc" },
+    orderBy: { category: { name: "asc" } },
   });
   return NextResponse.json({ success: true, data: links });
 }
@@ -42,23 +42,17 @@ export async function POST(
     const categoryId = String(body.categoryId ?? "");
     if (!categoryId) return NextResponse.json({ error: "categoryId required" }, { status: 400 });
 
-    const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
-    if (!category) return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    const category = await db.category.findFirst({
+      where: { id: categoryId, active: true },
+      select: { id: true },
+    });
+    if (!category) return NextResponse.json({ error: "دسته‌بندی معتبر یا فعال نیست." }, { status: 404 });
 
+    // BrandCategory is a pure many-to-many link in the current Prisma schema.
     const link = await db.brandCategory.upsert({
       where: { brandId_categoryId: { brandId: id, categoryId } },
-      update: {
-        isActive: body.isActive ?? true,
-        isFeatured: body.isFeatured ?? false,
-        displayOrder: body.displayOrder ?? 0,
-      },
-      create: {
-        brandId: id,
-        categoryId,
-        isActive: body.isActive ?? true,
-        isFeatured: body.isFeatured ?? false,
-        displayOrder: body.displayOrder ?? 0,
-      },
+      update: {},
+      create: { brandId: id, categoryId },
     });
     return NextResponse.json({ success: true, data: link });
   } catch (e: any) {
