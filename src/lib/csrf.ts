@@ -35,13 +35,19 @@ function toOrigin(value: string | null | undefined): string | null {
 function allowedOrigins(): Set<string> {
   const allowed = new Set<string>();
   const configured = [
+    process.env.HEAVIX_PREVIEW_URL,
     process.env.NEXTAUTH_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    "https://recovery-heavix-full-product-integration-2026-11-heavix-preview.heavixir.workers.dev",
+
   ];
+
+  // Exact Cloudflare Preview origin; never allow a workers.dev wildcard.
+  if (process.env.HEAVIX_ENV === "preview") {
+    allowed.add("https://heavix-preview.heavixir.workers.dev");
+  }
 
   for (const value of configured) {
     if (!value) continue;
