@@ -2897,8 +2897,16 @@ async function upsertField(field: Field): Promise<string> {
 }
 
 async function main() {
-  const root = await db.category.findUnique({ where: { slug: "machinery" } });
-  if (!root) throw new Error('Active taxonomy root "machinery" is missing; aborting.');
+  const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment"];
+  const coverageRoots = await db.category.findMany({
+    where: { slug: { in: coverageRootSlugs }, active: true, layer: "CATALOG" },
+    select: { id: true, slug: true },
+  });
+  const foundRootSlugs = new Set(coverageRoots.map((root) => root.slug));
+  const missingCoverageRoots = coverageRootSlugs.filter((slug) => !foundRootSlugs.has(slug));
+  if (missingCoverageRoots.length) {
+    throw new Error(`Required CATALOG roots are missing or inactive; seed aborted: ${missingCoverageRoots.join(", ")}`);
+  }
 
   // Validate the complete seed before the first write: no partial catalog update.
   const duplicateTemplateSlugs = templates
@@ -2928,12 +2936,13 @@ async function main() {
   });
   const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
 
-  // Enforce one dedicated template for every active terminal category under machinery.
+  // Enforce one dedicated template for every active terminal equipment category
+  // under machinery, vehicles, attachments, agriculture and industrial equipment.
   const activeCatalogCategories = await db.category.findMany({
     where: { active: true, layer: "CATALOG" },
     select: { id: true, slug: true, parentId: true },
   });
-  const descendantIds = new Set<string>([root.id]);
+  const descendantIds = new Set<string>(coverageRoots.map((root) => root.id));
   let expanded = true;
   while (expanded) {
     expanded = false;
@@ -2944,18 +2953,18 @@ async function main() {
       }
     }
   }
-  const machineCategories = activeCatalogCategories.filter((category) => descendantIds.has(category.id));
+  const equipmentCategories = activeCatalogCategories.filter((category) => descendantIds.has(category.id));
   const categoriesWithChildren = new Set(
-    machineCategories.map((category) => category.parentId).filter((id): id is string => !!id),
+    equipmentCategories.map((category) => category.parentId).filter((id): id is string => !!id),
   );
-  const terminalCategories = machineCategories.filter((category) => !categoriesWithChildren.has(category.id));
+  const terminalCategories = equipmentCategories.filter((category) => !categoriesWithChildren.has(category.id));
   const templateSlugSet = new Set(templates.map((template) => template.slug));
   const missingTerminalForms = terminalCategories
     .filter((category) => !templateSlugSet.has(category.slug))
     .map((category) => category.slug);
   if (missingTerminalForms.length) {
     throw new Error(
-      `Missing dedicated forms for terminal machinery categories; seed aborted before writes: ${missingTerminalForms.join(", ")}`,
+      `Missing dedicated forms for terminal equipment categories; seed aborted before writes: ${missingTerminalForms.join(", ")}`,
     );
   }
 
@@ -3014,7 +3023,8 @@ async function main() {
 
   console.log(JSON.stringify({
     templatesDefined: templates.length,
-    machineCategoriesAudited: machineCategories.length,
+    coverageRootsAudited: coverageRoots.map((root) => root.slug),
+    equipmentCategoriesAudited: equipmentCategories.length,
     terminalCategoriesAudited: terminalCategories.length,
     terminalFormsCovered: terminalCategories.length - missingTerminalForms.length,
     conflictingGlobalFieldKeyCount: fieldKeyPlan.conflictingKeyCount,
