@@ -29,7 +29,7 @@ export const isSmtpConfigured = (): boolean =>
   Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS);
 
 /** Low-level send. Falls back to console logging when SMTP is not set. */
-export async function sendEmail(args: SendEmailArgs): Promise<boolean> {
+export async function sendEmailWithResult(args: SendEmailArgs): Promise<boolean> {
   if (!isSmtpConfigured()) {
     // ── Dev / sandbox fallback ──────────────────────────────────
     // Print a clearly-delimited block so the code can be picked out
@@ -74,6 +74,11 @@ export async function sendEmail(args: SendEmailArgs): Promise<boolean> {
     console.error("[HEAVIX EMAIL] send failed:", err);
     return false;
   }
+}
+
+/** Backward-compatible send helper for callers that do not need delivery status. */
+export async function sendEmail(args: SendEmailArgs): Promise<void> {
+  await sendEmailWithResult(args);
 }
 
 /** Send a 6-digit email verification code to the user. */
