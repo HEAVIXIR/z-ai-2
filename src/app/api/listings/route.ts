@@ -367,12 +367,19 @@ export async function POST(req: Request) {
     }
 
     if (body.categoryId) {
+      const expectedLayer = transactionType.key === "SERVICE_REQUEST" ? "SERVICE" : "CATALOG";
       const category = await db.category.findFirst({
         where: { id: String(body.categoryId), active: true },
-        select: { id: true },
+        select: { id: true, layer: true },
       });
       if (!category) {
         return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (category.layer !== expectedLayer) {
+        return NextResponse.json(
+          { error: "دسته‌بندی با نوع آگهی انتخاب‌شده سازگار نیست." },
+          { status: 400 },
+        );
       }
     }
 
