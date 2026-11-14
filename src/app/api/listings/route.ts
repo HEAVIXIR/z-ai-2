@@ -2,6 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkCsrf } from "@/lib/csrf";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
@@ -346,6 +347,9 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
 
     const title = String(body.title ?? "").trim();
     if (!title || title.length < 3) {
