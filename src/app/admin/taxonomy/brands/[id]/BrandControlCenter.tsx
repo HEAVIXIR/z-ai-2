@@ -199,10 +199,12 @@ export default function BrandControlCenter({ brandId }: { brandId: string }) {
         throw new Error(data?.error ?? "ذخیره ناموفق بود.");
       }
       const updated = await res.json();
-      setBrand(updated.brand ?? updated);
+      // The PATCH response is intentionally compact; reload the complete
+      // relation graph so switching tabs never loses models/categories/etc.
+      await reloadBrand();
       return updated;
     },
-    [brandId],
+    [brandId, reloadBrand],
   );
 
   if (loading) {
