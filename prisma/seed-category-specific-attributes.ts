@@ -1234,6 +1234,272 @@ const templates: Template[] = [
   ]},
 ];
 
+
+function cloneTemplate(
+  sourceSlug: string,
+  slug: string,
+  label: string,
+  required?: string[],
+  extraFields: Field[] = [],
+): Template {
+  const source = templates.find((template) => template.slug === sourceSlug);
+  if (!source) throw new Error(`Cannot clone missing source template: ${sourceSlug}`);
+  const fields = [...source.fields];
+  for (const field of extraFields) {
+    if (!fields.some((existing) => existing.key === field.key)) fields.push(field);
+  }
+  return {
+    slug,
+    label,
+    required: required ?? source.required,
+    fields,
+  };
+}
+
+// Canonical 16-family machine tree: exact L3 forms add subtype-specific fields
+// to the shared L2 family fields. L2 terminal categories receive full forms.
+templates.push(
+  cloneTemplate("long-reach", "excavator-long-reach", "Long Reach Excavator", ["boom_reach", "max_digging_depth"]),
+  cloneTemplate("mining-excavator-machine", "excavator-mining", "Mining Excavator", ["operating_weight", "bucket_capacity", "payload_capacity"]),
+  cloneTemplate("excavator-chain", "excavator-demolition", "Demolition Excavator", ["demolition_reach", "hydraulic_flow"], [
+    f("demolition_reach", "برد کاری تخریب", "Demolition Reach", "DECIMAL", { unit: "M" }),
+    f("hydraulic_flow", "دبی هیدرولیک متعلقات", "Attachment Hydraulic Flow", "DECIMAL", { unit: "LPM" }),
+    f("hydraulic_pressure", "فشار هیدرولیک متعلقات", "Attachment Hydraulic Pressure", "DECIMAL", { unit: "BAR" }),
+    f("cab_falling_object_protection", "حفاظت کابین در برابر سقوط اجسام", "Falling Object Protection", "BOOLEAN"),
+  ]),
+  cloneTemplate("excavator-wheel", "excavator-material-handling", "Material Handling Excavator", ["material_handler_reach", "grapple_capacity"], [
+    f("material_handler_reach", "برد بوم جابه‌جایی مواد", "Material Handler Reach", "DECIMAL", { unit: "M" }),
+    f("grapple_capacity", "ظرفیت گراپل", "Grapple Capacity", "DECIMAL", { unit: "KG" }),
+    f("cab_elevation", "ارتفاع کابین", "Cab Elevation", "DECIMAL", { unit: "M" }),
+    f("undercarriage_stabilizer", "پایه تثبیت شاسی", "Undercarriage Stabilizer", "BOOLEAN"),
+  ]),
+  cloneTemplate("excavator-chain", "excavator-spider", "Spider Excavator", ["maximum_working_slope", "leg_stabilization"], [
+    f("maximum_working_slope", "حداکثر شیب کاری", "Maximum Working Slope", "DECIMAL", { unit: "DEG" }),
+    f("leg_stabilization", "پایه‌های تثبیت مستقل", "Independent Leg Stabilization", "BOOLEAN"),
+    f("leg_count", "تعداد پایه‌های متحرک", "Articulated Leg Count", "INTEGER"),
+    f("terrain_clearance", "فاصله از سطح ناهموار", "Terrain Clearance", "DECIMAL", { unit: "MM" }),
+  ]),
+  cloneTemplate("excavator-chain", "excavator-zero-tail-swing", "Zero Tail Swing Excavator", ["tail_swing_radius", "overall_width_mm"], [
+    f("tail_swing_radius", "شعاع گردش انتهای دستگاه", "Tail Swing Radius", "DECIMAL", { unit: "MM" }),
+    f("counterweight_profile", "پروفیل وزنه تعادل", "Counterweight Profile", "SELECT", { options: ["Zero Tail", "Reduced Tail", "Conventional"] }),
+  ]),
+  cloneTemplate("long-reach", "excavator-long-radius", "Long Radius Excavator", ["boom_reach", "max_digging_depth"]),
+  cloneTemplate("long-reach", "excavator-telescopic", "Telescopic Boom Excavator", ["telescopic_reach", "max_digging_depth"], [
+    f("telescopic_reach", "برد بازوی تلسکوپی", "Telescopic Reach", "DECIMAL", { unit: "M" }),
+    f("telescopic_sections", "تعداد قطعات تلسکوپی", "Telescopic Sections", "INTEGER"),
+    f("extension_system", "سامانه افزایش طول", "Extension System", "SELECT", { options: ["هیدرولیکی", "مکانیکی"] }),
+  ]),
+  cloneTemplate("other-machinery", "excavator-special", "Special Configuration Excavator", ["machine_type", "technical_description"], [
+    f("base_excavator_type", "نوع پایه بیل", "Base Excavator Type", "TEXT"),
+    f("special_conversion", "تبدیل تخصصی", "Special Conversion", "LONG_TEXT"),
+  ]),
+
+  cloneTemplate("compact-track-loader", "compact-loader", "Compact Loader", ["rated_operating_capacity", "operating_weight"]),
+  cloneTemplate("wheel-loader", "industrial-loader", "Industrial Wheel Loader", ["bucket_capacity", "rated_operating_capacity"], [
+    f("duty_class", "کلاس کاری", "Duty Class", "SELECT", { options: ["سبک", "متوسط", "سنگین", "پیوسته"] }),
+    f("cycle_time", "زمان سیکل بارگیری", "Loading Cycle Time", "DECIMAL", { unit: "S" }),
+    f("tire_type", "نوع تایر", "Tire Type", "TEXT"),
+  ]),
+  cloneTemplate("mining-loader", "underground-loader", "Underground Loader", ["bucket_capacity", "payload_capacity"], [
+    f("machine_width", "عرض دستگاه", "Machine Width", "DECIMAL", { unit: "MM" }),
+    f("machine_height", "ارتفاع دستگاه", "Machine Height", "DECIMAL", { unit: "MM" }),
+    f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
+    f("low_profile_design", "طراحی کم‌ارتفاع", "Low Profile Design", "BOOLEAN"),
+  ]),
+  cloneTemplate("wheel-loader", "multi-purpose-loader", "Multi-purpose Loader", ["bucket_capacity", "attachment_mount"], [
+    f("attachment_mount", "استاندارد اتصال متعلقات", "Attachment Mount", "TEXT"),
+    f("auxiliary_hydraulic_circuit", "مدار هیدرولیک کمکی", "Auxiliary Hydraulic Circuit", "BOOLEAN"),
+    f("quick_coupler", "کوپلر سریع", "Quick Coupler", "BOOLEAN"),
+  ]),
+
+  // Bulldozer variants inherit the common bulldozer family fields.
+  { slug: "dozer-track", label: "Track Bulldozer", required: ["track_shoe_width", "blade_width"], fields: [
+    f("track_shoe_width", "عرض کفشک زنجیر", "Track Shoe Width", "DECIMAL", { unit: "MM" }),
+    f("blade_width", "عرض تیغه", "Blade Width", "DECIMAL", { unit: "M" }),
+    f("ground_pressure", "فشار بر زمین", "Ground Pressure", "DECIMAL", { unit: "KPA" }),
+    f("drawbar_pull", "نیروی کشش", "Drawbar Pull", "DECIMAL", { unit: "KN" }),
+  ]},
+  { slug: "dozer-wheel", label: "Wheel Bulldozer", required: ["blade_width", "tire_size"], fields: [
+    f("blade_width", "عرض تیغه", "Blade Width", "DECIMAL", { unit: "M" }),
+    f("tire_size", "سایز تایر", "Tire Size", "TEXT"),
+    f("axle_count", "تعداد محور", "Axle Count", "INTEGER"),
+    f("travel_speed", "سرعت حرکت", "Travel Speed", "DECIMAL", { unit: "KMH" }),
+  ]},
+  { slug: "mini-dozer", label: "Mini Bulldozer", required: ["operating_weight", "blade_width"], fields: [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+    f("blade_width", "عرض تیغه", "Blade Width", "DECIMAL", { unit: "M" }),
+    f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  { slug: "heavy-dozer", label: "Heavy Bulldozer", required: ["operating_weight", "blade_capacity"], fields: [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+    f("blade_capacity", "ظرفیت تیغه", "Blade Capacity", "DECIMAL", { unit: "M3" }),
+    f("drawbar_pull", "نیروی کشش", "Drawbar Pull", "DECIMAL", { unit: "KN" }),
+    f("ripper_force", "نیروی ریپر", "Ripper Force", "DECIMAL", { unit: "KN" }),
+  ]},
+  { slug: "mining-dozer", label: "Mining Bulldozer", required: ["ground_pressure", "blade_capacity"], fields: [
+    f("ground_pressure", "فشار بر زمین", "Ground Pressure", "DECIMAL", { unit: "KPA" }),
+    f("blade_capacity", "ظرفیت تیغه", "Blade Capacity", "DECIMAL", { unit: "M3" }),
+    f("ripper_force", "نیروی ریپر", "Ripper Force", "DECIMAL", { unit: "KN" }),
+    f("heavy_duty_undercarriage", "زیربندی معدن", "Heavy Duty Undercarriage", "BOOLEAN"),
+  ]},
+  { slug: "pipe-dozer", label: "Pipeline Dozer", required: ["side_boom_capacity", "pipe_diameter_range"], fields: [
+    f("side_boom_capacity", "ظرفیت بوم جانبی", "Side Boom Capacity", "DECIMAL", { unit: "TON" }),
+    f("pipe_diameter_range", "محدوده قطر لوله", "Pipe Diameter Range", "TEXT"),
+    f("side_boom_reach", "برد بوم جانبی", "Side Boom Reach", "DECIMAL", { unit: "M" }),
+    f("counterweight", "وزنه تعادل", "Counterweight", "DECIMAL", { unit: "TON" }),
+  ]},
+  { slug: "angle-dozer", label: "Angle Dozer", required: ["blade_width", "blade_angle"], fields: [
+    f("blade_width", "عرض تیغه", "Blade Width", "DECIMAL", { unit: "M" }),
+    f("blade_angle", "زاویه تیغه", "Blade Angle", "DECIMAL", { unit: "DEG" }),
+    f("blade_tilt", "زاویه انحراف تیغه", "Blade Tilt", "DECIMAL", { unit: "DEG" }),
+    f("blade_type", "نوع تیغه", "Blade Type", "SELECT", { options: ["مستقیم", "زاویه‌دار", "U شکل"] }),
+  ]},
+  { slug: "swamp-dozer", label: "Swamp / Low Ground Pressure Dozer", required: ["ground_pressure", "track_shoe_width"], fields: [
+    f("ground_pressure", "فشار بر زمین", "Ground Pressure", "DECIMAL", { unit: "KPA" }),
+    f("track_shoe_width", "عرض کفشک زنجیر", "Track Shoe Width", "DECIMAL", { unit: "MM" }),
+    f("track_gauge", "فاصله زنجیرها", "Track Gauge", "DECIMAL", { unit: "M" }),
+    f("flotation_configuration", "پیکربندی شناوری", "Flotation Configuration", "TEXT"),
+  ]},
+
+  // Motor grader family and its six distinct configurations.
+  { slug: "motor-grader", label: "Motor Grader", required: ["moldboard_width", "engine_power_kw"], fields: [
+    f("moldboard_width", "عرض تیغه گریدر", "Moldboard Width", "DECIMAL", { unit: "M", filterable: true }),
+    f("moldboard_height", "ارتفاع تیغه", "Moldboard Height", "DECIMAL", { unit: "MM" }),
+    f("circle_rotation", "زاویه چرخش دایره", "Circle Rotation", "DECIMAL", { unit: "DEG" }),
+    f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
+    f("front_axle_oscillation", "نوسان محور جلو", "Front Axle Oscillation", "DECIMAL", { unit: "DEG" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  cloneTemplate("motor-grader", "compact-grader", "Compact Motor Grader", ["moldboard_width", "operating_weight"], [
+    f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
+    f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
+  ]),
+  cloneTemplate("motor-grader", "heavy-grader", "Heavy Motor Grader", ["moldboard_width", "engine_power_kw"], [
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+    f("axle_load", "بار محوری", "Axle Load", "DECIMAL", { unit: "TON" }),
+  ]),
+  cloneTemplate("motor-grader", "mining-grader", "Mining Grader", ["moldboard_width", "ground_clearance_mm"], [
+    f("ground_clearance_mm", "فاصله از زمین", "Ground Clearance", "DECIMAL", { unit: "MM" }),
+    f("heavy_duty_axle", "محور تقویت‌شده", "Heavy Duty Axle", "BOOLEAN"),
+  ]),
+  cloneTemplate("motor-grader", "quarry-grader", "Quarry Grader", ["moldboard_width", "operating_weight"], [
+    f("rock_guard", "محافظ سنگ", "Rock Guard", "BOOLEAN"),
+    f("axle_load", "بار محوری", "Axle Load", "DECIMAL", { unit: "TON" }),
+  ]),
+  cloneTemplate("motor-grader", "gps-grader", "GPS / 3D Grader", ["moldboard_width", "gps_machine_control"], [
+    f("gps_machine_control", "کنترل سه‌بعدی GPS", "GPS Machine Control", "BOOLEAN"),
+    f("gnss_receivers", "تعداد گیرنده GNSS", "GNSS Receivers", "INTEGER"),
+    f("automatic_blade_control", "کنترل خودکار تیغه", "Automatic Blade Control", "BOOLEAN"),
+  ]),
+
+  // Backhoe loader variants.
+  { slug: "backhoe-loader-standard", label: "Standard Backhoe Loader", required: ["loader_bucket_capacity", "backhoe_digging_depth"], fields: [
+    f("loader_bucket_capacity", "ظرفیت باکت جلو", "Loader Bucket Capacity", "DECIMAL", { unit: "M3" }),
+    f("backhoe_bucket_capacity", "ظرفیت باکت عقب", "Backhoe Bucket Capacity", "DECIMAL", { unit: "M3" }),
+    f("backhoe_digging_depth", "عمق حفاری عقب", "Backhoe Digging Depth", "DECIMAL", { unit: "M" }),
+    f("loader_lift_capacity", "ظرفیت بالابری جلو", "Loader Lift Capacity", "DECIMAL", { unit: "KG" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+    f("drive_configuration", "آرایش محرک", "Drive Configuration", "SELECT", { options: ["4x2", "4x4"] }),
+  ]},
+  cloneTemplate("backhoe-loader-standard", "backhoe-4wd", "4WD Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    f("four_wheel_drive", "چهارچرخ محرک", "Four Wheel Drive", "BOOLEAN"),
+    f("axle_differential_lock", "قفل دیفرانسیل", "Axle Differential Lock", "BOOLEAN"),
+  ]),
+  cloneTemplate("backhoe-loader-standard", "backhoe-center-mount", "Center Mount Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    f("backhoe_mount", "نوع نصب بکهو", "Backhoe Mount", "SELECT", { options: ["مرکزی", "کناری"] }),
+    f("swing_arc", "قوس چرخش بازو", "Swing Arc", "DECIMAL", { unit: "DEG" }),
+  ]),
+  cloneTemplate("backhoe-loader-standard", "backhoe-side-shift", "Side Shift Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    f("side_shift_range", "محدوده جابه‌جایی جانبی", "Side Shift Range", "DECIMAL", { unit: "MM" }),
+    f("stabilizer_span", "فاصله بازشدگی پایه‌ها", "Stabilizer Span", "DECIMAL", { unit: "M" }),
+  ]),
+  cloneTemplate("backhoe-loader-standard", "compact-backhoe", "Compact Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+  ]),
+  cloneTemplate("backhoe-loader-standard", "industrial-backhoe", "Industrial Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    f("industrial_tire_type", "نوع تایر صنعتی", "Industrial Tire Type", "TEXT"),
+    f("continuous_duty_rating", "رتبه کارکرد پیوسته", "Continuous Duty Rating", "TEXT"),
+  ]),
+
+  // Scraper variants.
+  cloneTemplate("scraper", "motor-scraper", "Motor Scraper", ["bowl_capacity", "rated_payload"]),
+  cloneTemplate("scraper", "towed-scraper", "Towed Scraper", ["bowl_capacity", "rated_payload"], [
+    f("towing_tractor_power", "توان تراکتور کشنده", "Towing Tractor Power", "DECIMAL", { unit: "KW" }),
+    f("drawbar_type", "نوع اتصال کشنده", "Drawbar Type", "TEXT"),
+  ]),
+  cloneTemplate("scraper", "open-bowl-scraper", "Open Bowl Scraper", ["bowl_capacity", "rated_payload"], [
+    f("bowl_type", "نوع جام", "Bowl Type", "SELECT", { options: ["باز", "بسته"] }),
+    f("ejector_type", "نوع تخلیه‌کننده", "Ejector Type", "TEXT"),
+  ]),
+  cloneTemplate("scraper", "elevating-scraper", "Elevating Scraper", ["bowl_capacity", "rated_payload"], [
+    f("elevator_type", "نوع الواتور", "Elevator Type", "TEXT"),
+    f("elevator_speed", "سرعت الواتور", "Elevator Speed", "DECIMAL", { unit: "RPM" }),
+  ]),
+  cloneTemplate("scraper", "twin-engine-scraper", "Twin Engine Scraper", ["bowl_capacity", "rated_payload"], [
+    f("engine_count", "تعداد موتور", "Engine Count", "INTEGER"),
+    f("front_engine_power_kw", "توان موتور جلو", "Front Engine Power", "DECIMAL", { unit: "KW" }),
+    f("rear_engine_power_kw", "توان موتور عقب", "Rear Engine Power", "DECIMAL", { unit: "KW" }),
+  ]),
+  cloneTemplate("scraper", "mining-scraper", "Mining Scraper", ["bowl_capacity", "rated_payload"], [
+    f("underground_clearance", "فاصله از سقف تونل", "Underground Clearance", "DECIMAL", { unit: "M" }),
+    f("low_profile_configuration", "پیکربندی کم‌ارتفاع", "Low Profile Configuration", "BOOLEAN"),
+  ]),
+
+  // Roller variants.
+  cloneTemplate("single-drum-roller", "soil-roller", "Soil Compactor Roller", ["operating_weight", "drum_width"], [
+    f("soil_compaction_depth", "عمق تراکم خاک", "Soil Compaction Depth", "DECIMAL", { unit: "M" }),
+    f("padfoot_shell_kit", "قابلیت نصب پد‌فوت", "Padfoot Shell Kit", "BOOLEAN"),
+  ]),
+  cloneTemplate("double-drum-roller", "asphalt-roller", "Asphalt Tandem Roller", ["operating_weight", "working_width_mm"], [
+    f("asphalt_compaction_mode", "حالت تراکم آسفالت", "Asphalt Compaction Mode", "SELECT", { options: ["ارتعاشی", "نوسانی", "استاتیک"] }),
+    f("water_spray_system", "سیستم آب‌پاش درام", "Drum Water Spray System", "BOOLEAN"),
+  ]),
+  cloneTemplate("double-drum-roller", "combination-roller", "Combination Roller", ["operating_weight", "working_width_mm"], [
+    f("front_drum_rear_tire", "درام جلو و تایر عقب", "Front Drum / Rear Tire", "BOOLEAN"),
+    f("tire_count", "تعداد تایر", "Tire Count", "INTEGER"),
+  ]),
+
+  // Remaining terminal road/civil families.
+  { slug: "grading-earthmoving", label: "Grading & Earthmoving Equipment", required: ["working_width", "working_capacity"], fields: [
+    f("equipment_type", "نوع تجهیزات تسطیح و خاکی", "Equipment Type", "TEXT"),
+    f("working_width", "عرض کاری", "Working Width", "DECIMAL", { unit: "M" }),
+    f("working_depth_m", "عمق کاری", "Working Depth", "DECIMAL", { unit: "M" }),
+    f("working_capacity", "ظرفیت عملیات", "Working Capacity", "TEXT"),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  { slug: "piling-foundation", label: "Piling & Foundation Machinery", required: ["piling_method", "max_pile_depth"], fields: [
+    f("piling_method", "روش اجرای شمع", "Piling Method", "MULTI_SELECT", { options: ["شمع‌کوبی", "حفاری اوگر", "Rotary", "CFA", "میکروپایل"] }),
+    f("max_pile_depth", "حداکثر عمق شمع", "Maximum Pile Depth", "DECIMAL", { unit: "M" }),
+    f("pile_diameter_range", "محدوده قطر شمع", "Pile Diameter Range", "TEXT"),
+    f("crowd_force", "نیروی پیشروی", "Crowd Force", "DECIMAL", { unit: "KN" }),
+    f("rotation_torque_knm", "گشتاور حفاری", "Drilling Torque", "DECIMAL", { unit: "KNM" }),
+    f("mast_height", "ارتفاع دکل", "Mast Height", "DECIMAL", { unit: "M" }),
+  ]},
+  { slug: "site-haulage", label: "Construction Site Haulage", required: ["payload_capacity", "body_volume"], fields: [
+    f("payload_capacity", "ظرفیت بار مفید", "Payload Capacity", "DECIMAL", { unit: "TON", filterable: true }),
+    f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
+    f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
+    f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
+    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+  ]},
+  { slug: "multi-purpose-civil", label: "Multi-purpose Civil Machinery", required: ["machine_type", "working_capacity"], fields: [
+    f("machine_type", "نوع ماشین عمرانی", "Machine Type", "TEXT"),
+    f("working_capacity", "ظرفیت کاری", "Working Capacity", "TEXT"),
+    f("attachment_compatibility", "سازگاری متعلقات", "Attachment Compatibility", "MULTI_SELECT", { options: ["باکت", "چنگک", "چکش", "مته", "تیغه", "شاخک"] }),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+  ]},
+  { slug: "other-civil", label: "Other Civil Engineering Machinery", required: ["machine_type", "technical_description"], fields: [
+    f("machine_type", "نوع ماشین عمرانی", "Machine Type", "TEXT"),
+    f("technical_description", "شرح فنی", "Technical Description", "LONG_TEXT"),
+    f("working_capacity", "ظرفیت کاری", "Working Capacity", "TEXT"),
+    f("power_source", "منبع نیرو", "Power Source", "TEXT"),
+    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+  ]},
+);
+
 async function upsertField(field: Field): Promise<string> {
   const data = {
     key: field.key,
