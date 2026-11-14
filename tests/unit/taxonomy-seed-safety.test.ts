@@ -58,7 +58,7 @@ describe("Preview taxonomy seed safety contracts", () => {
   it("keeps the catalog and brand seeds additive", () => {
     for (const name of ["seed-brands-a.ts", "seed-brands-b.ts", "seed-catalog.ts", "seed-services.ts"]) {
       const source = readSeed(name);
-      expect(source).not.toMatch(/db\\.(?:brand|productModel|product|service)\\.deleteMany/);
+      expect(source).not.toMatch(/db\.(?:brand|productModel|product|service)\.deleteMany/);
     }
   });
 
