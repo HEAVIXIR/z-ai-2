@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 /* ============================================================
    /api/taxonomy/brands/[id]/categories
@@ -31,12 +32,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
+    const brand = await db.brand.findUnique({ where: { id }, select: { id: true } });
+    if (!brand) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
     const body = await req.json();
     const categoryId = String(body.categoryId ?? "");
     if (!categoryId) return NextResponse.json({ error: "categoryId required" }, { status: 400 });
+
+    const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+    if (!category) return NextResponse.json({ error: "Category not found" }, { status: 404 });
 
     const link = await db.brandCategory.upsert({
       where: { brandId_categoryId: { brandId: id, categoryId } },
@@ -64,6 +71,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
@@ -71,8 +79,8 @@ export async function DELETE(
     const categoryId = url.searchParams.get("categoryId");
     if (!categoryId) return NextResponse.json({ error: "categoryId required" }, { status: 400 });
 
-    await db.brandCategory.delete({
-      where: { brandId_categoryId: { brandId: id, categoryId } },
+    await db.brandCategory.deleteMany({
+      where: { brandId: id, categoryId },
     });
     return NextResponse.json({ success: true });
   } catch {
