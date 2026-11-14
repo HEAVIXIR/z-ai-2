@@ -2517,7 +2517,7 @@ templates.push(
     f("review_required", "نیازمند بررسی فنی", "Technical Review Required", "BOOLEAN"),
   ]},
 
-  // Missing terminal taxonomy families identified by the 270-leaf coverage audit.
+  // Additional terminal categories discovered by the five-root catalog coverage audit.
   { slug: "mini-excavator", label: "Mini Excavator", required: ["operating_weight", "bucket_capacity", "max_digging_depth"], fields: [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true, card: true }),
