@@ -208,7 +208,8 @@ export default function NewListingPage() {
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}`, {
+        const categoryParam = form.categoryId ? `&categoryId=${encodeURIComponent(form.categoryId)}` : "";
+        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}${categoryParam}`, {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error("brand search failed");
@@ -222,7 +223,7 @@ export default function NewListingPage() {
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [brandQuery]);
+  }, [brandQuery, form.categoryId]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
