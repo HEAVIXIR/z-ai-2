@@ -165,7 +165,7 @@ export async function GET(
     // particular ProductModel without changing the shared machine template.
     if (selectedModel) {
       const modelLinks = await db.productModelAttribute.findMany({
-        where: { modelId: selectedModel.id },
+        where: { modelId: selectedModel.id, categoryId: selected.id },
         include: {
           attribute: {
             include: {
