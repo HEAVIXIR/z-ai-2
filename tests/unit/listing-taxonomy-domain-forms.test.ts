@@ -51,6 +51,20 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(seed).not.toContain('attributeDefinition.upsert({where:{key:x.key}');
   });
 
+  it("preflights supplemental taxonomy slug collisions before moving any existing category", () => {
+    const seed = read("prisma/seed-service-and-mineral-taxonomy.ts");
+    expect(seed).toContain("type PlannedCategory");
+    expect(seed).toContain("new Set(slugs).size!==slugs.length");
+    expect(seed).toContain("row.parentId!==expectedParent.id");
+    expect(seed).toContain("row.layer!==item.layer");
+    expect(seed).toContain("row.domain!==item.domain");
+    expect(seed).toContain("no writes were made");
+    const preflight = seed.indexOf("for(const item of plan)");
+    const firstWrite = seed.indexOf('await insert(root.id,root.taxPath??"services"');
+    expect(preflight).toBeGreaterThan(-1);
+    expect(firstWrite).toBeGreaterThan(preflight);
+  });
+
   it("preflights all category slugs before writing any domain attributes", () => {
     const seed = read("prisma/seed-service-mineral-attributes.ts");
     const preflight = seed.indexOf('if(missing.length)throw new Error("Missing category forms; no attributes were written:');
