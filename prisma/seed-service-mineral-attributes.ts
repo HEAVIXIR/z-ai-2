@@ -109,15 +109,15 @@ forms.push(...generatedForms);
 async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
  for(let i=0;i<fields.length;i++){
   const x=fields[i];
-  const optionValues=[...(x.options??[])];\n  const normalizedOptionValues=[...optionValues].sort();
+  const optionValues=[...(x.options??[])];\n
   const base=await db.attributeDefinition.findUnique({
    where:{key:x.key},
-   include:{options:{select:{value:true}}},
+   include:{options:{select:{value:true,sortOrder:true}}},
   });
   const isCompatible=(candidate:typeof base)=>!!candidate &&
    candidate.type===x.type &&
    candidate.unit===(x.unit??null) &&
-   JSON.stringify(candidate.options.map(o=>o.value).sort())===JSON.stringify(normalizedOptionValues);
+   JSON.stringify([...candidate.options].sort((a,b)=>a.sortOrder-b.sortOrder).map(o=>o.value))===JSON.stringify(optionValues);
   // AttributeDefinition.key is globally unique. Reuse only compatible
   // storage definitions; namespace a collision to this category leaf.
   const resolvedKey=base && !isCompatible(base)
@@ -127,7 +127,7 @@ async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
    ? base
    : await db.attributeDefinition.findUnique({
       where:{key:resolvedKey},
-      include:{options:{select:{value:true}}},
+      include:{options:{select:{value:true,sortOrder:true}}},
      });
   if(existing && !isCompatible(existing)){
    throw new Error(`Incompatible global attribute key ${resolvedKey} for category ${scopeSlug}`);
@@ -140,11 +140,11 @@ async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
     visibleOnDetail:true,seoRelevant:!!x.filterable,aiRelevant:true,
    },
   });
-  for(let j=0;j<optionValues.length;j++){
-   const value=optionValues[j];
-   const old=await db.attributeOption.findFirst({where:{attributeId:a.id,value}});
-   if(old)await db.attributeOption.update({where:{id:old.id},data:{label:value,sortOrder:j}});
-   else await db.attributeOption.create({data:{attributeId:a.id,value,label:value,sortOrder:j}});
+  if(!existing){
+   for(let j=0;j<optionValues.length;j++){
+    const value=optionValues[j];
+    await db.attributeOption.create({data:{attributeId:a.id,value,label:value,sortOrder:j}});
+   }
   }
   await db.categoryAttribute.upsert({
    where:{categoryId_attributeId:{categoryId,attributeId:a.id}},
