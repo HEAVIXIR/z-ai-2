@@ -1283,6 +1283,14 @@ async function upsertBrand(b: BrandSeed) {
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   // Guard: Phase A must have run first (industries + families exist).
   const industryCount = await db.industry.count();
   if (industryCount === 0) {
