@@ -49,8 +49,8 @@ async function main() {
   if (transactionTypes < 6) failures.push("expected at least 6 transaction types");
   if (serviceTypes < 9) failures.push("expected at least 9 service types");
   if (industries < 16) failures.push("expected at least 16 application industries");
-  if (categories < 295) failures.push("expected at least 295 categories to preserve the documented legacy taxonomy baseline");
-  if (brands < 600) failures.push("expected at least 600 canonical brands; current demo/partial seeds are not a complete catalog");
+  if (categories < 539) failures.push("expected at least 539 categories to preserve the documented legacy taxonomy baseline");
+  if (brands < 629) failures.push("expected at least 629 canonical brands; current demo/partial seeds are not a complete catalog");
   if (models < 35) failures.push("expected at least 35 seeded product models");
   if (attributes < 1) failures.push("expected dynamic attribute definitions");
   if (categoryAttributeLinks < 1) failures.push("expected category-specific attribute links");
