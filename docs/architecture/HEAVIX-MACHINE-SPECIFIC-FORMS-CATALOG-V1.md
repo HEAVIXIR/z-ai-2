@@ -18,7 +18,7 @@ The canonical taxonomy is organized into 16 top-level families. Forms include fa
 
 - **Earthmoving and road construction:** excavators (tracked, wheeled, mini, long-reach, mining, demolition, material-handling, spider, zero-tail-swing, telescopic and specialist); wheel/track/compact/skid-steer loaders; bulldozers; motor/compact/heavy/mining/GPS graders; backhoe loaders; scrapers; single/double-drum, vibratory, pneumatic, soil, asphalt and combination rollers; asphalt and concrete machinery; piling/foundation and site-haulage equipment.
 - **Mining and underground:** rigid, articulated, underground, electric, diesel, hybrid and ultra-class mining trucks; mining excavators/loaders; hydraulic and electric-rope shovels; LHDs; underground utility vehicles; mine maintenance/service equipment; underground support and tunnel machinery.
-- **Drilling:** rotary, DTH, top-hammer, core, RC, water-well, oil-and-gas, geotechnical, blast-hole, underground and jumbo drills; drill rigs and drilling accessories.
+- **Drilling:** rotary, DTH, top-hammer, core, RC, water-well, oil-and-gas, geotechnical, blast-hole, wagon, underground and jumbo drills; drill rigs and drilling accessories.
 - **Crushing, screening and mineral processing:** jaw, cone, impact, gyratory, roll and hammer crushers; screens, scalpers, feeders, conveyors, washing plants, sand washers, hydrocyclones, magnetic separation, crushing/screening lines and mobile processing.
 - **Concrete and asphalt:** batching plants, transit mixers, concrete mixers, truck/trailer/line/boom/stationary pumps, shotcrete, concrete production/placing, asphalt plants, distributors, pavers/finishers, bitumen systems and asphalt recycling.
 - **Cranes and lifting:** tower, mobile, crawler, truck-mounted, wheel/rough-terrain, all-terrain, telescopic, chain, overhead, gantry, industrial and marine cranes; hoists, winches, lifting equipment, aerial platforms and material handlers.
@@ -37,10 +37,10 @@ The actual exact fields are defined in `prisma/seed-category-specific-attributes
 | Excavator / mini excavator | operating weight, bucket capacity, maximum digging depth, engine power, tail-swing configuration, auxiliary hydraulic flow, track width and overall dimensions |
 | Skid-steer / compact track loader | rated operating capacity, tipping load, lift path, auxiliary hydraulic flow/pressure, attachment mount, ground pressure and track geometry |
 | Crane | rated capacity, capacity at radius, boom/jib length, working radius, hook height, counterweight, outrigger span, axle/track configuration and load-chart availability |
-| Drill rig | drilling method, hole diameter, depth, rotary torque/speed, feed and pullback forces, feed stroke, mast length, compressor capacity and operating weight |
+| Drill rig / drill wagon | drilling method, hole diameter, depth, rotary torque/speed, feed and pullback forces, feed stroke, mast length, compressor capacity, carrier configuration, dust collection and operating weight |
 | Screening / crushing | feed opening/size, throughput, screen area/decks/cut sizes, crusher type, rotor/roll dimensions, vibration and drive power |
 | Asphalt / concrete | plant output, paving width/thickness, mixer volume/type, concrete output, pumping pressure, boom reach, heating and installed power |
-| Fuel dispenser | product type, flow-rate range, metering system, accuracy class, nozzle count, hose size, electrical supply, environmental rating and certification |
+| Fuel dispenser | product type, min/max flow, minimum measured quantity, metering accuracy/class, metering system, nozzle/hose count, max pressure, electrical supply, ambient range, ingress protection and certification |
 | Fuel tank / pump | usable capacity, material, installation, compartmenting, flow/head/pressure, wetted materials, leak monitoring and overfill protection |
 | Compressor | compressor technology, free-air delivery, working/max pressure, motor power, drive, lubrication, cooling, receiver volume and duty cycle |
 | Industrial pump | pump type, flow, head, differential pressure, efficiency, NPSH, impeller, wetted material, seal, solids handling and speed |
@@ -62,7 +62,7 @@ These sources inform category coverage and technical field selection; they do no
 ## Validation and release gates
 
 - Static taxonomy audit: 270 terminal categories in the current taxonomy seed; all 270 now have exact templates in this branch.
-- Static template checks: duplicate template slugs = 0; missing required keys = 0 in direct template objects; field types are restricted to the declared `AttrType` union; SELECT/MULTI_SELECT fields have explicit options.
+- Static template checks: duplicate template slugs = 0; missing required keys = 0 across explicit and cloned templates; field types are restricted to the declared `AttrType` union; SELECT/MULTI_SELECT fields have explicit options.
 - Runtime seed preflight: checks active category presence, terminal-leaf coverage, per-template duplicate fields and required-field membership, and global key compatibility before the first write.
 - Not yet run: TypeScript compile, Prisma validation, unit/E2E tests, database seed, Preview acceptance, or deployment.
 - The new templates are code only until the taxonomy and attribute seeds are applied to the verified Preview database. Do not run against an unverified database or Production.
