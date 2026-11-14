@@ -58,7 +58,7 @@ const forms:Form[]=[
  {slug:"mineral-haulage-service",fields:[f("haulage_capacity_tons","ظرفیت حمل","Haulage Capacity","DECIMAL",{unit:"TON",required:true}),f("fleet_types","انواع ناوگان","Fleet Types","MULTI_SELECT",{options:["دامپتراک","کامیون کمپرسی","تریلی","واگن ریلی"]}),f("route_distance_km","مسافت مسیر","Route Distance","DECIMAL",{unit:"KM"}),f("loading_unloading_assets","تجهیزات بارگیری و تخلیه","Loading / Unloading Assets","TEXT")]}
 ];
 
-const generatedForms: Form[] = [
+const generatedFormEntries: [string, F[]][] = [
  ...[
   ["machine-valuation",[f("valuation_method","روش ارزش‌گذاری","Valuation Method","SELECT",{options:["بازارمحور","هزینه‌محور","درآمدمحور","ترکیبی"]}),f("asset_scope","دامنه دارایی","Asset Scope","MULTI_SELECT",{options:["ماشین‌آلات","خط تولید","ناوگان","تجهیزات صنعتی"]}),f("report_standard","استاندارد گزارش","Report Standard","TEXT")]],
   ["brand-valuation",[f("brand_scope","دامنه برند","Brand Scope","TEXT"),f("valuation_framework","چارچوب ارزش‌گذاری","Valuation Framework","TEXT"),f("market_comparables","تعداد نمونه‌های مقایسه","Market Comparables","INTEGER")]],
@@ -79,8 +79,7 @@ const generatedForms: Form[] = [
   ["oil-change",[f("oil_grades","گرید روغن","Oil Grades","MULTI_SELECT",{options:["15W-40","10W-40","Hydraulic ISO 46","Gear 80W-90","سفارشی"]}),f("oil_analysis","آنالیز روغن کارکرده","Used Oil Analysis","BOOLEAN"),f("waste_oil_collection","جمع‌آوری روغن مستعمل","Waste Oil Collection","BOOLEAN")]],
   ["calibration",[f("instrument_types","تجهیزات قابل کالیبراسیون","Instrument Types","MULTI_SELECT",{options:["فشار","دما","دبی","گشتاور","وزن","سرعت"]}),f("calibration_range","محدوده کالیبراسیون","Calibration Range","TEXT"),f("traceable_certificate","گواهی قابل ردیابی","Traceable Certificate","BOOLEAN")]],
   ["diagnostics",[f("diagnostic_systems","سامانه‌های عیب‌یابی","Diagnostic Systems","MULTI_SELECT",{options:["موتور","گیربکس","هیدرولیک","برق","CAN Bus","کنترلر"]}),f("supported_brands","برندهای پشتیبانی‌شده","Supported Brands","TEXT"),f("remote_diagnostics","عیب‌یابی از راه دور","Remote Diagnostics","BOOLEAN")]]
- ] as [string,F[]][]
- ].map(([slug,fields])=>({slug,fields})),
+ ],
  ...[
   ["stone-block",[f("stone_type","نوع سنگ","Stone Type","TEXT"),f("block_dimensions","ابعاد کوپ","Block Dimensions","TEXT"),f("block_weight_ton","وزن کوپ","Block Weight","DECIMAL",{unit:"TON"}),f("quarry_origin","معدن مبدأ","Quarry Origin","TEXT")]],
   ["sand",[f("sand_type","نوع ماسه","Sand Type","SELECT",{options:["طبیعی","شسته","شکسته","سیلیسی"]}),f("fineness_modulus","مدول نرمی","Fineness Modulus","DECIMAL"),f("silt_percent","درصد لای","Silt Content","DECIMAL",{unit:"%"})]],
@@ -104,9 +103,9 @@ const generatedForms: Form[] = [
   ["thermal-coal",[f("calorific_value_kcal","ارزش حرارتی","Calorific Value","DECIMAL",{unit:"KCAL/KG",required:true}),f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"})]],
   ["coking-coal",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"}),f("fluidity_ddpm","سیالیت","Fluidity","DECIMAL",{unit:"DDPM"}),f("csr_percent","استحکام کک CSR","CSR","DECIMAL",{unit:"%"})]],
   ["coal-concentrate",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%",required:true}),f("moisture_percent","رطوبت","Moisture","DECIMAL",{unit:"%"}),f("volatile_matter_percent","مواد فرار","Volatile Matter","DECIMAL",{unit:"%"})]]
- ] as [string,F[]][]
- ].map(([slug,fields])=>({slug,fields})),
+ ],
 ];
+const generatedForms: Form[] = generatedFormEntries.map(([slug, fields]) => ({ slug, fields }));
 forms.push(...generatedForms);
 async function linkFields(categoryId:string,fields:F[]){
  for(let i=0;i<fields.length;i++){const x=fields[i];const data={key:x.key,name:x.fa,nameEn:x.en,labelFa:x.fa,labelEn:x.en,type:x.type,unit:x.unit??null,required:false,filterable:!!x.filterable,searchable:true,sortable:false,visibleOnCard:!!x.filterable,visibleOnDetail:true,seoRelevant:!!x.filterable,aiRelevant:true};
