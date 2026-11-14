@@ -41,3 +41,27 @@ Run these only against an explicitly confirmed Preview database after backup and
 - No service form displays irrelevant machine-only fields.
 - Typecheck, lint, unit/contract tests and end-to-end wizard tests pass before merge.
 - Preview seed execution and UI verification are recorded separately from code/CI status.
+
+## Free-first infrastructure and service budget contract (launch window)
+
+The first 6–12 months of HEAVIX launch must be designed around free-tier service usage. The initial capacity target is at least 10,000 listing/content views without requiring a paid plan or a paid upgrade to keep core marketplace journeys working.
+
+This is a hard architecture constraint for every new service, SDK, API, storage provider and background job:
+
+- Prefer free-tier or self-hosted/open-source options; document the free quota, limits, overage behavior, data-egress charges and upgrade triggers before adoption.
+- Do not introduce a mandatory paid dependency for publishing, browsing, searching, viewing listing details, or contacting a seller during the launch window.
+- Keep images and static assets optimized: responsive sizes, modern formats, lazy loading, bounded upload sizes, cacheable immutable assets and CDN/browser caching where available. Avoid repeatedly proxying or transforming the same asset.
+- Minimize database round trips and serverless invocations; paginate, select only required columns, cache read-heavy taxonomy/configuration, and avoid polling or unbounded background work.
+- Protect every external integration with timeouts, bounded retries, rate limits, graceful degradation and a documented fallback. A provider outage or free-quota exhaustion must not silently create runaway paid usage.
+- Add usage observability for requests, database reads/writes, storage, image transformations, bandwidth/egress, function execution and third-party API calls. Set warning thresholds before provider limits are reached.
+- No paid resource, billing activation, plan upgrade or production service migration may be assumed. Any such change requires an explicit cost/approval review first.
+- Record a service decision entry for each dependency: purpose, free allowance, expected usage at 10,000 views, quota risks, fallback, data portability and estimated cost if the allowance is exceeded.
+
+The 10,000-view target is a launch capacity requirement, not a claim that any provider guarantees unlimited free traffic. Until the product owner specifies whether 10,000 means monthly views or cumulative views over the launch window, capacity reviews must state the assumption explicitly and must not silently interpret it as monthly traffic.
+
+Acceptance gates:
+- Core listing publication, listing detail, taxonomy and contact flows remain usable within documented free-tier quotas for the agreed launch scenario.
+- No unbounded paid usage path exists for image delivery, API retries, database queries or background jobs.
+- A quota-exhaustion/failure fallback is defined and tested for every critical external service.
+- The team can inspect usage and receive an early warning before any free-tier ceiling is crossed.
+
