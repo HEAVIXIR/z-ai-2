@@ -82,18 +82,29 @@ export async function POST(
       slug = `${baseSlug}-${suffix++}`;
     }
 
-    const model = await db.productModel.create({
-      data: {
-        brandId: id,
-        name,
-        nameEn: body.nameEn ? String(body.nameEn).trim() : null,
-        slug,
-        description: body.description ? String(body.description).trim() : null,
-        categoryId,
-        status: "ACTIVE",
-        sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
-      },
-      include: { category: { select: { id: true, name: true, slug: true } } },
+    const model = await db.$transaction(async (tx) => {
+      const created = await tx.productModel.create({
+        data: {
+          brandId: id,
+          name,
+          nameEn: body.nameEn ? String(body.nameEn).trim() : null,
+          slug,
+          description: body.description ? String(body.description).trim() : null,
+          categoryId,
+          status: "ACTIVE",
+          sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
+        },
+        include: { category: { select: { id: true, name: true, slug: true } } },
+      });
+
+      // A model in a category implies the brand/category association exists.
+      // Preserve an existing admin-disabled link rather than silently reactivating it.
+      await tx.brandCategory.upsert({
+        where: { brandId_categoryId: { brandId: id, categoryId } },
+        create: { brandId: id, categoryId, isActive: true },
+        update: {},
+      });
+      return created;
     });
     return NextResponse.json({ success: true, data: model }, { status: 201 });
   } catch (error: any) {
