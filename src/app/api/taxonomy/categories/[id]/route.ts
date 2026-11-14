@@ -59,7 +59,7 @@ export async function PUT(req: Request, { params }: Params) {
     const existing = await db.category.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const data: Record<string, unknown> = {};
+    const data: any = {};
     const allowed = [
       "name", "nameEn", "icon", "imageUrl", "description", "domain",
       "featured", "active", "showOnHome", "sortOrder",
@@ -203,24 +203,43 @@ export async function PUT(req: Request, { params }: Params) {
 
 /* DELETE /api/taxonomy/categories/[id] */
 export async function DELETE(req: Request, { params }: Params) {
-  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
-  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  const __auth = await requireAdminPermission("taxonomy.write");
+  if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
-    // Re-parent children to null
-    await db.category.updateMany({
-      where: { parentId: id },
-      data: { parentId: null, level: 0 },
-    });
+    const category = await db.category.findUnique({ where: { id }, select: { id: true } });
+    if (!category) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const [children, listings, models, brandLinks, attributeLinks] = await Promise.all([
+      db.category.count({ where: { parentId: id } }),
+      db.listing.count({ where: { categoryId: id } }),
+      db.productModel.count({ where: { categoryId: id } }),
+      db.brandCategory.count({ where: { categoryId: id } }),
+      db.categoryAttribute.count({ where: { categoryId: id } }),
+    ]);
+    if (children || listings || models || brandLinks || attributeLinks) {
+      return NextResponse.json(
+        {
+          error: "این دسته هنوز وابستگی دارد؛ برای حفظ آگهی‌ها، مدل‌ها و فرم‌های فنی آن را غیرفعال کنید، نه حذف.",
+          dependencies: { children, listings, models, brandLinks, attributeLinks },
+        },
+        { status: 409 },
+      );
+    }
+
     await db.category.delete({ where: { id } });
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[categories/id] revalidateTag failed:', e); }
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, "default"); }
+    catch (error) { console.error("[categories/id] revalidateTag failed:", error); }
 
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { error: error?.message ?? "Server error" },
+      { status: error?.code === "P2003" ? 409 : 500 },
     );
   }
 }
