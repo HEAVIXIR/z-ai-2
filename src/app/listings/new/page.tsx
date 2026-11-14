@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import ListingImageUploader from "@/components/listings/ListingImageUploader";
+import CascadingCategoryPicker, { type CategoryPathItem } from "@/components/listings/CascadingCategoryPicker";
 import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
@@ -19,7 +21,6 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  ImagePlus,
   Key,
   Layers3,
   Loader2,
@@ -40,20 +41,20 @@ import {
    /listings/new — HBR Taxonomy V1.1 listing wizard.
 
    Steps:
-   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST
+   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST/SERVICE_OFFER
    2. دسته‌بندی (Category)          — CATALOG only, cascading root → child → grandchild
-   2.5. ویژگی‌ها (Attributes)        — dynamic from /api/categories/[id]/attributes
    3. برند و مدل                     — brand typeahead + model select (filtered by brand)
-   4. موقعیت (Location)              — country/province/city cascading
-   5. جزئیات                          — title, description, price/rental period, images, contact
-   6. بازبینی و تأیید                — review + POST /api/listings
+   4. مشخصات فنی دستگاه               — dynamic inherited attributes for selected machine/category
+   5. موقعیت (Location)              — country/province/city cascading
+   6. جزئیات                          — title, description, price/rental period, images, contact
+   7. بازبینی و تأیید                — review + POST /api/listings
    ============================================================ */
 
 const STEP_LABELS = [
   "نوع معامله",
   "دسته‌بندی",
-  "ویژگی‌ها",
   "برند و مدل",
+  "مشخصات فنی",
   "موقعیت",
   "جزئیات",
   "تکمیل",
@@ -97,6 +98,7 @@ export default function NewListingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [imagesUploading, setImagesUploading] = useState(false);
 
   // Form state — V1.1
   const [transactionType, setTransactionType] = useState<string>("SALE");
@@ -142,13 +144,10 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
+  const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
-  const [selectedRootId, setSelectedRootId] = useState<string>("");
-  const [selectedChildId, setSelectedChildId] = useState<string>("");
-  // TaxPath-based grandchild lookup: childId -> children
-  // We don't have grandchildren in the V1.1 taxonomy endpoint (only level 0+1),
-  // so we lazily fetch a category's children from the public category API.
+  const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
 
   // Brand typeahead state (alias-aware, hits /api/brands/search).
   const [brandQuery, setBrandQuery] = useState("");
@@ -169,8 +168,12 @@ export default function NewListingPage() {
       try {
         const res = await fetch("/api/taxonomy", { cache: "no-store" });
         if (!res.ok) return;
-        const data = (await res.json()) as { catalogRoots?: TaxRoot[] };
+        const data = (await res.json()) as {
+          catalogRoots?: TaxRoot[];
+          serviceRoots?: TaxRoot[];
+        };
         if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
+        if (alive && data.serviceRoots) setServiceRoots(data.serviceRoots);
       } catch {
         /* swallow */
       }
@@ -230,6 +233,9 @@ export default function NewListingPage() {
     setBrandOpen(false);
     setModelId("");
     setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttrErrors({});
   };
 
   // ── Fetch models when brand changes ──
@@ -267,54 +273,43 @@ export default function NewListingPage() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ── Cascade: when a root is selected, populate its children ──
-  const onPickRoot = (root: TaxRoot) => {
-    setSelectedRootId(root.id);
-    setCategoryId(root.id);
-    setChildCats(root.children ?? []);
-    setSelectedChildId("");
-    setGrandchildCats([]);
-  };
-
-  const onPickChild = (child: TaxChild) => {
-    setSelectedChildId(child.id);
-    setCategoryId(child.id);
-    setGrandchildCats([]);
-    // Try to fetch grandchildren via the public category endpoint.
-    // The endpoint may not return children, so we silently no-op on failure.
-    (async () => {
-      try {
-        const res = await fetch(`/api/taxonomy/categories/${child.id}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { category?: { children?: TaxChild[] } };
-        if (data.category?.children && data.category.children.length > 0) {
-          setGrandchildCats(data.category.children);
-        }
-      } catch {
-        /* no-op */
-      }
-    })();
-  };
-
-  const onPickGrandchild = (gc: TaxChild) => {
-    setCategoryId(gc.id);
-  };
-
   const isRent = transactionType === "RENT";
   const isAuction = transactionType === "AUCTION";
+  const isServiceRequest = transactionType === "SERVICE_REQUEST";
+  const isServiceOffer = transactionType === "SERVICE_OFFER";
+  const isServiceFlow = isServiceRequest || isServiceOffer;
+  const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
+
+  const handleTransactionTypeChange = (nextType: string) => {
+    if (nextType === transactionType) return;
+    setTransactionType(nextType);
+    setCategoryId("");
+    setCategoryPath([]);
+    setBrandId("");
+    setBrandQuery("");
+    setBrandResults([]);
+    setBrandOpen(false);
+    setModelId("");
+    setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttrErrors({});
+  };
 
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) {
-      // Required attributes must be filled before proceeding.
+    if (step === 3) return (isServiceFlow || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 4) {
+      // Technical specs are intentionally collected only after category + brand + model.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
       return Object.keys(errs).length === 0;
     }
-    if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
+      if (imagesUploading) return false;
+      if (isServiceRequest || isServiceOffer) return true; // service listings can publish without product price or gallery
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -391,7 +386,7 @@ export default function NewListingPage() {
       // onAttributesLoaded callback.
       const defs = attributeDefs.length > 0
         ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId) ?? [] : []);
+        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
       const payload = buildAttributePayload(defs, attributes);
       if (payload.length > 0 && data.id) {
         try {
@@ -554,12 +549,12 @@ export default function NewListingPage() {
                       subtitle="نوع معامله‌ای که می‌خواهید ثبت کنید را انتخاب کنید"
                     />
                     <div className="mt-6">
-                      <TransactionTypePicker value={transactionType} onChange={setTransactionType} />
+                      <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
                     </div>
                     <p className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-5 text-white/50">
                       نوع معامله فیلد جریان را تعیین می‌کند: «فروش» و «اجاره» برای کاتالوگ ماشین‌آلات،
                       «درخواست» برای درخواست خرید، «پیشنهاد قیمت» برای RFQ، «مزایده» برای حراج،
-                      و «درخواست خدمت» برای خدمات فنی.
+                      و «ارائه خدمات» برای معرفی خدمات قابل ارائه و «درخواست خدمت» برای ثبت نیاز خریدار.
                     </p>
                   </div>
                 )}
@@ -569,113 +564,48 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Layers3 className="h-5 w-5" />}
-                      title="دسته‌بندی کاتالوگ"
-                      subtitle="دسته، زیردسته و زیر-زیردسته دستگاه را انتخاب کنید (فقط لایه CATALOG)"
+                      title={isServiceFlow ? "دسته‌بندی خدمات" : "دسته‌بندی دستگاه و کالا"}
+                      subtitle={isServiceFlow
+                        ? "حوزه خدمت، زیرحوزه و خدمت تخصصی موردنظر را انتخاب کنید"
+                        : "نوع دستگاه، زیرشاخه و زیرنوع تخصصی را انتخاب کنید"}
                     />
 
-                    {catalogRoots.length === 0 ? (
+                    {categoryRoots.length === 0 ? (
                       <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
                         در حال بارگذاری دسته‌بندی‌ها… اگر ظاهر نشد، ابتدا دسته‌های کاتالوگ را در پنل مدیریت اضافه کنید.
                       </div>
                     ) : (
-                      <div className="mt-6 space-y-6">
-                        {/* Level 0 — roots */}
-                        <div>
-                          <label className={labelCls}>دسته اصلی</label>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {catalogRoots.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => onPickRoot(c)}
-                                className={`flex flex-col items-center gap-2 rounded-2xl border p-4 transition ${
-                                  selectedRootId === c.id
-                                    ? "border-[#F58220] bg-[#F58220]/10"
-                                    : "border-white/10 bg-black/30 hover:border-white/25"
-                                }`}
-                              >
-                                <span className="text-2xl">{c.icon ?? "🚜"}</span>
-                                <span className="text-xs font-bold text-white">{c.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Level 1 — children */}
-                        {childCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {childCats.map((sub) => (
-                                <button
-                                  key={sub.id}
-                                  type="button"
-                                  onClick={() => onPickChild(sub)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    selectedChildId === sub.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {sub.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Level 2 — grandchildren (if any) */}
-                        {grandchildCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیر-زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {grandchildCats.map((gc) => (
-                                <button
-                                  key={gc.id}
-                                  type="button"
-                                  onClick={() => onPickGrandchild(gc)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    categoryId === gc.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {gc.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {categoryId && (
-                          <div className="rounded-xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-3 text-[11px] text-white/60">
-                            دستهٔ انتخاب‌شده:{" "}
-                            <span className="font-bold text-[#F58220]">
-                              {catalogRoots.find((r) => r.id === selectedRootId)?.name ?? ""}
-                              {selectedChildId ? " / " : ""}
-                              {childCats.find((c) => c.id === selectedChildId)?.name ?? ""}
-                              {grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                ? " / " + grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                : ""}
-                            </span>
-                          </div>
-                        )}
+                      <div className="mt-6">
+                        <CascadingCategoryPicker
+                          roots={categoryRoots}
+                          value={categoryId}
+                          selectedPath={categoryPath}
+                          onChange={(id, selectedPath) => {
+                            setCategoryId(id);
+                            setCategoryPath(selectedPath);
+                            setAttributes({});
+                            setAttributeDefs([]);
+                            setAttrErrors({});
+                            setModelId("");
+                          }}
+                        />
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* ───── STEP 3: ATTRIBUTES (dynamic) ───── */}
-                {step === 3 && (
+                {/* ───── STEP 4: TECHNICAL ATTRIBUTES (after brand/model) ───── */}
+                {step === 4 && (
                   <div>
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
-                      title="ویژگی‌های دستگاه"
-                      subtitle="ویژگی‌های اختصاصی دستهٔ انتخاب‌شده را پر کنید"
+                      title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات فنی دستگاه"}
+                      subtitle={`فرم فنی متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "دستگاه"} — ${form.brandLabel || "برند انتخاب‌شده"} ${models.find((m) => m.id === modelId)?.name ?? ""}`}
                     />
                     <div className="mt-6">
                       <AttributeFields
                         categoryId={categoryId || null}
+                        modelId={modelId || null}
                         values={attributes}
                         onChange={(next) => {
                           setAttributes(next);
@@ -693,17 +623,19 @@ export default function NewListingPage() {
                   </div>
                 )}
 
-                {/* ───── STEP 4: BRAND + MODEL + BASIC INFO ───── */}
-                {step === 4 && (
+                {/* ───── STEP 3: BRAND + MODEL + BASIC INFO ───── */}
+                {step === 3 && (
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
-                      title="برند، مدل و اطلاعات پایه"
-                      subtitle="برند، مدل، عنوان و توضیحات آگهی"
+                      title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "برند، مدل و اطلاعات پایه"}
+                      subtitle={isServiceFlow
+                        ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
+                        : "برند و مدل دستگاه را انتخاب و اطلاعات آگهی را تکمیل کنید"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>برند *</label>
+                        <label className={labelCls}>{isServiceFlow ? "برند مرتبط (اختیاری)" : "برند *"}</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
@@ -803,7 +735,12 @@ export default function NewListingPage() {
                         <div className="relative">
                           <select
                             value={modelId}
-                            onChange={(e) => setModelId(e.target.value)}
+                            onChange={(e) => {
+                              setModelId(e.target.value);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttrErrors({});
+                            }}
                             disabled={!brandId || modelsLoading}
                             className={inputCls}
                           >
@@ -861,30 +798,32 @@ export default function NewListingPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className={labelCls}>وضعیت دستگاه</label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { v: "NEW", l: "نو" },
-                            { v: "USED", l: "کارکرده" },
-                            { v: "REFURBISHED", l: "بازسازی‌شده" },
-                            { v: "FOR_PARTS", l: "قطعات" },
-                          ].map((o) => (
-                            <button
-                              key={o.v}
-                              type="button"
-                              onClick={() => set("condition", o.v)}
-                              className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
-                                form.condition === o.v
-                                  ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                  : "border-white/10 text-white/60 hover:text-white"
-                              }`}
-                            >
-                              {o.l}
-                            </button>
-                          ))}
+                      {!isServiceFlow && (
+                        <div>
+                          <label className={labelCls}>وضعیت دستگاه</label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { v: "NEW", l: "نو" },
+                              { v: "USED", l: "کارکرده" },
+                              { v: "REFURBISHED", l: "بازسازی‌شده" },
+                              { v: "FOR_PARTS", l: "قطعات" },
+                            ].map((o) => (
+                              <button
+                                key={o.v}
+                                type="button"
+                                onClick={() => set("condition", o.v)}
+                                className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                                  form.condition === o.v
+                                    ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
+                                    : "border-white/10 text-white/60 hover:text-white"
+                                }`}
+                              >
+                                {o.l}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -914,63 +853,67 @@ export default function NewListingPage() {
                       icon={<PackageCheck className="h-5 w-5" />}
                       title="جزئیات آگهی"
                       subtitle={
-                        isRent
-                          ? "دوره اجاره، قیمت اجاره و تصاویر"
-                          : isAuction
-                            ? "قیمت پایه مزایده و تصاویر"
-                            : "قیمت، تصاویر و اطلاعات تماس"
+                        isServiceFlow
+                          ? (isServiceOffer ? "شرح خدمت قابل ارائه، اطلاعات تماس و نمونه‌کارهای اختیاری" : "شرح درخواست، اطلاعات تماس و مستندات اختیاری")
+                          : isRent
+                            ? "دوره اجاره، قیمت اجاره و تصاویر"
+                            : isAuction
+                              ? "قیمت پایه مزایده و تصاویر"
+                              : "قیمت، تصاویر و اطلاعات تماس"
                       }
                     />
                     <div className="mt-6 space-y-5">
-                      <div className="grid gap-5 sm:grid-cols-2">
-                        <div>
-                          <label className={labelCls}>سال ساخت</label>
-                          <input
-                            value={form.year}
-                            onChange={(e) => set("year", e.target.value)}
-                            placeholder="مثلاً: 2019"
-                            dir="ltr"
-                            className={inputCls}
-                          />
+                      {!isServiceFlow && (
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <div>
+                            <label className={labelCls}>سال ساخت</label>
+                            <input
+                              value={form.year}
+                              onChange={(e) => set("year", e.target.value)}
+                              placeholder="مثلاً: 2019"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>ساعت کارکرد</label>
+                            <input
+                              value={form.hours}
+                              onChange={(e) => set("hours", e.target.value)}
+                              placeholder="مثلاً: 4200"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>
+                              {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {!isAuction && "*"}
+                            </label>
+                            <input
+                              value={form.price}
+                              onChange={(e) => set("price", e.target.value)}
+                              placeholder="مثلاً: 8500000000"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>نوع قیمت</label>
+                            <select
+                              value={isAuction ? "AUCTION" : form.priceType}
+                              onChange={(e) => set("priceType", e.target.value)}
+                              disabled={isAuction}
+                              className={inputCls}
+                            >
+                              <option value="NEGOTIABLE">توافقی</option>
+                              <option value="FIXED">مقطوع</option>
+                              <option value="CALL_FOR_PRICE">تماس بگیرید</option>
+                              <option value="AUCTION">مزایده</option>
+                            </select>
+                          </div>
                         </div>
-                        <div>
-                          <label className={labelCls}>ساعت کارکرد</label>
-                          <input
-                            value={form.hours}
-                            onChange={(e) => set("hours", e.target.value)}
-                            placeholder="مثلاً: 4200"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>
-                            {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                            {!isAuction && "*"}
-                          </label>
-                          <input
-                            value={form.price}
-                            onChange={(e) => set("price", e.target.value)}
-                            placeholder="مثلاً: 8500000000"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>نوع قیمت</label>
-                          <select
-                            value={isAuction ? "AUCTION" : form.priceType}
-                            onChange={(e) => set("priceType", e.target.value)}
-                            disabled={isAuction}
-                            className={inputCls}
-                          >
-                            <option value="NEGOTIABLE">توافقی</option>
-                            <option value="FIXED">مقطوع</option>
-                            <option value="CALL_FOR_PRICE">تماس بگیرید</option>
-                            <option value="AUCTION">مزایده</option>
-                          </select>
-                        </div>
-                      </div>
+                      )}
 
                       {/* Rental period (only for RENT) */}
                       {isRent && (
@@ -1123,61 +1066,7 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      <div>
-                        <label className="mb-1.5 block text-xs font-bold text-white/60">
-                          تصاویر دستگاه *
-                        </label>
-                        <label className="flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/10 bg-black/30 text-center transition hover:border-[#F58220]/40">
-                          <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
-                          <span className="text-sm font-bold text-white/60">
-                            تصاویر دستگاه را اینجا بکشید یا کلیک کنید
-                          </span>
-                          <span className="mt-1 text-[11px] text-white/30">PNG, JPG تا ۱۰ مگابایت</span>
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []);
-                              const placeholders = files.map(
-                                (_, i) => `/uploads/placeholder-${Date.now()}-${i}.jpg`,
-                              );
-                              setImages((prev) => [...prev, ...placeholders].slice(0, 30));
-                            }}
-                          />
-                        </label>
-
-                        {images.length > 0 && (
-                          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
-                            {images.map((img, i) => (
-                              <div
-                                key={i}
-                                className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/40"
-                              >
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
-                                  <span className="text-3xl">🖼️</span>
-                                </div>
-                                {i === 0 && (
-                                  <span className="absolute right-1 top-1 rounded bg-[#F58220] px-1.5 py-0.5 text-[8px] font-black text-white">
-                                    اصلی
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
-                                  className="absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white/70 transition hover:bg-red-500 hover:text-white"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <p className="mt-3 text-[11px] text-white/35">
-                          {images.length} تصویر انتخاب شده. حداقل یک تصویر الزامی است.
-                        </p>
-                      </div>
+                      <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
                     </div>
                   </div>
                 )}
@@ -1194,10 +1083,7 @@ export default function NewListingPage() {
                       <ReviewRow label="نوع معامله" value={transactionType} />
                       <ReviewRow
                         label="دسته‌بندی"
-                        value={
-                          catalogRoots.find((r) => r.id === selectedRootId)?.name ??
-                          "—"
-                        }
+                        value={categoryPath.map((item) => item.name).join(" / ") || "—"}
                       />
                       <ReviewRow label="برند" value={form.brandLabel || "—"} />
                       <ReviewRow label="مدل" value={models.find((m) => m.id === modelId)?.name ?? "—"} />
@@ -1293,7 +1179,7 @@ export default function NewListingPage() {
                   ) : (
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || imagesUploading}
                       className="flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-8 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {submitting ? (

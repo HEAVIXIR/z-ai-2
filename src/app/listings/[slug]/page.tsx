@@ -114,32 +114,33 @@ export default async function ListingDetailPage({
 
   if (!listing || listing.status !== "PUBLISHED") notFound();
 
-  // Seed the favorite button state for the authed user (1 row max).
-  const existingFav = currentUser
-    ? await db.favorite.findUnique({
-        where: {
-          userId_listingId: { userId: currentUser.id, listingId: listing.id },
-        },
-        select: { id: true },
-      })
-    : null;
-  const isOwner = !!currentUser && !!listing.sellerId && currentUser.id === listing.sellerId;
-
-  /* ── Attribute values (Technical Specifications) — server-side fetch ── */
-  const attrRows = await db.listingAttributeValue.findMany({
-    where: { listingId: listing.id },
-    orderBy: [
-      { attribute: { sortOrder: "asc" } },
-      { attribute: { name: "asc" } },
-    ],
-    include: {
-      attribute: {
-        include: {
-          options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
+  // Favorite state and technical attributes are independent once the listing
+  // is known. Fetch them together to avoid adding serial database latency.
+  const [existingFav, attrRows] = await Promise.all([
+    currentUser
+      ? db.favorite.findUnique({
+          where: {
+            userId_listingId: { userId: currentUser.id, listingId: listing.id },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    db.listingAttributeValue.findMany({
+      where: { listingId: listing.id },
+      orderBy: [
+        { attribute: { sortOrder: "asc" } },
+        { attribute: { name: "asc" } },
+      ],
+      include: {
+        attribute: {
+          include: {
+            options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
+          },
         },
       },
-    },
-  });
+    }),
+  ]);
+  const isOwner = !!currentUser && !!listing.sellerId && currentUser.id === listing.sellerId;
 
   // Filter to visibleOnDetail AND non-empty value, then project for the display component.
   const specsRows: AttributeValueDisplayValue[] = attrRows

@@ -7,6 +7,12 @@ import { checkCsrf } from "@/lib/csrf";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function orderJson(body: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(body, init);
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
+  return response;
+}
+
 /* ============================================================
    /api/store/orders — HEAVIX store order endpoints
 
@@ -20,7 +26,7 @@ export const dynamic = "force-dynamic";
      pre-login flow) so existing customers with no HEAVIX account
      can still see their orders by phone.
 
-   GET  ?phone=X        → list this customer's orders by phone
+   GET  ?phone=X&orderNumber=Y → retrieve one exact guest order
         ?userId=X       → list this user's orders by HEAVIX userId
         ?mine=true      → list the current session user's orders
         (admin session) → list all orders
@@ -34,8 +40,8 @@ export const dynamic = "force-dynamic";
 
 function genOrderNumber(): string {
   const t = Date.now().toString(36).toUpperCase().slice(-6);
-  const r = Math.random().toString(36).toUpperCase().slice(2, 5);
-  return `HV-${t}${r}`;
+  const secret = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+  return `HV-${t}${secret}`;
 }
 
 function serializeOrder(o: any) {
@@ -79,6 +85,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const phone = (url.searchParams.get("phone") || "").trim();
     const userIdParam = (url.searchParams.get("userId") || "").trim();
+    const orderNumber = (url.searchParams.get("orderNumber") || "").trim().toUpperCase();
     const mine = url.searchParams.get("mine") === "true";
 
     // Resolve the current session user (with admin flag).
@@ -96,7 +103,7 @@ export async function GET(req: Request) {
           mechanic: { select: { id: true, name: true, family: true, shopName: true, phone: true } },
         },
       });
-      return NextResponse.json({ orders: orders.map(serializeOrder), admin: true });
+      return orderJson({ orders: orders.map(serializeOrder), admin: true });
     }
 
     // ?mine=true → use the session user's id.
@@ -112,14 +119,18 @@ export async function GET(req: Request) {
           mechanic: { select: { id: true, name: true, family: true, shopName: true, phone: true } },
         },
       });
-      return NextResponse.json({ orders: orders.map(serializeOrder) });
+      return orderJson({ orders: orders.map(serializeOrder) });
     }
 
     // Explicit userId filter (e.g. from the HEAVIX dashboard).
     if (userIdParam) {
-      // Only allow the user to query their own orders (or admin, handled above).
-      if (sessionUser && sessionUser.id !== userIdParam) {
-        return NextResponse.json({ error: "غیرمجاز" }, { status: 403 });
+      // Fail closed: an unauthenticated caller must never be able to enumerate
+      // another user's orders by supplying a guessed userId.
+      if (!sessionUser) {
+        return orderJson({ error: "احراز هویت الزامی است" }, { status: 401 });
+      }
+      if (sessionUser.id !== userIdParam) {
+        return orderJson({ error: "غیرمجاز" }, { status: 403 });
       }
       const orders = await storeDb.order.findMany({
         where: { userId: userIdParam },
@@ -132,29 +143,27 @@ export async function GET(req: Request) {
           mechanic: { select: { id: true, name: true, family: true, shopName: true, phone: true } },
         },
       });
-      return NextResponse.json({ orders: orders.map(serializeOrder) });
+      return orderJson({ orders: orders.map(serializeOrder) });
     }
 
-    // Backwards-compat phone lookup.
-    if (!phone || phone.length < 8) {
-      return NextResponse.json({ orders: [] });
+    // Guest lookup requires both the customer's phone and the exact order number.
+    // Phone-only enumeration could expose multiple orders and their PII.
+    if (!phone || phone.length < 8 || !orderNumber) {
+      return orderJson(
+        { error: "شماره موبایل و شماره سفارش الزامی است" },
+        { status: 400 },
+      );
     }
 
     const customer = await storeDb.customer.findUnique({ where: { phone } });
     if (!customer) {
-      return NextResponse.json({ orders: [] });
+      return orderJson({ orders: [] });
     }
 
-    // Scope by userId too when available so a logged-in user doesn't
-    // see orders placed under the same phone by a different account.
-    const where = sessionUser?.id
-      ? { customerId: customer.id, userId: sessionUser.id }
-      : { customerId: customer.id };
-
     const orders = await storeDb.order.findMany({
-      where,
+      where: { customerId: customer.id, orderNumber },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 1,
       include: {
         items: { include: { part: { select: { id: true, name: true, nameFa: true, sku: true, images: true, active: true } } } },
         payments: { orderBy: { createdAt: "desc" } },
@@ -163,12 +172,12 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({ orders: orders.map(serializeOrder) });
+    return orderJson({ orders: orders.map(serializeOrder) });
   } catch (e: any) {
     console.error("[api/store/orders GET] error:", e);
-    return NextResponse.json(
-      { error: e?.message ?? "Internal error" },
-      { status: 500 },
+    return orderJson(
+      { error: "سرویس سفارش‌ها موقتاً در دسترس نیست" },
+      { status: 503 },
     );
   }
 }
@@ -176,7 +185,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   // F-006: CSRF defense — fail-closed Origin/Referer verification.
   if (!checkCsrf(req)) {
-    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    return orderJson({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const body = await req.json();
@@ -204,16 +213,16 @@ export async function POST(req: Request) {
     const finalPhone = phone || sessionUser?.mobile || "";
 
     if (!finalPhone || finalPhone.length < 8) {
-      return NextResponse.json({ error: "شماره موبایل معتبر نیست" }, { status: 400 });
+      return orderJson({ error: "شماره موبایل معتبر نیست" }, { status: 400 });
     }
     if (!finalName) {
-      return NextResponse.json({ error: "نام الزامی است" }, { status: 400 });
+      return orderJson({ error: "نام الزامی است" }, { status: 400 });
     }
     if (!address) {
-      return NextResponse.json({ error: "آدرس الزامی است" }, { status: 400 });
+      return orderJson({ error: "آدرس الزامی است" }, { status: 400 });
     }
     if (itemsInput.length === 0) {
-      return NextResponse.json({ error: "سبد خرید خالی است" }, { status: 400 });
+      return orderJson({ error: "سبد خرید خالی است" }, { status: 400 });
     }
 
     // upsert customer
@@ -230,7 +239,7 @@ export async function POST(req: Request) {
     });
 
     if (parts.length !== partIds.length) {
-      return NextResponse.json({ error: "برخی قطعات یافت نشد یا غیرفعال هستند" }, { status: 400 });
+      return orderJson({ error: "برخی قطعات یافت نشد یا غیرفعال هستند" }, { status: 400 });
     }
 
     // effective rate at order time
@@ -247,7 +256,7 @@ export async function POST(req: Request) {
       const part = parts.find((p) => p.id === it.partId);
       if (!part) continue;
       if (part.stock < it.quantity) {
-        return NextResponse.json(
+        return orderJson(
           { error: `موجودی قطعه «${part.nameFa || part.name}» کافی نیست` },
           { status: 400 },
         );
@@ -355,7 +364,7 @@ export async function POST(req: Request) {
       return o;
     });
 
-    return NextResponse.json({
+    return orderJson({
       ok: true,
       order: serializeOrder(order),
       // Surface whether the order was linked to a HEAVIX account so the
@@ -364,7 +373,7 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("[api/store/orders POST] error:", e);
-    return NextResponse.json(
+    return orderJson(
       { error: e?.message ?? "Internal error" },
       { status: 500 },
     );

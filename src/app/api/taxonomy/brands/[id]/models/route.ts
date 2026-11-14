@@ -20,7 +20,14 @@ export async function GET(
   const categoryId = url.searchParams.get("categoryId");
 
   const where: Record<string, unknown> = { brandId: id, status: "ACTIVE" };
-  if (categoryId) where.categoryId = categoryId;
+  if (categoryId) {
+    // Models may be linked to a category through the legacy direct field or
+    // through the normalized many-to-many ModelCategory relation.
+    where.OR = [
+      { categoryId },
+      { modelCategories: { some: { categoryId } } },
+    ];
+  }
 
   const models = await db.productModel.findMany({
     where,

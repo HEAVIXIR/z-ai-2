@@ -1,11 +1,38 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingCard from "@/components/listings/ListingCard";
 import { ArrowLeft, Cog, Calendar, Layers } from "lucide-react";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
+  const model = await db.productModel.findFirst({
+    where: { slug },
+    select: {
+      name: true,
+      slug: true,
+      brand: { select: { name: true } },
+    },
+  });
+  if (!model) return { title: "مدل یافت نشد" };
+  const title = `${model.brand.name} ${model.name} — مشخصات و آگهی‌ها`;
+  const description = `مشاهده مشخصات فنی و آگهی‌های خرید، فروش و اجاره مدل ${model.name} از برند ${model.brand.name} در هویکس.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/models/${model.slug}` },
+    openGraph: { title, description, type: "website", locale: "fa_IR" },
+  };
+}
 
 export const dynamic = "force-dynamic";
 

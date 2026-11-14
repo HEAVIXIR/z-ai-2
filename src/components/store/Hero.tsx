@@ -11,12 +11,18 @@ import { Stars } from "./Stars";
 export function Hero({
   featured,
   currencyRate,
+  currencySource,
+  partsCount,
+  categoriesCount,
   onSelectPart,
   onSeeAll,
   onOpenMechanics,
 }: {
   featured: Part[];
   currencyRate: number;
+  currencySource: "MANUAL" | "TELEGRAM" | "DEFAULT" | null;
+  partsCount: number;
+  categoriesCount: number;
   onSelectPart: (p: Part) => void;
   onSeeAll: () => void;
   onOpenMechanics: () => void;
@@ -60,9 +66,12 @@ export function Hero({
 
           <div className="grid grid-cols-3 gap-3 mt-2">
             {[
-              { k: "+۱۰", v: "قطعه فعال" },
-              { k: "۷", v: "مدل خودرو" },
-              { k: toFa(currencyRate.toLocaleString("en-US")) + " ت", v: "نرخ امروز دلار" },
+              { k: toFa(String(partsCount)), v: "قطعه بارگذاری‌شده" },
+              { k: toFa(String(categoriesCount)), v: "دسته‌بندی موجود" },
+              {
+                k: currencyRate > 0 ? toFa(currencyRate.toLocaleString("en-US")) + " ت" : "—",
+                v: currencySource === "DEFAULT" ? "نرخ پیش‌فرض" : currencySource ? "نرخ ثبت‌شده" : "نرخ در دسترس نیست",
+              },
             ].map((s) => (
               <div key={s.v} className="rounded-lg border border-border/70 bg-background p-3 text-center">
                 <div className="text-base sm:text-lg font-bold num-fa">{s.k}</div>

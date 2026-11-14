@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toFa } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import ModelSpecificationManager from "@/components/admin/ModelSpecificationManager";
 
 /* ============================================================
    BrandControlCenter — full brand management with tabs:
@@ -1228,18 +1229,36 @@ function ModelsTab({ brand }: { brand: any }) {
         </Link>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {models.map((m: any) => (
-          <div key={m.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-black text-zinc-800">{m.name}</span>
+        {models.map((model: any) => {
+          const categories = [
+            ...(model.category ? [model.category] : []),
+            ...(model.modelCategories ?? []).map((link: any) => link.category).filter(Boolean),
+          ];
+          const uniqueCategories = [...new Map(categories.map((category: any) => [category.id, category])).values()];
+          return (
+            <div key={model.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-zinc-800">{model.name}</span>
+              </div>
+              {model.nameEn && <p className="text-xs text-zinc-400" dir="ltr">{model.nameEn}</p>}
+              <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
+                <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{model.slug}</span>
+                <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{model.status}</span>
+              </div>
+              {uniqueCategories.length > 0 ? (
+                <ModelSpecificationManager
+                  modelId={model.id}
+                  modelName={model.name}
+                  categories={uniqueCategories}
+                />
+              ) : (
+                <p className="mt-3 border-t border-zinc-200 pt-3 text-[10px] leading-5 text-amber-700">
+                  برای فعال‌سازی فرم اختصاصی، ابتدا این مدل را به دسته‌بندی دستگاه متصل کنید.
+                </p>
+              )}
             </div>
-            {m.nameEn && <p className="text-xs text-zinc-400" dir="ltr">{m.nameEn}</p>}
-            <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{m.slug}</span>
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{m.status}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {models.length === 0 && (
           <p className="col-span-full py-8 text-center text-sm text-zinc-400">
             مدلی ثبت نشده است.

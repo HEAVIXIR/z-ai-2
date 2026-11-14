@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import SellIn7RegisterForm from "./RegisterForm";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { db } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "ثبت‌نام فروش در ۷ روز | هویکس",
+  robots: { index: false, follow: true },
+};
 
 export const dynamic = "force-dynamic";
 

@@ -21,22 +21,25 @@ type Section = {
   description?: string | null;
   order: number;
   active: boolean;
+  config?: string | null;
 };
 
 const SECTION_LABELS: Record<string, string> = {
   hero: "هیرو",
   categories: "دسته‌بندی‌ها",
-  hot_searches: "داغ‌ترین بازار",
+  "hot-searches": "داغ‌ترین بازار",
   stats: "آمار",
-  verified_machines: "ماشین‌آلات تأییدشده",
-  featured_machines: "ماشین‌آلات ویژه",
-  active_requests: "درخواست‌های فعال خرید",
-  exclusive_sale: "فروش ویژه",
+  recommendations: "پیشنهادها برای شما",
+  "verified-machines": "ماشین‌آلات تأییدشده",
+  "featured-machines": "آگهی‌های ویژه",
+  "active-requests": "درخواست‌های فعال خرید",
+  "exclusive-sale": "فروش ویژه",
   services: "خدمات",
-  latest_ads: "آخرین آگهی‌ها",
+  "latest-ads": "آخرین آگهی‌ها",
   sell7: "فروش در ۷ روز",
-  why_us: "چرا هویکس",
+  "why-us": "چرا هویکس",
   brands: "برندها",
+  "trusted-brands": "برندهای مورد اعتماد",
   knowledge: "هویکس دانش",
   cta: "دعوت به اقدام",
 };
@@ -114,6 +117,7 @@ export default function HomepageLayoutClient() {
             description: s.description,
             order: i,
             active: s.active,
+            config: s.config ?? "{}",
           })),
         }),
       });
@@ -288,6 +292,13 @@ function EditSectionModal({
   const [title, setTitle] = useState(section.title ?? "");
   const [subtitle, setSubtitle] = useState(section.subtitle ?? "");
   const [description, setDescription] = useState(section.description ?? "");
+  const [design, setDesign] = useState<Record<string, string>>(() => {
+    try {
+      const parsed = JSON.parse(section.config || "{}");
+      return parsed?.design && typeof parsed.design === "object" ? Object.fromEntries(Object.entries(parsed.design).map(([k, v]) => [k, String(v ?? "")])) : {};
+    } catch { return {}; }
+  });
+  const setDesignValue = (key: string, value: string) => setDesign((current) => ({ ...current, [key]: value }));
 
   const inputCls =
     "h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800 outline-none focus:border-[#F58220]";
@@ -318,7 +329,7 @@ function EditSectionModal({
           </button>
         </div>
 
-        <div className="space-y-4 p-6">
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto p-6">
           <div>
             <label className={labelCls}>عنوان بخش</label>
             <input
@@ -346,6 +357,73 @@ function EditSectionModal({
               className={`${inputCls} h-28 resize-none py-2`}
             />
           </div>
+          <div className="rounded-2xl border border-zinc-200 p-4">
+            <h3 className="mb-1 text-sm font-black text-zinc-900">طراحی و ظاهر بخش</h3>
+            <p className="mb-4 text-xs leading-5 text-zinc-500">تنظیمات ظاهری به‌صورت مستقل برای همین سکشن ذخیره می‌شوند؛ مقادیر خالی، ظاهر مرجع قدیمی را حفظ می‌کنند.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                ["backgroundColor","رنگ پس‌زمینه","#0b0b0b"],
+                ["textColor","رنگ متن","#ffffff"],
+                ["headingColor","رنگ عنوان","#ffffff"],
+                ["accentColor","رنگ تأکیدی","#f58220"],
+                ["paddingTop","فاصله بالا","96px"],
+                ["paddingBottom","فاصله پایین","96px"],
+                ["contentMaxWidth","حداکثر عرض محتوا","1440px"],
+                ["baseFontSize","اندازه پایه فونت","16px"],
+                ["headingFontSize","اندازه عنوان","36px"],
+                ["cardGap","فاصله کارت‌ها","24px"],
+                ["imageRadius","گردی گوشه تصاویر","16px"],
+              ].map(([key,label,placeholder]) => (
+                <label key={key} className="block">
+                  <span className={labelCls}>{label}</span>
+                  <input value={design[key] || ""} onChange={(e) => setDesignValue(key,e.target.value)} placeholder={placeholder} className={inputCls} />
+                </label>
+              ))}
+              <label className="block">
+                <span className={labelCls}>تعداد ستون کارت‌ها</span>
+                <input type="number" min="1" max="6" value={design.columns || ""} onChange={(e) => setDesignValue("columns",e.target.value)} placeholder="بدون تغییر" className={inputCls} />
+              </label>
+              <label className="block">
+                <span className={labelCls}>فونت</span>
+                <select value={design.fontFamily || ""} onChange={(e) => setDesignValue("fontFamily",e.target.value)} className={inputCls}>
+                  <option value="">حفظ فونت مرجع</option>
+                  <option value="inherit">فونت قالب سایت</option>
+                  <option value="Vazirmatn, sans-serif">Vazirmatn</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Inter, sans-serif">Inter</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelCls}>تراز متن</span>
+                <select value={design.textAlign || ""} onChange={(e) => setDesignValue("textAlign",e.target.value)} className={inputCls}>
+                  <option value="">حفظ چیدمان مرجع</option>
+                  <option value="right">راست</option>
+                  <option value="center">وسط</option>
+                  <option value="left">چپ</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelCls}>نوع انیمیشن</span>
+                <select value={design.animation || "legacy"} onChange={(e) => setDesignValue("animation",e.target.value)} className={inputCls}>
+                  <option value="legacy">انیمیشن اصلی نسخه قدیمی</option>
+                  <option value="none">بدون انیمیشن</option>
+                  <option value="fade">محو شدن</option>
+                  <option value="slide-up">ورود از پایین</option>
+                  <option value="zoom">بزرگ‌نمایی</option>
+                  <option value="float">حرکت شناور</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelCls}>مدت انیمیشن (میلی‌ثانیه)</span>
+                <input type="number" min="100" max="10000" value={design.animationDurationMs || ""} onChange={(e) => setDesignValue("animationDurationMs",e.target.value)} placeholder="700" className={inputCls} />
+              </label>
+              <label className="block">
+                <span className={labelCls}>تأخیر انیمیشن (میلی‌ثانیه)</span>
+                <input type="number" min="0" max="5000" value={design.animationDelayMs || ""} onChange={(e) => setDesignValue("animationDelayMs",e.target.value)} placeholder="0" className={inputCls} />
+              </label>
+            </div>
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">ابعاد باید با واحد معتبر مثل px، rem، vw یا درصد وارد شوند. انیمیشن مرجع در حالت پیش‌فرض دست‌نخورده باقی می‌ماند؛ انیمیشن سفارشی فقط با انتخاب شما اعمال می‌شود.</p>
+          </div>
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">
             توجه: این فیلدها برای بخش‌هایی که از <code>cmsConfig</code> استفاده
             می‌کنند (مثل فروش در ۷ روز، چرا هویکس، آمار، آخرین آگهی‌ها، دعوت به
@@ -368,6 +446,15 @@ function EditSectionModal({
                 title,
                 subtitle: subtitle || null,
                 description: description || null,
+                config: JSON.stringify({
+                  ...(() => { try { return JSON.parse(section.config || "{}"); } catch { return {}; } })(),
+                  design: {
+                    ...Object.fromEntries(Object.entries(design).filter(([_, value]) => value !== "")),
+                    ...(design.columns ? { columns: Number(design.columns) } : {}),
+                    ...(design.animationDurationMs ? { animationDurationMs: Number(design.animationDurationMs) } : {}),
+                    ...(design.animationDelayMs ? { animationDelayMs: Number(design.animationDelayMs) } : {}),
+                  },
+                }),
               })
             }
             className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2 text-sm font-bold text-white transition hover:bg-[#ff8c38]"

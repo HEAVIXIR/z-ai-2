@@ -13,6 +13,7 @@ import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
+import { getAsset, attachAsset } from "@/lib/media-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -155,9 +156,6 @@ export async function GET(req: Request) {
           ip: getClientIp(req),
         });
       }
-
-      // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-      try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
 
       return NextResponse.json({ success: true, count: total, data });
     }
@@ -321,9 +319,6 @@ export async function GET(req: Request) {
       });
     }
 
-    // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.listings, 'default'); } catch (e) { console.error('[listings] revalidateTag failed:', e); }
-
     return NextResponse.json({ success: true, count: total, data });
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/listings" });
@@ -362,6 +357,131 @@ export async function POST(req: Request) {
       );
     }
 
+    const transactionTypeKey = String(body.transactionType ?? body.listingType ?? "SALE").trim().toUpperCase();
+    const transactionType = await db.transactionType.findUnique({
+      where: { key: transactionTypeKey },
+      select: { id: true, key: true, active: true },
+    });
+    if (!transactionType || !transactionType.active) {
+      return NextResponse.json({ error: "نوع معامله معتبر یا فعال نیست." }, { status: 400 });
+    }
+
+    if (body.categoryId) {
+      const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
+      const category = await db.category.findFirst({
+        where: { id: String(body.categoryId), active: true },
+        select: {
+          id: true,
+          layer: true,
+          children: { where: { active: true }, select: { id: true }, take: 1 },
+        },
+      });
+      if (!category) {
+        return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (category.children.length > 0) {
+        return NextResponse.json(
+          { error: "فقط انتخاب آخرین زیرشاخه برای ثبت آگهی مجاز است." },
+          { status: 400 },
+        );
+      }
+      if (category.layer !== expectedLayer) {
+        return NextResponse.json(
+          { error: "دسته‌بندی با نوع آگهی انتخاب‌شده سازگار نیست." },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (body.brandId) {
+      const brand = await db.brand.findUnique({
+        where: { id: String(body.brandId) },
+        select: { id: true, active: true, status: true },
+      });
+      if (!brand || !brand.active || brand.status !== "ACTIVE") {
+        return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+    }
+
+    if (body.modelId) {
+      const model = await db.productModel.findUnique({
+        where: { id: String(body.modelId) },
+        select: {
+          id: true,
+          brandId: true,
+          categoryId: true,
+          status: true,
+          modelCategories: { select: { categoryId: true } },
+        },
+      });
+      if (!model || model.status !== "ACTIVE") {
+        return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (!body.brandId || model.brandId !== String(body.brandId)) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
+      }
+      const modelCategoryMatches =
+        model.categoryId === String(body.categoryId) ||
+        model.modelCategories.some((link) => link.categoryId === String(body.categoryId));
+      if (body.categoryId && !modelCategoryMatches) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی انتخابی متصل نیست." }, { status: 400 });
+      }
+    }
+
+    // Listing image contract: one shared maximum of 10. Never silently slice.
+    const rawImages = Array.isArray(body.images) ? body.images : [];
+    const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
+    if (rawImages.length > 10 || rawAssetIds.length > 10 || (rawImages.length > 0 && rawAssetIds.length > 0)) {
+      return NextResponse.json(
+        { error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      rawImages.length === 0 &&
+      rawAssetIds.length === 0 &&
+      transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"
+    ) {
+      return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
+    }
+
+    const imageUrlsAreStableB2Urls = rawImages.every((image: any) =>
+      /^\/api\/media\/[a-f0-9]{24}$/.test(String(image?.url ?? image))
+    );
+    if (rawImages.length && !imageUrlsAreStableB2Urls) {
+      return NextResponse.json(
+        { error: "تصاویر آگهی باید ابتدا از مسیر امن بارگذاری رسانه ثبت شوند." },
+        { status: 400 },
+      );
+    }
+
+    const imageAssetIds: string[] = rawAssetIds.length
+      ? rawAssetIds.map((value: unknown) => String(value))
+      : rawImages.map((image: any) => String(image?.url ?? image).slice("/api/media/".length));
+
+    const stagedAssets: NonNullable<Awaited<ReturnType<typeof getAsset>>>[] = [];
+    if (new Set(imageAssetIds).size !== imageAssetIds.length) {
+      return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+    }
+    for (const assetId of imageAssetIds) {
+      const asset = await getAsset(assetId);
+      if (
+        !asset ||
+        asset.uploadedBy !== user.id ||
+        asset.visibility !== "PRIVATE" ||
+        asset.status !== "STAGED" ||
+        asset.entityType !== "Listing" ||
+        asset.entityId !== null
+      ) {
+        return NextResponse.json(
+          { error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." },
+          { status: 403 },
+        );
+      }
+      stagedAssets.push(asset);
+    }
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -373,7 +493,8 @@ export async function POST(req: Request) {
       shortDesc: body.shortDesc ?? null,
       price: parseBig(body.price),
       priceType: body.priceType || "NEGOTIABLE",
-      listingType: body.listingType || "SALE",
+      listingType: transactionType.key,
+      transactionTypeId: transactionType.id,
       condition: body.condition || "USED",
       province: body.province ?? null,
       city: body.city ?? null,
@@ -420,16 +541,24 @@ export async function POST(req: Request) {
 
     const listing = await db.listing.create({ data });
 
-    if (Array.isArray(body.images)) {
+    if (stagedAssets.length) {
       await db.listingImage.createMany({
-        data: body.images.slice(0, 10).map((img: any, idx: number) => ({
+        data: stagedAssets.map((asset, idx) => ({
           listingId: listing.id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
+          url: asset.url,
+          alt: asset.altText,
           isPrimary: idx === 0,
           sortOrder: idx,
         })),
       });
+      // ListingImage is the authorization source of truth. Sidecar attachment
+      // is a metadata index and is repaired best-effort if B2 metadata is offline.
+      for (const asset of stagedAssets) {
+        const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
+        if (!attached.ok) {
+          console.error("[listings] media sidecar attachment needs repair", { assetId: asset.id, listingId: listing.id });
+        }
+      }
     }
 
     // P1-2 — track LISTING_CREATE (fire-and-forget).

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
+import { HOMEPAGE_CACHE_TAGS } from "@/lib/homepage-cache-tags";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
       after: { key: created.key, labelFa: created.labelFa, metric: created.metric, customValue: created.customValue, active: created.active, sortOrder: created.sortOrder },
       reason: "via admin API",
     });
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.stats, "default"); } catch (e) { console.error("[site-stats] cache invalidation failed:", e); }
     return NextResponse.json({ success: true, stat: created });
   } catch (err: any) {
     return NextResponse.json(
@@ -179,6 +182,7 @@ export async function PATCH(req: Request) {
       after: { key: updated.key, labelFa: updated.labelFa, metric: updated.metric, customValue: updated.customValue, active: updated.active, sortOrder: updated.sortOrder },
       reason: "via admin API",
     });
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.stats, "default"); } catch (e) { console.error("[site-stats] cache invalidation failed:", e); }
     return NextResponse.json({ success: true, stat: updated });
   } catch (err: any) {
     return NextResponse.json(
@@ -210,6 +214,7 @@ export async function DELETE(req: Request) {
       before: before ? { key: before.key, labelFa: before.labelFa, metric: before.metric } : null,
       reason: "via admin API",
     });
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.stats, "default"); } catch (e) { console.error("[site-stats] cache invalidation failed:", e); }
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(

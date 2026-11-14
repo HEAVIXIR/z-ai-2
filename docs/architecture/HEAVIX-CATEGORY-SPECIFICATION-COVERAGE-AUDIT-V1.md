@@ -1,0 +1,124 @@
+# HEAVIX Category-Specific Specification Coverage Audit — V1
+
+## Critical finding: two taxonomy layers that are not yet reconciled
+
+The repository contains a broader V1.1 catalog seed and a separate definitive machine-subtree seed:
+
+1. `prisma/seed-taxonomy-v11.ts`: the current V1.1-style taxonomy. On this branch it contains 279 unique slugs after the first expansion.
+2. `prisma/seed-machine-taxonomy.ts`: explicitly describes itself as the **definitive machine taxonomy restructure**, with 16 L1 groups, 181 L2 families and 104 L3 variants (302 unique slugs including the `machinery` root after adding industrial utilities and fuel-station equipment).
+
+Repository docs and public mega-menu comments refer to the 16-L1 structure. The best current interpretation is that V1.1 defines the broader marketplace roots while the 16-group seed refines the `machinery` subtree. Their slug ownership and execution order still need explicit reconciliation; the actual Preview database state has not been verified. Do not run either seed against a database until the live Preview DB target and taxonomy state are verified read-only.
+
+## Definitive tree coverage audit
+
+Static parsing of the updated `seed-machine-taxonomy.ts`:
+- 16 L1 groups.
+- 181 L2 families, of which 15 have L3 children and 166 are terminal L2 categories.
+- 104 L3 variants.
+- **270 selectable terminal categories** (166 L2 leaves + 104 L3 leaves).
+- The current 128 exact-form template slugs overlap with 70 slugs in this definitive tree.
+- Of those, 64 map to terminal categories; 6 are family/parent nodes.
+- Including the legacy multi-slug catalog, 72 terminal categories have a direct mapping.
+- Thus **198 of the 270 terminal categories still lack a directly mapped exact form** in the definitive tree. Some may receive inherited legacy fields, but inheritance alone is not proof of a complete subtype-specific form.
+
+The 128-template catalog was initially built against the broader V1.1 taxonomy. It must be reconciled to the definitive 16-group machine tree before it is considered production-ready. Some V1.1-only templates belong to separate vehicle/agriculture/attachment roots; others use aliases that must map to canonical machine slugs rather than remain attached to retired duplicate categories. Do not interpret the earlier V1.1 counts (279 taxonomy slugs, 203 direct mappings) as coverage of the definitive machine tree.
+
+## The 16 definitive machine families
+
+1. Road construction and civil machinery
+2. Mining machinery
+3. Drilling
+4. Crushing, sizing and processing
+5. Concrete and asphalt
+6. Cranes, hoists and lifting
+7. Forklift and material handling
+8. Industrial haulage
+9. Port and marine machinery
+10. Recycling and waste machinery
+11. Tunnel and underground machinery
+12. Heavy industrial and production machinery
+13. Power, energy and mobile utilities
+14. Municipal and environmental machinery
+15. Special project machinery
+16. Other specialist machinery
+
+The tree contains distinct families and variants for excavators, loaders, bulldozers, graders, backhoes, scrapers, rollers, mining trucks, shovels, LHDs, drilling rigs, crushers, screens, concrete pumps, pavers, cranes, forklifts, port handlers, recycling plants, tunnel boring/roadheader/bolting equipment, heavy industrial equipment, generator variants, municipal machines and specialist vehicles.
+
+## Work already implemented on this feature branch
+
+### V1.1 taxonomy and category forms
+- The V1.1 seed was expanded from 238 to 279 unique slugs, including compact loaders, additional crane/drill/roller/concrete variants, forklift powertrain/duty variants, attachments, fuel-station equipment and selected industrial/vehicle categories.
+- 128 exact one-slug templates were added to `prisma/seed-category-specific-attributes.ts`.
+- The legacy `seed-attribute-catalog.ts` resolver was fixed to attach every existing slug candidate rather than stopping at the first match.
+- Static checks on the V1.1-targeted templates found no duplicate template slugs, no missing required keys, no duplicate field keys, no repeated-key unit conflicts, and no template slug absent from the V1.1 seed.
+- This work is a first pass and does not yet cover the definitive tree's 270 terminal categories.
+
+### Definitive taxonomy safety
+The definitive `seed-machine-taxonomy.ts` had a safety gap: it deactivated legacy L1 categories without first checking whether listings existed in their descendants, and its before/after listing query did not cover the complete descendant tree. It has now been hardened on this branch:
+- Read-only by default; requires explicit `--apply` to write.
+- Preflight counts listings throughout the full machinery descendant tree.
+- Refuses to deactivate any legacy L1 branch containing listings.
+- Cleanup refuses to deactivate a category if any descendant has listings.
+- Before/after listing preservation checks now traverse the complete descendant tree.
+
+These protections have not been runtime-tested and the seed has not been executed.
+
+
+## Missing terminal form matrix — 198 remaining
+
+The following are terminal slugs in the definitive tree with no direct form mapping yet. This list is the work queue for the next form-catalog pass.
+
+| L1 family | Missing terminal categories |
+|---|---|
+| Road construction (47) | `excavator-long-reach`, `excavator-mining`, `excavator-demolition`, `excavator-material-handling`, `excavator-spider`, `excavator-zero-tail-swing`, `excavator-long-radius`, `excavator-telescopic`, `excavator-special`, `compact-loader`, `industrial-loader`, `underground-loader`, `multi-purpose-loader`, `dozer-track`, `dozer-wheel`, `mini-dozer`, `heavy-dozer`, `mining-dozer`, `pipe-dozer`, `angle-dozer`, `swamp-dozer`, `motor-grader`, `compact-grader`, `heavy-grader`, `mining-grader`, `quarry-grader`, `gps-grader`, `backhoe-loader-standard`, `backhoe-4wd`, `backhoe-center-mount`, `backhoe-side-shift`, `compact-backhoe`, `industrial-backhoe`, `motor-scraper`, `towed-scraper`, `open-bowl-scraper`, `elevating-scraper`, `twin-engine-scraper`, `mining-scraper`, `soil-roller`, `asphalt-roller`, `combination-roller`, `grading-earthmoving`, `piling-foundation`, `site-haulage`, `multi-purpose-civil`, `other-civil` |
+| Mining machinery (25) | `rigid-mining-truck`, `articulated-mining-truck`, `underground-dump-truck`, `electric-mining-truck`, `diesel-mining-truck`, `hybrid-mining-truck`, `ultra-class-mining-truck`, `hydraulic-shovel`, `electric-rope-shovel`, `mining-shovel`, `front-shovel`, `backhoe-shovel`, `mining-loader-machine`, `loading-machinery`, `mining-transport`, `underground-machinery`, `diesel-lhd`, `electric-lhd`, `battery-lhd`, `low-profile-lhd`, `mining-drilling`, `blasting-machinery`, `mine-maintenance`, `mobile-processing`, `mine-services` |
+| Drilling (4) | `dth-drill`, `top-hammer-drill`, `water-well-drill`, `drilling-accessories` |
+| Crushing / processing (14) | `cubiti-crusher`, `hammer-crusher`, `gyratory-crusher`, `roll-crusher`, `feeder`, `conveyor`, `scalper`, `washing-plant`, `sand-washer`, `hydrocyclone`, `magnetic-equipment`, `crushing-line`, `screening-line`, `mobile-processing-line` |
+| Concrete / asphalt (16) | `truck-mounted-pump`, `trailer-pump`, `line-pump`, `boom-pump`, `stationary-pump`, `shotcrete`, `concrete-production`, `concrete-placing`, `track-paver`, `wheel-paver`, `mini-paver`, `highway-paver`, `asphalt-plant`, `asphalt-distributor`, `asphalt-recycling`, `bitumen-equipment` |
+| Cranes / lifting (6) | `telescopic-crane`, `rough-terrain-crane`, `industrial-crane`, `winch`, `hoist`, `lifting-equipment` |
+| Forklift / material handling (5) | `stackers`, `telehandler`, `material-handler`, `container-handler`, `warehouse-equipment` |
+| Industrial haulage (7) | `site-dump-truck`, `site-transport`, `haul-truck`, `off-highway-truck`, `mining-truck`, `industrial-tractor`, `project-transport` |
+| Port / marine (9) | `port-reach-stacker`, `empty-container-handler`, `straddle-carrier`, `port-crane`, `ship-loader`, `ship-unloader`, `mobile-harbor-crane`, `port-loading-equipment`, `marine-service-equipment` |
+| Recycling / waste (11) | `shredder-machine`, `industrial-shredder`, `baler`, `sorting-machine`, `recycling-plant`, `waste-compactor`, `glass-recycling`, `plastic-recycling`, `metal-recycling`, `construction-waste-recycling`, `asphalt-recycling-machine` |
+| Tunnel / underground (9) | `tbm`, `roadheader`, `tunnel-jumbo`, `underground-lhd`, `underground-truck-machine`, `bolter`, `scaling-machine`, `underground-utility-vehicle`, `tunnel-equipment` |
+| Heavy industrial (9) | `steel-machinery`, `cement-machinery`, `mineral-processing-machinery`, `stone-cutting-machinery`, `glass-machinery`, `ceramic-machinery`, `industrial-production`, `industrial-packaging`, `heavy-factory-equipment` |
+| Power / energy (15) | `diesel-generator`, `gas-generator`, `natural-gas-generator`, `bi-fuel-generator`, `hybrid-generator`, `mobile-generator`, `silent-generator`, `containerized-generator`, `trailer-generator`, `pump`, `power-pack`, `portable-power`, `industrial-welding`, `project-lighting`, `industrial-hvac` |
+| Municipal / environment (9) | `garbage-truck`, `street-sweeper`, `street-washer`, `vacuum-truck`, `snow-plow`, `salt-spreader`, `municipal-service-truck`, `heavy-green-space`, `environmental-machinery` |
+| Special project (7) | `industrial-rescue`, `military-engineering`, `industrial-fire-truck`, `airport-machinery`, `special-project-machinery`, `custom-machinery`, `prototype-machinery` |
+| Other specialist (5) | `new-special`, `unknown-machine`, `combination-machine`, `custom-machine`, `needs-review` |
+
+For L2 families with L3 children, the intended implementation is a complete family form on L2 plus subtype-specific additions/overrides on L3. For terminal L2 families, the L2 category receives the complete form. This yields a complete composed form for every selectable terminal category without duplicating all shared attributes.
+
+## Design rules for the definitive forms
+
+1. Every selectable terminal machine/equipment type must render a distinct composed form.
+2. Shared fields can inherit from the L2 family; L3 variants add/override their own fields. The composed leaf form must still be machine-specific.
+3. A family with no L3 children receives its own complete form at L2.
+4. A model-specific override is optional and never replaces the category form.
+5. Attribute keys are global: one key must have one canonical type/unit. Use distinct keys for different units/dimensions.
+6. Service, spare-part, logistics, trading, auction and RFQ categories require their own domain schemas, not machine engine/hour fields.
+7. Catch-all and `needs-review` categories should not be treated as complete verified machine forms.
+
+## External specification research
+
+- RitchieSpecs crawler-crane data separates Engine, Operational, Transmission, Undercarriage, Boom and Dimensions, including power/RPM, torque, operating weight, fuel/hydraulic capacity, voltage, travel speed, track shoe width/count, boom sections/heights/angle, working radius, gradeability and transport dimensions: https://ritchiespecs.com/model/link-belt-tcc1100-crawler-crane
+- Kaishan DTH specifications include hole diameter, economical drilling depth, engine/total power, weight, pressure and gradeability; compressor, rod-handling and dust-collection configuration can vary: https://www.kaishandrilling.com/en/products/surface-dth-drilling-rigs/kt-series
+- JCB distinguishes rated operating capacity and wheeled skid steer versus compact track loader: https://www.jcb.com/en-US/products/machines/skid-steer-loader/
+- SSSI separates retail fuelling into dispensers, pumps/piping, storage tanks, venting/vapour recovery, filtration, monitoring and proving/calibration: https://sssi-ltd.com/en/retail-fuelling.html
+- OPW is an additional manufacturer source for underground storage tank equipment: https://www.opwglobal.com/products/us/retail-fueling-products/underground-storage-tank-equipment
+
+## Execution status
+
+- No taxonomy seed or attribute seed has been run against Preview or Production.
+- No database write or migration was performed.
+- No Cloudflare/Vercel build or deployment was run.
+- PR #317 remains Draft and unmerged.
+- The exact Preview Worker database branch is still not verified. Do not seed or migrate until the target is proven.
+
+## Next acceptance gate
+
+1. Reconcile V1.1 and the definitive 16-group tree into one canonical taxonomy source.
+2. Add missing industrial/fuel-station families to the definitive tree in the correct L1/L2/L3 positions (the first industrial-utility and fuel-station expansion is now present).
+3. Build an explicit 243-terminal-category form matrix: L2 family fields + L3 subtype-specific fields.
+4. Add tests for taxonomy slug coverage, composed inheritance, required validation, unit consistency and listing persistence.
+5. Read-only verify actual Preview category rows and attribute links before any Preview seed.

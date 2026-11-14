@@ -185,6 +185,7 @@ model Category {
   // relations
   listings    Listing[]
   attributes  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   brands      BrandCategory[]
   modelCategories ModelCategory[]
   models      ProductModel[]
@@ -196,7 +197,7 @@ model Category {
 // HBR Taxonomy V1.1 §18: Transaction Layer (separate from Category)
 model TransactionType {
   id          String   @id @default(cuid())
-  key         String   @unique // SALE | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
+  key         String   @unique // SALE | SERVICE_OFFER | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
   nameFa      String
   nameEn      String?
   description String?
@@ -335,6 +336,7 @@ model AttributeDefinition {
   updatedAt   DateTime @default(now()) @updatedAt
   options     AttributeOption[]
   categories  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   values      ListingAttributeValue[]
 }
 
@@ -405,6 +407,7 @@ model ProductModel {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   modelCategories ModelCategory[]
+  modelAttributes ProductModelAttribute[]
   generations   Generation[]
   listings      Listing[]
   products      Product[]
@@ -418,6 +421,26 @@ model ModelCategory {
   categoryId String
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   @@unique([modelId, categoryId])
+}
+
+model ProductModelAttribute {
+  id          String   @id @default(cuid())
+  modelId     String
+  model       ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  required    Boolean  @default(false)
+  filterable  Boolean  @default(false)
+  searchable  Boolean  @default(false)
+  sortable    Boolean  @default(false)
+  displayOrder Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([modelId, categoryId, attributeId])
+  @@index([modelId, categoryId])
+  @@index([attributeId])
 }
 
 model Generation {
@@ -1450,6 +1473,9 @@ model HomePageSection {
 }
 
 model HeroConfig {
+  // HEAVIX selectable hero templates; classic remains the backward-compatible default.
+  activeTemplate   String?  @default("classic")
+  cinematicConfig  String?
   id              String   @id @default("main")
   badge           String?
   title1          String?

@@ -1,0 +1,70 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { can } from "@/lib/authorization";
+import { getAsset } from "@/lib/media-service";
+import { createB2MediaReadUrl } from "@/lib/b2-media-storage";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
+/**
+ * Stable internal media URL. The bucket stays private; this route checks
+ * visibility/ownership before issuing a short-lived signed B2 GET redirect.
+ */
+export async function GET(_request: Request, { params }: RouteContext) {
+  try {
+    const { id } = await params;
+    const asset = await getAsset(id);
+    if (!asset) return new NextResponse(null, { status: 404 });
+
+    let isPublic = asset.visibility === "PUBLIC";
+    let listingOwnerId: string | null = null;
+    if (!isPublic) {
+      const listingImage = await db.listingImage.findFirst({
+        where: { url: asset.url },
+        select: { listing: { select: { sellerId: true, status: true } } },
+      });
+      if (listingImage?.listing) {
+        listingOwnerId = listingImage.listing.sellerId;
+        isPublic = listingImage.listing.status === "PUBLISHED";
+      }
+    }
+
+    if (!isPublic) {
+      const user = await getCurrentUser();
+      const isOwner = !!user && (
+        asset.uploadedBy === user.id || listingOwnerId === user.id
+      );
+      const isMediaAdmin = !!user && !isOwner
+        ? await can(user.id, "media.read")
+        : false;
+      if (!isOwner && !isMediaAdmin) {
+        // Avoid leaking the existence of staged/private media.
+        return new NextResponse(null, { status: 404 });
+      }
+    }
+
+    // The asset sidecar is already loaded above; sign its key directly.
+    const signedUrl = await createB2MediaReadUrl(asset.relativePath, 300);
+    if (!signedUrl) return new NextResponse(null, { status: 404 });
+
+    return NextResponse.redirect(signedUrl, {
+      status: 302,
+      headers: {
+        "Cache-Control": isPublic ? "public, max-age=60, s-maxage=60" : "private, no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "دریافت رسانه ناموفق بود." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+}

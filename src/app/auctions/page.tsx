@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import type { Metadata } from "next";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Gavel, ArrowLeft, Clock, Users, TrendingUp, CalendarClock } from "lucide-react";
 import { toFa, formatCompactPrice, faDate } from "@/lib/format";
+
+export const metadata: Metadata = {
+  title: "مزایده ماشین‌آلات سنگین | هویکس",
+  description: "مشاهده مزایده‌های ماشین‌آلات و تجهیزات صنعتی، بررسی وضعیت مزایده و شرکت در فرآیند پیشنهاد قیمت در هویکس.",
+  alternates: { canonical: "/auctions" },
+  openGraph: { title: "مزایده ماشین‌آلات سنگین | هویکس", description: "مزایده‌های ماشین‌آلات و تجهیزات صنعتی در هویکس.", type: "website", locale: "fa_IR" },
+};
 
 export const dynamic = "force-dynamic";
 

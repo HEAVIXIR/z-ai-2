@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { IS_PREVIEW_DEPLOYMENT } from "./src/lib/site-config";
 
 /**
  * HEAVIX Next.js configuration — STEP 15.37-D (F-013 + F-014).
@@ -96,14 +98,82 @@ const securityHeaders = [
   },
 ];
 
+const isCloudflareBuild =
+  process.env.HEAVIX_BUILD_TARGET === "cloudflare" ||
+  (process.env.HEAVIX_ENV?.toLowerCase() === "preview" &&
+    process.env.VERCEL !== "1");
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Keep jSquash outside Next's Webpack bundle. The final Wrangler/esbuild
+  // pass imports the codec binaries as precompiled WebAssembly.Module values.
+  serverExternalPackages: [
+    "@jsquash/jpeg",
+    "@jsquash/png",
+    "@jsquash/resize",
+    "@jsquash/webp",
+  ],
   typescript: {
-    // F-013: build MUST fail on type errors. Was previously `true` which masked
-    // security-relevant type mismatches at build time.
     ignoreBuildErrors: false,
+    tsconfigPath: isCloudflareBuild ? "tsconfig.worker.json" : "tsconfig.json",
   },
   reactStrictMode: false,
+  webpack(config) {
+    if (isCloudflareBuild) {
+      config.parallelism = 4;
+      config.experiments = {
+        ...config.experiments,
+        asyncWebAssembly: true,
+      };
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@/lib/db": path.resolve(process.cwd(), "src/lib/db.worker.ts"),
+        "@/lib/store-db": path.resolve(process.cwd(), "src/lib/store-db.worker.ts"),
+      };
+    }
+    return config;
+  },
+  ...(isCloudflareBuild
+    ? {
+        experimental: {
+          // Cloudflare Workers Builds have a constrained file-descriptor limit.
+          // Keep Next's static generation to one worker in this adapter-only path.
+          cpus: 1,
+        },
+        // Proven on Next.js 16.4.5 + OpenNext + Prisma Worker clients:
+        // Webpack asyncWASM avoids Turbopack's broad WASM loader glob scan.
+        outputFileTracingExcludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/**/*.ts",
+            "./src/lib/generated/store-worker-client/**/*.ts",
+            "./src/lib/generated/store-client/**/*",
+            "./node_modules/@prisma/engines/**/*",
+            "./node_modules/prisma/**/*",
+            "./docs/**/*",
+            "./tests/**/*",
+            "./scripts/**/*",
+            "./.git/**/*",
+            "./.github/**/*",
+            "./coverage/**/*",
+            "./.next/cache/**/*",
+            "./.turbo/**/*",
+          ],
+        },
+        outputFileTracingIncludes: {
+          "/*": [
+            "./src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
+            "./src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
+          ],
+        },
+        // Keep the alias for any explicitly opted-in local Turbopack diagnostics.
+        turbopack: {
+          resolveAlias: {
+            "@/lib/db": "./src/lib/db.worker.ts",
+            "@/lib/store-db": "./src/lib/store-db.worker.ts",
+          },
+        },
+      }
+    : {}),
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",
@@ -114,7 +184,17 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          ...(IS_PREVIEW_DEPLOYMENT
+            ? [
+                {
+                  key: "X-Robots-Tag",
+                  value: "noindex, nofollow, noarchive",
+                },
+              ]
+            : []),
+        ],
       },
     ];
   },
