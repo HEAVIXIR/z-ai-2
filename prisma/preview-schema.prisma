@@ -197,7 +197,7 @@ model Category {
 // HBR Taxonomy V1.1 §18: Transaction Layer (separate from Category)
 model TransactionType {
   id          String   @id @default(cuid())
-  key         String   @unique // SALE | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
+  key         String   @unique // SALE | SERVICE_OFFER | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
   nameFa      String
   nameEn      String?
   description String?
