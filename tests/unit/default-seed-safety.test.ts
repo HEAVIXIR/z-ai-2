@@ -26,4 +26,15 @@ describe("legacy demo seed safety contract", () => {
     expect(source).toContain("// Preserve administrator edits on existing brands");
     expect(source).toContain("// Do not reset a category's hierarchy, layer, visibility, or admin state.");
   });
+  it("does not make schema push silently accept data loss", () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> };
+    const pushScripts = Object.entries(packageJson.scripts ?? {})
+      .filter(([name]) => name.includes("db:push"))
+      .map(([, command]) => command);
+    expect(pushScripts.length).toBeGreaterThan(0);
+    expect(pushScripts.join("\\n")).not.toContain("--accept-data-loss");
+  });
+
 });
