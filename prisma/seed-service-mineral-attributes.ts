@@ -57,7 +57,7 @@ const forms:Form[]=[
  {slug:"mineral-haulage-service",fields:[f("haulage_capacity_tons","ظرفیت حمل","Haulage Capacity","DECIMAL",{unit:"TON",required:true}),f("fleet_types","انواع ناوگان","Fleet Types","MULTI_SELECT",{options:["دامپتراک","کامیون کمپرسی","تریلی","واگن ریلی"]}),f("route_distance_km","مسافت مسیر","Route Distance","DECIMAL",{unit:"KM"}),f("loading_unloading_assets","تجهیزات بارگیری و تخلیه","Loading / Unloading Assets","TEXT")]}
 ];
 
-const generatedFormEntries: [string, F[]][] = [
+const generatedFormEntries = [
  ...[
   ["machine-valuation",[f("valuation_method","روش ارزش‌گذاری","Valuation Method","SELECT",{options:["بازارمحور","هزینه‌محور","درآمدمحور","ترکیبی"]}),f("asset_scope","دامنه دارایی","Asset Scope","MULTI_SELECT",{options:["ماشین‌آلات","خط تولید","ناوگان","تجهیزات صنعتی"]}),f("report_standard","استاندارد گزارش","Report Standard","TEXT")]],
   ["brand-valuation",[f("brand_scope","دامنه برند","Brand Scope","TEXT"),f("valuation_framework","چارچوب ارزش‌گذاری","Valuation Framework","TEXT"),f("market_comparables","تعداد نمونه‌های مقایسه","Market Comparables","INTEGER")]],
@@ -103,7 +103,7 @@ const generatedFormEntries: [string, F[]][] = [
   ["coking-coal",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%"}),f("sulfur_percent","گوگرد","Sulfur","DECIMAL",{unit:"%"}),f("fluidity_ddpm","سیالیت","Fluidity","DECIMAL",{unit:"DDPM"}),f("csr_percent","استحکام کک CSR","CSR","DECIMAL",{unit:"%"})]],
   ["coal-concentrate",[f("ash_percent","خاکستر","Ash","DECIMAL",{unit:"%",required:true}),f("moisture_percent","رطوبت","Moisture","DECIMAL",{unit:"%"}),f("volatile_matter_percent","مواد فرار","Volatile Matter","DECIMAL",{unit:"%"})]]
  ],
-];
+].map((entry) => [entry[0] as string, entry[1] as F[]] as [string, F[]]);
 const generatedForms: Form[] = generatedFormEntries.map(([slug, fields]) => ({ slug, fields }));
 forms.push(...generatedForms);
 async function linkFields(categoryId:string,fields:F[]){
