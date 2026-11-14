@@ -22,6 +22,9 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "verified_account_required" }, { status: 403 });
     }
     const { companyId, invitationId } = await context.params;
+    if (!companyId || !invitationId || companyId.length > 128 || invitationId.length > 128) {
+      return NextResponse.json({ ok: false, error: "invalid_invitation" }, { status: 400 });
+    }
     const membership = await getActiveCompanyMembership(user.id, companyId);
     if (!membership || !["OWNER", "ORG_ADMIN"].includes(membership.roleKey)) {
       return NextResponse.json({ ok: false, error: "company_permission_denied" }, { status: 403 });
