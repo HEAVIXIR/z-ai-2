@@ -14,6 +14,7 @@ import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
 import { getAsset, attachAsset } from "@/lib/media-service";
+import { validateListingAttributeValues } from "@/lib/listing-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -548,6 +549,19 @@ export async function POST(req: Request) {
 
     const serialNumber = String(body.serialNumber ?? "").trim();
 
+    const attributeValidation = await validateListingAttributeValues(
+      db,
+      {
+        categoryId: body.categoryId ? String(body.categoryId) : null,
+        modelId: body.modelId ? String(body.modelId) : null,
+      },
+      Array.isArray(body.attributeValues) ? body.attributeValues : [],
+      false,
+    );
+    if (!attributeValidation.ok) {
+      return NextResponse.json({ error: attributeValidation.error }, { status: 400 });
+    }
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -617,6 +631,9 @@ export async function POST(req: Request) {
         data: {
           ...data,
           ...(serialNumber ? { passport: { create: { serialNumber } } } : {}),
+          ...(attributeValidation.values.length
+            ? { attributeValues: { create: attributeValidation.values } }
+            : {}),
           ...(stagedAssets.length
             ? {
                 images: {
