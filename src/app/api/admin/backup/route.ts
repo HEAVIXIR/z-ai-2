@@ -22,6 +22,12 @@ export const dynamic = "force-dynamic";
  * command output, connection URLs, or raw process errors.
  */
 export async function POST() {
+  // Backup execution needs a real Node process, pg_dump, and writable persistent storage.
+  // Keep serverless/Worker runtimes disabled unless an operator explicitly opts in.
+  if (process.env.HEAVIX_BACKUP_EXECUTION_ENABLED !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
