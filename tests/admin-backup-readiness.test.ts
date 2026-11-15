@@ -90,6 +90,7 @@ describe("admin backup runtime wiring", () => {
     expect(script).toContain('echo "Backup complete: $BACKUP_DIR"');
     expect(route).toContain(/Backup complete:\\s+\\.\/backups\//.source);
     expect(route).toContain("DIRECT_URL: process.env.DIRECT_URL");
+    expect(route).toContain("DATABASE_URL: process.env.DATABASE_URL");
     expect(route).toContain("Backup failed; no successful paired backup was confirmed.");
     expect(route).not.toContain("stdout,");
     expect(route).not.toContain("stderr,");
