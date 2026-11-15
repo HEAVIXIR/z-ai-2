@@ -2,6 +2,8 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkCsrf } from "@/lib/csrf";
+import { categoryLayerForTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
@@ -14,6 +16,7 @@ import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
 import { getAsset, attachAsset } from "@/lib/media-service";
+import { validateListingAttributeValues } from "@/lib/listing-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -345,19 +348,26 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
 
     const title = String(body.title ?? "").trim();
     if (!title || title.length < 3) {
       return NextResponse.json({ error: "عنوان آگهی معتبر نیست" }, { status: 400 });
     }
-    if (!body.brandId && !body.categoryId) {
+    if (!body.categoryId) {
       return NextResponse.json(
-        { error: "برند یا دسته‌بندی الزامی است" },
+        { error: "دسته‌بندی الزامی است؛ انتخاب برند اختیاری است." },
         { status: 400 },
       );
     }
 
-    const transactionTypeKey = String(body.transactionType ?? body.listingType ?? "SALE").trim().toUpperCase();
+    const rawTransactionType = body.transactionType ?? body.listingType;
+    if (!rawTransactionType) {
+      return NextResponse.json({ error: "نوع معامله الزامی است." }, { status: 400 });
+    }
+    const transactionTypeKey = String(rawTransactionType).trim().toUpperCase();
     const transactionType = await db.transactionType.findUnique({
       where: { key: transactionTypeKey },
       select: { id: true, key: true, active: true },
@@ -367,7 +377,7 @@ export async function POST(req: Request) {
     }
 
     if (body.categoryId) {
-      const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
+      const expectedLayer = categoryLayerForTransactionType(transactionType.key);
       const category = await db.category.findFirst({
         where: { id: String(body.categoryId), active: true },
         select: {
@@ -439,9 +449,9 @@ export async function POST(req: Request) {
     }
 
     if (
+      requiresListingImage(transactionType.key) &&
       rawImages.length === 0 &&
-      rawAssetIds.length === 0 &&
-      transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"
+      rawAssetIds.length === 0
     ) {
       return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
     }
@@ -454,6 +464,11 @@ export async function POST(req: Request) {
         { error: "تصاویر آگهی باید ابتدا از مسیر امن بارگذاری رسانه ثبت شوند." },
         { status: 400 },
       );
+    }
+
+    const parsedPrice = parseBig(body.price);
+    if (requiresListingPrice(transactionType.key) && (parsedPrice === null || parsedPrice <= 0n)) {
+      return NextResponse.json({ error: "برای فروش و اجاره، قیمت معتبر و بیشتر از صفر الزامی است." }, { status: 400 });
     }
 
     const imageAssetIds: string[] = rawAssetIds.length
@@ -482,6 +497,86 @@ export async function POST(req: Request) {
       stagedAssets.push(asset);
     }
 
+    // Resolve canonical location IDs and verify the hierarchy instead of
+    // persisting opaque IDs into the legacy province/city text columns.
+    const requestedProvinceId = body.provinceId ? String(body.provinceId) : null;
+    const requestedCityId = body.cityId ? String(body.cityId) : null;
+    const requestedCountryId = body.countryId ? String(body.countryId) : null;
+
+    const selectedCity = requestedCityId
+      ? await db.city.findUnique({
+          where: { id: requestedCityId },
+          select: {
+            id: true,
+            name: true,
+            province: { select: { id: true, name: true, countryId: true } },
+          },
+        })
+      : null;
+    if (requestedCityId && !selectedCity) {
+      return NextResponse.json({ error: "شهر انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+
+    const selectedProvince = requestedProvinceId
+      ? await db.province.findUnique({
+          where: { id: requestedProvinceId },
+          select: { id: true, name: true, countryId: true },
+        })
+      : selectedCity?.province ?? null;
+    if (requestedProvinceId && !selectedProvince) {
+      return NextResponse.json({ error: "استان انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+    if (selectedCity && selectedProvince?.id !== selectedCity.province.id) {
+      return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+
+    const resolvedCountryId = selectedProvince?.countryId ?? requestedCountryId;
+    if (requestedCountryId && selectedProvince && requestedCountryId !== selectedProvince.countryId) {
+      return NextResponse.json({ error: "استان با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+    if (resolvedCountryId) {
+      const country = await db.country.findUnique({
+        where: { id: resolvedCountryId },
+        select: { id: true },
+      });
+      if (!country) {
+        return NextResponse.json({ error: "کشور انتخاب‌شده معتبر نیست." }, { status: 400 });
+      }
+    }
+
+    // A caller may associate a listing with a company only when that company
+    // is active and the authenticated user is actually linked to it.
+    const companyId = body.companyId ? String(body.companyId) : null;
+    if (companyId) {
+      const membership = await db.company.findFirst({
+        where: {
+          id: companyId,
+          status: "ACTIVE",
+          users: { some: { id: user.id } },
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        return NextResponse.json({ error: "شما مجاز به ثبت آگهی برای این شرکت نیستید." }, { status: 403 });
+      }
+    }
+
+    const serialNumber = String(body.serialNumber ?? "").trim();
+
+    const attributeValidation = await validateListingAttributeValues(
+      db,
+      {
+        categoryId: body.categoryId ? String(body.categoryId) : null,
+        modelId: body.modelId ? String(body.modelId) : null,
+      },
+      Array.isArray(body.attributeValues) ? body.attributeValues : [],
+      false,
+      true,
+    );
+    if (!attributeValidation.ok) {
+      return NextResponse.json({ error: attributeValidation.error }, { status: 400 });
+    }
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -491,13 +586,16 @@ export async function POST(req: Request) {
       title,
       description: body.description ?? null,
       shortDesc: body.shortDesc ?? null,
-      price: parseBig(body.price),
+      price: parsedPrice,
       priceType: body.priceType || "NEGOTIABLE",
       listingType: transactionType.key,
       transactionTypeId: transactionType.id,
       condition: body.condition || "USED",
-      province: body.province ?? null,
-      city: body.city ?? null,
+      province: selectedProvince?.name ?? (requestedProvinceId ? null : body.province ?? null),
+      city: selectedCity?.name ?? (requestedCityId ? null : body.city ?? null),
+      countryId: resolvedCountryId,
+      provinceId: selectedProvince?.id ?? null,
+      cityId: selectedCity?.id ?? null,
       year: body.year ? parseNumber(body.year) : null,
       workingHours: body.workingHours ? parseNumber(body.workingHours) : null,
       status: "PENDING",
@@ -510,9 +608,11 @@ export async function POST(req: Request) {
       categoryId: body.categoryId || null,
       modelId: body.modelId || null,
       sellerId: user.id, // W-03 FIX: from authenticated session only (never null, never from body)
-      companyId: body.companyId || null,
-      publishedAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      companyId,
+      // A pending moderation record is not published and its lifetime has
+      // not started. Publication code sets both timestamps when approved.
+      publishedAt: null,
+      expiresAt: null,
     };
 
     // P2-5b — Rental fields (additive; only stored when listingType=RENT).
@@ -539,24 +639,57 @@ export async function POST(req: Request) {
       }
     }
 
-    const listing = await db.listing.create({ data });
-
-    if (stagedAssets.length) {
-      await db.listingImage.createMany({
-        data: stagedAssets.map((asset, idx) => ({
-          listingId: listing.id,
-          url: asset.url,
-          alt: asset.altText,
-          isPrimary: idx === 0,
-          sortOrder: idx,
-        })),
+    // Listing, optional machine passport, and image rows commit together.
+    // This prevents orphan listings when nested media-row creation fails.
+    const listing = await db.$transaction(async (tx) => {
+      const created = await tx.listing.create({
+        data: {
+          ...data,
+          ...(serialNumber ? { passport: { create: { serialNumber } } } : {}),
+          ...(stagedAssets.length
+            ? {
+                images: {
+                  create: stagedAssets.map((asset, idx) => ({
+                    url: asset.url,
+                    alt: asset.altText,
+                    isPrimary: idx === 0,
+                    sortOrder: idx,
+                  })),
+                },
+              }
+            : {}),
+        },
       });
-      // ListingImage is the authorization source of truth. Sidecar attachment
-      // is a metadata index and is repaired best-effort if B2 metadata is offline.
+
+      // createMany uses scalar foreign keys and stays inside this same
+      // transaction, so an attribute write failure rolls the listing back.
+      if (attributeValidation.values.length) {
+        await tx.listingAttributeValue.createMany({
+          data: attributeValidation.values.map((value) => ({
+            ...value,
+            listingId: created.id,
+          })),
+        });
+      }
+      return created;
+    });
+
+    const mediaPendingIds: string[] = [];
+    if (stagedAssets.length) {
+      // ListingImage is the durable relationship. A B2/sidecar failure must
+      // never turn a committed listing into an HTTP failure (which invites
+      // duplicate submissions); keep the staged asset discoverable for retry.
       for (const asset of stagedAssets) {
-        const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
-        if (!attached.ok) {
-          console.error("[listings] media sidecar attachment needs repair", { assetId: asset.id, listingId: listing.id });
+        try {
+          const attached = await attachAsset(asset.id, "Listing", listing.id, user.id);
+          if (!attached.ok) mediaPendingIds.push(asset.id);
+        } catch (mediaError) {
+          mediaPendingIds.push(asset.id);
+          console.error("[listings] media attachment deferred for retry", {
+            assetId: asset.id,
+            listingId: listing.id,
+            error: mediaError instanceof Error ? mediaError.message : "unknown",
+          });
         }
       }
     }
@@ -579,6 +712,8 @@ export async function POST(req: Request) {
       id: listing.id,
       slug: listing.slug,
       status: listing.status,
+      mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaPendingIds.length,
     });
   } catch (err: any) {
     trackError(err, { endpoint: "POST /api/listings" });
