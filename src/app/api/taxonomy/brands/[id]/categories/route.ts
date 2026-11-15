@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 /* ============================================================
    /api/taxonomy/brands/[id]/categories
@@ -31,6 +32,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
@@ -64,6 +66,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
