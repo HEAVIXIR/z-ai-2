@@ -3,6 +3,7 @@ import { storeDb } from "@/lib/store-db";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
 import { getStoreUserWithRole } from "@/lib/store-auth";
 import { checkCsrf } from "@/lib/csrf";
+import { decrementOrderStock, OrderStockConflictError } from "@/lib/store-order-stock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -333,15 +334,12 @@ export async function POST(req: Request) {
         },
       });
 
-      // decrement stock + increment soldCount per part
-      for (const it of orderItemsData) {
-        await tx.part.update({
-          where: { id: it.partId },
-          data: {
-            stock: { decrement: it.quantity },
-            soldCount: { increment: it.quantity },
-          },
-        });
+      // Claim stock in a deterministic part order. The helper performs
+      // conditional stock CAS, warehouse allocation, SALE ledger writes and
+      // transactional audit-outbox events inside this order transaction.
+      const stockLines = [...orderItemsData].sort((a, b) => a.partId.localeCompare(b.partId));
+      for (const it of stockLines) {
+        await decrementOrderStock(tx, it.partId, it.quantity, o.id, sessionUser?.id ?? null);
       }
 
       // bump coupon usage
@@ -372,6 +370,12 @@ export async function POST(req: Request) {
       linkedToUser: !!sessionUser?.id,
     });
   } catch (e: any) {
+    if (e instanceof OrderStockConflictError) {
+      return orderJson(
+        { error: "موجودی یکی از قطعات تغییر کرده یا کافی نیست؛ سبد خرید را به‌روزرسانی کنید" },
+        { status: 409 },
+      );
+    }
     console.error("[api/store/orders POST] error:", e);
     return orderJson(
       { error: e?.message ?? "Internal error" },

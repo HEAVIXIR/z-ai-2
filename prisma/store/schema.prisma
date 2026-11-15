@@ -603,6 +603,7 @@ model PurchaseOrder {
   totalAmount     Float?
   currency        String   @default("USD")
   notes           String?
+  submittedBy     String?
   approvedBy      String?
   approvedAt      DateTime?
   receivedAt      DateTime?
