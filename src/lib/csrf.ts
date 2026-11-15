@@ -28,6 +28,7 @@ function toOrigin(value: string | null | undefined): string | null {
 function allowedOrigins(): Set<string> {
   const allowed = new Set<string>();
   const configured = [
+    process.env.HEAVIX_PREVIEW_URL,
     process.env.NEXTAUTH_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
     // Explicit, exact Cloudflare branch-preview origin; never infer from Host.

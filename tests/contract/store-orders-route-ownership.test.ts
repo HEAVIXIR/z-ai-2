@@ -16,7 +16,7 @@ describe("store order list ownership boundary", () => {
     expect(route).toContain('!sessionUser.mobileVerified');
     expect(route).toContain('{ status: 403 }');
     expect(route).not.toContain(': { customerId: customer.id };');
-    expect(route).toContain('where: { customerId: customer.id }');
+    expect(route).toContain('where: { customerId: customer.id, orderNumber }');
   });
 
   it("keeps the admin all-orders path behind the canonical session role", () => {
