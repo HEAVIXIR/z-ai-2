@@ -151,7 +151,7 @@ describe("B2-backed media service", () => {
     const result = await attachAsset(uploaded.asset!.id, "Listing", "listing_other", "seller_other");
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("متعلق به شما نیست");
+    expect(result.error).toContain("مالکیت یا وضعیت رسانه");
     expect(b2State.copyCalls).toHaveLength(0);
     expect((await getAsset(uploaded.asset!.id))?.status).toBe("STAGED");
   });
