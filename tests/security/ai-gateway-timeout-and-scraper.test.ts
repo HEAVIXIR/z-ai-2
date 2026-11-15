@@ -577,3 +577,43 @@ describe("AI import manager page authorization", () => {
     );
   });
 });
+
+
+describe("AI scraper hardening follow-up", () => {
+  it("does not expose third-party image URLs to the admin browser", () => {
+    const route = readSource("admin/ai-scraper/route.ts");
+    const client = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/admin/AIScraperClient.tsx"),
+      "utf-8",
+    );
+    expect(route).toContain("images: []");
+    expect(route).toContain("Remote third-party image URLs are intentionally not sent to the browser");
+    expect(client).not.toMatch(/<img\\b/i);
+  });
+
+  it("attributes import audit records to the authenticated admin", () => {
+    const route = readSource("admin/ai-scraper/route.ts");
+    expect(route).toContain("async function importListing(s: ScrapeResult, actorId: string)");
+    expect(route).toContain("actorId,");
+    expect(route).toContain("importListing(scraped, user.id)");
+    expect(route).toContain("importListing(s, user.id)");
+  });
+
+  it("caps bulk imports at five URLs and rejects non-string URL entries", () => {
+    const route = readSource("admin/ai-scraper/route.ts");
+    expect(route).toContain("const MAX_BULK_IMPORT_URLS = 5");
+    expect(route).toContain("urls.length > MAX_BULK_IMPORT_URLS");
+    expect(route).toContain("typeof u !== \"string\" || !isAllowedSourceUrl(u)");
+  });
+
+  it("caps UI bulk selection and avoids state-updater side effects", () => {
+    const client = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/admin/AIScraperClient.tsx"),
+      "utf-8",
+    );
+    expect(client).toContain("const MAX_BULK_IMPORT_SELECTION = 5");
+    expect(client).toContain(".slice(0, MAX_BULK_IMPORT_SELECTION)");
+    expect(client).toContain("selected.size >= MAX_BULK_IMPORT_SELECTION");
+    expect(client).not.toMatch(/setSelected\\(prev => \\{[\\s\\S]{0,250}setError/);
+  });
+});
