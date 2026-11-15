@@ -64,22 +64,31 @@ export async function POST(req: Request) {
     }
 
     const passwordHash = await hashPassword(password);
-    await db.$transaction([
-      db.verificationCode.update({
-        where: { id: record.id },
+    await db.$transaction(async (tx) => {
+      // Conditional consumption prevents two concurrent requests from reusing one code.
+      const consumed = await tx.verificationCode.updateMany({
+        where: {
+          id: record.id,
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
         data: { used: true },
-      }),
-      db.verificationCode.updateMany({
+      });
+      if (consumed.count !== 1) {
+        throw new Error("RESET_CODE_ALREADY_USED");
+      }
+
+      await tx.verificationCode.updateMany({
         where: { userId: user.id, type: "PASSWORD_RESET", used: false },
         data: { used: true },
-      }),
-      db.user.update({
+      });
+      await tx.user.update({
         where: { id: user.id },
         data: { passwordHash },
-      }),
+      });
       // Revoke every existing login session after a credential reset.
-      db.session.deleteMany({ where: { userId: user.id } }),
-    ]);
+      await tx.session.deleteMany({ where: { userId: user.id } });
+    });
 
     return NextResponse.json({ ok: true, message: "رمز عبور با موفقیت تغییر کرد. اکنون وارد شوید." });
   } catch {
