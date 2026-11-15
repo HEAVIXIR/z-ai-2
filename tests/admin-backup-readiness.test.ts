@@ -56,6 +56,17 @@ describe("paired PostgreSQL backup configuration", () => {
 });
 
 describe("admin backup runtime wiring", () => {
+  it("fails closed unless an operator explicitly enables backup execution", () => {
+    const route = read("src/app/api/admin/backup/route.ts");
+    const disabledGuard = route.indexOf('process.env.HEAVIX_BACKUP_EXECUTION_ENABLED !== "true"');
+    const userLookup = route.indexOf("await getCurrentUser()");
+    const processSpawn = route.indexOf('execFileAsync("bash", [scriptPath]');
+
+    expect(disabledGuard).toBeGreaterThan(-1);
+    expect(userLookup).toBeGreaterThan(disabledGuard);
+    expect(processSpawn).toBeGreaterThan(disabledGuard);
+  });
+
   it("ships the backup script and PostgreSQL client in the runtime image", () => {
     const dockerfile = read("Dockerfile");
     expect(dockerfile).toContain("ENV DIRECT_URL=");
