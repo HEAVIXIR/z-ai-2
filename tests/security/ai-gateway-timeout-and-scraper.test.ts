@@ -374,3 +374,62 @@ describe("STEP 11.43 Behavioral: scraper routes respect preflight denial", () =>
     expect(lastCall.data.taskType).toBe("SCRAPER");
   });
 });
+
+// ════════════════════════════════════════════════════════════
+// AI LISTING ACQUISITION: source trust, privacy, and review gate
+// ════════════════════════════════════════════════════════════
+
+describe("AI Listing Acquisition security contracts", () => {
+  const src = () => readSource("admin/ai-scraper/route.ts");
+
+  it("re-extracts source data server-side instead of trusting browser fields", () => {
+    const code = src();
+    expect(code).toMatch(/Browser-submitted extraction fields are untrusted/);
+    expect(code).toMatch(/const scraped = await scrapeUrl\(zai, sourceUrl\)/);
+    expect(code).not.toMatch(/const scraped = body\.scraped as ScrapeResult/);
+  });
+
+  it("does not persist scraped contact details before consent verification", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\n/**", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/sellerPhone: null/);
+    expect(importer).not.toMatch(/sellerPhone:\s*s\.phone/);
+  });
+
+  it("keeps third-party source images out of ListingImage until rights and B2 ingest are approved", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\n/**", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/Third-party images remain visible only in the admin extraction preview/);
+    expect(importer).not.toMatch(/listingImage\.(create|createMany)/);
+  });
+
+  it("uses conservative exact catalog matches and attaches a model only when unambiguous", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\n/**", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/name:\s*\{\s*equals:/);
+    expect(importer).toMatch(/db\.productModel\.findMany/);
+    expect(importer).toMatch(/modelId,/);
+    expect(importer).not.toMatch(/contains:\s*s\.(brand|category)/);
+  });
+
+  it("creates imported ads as unpublished, unverified PENDING drafts", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\n/**", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/status:\s*"PENDING"/);
+    expect(importer).toMatch(/verified:\s*false/);
+    expect(importer).not.toMatch(/publishedAt:\s*new Date/);
+  });
+
+  it("keeps the legacy synthetic action interface fail-closed", () => {
+    const code = src();
+    expect(code).toMatch(/if \(action\) return NextResponse\.json\([\s\S]{0,220}status: 410/);
+  });
+});
