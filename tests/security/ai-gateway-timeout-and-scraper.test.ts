@@ -475,6 +475,17 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(importer).toContain("attributeValues: { create: extractedAttributeValues }");
   });
 
+  it("bounds extracted numeric fields and does not invent USED when condition is unknown", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("/* POST /api/admin/ai-scraper", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toContain("toBoundedInteger(s.year, 1900");
+    expect(importer).toContain("toBoundedInteger(s.hours, 0, 1_000_000)");
+    expect(importer).toContain("condition: normalizedCondition");
+    expect(importer).not.toContain('condition: s.condition || "USED"');
+  });
+
   it("does not guess condition option IDs when category options are ambiguous", () => {
     const code = src();
     const start = code.indexOf("async function importListing");
