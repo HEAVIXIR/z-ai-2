@@ -46,14 +46,33 @@ vi.mock("@/lib/db", () => ({
     },
     verificationCode: {
       findFirst: vi.fn(async (args: any) => {
-        // Return the mock code record ONLY if the queried code matches the stored code
-        const queriedCode = args?.where?.code;
-        if (queriedCode === mockCodeRecord.code) return mockCodeRecord;
-        return null;
+        if (args?.where?.userId !== mockUserRecord.id || args?.where?.type !== "EMAIL") return null;
+        if (mockCodeRecord.used || mockCodeRecord.expiresAt <= new Date()) return null;
+        return mockCodeRecord;
       }),
       update: vi.fn(async () => ({})),
     },
-    $transaction: vi.fn(async (ops: any[]) => Promise.all(ops.map((op) => op))),
+    $transaction: vi.fn(async (work: any) => {
+      if (typeof work !== "function") return Promise.all(work);
+      const tx = {
+        verificationCode: {
+          updateMany: vi.fn(async ({ where }: any) => {
+            if (mockCodeRecord.used || mockCodeRecord.id !== where.id || mockCodeRecord.expiresAt <= new Date()) {
+              return { count: 0 };
+            }
+            mockCodeRecord.used = true;
+            return { count: 1 };
+          }),
+        },
+        user: {
+          update: vi.fn(async ({ data }: any) => {
+            mockUserRecord = { ...mockUserRecord, ...data };
+            return mockUserRecord;
+          }),
+        },
+      };
+      return work(tx);
+    }),
   },
 }));
 vi.mock("@/lib/rate-limit", () => ({
@@ -66,6 +85,10 @@ vi.mock("@/lib/rate-limit-presets", () => ({
 vi.mock("@/lib/request-context", () => ({
   getClientIp: () => "127.0.0.1",
   rateLimitKey: (a: string, b: string) => `${a}:${b}`,
+}));
+
+vi.mock("@/lib/password", () => ({
+  verifyPassword: vi.fn(async (plain: string, hash: string) => plain === "123456" && hash === "$2fake"),
 }));
 
 // Import AFTER mocks
@@ -103,6 +126,13 @@ describe("W-02: POST /api/auth/verify-email — behavioral route test", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.activated).toBe(true); // mobileVerified=true → activated
+  });
+
+  it("POSITIVE: bcrypt-hashed EMAIL code → 200", async () => {
+    mockCodeRecord.code = "$2fake";
+    const res = await verifyRoute.POST(makeReq({ userId: "user-1", code: "123456" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).activated).toBe(true);
   });
 
   it("NEGATIVE: wrong code → 400", async () => {
@@ -156,11 +186,13 @@ describe("W-02: POST /api/auth/verify-email — behavioral route test", () => {
     expect(body.alreadyVerified).toBe(true);
   });
 
-  it("POSITIVE: mobileVerified=false → 200 but not activated (PENDING)", async () => {
+  it("POSITIVE: email verification activates the account while mobile remains unverified", async () => {
     mockUserRecord = { ...mockUser, emailVerified: false, mobileVerified: false };
     const res = await verifyRoute.POST(makeReq({ userId: "user-1", code: "123456" }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.activated).toBe(false);
+    expect(body.activated).toBe(true);
+    expect(mockUserRecord.status).toBe("ACTIVE");
+    expect(mockUserRecord.mobileVerified).toBe(false);
   });
 });

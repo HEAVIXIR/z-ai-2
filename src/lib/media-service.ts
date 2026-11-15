@@ -99,26 +99,56 @@ function stagingObjectKey(assetId: string, ext: string, userId: string | null): 
 
 function parseSidecar(bytes: Uint8Array): AssetSidecar | null {
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as AssetSidecar;
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<AssetSidecar>;
     if (
       !parsed ||
       typeof parsed.id !== "string" ||
       !/^[a-f0-9]{24}$/.test(parsed.id) ||
+      typeof parsed.filename !== "string" ||
       typeof parsed.relativePath !== "string" ||
       !parsed.relativePath.startsWith(B2_MEDIA_SCOPE.prefix) ||
+      parsed.relativePath.includes("..") ||
+      (!parsed.relativePath.includes("/objects/") && !parsed.relativePath.includes("/staging/")) ||
       typeof parsed.url !== "string" ||
-      parsed.url !== "/api/media/" + parsed.id
+      parsed.url !== "/api/media/" + parsed.id ||
+      typeof parsed.mimeType !== "string" ||
+      !parsed.mimeType.startsWith("image/") ||
+      typeof parsed.ext !== "string" ||
+      !/^[a-z0-9]{2,8}$/i.test(parsed.ext) ||
+      !Number.isSafeInteger(parsed.size) ||
+      Number(parsed.size) <= 0 ||
+      typeof parsed.uploadedAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.uploadedAt)) ||
+      !(parsed.uploadedBy === undefined || parsed.uploadedBy === null || typeof parsed.uploadedBy === "string") ||
+      !(parsed.entityType === undefined || parsed.entityType === null || (typeof parsed.entityType === "string" && ALLOWED_ENTITY_TYPES.has(parsed.entityType))) ||
+      !(parsed.entityId === undefined || parsed.entityId === null || typeof parsed.entityId === "string") ||
+      !(parsed.altText === undefined || parsed.altText === null || typeof parsed.altText === "string") ||
+      !(parsed.originalFilename === undefined || parsed.originalFilename === null || typeof parsed.originalFilename === "string") ||
+      (parsed.visibility !== "PUBLIC" && parsed.visibility !== "PRIVATE") ||
+      (parsed.status !== "ACTIVE" && parsed.status !== "STAGED" && parsed.status !== "ATTACHED")
     ) {
       return null;
     }
+
+    // Fail closed on impossible visibility/status combinations. Unknown or
+    // malformed metadata must never silently become a public active asset.
+    if (parsed.status === "STAGED" && (parsed.visibility !== "PRIVATE" || !parsed.relativePath.includes("/staging/"))) {
+      return null;
+    }
+    if (parsed.status === "ACTIVE" && (parsed.visibility !== "PUBLIC" || !parsed.relativePath.includes("/objects/"))) {
+      return null;
+    }
+    if (parsed.status === "ATTACHED" && !parsed.relativePath.includes("/objects/")) {
+      return null;
+    }
+
     return {
-      ...parsed,
+      ...(parsed as AssetSidecar),
       originalFilename: typeof parsed.originalFilename === "string" ? parsed.originalFilename.slice(0, 255) : null,
-      visibility: parsed.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
-      status:
-        parsed.status === "STAGED" || parsed.status === "ATTACHED"
-          ? parsed.status
-          : "ACTIVE",
+      uploadedBy: typeof parsed.uploadedBy === "string" ? parsed.uploadedBy : null,
+      entityType: typeof parsed.entityType === "string" ? parsed.entityType : null,
+      entityId: typeof parsed.entityId === "string" ? parsed.entityId : null,
+      altText: typeof parsed.altText === "string" ? parsed.altText.slice(0, 500) : null,
     };
   } catch {
     return null;

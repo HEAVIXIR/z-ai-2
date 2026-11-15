@@ -41,7 +41,7 @@ function orderJson(body: unknown, init?: ResponseInit) {
 
 function genOrderNumber(): string {
   const t = Date.now().toString(36).toUpperCase().slice(-6);
-  const secret = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+  const secret = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
   return `HV-${t}${secret}`;
 }
 
@@ -152,6 +152,9 @@ export async function GET(req: Request) {
     }
 
     // ?mine=true → use the session user's id.
+    if (mine && !sessionUser) {
+      return orderJson({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
     if (mine && sessionUser?.id) {
       const orders = await storeDb.order.findMany({
         where: { userId: sessionUser.id },
@@ -200,10 +203,7 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!sessionUser) {
-      return orderJson({ error: "احراز هویت الزامی است" }, { status: 401 });
-    }
-    if (!sessionUser.mobileVerified || !sessionUser.mobile || phone !== sessionUser.mobile) {
+    if (sessionUser && (!sessionUser.mobileVerified || !sessionUser.mobile || phone !== sessionUser.mobile)) {
       return orderJson({ error: "شماره موبایل با حساب تأییدشده مطابقت ندارد" }, { status: 403 });
     }
 

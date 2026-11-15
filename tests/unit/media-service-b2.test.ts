@@ -221,3 +221,46 @@ describe("B2-backed media service", () => {
     expect(b2State.readUrlCalls).toHaveLength(0);
   });
 });
+
+
+describe("B2 sidecar integrity", () => {
+  it("fails closed for unknown sidecar visibility and status values", async () => {
+      const id = "a".repeat(24);
+      const key = "heavix-media/metadata/" + id + ".json";
+      const base = {
+        id,
+        filename: "opaque-asset.webp",
+        originalFilename: null,
+        url: "/api/media/" + id,
+        relativePath: "heavix-media/objects/2026/11/" + id + ".webp",
+        mimeType: "image/webp",
+        ext: "webp",
+        size: 123,
+        uploadedBy: "seller_1",
+        uploadedAt: new Date().toISOString(),
+        entityType: null,
+        entityId: null,
+        altText: null,
+        visibility: "PUBLIC",
+        status: "ACTIVE",
+      };
+  
+      b2State.objects.set(
+        key,
+        new TextEncoder().encode(JSON.stringify({ ...base, visibility: "UNKNOWN" })),
+      );
+      expect(await getAsset(id)).toBeNull();
+  
+      b2State.objects.set(
+        key,
+        new TextEncoder().encode(JSON.stringify({ ...base, status: "UNKNOWN" })),
+      );
+      expect(await getAsset(id)).toBeNull();
+  
+      b2State.objects.set(
+        key,
+        new TextEncoder().encode(JSON.stringify({ ...base, visibility: "PRIVATE", status: "ACTIVE" })),
+      );
+      expect(await getAsset(id)).toBeNull();
+    });
+});

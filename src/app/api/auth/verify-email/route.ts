@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
@@ -67,17 +68,17 @@ export async function POST(req: Request) {
       },
       orderBy: { createdAt: "desc" },
     });
-    if (!rec) {
-      return NextResponse.json({ error: "کد تأیید نامعتبر یا منقضی شده است" }, { status: 400 });
+    if (!rec || rec.used || rec.expiresAt <= new Date()) {
+      return NextResponse.json({ error: "کد تأیید نامعتبر، منقضی یا استفاده شده است" }, { status: 400 });
     }
 
     // New records contain bcrypt hashes. Accept only still-unexpired legacy
     // plaintext rows during their short remaining lifetime for rollout safety.
     const matches = rec.code.startsWith("$2")
       ? await verifyPassword(code, rec.code)
-      : rec.code === code;
+      : rec.code === code || rec.code === createHash("sha256").update(code).digest("hex");
     if (!matches) {
-      return NextResponse.json({ error: "کد تأیید نامعتبر است" }, { status: 400 });
+      return NextResponse.json({ error: "کد تأیید نامعتبر، منقضی یا استفاده شده است" }, { status: 400 });
     }
 
     // Conditional UPDATE is the single-use gate: concurrent requests race
