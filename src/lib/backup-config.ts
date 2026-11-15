@@ -56,7 +56,14 @@ export function buildBackupEnvironment(
   env: { DIRECT_URL?: string; DATABASE_URL?: string; STORE_DATABASE_URL?: string },
 ): Record<string, string> {
   const main = parseDatabaseUrl(env.DIRECT_URL, "Main direct");
+  const runtimeMain = parseDatabaseUrl(env.DATABASE_URL, "Main runtime");
+  if (main.database !== runtimeMain.database) {
+    throw new Error("Main direct database does not match Main runtime database");
+  }
   const store = parseDatabaseUrl(env.STORE_DATABASE_URL, "Store");
+  if (main.host === store.host && main.port === store.port && main.database === store.database) {
+    throw new Error("Store database must be separate from Main database");
+  }
 
   return {
     DB_HOST: main.host,
