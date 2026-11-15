@@ -439,14 +439,19 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(importer).toMatch(/پیش‌نویس ساخته نشد/);
   });
 
-  it("validates every redirect and pins source requests to resolved public IPv4 addresses", () => {
-    const code = src();
-    expect(code).toContain("dnsLookup(current.hostname");
-    expect(code).toContain("resolved.some((entry) => !isPublicIpv4(entry.address))");
-    expect(code).toContain("requestPinnedSource(current, resolved[0].address");
-    expect(code).toContain("current = new URL(result.redirect, current)");
-    expect(code).toContain('current.port && current.port !== "443"');
-    expect(code).not.toContain("page_reader");
+  it("routes all source requests through the isolated SSRF-safe fetch module", () => {
+    const route = src();
+    const helper = fs.readFileSync(
+      path.resolve(process.cwd(), "src/lib/server/safe-source-fetch.ts"),
+      "utf-8",
+    );
+    expect(route).toContain('from "@/lib/server/safe-source-fetch"');
+    expect(helper).toContain("dnsLookup(current.hostname");
+    expect(helper).toContain("resolved.some((entry) => !isPublicIpv4(entry.address))");
+    expect(helper).toContain("dependencies.request(current, resolved[0].address, signal)");
+    expect(helper).toContain("current = new URL(result.redirect, current)");
+    expect(helper).toContain('current.port && current.port !== "443"');
+    expect(route).not.toContain("page_reader");
   });
 
   it("serializes concurrent imports for the same source URL with a transaction-scoped advisory lock", () => {
