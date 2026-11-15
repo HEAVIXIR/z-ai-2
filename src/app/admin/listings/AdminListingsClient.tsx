@@ -33,6 +33,7 @@ import {
   ListFilter,
   BadgeCheck,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 
 /* ============================================================
@@ -99,6 +100,7 @@ type Brand = { id: string; name: string };
 type Category = { id: string; name: string; parentId: string | null };
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+  PENDING: { label: "در انتظار بررسی", cls: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
   PUBLISHED: { label: "منتشرشده", cls: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   DRAFT: { label: "پیش‌نویس", cls: "bg-zinc-100 text-zinc-500", dot: "bg-zinc-400" },
   SOLD: { label: "فروخته‌شده", cls: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
@@ -265,6 +267,7 @@ export default function AdminListingsClient() {
           <h1 className="text-2xl font-black text-zinc-900">آگهی‌ها</h1>
           <p className="mt-1 text-sm text-zinc-500">{stats?.total ?? 0} آگهی کل · {listings.length} نمایش داده شده</p>
         </div>
+        <Link href="/admin/ai-scraper" className="inline-flex items-center gap-2 rounded-xl border border-[#F58220]/40 bg-white px-4 py-2.5 text-sm font-bold text-[#C65E0A] transition hover:bg-[#FFF7ED]"><Sparkles className="h-4 w-4" /> استخراج هوشمند از وب</Link>
         <Link href="/listings/new" className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38]">
           <Plus className="h-4 w-4" /> آگهی جدید
         </Link>
@@ -328,7 +331,7 @@ export default function AdminListingsClient() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl bg-zinc-100 p-1">
-            {["", "PUBLISHED", "DRAFT", "PAUSED", "SOLD"].map((s) => (
+            {["", "PENDING", "PUBLISHED", "DRAFT", "PAUSED", "SOLD"].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
