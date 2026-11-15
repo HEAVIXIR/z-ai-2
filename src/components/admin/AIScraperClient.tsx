@@ -31,6 +31,7 @@ export default function AIScraperClient() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const MAX_BULK_IMPORT_SELECTION = 5;
 
   const sourceName = (url: string) => {
     try {
@@ -83,7 +84,7 @@ export default function AIScraperClient() {
   };
 
   const importSelected = async () => {
-    const indexes = [...selected].filter(i => !imported.has(i));
+    const indexes = [...selected].filter(i => !imported.has(i)).slice(0, MAX_BULK_IMPORT_SELECTION);
     if (!indexes.length) return;
     setBulkImporting(true); setError(null);
     let done = 0;
@@ -105,7 +106,14 @@ export default function AIScraperClient() {
   };
 
   const toggle = (index: number) => setSelected(prev => {
-    const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next;
+    const next = new Set(prev);
+    if (next.has(index)) next.delete(index);
+    else if (next.size < MAX_BULK_IMPORT_SELECTION) next.add(index);
+    else {
+      setError(`حداکثر ${MAX_BULK_IMPORT_SELECTION.toLocaleString("fa-IR")} آگهی را در هر نوبت انتخاب کنید.`);
+      return prev;
+    }
+    return next;
   });
 
   return (
@@ -143,7 +151,7 @@ export default function AIScraperClient() {
       {results.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-3">
           <span className="text-xs font-bold text-zinc-600">{selected.size.toLocaleString("fa-IR")} انتخاب‌شده از {results.length.toLocaleString("fa-IR")}</span>
-          <button type="button" onClick={() => setSelected(selected.size === results.length ? new Set() : new Set(results.map((_, i) => i)))} className="text-xs font-bold text-[#F58220]">انتخاب همه / لغو انتخاب</button>
+          <button type="button" onClick={() => setSelected(selected.size === Math.min(MAX_BULK_IMPORT_SELECTION, results.length) ? new Set() : new Set(results.slice(0, MAX_BULK_IMPORT_SELECTION).map((_, i) => i)))} className="text-xs font-bold text-[#F58220]">انتخاب حداکثر ۵ مورد / لغو انتخاب</button>
           <button type="button" onClick={importSelected} disabled={!selected.size || bulkImporting} className="mr-auto inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {bulkImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} ورود انتخاب‌شده‌ها به صف بررسی
           </button>
@@ -156,7 +164,7 @@ export default function AIScraperClient() {
         {results.map((s, index) => (
           <article key={s.url || index} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
             <div className="relative flex h-44 items-center justify-center bg-zinc-100">
-              {s.images?.[0] ? <img src={s.images[0]} alt={s.title || "تصویر آگهی منبع"} className="h-full w-full object-contain" /> : <ImageIcon className="h-10 w-10 text-zinc-300" />}
+              <div className="flex flex-col items-center gap-2 text-zinc-400"><ImageIcon className="h-10 w-10 text-zinc-300" /><span className="text-[11px]">تصویر پس از بررسی حقوق و انتقال امن نمایش داده می‌شود</span></div>
               <span className="absolute right-3 top-3 rounded-full bg-zinc-900/80 px-3 py-1 text-xs font-bold text-white">{sourceName(s.url)}</span>
               {s.url && <a href={s.url} target="_blank" rel="noopener noreferrer" className="absolute left-3 top-3 rounded-lg bg-white p-2 text-zinc-700" aria-label="مشاهده آگهی منبع"><ExternalLink className="h-4 w-4" /></a>}
             </div>
