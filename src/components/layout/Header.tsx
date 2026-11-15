@@ -291,136 +291,28 @@ export default function Header({
 
 /* ── Mobile drawer — machinery L1 groups collapsible to show L2 children ── */
 function MobileDrawer({ roots, onClose }: { roots: TaxRoot[]; onClose: () => void }) {
-  // Track which machinery L1 group is expanded (by id). null = all collapsed.
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
-
-  const machinery = roots.find((r) => r.slug === "machinery");
-  const otherRoots = roots.filter((r) => r.slug !== "machinery");
-
   return (
     <div className="mt-2 rounded-3xl border border-white/10 bg-[#0b0b0b]/98 p-5 shadow-[0_25px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl lg:hidden">
       <nav className="flex flex-col gap-1">
-        {/* Machinery root with 16 L1 groups, each expandable */}
-        {machinery && (
-          <div className="mb-1">
-            <Link
-              href={`/listings?category=machinery`}
-              onClick={onClose}
-              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-black text-[#F58220] transition-colors hover:bg-[#F58220]/10"
-            >
-              <span className="text-base">{machinery.icon ?? "🏗️"}</span>
-              {machinery.name}
-            </Link>
-            <div className="mr-4 space-y-0.5 border-r border-white/10 pr-2">
-              {machinery.children.map((l1) => {
-                const isOpen = expanded === l1.id;
-                const hasL2 = (l1.children?.length ?? 0) > 0;
-                return (
-                  <div key={l1.id}>
-                    <div className="flex items-stretch">
-                      <Link
-                        href={`/listings?category=${l1.slug}`}
-                        onClick={onClose}
-                        className="flex-1 rounded-lg px-3 py-2 text-[12.5px] font-bold text-white/75 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-                      >
-                        {l1.name}
-                      </Link>
-                      {hasL2 && (
-                        <button
-                          type="button"
-                          onClick={() => toggle(l1.id)}
-                          aria-label={isOpen ? "بستن" : "باز کردن"}
-                          className="flex w-8 items-center justify-center rounded-lg text-white/40 transition hover:bg-white/5 hover:text-[#F58220]"
-                        >
-                          <ChevronLeft className={`h-4 w-4 transition-transform ${isOpen ? "-rotate-90" : ""}`} />
-                        </button>
-                      )}
-                    </div>
-                    {isOpen && hasL2 && (
-                      <div className="mr-3 space-y-0.5 border-r border-white/5 pr-2">
-                        {l1.children!.map((l2) => (
-                          <Link
-                            key={l2.id}
-                            href={`/listings?category=${l2.slug}`}
-                            onClick={onClose}
-                            className="block rounded-lg px-3 py-1.5 text-[11.5px] text-white/55 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-                          >
-                            {l2.name}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Other catalog roots — flat links */}
-        {otherRoots.map((c) => (
+        {roots.map((cat) => (
           <Link
-            key={c.id}
-            href={`/listings?category=${c.slug}`}
+            key={cat.id}
+            href={`/listings?category=${cat.slug}`}
             onClick={onClose}
             className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
           >
-            <span className="text-base">{c.icon ?? "🏭"}</span>
-            {c.name}
+            <span className="text-base">{cat.icon ?? "🏭"}</span>
+            {cat.name}
           </Link>
         ))}
-
-        {/* P2-AUCTION-COMPANY-RENTAL — quick links */}
         <div className="my-1 border-t border-white/5" />
-        <Link
-          href="/rentals"
-          onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-        >
-          <Key className="h-4 w-4 text-[#F58220]" />
-          اجاره ماشین‌آلات
-        </Link>
-        <Link
-          href="/auctions"
-          onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-        >
-          <Gavel className="h-4 w-4 text-[#F58220]" />
-          مزایده ماشین‌آلات
-        </Link>
-        <Link
-          href="/companies"
-          onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-        >
-          <Building2 className="h-4 w-4 text-[#F58220]" />
-          دایرکتوری شرکت‌ها
-        </Link>
-
-        <Link
-          href="/store"
-          onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-        >
-          <Store className="h-4 w-4" />
-          فروشگاه
-        </Link>
-        <Link
-          href="/login"
-          onClick={onClose}
-          className="rounded-lg px-3 py-2.5 text-sm font-medium text-white/80 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-        >
-          ورود به پنل مدیریت
-        </Link>
+        <Link href="/rentals" onClick={onClose} className="rounded-lg px-3 py-2.5 text-sm font-bold text-white/80">اجاره ماشین‌آلات</Link>
+        <Link href="/auctions" onClick={onClose} className="rounded-lg px-3 py-2.5 text-sm font-bold text-white/80">مزایده ماشین‌آلات</Link>
+        <Link href="/companies" onClick={onClose} className="rounded-lg px-3 py-2.5 text-sm font-bold text-white/80">دایرکتوری شرکت‌ها</Link>
+        <Link href="/store" onClick={onClose} className="rounded-lg px-3 py-2.5 text-sm font-bold text-white/80">فروشگاه</Link>
+        <Link href="/login" onClick={onClose} className="rounded-lg px-3 py-2.5 text-sm font-medium text-white/80">ورود به پنل مدیریت</Link>
       </nav>
-      <Link
-        href="/listings/new"
-        onClick={onClose}
-        className="mt-3 flex h-11 items-center justify-center rounded-xl bg-[#F58220] text-sm font-bold text-white"
-      >
-        ثبت آگهی رایگان
-      </Link>
+      <Link href="/listings/new" onClick={onClose} className="mt-3 flex h-11 items-center justify-center rounded-xl bg-[#F58220] text-sm font-bold text-white">ثبت آگهی رایگان</Link>
     </div>
   );
 }
@@ -490,7 +382,7 @@ function AnimatedLogo({
   );
 }
 
-/* ── Mega dropdown — machinery 16 L1 groups (with L2 sub-links) + other roots sidebar ── */
+/* ── Parent-only category dropdown ── */
 function DropdownMega({
   label,
   open,
@@ -506,9 +398,6 @@ function DropdownMega({
   roots: TaxRoot[];
   emptyText: string;
 }) {
-  const machinery = roots.find((r) => r.slug === "machinery");
-  const otherRoots = roots.filter((r) => r.slug !== "machinery");
-
   return (
     <div className="relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <button
@@ -518,83 +407,29 @@ function DropdownMega({
         {label}
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-
       {open && (
-        <div className="absolute right-1/2 top-full z-[60] w-[min(960px,calc(100vw-48px))] translate-x-1/2 pt-3">
-          <div className="relative rounded-2xl border border-white/10 bg-[#0b0b0b]/98 p-5 shadow-[0_25px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl">
-            <div className="absolute -top-px left-10 right-10 h-0.5 rounded-full" style={{ background: "#F58220" }} />
+        <div className="absolute right-1/2 top-full z-[60] w-[min(720px,calc(100vw-48px))] translate-x-1/2 pt-3">
+          <div className="rounded-2xl border border-white/10 bg-[#0b0b0b]/98 p-5 shadow-[0_25px_80px_rgba(0,0,0,.55)] backdrop-blur-2xl">
+            <div className="mb-3 h-0.5 rounded-full bg-[#F58220]" />
             {roots.length === 0 ? (
               <p className="py-8 text-center text-sm text-white/50">{emptyText}</p>
             ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_220px]">
-                {/* Main column: machinery with its 16 L1 groups, each with L2 sub-links */}
-                {machinery && (
-                  <div className="min-w-0">
-                    <div className="mb-3 flex items-center justify-between">
-                      <Link
-                        href={`/listings?category=machinery`}
-                        className="flex items-center gap-1.5 text-[13px] font-black text-[#F58220] hover:text-[#ff9a3c]"
-                      >
-                        <span className="text-base">{machinery.icon ?? "🏗️"}</span>
-                        {machinery.name}
-                      </Link>
-                      <span className="text-[10px] font-bold text-white/30">
-                        {machinery.children.length} گروه
-                      </span>
-                    </div>
-                    <div className="max-h-[440px] overflow-y-auto pl-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-track]:bg-transparent">
-                      <div className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
-                        {machinery.children.map((l1) => (
-                          <div key={l1.id} className="min-w-0">
-                            <Link
-                              href={`/listings?category=${l1.slug}`}
-                              className="block truncate rounded px-1 py-0.5 text-[12px] font-bold text-white/85 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-                            >
-                              {l1.name}
-                            </Link>
-                            {l1.children && l1.children.length > 0 && (
-                              <div className="mt-0.5 space-y-0">
-                                {l1.children.map((l2) => (
-                                  <Link
-                                    key={l2.id}
-                                    href={`/listings?category=${l2.slug}`}
-                                    className="block truncate rounded px-1 py-0.5 text-[10.5px] text-white/55 transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-                                  >
-                                    {l2.name}
-                                  </Link>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sidebar: other catalog roots */}
-                <div className="min-w-0 border-r border-white/10 pr-4 md:pr-5">
-                  <p className="mb-2 text-[12px] font-black text-white/40">سایر دسته‌ها</p>
-                  <div className="grid grid-cols-1 gap-0.5">
-                    {otherRoots.map((cat) => (
-                      <Link
-                        key={cat.id}
-                        href={`/listings?category=${cat.slug}`}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[#F58220]/10 hover:text-[#F58220]"
-                      >
-                        <span className="text-sm">{cat.icon ?? "🏭"}</span>
-                        <span className="truncate">{cat.name}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {roots.map((cat) => (
+                  <Link
+                    key={cat.id}
+                    href={`/listings?category=${cat.slug}`}
+                    className="flex min-w-0 items-center gap-2 rounded-xl border border-white/5 px-3 py-3 text-[12px] font-bold text-white/85 transition-colors hover:border-[#F58220]/30 hover:bg-[#F58220]/10 hover:text-[#F58220]"
+                  >
+                    <span>{cat.icon ?? "🏭"}</span>
+                    <span className="truncate">{cat.name}</span>
+                  </Link>
+                ))}
               </div>
             )}
             <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3 text-[10.5px] text-white/40">
               <span>HEAVIX INDUSTRIAL</span>
-              <Link href="/listings" className="font-bold text-[#F58220] hover:text-[#ff9a3c]">
-                مشاهده همه آگهی‌ها ←
-              </Link>
+              <Link href="/listings" className="font-bold text-[#F58220] hover:text-[#ff9a3c]">مشاهده همه آگهی‌ها ←</Link>
             </div>
           </div>
         </div>
