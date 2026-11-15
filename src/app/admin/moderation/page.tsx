@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import ModerationAdminClient from "./ModerationAdminClient";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +39,17 @@ type FlaggedItem = {
 };
 
 export default async function ModerationAdminPage() {
+  // Match the moderation API's read permission before loading any queue data.
+  const user = await getCurrentUser();
+  if (!user) {
+    return <div className="p-8 text-center text-zinc-500">Unauthorized</div>;
+  }
+  try {
+    await requirePermission(user.id, "moderation.read");
+  } catch {
+    return <div className="p-8 text-center text-zinc-500">Forbidden: requires moderation.read</div>;
+  }
+
   // Stats
   const [scanCount, flagCount, approveCount, rejectCount, pendingImportRows] = await Promise.all([
     db.moderationLog.count({ where: { action: "AI_SCAN" } }),

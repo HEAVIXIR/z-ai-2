@@ -563,3 +563,17 @@ describe("AI scraper LLM cancellation propagation", () => {
     expect(src).toMatch(/if \(signal\?\.aborted\)[\s\S]*?error\.name = "AbortError"[\s\S]*?throw error/);
   });
 });
+
+
+describe("AI import manager page authorization", () => {
+  it("checks moderation.read before loading server-rendered moderation data", () => {
+    const page = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/admin/moderation/page.tsx"),
+      "utf-8",
+    );
+    expect(page).toContain('await requirePermission(user.id, "moderation.read")');
+    expect(page.indexOf('await requirePermission(user.id, "moderation.read")')).toBeLessThan(
+      page.indexOf('db.moderationLog.count'),
+    );
+  });
+});
