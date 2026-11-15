@@ -312,6 +312,15 @@ async function importListing(s: ScrapeResult) {
     throw new Error("استخراج معتبر آگهی کامل نیست؛ پیش‌نویس ساخته نشد.");
   }
   const title = s.title || "بدون عنوان";
+  const toBoundedInteger = (value: unknown, min: number, max: number): number | null => {
+    const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+    return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+  };
+  const normalizedYear = toBoundedInteger(s.year, 1900, new Date().getFullYear() + 1);
+  const normalizedHours = toBoundedInteger(s.hours, 0, 1_000_000);
+  const normalizedCondition = ["NEW", "USED", "REFURBISHED", "FOR_PARTS"].includes(String(s.condition || "").toUpperCase())
+    ? String(s.condition).toUpperCase()
+    : null;
 
   // Conservative catalog matching: exact normalized matches only. Ambiguous AI guesses
   // remain unmapped for manager review rather than being attached to the wrong entity.
@@ -382,22 +391,20 @@ async function importListing(s: ScrapeResult) {
       const key = (attribute.key || "").trim().toLowerCase();
       let value: { textValue?: string; numberValue?: number; optionId?: string; unit?: string } | null = null;
       if (["year", "manufacturing_year", "model_year", "production_year"].includes(key)
-          && s.year != null && Number.isInteger(Number(s.year))
-          && Number(s.year) >= 1900 && Number(s.year) <= new Date().getFullYear() + 1
+          && normalizedYear != null
           && numericTypes.has(attribute.type)) {
-        value = { numberValue: Number(s.year), unit: attribute.unit || undefined };
+        value = { numberValue: normalizedYear, unit: attribute.unit || undefined };
       } else if (["operating_hours", "hours", "working_hours", "engine_hours"].includes(key)
-          && s.hours != null && Number.isFinite(Number(s.hours))
-          && Number(s.hours) >= 0 && Number(s.hours) <= 1_000_000
+          && normalizedHours != null
           && numericTypes.has(attribute.type)) {
-        value = { numberValue: Number(s.hours), unit: attribute.unit || "ساعت" };
-      } else if (["condition", "state"].includes(key) && s.condition) {
+        value = { numberValue: normalizedHours, unit: attribute.unit || "ساعت" };
+      } else if (["condition", "state"].includes(key) && normalizedCondition) {
         const aliases: Record<string, string[]> = {
           NEW: ["new", "نو"], USED: ["used", "کارکرده"],
           REFURBISHED: ["refurbished", "بازسازی", "بازسازی‌شده", "بازسازی شده"],
           FOR_PARTS: ["for_parts", "for parts", "قطعات", "مخصوص قطعات"],
         };
-        const candidates = aliases[s.condition] || [];
+        const candidates = aliases[normalizedCondition] || [];
         if (["SELECT", "MULTI_SELECT"].includes(attribute.type)) {
           const matches = attribute.options.filter((option) => {
             const values = [option.value, option.label || ""].map(normalizeValue);
@@ -405,7 +412,7 @@ async function importListing(s: ScrapeResult) {
           });
           if (matches.length === 1) value = { optionId: matches[0].id };
         } else if (textTypes.has(attribute.type)) {
-          value = { textValue: s.condition };
+          value = { textValue: normalizedCondition };
         }
       } else if (["city", "location", "location_city"].includes(key)
           && s.location?.trim() && textTypes.has(attribute.type)) {
@@ -443,9 +450,9 @@ async function importListing(s: ScrapeResult) {
       shortDesc: s.description?.slice(0, 150),
       price: parseBig(s.price),
       priceType: s.price ? "FIXED" : "NEGOTIABLE",
-      condition: s.condition || "USED",
-      year: s.year ?? null,
-      workingHours: s.hours ?? null,
+      condition: normalizedCondition,
+      year: normalizedYear,
+      workingHours: normalizedHours,
       province: s.location || null,
       sellerName: null,
       // Imported phone numbers are never persisted before separate consent verification.
