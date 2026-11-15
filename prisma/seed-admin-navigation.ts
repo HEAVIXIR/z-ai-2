@@ -17,6 +17,16 @@ const prisma = new PrismaClient();
 import { ADMIN_NAVIGATION_GROUPS as GROUPS, ADMIN_NAVIGATION_STANDALONES as STANDALONES } from '../src/lib/admin/navigation-defaults';
 
 async function main() {
+  const apply = process.argv.includes("--apply");
+  if (!apply) {
+    console.log("DRY RUN: no database writes. Re-run with --apply and HEAVIX_ENV=preview to seed.");
+    console.log(`Would ensure ${GROUPS.length} groups and ${STANDALONES.length} standalone items exist.`);
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Admin navigation seed writes are restricted to HEAVIX_ENV=preview.");
+  }
+
   console.log('→ Seeding AdminNavigationGroup + AdminNavigationItem …');
 
   // 1. Upsert groups
@@ -24,7 +34,7 @@ async function main() {
     const group = await prisma.adminNavigationGroup.upsert({
       where: { key: g.key },
       create: { key: g.key, titleFa: g.titleFa, titleEn: g.key, icon: g.icon, sortOrder: g.sortOrder },
-      update: { titleFa: g.titleFa, icon: g.icon, sortOrder: g.sortOrder },
+      update: {},
     });
 
     // 2. Upsert items within this group
@@ -42,13 +52,7 @@ async function main() {
           permissionKey: item.permissionKey,
           groupId: group.id,
         },
-        update: {
-          titleFa: item.titleFa,
-          href: item.href,
-          sortOrder: i,
-          permissionKey: item.permissionKey,
-          groupId: group.id,
-        },
+        update: {},
       });
     }
   }
@@ -67,13 +71,7 @@ async function main() {
         permissionKey: s.permissionKey,
         groupId: null,
       },
-      update: {
-        titleFa: s.titleFa,
-        href: s.href,
-        icon: s.icon,
-        sortOrder: s.sortOrder,
-        permissionKey: s.permissionKey,
-      },
+      update: {},
     });
   }
 
