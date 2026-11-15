@@ -162,8 +162,9 @@ describe("SSRF-safe source fetch", () => {
     const deps = dependencies();
     deps.lookup.mockImplementationOnce(() => new Promise(() => {}));
     const pending = fetchAllowedSourcePage("https://divar.ir/ad", controller.signal, deps);
+    const rejection = expect(pending).rejects.toThrow("درخواست دریافت صفحه لغو شد");
     controller.abort();
-    await expect(pending).rejects.toThrow("درخواست دریافت صفحه لغو شد");
+    await rejection;
     expect(deps.request).not.toHaveBeenCalled();
   });
 
@@ -173,8 +174,9 @@ describe("SSRF-safe source fetch", () => {
       const deps = dependencies();
       deps.lookup.mockImplementationOnce(() => new Promise(() => {}));
       const pending = fetchAllowedSourcePage("https://divar.ir/ad", undefined, deps);
+      const rejection = expect(pending).rejects.toThrow("مهلت بررسی DNS منبع تمام شد");
       await vi.advanceTimersByTimeAsync(8_000);
-      await expect(pending).rejects.toThrow("مهلت بررسی DNS منبع تمام شد");
+      await rejection;
       expect(deps.request).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
