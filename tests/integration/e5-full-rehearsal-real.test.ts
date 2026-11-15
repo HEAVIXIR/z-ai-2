@@ -157,7 +157,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
    */
   function pushSchema(dbName: string): void {
     execSync(
-      `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${dbName}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`,
+      `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${dbName}?schema=public" DIRECT_URL="postgresql://postgres:postgres@localhost:5432/${dbName}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`,
       { encoding: "utf-8", timeout: 60000 },
     );
   }
@@ -187,7 +187,7 @@ describe.skipIf(!RUN_TESTS)("E5 Full Rehearsal — Real PostgreSQL 17 (G2 + G3)"
 
     // Create scratch DB and push schema + seed
     createDb(SCRATCH_DB);
-    execSync(`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`, {
+    execSync(`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}?schema=public" DIRECT_URL="postgresql://postgres:postgres@localhost:5432/${SCRATCH_DB}?schema=public" bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma`, {
       encoding: "utf-8",
       timeout: 60000,
     });
