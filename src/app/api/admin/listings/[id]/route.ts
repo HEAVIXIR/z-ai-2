@@ -223,7 +223,7 @@ export async function PATCH(req: Request, { params }: Params) {
       const now = new Date();
       data.publishedAt = now;
       data.expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      if (existing.status === "PAUSED" || existing.status === "DRAFT") {
+      if (existing.status === "PAUSED" || existing.status === "DRAFT" || existing.status === "PENDING") {
         data.status = "PUBLISHED";
       }
     } else if (action === "toggleFeatured") {
