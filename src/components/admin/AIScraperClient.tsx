@@ -105,16 +105,21 @@ export default function AIScraperClient() {
     setSelected(new Set()); setBulkImporting(false);
   };
 
-  const toggle = (index: number) => setSelected(prev => {
-    const next = new Set(prev);
-    if (next.has(index)) next.delete(index);
-    else if (next.size < MAX_BULK_IMPORT_SELECTION) next.add(index);
-    else {
-      setError(`حداکثر ${MAX_BULK_IMPORT_SELECTION.toLocaleString("fa-IR")} آگهی را در هر نوبت انتخاب کنید.`);
-      return prev;
+  const toggle = (index: number) => {
+    if (selected.has(index)) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+      return;
     }
-    return next;
-  });
+    if (selected.size >= MAX_BULK_IMPORT_SELECTION) {
+      setError(`حداکثر ${MAX_BULK_IMPORT_SELECTION.toLocaleString("fa-IR")} آگهی را در هر نوبت انتخاب کنید.`);
+      return;
+    }
+    setSelected(prev => new Set(prev).add(index));
+  };
 
   return (
     <div className="space-y-6">
