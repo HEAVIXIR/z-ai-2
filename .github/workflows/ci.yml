@@ -6,6 +6,10 @@ on:
   push:
     branches: [main, 'feature/**', 'fix/**']
 
+env:
+  # Disposable CI-only default required by Prisma schema parsing/generation.
+  DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/heavix_test?schema=public"
+
 jobs:
   # ── BLOCKING job: all required security/contract/integration/build tests ──
   # Any failure fails the workflow and blocks merge.
@@ -216,10 +220,12 @@ jobs:
           psql -h localhost -U postgres -c "CREATE DATABASE heavix_migrate_store_proof;"
 
           echo "── Main: migrate deploy on fresh DB ──"
+          DIRECT_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
             bunx prisma migrate deploy --schema=prisma/schema.prisma
           echo ""
           echo "── Main: migrate status ──"
+          DIRECT_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
           DATABASE_URL="postgresql://postgres:postgres@localhost:5432/heavix_migrate_main_proof?schema=public" \
             bunx prisma migrate status --schema=prisma/schema.prisma
           echo ""
@@ -450,6 +456,7 @@ jobs:
         run: |
           set -euo pipefail
           export DATABASE_URL="postgresql://$(id -un)@localhost:5433/heavix_preflight_test?schema=public&sslmode=require&sslaccept=strict&sslcert=$HEAVIX_TLS_CERT_DIR/ca-valid.crt"
+          export DIRECT_URL="$DATABASE_URL"
           bunx prisma db push --schema=prisma/schema.prisma
           bun run db:seed-rbac
       - name: Create isolated MISSING-role classification fixture

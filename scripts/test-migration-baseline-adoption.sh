@@ -38,14 +38,17 @@ psql -d "$STORE_EXISTING" -v ON_ERROR_STOP=1 -c \
   'INSERT INTO "AdminUser" ("id","username","passwordHash","name","createdAt","updatedAt") VALUES ('\''baseline-adoption-fixture'\'', '\''baseline-adoption-fixture'\'', '\''ci-not-a-real-password'\'', '\''Baseline Fixture'\'', NOW(), NOW());'
 
 echo "── Adopt existing schemas without dropping data"
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
   bunx prisma migrate resolve --applied "$MAIN_BASELINE" --schema=prisma/schema.prisma
 STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/$STORE_EXISTING?schema=public" \
   bunx prisma migrate resolve --applied "$STORE_BASELINE" --schema=prisma/store/schema.prisma
 
 echo "── Apply any subsequent reviewed migrations and verify status"
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
   bunx prisma migrate deploy --schema=prisma/schema.prisma
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/$MAIN_EXISTING?schema=public" \
   bunx prisma migrate status --schema=prisma/schema.prisma
 STORE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/$STORE_EXISTING?schema=public" \

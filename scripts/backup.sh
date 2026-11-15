@@ -40,9 +40,9 @@ else
   : "${STORE_DB_NAME:?STORE_DB_NAME is required}"
   : "${STORE_DB_PASSWORD:?STORE_DB_PASSWORD is required}"
 
-  PGPASSWORD="$DB_PASSWORD" pg_dump --no-owner --no-privileges \
+  PGSSLMODE="${DB_SSLMODE:-prefer}" PGPASSWORD="$DB_PASSWORD" pg_dump --no-owner --no-privileges \
     -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" > "$WORK_DIR/main.sql"
-  PGPASSWORD="$STORE_DB_PASSWORD" pg_dump --no-owner --no-privileges \
+  PGSSLMODE="${STORE_DB_SSLMODE:-prefer}" PGPASSWORD="$STORE_DB_PASSWORD" pg_dump --no-owner --no-privileges \
     -h "$STORE_DB_HOST" -p "$STORE_DB_PORT" -U "$STORE_DB_USER" "$STORE_DB_NAME" > "$WORK_DIR/store.sql"
 fi
 

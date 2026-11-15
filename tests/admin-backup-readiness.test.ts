@@ -10,13 +10,15 @@ const read = (relativePath: string) =>
 describe("paired PostgreSQL backup configuration", () => {
   it("derives independent Main and Store connection settings from canonical URLs", () => {
     const env = buildBackupEnvironment({
-      DATABASE_URL: "postgresql://main_user:p%40ss%3Aword@main-db.internal:6432/heavix_main?schema=public",
+      DATABASE_URL: "postgresql://runtime:p%40ss@pooled.db.prisma.io:5432/heavix_main?schema=public",
+      DIRECT_URL: "postgresql://main_user:p%40ss%3Aword@db.prisma.io:5432/heavix_main?schema=public&sslmode=require",
       STORE_DATABASE_URL: "postgres://store_user:store%2Fsecret@store-db.internal/heavix_store?schema=public",
     });
 
     expect(env).toMatchObject({
-      DB_HOST: "main-db.internal",
-      DB_PORT: "6432",
+      DB_HOST: "db.prisma.io",
+      DB_PORT: "5432",
+      DB_SSLMODE: "require",
       DB_USER: "main_user",
       DB_NAME: "heavix_main",
       DB_PASSWORD: "p@ss:word",
@@ -25,15 +27,16 @@ describe("paired PostgreSQL backup configuration", () => {
       STORE_DB_USER: "store_user",
       STORE_DB_NAME: "heavix_store",
       STORE_DB_PASSWORD: "store/secret",
+      STORE_DB_SSLMODE: "prefer",
     });
   });
 
   it.each([
-    [{ DATABASE_URL: undefined, STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main database URL is not configured/],
-    [{ DATABASE_URL: "not-a-url", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main database URL is invalid/],
-    [{ DATABASE_URL: "sqlite:file.db", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main database URL must use PostgreSQL/],
-    [{ DATABASE_URL: "postgresql://u@db/main", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main database URL is missing required connection fields/],
-    [{ DATABASE_URL: "postgresql://u:p@db/main", STORE_DATABASE_URL: undefined }, /Store database URL is not configured/],
+    [{ DIRECT_URL: undefined, STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL is not configured/],
+    [{ DIRECT_URL: "not-a-url", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL is invalid/],
+    [{ DIRECT_URL: "sqlite:file.db", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL must use PostgreSQL/],
+    [{ DIRECT_URL: "postgresql://u@db/main", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL is missing required connection fields/],
+    [{ DIRECT_URL: "postgresql://u:p@db/main", STORE_DATABASE_URL: undefined }, /Store database URL is not configured/],
   ] as const)("rejects incomplete or unsupported configuration without exposing URLs", (input, expectedError) => {
     const raw = JSON.stringify(input);
     let caught: unknown;
@@ -55,6 +58,7 @@ describe("paired PostgreSQL backup configuration", () => {
 describe("admin backup runtime wiring", () => {
   it("ships the backup script and PostgreSQL client in the runtime image", () => {
     const dockerfile = read("Dockerfile");
+    expect(dockerfile).toContain("ENV DIRECT_URL=");
     expect(dockerfile).toContain("apt-get install -y --no-install-recommends bash postgresql-client");
     expect(dockerfile).toContain("COPY --from=builder /app/scripts/backup.sh ./scripts/backup.sh");
     expect(dockerfile).toMatch(/chmod 0750 \.\/scripts\/backup\.sh/);
@@ -62,6 +66,7 @@ describe("admin backup runtime wiring", () => {
 
   it("uses persistent backup storage in production Compose", () => {
     const compose = read("docker-compose.prod.yml");
+    expect(compose).toContain("DIRECT_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public");
     expect(compose).toContain("heavix_backups:/app/backups");
     expect(compose).toMatch(/volumes:\n[\s\S]*^  heavix_backups:\s*$/m);
   });
@@ -72,6 +77,7 @@ describe("admin backup runtime wiring", () => {
 
     expect(script).toContain('echo "Backup complete: $BACKUP_DIR"');
     expect(route).toContain(/Backup complete:\\s+\\.\/backups\//.source);
+    expect(route).toContain("DIRECT_URL: process.env.DIRECT_URL");
     expect(route).toContain("Backup failed; no successful paired backup was confirmed.");
     expect(route).not.toContain("stdout,");
     expect(route).not.toContain("stderr,");

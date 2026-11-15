@@ -43,7 +43,7 @@ export async function POST() {
     await fs.access(scriptPath);
 
     const backupEnv = buildBackupEnvironment({
-      DATABASE_URL: process.env.DATABASE_URL,
+      DIRECT_URL: process.env.DIRECT_URL,
       STORE_DATABASE_URL: process.env.STORE_DATABASE_URL,
     });
     const { stdout } = await execFileAsync("bash", [scriptPath], {

@@ -2,6 +2,7 @@
 # Start:  docker compose up -d
 # Then set in .env:
 #   DATABASE_URL="postgresql://heavix:heavix@localhost:5432/heavix?schema=public"
+#   DIRECT_URL="postgresql://heavix:heavix@localhost:5432/heavix?schema=public"
 #   STORE_DATABASE_URL="postgresql://heavix:heavix@localhost:5433/heavix_store?schema=public"
 #
 # Two separate Postgres instances (different ports) so the main

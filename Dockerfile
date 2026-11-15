@@ -23,6 +23,7 @@ COPY . .
 
 # Generate Prisma clients
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+ENV DIRECT_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 ENV STORE_DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 RUN bunx prisma generate --schema=prisma/schema.prisma
 RUN bunx prisma generate --schema=prisma/store/schema.prisma
