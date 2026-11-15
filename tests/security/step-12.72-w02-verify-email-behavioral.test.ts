@@ -77,19 +77,17 @@ beforeEach(() => {
   mockCodeRecord = { ...mockCode, used: false, expiresAt: new Date(Date.now() + 10 * 60 * 1000) };
 });
 
-// F-006 fix: verify-email route now enforces fail-closed CSRF.
-// We send a Bearer token so the request is classified as a
-// non-browser API client and exempted from CSRF (see src/lib/csrf.ts).
-// This test exercises the verification logic, not the CSRF layer.
-const CSRF_BYPASS_HEADERS = {
+// The route enforces fail-closed CSRF. These behavioral tests exercise
+// verification semantics with the explicit trusted local test origin.
+const CSRF_TEST_HEADERS = {
   "Content-Type": "application/json",
-  "Authorization": "Bearer test-csrf-exempt",
+  "Origin": "http://localhost:3000",
 } as const;
 
 function makeReq(body: any): Request {
   return new Request("http://localhost/api/auth/verify-email", {
     method: "POST",
-    headers: CSRF_BYPASS_HEADERS,
+    headers: CSRF_TEST_HEADERS,
     body: JSON.stringify(body),
   });
 }
