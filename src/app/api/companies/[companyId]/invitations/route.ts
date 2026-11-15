@@ -33,7 +33,7 @@ function configuredAppUrl(): URL | null {
   const raw = process.env.NEXT_PUBLIC_SITE_URL || process.env.HEAVIX_PREVIEW_URL || process.env.HEAVIX_PREVIEW_ORIGIN || (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   if (!raw) return null;
   try {
-    const normalized = /^https?:\\/\\//i.test(raw) ? raw : `https://${raw}`;
+    const normalized = raw.startsWith("https://") || raw.startsWith("http://") ? raw : `https://${raw}`;
     const url = new URL(normalized);
     if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return null;
     if (process.env.NODE_ENV === "production" && url.protocol !== "https:") return null;

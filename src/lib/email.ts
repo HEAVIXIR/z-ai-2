@@ -174,7 +174,7 @@ export async function sendPasswordResetEmail(email: string, code: string): Promi
       "کد یک‌بارمصرف شما: " + code,
       "این کد تا ۱۰ دقیقه معتبر است.",
       "اگر این درخواست از طرف شما نبوده، این پیام را نادیده بگیرید.",
-    ].join("\\n"),
+    ].join("\n"),
     html:
       '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">' +
       '<h2 style="color:#F58220">بازیابی رمز عبور HEAVIX</h2>' +

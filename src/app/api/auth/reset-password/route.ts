@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{6}$/.test(code)) {
     return NextResponse.json({ error: "ایمیل یا کد بازیابی معتبر نیست." }, { status: 400 });
   }
-  if (password.length < 8) {
+  if (password.length < 8 || password.length > 128) {
     return NextResponse.json({ error: "رمز عبور باید حداقل ۸ کاراکتر باشد." }, { status: 400 });
   }
 
@@ -93,7 +93,10 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, message: "رمز عبور با موفقیت تغییر کرد. اکنون وارد شوید." });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "RESET_CODE_ALREADY_USED") {
+      return NextResponse.json({ error: "کد بازیابی قبلاً استفاده شده یا منقضی شده است." }, { status: 409 });
+    }
     return NextResponse.json({ error: "بازیابی رمز عبور انجام نشد. دوباره تلاش کنید." }, { status: 500 });
   }
 }
