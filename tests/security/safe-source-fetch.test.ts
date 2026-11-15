@@ -145,6 +145,18 @@ describe("SSRF-safe source fetch", () => {
     expect(deps.request).not.toHaveBeenCalled();
   });
 
+  it("stops before opening a socket if abort occurs during DNS resolution", async () => {
+    const controller = new AbortController();
+    const deps = dependencies();
+    deps.lookup.mockImplementationOnce(async () => {
+      controller.abort();
+      return [{ address: "1.1.1.1", family: 4 }];
+    });
+    await expect(fetchAllowedSourcePage("https://divar.ir/ad", controller.signal, deps))
+      .rejects.toThrow("درخواست دریافت صفحه لغو شد");
+    expect(deps.request).not.toHaveBeenCalled();
+  });
+
   it("propagates timeout/abort failures from the pinned transport", async () => {
     const deps = dependencies();
     deps.request.mockRejectedValueOnce(new Error("request timed out"));
