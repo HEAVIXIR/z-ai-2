@@ -428,6 +428,17 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(importer).not.toMatch(/publishedAt:\s*new Date/);
   });
 
+
+  it("rejects incomplete or failed extraction on every import path, including bulk import", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\n/**", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/!s\.title\?\.trim\(\)/);
+    expect(importer).toMatch(/Error scraping:/);
+    expect(importer).toMatch(/پیش‌نویس ساخته نشد/);
+  });
+
   it("keeps the legacy synthetic action interface fail-closed", () => {
     const code = src();
     expect(code).toMatch(/if \(action\) return NextResponse\.json\([\s\S]{0,220}status: 410/);
