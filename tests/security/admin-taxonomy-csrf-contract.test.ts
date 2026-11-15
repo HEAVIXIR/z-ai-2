@@ -16,6 +16,7 @@ const ROUTES = [
   "src/app/api/taxonomy/categories/[id]/route.ts",
   "src/app/api/admin/services/route.ts",
   "src/app/api/admin/services/[id]/route.ts",
+  "src/app/api/admin/moderation/route.ts",
 ] as const;
 
 describe("Admin taxonomy/service mutation CSRF contract", () => {
@@ -43,5 +44,16 @@ describe("Admin taxonomy/service mutation CSRF contract", () => {
         expect(csrfIndex, `${relativePath}: CSRF must run before try/IO`).toBeLessThan(tryIndex);
       }
     }
+  });
+});
+
+describe("Imported listing publication guard", () => {
+  it("blocks generic approval while source-linked listings lack dedicated clearance evidence", () => {
+    const absolutePath = path.resolve(process.cwd(), "src/app/api/admin/moderation/route.ts");
+    const source = fs.readFileSync(absolutePath, "utf8");
+    expect(source).toMatch(/select:\s*\{[^}]*sourceUrl:\s*true/s);
+    expect(source).toMatch(/action\s*===\s*"approve"\s*&&\s*listing\.sourceUrl/);
+    expect(source).toMatch(/IMPORTED_LISTING_CLEARANCE_REQUIRED/);
+    expect(source).toMatch(/status:\s*409/);
   });
 });
