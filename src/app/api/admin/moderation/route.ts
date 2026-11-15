@@ -90,6 +90,20 @@ export async function GET(req: Request) {
       return true;
     });
 
+    // AI-imported drafts need a dedicated human-review lane even when the
+    // automated risk scanner has not flagged them. Never auto-publish these rows.
+    const pendingImports = await db.listing.findMany({
+      where: { status: "PENDING", sourceUrl: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true, title: true, slug: true, status: true, price: true,
+        createdAt: true, sourceUrl: true, sourceSite: true,
+        brand: { select: { name: true } },
+        category: { select: { name: true } },
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       stats: {
@@ -121,6 +135,18 @@ export async function GET(req: Request) {
               categoryName: row.listing.category?.name ?? null,
             }
           : null,
+      })),
+      pendingImports: pendingImports.map((listing) => ({
+        id: listing.id,
+        title: listing.title,
+        slug: listing.slug,
+        status: listing.status,
+        price: listing.price ? listing.price.toString() : null,
+        createdAt: listing.createdAt.toISOString(),
+        sourceUrl: listing.sourceUrl,
+        sourceSite: listing.sourceSite,
+        brandName: listing.brand?.name ?? null,
+        categoryName: listing.category?.name ?? null,
       })),
     });
   } catch (err: any) {
@@ -214,13 +240,16 @@ export async function POST(req: Request) {
         },
       });
 
-      // Apply the status transition:
-      //  approve → PUBLISHED (re-publish if it was flagged to PENDING)
-      //  reject  → REJECTED
+      // Apply the status transition. Set publishedAt on the first transition
+      // to PUBLISHED; preserve the original publication timestamp on re-approval.
       const newStatus = action === "approve" ? "PUBLISHED" : "REJECTED";
+      const publicationFields =
+        action === "approve" && listing.status !== "PUBLISHED"
+          ? { publishedAt: new Date() }
+          : {};
       await db.listing.update({
         where: { id: listingId },
-        data: { status: newStatus },
+        data: { status: newStatus, ...publicationFields },
       });
 
       await logAudit({
@@ -230,7 +259,7 @@ export async function POST(req: Request) {
         entityType: "Listing",
         entityId: listingId,
         before: { status: listing.status },
-        after: { status: newStatus, reason, logId: log.id },
+        after: { status: newStatus, ...publicationFields, reason, logId: log.id },
         reason: `${action === "approve" ? "تأیید" : "رد"} آگهی «${listing.title}» توسط ادمین.`,
       });
 
