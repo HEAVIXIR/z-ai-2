@@ -12,6 +12,7 @@ import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { getUserPermissions } from '@/lib/rbac';
+import { ADMIN_NAVIGATION_GROUPS, ADMIN_NAVIGATION_STANDALONES } from '@/lib/admin/navigation-defaults';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,13 +58,55 @@ export async function GET() {
     orderBy: { sortOrder: "asc" },
   });
 
-  const filterItems = (items: typeof groups[number]["items"]) =>
+  // Preview environments may not have received the navigation seed yet.
+  // Keep GET read-only: serve the canonical code registry when the DB has no
+  // active navigation rows, while applying the exact same RBAC filter.
+  const hasStoredNavigation =
+    groups.some((group) => group.items.length > 0) || standalone.length > 0;
+
+  type NavigationItem = {
+    key: string;
+    titleFa: string;
+    titleEn?: string | null;
+    href: string;
+    icon?: string | null;
+    permissionKey?: string | null;
+  };
+  type NavigationGroup = {
+    key: string;
+    titleFa: string;
+    titleEn?: string | null;
+    icon?: string | null;
+    sortOrder: number;
+    items: NavigationItem[];
+  };
+
+  const sourceGroups: NavigationGroup[] = hasStoredNavigation
+    ? groups
+    : ADMIN_NAVIGATION_GROUPS.map((group) => ({
+        ...group,
+        titleEn: group.key,
+        items: group.items.map((item) => ({
+          key: `${group.key}_${item.href.replace(/[^a-z0-9]/gi, '_')}`,
+          titleFa: item.titleFa,
+          titleEn: item.href,
+          href: item.href,
+          icon: item.icon ?? null,
+          permissionKey: item.permissionKey ?? null,
+        })),
+      }));
+
+  const sourceStandalone: NavigationItem[] = hasStoredNavigation
+    ? standalone
+    : ADMIN_NAVIGATION_STANDALONES;
+
+  const filterItems = (items: NavigationItem[]) =>
     items.filter((item) => {
       if (!item.permissionKey) return true;
       return userPermissions.has(item.permissionKey);
     });
 
-  const resultGroups = groups
+  const resultGroups = sourceGroups
     .map((group) => ({
       key: group.key,
       titleFa: group.titleFa,
@@ -81,7 +124,7 @@ export async function GET() {
     }))
     .filter((group) => group.items.length > 0);
 
-  const resultStandalone = filterItems(standalone).map((item) => ({
+  const resultStandalone = filterItems(sourceStandalone).map((item) => ({
     key: item.key,
     titleFa: item.titleFa,
     titleEn: item.titleEn,
@@ -96,6 +139,7 @@ export async function GET() {
       groups: resultGroups,
       standalone: resultStandalone,
       mode: "rbac",
+      source: hasStoredNavigation ? "database" : "canonical-defaults",
     },
   });
 }
