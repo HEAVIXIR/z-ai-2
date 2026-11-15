@@ -151,6 +151,11 @@ export async function POST(req: Request) {
         update: {},
       });
 
+      // Every account starts with the canonical individual commercial persona.
+      await tx.userCommercialPersona.create({
+        data: { userId: u.id, personaKey: "INDIVIDUAL", isPrimary: true, status: "ACTIVE" },
+      });
+
       // Keep the pending account and its verification challenge atomic.
       await tx.verificationCode.create({
         data: {

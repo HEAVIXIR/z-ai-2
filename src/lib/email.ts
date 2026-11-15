@@ -9,6 +9,8 @@ export interface SendEmailArgs {
   subject: string;
   text: string;
   html?: string;
+  /** Sensitive messages must never be echoed in diagnostics. */
+  sensitive?: boolean;
 }
 
 const SMTP_HOST = process.env.SMTP_HOST ?? "";
@@ -150,6 +152,16 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
     return;
   }
   throw new Error("Email delivery is not configured");
+}
+
+/** Sends without exposing delivery errors or sensitive message content to callers. */
+export async function sendEmailWithResult(args: SendEmailArgs): Promise<boolean> {
+  try {
+    await sendEmail(args);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function sendVerificationEmail(email: string, code: string): Promise<void> {
