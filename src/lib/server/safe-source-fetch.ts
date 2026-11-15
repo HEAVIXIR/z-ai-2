@@ -15,7 +15,7 @@ export function isAllowedSourceUrl(raw: string): boolean {
 }
 
 function ipv4Number(address: string): number[] | null {
-  if (!/^(?:0|[1-9]\\d{0,2})(?:\\.(?:0|[1-9]\\d{0,2})){3}$/.test(address)) return null;
+  if (!/^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(address)) return null;
   const parts = address.split(".").map(Number);
   if (parts.some((part) => part > 255)) return null;
   return parts;
@@ -72,7 +72,7 @@ async function requestPinnedSource(url: URL, address: string, signal?: AbortSign
         return;
       }
       const contentType = String(response.headers["content-type"] || "").toLowerCase();
-      if (contentType && !/(text\\/html|application\\/xhtml\\+xml|application\\/json)/.test(contentType)) {
+      if (contentType && !/(text\/html|application\/xhtml\+xml|application\/json)/.test(contentType)) {
         response.resume();
         reject(new Error("منبع پاسخ HTML معتبری ارائه نکرد."));
         return;
@@ -101,7 +101,7 @@ async function requestPinnedSource(url: URL, address: string, signal?: AbortSign
       });
       response.on("end", () => {
         const html = Buffer.concat(chunks).toString("utf8");
-        const title = html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || "";
+        const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || "";
         resolve({ html, title });
       });
       response.on("error", reject);
