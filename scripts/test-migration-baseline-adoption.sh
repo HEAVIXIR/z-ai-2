@@ -73,8 +73,8 @@ for pair in "main:$MAIN_FRESH:$MAIN_EXISTING" "store:$STORE_FRESH:$STORE_EXISTIN
   # version metadata. Baseline-created and migrate-created schemas receive
   # different values even when their logical DDL is identical. Normalize
   # ONLY this non-schema metadata; keep all logical DDL in the strict diff.
-  sed -E '/^\\(un)?restrict[[:space:]]+/d; /^ALTER TABLE ONLY .* ALTER COLUMN .* SET \\(pg_attver=[0-9]+\\);$/d' "$TMP/$name-fresh.raw.sql" >"$TMP/$name-fresh.sql"
-  sed -E '/^\\(un)?restrict[[:space:]]+/d; /^ALTER TABLE ONLY .* ALTER COLUMN .* SET \\(pg_attver=[0-9]+\\);$/d' "$TMP/$name-existing.raw.sql" >"$TMP/$name-existing.sql"
+  sed -E '/^\\(un)?restrict[[:space:]]+/d; /^ALTER TABLE ONLY .* ALTER COLUMN .* SET \(pg_attver=[0-9]+\);$/d' "$TMP/$name-fresh.raw.sql" >"$TMP/$name-fresh.sql"
+  sed -E '/^\\(un)?restrict[[:space:]]+/d; /^ALTER TABLE ONLY .* ALTER COLUMN .* SET \(pg_attver=[0-9]+\);$/d' "$TMP/$name-existing.raw.sql" >"$TMP/$name-existing.sql"
   diff -u "$TMP/$name-fresh.sql" "$TMP/$name-existing.sql"
   echo "✓ $name existing-schema adoption matches fresh migration schema; sentinel row survived."
 done
