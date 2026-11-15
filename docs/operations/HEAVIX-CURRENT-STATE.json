@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-15T13:52:00.000Z",
+  "updated_at_utc": "2026-11-15T13:57:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "1bac29fe12572e8c11d6f8e2ca1a4a72e54c879f",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "3769f6b9d9c1553879e5eff14c587a896ab7ba1f",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -66,7 +66,8 @@
     "PR #333 hardening removes browser-side third-party image loads, records authenticated admin audit actor, caps bulk imports/UI selection at five and adds regression tests.",
     "PR #333 Vercel Preview deployment dpl_EU6G6wRuNKB4R5dvk7uWPMHLKQAM reached READY for commit a48dc078, but Deployment Protection blocked anonymous runtime acceptance.",
     "PR #330 and #331 retargeted to recovery but currently non-mergeable; PR #312 and #314 homepage changes conflict with the current recovery line.",
-    "Cloudflare automatic build on PR #332 branch previously failed due missing build:cloudflare script; no Worker deployment occurred and trigger remains configured."
+    "Cloudflare automatic build on PR #332 branch previously failed due missing build:cloudflare script; no Worker deployment occurred and trigger remains configured.",
+    "PR #333 exact-head GitHub Actions run #43721154092 passed on cd8ef0e78f49e351011bd4e80414187a51cd877e; all six substantive jobs passed, including security tests and Docker Caddy-to-app HTTP 200."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -163,11 +164,11 @@
     "Executed the actual B2 adapter proof; upload/read/list/signed-read/delete assertions passed on isolated Preview bucket.",
     "Consolidated AI scraper hardening in PR #333 and closed duplicate PR #332.",
     "Fixed CI workflow pull_request event types to include synchronize and edited on PR #333 branch.",
-    "Added scraper regression assertions; two test-authoring failures were diagnosed and corrected, with latest CI run in progress."
+    "Added scraper regression assertions; two test-authoring failures were diagnosed and corrected, with latest CI run in progress.",
+    "Verified exact-head CI success for consolidated scraper PR #333 at commit cd8ef0e; all six substantive jobs passed."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
-    "Exact-head CI success for PR #333 commit cd8ef0e78f49e351011bd4e80414187a51cd877e; run #43721154092 was in progress.",
     "Vercel Preview deployment and health check on current recovery head.",
     "Owner sign-in to protected Vercel Preview, Admin login, owner role and moderation/RBAC acceptance.",
     "Actual Cloudflare Worker database binding identity proof and Production isolation proof.",
@@ -184,25 +185,26 @@
     "id": 43721154092,
     "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
     "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
-    "status": "in_progress",
-    "conclusion": null,
+    "status": "completed",
+    "conclusion": "success",
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
-    "note": "Latest scraper hardening head. TLS, phase-tests, audit-transaction and Cloudflare compatibility report-only passed; verify security tests and Docker Caddy connectivity were still in progress at checkpoint."
+    "note": "All six substantive jobs passed: verify, audit-transaction, phase-tests, tls-proof, docker-build-proof including Caddy→app HTTP 200, and Cloudflare compatibility report-only. Legacy archive inventory skipped."
   },
   "latest_code_head_sha": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
   "latest_ci_run": {
     "id": 43721154092,
     "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
     "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
-    "status": "in_progress",
+    "status": "completed",
+    "conclusion": "success",
     "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
     "jobs": {
-      "tls_proof": "success",
-      "phase_tests": "success",
+      "verify": "success",
       "audit_transaction": "success",
+      "phase_tests": "success",
+      "tls_proof": "success",
+      "docker_build_proof": "success",
       "cloudflare_compatibility_report_only": "success",
-      "verify": "in_progress",
-      "docker_build_proof": "in_progress",
       "legacy_archive_inventory": "skipped"
     }
   },
@@ -561,7 +563,7 @@
   "blockers": [
     "Exact-head CI and OpenNext runtime proof are still required on current recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d; successful PR #307 checks are from prior head c5eda9e.",
     "Current recovery head has not yet been redeployed to Vercel Preview; previous recovery Preview health success is for c5eda9e only.",
-    "PR #333 latest CI run #43721154092 is still in progress at this checkpoint; do not claim green until verify and Docker proof complete.",
+    "PR #333 exact-head CI is green, but Vercel runtime/browser acceptance is still blocked by Deployment Protection and the rate-limited external check.",
     "Vercel Deployment Protection blocks anonymous access to PR #333 Preview. Owner must sign in through a secure browser profile before runtime/admin acceptance.",
     "Admin owner login and role/RBAC acceptance have not been verified; source presence does not prove owner access.",
     "Actual Cloudflare Worker App/Store database identities and Production isolation remain NOT VERIFIED.",
@@ -622,7 +624,7 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "1bac29fe12572e8c11d6f8e2ca1a4a72e54c879f",
+  "documentation_head": "3769f6b9d9c1553879e5eff14c587a896ab7ba1f",
   "recovery_latest_exact_head_ci": {
     "id": 43714375711,
     "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
@@ -681,6 +683,7 @@
     "superseded_scraper_pr": 332,
     "main_unchanged": true,
     "release_ready": false,
-    "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved."
+    "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved.",
+    "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit."
   }
 }
