@@ -41,6 +41,21 @@ This reduces the apparent gap against the 539-row snapshot to 8 candidate slugs,
 - `seed-attribute-catalog.ts` is a legacy broad updater that can overwrite attribute metadata and category-link settings; it is excluded from the canonical sequence.
 - The current catalog seed contains 35 model entries, while the historical snapshot reports 24 models and 8 brand-to-model associations. Reconcile identities and relationships rather than assuming either count is authoritative.
 
+### Dynamic form and attribute source audit (read-only)
+
+The two dedicated form sources are substantially larger than the historical database count, because template fields are reused and some keys have incompatible definitions across categories:
+
+- `seed-category-specific-attributes.ts`: **127 machine/catalog form templates**, **957 field placements**, and **542 distinct raw field keys**.
+- Within those 542 keys, **92 keys have more than one field signature** (differences can be label, type, unit, options, or flags). The current resolver namespaces category-specific variants; a source-only simulation with no pre-existing DB definitions yields **184 namespaced field placements** and **726 distinct resolved keys**. The actual resolver result depends on existing Preview AttributeDefinition rows, so 726 is not a predicted database row count.
+- `seed-service-mineral-attributes.ts`: **26 explicit form objects plus 41 generated form entries = 67 form slugs**, with **252 field placements** and **226 distinct raw keys**.
+- The service/mineral form keys have no raw-key overlap with the 542 machine/catalog keys in these source files.
+- All 127 machine form slugs are present in the V1.1 taxonomy source. All 67 service/mineral form slugs are present in the combined V1.1 + service/mineral category sources.
+- The 31 slugs in `RETIRED_MACHINE_TEMPLATE_SLUGS` are not unconditionally disabled: the seed skips them only when their category is absent from the target DB. Do not interpret this set as proof that those taxonomy nodes are globally retired.
+- The historical **405 Attributes** figure is a database snapshot count. It cannot be directly equated with raw keys, field placements, resolved keys, form templates, or option rows.
+
+The machine form seed validates that every active terminal CATALOG category under its five coverage roots has a dedicated template and aborts before writes if a non-retired form category is missing. The service/mineral form source currently does not contain an equivalent comprehensive check for every active SERVICE-layer terminal category; add that validation before any apply run.
+
+
 ### Current isolated Preview DB audit
 
 The read-only audit currently shows: Category=16 (all root-level), Brand=10, ProductModel=0, TransactionType=0, ServiceType=0, ApplicationIndustry=0, AttributeDefinition=0, and CategoryAttribute=0. The exact binding between this Prisma Preview project and the deployed Cloudflare Worker has not been independently proven.
