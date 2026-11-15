@@ -81,7 +81,40 @@ async function appFingerprint(client: AppPrismaClient, expectedDatabaseOid: stri
     Array<{ database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string }>
   >`SELECT current_database()::text AS database_name, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid, current_schema()::text AS schema_name, current_setting('server_version') AS server_version, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
   const migrations = await client.$queryRaw<Array<{ migration_name: string }>>`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`;
-  return { identity: identity[0], migrationNames: migrations.map((row) => row.migration_name) };
+  // Read-only catalog inspection distinguishes a genuinely absent migration
+  // from a table that exists but is missing its Prisma migration record.
+  const schemaRows = await client.$queryRaw<Array<{
+    table_exists: boolean;
+    columns: unknown;
+    indexes: unknown;
+    constraints: unknown;
+  }>>`SELECT
+    EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'ProductModelAttribute'
+    ) AS table_exists,
+    COALESCE((
+      SELECT json_agg(column_name ORDER BY ordinal_position)
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'ProductModelAttribute'
+    ), '[]'::json) AS columns,
+    COALESCE((
+      SELECT json_agg(indexname ORDER BY indexname)
+      FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'ProductModelAttribute'
+    ), '[]'::json) AS indexes,
+    COALESCE((
+      SELECT json_agg(c.conname ORDER BY c.conname)
+      FROM pg_constraint c
+      JOIN pg_class t ON t.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE n.nspname = 'public' AND t.relname = 'ProductModelAttribute'
+    ), '[]'::json) AS constraints`;
+  return {
+    identity: identity[0],
+    migrationNames: migrations.map((row) => row.migration_name),
+    schemaObjects: schemaRows[0] ?? null,
+  };
 }
 
 async function storeFingerprint(client: StorePrismaClient, expectedDatabaseOid: string): Promise<{
