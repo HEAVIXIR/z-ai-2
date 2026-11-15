@@ -329,12 +329,16 @@ export async function attachAsset(
   // asset. Never allow an active/public or unowned asset to be rebound through
   // this path; administrative media flows must use their dedicated controls.
   if (
-    asset.status !== "STAGED" ||
-    asset.visibility !== "PRIVATE" ||
-    asset.entityId !== null ||
-    !asset.relativePath.includes("/staging/") ||
-    !userId ||
-    asset.uploadedBy !== userId
+    actorType === "USER" &&
+    (
+      asset.status !== "STAGED" ||
+      asset.visibility !== "PRIVATE" ||
+      asset.entityId !== null ||
+      asset.entityType !== entityType ||
+      !asset.relativePath.includes("/staging/") ||
+      !userId ||
+      asset.uploadedBy !== userId
+    )
   ) {
     return { ok: false, error: "مالکیت یا وضعیت رسانه برای اتصال معتبر نیست." };
   }
