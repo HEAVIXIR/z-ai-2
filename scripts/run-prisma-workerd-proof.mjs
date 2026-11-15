@@ -171,8 +171,14 @@ try {
       assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
       assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
     } catch (error) {
-      const detail = error instanceof Error ? error.message.split("\n")[0] : "unknown fingerprint error";
-      fingerprintErrors.push(`${label}: ${detail}`);
+      const detail = error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : "unknown fingerprint error";
+      const migrationsMatch = Array.isArray(result.migrationNames) &&
+        result.migrationNames.length === target.migrations.length &&
+        result.migrationNames.every((name, index) => name === target.migrations[index]);
+      const migrationDetail = migrationsMatch
+        ? ""
+        : "; expected migrations=" + JSON.stringify(target.migrations) + "; actual migrations=" + JSON.stringify(result.migrationNames ?? null);
+      fingerprintErrors.push(`${label}: ${detail}${migrationDetail}`);
     }
   }
   assert.notEqual(appFirst.clientId, appSecond.clientId, "App client leaked across sequential requests.");
