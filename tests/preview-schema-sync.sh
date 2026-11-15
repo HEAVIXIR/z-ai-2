@@ -13,7 +13,7 @@ sed \
   -e '/^[[:space:]]*output   = "..\/src\/lib\/generated\/preview-sqlite-client"$/d' \
   -e 's/provider = "sqlite"/provider = "postgresql"/' \
   -e 's/url      = env("PREVIEW_DATABASE_URL")/url      = env("DATABASE_URL")/' \
-  -e '/url      = env("DATABASE_URL")/a\\  directUrl = env("DIRECT_URL")' \
+  -e '/url      = env("DATABASE_URL")/a\  directUrl = env("DIRECT_URL")' \
   "$ROOT/prisma/preview-schema.prisma" > "$TMP_SCHEMA"
 
 diff -u "$ROOT/prisma/schema.prisma" "$TMP_SCHEMA"
