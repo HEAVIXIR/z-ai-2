@@ -254,56 +254,35 @@ describe("F-004 fix: malformed Origin / Referer are rejected", () => {
 // Non-browser client exemptions (webhook / cron / API token)
 // ─────────────────────────────────────────────────────────────
 
-describe("F-006 fix: non-browser clients are exempt from CSRF", () => {
-  it("POST with Authorization: Bearer header → true (API token client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { authorization: "Bearer some-jwt-or-opaque-token" },
-        }),
-      ),
-    ).toBe(true);
+describe("F-006 fix: non-browser headers never bypass CSRF", () => {
+  it("POST with Authorization: Bearer header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { authorization: "Bearer some-jwt-or-opaque-token" },
+    }))).toBe(false);
   });
 
-  it("POST with x-cron-key header → true (cron ticker client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-cron-key": process.env.CRON_SECRET || "test-cron-key" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-cron-key header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-cron-key": process.env.CRON_SECRET || "test-cron-key" },
+    }))).toBe(false);
   });
 
-  it("POST with x-webhook-signature header → true (webhook callback)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-webhook-signature": "sha256=abc123" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-webhook-signature header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-webhook-signature": "sha256=abc123" },
+    }))).toBe(false);
   });
 
-  it("POST with x-api-key header → true (internal API token client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-api-key": "internal-service-key" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-api-key header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-api-key": "internal-service-key" },
+    }))).toBe(false);
   });
 
-  it("POST with empty Authorization header (no value) → false (still CSRF-checked)", () => {
-    // An empty Authorization header should NOT exempt the request.
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { authorization: "" },
-        }),
-      ),
-    ).toBe(false);
+  it("POST with empty Authorization header (no value) → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { authorization: "" },
+    }))).toBe(false);
   });
 });
 
