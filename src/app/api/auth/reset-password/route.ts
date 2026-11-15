@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const code = String(body.code ?? "").trim();
   const password = String(body.password ?? "");
 
-  if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email) || !/^\\d{6}$/.test(code)) {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{6}$/.test(code)) {
     return NextResponse.json({ error: "ایمیل یا کد بازیابی معتبر نیست." }, { status: 400 });
   }
   if (password.length < 8) {
