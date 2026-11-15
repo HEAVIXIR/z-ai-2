@@ -311,14 +311,7 @@ async function importListing(s: ScrapeResult) {
   if (!s.title?.trim() || (s.description || "").startsWith("Error scraping:")) {
     throw new Error("استخراج معتبر آگهی کامل نیست؛ پیش‌نویس ساخته نشد.");
   }
-  const existing = await db.listing.findFirst({ where: { sourceUrl: s.url }, select: { id: true, slug: true, status: true } });
-  if (existing) return { ...existing, alreadyExists: true };
   const title = s.title || "بدون عنوان";
-  let slug = slugify(title);
-  let i = 1;
-  while (await db.listing.findUnique({ where: { slug } })) {
-    slug = `${slugify(title)}-${i++}`;
-  }
 
   // Conservative catalog matching: exact normalized matches only. Ambiguous AI guesses
   // remain unmapped for manager review rather than being attached to the wrong entity.
@@ -425,7 +418,24 @@ async function importListing(s: ScrapeResult) {
     }
   }
 
-  const listing = await db.listing.create({
+  // Serialize imports for this exact source URL across all app instances.
+  // PostgreSQL transaction-scoped advisory locks avoid a schema migration while preventing
+  // concurrent imports through this route from creating duplicate source records.
+  const outcome = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${s.url}, 0))`;
+    const existing = await tx.listing.findFirst({
+      where: { sourceUrl: s.url },
+      select: { id: true, slug: true, status: true },
+    });
+    if (existing) return { listing: existing, alreadyExists: true };
+
+    let slug = slugify(title);
+    let i = 1;
+    while (await tx.listing.findUnique({ where: { slug } })) {
+      slug = `${slugify(title)}-${i++}`;
+    }
+
+    const listing = await tx.listing.create({
     data: {
       slug,
       title,
@@ -454,8 +464,11 @@ async function importListing(s: ScrapeResult) {
       verified: false,
       featured: false,
     },
+    });
+    return { listing, alreadyExists: false };
   });
-  await logAudit({
+  const listing = outcome.listing;
+  if (!outcome.alreadyExists) await logAudit({
     actorId: null,
     actorType: "ADMIN",
     action: "admin.listings.create",
@@ -468,7 +481,7 @@ async function importListing(s: ScrapeResult) {
   // Third-party images remain visible only in the admin extraction preview until rights review
   // and the approved Backblaze B2 ingestion flow are implemented.
 
-  return listing;
+  return { ...listing, alreadyExists: outcome.alreadyExists };
 }
 
 /* POST /api/admin/ai-scraper
