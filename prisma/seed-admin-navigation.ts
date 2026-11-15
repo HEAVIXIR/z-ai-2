@@ -112,7 +112,7 @@ const GROUPS: Group[] = [
       { titleFa: 'ایجنت‌های هوش مصنوعی', href: '/admin/ai-agents', permissionKey: 'ai.manage' },
       { titleFa: 'موتور رشد', href: '/admin/growth-engine', permissionKey: 'system.manage' },
       { titleFa: 'فازهای راه‌اندازی', href: '/admin/launch-phases', permissionKey: 'system.manage' },
-      { titleFa: 'اسکرپر هوش مصنوعی', href: '/admin/ai-scraper', permissionKey: 'ai.execute' },
+      { titleFa: 'ورود هوشمند آگهی', href: '/admin/ai-scraper', permissionKey: 'ai.scraper.execute' },
       { titleFa: 'کارهای پس‌زمینه', href: '/admin/jobs', permissionKey: 'system.manage' },
     ],
   },
