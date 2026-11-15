@@ -6,7 +6,7 @@ describe("buildBackupEnvironment", () => {
     expect(
       buildBackupEnvironment({
         DATABASE_URL: "postgresql://runtime:p%40ss@pooled.db.prisma.io:5432/heavix?schema=public",
-        DIRECT_URL: "postgresql://backup%2Buser:p%40ss%3Aword@db.prisma.io:5432/heavix%20main?schema=public&sslmode=require",
+        DIRECT_URL: "postgresql://backup%2Buser:p%40ss%3Aword@db.prisma.io:5432/heavix?schema=public&sslmode=require",
         STORE_DATABASE_URL: "postgresql://store_user:store%20pass@store-db:5432/heavix_store?schema=public",
       }),
     ).toMatchObject({
@@ -23,6 +23,26 @@ describe("buildBackupEnvironment", () => {
       STORE_DB_PASSWORD: "store pass",
       STORE_DB_SSLMODE: "prefer",
     });
+  });
+
+  it("rejects a Main direct URL that points at a different database than the runtime URL", () => {
+    expect(() =>
+      buildBackupEnvironment({
+        DATABASE_URL: "postgresql://runtime:p@pooled.db.prisma.io:5432/heavix_main",
+        DIRECT_URL: "postgresql://backup:p@db.prisma.io:5432/other_main",
+        STORE_DATABASE_URL: "postgresql://store:p@store-db:5432/heavix_store",
+      }),
+    ).toThrow("Main direct database does not match Main runtime database");
+  });
+
+  it("rejects an identical Main and Store endpoint", () => {
+    expect(() =>
+      buildBackupEnvironment({
+        DATABASE_URL: "postgresql://runtime:p@db.prisma.io:5432/heavix",
+        DIRECT_URL: "postgresql://backup:p@db.prisma.io:5432/heavix",
+        STORE_DATABASE_URL: "postgresql://store:p@db.prisma.io:5432/heavix",
+      }),
+    ).toThrow("Store database must be separate from Main database");
   });
 
   it("fails closed when either database URL is missing", () => {
