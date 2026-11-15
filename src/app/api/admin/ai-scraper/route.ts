@@ -422,7 +422,7 @@ async function importListing(s: ScrapeResult) {
   // PostgreSQL transaction-scoped advisory locks avoid a schema migration while preventing
   // concurrent imports through this route from creating duplicate source records.
   const outcome = await db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${s.url}, 0))`;
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${s.url}, 0))) AS source_lock`;
     const existing = await tx.listing.findFirst({
       where: { sourceUrl: s.url },
       select: { id: true, slug: true, status: true },
