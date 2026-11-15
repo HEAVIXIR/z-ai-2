@@ -446,7 +446,7 @@ describe("AI Listing Acquisition security contracts", () => {
       "utf-8",
     );
     expect(route).toContain('from "@/lib/server/safe-source-fetch"');
-    expect(helper).toContain("dnsLookup(current.hostname");
+    expect(helper).toContain("dependencies.lookup(current.hostname");
     expect(helper).toContain("resolved.some((entry) => !isPublicIpv4(entry.address))");
     expect(helper).toContain("dependencies.request(current, resolved[0].address, signal)");
     expect(helper).toContain("current = new URL(result.redirect, current)");
