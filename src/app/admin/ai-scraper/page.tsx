@@ -64,7 +64,10 @@ export default function AIScraperPage() {
     try {
       const res = await fetch("/api/admin/ai-scraper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "import", suggestion }) });
       const data = await res.json();
-      if (data.ok) setImportedKeys((prev) => new Set(prev).add(k));
+      if (data.ok) {
+        setImportedKeys((prev) => new Set(prev).add(k));
+        setMessage("آگهی به صف بررسی مدیر اضافه شد؛ تا زمان تأیید منتشر نخواهد شد.");
+      }
       else setError(data.error ?? "خطا در ثبت آگهی.");
     } catch { setError("خطای شبکه."); }
     setImporting(null);
@@ -76,7 +79,7 @@ export default function AIScraperPage() {
     try {
       const res = await fetch("/api/admin/ai-scraper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "bulk-import", suggestions: items }) });
       const data = await res.json();
-      if (data.ok) { const okKeys = new Set<string>(); items.forEach((s) => { const idx = suggestions.indexOf(s); if (idx >= 0) okKeys.add(keyOf(s, idx)); }); setImportedKeys((prev) => new Set([...prev, ...okKeys])); setSelected(new Set()); setMessage(`${data.imported} از ${data.total} آگهی با موفقیت در هویکس ثبت شد.`); }
+      if (data.ok) { const okKeys = new Set<string>(); items.forEach((s) => { const idx = suggestions.indexOf(s); if (idx >= 0) okKeys.add(keyOf(s, idx)); }); setImportedKeys((prev) => new Set([...prev, ...okKeys])); setSelected(new Set()); setMessage(`${data.imported} از ${data.total} آگهی برای بررسی مدیر در صف انتظار قرار گرفت.`); }
       else setError(data.error ?? "خطا در ثبت آگهی‌ها.");
     } catch { setError("خطای شبکه."); }
     setBulkImporting(false);
