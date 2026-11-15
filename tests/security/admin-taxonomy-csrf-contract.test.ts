@@ -57,3 +57,22 @@ describe("Imported listing publication guard", () => {
     expect(source).toMatch(/status:\s*409/);
   });
 });
+
+describe("Taxonomy Prisma contract guards", () => {
+  it("uses the actual pure BrandCategory relation shape", () => {
+    const absolutePath = path.resolve(process.cwd(), "src/app/api/taxonomy/brands/[id]/categories/route.ts");
+    const source = fs.readFileSync(absolutePath, "utf8");
+    expect(source).toMatch(/orderBy:\s*\{\s*category:\s*\{\s*name:\s*"asc"/);
+    expect(source).not.toMatch(/\b(displayOrder|isActive|isFeatured)\b/);
+    expect(source).toMatch(/update:\s*\{\s*\}/);
+    expect(source).toMatch(/create:\s*\{\s*brandId:\s*id,\s*categoryId\s*\}/);
+  });
+
+  it("prevents deleting transaction types still referenced by listings", () => {
+    const absolutePath = path.resolve(process.cwd(), "src/app/api/transaction-types/[id]/route.ts");
+    const source = fs.readFileSync(absolutePath, "utf8");
+    expect(source).toMatch(/db\.listing\.count\(\{\s*where:\s*\{\s*transactionTypeId:\s*id\s*\}\s*\}\)/);
+    expect(source).toMatch(/if\s*\(listingCount\s*>\s*0\)/);
+    expect(source).toMatch(/status:\s*409/);
+  });
+});
