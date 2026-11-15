@@ -185,3 +185,10 @@ This section supersedes older checkpoint statements where they conflict; histori
 ### Production and DNS
 - Production and DNS remain untouched by design. No Production migrations/seeds/writes, Cloudflare deployment, custom-domain attachment or DNS changes were performed.
 - HEAVIX is not yet release-ready. The next milestone is a single integrated release-candidate PR with exact-head CI, Preview runtime evidence and admin acceptance for owner review.
+
+
+### Scraper exact-head CI update — 2026-11-15
+- PR #333 head `cd8ef0e78f49e351011bd4e80414187a51cd877e` passed GitHub Actions run #43721154092.
+- All six substantive jobs passed: verify (including typecheck, lint and security tests), audit-transaction, phase-tests, TLS proof, Docker build proof including Caddy→app HTTP 200, and Cloudflare compatibility report-only. Legacy archive inventory skipped by design.
+- This does not certify the separate recovery branch head `bac8754...`; its post-integration exact-head CI/OpenNext is still pending.
+- Vercel external status for the latest scraper head is rate-limited. The READY Preview is for immediately preceding code-equivalent commit `a48dc078...`; browser/admin acceptance remains blocked by Vercel Deployment Protection pending owner sign-in.
