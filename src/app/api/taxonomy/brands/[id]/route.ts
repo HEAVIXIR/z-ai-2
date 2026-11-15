@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +78,7 @@ export async function GET(_req: Request, { params }: Params) {
 /* PATCH /api/taxonomy/brands/[id] */
 export async function PATCH(req: Request, { params }: Params) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -262,6 +264,7 @@ export async function PATCH(req: Request, { params }: Params) {
 /* DELETE /api/taxonomy/brands/[id] */
 export async function DELETE(_req: Request, { params }: Params) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(_req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     await db.brand.delete({ where: { id } });
