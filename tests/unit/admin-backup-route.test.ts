@@ -54,6 +54,7 @@ function authenticateAdmin() {
 describe("POST /api/admin/backup authorization and failure boundaries", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    process.env.HEAVIX_BACKUP_EXECUTION_ENABLED = "true";
     mocks.getCurrentUser.mockResolvedValue(null);
     mocks.requirePermission.mockResolvedValue(undefined);
     mocks.access.mockResolvedValue(undefined);
@@ -71,6 +72,27 @@ describe("POST /api/admin/backup authorization and failure boundaries", () => {
       STORE_DB_NAME: "store",
       STORE_DB_PASSWORD: "redacted-store-secret",
     });
+  });
+
+  it("returns 404 before authentication when backup execution is not explicitly enabled", async () => {
+    const previous = process.env.HEAVIX_BACKUP_EXECUTION_ENABLED;
+    delete process.env.HEAVIX_BACKUP_EXECUTION_ENABLED;
+
+    try {
+      const response = await POST();
+
+      expect(response.status).toBe(404);
+      expect(mocks.getCurrentUser).not.toHaveBeenCalled();
+      expect(mocks.requirePermission).not.toHaveBeenCalled();
+      expect(mocks.access).not.toHaveBeenCalled();
+      expect(mocks.execFileAsync).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.HEAVIX_BACKUP_EXECUTION_ENABLED;
+      } else {
+        process.env.HEAVIX_BACKUP_EXECUTION_ENABLED = previous;
+      }
+    }
   });
 
   it("denies anonymous callers before permission, filesystem, or process access", async () => {
