@@ -31,7 +31,7 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
         "Body:",
         args.text,
         "───────────────────────────────────────────────────────────",
-      ].join("\\n"),
+      ].join("\n"),
     );
     return;
   }
@@ -73,7 +73,7 @@ export async function sendVerificationEmail(
       "اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.",
       "",
       "— تیم هویکس",
-    ].join("\\n"),
+    ].join("\n"),
     html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px"><h2 style="color:#F58220">HEAVIX — تأیید ایمیل</h2><p>کد تأیید ایمیل شما:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px">${code}</p><p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p><p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>`,
   });
 }
@@ -93,7 +93,7 @@ export async function sendPasswordResetEmail(
       "اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.",
       "",
       "— تیم هویکس",
-    ].join("\\n"),
+    ].join("\n"),
     html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px"><h2 style="color:#F58220">HEAVIX — بازیابی رمز عبور</h2><p>کد بازیابی رمز عبور شما:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px">${code}</p><p style="font-size:12px;color:#888">این کد فقط ۱۰ دقیقه اعتبار دارد و فقط یک‌بار قابل استفاده است.</p><p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>`,
   });
 }
