@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ interface Args {
 /* PATCH /api/service-types/[id] — admin update. */
 export async function PATCH(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -53,6 +55,7 @@ export async function PATCH(req: Request, { params }: Args) {
 /* DELETE /api/service-types/[id] — admin delete. */
 export async function DELETE(_req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(_req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     await db.serviceType.delete({ where: { id } });
