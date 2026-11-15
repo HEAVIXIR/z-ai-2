@@ -26,15 +26,7 @@ export async function GET(_req: Request, { params }: Params) {
         media: { orderBy: { sortOrder: "asc" } },
         seo: true,
         display: true,
-        models: {
-          orderBy: { sortOrder: "asc" },
-          include: {
-            category: { select: { id: true, name: true, slug: true } },
-            modelCategories: {
-              include: { category: { select: { id: true, name: true, slug: true } } },
-            },
-          },
-        },
+        models: { orderBy: { sortOrder: "asc" } },
         aliases: { orderBy: { confidence: "desc" } },
         industries: true,
         brandFamily: { select: { id: true, name: true, slug: true } },
@@ -125,8 +117,7 @@ export async function PATCH(req: Request, { params }: Params) {
         accentColor?: string | null;
         displayOrder?: number;
       };
-      try {
-        await db.brandDisplay.upsert({
+      await db.brandDisplay.upsert({
           where: { brandId: id },
           create: {
             brandId: id,
@@ -148,9 +139,27 @@ export async function PATCH(req: Request, { params }: Params) {
                 : undefined,
           },
         });
-      } catch {
-        // BrandDisplay upsert is best-effort — don't fail the whole PATCH.
-      }
+    }
+
+    // SEO — persist the editor payload into the canonical BrandSEO relation.
+    if (body.seo && typeof body.seo === "object") {
+      const seo = body.seo as {
+        metaTitle?: string | null;
+        metaDescription?: string | null;
+        keywords?: string | null;
+        ogImage?: string | null;
+      };
+      const seoData = {
+        metaTitle: seo.metaTitle?.trim() || null,
+        metaDescription: seo.metaDescription?.trim() || null,
+        keywords: seo.keywords?.trim() || null,
+        ogImage: seo.ogImage?.trim() || null,
+      };
+      await db.brandSEO.upsert({
+        where: { brandId: id },
+        create: { brandId: id, ...seoData },
+        update: seoData,
+      });
     }
 
     // Domain links — replace strategy
@@ -163,8 +172,8 @@ export async function PATCH(req: Request, { params }: Params) {
             await db.brandDomain.create({
               data: { brandId: id, domain: d },
             });
-          } catch {
-            // ignore duplicates
+          } catch (error: any) {
+            if (error?.code !== "P2002") throw error;
           }
         }
       }
@@ -203,8 +212,8 @@ export async function PATCH(req: Request, { params }: Params) {
               confidence: Number(a.confidence) || 80,
             },
           });
-        } catch {
-          // ignore individual alias upsert failures
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
       // Delete aliases whose normalized value isn't in payload
@@ -243,8 +252,8 @@ export async function PATCH(req: Request, { params }: Params) {
           await db.brandIndustry.create({
             data: { brandId: id, industry: key },
           });
-        } catch {
-          // ignore duplicates
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
@@ -262,9 +271,9 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 /* DELETE /api/taxonomy/brands/[id] */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
-  if (!checkCsrf(_req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     await db.brand.delete({ where: { id } });

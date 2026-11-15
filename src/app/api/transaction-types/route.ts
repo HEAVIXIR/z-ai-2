@@ -38,14 +38,16 @@ export async function POST(req: Request) {
   if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
-    if (!body.key || !body.nameFa) {
+    const key = String(body.key ?? "").trim().toUpperCase();
+    const nameFa = String(body.nameFa ?? "").trim();
+    if (!key || !nameFa) {
       return NextResponse.json(
         { error: "key and nameFa are required" },
         { status: 400 },
       );
     }
     const dup = await db.transactionType.findUnique({
-      where: { key: String(body.key) },
+      where: { key },
     });
     if (dup) {
       return NextResponse.json(
@@ -55,8 +57,8 @@ export async function POST(req: Request) {
     }
     const type = await db.transactionType.create({
       data: {
-        key: String(body.key),
-        nameFa: String(body.nameFa),
+        key,
+        nameFa,
         nameEn: body.nameEn ?? null,
         description: body.description ?? null,
         icon: body.icon ?? null,

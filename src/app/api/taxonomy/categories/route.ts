@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,9 +59,6 @@ export async function GET(req: Request) {
         roots.push(node);
       }
     });
-    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[taxonomy/categories] revalidateTag failed:', e); }
-
     return NextResponse.json({
       categories: roots,
       flat: all.map((c) => ({
@@ -84,60 +82,95 @@ export async function GET(req: Request) {
    Returns { ok: true, category }.
 */
 export async function POST(req: Request) {
-  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  const __auth = await requireAdminPermission("taxonomy.write");
+  if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
-    if (!body.name) {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
-    }
-    const slug = body.slug ? await uniqueSlug(db.category, body.slug) : await uniqueSlug(db.category, body.name);
+    const name = String(body.name ?? "").trim();
+    if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-    // Determine level
-    let level = 0;
-    if (body.parentId) {
-      const parent = await db.category.findUnique({ where: { id: String(body.parentId) } });
-      if (parent) level = (parent.level ?? 0) + 1;
-    }
-
-    // Normalize layer
     const validLayers = ["CATALOG", "MARKETPLACE", "SERVICE", "FALLBACK"];
-    const layer = body.layer && validLayers.includes(String(body.layer).toUpperCase())
-      ? String(body.layer).toUpperCase()
-      : "CATALOG";
+    const layer = body.layer == null || body.layer === ""
+      ? "CATALOG"
+      : String(body.layer).toUpperCase();
+    if (!validLayers.includes(layer)) {
+      return NextResponse.json({ error: "Invalid category layer" }, { status: 400 });
+    }
+
+    let level = 0;
+    let parentId: string | null = null;
+    if (body.parentId) {
+      parentId = String(body.parentId);
+      const parent = await db.category.findUnique({
+        where: { id: parentId },
+        select: { id: true, level: true, layer: true },
+      });
+      if (!parent) return NextResponse.json({ error: "دسته والد یافت نشد." }, { status: 400 });
+      if (parent.layer !== layer) {
+        return NextResponse.json({ error: "لایه دسته باید با دسته والد یکسان باشد." }, { status: 400 });
+      }
+      level = (parent.level ?? 0) + 1;
+    }
+
+    const industryValues: unknown[] = Array.isArray(body.appIndustries) ? body.appIndustries : [];
+    const industryKeys: string[] = Array.from(new Set(
+      industryValues.map((value) => String(value).trim()).filter((value) => value.length > 0),
+    ));
+    const industries = industryKeys.length
+      ? await db.applicationIndustry.findMany({
+          where: { OR: [{ key: { in: industryKeys } }, { id: { in: industryKeys } }] },
+          select: { id: true, key: true },
+        })
+      : [];
+    const resolvedIndustries = industryKeys.map((value) =>
+      industries.find((industry) => industry.id === value || industry.key === value),
+    );
+    const missingIndustries = industryKeys.filter((_, index) => !resolvedIndustries[index]);
+    if (missingIndustries.length) {
+      return NextResponse.json(
+        { error: `صنعت‌های ناشناخته: ${missingIndustries.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    const applicationIndustryIds = [...new Set(
+      resolvedIndustries.filter(Boolean).map((industry: any) => industry.id),
+    )];
+
+    const slug = body.slug
+      ? await uniqueSlug(db.category, String(body.slug).trim())
+      : await uniqueSlug(db.category, name);
+    const sortOrder = body.sortOrder == null ? 0 : Number(body.sortOrder);
+    if (!Number.isInteger(sortOrder)) {
+      return NextResponse.json({ error: "sortOrder must be an integer" }, { status: 400 });
+    }
 
     const category = await db.category.create({
       data: {
-        name: String(body.name),
-        nameEn: body.nameEn ?? null,
+        name,
+        nameEn: body.nameEn == null ? null : String(body.nameEn).trim() || null,
         slug,
-        icon: body.icon ?? null,
-        imageUrl: body.imageUrl ?? null,
-        description: body.description ?? null,
-        domain: body.domain ?? null,
-        parentId: body.parentId ?? null,
+        icon: body.icon == null ? null : String(body.icon).trim() || null,
+        imageUrl: body.imageUrl == null ? null : String(body.imageUrl).trim() || null,
+        description: body.description == null ? null : String(body.description).trim() || null,
+        domain: body.domain == null ? null : String(body.domain).trim() || null,
+        parentId,
         layer,
-        taxPath: body.taxPath ?? null,
+        taxPath: body.taxPath == null ? null : String(body.taxPath).trim() || null,
         featured: Boolean(body.featured),
         active: body.active !== false,
         showOnHome: body.showOnHome !== false,
-        sortOrder: Number(body.sortOrder) || 0,
+        sortOrder,
         level,
-        ...(Array.isArray(body.appIndustries) && body.appIndustries.length > 0
+        ...(applicationIndustryIds.length
           ? {
               appIndustries: {
-                create: await Promise.all(
-                  (body.appIndustries as string[])
-                    .filter(Boolean)
-                    .map(async (keyOrId) => {
-                      const ai = await db.applicationIndustry.findFirst({
-                        where: {
-                          OR: [{ key: String(keyOrId) }, { id: String(keyOrId) }],
-                        },
-                      });
-                      if (!ai) throw new Error(`ApplicationIndustry not found: ${keyOrId}`);
-                      return { applicationIndustryId: ai.id };
-                    }),
-                ),
+                create: applicationIndustryIds.map((applicationIndustryId) => ({
+                  applicationIndustryId,
+                })),
               },
             }
           : {}),
@@ -153,20 +186,20 @@ export async function POST(req: Request) {
       },
     });
 
-    // STEP 15-B.5.4-C.2-P3-Fix: Invalidate Homepage cache
-    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, 'default'); } catch (e) { console.error('[taxonomy/categories] revalidateTag failed:', e); }
+    try { revalidateTag(HOMEPAGE_CACHE_TAGS.categories, "default"); }
+    catch (error) { console.error("[taxonomy/categories] revalidateTag failed:", error); }
 
     return NextResponse.json({
       ok: true,
       category: {
         ...category,
-        appIndustries: category.appIndustries.map((ai) => ai.applicationIndustry),
+        appIndustries: category.appIndustries.map((link) => link.applicationIndustry),
       },
-    });
-  } catch (err: any) {
+    }, { status: 201 });
+  } catch (error: any) {
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { error: error?.message ?? "Server error" },
+      { status: error?.code === "P2002" ? 409 : 500 },
     );
   }
 }
