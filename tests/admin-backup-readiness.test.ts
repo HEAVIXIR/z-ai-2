@@ -79,6 +79,7 @@ describe("admin backup runtime wiring", () => {
     const compose = read("docker-compose.prod.yml");
     expect(compose).toContain("DIRECT_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public");
     expect(compose).toContain("heavix_backups:/app/backups");
+    expect(compose).toContain("HEAVIX_BACKUP_EXECUTION_ENABLED=${HEAVIX_BACKUP_EXECUTION_ENABLED:-false}");
     expect(compose).toMatch(/volumes:\n[\s\S]*^  heavix_backups:\s*$/m);
   });
 
