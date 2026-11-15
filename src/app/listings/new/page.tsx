@@ -16,6 +16,7 @@ import AttributeFields, {
   getCachedAttributes,
 } from "@/components/listings/AttributeFields";
 import { toFa } from "@/lib/format";
+import { isMarketplaceTransactionType, isRequestTransactionType } from "@/lib/transaction-type-routing";
 import {
   ArrowRight,
   ArrowLeft,
@@ -97,14 +98,19 @@ export default function NewListingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
+  const [mediaRepairListingId, setMediaRepairListingId] = useState<string | null>(null);
+  const [mediaWarning, setMediaWarning] = useState<string | null>(null);
+  const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imagesUploading, setImagesUploading] = useState(false);
 
   // Form state — V1.1
-  const [transactionType, setTransactionType] = useState<string>("SALE");
+  // The first step is valid only after an active transaction type is loaded and selected.
+  const [transactionType, setTransactionType] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributesLoaded, setAttributesLoaded] = useState(false);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
@@ -144,6 +150,7 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
+  const [marketplaceRoots, setMarketplaceRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
@@ -170,9 +177,11 @@ export default function NewListingPage() {
         if (!res.ok) return;
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
+          marketplaceRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
         };
         if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
+        if (alive && data.marketplaceRoots) setMarketplaceRoots(data.marketplaceRoots);
         if (alive && data.serviceRoots) setServiceRoots(data.serviceRoots);
       } catch {
         /* swallow */
@@ -199,7 +208,8 @@ export default function NewListingPage() {
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}`, {
+        const categoryParam = categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : "";
+        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}${categoryParam}`, {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error("brand search failed");
@@ -213,7 +223,7 @@ export default function NewListingPage() {
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [brandQuery]);
+  }, [brandQuery, categoryId]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
@@ -235,6 +245,7 @@ export default function NewListingPage() {
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
+    setAttributesLoaded(false);
     setAttrErrors({});
   };
 
@@ -278,7 +289,9 @@ export default function NewListingPage() {
   const isServiceRequest = transactionType === "SERVICE_REQUEST";
   const isServiceOffer = transactionType === "SERVICE_OFFER";
   const isServiceFlow = isServiceRequest || isServiceOffer;
-  const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
+  const isMarketplaceFlow = isMarketplaceTransactionType(transactionType);
+  const isRequestFlow = isRequestTransactionType(transactionType);
+  const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;
 
   const handleTransactionTypeChange = (nextType: string) => {
     if (nextType === transactionType) return;
@@ -293,23 +306,24 @@ export default function NewListingPage() {
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
+    setAttributesLoaded(false);
     setAttrErrors({});
   };
 
   const canProceed = () => {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) return (isServiceFlow || Boolean(brandId)) && form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 3) return form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
-      // Technical specs are intentionally collected only after category + brand + model.
+      // Category-specific attributes are loaded before the user can continue; brand/model are optional.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
-      return Object.keys(errs).length === 0;
+      return attributesLoaded && Object.keys(errs).length === 0;
     }
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
-      if (isServiceRequest || isServiceOffer) return true; // service listings can publish without product price or gallery
+      if (isServiceFlow || isRequestFlow) return true; // service, wanted, and RFQ flows do not require price or gallery
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -326,9 +340,14 @@ export default function NewListingPage() {
     setAttributeWarning(null);
     setSubmitting(true);
     try {
-      // Look up province/city names for storage (Listing.province/city are String?).
-      // We can't easily resolve names from the client without another fetch, so
-      // we pass province/city IDs and let the server fall back if needed.
+      // Build the typed attribute payload before creating the listing. The
+      // server validates and persists it in the same transaction as the listing.
+      const defs = attributeDefs.length > 0
+        ? attributeDefs
+        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
+      const attributePayload = buildAttributePayload(defs, attributes);
+
+      // Location IDs are resolved and validated server-side.
       const body: Record<string, unknown> = {
         title: form.title.trim(),
         description: form.description.trim() || undefined,
@@ -345,6 +364,7 @@ export default function NewListingPage() {
         rentalPeriod: isRent ? form.rentalPeriod : undefined,
         province: location.provinceId || undefined,
         city: location.cityId || undefined,
+        countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
         brandId: brandId || undefined,
@@ -353,7 +373,7 @@ export default function NewListingPage() {
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
-        attributes,
+        attributeValues: attributePayload,
         images: images.map((url) => ({ url })),
       };
 
@@ -379,46 +399,48 @@ export default function NewListingPage() {
         return;
       }
 
-      // ── Attribute save — fire after the listing row exists. ──
-      // We always have the listing id (from the POST response). Use the
-      // cached attribute definitions (the AttributeFields component populates
-      // the cache on mount) or fall back to the defs captured via the
-      // onAttributesLoaded callback.
-      const defs = attributeDefs.length > 0
-        ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
-      const payload = buildAttributePayload(defs, attributes);
-      if (payload.length > 0 && data.id) {
-        try {
-          const attrRes = await fetch(
-            `/api/listings/${encodeURIComponent(data.id)}/attributes`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ values: payload }),
-            },
-          );
-          if (!attrRes.ok) {
-            const attrData = await attrRes.json().catch(() => ({}));
-            setAttributeWarning(
-              attrData?.error
-                ? `ذخیرهٔ ویژگی‌ها ناموفق بود: ${attrData.error} — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند.`
-                : "ذخیرهٔ ویژگی‌ها ناموفق بود — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند. می‌توانید بعداً ویرایش کنید.",
-            );
-          }
-        } catch (attrErr: any) {
-          setAttributeWarning(
-            `آگهی ثبت شد ولی ذخیرهٔ ویژگی‌ها با خطا مواجه شد: ${attrErr?.message ?? "خطای شبکه"}. بعداً از پنل کاربری ویرایش کنید.`,
-          );
-        }
+      if (data.mediaStatus === "PENDING" && data.id) {
+        setMediaRepairListingId(String(data.id));
+        setMediaWarning(
+          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. آگهی ذخیره شده؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
+        );
       }
-
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       setSubmitError(err?.message ?? "خطای شبکه — اتصال اینترنت را بررسی کنید.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const retryMediaAttachment = async () => {
+    if (!mediaRepairListingId || mediaRepairing) return;
+    setMediaRepairing(true);
+    setMediaWarning(null);
+    try {
+      const response = await fetch(
+        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`,
+        { method: "POST" },
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) {
+        throw new Error(result.error ?? "بازیابی تصاویر ناموفق بود.");
+      }
+      if (Number(result.pendingCount) > 0) {
+        setMediaWarning(
+          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ آگهی شما ذخیره شده است.`,
+        );
+      } else {
+        setMediaWarning("همه تصاویر با موفقیت به آگهی متصل شدند.");
+        setMediaRepairListingId(null);
+      }
+    } catch (error) {
+      setMediaWarning(
+        error instanceof Error ? error.message : "بازیابی تصاویر با خطا مواجه شد.",
+      );
+    } finally {
+      setMediaRepairing(false);
     }
   };
 
@@ -449,6 +471,22 @@ export default function NewListingPage() {
                 آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ
                 آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد.
               </p>
+              {mediaWarning && (
+                <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
+                  <div>{mediaWarning}</div>
+                  {mediaRepairListingId && (
+                    <button
+                      type="button"
+                      onClick={retryMediaAttachment}
+                      disabled={mediaRepairing}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#F58220] px-4 py-2 font-bold text-white disabled:opacity-60"
+                    >
+                      {mediaRepairing && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {mediaRepairing ? "در حال بازیابی..." : "تلاش مجدد برای اتصال تصاویر"}
+                    </button>
+                  )}
+                </div>
+              )}
               {attributeWarning && (
                 <div className="mx-auto mt-5 flex max-w-md items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
@@ -585,6 +623,7 @@ export default function NewListingPage() {
                             setCategoryPath(selectedPath);
                             setAttributes({});
                             setAttributeDefs([]);
+                            setAttributesLoaded(false);
                             setAttrErrors({});
                             setModelId("");
                           }}
@@ -613,7 +652,7 @@ export default function NewListingPage() {
                           setAttrErrors(validateAttributeFields(attributeDefs, next));
                         }}
                         errors={attrErrors}
-                        onAttributesLoaded={(defs) => setAttributeDefs(defs)}
+                        onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributesLoaded(true); }}
                       />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
@@ -631,11 +670,11 @@ export default function NewListingPage() {
                       title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "برند، مدل و اطلاعات پایه"}
                       subtitle={isServiceFlow
                         ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
-                        : "برند و مدل دستگاه را انتخاب و اطلاعات آگهی را تکمیل کنید"}
+                        : "در صورت ارتباط برند و مدل را انتخاب کنید و اطلاعات آگهی را تکمیل کنید"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>{isServiceFlow ? "برند مرتبط (اختیاری)" : "برند *"}</label>
+                        <label className={labelCls}>برند مرتبط (اختیاری)</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
@@ -643,6 +682,12 @@ export default function NewListingPage() {
                             onChange={(e) => {
                               setBrandQuery(e.target.value);
                               setBrandId("");
+                              setModelId("");
+                              setModels([]);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttributesLoaded(false);
+                              setAttrErrors({});
                               setForm((f) => ({ ...f, brandLabel: e.target.value }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
@@ -739,6 +784,7 @@ export default function NewListingPage() {
                               setModelId(e.target.value);
                               setAttributes({});
                               setAttributeDefs([]);
+                              setAttributesLoaded(false);
                               setAttrErrors({});
                             }}
                             disabled={!brandId || modelsLoading}
@@ -855,6 +901,8 @@ export default function NewListingPage() {
                       subtitle={
                         isServiceFlow
                           ? (isServiceOffer ? "شرح خدمت قابل ارائه، اطلاعات تماس و نمونه‌کارهای اختیاری" : "شرح درخواست، اطلاعات تماس و مستندات اختیاری")
+                          : isRequestFlow
+                            ? "شرح درخواست خرید یا استعلام قیمت؛ بودجه و تصاویر اختیاری هستند"
                           : isRent
                             ? "دوره اجاره، قیمت اجاره و تصاویر"
                             : isAuction
@@ -887,8 +935,8 @@ export default function NewListingPage() {
                           </div>
                           <div>
                             <label className={labelCls}>
-                              {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                              {!isAuction && "*"}
+                              {isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {!isAuction && !isRequestFlow && "*"}
                             </label>
                             <input
                               value={form.price}
@@ -1066,6 +1114,7 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
+                      {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای درخواست خرید و استعلام قیمت، افزودن تصویر اختیاری است.</p>}
                       <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
                     </div>
                   </div>
