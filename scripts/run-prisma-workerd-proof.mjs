@@ -168,17 +168,17 @@ try {
       assert.equal(result.identity?.system_identifier, target.systemIdentifier, `${label}: PostgreSQL system identifier does not match the expected cluster`);
       assert.equal(result.identity?.database_oid, target.databaseOid, `${label}: PostgreSQL database OID does not match the exact Preview database`);
       assert.equal(result.identity?.schema_name, "public", `${label}: unexpected schema`);
-      assert.match(result.identity?.server_version ?? "", /^17\\./, `${label}: expected PostgreSQL 17`);
+      assert.match(result.identity?.server_version ?? "", /^17\./, `${label}: expected PostgreSQL 17`);
       assert.deepEqual(result.migrationNames, target.migrations, `${label}: Preview migration fingerprint mismatch`);
     } catch (error) {
-      const detail = error instanceof Error ? error.message.split("\\n")[0] : "unknown fingerprint error";
+      const detail = error instanceof Error ? error.message.split("\n")[0] : "unknown fingerprint error";
       fingerprintErrors.push(`${label}: ${detail}`);
     }
   }
   assert.notEqual(appFirst.clientId, appSecond.clientId, "App client leaked across sequential requests.");
   assert.notEqual(storeFirst.clientId, storeSecond.clientId, "Store client leaked across sequential requests.");
   if (fingerprintErrors.length > 0) {
-    throw new Error(`Preview fingerprint checks failed:\\n${fingerprintErrors.join("\\n")}`);
+    throw new Error(`Preview fingerprint checks failed:\n${fingerprintErrors.join("\n")}`);
   }
 
   const concurrent = await Promise.all([
