@@ -455,7 +455,7 @@ describe("AI Listing Acquisition security contracts", () => {
     const end = code.indexOf("/* POST /api/admin/ai-scraper", start + 10);
     const importer = code.slice(start, end);
     expect(importer).toContain("db.$transaction(async (tx) =>");
-    expect(importer).toContain("pg_advisory_xact_lock(hashtextextended(${s.url}, 0))");
+    expect(importer).toContain("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${s.url}, 0))) AS source_lock");
     expect(importer).toContain("tx.listing.findFirst");
     expect(importer).toContain("alreadyExists: true");
   });
