@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
@@ -76,12 +77,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const devEmailCode = String(Math.floor(100000 + Math.random() * 900000));
+    const emailCode = String(randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     await db.verificationCode.create({
       data: {
         userId: user.id,
-        code: devEmailCode,
+        code: emailCode,
         type: "EMAIL",
         expiresAt,
         used: false,
@@ -89,16 +90,18 @@ export async function POST(req: Request) {
     });
 
     try {
-      await sendVerificationEmail(user.email, devEmailCode);
-    } catch (e) {
-      console.error("[resend-verification] sendVerificationEmail failed:", e);
+      await sendVerificationEmail(user.email, emailCode);
+    } catch {
+      console.error("[resend-verification] email delivery failed");
+      return NextResponse.json(
+        { error: "ارسال ایمیل انجام نشد. تنظیمات سرویس ایمیل باید تکمیل شود." },
+        { status: 503 },
+      );
     }
 
-    const showDevCode = process.env.DEV_AUTH_CODES === "true";
     return NextResponse.json({
       ok: true,
       message: "کد جدید به ایمیل شما ارسال شد.",
-      ...(showDevCode ? { devEmailCode } : {}),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
