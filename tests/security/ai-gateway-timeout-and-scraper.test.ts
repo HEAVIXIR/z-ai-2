@@ -543,3 +543,13 @@ describe("AI scraper manager-review integration", () => {
     expect(client).toContain("setPendingImports(j.pendingImports ?? [])");
   });
 });
+
+describe("AI import manager publication timestamp", () => {
+  it("sets publishedAt on first approval and preserves it on re-approval", () => {
+    const code = readSource("admin/moderation/route.ts");
+    expect(code).toContain('action === "approve" && listing.status !== "PUBLISHED"');
+    expect(code).toContain("publishedAt: new Date()");
+    expect(code).toContain("data: { status: newStatus, ...publicationFields }");
+    expect(code).toContain("after: { status: newStatus, ...publicationFields, reason, logId: log.id }");
+  });
+});
