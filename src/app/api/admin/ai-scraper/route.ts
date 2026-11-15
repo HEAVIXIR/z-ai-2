@@ -90,6 +90,7 @@ async function llmExtract(
   zai: any,
   pageText: string,
   url: string,
+  signal?: AbortSignal,
 ): Promise<Partial<ScrapeResult>> {
   const sys = `You are HEAVIX listing extractor. Given raw HTML / page text from a Persian classified ad (Divar/Sheypoor), extract structured JSON with these keys:
 {
@@ -122,6 +123,13 @@ Return ONLY the JSON object, no markdown, no explanation.`;
     if (start === -1 || end === -1) return {};
     return JSON.parse(jsonStr.slice(start, end + 1));
   } catch {
+    // Preserve the gateway timeout contract: optional extraction failures may
+    // fall back to page metadata, but a cancelled request must propagate.
+    if (signal?.aborted) {
+      const error = new Error("استخراج هوشمند به‌دلیل پایان مهلت درخواست لغو شد.");
+      error.name = "AbortError";
+      throw error;
+    }
     return {};
   }
 }
@@ -152,7 +160,7 @@ async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<S
     const images = extractImagesFromHtml(html, url);
     const phones = extractPhones(html + " " + text);
 
-    const llm = await llmExtract(zai, text || html, url);
+    const llm = await llmExtract(zai, text || html, url, signal);
 
     return {
       url,
