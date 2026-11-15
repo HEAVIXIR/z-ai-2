@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
+import { hashSessionToken } from "@/lib/session-token";
 
 export const USER_COOKIE = "heavix-user";
 const USER_SESSION_MAX_AGE = 60 * 60 * 24 * 7;
@@ -8,10 +9,12 @@ const isProd = process.env.NODE_ENV === "production";
 
 export async function createUserSession(userId: string): Promise<void> {
   const rawToken = crypto.randomBytes(32).toString("base64url");
+  const tokenHash = hashSessionToken(rawToken);
   const expiresAt = new Date(Date.now() + USER_SESSION_MAX_AGE * 1000);
 
+  // Persist only the digest. The raw bearer exists only in the HttpOnly cookie.
   await db.session.create({
-    data: { userId, token: rawToken, expiresAt },
+    data: { userId, token: tokenHash, expiresAt },
   });
 
   const store = await cookies();
@@ -25,8 +28,15 @@ export async function destroyUserSession(): Promise<void> {
   const store = await cookies();
   const token = store.get(USER_COOKIE)?.value;
   if (token) {
-    try { await db.session.deleteMany({ where: { token } }); }
-    catch { /* cookie is still cleared; server auth remains fail-closed */ }
+    try {
+      const tokenHash = hashSessionToken(token);
+      // Delete both forms so legacy raw-token sessions are also revoked.
+      await db.session.deleteMany({
+        where: { token: { in: [tokenHash, token] } },
+      });
+    } catch {
+      /* cookie is still cleared; server auth remains fail-closed */
+    }
   }
   store.delete(USER_COOKIE);
 }
@@ -43,17 +53,44 @@ export async function getCurrentUser() {
   if (!token) return null;
 
   try {
-    const session = await db.session.findUnique({
-      where: { token },
+    const tokenHash = hashSessionToken(token);
+    let session = await db.session.findUnique({
+      where: { token: tokenHash },
       include: { user: true },
     });
+
+    // Backward compatibility: existing sessions were persisted as raw
+    // tokens. Resolve those once, then migrate their DB value to the digest.
+    if (!session) {
+      session = await db.session.findUnique({
+        where: { token },
+        include: { user: true },
+      });
+      if (session) {
+        const migration = await db.session.updateMany({
+          where: { id: session.id, token },
+          data: { token: tokenHash },
+        });
+        if (migration.count === 0) {
+          // Another concurrent request may have migrated the row first.
+          // Re-read by digest; if no hashed row exists, fail closed.
+          session = await db.session.findUnique({
+            where: { token: tokenHash },
+            include: { user: true },
+          });
+        }
+      }
+    }
+
     if (!session) return null;
 
     if (session.expiresAt.getTime() < Date.now()) {
       await db.session.delete({ where: { id: session.id } }).catch(() => {});
       return null;
     }
-    if (session.user.status === "BLOCKED") {
+    // Authentication is valid only for explicitly ACTIVE accounts.
+    // PENDING, BLOCKED, and any unknown status must not inherit a session.
+    if (session.user.status !== "ACTIVE") {
       await db.session.delete({ where: { id: session.id } }).catch(() => {});
       return null;
     }

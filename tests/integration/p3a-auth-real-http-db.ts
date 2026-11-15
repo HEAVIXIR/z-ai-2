@@ -19,7 +19,7 @@
  *
  * AUTH CHAIN (src/lib/auth.ts):
  *   Cookie "heavix-user" → cookies() → Session.token → Session.userId → User
- *   (with expiry check + BLOCKED user check)
+ *   (with token hashing, expiry check, and ACTIVE-only user check)
  *
  * DESIGN:
  *   - @/lib/auth is NOT mocked. The REAL getCurrentUserId() + getCurrentUser() run.
@@ -54,6 +54,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { db } from "@/lib/db";
 import crypto from "node:crypto";
+import { hashSessionToken } from "@/lib/session-token";
 
 // ── Mock next/headers cookies() — reads from the CURRENT Request's Cookie header ──
 // STEP 13.56 (dellk00k review 5560494185): the cookie value flows from the HTTP Request's
@@ -133,26 +134,26 @@ describe.skipIf(!RUN)("STEP 13.56 P3-A — Real auth path HTTP→DB (PostgreSQL)
   beforeAll(async () => {
     // Create real users
     const buyer = await db.user.create({
-      data: { mobile: "09129991001", email: "p3a-auth-buyer@test.com", firstName: "P3A", lastName: "Buyer", passwordHash: "hash" },
+      data: { mobile: "09129991001", email: "p3a-auth-buyer@test.com", firstName: "P3A", lastName: "Buyer", passwordHash: "hash", status: "ACTIVE" },
     });
     buyerId = buyer.id;
     const seller = await db.user.create({
-      data: { mobile: "09129991002", email: "p3a-auth-seller@test.com", firstName: "P3A", lastName: "Seller", passwordHash: "hash" },
+      data: { mobile: "09129991002", email: "p3a-auth-seller@test.com", firstName: "P3A", lastName: "Seller", passwordHash: "hash", status: "ACTIVE" },
     });
     sellerId = seller.id;
     const thirdUser = await db.user.create({
-      data: { mobile: "09129991003", email: "p3a-auth-third@test.com", firstName: "P3A", lastName: "Third", passwordHash: "hash" },
+      data: { mobile: "09129991003", email: "p3a-auth-third@test.com", firstName: "P3A", lastName: "Third", passwordHash: "hash", status: "ACTIVE" },
     });
     thirdUserId = thirdUser.id;
 
     // Create real sessions (the auth chain reads Session.token → User)
     validSessionToken = crypto.randomBytes(32).toString("base64url");
     await db.session.create({
-      data: { userId: buyerId, token: validSessionToken, expiresAt: new Date(Date.now() + 3600000) },
+      data: { userId: buyerId, token: hashSessionToken(validSessionToken), expiresAt: new Date(Date.now() + 3600000) },
     });
     thirdSessionToken = crypto.randomBytes(32).toString("base64url");
     await db.session.create({
-      data: { userId: thirdUserId, token: thirdSessionToken, expiresAt: new Date(Date.now() + 3600000) },
+      data: { userId: thirdUserId, token: hashSessionToken(thirdSessionToken), expiresAt: new Date(Date.now() + 3600000) },
     });
 
     // Create listing + deal
@@ -243,7 +244,7 @@ describe.skipIf(!RUN)("STEP 13.56 P3-A — Real auth path HTTP→DB (PostgreSQL)
     // Create an expired session
     const expiredToken = crypto.randomBytes(32).toString("base64url");
     await db.session.create({
-      data: { userId: buyerId, token: expiredToken, expiresAt: new Date(Date.now() - 3600000) }, // expired 1h ago
+      data: { userId: buyerId, token: hashSessionToken(expiredToken), expiresAt: new Date(Date.now() - 3600000) }, // expired 1h ago
     });
     const before = await snapshotDeal(dealId);
     const { PATCH } = await import("@/app/api/deals/[id]/route");
@@ -256,7 +257,7 @@ describe.skipIf(!RUN)("STEP 13.56 P3-A — Real auth path HTTP→DB (PostgreSQL)
     expect(after.orderCount).toBe(before.orderCount);
     // Cleanup expired session — NO .catch(()=>{}); use finalizeCollecting
     const cleanupErrs = await finalizeCollecting([
-      () => db.session.deleteMany({ where: { token: expiredToken } }),
+      () => db.session.deleteMany({ where: { token: hashSessionToken(expiredToken) } }),
     ]);
     throwCombined(null, cleanupErrs, "R3 expired-session cleanup");
   });
