@@ -41,7 +41,7 @@ describe("buildBackupEnvironment", () => {
         DIRECT_URL: `file:/tmp/${secret}.db`,
         STORE_DATABASE_URL: "postgresql://u:p@store-db:5432/store",
       }),
-    ).toThrow("Main database URL must use PostgreSQL");
+    ).toThrow("Main direct database URL must use PostgreSQL");
   });
 
   it("rejects missing database credentials", () => {
