@@ -425,7 +425,7 @@ async function importListing(s: ScrapeResult) {
     await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${s.url}, 0))) AS source_lock`;
     const existing = await tx.listing.findFirst({
       where: { sourceUrl: s.url },
-      select: { id: true, slug: true, status: true },
+      select: { id: true, slug: true, status: true, title: true, sourceUrl: true, sourceSite: true },
     });
     if (existing) return { listing: existing, alreadyExists: true };
 
