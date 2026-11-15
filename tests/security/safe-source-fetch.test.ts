@@ -157,6 +157,30 @@ describe("SSRF-safe source fetch", () => {
     expect(deps.request).not.toHaveBeenCalled();
   });
 
+  it("returns promptly when DNS is still pending and the request is aborted", async () => {
+    const controller = new AbortController();
+    const deps = dependencies();
+    deps.lookup.mockImplementationOnce(() => new Promise(() => {}));
+    const pending = fetchAllowedSourcePage("https://divar.ir/ad", controller.signal, deps);
+    controller.abort();
+    await expect(pending).rejects.toThrow("درخواست دریافت صفحه لغو شد");
+    expect(deps.request).not.toHaveBeenCalled();
+  });
+
+  it("times out a stalled DNS lookup without opening a socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const deps = dependencies();
+      deps.lookup.mockImplementationOnce(() => new Promise(() => {}));
+      const pending = fetchAllowedSourcePage("https://divar.ir/ad", undefined, deps);
+      await vi.advanceTimersByTimeAsync(8_000);
+      await expect(pending).rejects.toThrow("مهلت بررسی DNS منبع تمام شد");
+      expect(deps.request).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("propagates timeout/abort failures from the pinned transport", async () => {
     const deps = dependencies();
     deps.request.mockRejectedValueOnce(new Error("request timed out"));
