@@ -409,3 +409,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - PR #330 (taxonomy admin persistence) and PR #331 (safe default seed) were retargeted to the recovery branch. GitHub reports both non-mergeable after retarget; they remain Draft and unmerged pending conflict resolution. PR #314 (parent-only homepage categories) and #312 (homepage performance) also have divergent/conflicting changes; neither was merged. Do not overwrite recovery files wholesale from these branches.
 - No Production database writes, migrations, seeds, Cloudflare Worker builds/deployments, DNS changes, stable Worker replacement or main-branch merge were performed. PR #307 remains Draft and unmerged.
 - Next exact actions: (1) poll CI #43721154092 to completion and fix any remaining failures on PR #333; (2) obtain owner sign-in to Vercel via secure browser-profile setup to test the protected Preview, admin login and role-gated pages; (3) run exact-head CI/OpenNext for recovery `bac8754...` after integration; (4) resolve/rebase #330/#331 and choose the #312/#314 homepage direction; (5) finish catalog/seed reconciliation, sourceUrl uniqueness decision, media consent/runtime binding audit and final route/RBAC acceptance; (6) prepare one release-candidate review PR. Keep Production and DNS untouched until owner review.
+
+
+## 2026-11-15 — Scraper exact-head CI passed
+
+- GitHub Actions run #43721154092 completed SUCCESS on exact PR #333 head `cd8ef0e78f49e351011bd4e80414187a51cd877e`.
+- All six substantive jobs passed: `verify` (typecheck, lint, security tests and downstream gates), `audit-transaction`, `phase-tests`, `tls-proof`, `docker-build-proof` including real Caddy→app HTTP 200, and Cloudflare compatibility report-only. Legacy archive inventory was skipped by design.
+- The two previous test-authoring failures were corrected before this run: first a malformed regex, then an assertion that included the error-display branch instead of only the state-updater callback.
+- This is exact-head CI for the scraper PR, not for the recovery branch. PR #307's current recovery code head remains `bac8754...`; its exact-head CI/OpenNext after PR #317/#313 merges is still pending.
+- Vercel external check for PR #333 remains rate-limited. Its READY Preview is for the immediately preceding code-equivalent commit `a48dc078...`; Deployment Protection blocks anonymous route acceptance until the owner signs in through the secure browser profile.
+- No Production, DNS, Cloudflare Worker deploy, shared DB write, seed or migration was performed.
