@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
 import ModerationAdminClient from "./ModerationAdminClient";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +12,12 @@ export const dynamic = "force-dynamic";
    snapshot + stats, then hands off to the client component for
    interactivity (scan button + approve/reject actions).
    ============================================================ */
+
+type PendingImportItem = {
+  id: string; title: string; slug: string; status: string; price: string | null;
+  createdAt: string; sourceUrl: string | null; sourceSite: string | null;
+  brandName: string | null; categoryName: string | null;
+};
 
 type FlaggedItem = {
   logId: string;
@@ -31,12 +39,32 @@ type FlaggedItem = {
 };
 
 export default async function ModerationAdminPage() {
+  // Match the moderation API's read permission before loading any queue data.
+  const user = await getCurrentUser();
+  if (!user) {
+    return <div className="p-8 text-center text-zinc-500">Unauthorized</div>;
+  }
+  try {
+    await requirePermission(user.id, "moderation.read");
+  } catch {
+    return <div className="p-8 text-center text-zinc-500">Forbidden: requires moderation.read</div>;
+  }
+
   // Stats
-  const [scanCount, flagCount, approveCount, rejectCount] = await Promise.all([
+  const [scanCount, flagCount, approveCount, rejectCount, pendingImportRows] = await Promise.all([
     db.moderationLog.count({ where: { action: "AI_SCAN" } }),
     db.moderationLog.count({ where: { action: "FLAG" } }),
     db.moderationLog.count({ where: { action: "APPROVE" } }),
     db.moderationLog.count({ where: { action: "REJECT" } }),
+    db.listing.findMany({
+      where: { status: "PENDING", sourceUrl: { not: null } },
+      orderBy: { createdAt: "desc" }, take: 50,
+      select: {
+        id: true, title: true, slug: true, status: true, price: true,
+        createdAt: true, sourceUrl: true, sourceSite: true,
+        brand: { select: { name: true } }, category: { select: { name: true } },
+      },
+    }),
   ]);
 
   // Flagged-list snapshot — same query as the GET endpoint so the
@@ -92,8 +120,17 @@ export default async function ModerationAdminPage() {
     });
   }
 
+  const pendingImports: PendingImportItem[] = pendingImportRows.map((listing) => ({
+    id: listing.id, title: listing.title, slug: listing.slug, status: listing.status,
+    price: listing.price ? listing.price.toString() : null,
+    createdAt: listing.createdAt.toISOString(), sourceUrl: listing.sourceUrl,
+    sourceSite: listing.sourceSite, brandName: listing.brand?.name ?? null,
+    categoryName: listing.category?.name ?? null,
+  }));
+
   return (
     <ModerationAdminClient
+      initialPendingImports={pendingImports}
       initialFlagged={flagged}
       initialStats={{
         scanned: scanCount,
