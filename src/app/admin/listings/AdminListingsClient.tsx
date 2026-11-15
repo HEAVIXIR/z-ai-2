@@ -33,6 +33,7 @@ import {
   ListFilter,
   BadgeCheck,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 
 /* ============================================================
@@ -86,7 +87,8 @@ type Listing = {
 type Stats = {
   total: number;
   published: number;
-  draft: number;
+  draft?: number;
+  pending: number;
   sold: number;
   paused: number;
   featured: number;
@@ -101,6 +103,7 @@ type Category = { id: string; name: string; parentId: string | null };
 const STATUS_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
   PUBLISHED: { label: "منتشرشده", cls: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   DRAFT: { label: "پیش‌نویس", cls: "bg-zinc-100 text-zinc-500", dot: "bg-zinc-400" },
+  PENDING: { label: "در انتظار تأیید", cls: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
   SOLD: { label: "فروخته‌شده", cls: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
   PAUSED: { label: "متوقفشده", cls: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
 };
@@ -265,9 +268,14 @@ export default function AdminListingsClient() {
           <h1 className="text-2xl font-black text-zinc-900">آگهی‌ها</h1>
           <p className="mt-1 text-sm text-zinc-500">{stats?.total ?? 0} آگهی کل · {listings.length} نمایش داده شده</p>
         </div>
-        <Link href="/listings/new" className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38]">
-          <Plus className="h-4 w-4" /> آگهی جدید
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/ai-scraper" className="inline-flex items-center gap-2 rounded-xl border border-[#F58220]/30 bg-[#F58220]/5 px-4 py-2.5 text-sm font-bold text-[#C65D0A] transition hover:bg-[#F58220]/10">
+            <Sparkles className="h-4 w-4" /> ورود هوشمند آگهی
+          </Link>
+          <Link href="/listings/new" className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38]">
+            <Plus className="h-4 w-4" /> آگهی جدید
+          </Link>
+        </div>
       </div>
 
       {/* Stats bar */}
@@ -275,7 +283,7 @@ export default function AdminListingsClient() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-9">
           <StatCard label="کل" value={stats.total} icon={<Settings2 className="h-4 w-4" />} color="text-zinc-700 bg-zinc-100" />
           <StatCard label="منتشرشده" value={stats.published} icon={<CheckCircle2 className="h-4 w-4" />} color="text-emerald-700 bg-emerald-100" />
-          <StatCard label="پیش‌نویس" value={stats.draft ?? stats.pending} icon={<Pencil className="h-4 w-4" />} color="text-zinc-600 bg-zinc-100" />
+          <StatCard label="در انتظار تأیید" value={stats.pending} icon={<Clock className="h-4 w-4" />} color="text-amber-700 bg-amber-100" />
           <StatCard label="متوقف" value={stats.paused} icon={<EyeOff className="h-4 w-4" />} color="text-amber-700 bg-amber-100" />
           <StatCard label="فروخته‌شده" value={stats.sold} icon={<DollarSign className="h-4 w-4" />} color="text-blue-700 bg-blue-100" />
           <StatCard label="ویژه" value={stats.featured} icon={<Star className="h-4 w-4" />} color="text-amber-600 bg-amber-50" />
@@ -328,7 +336,7 @@ export default function AdminListingsClient() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl bg-zinc-100 p-1">
-            {["", "PUBLISHED", "DRAFT", "PAUSED", "SOLD"].map((s) => (
+            {["", "PENDING", "PUBLISHED", "DRAFT", "PAUSED", "SOLD"].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
