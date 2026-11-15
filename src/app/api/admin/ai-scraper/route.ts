@@ -740,9 +740,8 @@ ${focusHint}
           province: s.city || null,
           year: s.year ? Number(String(s.year).replace(/[^\d]/g, "")) || null : null,
           workingHours: s.hours ? Number(String(s.hours).replace(/[^\d]/g, "")) || null : null,
-          status: "PUBLISHED",
-          publishedAt: new Date(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          // Imported listings are review candidates; never publish scraper output automatically.
+          status: "PENDING",
           brandId: s.brandMatch || null,
           categoryId: s.categoryMatch || null,
           sellerPhone: s.phone || null,
@@ -782,7 +781,7 @@ ${focusHint}
         });
       }
 
-      return NextResponse.json({ ok: true, slug: listing.slug, id: listing.id, message: "آگهی با موفقیت در هویکس ثبت شد." });
+      return NextResponse.json({ ok: true, slug: listing.slug, id: listing.id, message: "آگهی ثبت شد و برای بررسی و تأیید مدیر در صف انتظار قرار گرفت." });
     }
 
     // ── Bulk import ──
@@ -809,11 +808,11 @@ ${focusHint}
               city: s.city || null, province: s.city || null,
               year: s.year ? Number(String(s.year).replace(/[^\d]/g, "")) || null : null,
               workingHours: s.hours ? Number(String(s.hours).replace(/[^\d]/g, "")) || null : null,
-              status: "PUBLISHED", publishedAt: new Date(),
-              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              // Bulk-imported listings also require explicit human approval.
+              status: "PENDING",
               brandId: s.brandMatch || null, categoryId: s.categoryMatch || null,
               sellerPhone: s.phone || null, sellerName: "وارد شده توسط هوش مصنوعی",
-              sourceSite: s.sourceSite || null,
+              sourceUrl: s.sourceUrl || null, sourceSite: s.sourceSite || null,
             },
           });
           await logAudit({
