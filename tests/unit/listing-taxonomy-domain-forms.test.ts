@@ -28,7 +28,7 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(route).toContain("const expectedLayer = categoryLayerForTransactionType(transactionType.key);");
     const wizard = read("src/app/listings/new/page.tsx");
     expect(wizard).toContain('const isServiceFlow = isServiceRequest || isServiceOffer');
-    expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots");
+    expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots");
     expect(wizard).toContain("if (isServiceFlow || isRequestFlow) return true");
   });
 
