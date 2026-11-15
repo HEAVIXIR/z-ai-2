@@ -34,6 +34,18 @@ This reduces the apparent gap against the 539-row snapshot to 8 candidate slugs,
 - The original executable `seed-brands-300.ts` is not present in the current source history as executable content; only a reference document remains. Its full data and hash have not been recovered.
 - Brand Phase A/B create identity, aliases, families, and industry links, but do not restore the complete historical `BrandCategory` graph. `seed-catalog.ts` adds only model/brand/category links for its own seeded model pairs.
 
+### Legacy broad Attribute Catalog recovery audit (read-only)
+
+The legacy `prisma/seed-attribute-catalog.ts` remains unsafe to execute as a restoration path because it can overwrite existing AttributeDefinition metadata and CategoryAttribute settings. It is nevertheless valuable as a **read-only recovery source**:
+
+- 522 attribute-key placements collapse to **402 distinct raw keys**.
+- It contains **89 category slug candidates**, representing **88 unique category slugs**.
+- The historical snapshot reports 405 attributes, so the legacy source is three distinct keys short of that documented count. The three missing historical records are not identified by this source alone.
+- Only 103 of the 402 legacy raw keys overlap with the current 542 machine/catalog form keys. The current machine and service form sources introduce many additional category-specific keys; do not union all sources into a single flat catalog without signature, category, and provenance reconciliation.
+- The old source's `heavy-haulage` mapping also illustrates a taxonomy identity conflict: the legacy machine tree uses that slug for a machine/vehicle category, while V1.1 uses it for a SERVICE/TRANSPORT category. Because Category.slug is globally unique, the two meanings cannot both be imported under the same slug. The V1.1 hierarchy is the current candidate; retain the legacy interpretation as migration provenance/alias only if confirmed.
+
+Use this file to recover names, options, required keys, and category associations, but port only through a reviewed additive importer that preserves administrator-managed settings. Never run the broad legacy updater directly against Preview or Production.
+
 ### Attribute and model parity
 
 - The historical snapshot reports 405 AttributeDefinitions.
