@@ -49,6 +49,7 @@ describe("seller B2 media staging contract", () => {
 
   it("keeps B2 private and gates read URLs by public visibility, owner or admin", () => {
     const route = read("src/app/api/media/[id]/route.ts");
+    const service = read("src/lib/media-service.ts");
     expect(route).toContain('await can(user.id, "media.read")');
     expect(route).toContain('import { can } from "@/lib/authorization"');
     expect(route).toContain('asset.visibility === "PUBLIC"');
