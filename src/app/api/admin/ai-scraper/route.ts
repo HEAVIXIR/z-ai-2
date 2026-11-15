@@ -12,6 +12,18 @@ export const dynamic = "force-dynamic";
 
 const DIVAR_HOSTS = ["divar.ir", "divar.com"];
 const SHEYPOOR_HOSTS = ["sheypoor.com"];
+const ALLOWED_SOURCE_HOSTS = [...DIVAR_HOSTS, ...SHEYPOOR_HOSTS];
+
+function isAllowedSourceUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const host = url.hostname.toLowerCase();
+    return ALLOWED_SOURCE_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
 
 interface ScrapeResult {
   url: string;
@@ -140,6 +152,7 @@ async function searchAdUrls(zai: any, query: string, num = 5): Promise<string[]>
 
 async function scrapeUrl(zai: any, url: string): Promise<ScrapeResult> {
   const base: ScrapeResult = { url, images: [] };
+  if (!isAllowedSourceUrl(url)) return { ...base, description: "منبع این آگهی در فهرست دامنه‌های مجاز نیست." };
   try {
     const result = await zai.functions.invoke("page_reader", { url });
     const data = result?.data || result || {};
@@ -184,6 +197,9 @@ async function getZai(signal?: AbortSignal) {
 
 /** Convert a scraped result into a HEAVIX listing draft in DB. */
 async function importListing(s: ScrapeResult) {
+  if (!isAllowedSourceUrl(s.url)) throw new Error("منبع آگهی مجاز نیست.");
+  const existing = await db.listing.findFirst({ where: { sourceUrl: s.url }, select: { id: true, slug: true, status: true } });
+  if (existing) return { ...existing, alreadyExists: true };
   const title = s.title || "بدون عنوان";
   let slug = slugify(title);
   let i = 1;
@@ -242,9 +258,9 @@ async function importListing(s: ScrapeResult) {
       sellerName: null,
       sellerPhone: s.phone || null,
       sourceUrl: s.url,
-      sourceSite: DIVAR_HOSTS.some((h) => url2.includes(h))
+      sourceSite: DIVAR_HOSTS.some((h) => url2 === h || url2.endsWith(`.${h}`))
         ? "DIVAR"
-        : SHEYPOOR_HOSTS.some((h) => url2.includes(h))
+        : SHEYPOOR_HOSTS.some((h) => url2 === h || url2.endsWith(`.${h}`))
           ? "SHEYPOOR"
           : url2,
       brandId,
@@ -264,14 +280,8 @@ async function importListing(s: ScrapeResult) {
     reason: "via admin API",
   });
 
-  // Attach images — if the scraped listing has real images from Divar/Sheypoor, use those.
-  // If NO real images were scraped, generate an AI image matching the exact machine type + brand.
-  let imgs = s.images;
-  if (imgs.length === 0) {
-    const brandName = s.brand || undefined;
-    const aiImg = await generateAIListingImage(title, brandName);
-    if (aiImg) imgs = [aiImg];
-  }
+  // External listings keep only source images. Never fabricate a machine photo for imported inventory.
+  const imgs = s.images;
   if (imgs.length > 0) {
     await db.listingImage.createMany({
       data: imgs.slice(0, 10).map((url, idx) => ({
@@ -459,6 +469,10 @@ async function _doPost(
 ): Promise<NextResponse> {
   const action = String(body.action ?? "");
   const mode = String(body.mode ?? "");
+
+  // Legacy action endpoints generated synthetic listings and could publish them directly.
+  // Keep them disabled; the supported mode interface only imports scraped source records as PENDING.
+  if (action) return NextResponse.json({ error: "رابط قدیمی تولید نمونه غیرفعال است؛ از جستجوی آگهی واقعی استفاده کنید." }, { status: 410 });
 
   try {
     // ════════════════════════════════════════════════
@@ -864,7 +878,7 @@ ${focusHint}
       const query = String(body.query ?? "").trim();
       if (!query) return NextResponse.json({ error: "query is required" }, { status: 400 });
       const num = Math.max(1, Math.min(10, Number(body.num) || 5));
-      const urls = await searchAdUrls(zai, query, num);
+      const urls = (await searchAdUrls(zai, query, num)).filter(isAllowedSourceUrl);
       const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u)));
       return NextResponse.json({ ok: true, results });
     }
@@ -872,6 +886,7 @@ ${focusHint}
     if (mode === "scrape") {
       const url = String(body.url ?? "").trim();
       if (!url) return NextResponse.json({ error: "url is required" }, { status: 400 });
+      if (!isAllowedSourceUrl(url)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
       const result = await scrapeUrl(zai, url);
       return NextResponse.json({ ok: true, result });
     }
@@ -879,13 +894,15 @@ ${focusHint}
     if (mode === "import") {
       const scraped = body.scraped as ScrapeResult;
       if (!scraped || !scraped.url) return NextResponse.json({ error: "scraped is required" }, { status: 400 });
+      if (!isAllowedSourceUrl(scraped.url)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
       const listing = await importListing(scraped);
-      return NextResponse.json({ ok: true, id: listing.id, slug: listing.slug });
+      return NextResponse.json({ ok: true, id: listing.id, slug: listing.slug, status: listing.status, alreadyExists: Boolean((listing as any).alreadyExists) });
     }
 
     if (mode === "bulk-import") {
       const urls: string[] = Array.isArray(body.urls) ? body.urls : [];
       if (urls.length === 0) return NextResponse.json({ error: "urls is required" }, { status: 400 });
+      if (urls.some((u) => !isAllowedSourceUrl(u))) return NextResponse.json({ error: "همه آدرس‌ها باید از دامنه‌های مجاز باشند." }, { status: 400 });
       const scraped = await Promise.all(urls.map((u) => scrapeUrl(zai, u)));
       const imported: any[] = [];
       for (const s of scraped) {
