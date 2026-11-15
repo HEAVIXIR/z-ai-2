@@ -133,17 +133,24 @@ const SAMPLE_LISTINGS: SampleListing[] = [
 ];
 
 async function main() {
-  console.log("🌱 Seeding HEAVIX v2 (expanded)…");
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. This is a legacy demo seed, not the canonical taxonomy bootstrap.");
+    console.log("Verify the Preview database and backup, then rerun with --apply and HEAVIX_ENV=preview.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error('Refusing to seed: HEAVIX_ENV must be exactly "preview". No writes performed.');
+  }
+  console.log("🌱 Seeding HEAVIX demo fixtures in the verified Preview environment…");
+  console.log("NOTE: legacy demo seed only adds demo brands, machine categories, and sample listings; it does not seed transaction/service types, model catalog, industries, or dynamic attributes.");
 
   /* Brands */
   for (let i = 0; i < BRANDS.length; i++) {
     const b = BRANDS[i];
     await db.brand.upsert({
       where: { slug: slugify(b.nameEn) },
-      update: {
-        name: b.name, nameEn: b.nameEn, country: b.country,
-        featured: b.featured ?? false, active: true, sortOrder: i,
-      },
+      // Preserve administrator edits on existing brands; this seed is additive.
+      update: {},
       create: {
         name: b.name, nameEn: b.nameEn, slug: slugify(b.nameEn),
         country: b.country, featured: b.featured ?? false, active: true, sortOrder: i,
@@ -159,11 +166,8 @@ async function main() {
     const slug = slugify(c.nameEn);
     const parent = await db.category.upsert({
       where: { slug },
-      update: {
-        name: c.name, nameEn: c.nameEn, icon: c.icon,
-        featured: c.featured ?? false, active: true, showOnHome: true,
-        sortOrder: i, level: 0, parentId: null,
-      },
+      // Do not reset a category's hierarchy, layer, visibility, or admin state.
+      update: {},
       create: {
         name: c.name, nameEn: c.nameEn, slug, icon: c.icon,
         featured: c.featured ?? false, active: true, showOnHome: true,
@@ -177,16 +181,15 @@ async function main() {
       const childSlug = slugify(`${c.nameEn}-${childName}`);
       await db.category.upsert({
         where: { slug: childSlug },
-        update: { name: childName, parentId: parent.id, active: true, showOnHome: false, sortOrder: j, level: 1 },
+        // Existing children may have been customized or reparented by the canonical taxonomy seed.
+        update: {},
         create: { name: childName, slug: childSlug, parentId: parent.id, active: true, showOnHome: false, sortOrder: j, level: 1 },
       });
     }
   }
   console.log(`  ✓ ${ROOT_CATS.length} root categories + children`);
 
-  /* Listings — delete existing ASCII-slug listings first to avoid dupes */
-  await db.listingImage.deleteMany({});
-  await db.listing.deleteMany({});
+  /* Listings — add demo rows only when the deterministic slug is absent. */
 
   for (let i = 0; i < SAMPLE_LISTINGS.length; i++) {
     const s = SAMPLE_LISTINGS[i];
@@ -200,7 +203,16 @@ async function main() {
     const catBase = (cat.nameEn || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const slug = `${base}${catBase ? "-" + catBase : ""}-${(i + 1).toString().padStart(2, "0")}`;
 
-    const listing = await db.listing.create({
+    const existingListing = await db.listing.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+    if (existingListing) {
+      console.log(`  ↷ keep existing listing: ${slug}`);
+      continue;
+    }
+
+    await db.listing.create({
       data: {
         slug,
         title: s.title,
