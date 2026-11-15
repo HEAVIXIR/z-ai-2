@@ -39,9 +39,16 @@ describe("Admin taxonomy/service mutation CSRF contract", () => {
       expect(csrfIndex, `${relativePath}: ${handlers[index][1]} must enforce CSRF`).toBeGreaterThan(-1);
       expect(handler).toMatch(/status:\s*403/);
 
-      const tryIndex = handler.indexOf("try {");
-      if (tryIndex >= 0) {
-        expect(csrfIndex, `${relativePath}: CSRF must run before try/IO`).toBeLessThan(tryIndex);
+      const ioIndexes = [
+        handler.indexOf("req.json("),
+        handler.indexOf("db."),
+        handler.indexOf("runModerationBatch("),
+      ].filter((index) => index >= 0);
+      if (ioIndexes.length > 0) {
+        expect(
+          csrfIndex,
+          `${relativePath}: CSRF must run before request-body or database work`,
+        ).toBeLessThan(Math.min(...ioIndexes));
       }
     }
   });
