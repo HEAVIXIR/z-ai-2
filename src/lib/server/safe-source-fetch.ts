@@ -110,6 +110,9 @@ async function requestPinnedSource(url: URL, address: string, signal?: AbortSign
       },
       lookup: ((_hostname: string, _options: any, callback: any) => callback(null, address, 4)) as any,
     }, (response) => {
+      // Attach stream failure handlers before early redirect/status branches resume the body.
+      response.on("error", reject);
+      response.on("aborted", () => reject(new Error("پاسخ منبع پیش از تکمیل قطع شد.")));
       const status = response.statusCode || 0;
       const location = response.headers.location;
       if ([301, 302, 303, 307, 308].includes(status) && location) {
@@ -150,7 +153,6 @@ async function requestPinnedSource(url: URL, address: string, signal?: AbortSign
         const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || "";
         resolve({ html, title });
       });
-      response.on("error", reject);
     });
     request.setTimeout(SOURCE_REQUEST_TIMEOUT_MS, () => request.destroy(new Error("مهلت دریافت صفحه منبع تمام شد.")));
     const totalTimeout = setTimeout(
