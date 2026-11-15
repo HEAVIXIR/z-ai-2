@@ -14,7 +14,7 @@ describe("buildBackupEnvironment", () => {
       DB_PORT: "5432",
       DB_SSLMODE: "require",
       DB_USER: "backup+user",
-      DB_NAME: "heavix main",
+      DB_NAME: "heavix",
       DB_PASSWORD: "p@ss:word",
       STORE_DB_HOST: "store-db",
       STORE_DB_PORT: "5432",
@@ -48,6 +48,7 @@ describe("buildBackupEnvironment", () => {
   it("fails closed when either database URL is missing", () => {
     expect(() =>
       buildBackupEnvironment({
+        DATABASE_URL: "postgresql://runtime:p@pool.db:5432/main",
         DIRECT_URL: "postgresql://u:p@db.prisma.io:5432/main",
         STORE_DATABASE_URL: undefined,
       }),
