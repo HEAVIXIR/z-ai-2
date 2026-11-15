@@ -30,6 +30,8 @@ export interface StoreUser {
   lastName: string;
   email: string;
   mobile: string;
+  /** True only after the account completed HEAVIX mobile verification. */
+  mobileVerified: boolean;
   role: string;
   status: string;
   /** Convenience: true if the HEAVIX user has the ADMIN role (RBAC). */
@@ -54,6 +56,7 @@ export async function getStoreUser(): Promise<StoreUser | null> {
       lastName,
       email: user.email,
       mobile: user.mobile,
+      mobileVerified: user.mobileVerified === true,
       role: user.role || "BUYER",
       status: user.status,
       isAdmin: false,

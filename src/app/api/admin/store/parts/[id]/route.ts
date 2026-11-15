@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -14,16 +15,40 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 function serialize(p: any) {
+  // Explicit admin DTO: keep the fields consumed by the parts UI and never
+  // leak future/internal database columns through a model spread.
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    nameFa: p.nameFa,
+    sku: p.sku,
+    categoryId: p.categoryId,
+    brandId: p.brandId,
+    description: p.description,
+    priceUsd: p.priceUsd,
+    oldPriceUsd: p.oldPriceUsd,
+    contactForPrice: p.contactForPrice,
+    stock: p.stock,
+    lowStockThreshold: p.lowStockThreshold,
     images: (() => {
       try { return JSON.parse(p.images || "[]"); } catch { return []; }
     })(),
     compatibleCars: (() => {
       try { return JSON.parse(p.compatibleCars || "[]"); } catch { return []; }
     })(),
+    sourceUrl: p.sourceUrl,
+    active: p.active,
+    featured: p.featured,
+    views: p.views,
+    soldCount: p.soldCount,
     createdAt: p.createdAt?.toISOString?.() ?? null,
     updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.category
+      ? { category: { id: p.category.id, name: p.category.name, slug: p.category.slug } }
+      : {}),
+    ...(p.brand
+      ? { brand: { id: p.brand.id, name: p.brand.name, slug: p.brand.slug } }
+      : {}),
   };
 }
 
@@ -63,9 +88,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   const { id } = await params;
   try {
     const body = await req.json();
+    if (Object.prototype.hasOwnProperty.call(body, "stock")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "تغییر مستقیم موجودی از فرم قطعه مجاز نیست؛ از عملیات رسمی انبار استفاده کنید",
+        },
+        { status: 409 },
+      );
+    }
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
@@ -86,7 +123,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.priceUsd !== undefined) data.priceUsd = Number(body.priceUsd) || 0;
     if (body.oldPriceUsd !== undefined) data.oldPriceUsd = body.oldPriceUsd ? Number(body.oldPriceUsd) : null;
     if (body.contactForPrice !== undefined) data.contactForPrice = !!body.contactForPrice;
-    if (body.stock !== undefined) data.stock = Number(body.stock) || 0;
     if (body.lowStockThreshold !== undefined) data.lowStockThreshold = Number(body.lowStockThreshold) || 5;
     if (body.images !== undefined) data.images = JSON.stringify(body.images || []);
     if (body.compatibleCars !== undefined) data.compatibleCars = JSON.stringify(body.compatibleCars || []);
@@ -134,7 +170,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -143,6 +179,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     await requirePermission(user.id, 'store.manage');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   const { id } = await params;
   try {

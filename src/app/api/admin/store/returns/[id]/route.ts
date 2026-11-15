@@ -121,16 +121,19 @@ export async function PATCH(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json(
+      { error: "CSRF check failed" },
+      { status: 403 },
+    );
+  }
   try {
     await requirePermission(user.id, 'returns.manage');
-    if (!checkCsrf(req)) {
-      return NextResponse.json(
-        { error: "CSRF check failed" },
-        { status: 403 },
-      );
-    }
   } catch {
-    return NextResponse.json({ error: "Forbidden: requires returns.manage" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Forbidden: requires returns.manage" },
+      { status: 403 },
+    );
   }
   const { id } = await params;
   try {
@@ -157,7 +160,26 @@ export async function PATCH(
     }
 
     if (body.action === "resolve") {
-      const ret = await resolveReturn(id, body.resolution, user.id);
+      // Restocking mutates inventory, so an explicitly supplied destination
+      // requires the inventory-management permission in addition to returns.manage.
+      if (typeof body.warehouseId === "string" && body.warehouseId.trim()) {
+        try {
+          await requirePermission(user.id, "inventory.manage");
+        } catch {
+          return NextResponse.json(
+            { error: "Forbidden: restocking requires inventory.manage" },
+            { status: 403 },
+          );
+        }
+      }
+      // Restockable items require an explicit active destination warehouse.
+      // The service validates the warehouse-managed stock ledger atomically.
+      const ret = await resolveReturn(
+        id,
+        body.resolution,
+        user.id,
+        typeof body.warehouseId === "string" ? body.warehouseId : null,
+      );
       // P2: Same as above — resolveReturn() already audits this in the
       // service as store.return.resolve (with before/after). Removed
       // the redundant route-scope store.returns.update audit.

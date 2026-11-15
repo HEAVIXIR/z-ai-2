@@ -2,17 +2,16 @@
  * HEAVIX — PHASE STORE-2C: Store Control Plane Contract Tests
  *
  * Evidence-anchored on the STORE-1A/2A/2B inventory:
- *   18 admin store routes  (38 route.ts files after health filter)
+ *   51 admin store routes (route.ts files after health filter)
  *   4 service files         (T-A-DEEP-STORE: inventory + returns + shipments
  *     + PHASE1-PROCUREMENT-SHIPPING-DEEP: procurement)
- *   70 requirePermission calls (15 store.read + 22 store.manage +
- *     33 fine-grained domain keys: inventory/returns/shipping/procurement)
- *   61 storeDb mutation calls (31 in routes + 30 in services = 61 combined)
- *   63 logAudit calls       (33 in routes + 30 in services = 63 combined)
- *   46 unique action keys   (31 in routes+services original +
+ *   93 requirePermission calls across store routes
+ *   57 storeDb mutation calls across routes + services
+ *   70 audit calls (logAudit + enqueueAuditOutbox)
+ *   51 unique action keys (31 original +
  *     9 new in T1+T2-DEEP: warehouse.create/update/delete,
  *     inventory.balance.update, inventory.reserve, inventory.release,
- *     return.item.add, return.inspect, return.resolve
+ *     inventory.restock, return.item.add, return.inspect, return.resolve
  *     + 6 new in PHASE1-PROCUREMENT-SHIPPING-DEEP: procurement.po.create/
  *     submit/approve/receive/cancel, shipment.tracking.add)
  *
@@ -198,6 +197,9 @@ const EXPECTED_ACTION_KEYS = [
   'store.inventory.balance.update',
   'store.inventory.reserve',
   'store.inventory.release',
+  'store.inventory.restock',
+  'store.inventory.initial_allocation',
+  'store.inventory.transfer',
   // Returns deep (item add + inspection + resolution). Resolution audits
   // 3 entityTypes (Return, WalletTransaction, Customer) but reuses the
   // same action key per phase-2C "one action per business operation"
@@ -243,7 +245,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS (route-only — RBAC is enforced in routes)
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 42 admin store route files', () => {
+    it('should have exactly 53 admin store route files', () => {
       // T-A-DEEP-STORE: 28 routes originally.
       // T1+T2-DEEP: +6 new routes (warehouses/route, warehouses/[id],
       // inventory/reserve, inventory/release, inventory/low-stock,
@@ -258,12 +260,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +9 new routes (services/providers,
       //   services/providers/[id], services/requests, services/requests/[id],
       //   logistics/dashboard, shipments/[id]/{assign,pickup,deliver,
-      //   exception}) → 51.
+      //   exception}) → 51; opening inventory allocation +1 → 52; paired warehouse transfer +1 → 53.
       const files = listRouteFiles();
-      expect(files.length).toBe(51);
+      expect(files.length).toBe(53);
     });
 
-    it('should have 78 requirePermission calls across all store routes', () => {
+    it('should have 96 requirePermission calls across all store routes', () => {
       // T-A-DEEP-STORE: 53 originally.
       // T1+T2-DEEP: +10 new (warehouses 2+3, reserve 1, release 1,
       // low-stock 1, returns/[id]/items 2) → 63.
@@ -274,7 +276,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // PHASE-P9-SERVICES-LOGISTICS: +14 new (services/providers 2,
       //   services/providers/[id] 3, services/requests 2, services/requests/[id]
       //   2, logistics/dashboard 1, shipments/[id]/{assign,pickup,deliver,
-      //   exception} 1+1+1+1) → 92.
+      //   exception} 1+1+1+1) → 92; procurement receiving +1, return restock authorization +1, opening allocation +1, warehouse transfer +1 → 96.
       const files = listRouteFiles();
       let count = 0;
       for (const f of files) {
@@ -282,7 +284,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(92);
+      expect(count).toBe(96);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -378,7 +380,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(total).toBe(15);
     });
 
-    it('should have 22 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 26 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -399,10 +401,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   (shipments/[id]/{assign,pickup,deliver,exception} POST) → total
       //   shipping.manage = 7. The 5 services/* POST/PATCH/DELETE handlers
       //   use store.manage (counted above), not domain-specific keys.
-      //   Total = 6 + 3 + 7 + 6 = 22.
+      //   Procurement receiving adds one inventory.manage gate, opening stock allocation adds one,
+      //   and return restocking authorization adds one and paired warehouse transfer adds one; inventory.manage = 10.
+      //   Total = 10 + 3 + 7 + 6 = 26 domain-manage checks (the global baseline is tracked separately).
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 6,
+        'inventory.manage': 10,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
@@ -412,11 +416,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const f of files) {
         const content = readRoute(f);
         for (const key of Object.keys(expected)) {
-          const target = `requirePermission(user.id, '${key}')`;
-          let idx = 0;
-          while ((idx = content.indexOf(target, idx)) !== -1) {
-            counts[key]++;
-            idx += target.length;
+          // Accept either quote style so the contract validates the permission
+          // key rather than imposing a source-formatting convention.
+          for (const quote of ["'", '"']) {
+            const target = `requirePermission(user.id, ${quote}${key}${quote})`;
+            let idx = 0;
+            while ((idx = content.indexOf(target, idx)) !== -1) {
+              counts[key]++;
+              idx += target.length;
+            }
           }
         }
       }
@@ -473,7 +481,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         if (content.match(/export async function GET\b/)) {
           // Must call requirePermission with at least one of the read keys.
           const found = READ_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -493,7 +502,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function POST\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -513,7 +523,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function PATCH\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -533,7 +544,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const content = readRoute(f);
         if (content.match(/export async function DELETE\b/)) {
           const found = MANAGE_PERMS.some(p =>
-            content.includes(`requirePermission(user.id, '${p}')`),
+            content.includes(`requirePermission(user.id, '${p}')`) ||
+            content.includes(`requirePermission(user.id, "${p}")`),
           );
           expect(found).toBe(true);
         }
@@ -559,12 +571,12 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 67 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
+    it('should have 71 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
       // STEP 15.95+ — Transactional Outbox: 6 service-scope logAudit calls
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
       // invariant is unchanged: every mutation has a corresponding audit
-      // event. The count is 67 = 61 logAudit + 6 enqueueAuditOutbox.
+      // event. The combined count is 70 after adding procurement receiving (+1), return-restock events (+3), disabling the legacy Part-only writer (-2), and opening inventory allocation (+1).
       //
       // Historical context (preserved for traceability):
       // T-A-DEEP-STORE: 33 in routes + 6 in services = 39.
@@ -579,10 +591,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
         count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      expect(count).toBe(67);
+      expect(count).toBe(71);
     });
 
-    it('counts 54 Store DB writes across routes + services, including transactions', () => {
+    it('counts 64 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -592,7 +604,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(54);
+      expect(count).toBe(64);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -677,11 +689,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const updateActionRegex = /action:\s*['"]store\.\w+\.update['"]/g;
         let m;
         while ((m = updateActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
-          expect(window).toMatch(/after:/);
+          // Inspect the complete logAudit call rather than a fixed-size
+          // window: privacy-safe before/after snapshots may legitimately be
+          // longer than 400 characters.
+          const callEnd = content.indexOf("});", m.index);
+          const auditCall = content.substring(m.index, callEnd === -1 ? undefined : callEnd + 3);
+          expect(auditCall).toMatch(/after:/);
           // upsert routes don't have 'before' (no pre-fetch); all others must have it
           if (!isUpsertRoute) {
-            expect(window).toMatch(/before:/);
+            expect(auditCall).toMatch(/before:/);
           }
         }
       }
@@ -753,15 +769,17 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       const gaps: string[] = [];
       for (const { path: f, content } of files) {
         const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-        const auditMatches = content.match(/await logAudit\(/g) || [];
-        if (mutMatches.length > 0 && auditMatches.length === 0) {
-          gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches.length);
+        const logMatches = content.match(/await logAudit\(/g) || [];
+        const outboxMatches = content.match(/await enqueueAuditOutbox\(/g) || [];
+        const auditMatches = logMatches.length + outboxMatches.length;
+        if (mutMatches.length > 0 && auditMatches === 0) {
+          gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches);
         }
       }
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (67) cover the 54 counted database write calls', () => {
+    it('total audits (71) cover the 64 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -773,13 +791,13 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(54);
-      expect(totalAudit).toBe(67);
+      expect(totalMut).toBe(64);
+      expect(totalAudit).toBe(71);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 6. ACTION KEY COVERAGE (50 unique keys across routes + services)
+  // 6. ACTION KEY COVERAGE (53 unique keys across routes + services)
   //   T-A-DEEP-STORE: 31 keys originally.
   //   T1+T2-DEEP: +9 new keys (warehouse.create/update/delete,
   //     inventory.balance.update, inventory.reserve, inventory.release,
@@ -802,7 +820,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   //     tests/phase-p9-services-logistics.test.ts) → 50.
   // ═══════════════════════════════════════════════════════════════
   describe('6. Action Key Coverage', () => {
-    it('should have all 50 expected action keys', () => {
+    it('should have all 53 expected action keys', () => {
       const files = readAllStoreFiles();
       const foundKeys = new Set<string>();
       for (const { content } of files) {
@@ -814,7 +832,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(50);
+      expect(foundKeys.size).toBe(53);
     });
 
     it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
@@ -824,7 +842,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // structure is preserved.
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: convention widened again to
       // accept submit/approve/receive/cancel (PO lifecycle state-machine
-      // verbs) as the final operation token. These are state-transition
+      // verbs) as the final operation token; restock is the inventory-intake verb. These are state-transition
       // verbs, semantically equivalent to update but explicitly named to
       // make the audit trail self-describing.
       const files = readAllStoreFiles();
@@ -833,7 +851,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         for (const m of matches) {
           const key = m[1];
           expect(key).toMatch(
-            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel)$/,
+            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel|restock|initial_allocation|transfer)$/,
           );
         }
       }
@@ -919,7 +937,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
     it('payments/[id] has 2 mutations and 2 audits', () => {
       const content = readRoute(paymentsId);
       const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-      const auditMatches = content.match(/await logAudit\(/g) || [];
+      const auditMatches = content.match(/await (?:logAudit|enqueueAuditOutbox)\(/g) || [];
       expect(mutMatches.length).toBe(2);
       expect(auditMatches.length).toBe(2);
     });
@@ -1009,12 +1027,15 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(content).toMatch(/export async function getPurchaseOrder\b/);
     });
 
-    it('inventory route imports createMovement + listMovements from service', () => {
+    it('inventory route imports warehouse-aware adjustStock + listMovements from service', () => {
       const content = readRoute('src/app/api/admin/store/inventory/route.ts');
       expect(content).toContain('import');
-      expect(content).toContain('createMovement');
+      expect(content).toContain('adjustStock');
       expect(content).toContain('listMovements');
       expect(content).toContain('from "@/lib/store-inventory-service"');
+      expect(content).not.toContain('createMovement(');
+      expect(content).toContain('checkCsrf(req)');
+      expect(content).toContain('typeof warehouseId !== "string"');
     });
 
     it('returns route imports createReturn + listReturns from service', () => {
@@ -1074,16 +1095,19 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(receiveContent).toContain('from "@/lib/store-procurement-service"');
     });
 
-    it('every service file imports storeDb + logAudit', () => {
-      // Service files use single quotes (audit.ts convention); route files use double.
+    it('every service file imports storeDb and an explicit audit writer', () => {
+      // Main-DB services may use logAudit; Store-DB services may use the
+      // transactional outbox when the mutation and AuditOutbox share a DB.
       for (const f of listServiceFiles()) {
         const content = readService(f);
         const hasStoreDbDouble = content.includes('import { storeDb } from "@/lib/store-db";');
         const hasStoreDbSingle = content.includes("import { storeDb } from '@/lib/store-db';");
         expect(hasStoreDbDouble || hasStoreDbSingle).toBe(true);
-        const hasLogAuditDouble = content.includes('import { logAudit } from "@/lib/audit";');
-        const hasLogAuditSingle = content.includes("import { logAudit } from '@/lib/audit';");
-        expect(hasLogAuditDouble || hasLogAuditSingle).toBe(true);
+        const hasLogAudit = content.includes("import { logAudit } from '@/lib/audit';") ||
+          content.includes('import { logAudit } from "@/lib/audit";');
+        const hasOutbox = content.includes("import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';") ||
+          content.includes('import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";');
+        expect(hasLogAudit || hasOutbox).toBe(true);
       }
     });
 
@@ -1124,9 +1148,18 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // Per T-A-DEEP-STORE scope: procurement routes were NOT migrated to a service.
       // Their mutations stay inline in the route files.
       const content = readRoute('src/app/api/admin/store/procurement/route.ts');
-      expect(content).toMatch(/storeDb\.procurementRequest\.create/);
+      expect(content).toMatch(/(?:storeDb|tx)\.procurementRequest\.create/);
       const contentId = readRoute('src/app/api/admin/store/procurement/[id]/route.ts');
-      expect(contentId).toMatch(/storeDb\.procurementRequest\.(update|delete)/);
+      expect(contentId).toMatch(/(?:storeDb|tx)\.procurementRequest\.(update|delete)/);
+    });
+  });
+
+  describe("Warehouse transfer API input contract", () => {
+    it("rejects coerced non-numeric quantities at the route boundary", () => {
+      const content = readRoute("src/app/api/admin/store/inventory/transfers/route.ts");
+      expect(content).toMatch(/typeof quantity !== "number"/);
+      expect(content).toMatch(/!Number\.isSafeInteger\(quantity\)/);
+      expect(content).toMatch(/quantity <= 0/);
     });
   });
 });

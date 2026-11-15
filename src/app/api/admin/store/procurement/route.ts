@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,79 +142,107 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Forbidden: requires procurement.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
-    const {
-      title,
-      description,
-      quantity,
-      budgetMin,
-      budgetMax,
-      deadline,
-      status,
-      supplierId,
-    } = body;
-
-    if (!title || !title.trim()) {
-      return NextResponse.json(
-        { success: false, error: "عنوان الزامی است" },
-        { status: 400 },
-      );
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: "بدنه درخواست نامعتبر است" }, { status: 400 });
     }
-    const q = Number(quantity) || 1;
-    if (q < 1) {
-      return NextResponse.json(
-        { success: false, error: "تعداد باید حداقل ۱ باشد" },
-        { status: 400 },
-      );
+    const { title, description, quantity, budgetMin, budgetMax, deadline, status, supplierId } = body;
+
+    if (typeof title !== 'string' || !title.trim()) {
+      return NextResponse.json({ success: false, error: "عنوان الزامی است" }, { status: 400 });
+    }
+    const q = quantity === undefined ? 1 : Number(quantity);
+    if (!Number.isSafeInteger(q) || q < 1) {
+      return NextResponse.json({ success: false, error: "تعداد باید عدد صحیح مثبت باشد" }, { status: 400 });
+    }
+    if (status !== undefined && status !== 'DRAFT') {
+      return NextResponse.json({ success: false, error: "مناقصه جدید باید در وضعیت پیش‌نویس ایجاد شود" }, { status: 400 });
+    }
+    if (description !== undefined && description !== null && typeof description !== 'string') {
+      return NextResponse.json({ success: false, error: "توضیحات نامعتبر است" }, { status: 400 });
     }
 
-    const initialStatus =
-      status && ALLOWED_STATUSES.includes(status as any) ? status : "DRAFT";
+    const min = budgetMin === undefined || budgetMin === null || budgetMin === '' ? null : Number(budgetMin);
+    const max = budgetMax === undefined || budgetMax === null || budgetMax === '' ? null : Number(budgetMax);
+    if (
+      (min !== null && (!Number.isFinite(min) || min < 0)) ||
+      (max !== null && (!Number.isFinite(max) || max < 0)) ||
+      (min !== null && max !== null && min > max)
+    ) {
+      return NextResponse.json({ success: false, error: "بازه بودجه نامعتبر است" }, { status: 400 });
+    }
 
     let deadlineDate: Date | null = null;
-    if (deadline) {
-      const d = new Date(deadline);
-      if (!isNaN(d.getTime())) deadlineDate = d;
+    if (deadline !== undefined && deadline !== null && deadline !== '') {
+      deadlineDate = new Date(deadline);
+      if (Number.isNaN(deadlineDate.getTime())) {
+        return NextResponse.json({ success: false, error: "تاریخ مهلت نامعتبر است" }, { status: 400 });
+      }
     }
 
-    const pr = await storeDb.procurementRequest.create({
-      data: {
-        title: title.trim(),
-        description: description || null,
-        quantity: q,
-        budgetMin: budgetMin ? Number(budgetMin) : null,
-        budgetMax: budgetMax ? Number(budgetMax) : null,
-        deadline: deadlineDate,
-        status: initialStatus,
-        supplierId: supplierId || null,
-      },
-      include: {
-        supplier: {
-          select: { id: true, name: true, nameFa: true },
+    if (supplierId !== undefined && supplierId !== null && (typeof supplierId !== 'string' || !supplierId.trim())) {
+      return NextResponse.json({ success: false, error: "شناسه تأمین‌کننده نامعتبر است" }, { status: 400 });
+    }
+
+    const result = await storeDb.$transaction(async (tx) => {
+      if (supplierId) {
+        const supplier = await tx.supplier.findUnique({
+          where: { id: supplierId },
+          select: { id: true, active: true },
+        });
+        if (!supplier || !supplier.active) {
+          return { error: "تأمین‌کننده وجود ندارد یا غیرفعال است", status: 409 as const };
+        }
+      }
+
+      const pr = await tx.procurementRequest.create({
+        data: {
+          title: title.trim(),
+          description: description || null,
+          quantity: q,
+          budgetMin: min,
+          budgetMax: max,
+          deadline: deadlineDate,
+          status: 'DRAFT',
+          supplierId: supplierId || null,
         },
-      },
-    });
+        include: {
+          supplier: { select: { id: true, name: true, nameFa: true } },
+        },
+      });
 
-    await logAudit({
-      actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.procurement.create',
-      entityType: 'ProcurementRequest',
-      entityId: pr.id,
-      after: {
-        title: pr.title,
-        quantity: pr.quantity,
-        budgetMin: pr.budgetMin,
-        budgetMax: pr.budgetMax,
-        deadline: pr.deadline,
-        status: pr.status,
-        supplierId: pr.supplierId,
-      },
-    });
+      await enqueueAuditOutbox(tx, {
+        actorId: user.id,
+        actorType: 'ADMIN',
+        action: 'store.procurement.create',
+        entityType: 'ProcurementRequest',
+        entityId: pr.id,
+        after: {
+          title: pr.title,
+          quantity: pr.quantity,
+          budgetMin: pr.budgetMin,
+          budgetMax: pr.budgetMax,
+          deadline: pr.deadline,
+          status: pr.status,
+          supplierId: pr.supplierId,
+        },
+      });
+      return { data: pr };
+    }, { isolationLevel: 'Serializable' });
 
-    return NextResponse.json({ success: true, data: serialize(pr) });
+    if ('error' in result) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, data: serialize(result.data) });
   } catch (e: any) {
+    if (e?.code === 'P2034') {
+      return NextResponse.json({ success: false, error: "مناقصه هم‌زمان تغییر کرده است؛ دوباره تلاش کنید" }, { status: 409 });
+    }
     console.error("[store/procurement POST] error:", e);
     return NextResponse.json(
       { success: false, error: e?.message ?? "Internal error" },
