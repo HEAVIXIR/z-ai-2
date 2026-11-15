@@ -59,8 +59,8 @@ The two dedicated form sources are substantially larger than the historical data
 
 - `seed-category-specific-attributes.ts`: **127 machine/catalog form templates**, **957 field placements**, and **542 distinct raw field keys**.
 - Within those 542 keys, **92 keys have more than one field signature** (differences can be label, type, unit, options, or flags). The current resolver namespaces category-specific variants; a source-only simulation with no pre-existing DB definitions yields **184 namespaced field placements** and **726 distinct resolved keys**. The actual resolver result depends on existing Preview AttributeDefinition rows, so 726 is not a predicted database row count.
-- `seed-service-mineral-attributes.ts`: **26 explicit form objects plus 52 generated form entries = 78 form slugs**, with **304 field placements** and **271 distinct raw keys**.
-- The service/mineral form keys have no raw-key overlap with the 542 machine/catalog keys in these source files.
+- `seed-service-mineral-attributes.ts`: **26 explicit form objects plus 52 generated form entries = 78 form slugs**, with **284 form-field placements** and **254 distinct form-field keys**. In addition, it defines 20 shared root fields (10 common service + 10 common mineral); across the entire file there are 304 `f()` calls and 271 distinct keys.
+- The service/mineral form-specific keys overlap with the 542 machine/catalog keys on exactly one raw key (`rail_gauge`); the 20 shared root fields have no overlap with machine/catalog keys.
 - All 127 machine form slugs are present in the V1.1 taxonomy source. All 78 service/mineral/transport form slugs are present in the combined V1.1 + service/mineral category sources.
 - Eleven transport/logistics forms have now been added: heavy haulage, container, port, rail, air freight, warehouse logistics, customs clearance, freight forwarding, last mile, cold chain, and other transport.
 - The service/mineral seed now validates duplicate form slugs and duplicate fields per form, and fails before writes if any active terminal `SERVICE`-layer category lacks a dedicated form.
