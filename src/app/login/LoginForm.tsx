@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 
 function kind(v: string): "email" | "mobile" {
   if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return "email";
@@ -61,6 +62,9 @@ export default function LoginForm() {
       <button type="submit" disabled={loading} className="mt-6 flex h-12 w-full items-center justify-center rounded-xl bg-[#F58220] text-sm font-bold text-white">
         {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "ورود"}
       </button>
+      <div className="mt-4 text-center">
+        <Link href="/verify-email" className="text-xs font-bold text-[#F58220] hover:underline">هنوز ایمیلتان را تأیید نکرده‌اید؟ دریافت کد تأیید</Link>
+      </div>
       <p className="mt-5 text-center text-[11px] text-white/35">
         مدیران نیز با حساب کاربری دارای نقش ADMIN در RBAC وارد می‌شوند.
       </p>
