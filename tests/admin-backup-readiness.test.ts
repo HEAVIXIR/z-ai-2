@@ -36,7 +36,7 @@ describe("paired PostgreSQL backup configuration", () => {
     [{ DIRECT_URL: "not-a-url", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL is invalid/],
     [{ DIRECT_URL: "sqlite:file.db", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL must use PostgreSQL/],
     [{ DIRECT_URL: "postgresql://u@db/main", STORE_DATABASE_URL: "postgresql://u:p@db/store" }, /Main direct database URL is missing required connection fields/],
-    [{ DIRECT_URL: "postgresql://u:p@db/main", STORE_DATABASE_URL: undefined }, /Store database URL is not configured/],
+    [{ DATABASE_URL: "postgresql://runtime:p@pool/main", DIRECT_URL: "postgresql://u:p@db/main", STORE_DATABASE_URL: undefined }, /Store database URL is not configured/],
   ] as const)("rejects incomplete or unsupported configuration without exposing URLs", (input, expectedError) => {
     const raw = JSON.stringify(input);
     let caught: unknown;
