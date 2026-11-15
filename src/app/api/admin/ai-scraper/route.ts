@@ -174,7 +174,7 @@ function isPublicIpv4(address: string): boolean {
 
 type SourceFetchResult = { html: string; title: string; redirect?: string };
 
-async function requestPinnedSource(url: URL, address: string): Promise<SourceFetchResult> {
+async function requestPinnedSource(url: URL, address: string, signal?: AbortSignal): Promise<SourceFetchResult> {
   return new Promise((resolve, reject) => {
     const request = httpsRequest({
       protocol: "https:",
@@ -234,13 +234,15 @@ async function requestPinnedSource(url: URL, address: string): Promise<SourceFet
       response.on("error", reject);
     });
     request.setTimeout(12_000, () => request.destroy(new Error("مهلت دریافت صفحه منبع تمام شد.")));
+    if (signal?.aborted) request.destroy(new Error("درخواست دریافت صفحه لغو شد."));
+    else signal?.addEventListener("abort", () => request.destroy(new Error("درخواست دریافت صفحه لغو شد.")), { once: true });
     request.on("error", reject);
     request.end();
   });
 }
 
 /** Validate every redirect and pin each HTTPS request to a freshly validated public IPv4. */
-async function fetchAllowedSourcePage(rawUrl: string): Promise<{ html: string; title: string }> {
+async function fetchAllowedSourcePage(rawUrl: string, signal?: AbortSignal): Promise<{ html: string; title: string }> {
   let current = new URL(rawUrl);
   for (let hop = 0; hop <= 4; hop++) {
     if (!isAllowedSourceUrl(current.toString()) || (current.port && current.port !== "443")) {
@@ -250,7 +252,7 @@ async function fetchAllowedSourcePage(rawUrl: string): Promise<{ html: string; t
     if (!resolved.length || resolved.some((entry) => !isPublicIpv4(entry.address))) {
       throw new Error("نشانی شبکه مقصد عمومی و امن نیست.");
     }
-    const result = await requestPinnedSource(current, resolved[0].address);
+    const result = await requestPinnedSource(current, resolved[0].address, signal);
     if (!result.redirect) return { html: result.html, title: result.title };
     if (hop === 4) throw new Error("تعداد انتقال‌های صفحه از حد مجاز بیشتر است.");
     current = new URL(result.redirect, current);
@@ -258,11 +260,11 @@ async function fetchAllowedSourcePage(rawUrl: string): Promise<{ html: string; t
   throw new Error("دریافت امن صفحه منبع ناموفق بود.");
 }
 
-async function scrapeUrl(zai: any, url: string): Promise<ScrapeResult> {
+async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<ScrapeResult> {
   const base: ScrapeResult = { url, images: [] };
   if (!isAllowedSourceUrl(url)) return { ...base, description: "منبع این آگهی در فهرست دامنه‌های مجاز نیست." };
   try {
-    const data = await fetchAllowedSourcePage(url);
+    const data = await fetchAllowedSourcePage(url, signal);
     const html = data.html;
     const title = data.title;
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -515,7 +517,7 @@ async function _doPost(
       if (!query) return NextResponse.json({ error: "query is required" }, { status: 400 });
       const num = Math.max(1, Math.min(10, Number(body.num) || 5));
       const urls = (await searchAdUrls(zai, query, num)).filter(isAllowedSourceUrl);
-      const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u)));
+      const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
       return NextResponse.json({ ok: true, results });
     }
 
@@ -523,7 +525,7 @@ async function _doPost(
       const url = String(body.url ?? "").trim();
       if (!url) return NextResponse.json({ error: "url is required" }, { status: 400 });
       if (!isAllowedSourceUrl(url)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
-      const result = await scrapeUrl(zai, url);
+      const result = await scrapeUrl(zai, url, controller.signal);
       return NextResponse.json({ ok: true, result });
     }
 
@@ -534,7 +536,7 @@ async function _doPost(
       const sourceUrl = String(submitted?.url ?? "").trim();
       if (!sourceUrl) return NextResponse.json({ error: "scraped.url is required" }, { status: 400 });
       if (!isAllowedSourceUrl(sourceUrl)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
-      const scraped = await scrapeUrl(zai, sourceUrl);
+      const scraped = await scrapeUrl(zai, sourceUrl, controller.signal);
       if (!scraped.title || (scraped.description || "").startsWith("Error scraping:")) {
         return NextResponse.json({ error: "استخراج مجدد سمت سرور ناموفق بود؛ پیش‌نویسی ساخته نشد." }, { status: 502 });
       }
@@ -546,7 +548,7 @@ async function _doPost(
       const urls: string[] = Array.isArray(body.urls) ? body.urls : [];
       if (urls.length === 0) return NextResponse.json({ error: "urls is required" }, { status: 400 });
       if (urls.some((u) => !isAllowedSourceUrl(u))) return NextResponse.json({ error: "همه آدرس‌ها باید از دامنه‌های مجاز باشند." }, { status: 400 });
-      const scraped = await Promise.all(urls.map((u) => scrapeUrl(zai, u)));
+      const scraped = await Promise.all(urls.map((u) => scrapeUrl(zai, u, controller.signal)));
       const imported: any[] = [];
       for (const s of scraped) {
         try { const l = await importListing(s); imported.push({ id: l.id, slug: l.slug, sourceUrl: s.url, ok: true }); }
