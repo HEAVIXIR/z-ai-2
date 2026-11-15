@@ -97,7 +97,7 @@ export default function ForgotPasswordPage() {
           {step === "reset" && (
             <form onSubmit={resetPassword} className="mt-5 space-y-3">
               <label className="block text-xs font-bold text-white/65">کد ۶ رقمی ایمیل</label>
-              <input required inputMode="numeric" maxLength={6} dir="ltr" value={code} onChange={e => setCode(e.target.value.replace(/\\D/g, "").slice(0, 6))} className={inputClass + " text-center tracking-[0.5em]"} placeholder="------" />
+              <input required inputMode="numeric" maxLength={6} dir="ltr" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} className={inputClass + " text-center tracking-[0.5em]"} placeholder="------" />
               <label className="block pt-1 text-xs font-bold text-white/65">رمز عبور جدید</label>
               <input required type="password" minLength={8} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass} placeholder="حداقل ۸ کاراکتر" />
               <label className="block pt-1 text-xs font-bold text-white/65">تکرار رمز عبور جدید</label>
