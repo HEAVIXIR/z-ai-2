@@ -208,7 +208,7 @@ export default function NewListingPage() {
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const categoryParam = form.categoryId ? `&categoryId=${encodeURIComponent(form.categoryId)}` : "";
+        const categoryParam = categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : "";
         const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}${categoryParam}`, {
           signal: ctrl.signal,
         });
@@ -223,7 +223,7 @@ export default function NewListingPage() {
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [brandQuery, form.categoryId]);
+  }, [brandQuery, categoryId]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
