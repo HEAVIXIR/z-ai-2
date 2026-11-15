@@ -2,9 +2,10 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'recovery/**']
+    types: [opened, reopened, synchronize, edited, ready_for_review]
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'fix/**', 'recovery/**']
 
 # Keep only the newest CI run for a given PR/branch. This prevents obsolete
 # commits from occupying all runners while a newer recovery commit is waiting.
