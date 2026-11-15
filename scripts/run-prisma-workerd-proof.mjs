@@ -67,7 +67,7 @@ const expected = {
     databaseName: "postgres",
     databaseOid: appDatabaseOid,
     systemIdentifier: "7701427422680793119",
-    migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key"],
+    migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key", "20261112160000_add_selectable_hero_templates"],
   },
   store: {
     databaseName: "postgres",
