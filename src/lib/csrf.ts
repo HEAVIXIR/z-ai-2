@@ -30,6 +30,8 @@ function allowedOrigins(): Set<string> {
   const configured = [
     process.env.NEXTAUTH_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
+    // Explicit, exact Cloudflare branch-preview origin; never infer from Host.
+    process.env.HEAVIX_PREVIEW_ORIGIN,
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
