@@ -2,6 +2,8 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 
 const ALLOWED_SOURCE_HOSTS = ["divar.ir", "divar.com", "sheypoor.com"];
+const SOURCE_DNS_LOOKUP_TIMEOUT_MS = 8_000;
+const SOURCE_REQUEST_TIMEOUT_MS = 12_000;
 
 export function isAllowedSourceUrl(raw: string): boolean {
   try {
@@ -50,6 +52,46 @@ type SourceFetchDependencies = {
   lookup: (hostname: string, options: { all: true; family: 4; verbatim: true }) => Promise<LookupResult>;
   request: (url: URL, address: string, signal?: AbortSignal) => Promise<SourceFetchResult>;
 };
+
+function lookupWithTimeout(
+  lookup: () => Promise<LookupResult>,
+  signal?: AbortSignal,
+): Promise<LookupResult> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onAbort = () => finish(() => reject(new Error("درخواست دریافت صفحه لغو شد.")));
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(
+      () => finish(() => reject(new Error("مهلت بررسی DNS منبع تمام شد."))),
+      SOURCE_DNS_LOOKUP_TIMEOUT_MS,
+    );
+
+    try {
+      lookup().then(
+        (result) => finish(() => {
+          if (signal?.aborted) reject(new Error("درخواست دریافت صفحه لغو شد."));
+          else resolve(result);
+        }),
+        (error) => finish(() => reject(error)),
+      );
+    } catch (error) {
+      finish(() => reject(error));
+    }
+  });
+}
 
 async function requestPinnedSource(url: URL, address: string, signal?: AbortSignal): Promise<SourceFetchResult> {
   return new Promise((resolve, reject) => {
@@ -110,9 +152,18 @@ async function requestPinnedSource(url: URL, address: string, signal?: AbortSign
       });
       response.on("error", reject);
     });
-    request.setTimeout(12_000, () => request.destroy(new Error("مهلت دریافت صفحه منبع تمام شد.")));
-    if (signal?.aborted) request.destroy(new Error("درخواست دریافت صفحه لغو شد."));
-    else signal?.addEventListener("abort", () => request.destroy(new Error("درخواست دریافت صفحه لغو شد.")), { once: true });
+    request.setTimeout(SOURCE_REQUEST_TIMEOUT_MS, () => request.destroy(new Error("مهلت دریافت صفحه منبع تمام شد.")));
+    const totalTimeout = setTimeout(
+      () => request.destroy(new Error("مهلت دریافت صفحه منبع تمام شد.")),
+      SOURCE_REQUEST_TIMEOUT_MS,
+    );
+    const abortRequest = () => request.destroy(new Error("درخواست دریافت صفحه لغو شد."));
+    request.once("close", () => {
+      clearTimeout(totalTimeout);
+      signal?.removeEventListener("abort", abortRequest);
+    });
+    if (signal?.aborted) abortRequest();
+    else signal?.addEventListener("abort", abortRequest, { once: true });
     request.on("error", reject);
     request.end();
   });
@@ -142,7 +193,10 @@ export async function fetchAllowedSourcePage(
     }
     if (signal?.aborted) throw new Error("درخواست دریافت صفحه لغو شد.");
 
-    const resolved = await dependencies.lookup(current.hostname, { all: true, family: 4, verbatim: true });
+    const resolved = await lookupWithTimeout(
+      () => dependencies.lookup(current.hostname, { all: true, family: 4, verbatim: true }),
+      signal,
+    );
     if (signal?.aborted) throw new Error("درخواست دریافت صفحه لغو شد.");
     if (!resolved.length || resolved.some((entry) => !isPublicIpv4(entry.address))) {
       throw new Error("نشانی شبکه مقصد عمومی و امن نیست.");
