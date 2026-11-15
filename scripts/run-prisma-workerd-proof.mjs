@@ -178,7 +178,10 @@ try {
       const migrationDetail = migrationsMatch
         ? ""
         : "; expected migrations=" + JSON.stringify(target.migrations) + "; actual migrations=" + JSON.stringify(result.migrationNames ?? null);
-      fingerprintErrors.push(`${label}: ${detail}${migrationDetail}`);
+      const schemaDetail = label.startsWith("App") && result.schemaObjects
+        ? "; ProductModelAttribute schema=" + JSON.stringify(result.schemaObjects)
+        : "";
+      fingerprintErrors.push(`${label}: ${detail}${migrationDetail}${schemaDetail}`);
     }
   }
   assert.notEqual(appFirst.clientId, appSecond.clientId, "App client leaked across sequential requests.");
