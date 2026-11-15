@@ -24,12 +24,12 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
 
   it("keeps service offers and requests in the SERVICE taxonomy layer", () => {
     const route = read("src/app/api/listings/route.ts");
-    expect(route).toContain('transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER"');
-    expect(route).toContain('transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"');
+    expect(route).toContain("categoryLayerForTransactionType(transactionType.key)");
+    expect(route).toContain("const expectedLayer = categoryLayerForTransactionType(transactionType.key);");
     const wizard = read("src/app/listings/new/page.tsx");
     expect(wizard).toContain('const isServiceFlow = isServiceRequest || isServiceOffer');
     expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots");
-    expect(wizard).toContain("if (isServiceRequest || isServiceOffer) return true");
+    expect(wizard).toContain("if (isServiceFlow || isRequestFlow) return true");
   });
 
   it("does not overwrite a globally shared attribute with an incompatible category definition", () => {
@@ -55,12 +55,14 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
 
   it("validates typed listing attribute values and option ownership at the API boundary", () => {
     const route = read("src/app/api/listings/[id]/attributes/route.ts");
-    expect(route).toContain("options: { select: { id: true } }");
-    expect(route).toContain("optionIds.has(String(value.optionId))");
-    expect(route).toContain("selectedOptions.some((optionId) => !optionIds.has(optionId))");
-    expect(route).toContain("Number.isFinite(Number(value.numberValue))");
-    expect(route).toContain("Number.isNaN(new Date(value.dateValue).getTime())");
-    expect(route).toContain('v.booleanValue === true || v.booleanValue === "true"');
+    const validator = read("src/lib/listing-attributes.ts");
+    expect(route).toContain("validateListingAttributeValues");
+    expect(validator).toContain("options: { select: { id: true } }");
+    expect(validator).toContain("optionIds.has(String(value.optionId))");
+    expect(validator).toContain("selectedOptions.some((optionId) => !optionIds.has(optionId))");
+    expect(validator).toContain("Number.isFinite(numberValue)");
+    expect(validator).toContain("Number.isNaN(dateValue.getTime())");
+    expect(validator).toContain('value.booleanValue === true || value.booleanValue === "true"');
   });
 
   it("preflights supplemental taxonomy slug collisions before moving any existing category", () => {
