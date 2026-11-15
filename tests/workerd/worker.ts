@@ -73,6 +73,7 @@ async function verifyDatabaseIdentity(
 async function appFingerprint(client: AppPrismaClient, expectedDatabaseOid: string): Promise<{
   identity: { database_name: string; database_oid: string; schema_name: string; server_version: string; system_identifier: string };
   migrationNames: string[];
+  schemaObjects: { table_exists: boolean; columns: unknown; indexes: unknown; constraints: unknown } | null;
 }> {
   // STEP 18.2.7.3.10 (Finding S-3): verify identity FIRST, before reading migrations.
   // If this throws, the caller returns 502 immediately — migrations are never read.
