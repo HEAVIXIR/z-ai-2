@@ -71,18 +71,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "کد منقضی شده است؛ کد تازه درخواست کنید." }, { status: 400 });
     }
 
+    const activated = user.mobileVerified === true;
     await db.$transaction([
       db.verificationCode.update({ where: { id: rec.id }, data: { used: true } }),
       db.user.update({
         where: { id: user.id },
-        data: { emailVerified: true, status: "ACTIVE" },
+        data: { emailVerified: true, status: activated ? "ACTIVE" : "PENDING" },
       }),
     ]);
 
     return NextResponse.json({
       ok: true,
-      message: "ایمیل تأیید شد و حساب شما فعال شد.",
-      activated: true,
+      message: activated
+        ? "ایمیل تأیید شد و حساب شما فعال شد."
+        : "ایمیل تأیید شد؛ برای فعال‌سازی حساب، تأیید شماره موبایل نیز لازم است.",
+      activated,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
