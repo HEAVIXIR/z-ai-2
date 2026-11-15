@@ -29,7 +29,7 @@ export default function RegisterPage() {
   // Verification
   const [userId, setUserId] = useState("");
   const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState(""); // shown in dev mode
+  const [emailDeliveryFailed, setEmailDeliveryFailed] = useState(false);
 
   const submitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +46,38 @@ export default function RegisterPage() {
 
       if (res.ok && data.ok) {
         setUserId(data.userId);
-        setDevCode(data.devEmailCode ?? "");
+        setEmailDeliveryFailed(data.emailDelivery === false);
         setStep("verify");
       } else {
         setError(data.error ?? "ثبت‌نام ناموفق بود.");
       }
     } catch {
       setError("خطای شبکه — اتصال اینترنت را بررسی کنید.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setEmailDeliveryFailed(false);
+        setError(data.message ?? "درخواست ارسال مجدد ثبت شد.");
+      } else {
+        setEmailDeliveryFailed(true);
+        setError(data.error ?? "ارسال ایمیل انجام نشد. تنظیمات ارسال ایمیل باید تکمیل شود.");
+      }
+    } catch {
+      setEmailDeliveryFailed(true);
+      setError("خطای شبکه هنگام ارسال مجدد ایمیل.");
     } finally {
       setLoading(false);
     }
@@ -208,9 +233,9 @@ export default function RegisterPage() {
               کد ۶ رقمی به ایمیل شما ارسال شد. در صورت عدم دریافت، پوشه هرزنامه را بررسی کنید.
             </p>
 
-            {devCode && (
-              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-center text-sm font-bold text-amber-400">
-                کد تأیید (دمو): <span dir="ltr" className="tracking-widest">{devCode}</span>
+            {emailDeliveryFailed && (
+              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-center text-xs font-bold text-amber-300">
+                ارسال ایمیل برقرار نیست. تنظیمات سرویس ایمیل باید تکمیل شود؛ سپس کد را دوباره درخواست کنید.
               </div>
             )}
 
@@ -247,6 +272,14 @@ export default function RegisterPage() {
 
             <button
               type="button"
+              onClick={resendCode}
+              disabled={loading}
+              className="mt-3 flex w-full items-center justify-center gap-1 text-xs font-bold text-[#F58220] transition hover:text-white disabled:opacity-50"
+            >
+              ارسال مجدد کد به ایمیل
+            </button>
+            <button
+              type="button"
               onClick={() => setStep("form")}
               className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-white/40 transition hover:text-white"
             >
@@ -263,7 +296,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="text-xl font-black text-white">حساب شما فعال شد!</h1>
             <p className="mt-2 text-sm text-white/55">
-              اکنون می‌توانید با شماره موبایل و رمز عبور خود وارد شوید.
+              ایمیل شما تأیید شد. اکنون می‌توانید با ایمیل یا شماره موبایل ثبت‌شده و رمز عبور وارد شوید.
             </p>
             <Link
               href="/login"
