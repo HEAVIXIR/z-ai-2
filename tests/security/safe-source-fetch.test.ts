@@ -13,11 +13,11 @@ function dependencies(
   let lookupIndex = 0;
   let requestIndex = 0;
   const lookup = vi.fn(async () => {
-    const current = addresses[Math.min(lookupIndex++, addresses.length - 1)];
+    const current = addresses[Math.min(lookupIndex++, addresses.length - 1)]!;
     return current.map((address) => ({ address, family: 4 }));
   });
   const request = vi.fn(async (_url: URL, _address: string, _signal?: AbortSignal) =>
-    responses[Math.min(requestIndex++, responses.length - 1)]
+    responses[Math.min(requestIndex++, responses.length - 1)]!
   );
   return { lookup, request };
 }
