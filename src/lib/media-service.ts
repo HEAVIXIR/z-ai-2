@@ -317,6 +317,22 @@ export async function attachAsset(
   const asset = await getAsset(assetId);
   if (!asset) return { ok: false, error: "رسانه یافت نشد." };
 
+  // Defense in depth: callers must not be the only place enforcing media ownership.
+  // A seller may attach only their own, unused, private staged asset to the same entity type.
+  if (
+    actorType === "USER" &&
+    (
+      !userId ||
+      asset.uploadedBy !== userId ||
+      asset.visibility !== "PRIVATE" ||
+      asset.status !== "STAGED" ||
+      asset.entityType !== entityType ||
+      asset.entityId !== null
+    )
+  ) {
+    return { ok: false, error: "رسانه متعلق به شما نیست یا قبلاً به موجودیت دیگری متصل شده است." };
+  }
+
   let finalKey = asset.relativePath;
   const uploadedAt = new Date(asset.uploadedAt);
   if (asset.status === "STAGED" && asset.relativePath.includes("/staging/")) {

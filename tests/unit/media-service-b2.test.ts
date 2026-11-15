@@ -139,6 +139,42 @@ describe("B2-backed media service", () => {
     expect(b2State.deleteCalls).toContain(stagedKey);
   });
 
+  it("rejects attaching another seller's staged media", async () => {
+    const uploaded = await uploadAsset({
+      file: Buffer.from("seller image"),
+      uploadedBy: "seller_owner",
+      entityType: "Listing",
+      visibility: "PRIVATE",
+      actorType: "USER",
+    });
+
+    const result = await attachAsset(uploaded.asset!.id, "Listing", "listing_other", "seller_other");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("متعلق به شما نیست");
+    expect(b2State.copyCalls).toHaveLength(0);
+    expect((await getAsset(uploaded.asset!.id))?.status).toBe("STAGED");
+  });
+
+  it("rejects reusing an already attached seller asset", async () => {
+    const uploaded = await uploadAsset({
+      file: Buffer.from("seller image"),
+      uploadedBy: "seller_owner",
+      entityType: "Listing",
+      visibility: "PRIVATE",
+      actorType: "USER",
+    });
+
+    const first = await attachAsset(uploaded.asset!.id, "Listing", "listing_first", "seller_owner");
+    const second = await attachAsset(uploaded.asset!.id, "Listing", "listing_second", "seller_owner");
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(false);
+    expect(second.error).toContain("قبلاً");
+    expect(b2State.copyCalls).toHaveLength(1);
+    expect((await getAsset(uploaded.asset!.id))?.entityId).toBe("listing_first");
+  });
+
   it("lists sidecars from the metadata namespace", async () => {
     const uploaded = await uploadAsset({
       file: Buffer.from("seller image"),

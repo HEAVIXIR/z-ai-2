@@ -55,6 +55,9 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain('listingImage.listing.status === "PUBLISHED"');
     expect(route).toContain("listingOwnerId === user.id");
     expect(route).toContain('import { createB2MediaReadUrl } from "@/lib/b2-media-storage"');
+    expect(service).toContain("asset.uploadedBy !== userId");
+    expect(service).toContain('asset.status !== "STAGED"');
+    expect(service).toContain("asset.entityId !== null");
     expect(route).toContain("createB2MediaReadUrl(asset.relativePath, 300)");
     expect(route).not.toContain("getAssetReadUrl(id)");
     expect(route).toContain('status: 404');
