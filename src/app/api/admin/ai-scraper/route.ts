@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 const DIVAR_HOSTS = ["divar.ir", "divar.com"];
 const SHEYPOOR_HOSTS = ["sheypoor.com"];
+const MAX_BULK_IMPORT_URLS = 5;
 
 interface ScrapeResult {
   url: string;
@@ -34,46 +35,6 @@ interface ScrapeResult {
 function extractPhones(text: string): string[] {
   const matches = text.match(/0\d{10}|\+98\d{10}|09\d{9}/g) || [];
   return Array.from(new Set(matches));
-}
-
-/** Extract image URLs from raw HTML. */
-function extractImagesFromHtml(html: string, baseUrl: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const re = /<img[^>]+src=["']([^"']+)["']/gi;
-  let m;
-  while ((m = re.exec(html))) {
-    const src = m[1];
-    if (!src || src.startsWith("data:")) continue;
-    if (/\.(jpg|jpeg|png|webp|gif|avif)/i.test(src) || src.includes("image")) {
-      let url = src;
-      if (url.startsWith("//")) url = "https:" + url;
-      else if (url.startsWith("/")) {
-        try {
-          const u = new URL(baseUrl);
-          url = `${u.origin}${url}`;
-        } catch {
-          /* skip */
-        }
-      }
-      if (!seen.has(url)) {
-        seen.add(url);
-        out.push(url);
-      }
-    }
-  }
-  // Also parse srcset
-  const reSrcset = /srcset=["']([^"']+)["']/gi;
-  while ((m = reSrcset.exec(html))) {
-    const parts = m[1].split(",").map((p) => p.trim().split(/\s+/)[0]);
-    for (const p of parts) {
-      if (p && !p.startsWith("data:") && /\.(jpg|jpeg|png|webp)/i.test(p) && !seen.has(p)) {
-        seen.add(p);
-        out.push(p.startsWith("//") ? "https:" + p : p);
-      }
-    }
-  }
-  return out.slice(0, 20);
 }
 
 function extractPrice(text: string): string | null {
@@ -157,7 +118,6 @@ async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<S
     const html = data.html;
     const title = data.title;
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-    const images = extractImagesFromHtml(html, url);
     const phones = extractPhones(html + " " + text);
 
     const llm = await llmExtract(zai, text || html, url, signal);
@@ -167,7 +127,9 @@ async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<S
       title: llm.title || title || undefined,
       description: llm.description || text.slice(0, 600) || undefined,
       price: llm.price || extractPrice(text),
-      images,
+      // Remote third-party image URLs are intentionally not sent to the browser.
+      // Image ingestion will use the approved consent + Backblaze B2 pipeline.
+      images: [],
       phone: llm.phone || phones[0] || null,
       location: llm.location || null,
       brand: llm.brand || null,
@@ -195,7 +157,7 @@ async function getZai(signal?: AbortSignal) {
 }
 
 /** Convert a scraped result into a HEAVIX listing draft in DB. */
-async function importListing(s: ScrapeResult) {
+async function importListing(s: ScrapeResult, actorId: string) {
   if (!isAllowedSourceUrl(s.url)) throw new Error("منبع آگهی مجاز نیست.");
   if (!s.title?.trim() || (s.description || "").startsWith("Error scraping:")) {
     throw new Error("استخراج معتبر آگهی کامل نیست؛ پیش‌نویس ساخته نشد.");
@@ -365,7 +327,7 @@ async function importListing(s: ScrapeResult) {
   });
   const listing = outcome.listing;
   if (!outcome.alreadyExists) await logAudit({
-    actorId: null,
+    actorId,
     actorType: "ADMIN",
     action: "admin.listings.create",
     entityType: "Listing",
@@ -449,18 +411,19 @@ async function _doPost(
       if (!scraped.title || (scraped.description || "").startsWith("Error scraping:")) {
         return NextResponse.json({ error: "استخراج مجدد سمت سرور ناموفق بود؛ پیش‌نویسی ساخته نشد." }, { status: 502 });
       }
-      const listing = await importListing(scraped);
+      const listing = await importListing(scraped, user.id);
       return NextResponse.json({ ok: true, id: listing.id, slug: listing.slug, status: listing.status, alreadyExists: Boolean((listing as any).alreadyExists) });
     }
 
     if (mode === "bulk-import") {
       const urls: string[] = Array.isArray(body.urls) ? body.urls : [];
       if (urls.length === 0) return NextResponse.json({ error: "urls is required" }, { status: 400 });
-      if (urls.some((u) => !isAllowedSourceUrl(u))) return NextResponse.json({ error: "همه آدرس‌ها باید از دامنه‌های مجاز باشند." }, { status: 400 });
+      if (urls.length > MAX_BULK_IMPORT_URLS) return NextResponse.json({ error: `حداکثر ${MAX_BULK_IMPORT_URLS} آدرس در هر درخواست مجاز است.` }, { status: 413 });
+      if (urls.some((u) => typeof u !== "string" || !isAllowedSourceUrl(u))) return NextResponse.json({ error: "همه آدرس‌ها باید از دامنه‌های مجاز باشند." }, { status: 400 });
       const scraped = await Promise.all(urls.map((u) => scrapeUrl(zai, u, controller.signal)));
       const imported: any[] = [];
       for (const s of scraped) {
-        try { const l = await importListing(s); imported.push({ id: l.id, slug: l.slug, sourceUrl: s.url, ok: true }); }
+        try { const l = await importListing(s, user.id); imported.push({ id: l.id, slug: l.slug, sourceUrl: s.url, ok: true }); }
         catch (err: any) { imported.push({ sourceUrl: s.url, ok: false, error: err?.message }); }
       }
       return NextResponse.json({ ok: true, count: imported.length, results: imported });
