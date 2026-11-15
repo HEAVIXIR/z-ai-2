@@ -328,7 +328,7 @@ export default function ModerationAdminClient({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <a href={`/admin/listings?search=${encodeURIComponent(item.title)}`} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700">
+                <a href={`/admin/listings/${encodeURIComponent(item.id)}/edit`} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700">
                   بررسی جزئیات
                 </a>
                 <button onClick={() => review(item.id, "reject")} disabled={actingId === item.id} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50">
