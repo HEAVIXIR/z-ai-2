@@ -553,3 +553,13 @@ describe("AI import manager publication timestamp", () => {
     expect(code).toContain("after: { status: newStatus, ...publicationFields, reason, logId: log.id }");
   });
 });
+
+
+describe("AI scraper LLM cancellation propagation", () => {
+  it("SOURCE: propagates an aborted extraction instead of swallowing it as an optional parse failure", () => {
+    const src = readSource("admin/ai-scraper/route.ts");
+    expect(src).toMatch(/async function llmExtract\([\s\S]*?signal\?: AbortSignal/);
+    expect(src).toMatch(/llmExtract\(zai, text \|\| html, url, signal\)/);
+    expect(src).toMatch(/if \(signal\?\.aborted\)[\s\S]*?error\.name = "AbortError"[\s\S]*?throw error/);
+  });
+});
