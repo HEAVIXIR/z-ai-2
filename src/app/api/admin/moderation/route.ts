@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { runModerationBatch } from "@/lib/moderation";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -171,6 +172,10 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
@@ -218,12 +223,25 @@ export async function POST(req: Request) {
 
       const listing = await db.listing.findUnique({
         where: { id: listingId },
-        select: { id: true, title: true, status: true, slug: true },
+        select: { id: true, title: true, status: true, slug: true, sourceUrl: true },
       });
       if (!listing) {
         return NextResponse.json(
           { error: "Listing not found" },
           { status: 404 },
+        );
+      }
+
+      // Scraped/imported listings remain quarantined until a dedicated,
+      // auditable seller-consent and media-rights clearance flow exists.
+      // Generic moderation approval is intentionally insufficient evidence.
+      if (action === "approve" && listing.sourceUrl) {
+        return NextResponse.json(
+          {
+            error: "آگهی واردشده از منبع خارجی تا تکمیل بررسی رضایت فروشنده و حقوق رسانه قابل انتشار نیست.",
+            code: "IMPORTED_LISTING_CLEARANCE_REQUIRED",
+          },
+          { status: 409 },
         );
       }
 
