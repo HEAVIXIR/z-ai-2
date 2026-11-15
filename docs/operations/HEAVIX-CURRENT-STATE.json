@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-11T22:38:00.000Z",
+  "updated_at_utc": "2026-11-15T13:50:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "6e6983efe66154321998e9ce5d623d1885222c24",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -57,7 +57,16 @@
     "Cloudflare GET for the active Worker secret bindings returned only name and type for DATABASE_URL and STORE_DATABASE_URL; no secret values were returned. The active Worker has no deployed /api/opennext-runtime-proof route or proof-mode/token/App-Store OID configuration.",
     "Historical Workerd DB proof #42872987144 used protected GitHub Actions connection secrets; it does not prove the active Cloudflare Worker secret values or their target resources.",
     "Read-only stable URL smoke against the existing version #17 returned root timeout, /api/health 503, /api/services 500, /services 404 and /api/opennext-runtime-proof 404.",
-    "The Cloudflare recovery document was updated on infra PR #191 in documentation-only commit 8cc293e849be4271f778a75b7f7158e2d356c8ab to record the exact Build timeout and distinguish it from the older Webpack success."
+    "The Cloudflare recovery document was updated on infra PR #191 in documentation-only commit 8cc293e849be4271f778a75b7f7158e2d356c8ab to record the exact Build timeout and distinguish it from the older Webpack success.",
+    "PR #317 merged into recovery branch only; listing wizard and cascading taxonomy foundation now part of recovery head bac8754. main unchanged.",
+    "PR #313 merged into recovery branch only; App and Store health checks now run concurrently with an eight-second response timeout; added tests.",
+    "B2 adapter end-to-end proof workflow #43713429877 succeeded: isolated upload, direct GET byte match, scoped list, signed GET byte match, exact-object delete and post-delete non-addressability.",
+    "B2 proof used bucket heavix-dev-assets, prefix heavix-media/, region us-east-005; no DB, existing media, backup prefix, bucket config or Production resource touched.",
+    "PR #333 consolidates #332 AI scraper implementation plus hardening; PR #332 closed as superseded. PR #333 targets main and remains unmerged.",
+    "PR #333 hardening removes browser-side third-party image loads, records authenticated admin audit actor, caps bulk imports/UI selection at five and adds regression tests.",
+    "PR #333 Vercel Preview deployment dpl_EU6G6wRuNKB4R5dvk7uWPMHLKQAM reached READY for commit a48dc078, but Deployment Protection blocked anonymous runtime acceptance.",
+    "PR #330 and #331 retargeted to recovery but currently non-mergeable; PR #312 and #314 homepage changes conflict with the current recovery line.",
+    "Cloudflare automatic build on PR #332 branch previously failed due missing build:cloudflare script; no Worker deployment occurred and trigger remains configured."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -148,80 +157,54 @@
     "Verified exact-head CI #43109607418 and OpenNext Workerd proof #43109607496 are completed/success.",
     "Created docs/audits/HEAVIX-LEGACY-PAGE-API-PARITY-2026-11-12.md and appended exact evidence to the worklog.",
     "Updated the historical legacy inventory audit with an explicit recovery-branch correction to prevent stale main-branch findings being treated as current.",
-    "Ran read-only browser-rendered live Preview sweep across public routes and APIs; documented HTTP outcomes and empty-data states in the parity audit."
+    "Ran read-only browser-rendered live Preview sweep across public routes and APIs; documented HTTP outcomes and empty-data states in the parity audit.",
+    "Merged PR #317 listing wizard into the recovery branch only; main unchanged.",
+    "Added and merged health-route timeout tests and PR #313 into recovery branch only; main unchanged.",
+    "Executed the actual B2 adapter proof; upload/read/list/signed-read/delete assertions passed on isolated Preview bucket.",
+    "Consolidated AI scraper hardening in PR #333 and closed duplicate PR #332.",
+    "Fixed CI workflow pull_request event types to include synchronize and edited on PR #333 branch.",
+    "Added scraper regression assertions; two test-authoring failures were diagnosed and corrected, with latest CI run in progress."
   ],
   "not_done_and_not_to_be_claimed": [
-    "Homepage restoration and Store order security changes have not yet passed exact-latest-head CI.",
-    "OTP/high-entropy one-time guest order access token is not implemented; order number is currently used as a bearer lookup factor.",
-    "Docker production build still fails in generated Store Prisma dynamic filesystem tracing; not fixed.",
-    "Standalone public /services landing page has not been implemented; confirm scope and ServiceRequest contract first.",
-    "SEO metadata gaps for model, auctions and Sell-in-7-Days registration/tracking routes remain.",
-    "No Preview deployment or Preview App/Store DB identity verification.",
-    "No Production or DNS changes.",
-    "The new /services route and Store guest lookup changes are awaiting exact-head CI and Preview runtime validation.",
-    "The Security tests job failed on the 4f960 checkpoint due vi.mock hoisting; the fix is committed but not yet CI-verified.",
-    "The Docker image build step passed on the 4f960 checkpoint, but final Caddy/Compose/connectivity proof had not completed at inspection time.",
-    "Latest exact-head CI after service, SEO and mock changes is pending.",
-    "Admin homepage editor changes and the latest SEO/Services changes are awaiting exact-head CI.",
-    "Exact latest-head CI after public homepage API, admin editor, contract-test, and Store privacy changes is pending.",
-    "Docker Caddy-to-app connectivity proof has not yet been observed passing on the inspected run.",
-    "Latest exact-head CI after Services header/footer wiring and subsequent Store/homepage changes is pending.",
-    "Latest Store/Marketplace health RBAC tests and auth-boundary updates are awaiting exact-head CI.",
-    "Detailed route/action coverage for logistics dashboard and all procurement/rental/service state transitions still needs verification.",
-    "Admin Store health and Marketplace health route-level RBAC changes are awaiting exact-head CI.",
-    "The corrected homepage contract suite and later Store/Marketplace health RBAC changes have not yet passed a new exact-head CI run.",
-    "Actual App and Store PostgreSQL system identities behind Cloudflare secret bindings DATABASE_URL and STORE_DATABASE_URL remain unverified.",
-    "The pinned read-only Workerd proof workflow was inspected but not dispatched; it requires explicit PREVIEW_ONLY workflow_dispatch input and two distinct Preview GitHub secrets.",
-    "Exact-head CI after the ServicesSection discoverability change is pending.",
-    "CI run #42912204178 passed Typecheck, Lint, auth-boundary, phase/tls/audit/Cloudflare checks but failed one public homepage API assertion because the test expected only the persisted hero row. Test corrected in ef38b4ad; exact-head CI pending.",
-    "Store Admin navigation seed changes for Procurement/Rentals/Service Providers are committed but not applied to Preview DB; run only after DB identity verification.",
-    "Rentals resource permission mismatch fixed to store.read/store.manage; exact-head CI pending.",
-    "Admin navigation RBAC bypass and stale seed permission aliases are fixed in code and tested, but latest CI is pending.",
-    "Admin navigation seed additions are not yet applied to Preview DB; apply only after database identity verification.",
-    "Admin navigation permission alias normalization is complete at source level (44 keys, 0 missing), but exact-head CI and Preview seed verification remain pending.",
-    "Live Preview verification confirmed current Worker is still old/incomplete: root not 17-section; /api/health 503; /api/services 500; /services 404; /sell-in-7-days, /knowledge, /auctions, /rentals, /listings 500; /companies empty; /store partial/empty.",
-    "Recovery branch has not been deployed. Preview App/Store database identities remain unverified. No Production/DNS changes.",
-    "The read-only Preview Workerd proof workflow was not dispatched: the browser profile has no GitHub sign-in. The workflow page was reached, but authentication is required before Run workflow. No credentials were requested or submitted.",
-    "Older GitHub Actions runs created before the new concurrency group remain active/queued; no cancel-workflow-run action is exposed by the GitHub connector.",
-    "TinyFish browser profile lacks GitHub sign-in, so old CI runs could not be cancelled and the read-only Workerd proof workflow could not be dispatched.",
-    "CI concurrency group was added but did not cancel already queued pre-existing PR runs in the observed queue; do not claim old runs were cancelled.",
-    "CI run #42915285217 failed two contract assertions (Rentals audit permission still rentals.manage; homepage test falsely matched local helper filename site-stats). Both source/test issues are fixed in commits d5e80c3 and 7d2c067.",
-    "Latest exact-head CI run #42971201849 is in progress; do not claim green until all required jobs complete.",
-    "GitHub Actions proof secrets are not independently proven identical to live Cloudflare Worker secret bindings; proof workflow not dispatched.",
-    "Recovery branch d2f68100 has not been deployed; the Cloudflare Build bot success comment represented a guarded no-op build, not a new active Worker deployment.",
-    "Worker Previews are disabled and there is no branch Preview environment; owner-reported B2 Preview Base settings are not active runtime bindings yet.",
-    "No B2 media adapter, seller staging/finalization flow, B2 upload/readback/hash/delete proof, or durable media persistence exists.",
-    "Preview App/Store database identities and Production isolation remain unverified."
+    "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
+    "Exact-head CI success for PR #333 commit cd8ef0e78f49e351011bd4e80414187a51cd877e; run #43721154092 was in progress.",
+    "Vercel Preview deployment and health check on current recovery head.",
+    "Owner sign-in to protected Vercel Preview, Admin login, owner role and moderation/RBAC acceptance.",
+    "Actual Cloudflare Worker database binding identity proof and Production isolation proof.",
+    "B2 runtime bindings on active Worker, current-head adapter proof and complete seller upload/attach/delete acceptance.",
+    "Resolve #330/#331 merge conflicts and #312/#314 homepage direction.",
+    "Canonical taxonomy/catalog reconciliation, approved Preview seed and model/attribute data acceptance.",
+    "Global Listing.sourceUrl uniqueness decision after duplicate assessment.",
+    "Media legal/consent policy, final route/RBAC/SEO acceptance and release-candidate PR.",
+    "Production domain/DNS and Production deployment remain not performed."
   ],
-  "next_action": "Use authorized GitHub Actions workflow_dispatch to run the existing protected read-only Preview App/Store DB identity proof; then prove the actual active Worker binding targets and run a bounded live B2 object proof. Do not deploy before these gates.",
+  "next_action": "Poll GitHub Actions run #43721154092 to completion and fix any remaining failures on PR #333 head cd8ef0e. Then obtain owner Vercel sign-in via secure browser-profile setup for Preview/Admin acceptance. In parallel, run exact-head CI/OpenNext for recovery head bac8754 and resolve #330/#331 conflicts plus #312/#314 homepage direction. Do not touch Production or DNS.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
   "latest_exact_head_ci_run": {
-    "id": 42971293294,
-    "sha": "45d86f1c7df9d644e4d33431ba5013e0a30646b7",
-    "status": "completed",
-    "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42971293294",
-    "note": "All required jobs passed on exact PR head; see docs/operations/HEAVIX-CI-AND-PREVIEW-BINDING-AUDIT-2026-11-11.md."
+    "id": 43721154092,
+    "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
+    "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
+    "status": "in_progress",
+    "conclusion": null,
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
+    "note": "Latest scraper hardening head. TLS, phase-tests, audit-transaction and Cloudflare compatibility report-only passed; verify security tests and Docker Caddy connectivity were still in progress at checkpoint."
   },
-  "latest_code_head_sha": "578fffc21a24a2c879eb5b73e483827c85db434d",
+  "latest_code_head_sha": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
   "latest_ci_run": {
-    "id": 42979858320,
-    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
-    "status": "completed",
-    "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
-    "jobs": [
-      "verify",
-      "phase-tests",
-      "audit-transaction",
-      "tls-proof",
-      "docker-build-proof",
-      "Cloudflare compatibility (report-only)"
-    ],
-    "skipped": [
-      "Legacy archive inventory (read-only)"
-    ],
-    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
+    "id": 43721154092,
+    "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
+    "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
+    "status": "in_progress",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
+    "jobs": {
+      "tls_proof": "success",
+      "phase_tests": "success",
+      "audit_transaction": "success",
+      "cloudflare_compatibility_report_only": "success",
+      "verify": "in_progress",
+      "docker_build_proof": "in_progress",
+      "legacy_archive_inventory": "skipped"
+    }
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -257,11 +240,12 @@
     "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
   },
   "confirmed_blockers": [
-    "ListingImageUploader targets /api/admin/upload, whose route requires requireAdmin(media.upload); seller upload is not proven and expected to be denied for non-admin sellers.",
-    "src/lib/media-service.ts persists files to local public/uploads via node:fs; operational Backblaze B2 media integration has not yet been located/proven in the repository.",
-    "Preview App DB and Store DB identities, and Production isolation, remain NOT VERIFIED.",
-    "Listing image UI limit 30 vs POST /api/listings slice(0,10) requires reconciliation; no silent truncation.",
-    "Brand free-text fallback conflicts with brandId validation and needs a real moderated request flow or strict registered-brand policy."
+    "Vercel Preview for scraper branch is READY but protected by Vercel login; no browser/admin acceptance performed.",
+    "Recovery Preview deployment and App/Store health proof are on old commit c5eda9e, not current recovery head bac8754.",
+    "B2 proof workflow skipped the preview-backup environment protection rules for the single Preview-only run; review this bypass before reuse.",
+    "PR #333 test suite had two consecutive assertion-only failures during test authoring; latest correction is cd8ef0e and the current CI run is in progress.",
+    "PR #330 and #331 were retargeted to recovery and GitHub reports mergeable=false; neither was merged.",
+    "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred."
   ],
   "platform_roadmap": {
     "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
@@ -279,11 +263,29 @@
     ]
   },
   "preview_latest_observation": {
-    "source": "GitHub PR #307 Cloudflare Workers bot deployment comment",
-    "deployment_commit": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
-    "status": "Cloudflare Preview deployment reported successful",
-    "url": "https://heavix-preview.heavixir.workers.dev",
-    "note": "Deployment event only; application behavior, Preview App/Store DB identities, isolation and end-to-end acceptance remain unverified."
+    "recovery_preview": {
+      "url": "https://heavix-4px5vv04y-heavixir-3290.vercel.app",
+      "deployment_id": "dpl_6uYBNPSauhGasPkNXw4G54KAu31W",
+      "commit": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
+      "state": "READY",
+      "health": {
+        "http": 200,
+        "app_db": "up",
+        "store_db": "up"
+      },
+      "note": "Old recovery head only; not current merged head bac8754."
+    },
+    "scraper_preview": {
+      "url": "https://heavix-n56s5d4tg-heavixir-3290.vercel.app",
+      "deployment_id": "dpl_EU6G6wRuNKB4R5dvk7uWPMHLKQAM",
+      "commit": "a48dc0787cd649ef74d4376c86ac249fe1073c52",
+      "state": "READY",
+      "note": "Vercel Deployment Protection blocks anonymous route checks; owner sign-in required for admin/browser acceptance."
+    },
+    "cloudflare_stable_preview": {
+      "url": "https://heavix-preview.heavixir.workers.dev",
+      "status": "existing old Worker remains active; no new Worker deployment"
+    }
   },
   "media_storage_audit": {
     "status": "BLOCKED — dedicated development media bucket name confirmed by owner; operational configuration and credentials must be safely verified through owner-guided steps",
@@ -429,28 +431,21 @@
   },
   "latest_b2_media_design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
   "b2_media_status": {
-    "status": "ARCHITECTURE DECIDED; IMPLEMENTATION AND LIVE PROOF PENDING",
+    "status": "ADAPTER END-TO-END PREVIEW PROOF PASSED; CURRENT WORKER RUNTIME BINDINGS AND END-TO-END SELLER FLOW STILL PENDING",
     "bucket": "heavix-dev-assets",
     "bucket_id_prefix": "356",
     "endpoint": "s3.us-east-005.backblazeb2.com",
     "region": "us-east-005",
     "access": "private",
     "key_scope": "heavix-dev-assets only; prefix heavix-media/",
-    "required_capabilities": [
-      "listFiles",
-      "readFiles",
-      "writeFiles",
-      "deleteFiles"
-    ],
-    "owner_inputs_needed": [
-      "Account ID",
-      "full Bucket ID",
-      "application key name and scope confirmation",
-      "confirmation credentials stored securely"
-    ],
-    "secret_handling": "Never request or store Application Key secret in chat.",
-    "blocker": "No dedicated media app key or B2 runtime configuration confirmed; no B2 media adapter/proof yet.",
-    "design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md"
+    "proof_run_id": 43713429877,
+    "proof_commit": "0086e09594381840ddfe71e10b0226f993f2f630",
+    "proof_url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43713429877",
+    "proof_result": "upload, direct GET byte comparison, scoped list, signed GET byte comparison, exact-object delete and post-delete non-addressability all passed",
+    "provenance_note": "B2 workflow and adapter implementation unchanged through recovery head bac8754; only one-line test-scope correction in tests/unit/listing-image-b2-contract.test.ts. Implementation-equivalent proof, not exact-current-head proof.",
+    "environment_gate": "preview-backup was the only pending environment; its protection rules were skipped by an administrator for this single Preview-only proof. Review before reuse.",
+    "runtime_integration": "NOT VERIFIED on active Cloudflare Worker; no Production resource touched.",
+    "secret_handling": "Never request or store Application Key secret in chat."
   },
   "b2_media_key_provisioning": {
     "status": "OWNER_CONFIRMED_PLAN_LIMITATION_ACCEPTED_PENDING_BUCKET_SCOPE_CONFIRMATION",
@@ -564,10 +559,20 @@
     }
   },
   "blockers": [
-    "ACTUAL WORKER DB IDENTITY NOT VERIFIED: active Cloudflare Worker DATABASE_URL and STORE_DATABASE_URL targets have not been proven to be the allow-listed Preview App and Store databases. Secret names are not identity evidence. The protected GitHub Workerd proof workflow has not been dispatched in this session, and GitHub secret proof alone must be tied to the actual Worker bindings.",
-    "LIVE B2 OBJECT OPERATIONS NOT VERIFIED: no real upload/download/SHA-256/delete proof has been performed against the dedicated heavix-dev-assets bucket.",
-    "PREVIEW RELEASE NOT PERFORMED: active Worker still serves the previous deployment; candidate is not deployed. Runtime/browser/data/visual acceptance across product journeys remains pending.",
-    "ACTIVE PREVIEW RUNTIME/DATA FAILURES: old Worker returns 503 for /api/health, 500 for multiple product pages/APIs, 404 for /services, and empty/partial Companies/Store/homepage data. Recovery source route parity does not fix the active Worker until safe Preview runtime/database binding and data acceptance are completed."
+    "Exact-head CI and OpenNext runtime proof are still required on current recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d; successful PR #307 checks are from prior head c5eda9e.",
+    "Current recovery head has not yet been redeployed to Vercel Preview; previous recovery Preview health success is for c5eda9e only.",
+    "PR #333 latest CI run #43721154092 is still in progress at this checkpoint; do not claim green until verify and Docker proof complete.",
+    "Vercel Deployment Protection blocks anonymous access to PR #333 Preview. Owner must sign in through a secure browser profile before runtime/admin acceptance.",
+    "Admin owner login and role/RBAC acceptance have not been verified; source presence does not prove owner access.",
+    "Actual Cloudflare Worker App/Store database identities and Production isolation remain NOT VERIFIED.",
+    "B2 adapter proof passed on an older commit; actual B2 bindings on the active Worker and full seller staging/finalization/media lifecycle remain NOT VERIFIED.",
+    "PR #330 and #331 are non-mergeable after retarget to recovery; resolve conflicts without overwriting recovery changes.",
+    "PR #312 and #314 contain divergent/conflicting homepage changes; choose performance and parent-only category behavior, then integrate with tests.",
+    "Canonical catalog reconciliation is incomplete; no shared or Production seed has been applied.",
+    "Global Listing.sourceUrl uniqueness decision remains open pending duplicate-data assessment.",
+    "Media legal/consent policy for third-party images and seller contact data needs explicit product/legal acceptance.",
+    "Cloudflare automatic build trigger for closed PR #332 branch remains configured; do not push that branch. Its prior build failed because build:cloudflare is missing; no deployment occurred.",
+    "Production domain, DNS, custom-domain binding and Production rollout remain intentionally untouched."
   ],
   "last_verified_legacy_parity": {
     "audited_at_utc": "2026-11-11T22:30:00.000Z",
@@ -617,5 +622,65 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "6e6983efe66154321998e9ce5d623d1885222c24"
+  "documentation_head": "f7c0cfa328ed733fa2b339316aa3dee5fa192173",
+  "recovery_latest_exact_head_ci": {
+    "id": 43714375711,
+    "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43714375711",
+    "note": "Successful on previous recovery head only; not exact current integrated recovery head bac8754."
+  },
+  "integration_merges": [
+    {
+      "pr": 317,
+      "title": "feat(listings): cascading taxonomy wizard",
+      "merge_commit": "5525ce6a496db61e8728ae3876dcdcef2b5544dc",
+      "base": "recovery/heavix-full-product-integration-2026-11-11",
+      "main_unchanged": true
+    },
+    {
+      "pr": 313,
+      "title": "fix(health): bounded parallel App/Store DB probes",
+      "merge_commit": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
+      "base": "recovery/heavix-full-product-integration-2026-11-11",
+      "main_unchanged": true
+    }
+  ],
+  "integrated_scraper_pr": {
+    "number": 333,
+    "url": "https://github.com/HEAVIXIR/z-ai-2/pull/333",
+    "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
+    "head_sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
+    "base": "main",
+    "state": "open",
+    "draft": false,
+    "merged": false,
+    "includes_pr": 332,
+    "notes": [
+      "No remote third-party images rendered in browser",
+      "Audit actor uses authenticated admin ID",
+      "Bulk imports and UI selection capped at five",
+      "Regression tests added",
+      "CI workflow PR events include synchronize and edited"
+    ]
+  },
+  "superseded_prs": [
+    {
+      "number": 332,
+      "state": "closed",
+      "superseded_by": 333,
+      "cloudflare_trigger_still_configured": true
+    }
+  ],
+  "release_review_checkpoint": {
+    "recovery_branch": "recovery/heavix-full-product-integration-2026-11-11",
+    "recovery_head": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
+    "recovery_pr": 307,
+    "scraper_pr": 333,
+    "superseded_scraper_pr": 332,
+    "main_unchanged": true,
+    "release_ready": false,
+    "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved."
+  }
 }
