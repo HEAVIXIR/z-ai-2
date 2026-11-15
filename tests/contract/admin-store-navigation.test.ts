@@ -6,7 +6,7 @@ const read = (relative: string) =>
   readFileSync(path.join(process.cwd(), relative), "utf8");
 
 describe("Store Control Plane navigation contract", () => {
-  const navigation = read("prisma/seed-admin-navigation.ts");
+  const navigation = read("src/lib/admin/navigation-defaults.ts");
   const permissions = read("src/lib/authorization/permissions.ts");
   const resources = read("src/lib/admin/resources/store-domain-resources.ts");
 
