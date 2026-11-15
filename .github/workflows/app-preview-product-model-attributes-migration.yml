@@ -90,7 +90,7 @@ jobs:
             exit 1
           }
 
-          preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public."ProductModelAttribute"') IS NULL)::text || '|' || (to_regclass('public."ProductModel"') IS NOT NULL)::text || '|' || (to_regclass('public."Category"') IS NOT NULL)::text || '|' || (to_regclass('public."AttributeDefinition"') IS NOT NULL)::text")"
+          preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.' || chr(34) || 'ProductModelAttribute' || chr(34)) IS NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'ProductModel' || chr(34)) IS NOT NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'Category' || chr(34)) IS NOT NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'AttributeDefinition' || chr(34)) IS NOT NULL)::text")"
           test "$preconditions" = "true|true|true|true" || {
             echo "ProductModelAttribute migration preconditions failed; refusing migration."
             exit 1
