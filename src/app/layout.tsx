@@ -28,7 +28,9 @@ export const metadata: Metadata = {
     "HEAVIX",
   ],
   authors: [{ name: "آریا ماشین جم" }],
-  alternates: { canonical: "/" },
+  // A noindex Preview must not advertise the production canonical URL.
+  // Omit canonical entirely in Preview; production keeps the root canonical.
+  ...(!IS_PREVIEW_DEPLOYMENT ? { alternates: { canonical: "/" } } : {}),
   openGraph: {
     title: "هویکس | مارکت‌پلیس ماشین‌آلات سنگین ایران",
     description: "بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران.",
