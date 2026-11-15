@@ -614,6 +614,9 @@ describe("AI scraper hardening follow-up", () => {
     expect(client).toContain("const MAX_BULK_IMPORT_SELECTION = 5");
     expect(client).toContain(".slice(0, MAX_BULK_IMPORT_SELECTION)");
     expect(client).toContain("selected.size >= MAX_BULK_IMPORT_SELECTION");
-    expect(client).not.toMatch(/setSelected\\(prev => \\{[\\s\\S]{0,250}setError/);
+    const toggleStart = client.indexOf("const toggle =");
+    const toggleEnd = client.indexOf("\\n  };", toggleStart);
+    const toggle = client.slice(toggleStart, toggleEnd);
+    expect(toggle).not.toContain("setError");
   });
 });
