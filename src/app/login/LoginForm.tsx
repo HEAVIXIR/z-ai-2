@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 function kind(v: string): "email" | "mobile" {
-  if (/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(v)) return "email";
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return "email";
   return "mobile";
 }
 
