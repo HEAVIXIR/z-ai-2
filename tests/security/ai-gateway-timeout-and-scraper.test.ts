@@ -385,7 +385,7 @@ describe("AI Listing Acquisition security contracts", () => {
   it("re-extracts source data server-side instead of trusting browser fields", () => {
     const code = src();
     expect(code).toMatch(/Browser-submitted extraction fields are untrusted/);
-    expect(code).toMatch(/const scraped = await scrapeUrl\(zai, sourceUrl\)/);
+    expect(code).toMatch(/const scraped = await scrapeUrl\(zai, sourceUrl, controller\.signal\)/);
     expect(code).not.toMatch(/const scraped = body\.scraped as ScrapeResult/);
   });
 
