@@ -141,3 +141,47 @@ Read-only, JavaScript-rendered fetches were made against the existing Worker URL
 **Conclusion:** the currently active Preview Worker is not serving the recovery branch and has substantial runtime/data-readiness failures. The recovery branch source changes are not yet deployed. The 503/500/404 responses are live evidence, not guesses. Do not attempt to mask these failures with fake data or a superficial static shell.
 
 **Release gate:** first complete exact-head CI; then prove that the actual Worker App and Store secret bindings point to distinct dedicated Preview PostgreSQL system identifiers and are read-only where required; then deploy only to the existing Preview Worker; finally re-fetch every route above and confirm the 17-section homepage, public services, and 200/healthy status for core routes. No Production/DNS changes.
+
+## Release checkpoint refresh — 2026-11-15
+
+This section supersedes older checkpoint statements where they conflict; historical entries above are retained as dated evidence.
+
+### Integration branch
+- Recovery branch latest code head: `bac875427f707c377afbadbdcda43bf5b3b0eb0d`.
+- PR #317 (listing wizard / cascading taxonomy foundation) and PR #313 (bounded parallel health checks) have been merged into the recovery branch only. PR #307 remains Draft/open/unmerged; `main` is unchanged.
+- CI/OpenNext evidence from PR #307 at `c5eda9e...` predates these two integration merges. Exact-head CI/OpenNext for `bac8754...` is NOT VERIFIED.
+- PR #330 taxonomy admin and PR #331 seed safety were retargeted to recovery but GitHub currently reports both non-mergeable. PR #314 parent-only homepage category navigation and PR #312 homepage performance changes are divergent/conflicting; do not copy files wholesale or merge without conflict resolution.
+
+### Media / Backblaze B2
+- B2 adapter proof workflow #43713429877 completed SUCCESS. The actual adapter uploaded an isolated object, direct GET and signed GET returned byte-identical content, scoped listing found the proof object, and exact-object deletion made it no longer addressable.
+- The proof used bucket `heavix-dev-assets`, prefix `heavix-media/`, region `us-east-005`. No DB, existing media, backup prefix, bucket configuration or Production resource was touched.
+- Provenance: workflow checked out `0086e095...`, not the current recovery head. The B2 workflow and adapter implementation files are unchanged through `bac8754...`; only a one-line test-scope correction changed in the B2-related test file. This is implementation-equivalent evidence, not exact-current-head proof.
+- GitHub environment `preview-backup` was allowed by skipping its protection rules for this single Preview-only run. Review this bypass before reusing the environment.
+- B2 runtime bindings on the active Cloudflare Worker, seller staging/finalization on the live Worker, public/private media URL policy and end-to-end listing image acceptance remain NOT VERIFIED.
+
+### AI scraper
+- PR #332 is closed as superseded. PR #333 is the consolidated scraper review PR, targets `main`, and contains the #332 implementation plus hardening: no browser-side remote image requests, authenticated admin audit actor, five-item server/UI bulk cap and regression tests.
+- Latest PR #333 head: `cd8ef0e78f49e351011bd4e80414187a51cd877e`. CI run #43721154092 was still in progress at the last inspection; TLS, phase-tests, audit-transaction and Cloudflare compatibility report-only had passed; verify and Docker connectivity were still running. Do not claim the run green until it completes.
+- PR #333 Vercel deployment for `a48dc078...` reached READY, but Vercel Deployment Protection blocked anonymous runtime checks. Admin login, moderation, health and homepage acceptance are NOT VERIFIED pending owner Vercel sign-in in a saved browser profile.
+- The Cloudflare Workers Build trigger remains configured for the closed #332 branch. Its earlier automatic build failed because `build:cloudflare` is absent; no deployment occurred. Do not push to that branch.
+
+### Preview / access
+- Recovery Vercel Preview `heavix-4px5vv04y-heavixir-3290.vercel.app` is READY for old commit `c5eda9e...`; health previously showed App DB and Store DB up on that old head. It is not the current recovery head.
+- PR #333 Preview `heavix-n56s5d4tg-heavixir-3290.vercel.app` is READY for `a48dc078...`, but routes are protected by Vercel login.
+- Actual Admin owner access and permission acceptance are NOT VERIFIED. A protected route existing in source does not prove the owner's account has the required admin role.
+- Active Cloudflare Worker remains the prior deployment. No new Worker deployment, Production change, DNS change or stable URL replacement occurred.
+
+### Current release blockers
+1. Exact-head CI and OpenNext runtime proof on recovery `bac8754...`.
+2. Current-head recovery Preview deployment and read-only health/runtime acceptance.
+3. Owner sign-in to Vercel Preview to verify admin login, owner role, moderation permissions and protected routes.
+4. Preview App/Store database identity proof tied to actual deployment configuration; reachability alone is insufficient.
+5. Resolve PR #330/#331 merge conflicts and decide whether #312 performance changes or #314 parent-only category behavior should be integrated, with tests.
+6. Complete canonical catalog reconciliation before any Preview seed; no shared/Preview/Production seed has been applied.
+7. Decide global `Listing.sourceUrl` uniqueness only after duplicate-data assessment.
+8. Finalize media consent/legal policy and prove the actual Worker runtime B2 bindings and seller media lifecycle.
+9. Reconcile all route/UI/API/RBAC journeys and SEO metadata, then prepare one reviewable release-candidate PR.
+
+### Production and DNS
+- Production and DNS remain untouched by design. No Production migrations/seeds/writes, Cloudflare deployment, custom-domain attachment or DNS changes were performed.
+- HEAVIX is not yet release-ready. The next milestone is a single integrated release-candidate PR with exact-head CI, Preview runtime evidence and admin acceptance for owner review.
