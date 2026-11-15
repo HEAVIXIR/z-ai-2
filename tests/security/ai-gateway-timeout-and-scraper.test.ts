@@ -439,6 +439,41 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(importer).toMatch(/پیش‌نویس ساخته نشد/);
   });
 
+  it("validates every redirect and pins source requests to resolved public IPv4 addresses", () => {
+    const code = src();
+    expect(code).toMatch(/dnsLookup\\(current\\.hostname, \\{ all: true, family: 4/);
+    expect(code).toMatch(/resolved\\.some\\(\\(entry\\) => !isPublicIpv4\\(entry\\.address\\)\\)/);
+    expect(code).toMatch(/requestPinnedSource\\(current, resolved\\[0\\]\\.address/);
+    expect(code).toMatch(/current = new URL\\(result\\.redirect, current\\)/);
+    expect(code).toMatch(/current\\.port && current\\.port !== "443"/);
+    expect(code).not.toMatch(/page_reader/);
+  });
+
+  it("maps structured extraction values through configured category attributes with source provenance", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\\n/* POST", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/db\\.categoryAttribute\\.findMany/);
+    expect(importer).toMatch(/where:\\s*\\{\\s*categoryId\\s*\\}/);
+    expect(importer).toMatch(/operating_hours/);
+    expect(importer).toMatch(/manufacturing_year/);
+    expect(importer).toMatch(/sourceType:\\s*"AI_EXTRACTION"/);
+    expect(importer).toMatch(/sourceReference:\\s*s\\.url/);
+    expect(importer).toMatch(/confidence:\\s*null/);
+    expect(importer).toMatch(/attributeValues:\\s*\\{\\s*create:\\s*extractedAttributeValues/);
+  });
+
+  it("does not guess condition option IDs when category options are ambiguous", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("\\n/* POST", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toMatch(/matches\\.length === 1/);
+    expect(importer).toMatch(/confidence:\\s*null/);
+    expect(importer).not.toMatch(/confidence:\\s*0\\.7/);
+  });
+
   it("keeps the legacy synthetic action interface fail-closed", () => {
     const code = src();
     expect(code).toMatch(/if \(action\) return NextResponse\.json\([\s\S]{0,220}status: 410/);
