@@ -139,6 +139,7 @@ export async function fetchAllowedSourcePage(
     if (signal?.aborted) throw new Error("درخواست دریافت صفحه لغو شد.");
 
     const resolved = await dependencies.lookup(current.hostname, { all: true, family: 4, verbatim: true });
+    if (signal?.aborted) throw new Error("درخواست دریافت صفحه لغو شد.");
     if (!resolved.length || resolved.some((entry) => !isPublicIpv4(entry.address))) {
       throw new Error("نشانی شبکه مقصد عمومی و امن نیست.");
     }
