@@ -1,5 +1,12 @@
 /* ============================================================
    HEAVIX email utility — production-ready signature, sandbox-safe.
+   ------------------------------------------------------------
+   In production: configure SMTP env vars (SMTP_HOST, SMTP_PORT,
+   SMTP_USER, SMTP_PASS, SMTP_FROM) and install `nodemailer`, then
+   `sendVerificationEmail` will route through SMTP. Otherwise
+   (dev/sandbox), the code is logged to the server console so the
+   developer can read it from `dev.log` and complete the
+   verification flow.
    ============================================================ */
 
 export interface SendEmailArgs {
@@ -22,6 +29,9 @@ export const isSmtpConfigured = (): boolean =>
 /** Low-level send. Falls back to console logging when SMTP is not set. */
 export async function sendEmail(args: SendEmailArgs): Promise<void> {
   if (!isSmtpConfigured()) {
+    // ── Dev / sandbox fallback ──────────────────────────────────
+    // Print a clearly-delimited block so the code can be picked out
+    // of `dev.log` while developing without a real SMTP server.
     console.log(
       [
         "────────────── [HEAVIX EMAIL — DEV FALLBACK] ──────────────",
@@ -36,6 +46,10 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
     return;
   }
 
+  // ── Production: lazy-load nodemailer so the dependency is only
+  //    required when SMTP is actually configured. The dynamic
+  //    import keeps this module working in the sandbox where
+  //    nodemailer isn't installed. ─────────────────────────────
   try {
     const mod = (await import("nodemailer")) as typeof import("nodemailer");
     const transporter = mod.createTransport({
@@ -57,6 +71,7 @@ export async function sendEmail(args: SendEmailArgs): Promise<void> {
   }
 }
 
+/** Send a 6-digit email verification code to the user. */
 export async function sendVerificationEmail(
   email: string,
   code: string,
@@ -74,10 +89,22 @@ export async function sendVerificationEmail(
       "",
       "— تیم هویکس",
     ].join("\n"),
-    html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px"><h2 style="color:#F58220">HEAVIX — تأیید ایمیل</h2><p>کد تأیید ایمیل شما:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px">${code}</p><p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p><p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>`,
+    html: `
+      <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">
+        <h2 style="color:#F58220;margin:0 0 16px">HEAVIX — تأیید ایمیل</h2>
+        <p style="font-size:14px;color:#333">با سلام،</p>
+        <p style="font-size:14px;color:#333">کد تأیید ایمیل شما:</p>
+        <p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#0b0b0b;text-align:center;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:16px;margin:16px 0">${code}</p>
+        <p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0" />
+        <p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p>
+      </div>
+    `,
   });
 }
 
+
+/** Send a one-time password recovery code to a verified account email. */
 export async function sendPasswordResetEmail(
   email: string,
   code: string,
@@ -94,6 +121,14 @@ export async function sendPasswordResetEmail(
       "",
       "— تیم هویکس",
     ].join("\n"),
-    html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px"><h2 style="color:#F58220">HEAVIX — بازیابی رمز عبور</h2><p>کد بازیابی رمز عبور شما:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px">${code}</p><p style="font-size:12px;color:#888">این کد فقط ۱۰ دقیقه اعتبار دارد و فقط یک‌بار قابل استفاده است.</p><p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>`,
+    html: `
+      <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">
+        <h2 style="color:#F58220;margin:0 0 16px">HEAVIX — بازیابی رمز عبور</h2>
+        <p style="font-size:14px;color:#333">کد بازیابی رمز عبور شما:</p>
+        <p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#0b0b0b;text-align:center;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:16px;margin:16px 0">${code}</p>
+        <p style="font-size:12px;color:#888">این کد فقط ۱۰ دقیقه اعتبار دارد و فقط یک‌بار قابل استفاده است.</p>
+        <p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p>
+      </div>
+    `,
   });
 }
