@@ -42,6 +42,12 @@ type FlaggedItem = {
   } | null;
 };
 
+type PendingImportItem = {
+  id: string; title: string; slug: string; status: string; price: string | null;
+  createdAt: string; sourceUrl: string | null; sourceSite: string | null;
+  brandName: string | null; categoryName: string | null;
+};
+
 type Stats = {
   scanned: number;
   flagged: number;
@@ -127,12 +133,15 @@ function riskMeta(score: number | null): {
 
 export default function ModerationAdminClient({
   initialFlagged,
+  initialPendingImports,
   initialStats,
 }: {
   initialFlagged: FlaggedItem[];
+  initialPendingImports: PendingImportItem[];
   initialStats: Stats;
 }) {
   const [flagged, setFlagged] = useState<FlaggedItem[]>(initialFlagged);
+  const [pendingImports, setPendingImports] = useState<PendingImportItem[]>(initialPendingImports);
   const [stats, setStats] = useState<Stats>(initialStats);
   const [scanning, setScanning] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
@@ -150,6 +159,7 @@ export default function ModerationAdminClient({
       }
       const j = await res.json();
       setFlagged(j.flagged ?? []);
+      setPendingImports(j.pendingImports ?? []);
       setStats(j.stats ?? initialStats);
     } catch (e: any) {
       setError(e?.message ?? "خطا در ارتباط با سرور.");
@@ -289,6 +299,49 @@ export default function ModerationAdminClient({
           </button>
         </div>
       )}
+
+      {/* AI-imported drafts: this lane is independent of risk-score flags. */}
+      <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-black text-amber-950">آگهی‌های واردشده با هوش مصنوعی — منتظر تأیید مدیر</h2>
+            <p className="mt-1 text-xs text-amber-800">این آگهی‌ها تا تصمیم انسانی منتشر نمی‌شوند؛ حتی اگر سامانهٔ تشخیص ریسک آن‌ها را پرچم نکرده باشد.</p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-900">{faNumber(pendingImports.length)} مورد</span>
+        </div>
+        <div className="divide-y divide-zinc-100">
+          {pendingImports.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">در حال حاضر آگهی واردشدهٔ منتظر تأیید وجود ندارد.</p>
+          ) : pendingImports.map((item) => (
+            <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-zinc-900">{item.title}</p>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {item.sourceSite ?? "منبع خارجی"} · {item.brandName ?? "برند نامشخص"} · {item.categoryName ?? "دسته نامشخص"}
+                  {item.price ? ` · ${faNumber(Number(item.price))} تومان` : ""}
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-400">{faDateTime(item.createdAt)}</p>
+                {item.sourceUrl && (
+                  <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-[#F58220] underline">
+                    مشاهده آگهی اصلی
+                  </a>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a href={`/admin/listings/${encodeURIComponent(item.id)}/edit`} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700">
+                  بررسی جزئیات
+                </a>
+                <button onClick={() => review(item.id, "reject")} disabled={actingId === item.id} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50">
+                  رد
+                </button>
+                <button onClick={() => review(item.id, "approve")} disabled={actingId === item.id} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                  {actingId === item.id ? "در حال ثبت..." : "تأیید و انتشار"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {/* Flagged listings table */}
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
