@@ -38,10 +38,10 @@ function request(): FakeRequest {
   const value = Object.assign(new EventEmitter(), {
     setTimeout: vi.fn(),
     end: vi.fn(),
-    destroy(error?: Error) {
+    destroy: vi.fn((error?: Error) => {
       if (error) queueMicrotask(() => value.emit("error", error));
       queueMicrotask(() => value.emit("close"));
-    },
+    }),
   });
   return value as FakeRequest;
 }
