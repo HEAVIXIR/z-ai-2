@@ -11,6 +11,9 @@ import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-so
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const DIVAR_HOSTS = ["divar.ir", "divar.com"];
+const SHEYPOOR_HOSTS = ["sheypoor.com"];
+
 interface ScrapeResult {
   url: string;
   title?: string;
