@@ -433,3 +433,18 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(code).toMatch(/if \(action\) return NextResponse\.json\([\s\S]{0,220}status: 410/);
   });
 });
+
+describe("AI Listing Acquisition manager publication gate", () => {
+  it("exposes pending drafts through the admin listings status filter", () => {
+    const code = readSource("admin/listings/route.ts");
+    expect(code).toMatch(/const status = url\.searchParams\.get\("status"\)/);
+    expect(code).toMatch(/if \(status\) where\.status = status/);
+    expect(code).toMatch(/hasPermission\(sessionUser\.id, "listing\.read"\)/);
+  });
+
+  it("requires listing.publish permission for the manager publish action", () => {
+    const code = readSource("admin/listings/route.ts");
+    expect(code).toMatch(/hasPermission\(sessionUser\.id, "listing\.publish"\)/);
+    expect(code).toMatch(/case "publish": data = \{ status: "PUBLISHED", publishedAt: now \}/);
+  });
+});
