@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-15T13:50:00.000Z",
+  "updated_at_utc": "2026-11-15T13:52:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "1bac29fe12572e8c11d6f8e2ca1a4a72e54c879f",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -622,7 +622,7 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "f7c0cfa328ed733fa2b339316aa3dee5fa192173",
+  "documentation_head": "1bac29fe12572e8c11d6f8e2ca1a4a72e54c879f",
   "recovery_latest_exact_head_ci": {
     "id": 43714375711,
     "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
