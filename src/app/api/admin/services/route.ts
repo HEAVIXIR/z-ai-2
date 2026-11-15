@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
     if (!body?.nameFa) {
@@ -108,6 +110,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
     const id = typeof body.id === "string" ? body.id : null;
