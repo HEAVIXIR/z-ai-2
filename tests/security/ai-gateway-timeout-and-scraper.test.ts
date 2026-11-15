@@ -505,3 +505,24 @@ describe("AI Listing Acquisition manager publication gate", () => {
     expect(code).toMatch(/case "publish": data = \{ status: "PUBLISHED", publishedAt: now \}/);
   });
 });
+
+describe("AI scraper manager-review integration", () => {
+  it("exposes pending source-backed listings separately from risk-flagged moderation records", () => {
+    const route = readSource("admin/moderation/route.ts");
+    expect(route).toContain('where: { status: "PENDING", sourceUrl: { not: null } }');
+    expect(route).toContain("pendingImports: pendingImports.map");
+    expect(route).toContain("requirePermission(user.id, \"moderation.read\")");
+  });
+
+  it("renders a dedicated approval lane and links to the existing listing editor", () => {
+    const client = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/admin/moderation/ModerationAdminClient.tsx"),
+      "utf-8",
+    );
+    expect(client).toContain("آگهی‌های واردشده با هوش مصنوعی");
+    expect(client).toContain('review(item.id, "approve")');
+    expect(client).toContain('review(item.id, "reject")');
+    expect(client).toContain("/admin/listings/${encodeURIComponent(item.id)}/edit");
+    expect(client).toContain("setPendingImports(j.pendingImports ?? [])");
+  });
+});
