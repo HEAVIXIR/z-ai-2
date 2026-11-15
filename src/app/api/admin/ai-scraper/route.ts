@@ -201,6 +201,9 @@ async function getZai(signal?: AbortSignal) {
 /** Convert a scraped result into a HEAVIX listing draft in DB. */
 async function importListing(s: ScrapeResult) {
   if (!isAllowedSourceUrl(s.url)) throw new Error("منبع آگهی مجاز نیست.");
+  if (!s.title?.trim() || (s.description || "").startsWith("Error scraping:")) {
+    throw new Error("استخراج معتبر آگهی کامل نیست؛ پیش‌نویس ساخته نشد.");
+  }
   const existing = await db.listing.findFirst({ where: { sourceUrl: s.url }, select: { id: true, slug: true, status: true } });
   if (existing) return { ...existing, alreadyExists: true };
   const title = s.title || "بدون عنوان";
