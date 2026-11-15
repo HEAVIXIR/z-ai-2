@@ -47,13 +47,15 @@ The two dedicated form sources are substantially larger than the historical data
 
 - `seed-category-specific-attributes.ts`: **127 machine/catalog form templates**, **957 field placements**, and **542 distinct raw field keys**.
 - Within those 542 keys, **92 keys have more than one field signature** (differences can be label, type, unit, options, or flags). The current resolver namespaces category-specific variants; a source-only simulation with no pre-existing DB definitions yields **184 namespaced field placements** and **726 distinct resolved keys**. The actual resolver result depends on existing Preview AttributeDefinition rows, so 726 is not a predicted database row count.
-- `seed-service-mineral-attributes.ts`: **26 explicit form objects plus 41 generated form entries = 67 form slugs**, with **252 field placements** and **226 distinct raw keys**.
+- `seed-service-mineral-attributes.ts`: **26 explicit form objects plus 52 generated form entries = 78 form slugs**, with **304 field placements** and **271 distinct raw keys**.
 - The service/mineral form keys have no raw-key overlap with the 542 machine/catalog keys in these source files.
-- All 127 machine form slugs are present in the V1.1 taxonomy source. All 67 service/mineral form slugs are present in the combined V1.1 + service/mineral category sources.
+- All 127 machine form slugs are present in the V1.1 taxonomy source. All 78 service/mineral/transport form slugs are present in the combined V1.1 + service/mineral category sources.
+- Eleven transport/logistics forms have now been added: heavy haulage, container, port, rail, air freight, warehouse logistics, customs clearance, freight forwarding, last mile, cold chain, and other transport.
+- The service/mineral seed now validates duplicate form slugs and duplicate fields per form, and fails before writes if any active terminal `SERVICE`-layer category lacks a dedicated form.
 - The 31 slugs in `RETIRED_MACHINE_TEMPLATE_SLUGS` are not unconditionally disabled: the seed skips them only when their category is absent from the target DB. Do not interpret this set as proof that those taxonomy nodes are globally retired.
 - The historical **405 Attributes** figure is a database snapshot count. It cannot be directly equated with raw keys, field placements, resolved keys, form templates, or option rows.
 
-The machine form seed validates that every active terminal CATALOG category under its five coverage roots has a dedicated template and aborts before writes if a non-retired form category is missing. The service/mineral form source currently does not contain an equivalent comprehensive check for every active SERVICE-layer terminal category; add that validation before any apply run.
+The machine form seed validates that every active terminal CATALOG category under its five coverage roots has a dedicated template and aborts before writes if a non-retired form category is missing. The service/mineral seed now has a matching terminal-category coverage gate for active SERVICE-layer categories. These are pre-write checks; they do not prove the current Preview DB has already been seeded.
 
 
 ### Current isolated Preview DB audit
