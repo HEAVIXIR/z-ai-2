@@ -2,12 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import MobileNav from "@/components/layout/MobileNav";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 export const metadata: Metadata = {
-  // STEP 13.00: SITE_BASE_URL is the single source of truth for the
-  // canonical domain. Previously this used a local fallback string;
-  // now it consumes @/lib/site-config so all URL-emitting code agrees.
+  // SITE_BASE_URL is the single source of truth for canonical URLs.
   metadataBase: new URL(SITE_BASE_URL),
   title: {
     default: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
@@ -38,7 +36,11 @@ export const metadata: Metadata = {
     locale: "fa_IR",
     siteName: "هویکس",
   },
-  robots: { index: true, follow: true },
+  // Preview pages must remain crawlable so crawlers can see this directive,
+  // but must never be indexed. Production keeps the normal index policy.
+  robots: IS_PREVIEW_DEPLOYMENT
+    ? { index: false, follow: false, noarchive: true }
+    : { index: true, follow: true },
 };
 
 export default function RootLayout({
