@@ -41,6 +41,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "یک ایمیل معتبر وارد کنید." }, { status: 400 });
   }
 
+  // Keep behavior identical for known and unknown addresses when SMTP is unavailable.
+  if (!isSmtpConfigured()) {
+    return NextResponse.json(
+      { error: "سرویس بازیابی رمز عبور موقتاً در دسترس نیست. لطفاً بعداً تلاش کنید." },
+      { status: 503 },
+    );
+  }
+
   try {
     const user = await db.user.findUnique({
       where: { email },
@@ -48,14 +56,6 @@ export async function POST(req: Request) {
     });
 
     if (user && user.emailVerified && user.status !== "BLOCKED") {
-      // Do not create a recovery code unless an actual delivery channel is configured.
-      if (!isSmtpConfigured()) {
-        return NextResponse.json(
-          { error: "سرویس ارسال ایمیل موقتاً در دسترس نیست. لطفاً بعداً تلاش کنید." },
-          { status: 503 },
-        );
-      }
-
       const code = String(randomInt(100000, 1000000));
       await db.verificationCode.updateMany({
         where: { userId: user.id, type: "PASSWORD_RESET", used: false },
