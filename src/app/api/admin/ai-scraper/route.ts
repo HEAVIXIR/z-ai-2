@@ -34,6 +34,7 @@ interface ScrapeResult {
   phone?: string | null;
   location?: string | null;
   brand?: string | null;
+  model?: string | null;
   category?: string | null;
   year?: number | null;
   hours?: number | null;
@@ -109,6 +110,7 @@ async function llmExtract(
   "phone": string (Iran mobile like 09xxxxxxxxx) or null,
   "location": string (province/city) or null,
   "brand": string (Persian brand name) or null,
+  "model": string (exact model designation from the ad) or null,
   "category": string (machine type) or null,
   "year": number or null,
   "hours": number or null,
@@ -173,6 +175,7 @@ async function scrapeUrl(zai: any, url: string): Promise<ScrapeResult> {
       phone: llm.phone || phones[0] || null,
       location: llm.location || null,
       brand: llm.brand || null,
+      model: llm.model || null,
       category: llm.category || null,
       year: llm.year ?? null,
       hours: llm.hours ?? null,
@@ -207,32 +210,44 @@ async function importListing(s: ScrapeResult) {
     slug = `${slugify(title)}-${i++}`;
   }
 
-  // Match brand
+  // Conservative catalog matching: exact normalized matches only. Ambiguous AI guesses
+  // remain unmapped for manager review rather than being attached to the wrong entity.
+  const normalize = (value: string) => value.trim().toLocaleLowerCase("fa-IR").replace(/[\u200c\s_-]+/g, "");
   let brandId: string | null = null;
   if (s.brand) {
-    const b = await db.brand.findFirst({
-      where: {
-        OR: [
-          { name: { contains: s.brand } },
-          { nameEn: { contains: s.brand } },
-        ],
-      },
+    const candidates = await db.brand.findMany({
+      where: { OR: [{ name: { equals: s.brand, mode: "insensitive" } }, { nameEn: { equals: s.brand, mode: "insensitive" } }] },
+      select: { id: true, name: true, nameEn: true },
+      take: 3,
     });
-    if (b) brandId = b.id;
+    const exact = candidates.filter((b) => normalize(b.name) === normalize(s.brand!) || (!!b.nameEn && normalize(b.nameEn) === normalize(s.brand!)));
+    if (exact.length === 1) brandId = exact[0].id;
   }
 
-  // Match category
   let categoryId: string | null = null;
   if (s.category) {
-    const c = await db.category.findFirst({
-      where: {
-        OR: [
-          { name: { contains: s.category } },
-          { nameEn: { contains: s.category } },
-        ],
-      },
+    const candidates = await db.category.findMany({
+      where: { OR: [{ name: { equals: s.category, mode: "insensitive" } }, { nameEn: { equals: s.category, mode: "insensitive" } }, { slug: { equals: slugify(s.category) } }] },
+      select: { id: true, name: true, nameEn: true, slug: true },
+      take: 3,
     });
-    if (c) categoryId = c.id;
+    const exact = candidates.filter((c) => normalize(c.name) === normalize(s.category!) || (!!c.nameEn && normalize(c.nameEn) === normalize(s.category!)) || c.slug === slugify(s.category!));
+    if (exact.length === 1) categoryId = exact[0].id;
+  }
+
+  let modelId: string | null = null;
+  if (brandId && s.model) {
+    const candidates = await db.productModel.findMany({
+      where: { brandId, OR: [{ name: { equals: s.model, mode: "insensitive" } }, { nameEn: { equals: s.model, mode: "insensitive" } }, { slug: { equals: slugify(s.model) } }] },
+      select: { id: true, categoryId: true, modelCategories: { select: { categoryId: true } } },
+      take: 3,
+    });
+    if (candidates.length === 1) {
+      modelId = candidates[0].id;
+      const modelCategoryIds = [candidates[0].categoryId, ...candidates[0].modelCategories.map((x) => x.categoryId)].filter(Boolean) as string[];
+      if (!categoryId && modelCategoryIds.length === 1) categoryId = modelCategoryIds[0];
+      else if (categoryId && modelCategoryIds.length > 0 && !modelCategoryIds.includes(categoryId)) modelId = null;
+    }
   }
 
   const url2 = (() => {
@@ -256,7 +271,8 @@ async function importListing(s: ScrapeResult) {
       workingHours: s.hours ?? null,
       province: s.location || null,
       sellerName: null,
-      sellerPhone: s.phone || null,
+      // Imported phone numbers are never persisted before separate consent verification.
+      sellerPhone: null,
       sourceUrl: s.url,
       sourceSite: DIVAR_HOSTS.some((h) => url2 === h || url2.endsWith(`.${h}`))
         ? "DIVAR"
@@ -265,6 +281,7 @@ async function importListing(s: ScrapeResult) {
           : url2,
       brandId,
       categoryId,
+      modelId,
       status: "PENDING",
       verified: false,
       featured: false,
@@ -280,27 +297,8 @@ async function importListing(s: ScrapeResult) {
     reason: "via admin API",
   });
 
-  // External listings keep only source images. Never fabricate a machine photo for imported inventory.
-  const imgs = s.images;
-  if (imgs.length > 0) {
-    await db.listingImage.createMany({
-      data: imgs.slice(0, 10).map((url, idx) => ({
-        listingId: listing.id,
-        url,
-        isPrimary: idx === 0,
-        sortOrder: idx,
-      })),
-    });
-    await logAudit({
-      actorId: null,
-      actorType: "ADMIN",
-      action: "admin.listingImages.createMany",
-      entityType: "ListingImage",
-      entityId: listing.id,
-      after: { listingId: listing.id, count: Math.min(imgs.length, 10) },
-      reason: "via admin API",
-    });
-  }
+  // Third-party images remain visible only in the admin extraction preview until rights review
+  // and the approved Backblaze B2 ingestion flow are implemented.
 
   return listing;
 }
@@ -892,9 +890,16 @@ ${focusHint}
     }
 
     if (mode === "import") {
-      const scraped = body.scraped as ScrapeResult;
-      if (!scraped || !scraped.url) return NextResponse.json({ error: "scraped is required" }, { status: 400 });
-      if (!isAllowedSourceUrl(scraped.url)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
+      // Browser-submitted extraction fields are untrusted. Re-fetch the source and
+      // perform extraction on the server; only the validated source URL is accepted.
+      const submitted = body.scraped as Partial<ScrapeResult> | undefined;
+      const sourceUrl = String(submitted?.url ?? "").trim();
+      if (!sourceUrl) return NextResponse.json({ error: "scraped.url is required" }, { status: 400 });
+      if (!isAllowedSourceUrl(sourceUrl)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
+      const scraped = await scrapeUrl(zai, sourceUrl);
+      if (!scraped.title || (scraped.description || "").startsWith("Error scraping:")) {
+        return NextResponse.json({ error: "استخراج مجدد سمت سرور ناموفق بود؛ پیش‌نویسی ساخته نشد." }, { status: 502 });
+      }
       const listing = await importListing(scraped);
       return NextResponse.json({ ok: true, id: listing.id, slug: listing.slug, status: listing.status, alreadyExists: Boolean((listing as any).alreadyExists) });
     }
