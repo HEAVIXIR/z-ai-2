@@ -240,13 +240,16 @@ export async function POST(req: Request) {
         },
       });
 
-      // Apply the status transition:
-      //  approve → PUBLISHED (re-publish if it was flagged to PENDING)
-      //  reject  → REJECTED
+      // Apply the status transition. Set publishedAt on the first transition
+      // to PUBLISHED; preserve the original publication timestamp on re-approval.
       const newStatus = action === "approve" ? "PUBLISHED" : "REJECTED";
+      const publicationFields =
+        action === "approve" && listing.status !== "PUBLISHED"
+          ? { publishedAt: new Date() }
+          : {};
       await db.listing.update({
         where: { id: listingId },
-        data: { status: newStatus },
+        data: { status: newStatus, ...publicationFields },
       });
 
       await logAudit({
@@ -256,7 +259,7 @@ export async function POST(req: Request) {
         entityType: "Listing",
         entityId: listingId,
         before: { status: listing.status },
-        after: { status: newStatus, reason, logId: log.id },
+        after: { status: newStatus, ...publicationFields, reason, logId: log.id },
         reason: `${action === "approve" ? "تأیید" : "رد"} آگهی «${listing.title}» توسط ادمین.`,
       });
 
