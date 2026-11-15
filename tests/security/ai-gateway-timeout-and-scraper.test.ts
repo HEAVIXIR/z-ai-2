@@ -449,6 +449,17 @@ describe("AI Listing Acquisition security contracts", () => {
     expect(code).not.toContain("page_reader");
   });
 
+  it("serializes concurrent imports for the same source URL with a transaction-scoped advisory lock", () => {
+    const code = src();
+    const start = code.indexOf("async function importListing");
+    const end = code.indexOf("/* POST /api/admin/ai-scraper", start + 10);
+    const importer = code.slice(start, end);
+    expect(importer).toContain("db.$transaction(async (tx) =>");
+    expect(importer).toContain("pg_advisory_xact_lock(hashtextextended(${s.url}, 0))");
+    expect(importer).toContain("tx.listing.findFirst");
+    expect(importer).toContain("alreadyExists: true");
+  });
+
   it("maps structured extraction values through configured category attributes with source provenance", () => {
     const code = src();
     const start = code.indexOf("async function importListing");
