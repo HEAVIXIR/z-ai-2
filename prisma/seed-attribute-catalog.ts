@@ -1392,13 +1392,14 @@ const LINKS: CatLink[] = [
 // HELPERS
 // ════════════════════════════════════════════════════════════
 
-/** Resolve a category by trying each slug candidate; first existing slug wins. */
-async function resolveCategory(slugCandidates: string[]) {
-  for (const slug of slugCandidates) {
+/** Resolve every existing exact slug candidate; never silently stop at the first. */
+async function resolveCategories(slugCandidates: string[]) {
+  const resolved: { cat: { id: string }; matchedSlug: string }[] = [];
+  for (const slug of [...new Set(slugCandidates)]) {
     const cat = await db.category.findUnique({ where: { slug } });
-    if (cat) return { cat, matchedSlug: slug };
+    if (cat) resolved.push({ cat, matchedSlug: slug });
   }
-  return null;
+  return resolved;
 }
 
 /**
@@ -1499,51 +1500,52 @@ async function main() {
   const skipped: { label: string; tried: string[] }[] = [];
 
   for (const link of LINKS) {
-    const resolved = await resolveCategory(link.slugCandidates);
-    if (!resolved) {
+    const resolved = await resolveCategories(link.slugCandidates);
+    if (resolved.length === 0) {
       console.warn(
         `  ⚠ [${link.label}] no category found for slugs [${link.slugCandidates.join(", ")}] — skipping`,
       );
       skipped.push({ label: link.label, tried: link.slugCandidates });
       continue;
     }
-    const { cat, matchedSlug } = resolved;
-    const requiredSet = new Set(link.requiredKeys ?? []);
 
-    for (let i = 0; i < link.attributes.length; i++) {
-      const a = link.attributes[i];
-      const attrId = await upsertAttr(a);
-      const isRequired = requiredSet.has(a.key);
-      await db.categoryAttribute.upsert({
-        where: {
-          categoryId_attributeId: { categoryId: cat.id, attributeId: attrId },
-        },
-        create: {
-          categoryId: cat.id,
-          attributeId: attrId,
-          required: isRequired,
-          filterable: !!a.filterable,
-          searchable: !!a.searchable,
-          sortable: !!a.sortable,
-          displayOrder: i,
-        },
-        update: {
-          required: isRequired,
-          filterable: !!a.filterable,
-          searchable: !!a.searchable,
-          sortable: !!a.sortable,
-          displayOrder: i,
-        },
+    const requiredSet = new Set(link.requiredKeys ?? []);
+    for (const { cat, matchedSlug } of resolved) {
+      for (let i = 0; i < link.attributes.length; i++) {
+        const a = link.attributes[i];
+        const attrId = await upsertAttr(a);
+        const isRequired = requiredSet.has(a.key);
+        await db.categoryAttribute.upsert({
+          where: {
+            categoryId_attributeId: { categoryId: cat.id, attributeId: attrId },
+          },
+          create: {
+            categoryId: cat.id,
+            attributeId: attrId,
+            required: isRequired,
+            filterable: !!a.filterable,
+            searchable: !!a.searchable,
+            sortable: !!a.sortable,
+            displayOrder: i,
+          },
+          update: {
+            required: isRequired,
+            filterable: !!a.filterable,
+            searchable: !!a.searchable,
+            sortable: !!a.sortable,
+            displayOrder: i,
+          },
+        });
+      }
+      console.log(
+        `  ✓ [${link.label}] ${link.attributes.length} attrs → slug "${matchedSlug}"`,
+      );
+      perCategory.push({
+        label: link.label,
+        slug: matchedSlug,
+        attrCount: link.attributes.length,
       });
     }
-    console.log(
-      `  ✓ [${link.label}] ${link.attributes.length} attrs → slug "${matchedSlug}"`,
-    );
-    perCategory.push({
-      label: link.label,
-      slug: matchedSlug,
-      attrCount: link.attributes.length,
-    });
   }
 
   // ── LEGACY METADATA CLEANUP ────────────────────────────────

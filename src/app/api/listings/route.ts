@@ -357,6 +357,77 @@ export async function POST(req: Request) {
       );
     }
 
+    const transactionTypeKey = String(body.transactionType ?? body.listingType ?? "SALE").trim().toUpperCase();
+    const transactionType = await db.transactionType.findUnique({
+      where: { key: transactionTypeKey },
+      select: { id: true, key: true, active: true },
+    });
+    if (!transactionType || !transactionType.active) {
+      return NextResponse.json({ error: "نوع معامله معتبر یا فعال نیست." }, { status: 400 });
+    }
+
+    if (body.categoryId) {
+      const expectedLayer = transactionType.key === "SERVICE_REQUEST" || transactionType.key === "SERVICE_OFFER" ? "SERVICE" : "CATALOG";
+      const category = await db.category.findFirst({
+        where: { id: String(body.categoryId), active: true },
+        select: {
+          id: true,
+          layer: true,
+          children: { where: { active: true }, select: { id: true }, take: 1 },
+        },
+      });
+      if (!category) {
+        return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (category.children.length > 0) {
+        return NextResponse.json(
+          { error: "فقط انتخاب آخرین زیرشاخه برای ثبت آگهی مجاز است." },
+          { status: 400 },
+        );
+      }
+      if (category.layer !== expectedLayer) {
+        return NextResponse.json(
+          { error: "دسته‌بندی با نوع آگهی انتخاب‌شده سازگار نیست." },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (body.brandId) {
+      const brand = await db.brand.findUnique({
+        where: { id: String(body.brandId) },
+        select: { id: true, active: true, status: true },
+      });
+      if (!brand || !brand.active || brand.status !== "ACTIVE") {
+        return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+    }
+
+    if (body.modelId) {
+      const model = await db.productModel.findUnique({
+        where: { id: String(body.modelId) },
+        select: {
+          id: true,
+          brandId: true,
+          categoryId: true,
+          status: true,
+          modelCategories: { select: { categoryId: true } },
+        },
+      });
+      if (!model || model.status !== "ACTIVE") {
+        return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (!body.brandId || model.brandId !== String(body.brandId)) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
+      }
+      const modelCategoryMatches =
+        model.categoryId === String(body.categoryId) ||
+        model.modelCategories.some((link) => link.categoryId === String(body.categoryId));
+      if (body.categoryId && !modelCategoryMatches) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی انتخابی متصل نیست." }, { status: 400 });
+      }
+    }
+
     // Listing image contract: one shared maximum of 10. Never silently slice.
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
@@ -367,8 +438,12 @@ export async function POST(req: Request) {
       );
     }
 
-    if (rawImages.length === 0 && rawAssetIds.length === 0) {
-      return NextResponse.json({ error: "حداقل یک تصویر برای آگهی الزامی است." }, { status: 400 });
+    if (
+      rawImages.length === 0 &&
+      rawAssetIds.length === 0 &&
+      transactionType.key !== "SERVICE_REQUEST" && transactionType.key !== "SERVICE_OFFER"
+    ) {
+      return NextResponse.json({ error: "حداقل یک تصویر برای این نوع آگهی الزامی است." }, { status: 400 });
     }
 
     const imageUrlsAreStableB2Urls = rawImages.every((image: any) =>
@@ -418,7 +493,8 @@ export async function POST(req: Request) {
       shortDesc: body.shortDesc ?? null,
       price: parseBig(body.price),
       priceType: body.priceType || "NEGOTIABLE",
-      listingType: body.listingType || "SALE",
+      listingType: transactionType.key,
+      transactionTypeId: transactionType.id,
       condition: body.condition || "USED",
       province: body.province ?? null,
       city: body.city ?? null,

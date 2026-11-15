@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const types = await db.transactionType.findMany({
+      where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { nameFa: "asc" }],
       select: {
         id: true,
