@@ -88,6 +88,19 @@ describe("checkCsrf", () => {
     expect(checkCsrf(req)).toBe(false);
   });
 
+  it("does not treat unverified authentication headers as a CSRF bypass", () => {
+    process.env.NODE_ENV = "production";
+    process.env.NEXTAUTH_URL = "https://heavix.example.com";
+
+    for (const header of ["authorization", "x-cron-key", "x-webhook-signature", "x-api-key"]) {
+      const req = new Request("https://heavix.example.com/api/mutation", {
+        method: "POST",
+        headers: { [header]: "arbitrary-value" },
+      });
+      expect(checkCsrf(req)).toBe(false);
+    }
+  });
+
   it("allows safe methods without Origin or Referer", () => {
     process.env.NODE_ENV = "production";
     process.env.NEXTAUTH_URL = "https://heavix.example.com";
