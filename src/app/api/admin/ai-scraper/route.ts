@@ -261,6 +261,63 @@ async function importListing(s: ScrapeResult) {
     }
   })();
 
+  // Map only structured extraction fields into attributes configured for the exact matched category.
+  // Unsupported or ambiguous fields remain for manager review.
+  const extractedAttributeValues: Array<{
+    attributeId: string; textValue?: string | null; numberValue?: number | null;
+    optionId?: string | null; unit?: string | null; sourceType: string;
+    confidence: number | null; sourceReference: string;
+  }> = [];
+  if (categoryId) {
+    const categoryAttributes = await db.categoryAttribute.findMany({
+      where: { categoryId },
+      include: { attribute: { include: { options: true } } },
+    });
+    const numericTypes = new Set(["INTEGER", "DECIMAL", "YEAR"]);
+    const textTypes = new Set(["TEXT", "LONG_TEXT", "LOCATION"]);
+    const normalizeValue = (value: string) => value.trim().toLocaleLowerCase("fa-IR")
+      .replace(/[ي]/g, "ی").replace(/[ك]/g, "ک").replace(/[\u200c\s_-]+/g, "");
+    for (const link of categoryAttributes) {
+      const attribute = link.attribute;
+      const key = (attribute.key || "").trim().toLowerCase();
+      let value: { textValue?: string; numberValue?: number; optionId?: string; unit?: string } | null = null;
+      if (["year", "manufacturing_year", "model_year", "production_year"].includes(key)
+          && s.year != null && Number.isInteger(Number(s.year))
+          && Number(s.year) >= 1900 && Number(s.year) <= new Date().getFullYear() + 1
+          && numericTypes.has(attribute.type)) {
+        value = { numberValue: Number(s.year), unit: attribute.unit || undefined };
+      } else if (["operating_hours", "hours", "working_hours", "engine_hours"].includes(key)
+          && s.hours != null && Number.isFinite(Number(s.hours))
+          && Number(s.hours) >= 0 && Number(s.hours) <= 1_000_000
+          && numericTypes.has(attribute.type)) {
+        value = { numberValue: Number(s.hours), unit: attribute.unit || "ساعت" };
+      } else if (["condition", "state"].includes(key) && s.condition) {
+        const aliases: Record<string, string[]> = {
+          NEW: ["new", "نو"], USED: ["used", "کارکرده"],
+          REFURBISHED: ["refurbished", "بازسازی", "بازسازی‌شده", "بازسازی شده"],
+          FOR_PARTS: ["for_parts", "for parts", "قطعات", "مخصوص قطعات"],
+        };
+        const candidates = aliases[s.condition] || [];
+        if (["SELECT", "MULTI_SELECT"].includes(attribute.type)) {
+          const matches = attribute.options.filter((option) => {
+            const values = [option.value, option.label || ""].map(normalizeValue);
+            return candidates.some((candidate) => values.includes(normalizeValue(candidate)));
+          });
+          if (matches.length === 1) value = { optionId: matches[0].id };
+        } else if (textTypes.has(attribute.type)) {
+          value = { textValue: s.condition };
+        }
+      } else if (["city", "location", "location_city"].includes(key)
+          && s.location?.trim() && textTypes.has(attribute.type)) {
+        value = { textValue: s.location.trim() };
+      }
+      if (value) extractedAttributeValues.push({
+        attributeId: attribute.id, ...value, sourceType: "AI_EXTRACTION",
+        confidence: null, sourceReference: s.url,
+      });
+    }
+  }
+
   const listing = await db.listing.create({
     data: {
       slug,
@@ -285,6 +342,7 @@ async function importListing(s: ScrapeResult) {
       brandId,
       categoryId,
       modelId,
+      ...(extractedAttributeValues.length ? { attributeValues: { create: extractedAttributeValues } } : {}),
       status: "PENDING",
       verified: false,
       featured: false,
