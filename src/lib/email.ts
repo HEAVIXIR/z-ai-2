@@ -164,6 +164,28 @@ export async function sendEmailWithResult(args: SendEmailArgs): Promise<boolean>
   }
 }
 
+export async function sendPasswordResetEmail(email: string, code: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: "بازیابی رمز عبور — HEAVIX",
+    text: [
+      "درخواست بازنشانی رمز عبور حساب HEAVIX ثبت شد.",
+      "",
+      "کد یک‌بارمصرف شما: " + code,
+      "این کد تا ۱۰ دقیقه معتبر است.",
+      "اگر این درخواست از طرف شما نبوده، این پیام را نادیده بگیرید.",
+    ].join("\\n"),
+    html:
+      '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">' +
+      '<h2 style="color:#F58220">بازیابی رمز عبور HEAVIX</h2>' +
+      '<p>کد یک‌بارمصرف شما:</p>' +
+      '<p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px;border-radius:8px">' +
+      escapeHtml(code) +
+      '</p><p style="font-size:12px;color:#888">این کد تا ۱۰ دقیقه معتبر است.</p></div>',
+    sensitive: true,
+  });
+}
+
 export async function sendVerificationEmail(email: string, code: string): Promise<void> {
   await sendEmail({
     to: email,

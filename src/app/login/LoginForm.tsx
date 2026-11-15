@@ -54,16 +54,21 @@ export default function LoginForm() {
       <h1 className="text-center text-2xl font-black text-white">ورود</h1>
       {error && <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-400">{error}</div>}
       <div className="mt-6 space-y-4">
-        <input name="identifier" type="text" autoComplete="username" placeholder="موبایل / ایمیل"
+        <input name="identifier" type="text" required autoComplete="username" placeholder="موبایل / ایمیل"
           className="h-12 w-full rounded-xl border border-white/10 bg-black/50 px-4 text-sm text-white" />
-        <input name="password" type="password" autoComplete="current-password" placeholder="••••••••"
+        <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••"
           className="h-12 w-full rounded-xl border border-white/10 bg-black/50 px-4 text-sm text-white" />
       </div>
       <button type="submit" disabled={loading} className="mt-6 flex h-12 w-full items-center justify-center rounded-xl bg-[#F58220] text-sm font-bold text-white">
         {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "ورود"}
       </button>
-      <div className="mt-4 text-center">
-        <Link href="/verify-email" className="text-xs font-bold text-[#F58220] hover:underline">هنوز ایمیلتان را تأیید نکرده‌اید؟ دریافت کد تأیید</Link>
+      <div className="mt-4 flex items-center justify-center gap-3 text-center">
+        <Link href="/forgot-password" className="text-xs font-bold text-[#F58220] hover:underline">فراموشی رمز عبور</Link>
+        <span className="text-white/20">|</span>
+        <Link href="/verify-email" className="text-xs font-bold text-white/55 hover:text-[#F58220]">دریافت کد تأیید ایمیل</Link>
+      </div>
+      <div className="mt-3 text-center">
+        <Link href="/register" className="text-xs font-bold text-white/55 hover:text-[#F58220]">حساب ندارید؟ ثبت‌نام کنید</Link>
       </div>
       <p className="mt-5 text-center text-[11px] text-white/35">
         مدیران نیز با حساب کاربری دارای نقش ADMIN در RBAC وارد می‌شوند.
