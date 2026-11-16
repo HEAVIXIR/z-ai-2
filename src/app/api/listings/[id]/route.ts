@@ -232,6 +232,9 @@ export async function PATCH(req: Request, { params }: Args) {
     // Image management (seller can add/remove/reorder/primary)
     if (body.addImages && Array.isArray(body.addImages)) {
       const additions = body.addImages;
+      if (additions.filter((image: any) => image?.isPrimary === true).length > 1) {
+        return NextResponse.json({ error: "فقط یک تصویر می‌تواند تصویر اصلی باشد." }, { status: 400 });
+      }
       if (additions.length > 10) {
         return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
       }
