@@ -55,7 +55,9 @@ vi.mock("@/lib/db", () => {
 describe("robots.ts (official Next.js metadata route)", () => {
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     process.env.NODE_ENV = "test";
   });
 
@@ -107,7 +109,9 @@ describe("robots.ts (official Next.js metadata route)", () => {
 describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     process.env.NODE_ENV = "test";
   });
 
@@ -145,7 +149,9 @@ describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
 describe("sitemap.ts (official Next.js metadata route) — static paths domain", () => {
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     process.env.NODE_ENV = "test";
   });
 
@@ -208,7 +214,9 @@ describe("sitemap.ts (official Next.js metadata route) — static paths domain",
 describe("seo-service.generateSitemap() (legacy Wave 3B producer) — static paths domain", () => {
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     process.env.NODE_ENV = "test";
   });
 
@@ -267,7 +275,9 @@ describe("seo-service.generateSitemap() (legacy Wave 3B producer) — static pat
 describe("cross-producer consistency — official vs legacy output the same domain", () => {
   beforeEach(() => {
     vi.resetModules();
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://heavix.ir";
     process.env.NODE_ENV = "test";
   });
 
