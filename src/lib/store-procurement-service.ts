@@ -459,6 +459,13 @@ export async function receivePurchaseOrderItem(
       if (!part) {
         throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
       }
+      // Prevent destination deactivation from racing receipt posting.
+      const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+      `;
+      if (lockedWarehouse.length !== 1) {
+        throw new ProcurementServiceError(409, 'انبار مقصد وجود ندارد یا غیرفعال است');
+      }
       const warehouse = await tx.warehouse.findUnique({
         where: { id: warehouseId },
         select: { id: true, name: true, active: true },

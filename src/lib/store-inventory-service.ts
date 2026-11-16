@@ -430,6 +430,14 @@ export async function adjustStock(
       throw new InventoryServiceError(404, 'قطعه یافت نشد');
     }
 
+    // Hold the active warehouse row until the movement commits so deactivation
+    // cannot race a stock adjustment after its initial validation.
+    const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+    `;
+    if (lockedWarehouse.length !== 1) {
+      throw new InventoryServiceError(409, 'ثبت حرکت در انبار غیرفعال مجاز نیست');
+    }
     const warehouse = await tx.warehouse.findUnique({
       where: { id: warehouseId },
       select: { id: true, name: true, code: true, active: true },
@@ -615,6 +623,19 @@ export async function reserveStock(
 
   try {
     return await storeDb.$transaction(async (tx) => {
+      // Global lock order: Part -> active Warehouse -> InventoryBalance.
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new InventoryServiceError(404, 'قطعه یافت نشد');
+      }
+      const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Warehouse" WHERE id = ${warehouseId} AND active = true FOR SHARE
+      `;
+      if (lockedWarehouse.length !== 1) {
+        throw new InventoryServiceError(409, 'رزرو موجودی در انبار غیرفعال مجاز نیست');
+      }
       const warehouse = await tx.warehouse.findUnique({
         where: { id: warehouseId },
         select: { id: true, active: true },
@@ -685,6 +706,20 @@ export async function releaseStock(
 
   try {
     return await storeDb.$transaction(async (tx) => {
+    // Release follows the same Part-first order; inactive warehouses may
+    // still release an existing reservation, so the row lock is not active-only.
+    const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Part" WHERE id = ${partId} FOR UPDATE
+    `;
+    if (lockedParts.length !== 1) {
+      throw new InventoryServiceError(404, 'قطعه یافت نشد');
+    }
+    const lockedWarehouse = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Warehouse" WHERE id = ${warehouseId} FOR SHARE
+    `;
+    if (lockedWarehouse.length !== 1) {
+      throw new InventoryServiceError(404, 'انبار یافت نشد');
+    }
     const balance = await tx.inventoryBalance.findUnique({
       where: { partId_warehouseId: { partId, warehouseId } },
     });

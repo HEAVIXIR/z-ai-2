@@ -118,6 +118,7 @@ const STORE_SERVICE_FILES = [
   // stays inline in the procurement/route.ts + [id]/route.ts files;
   // this service owns the deeper PO lifecycle.
   'src/lib/store-procurement-service.ts',
+  'src/lib/store-opening-balance-service.ts',
 ];
 
 function listRouteFiles(): string[] {
@@ -170,6 +171,7 @@ const EXPECTED_ACTION_KEYS = [
   'store.currency_rate.update',
   'store.currency_setting.update',
   'store.inventory.movement.create',
+  'store.inventory.opening_balance.create',
   'store.mechanic.create',
   'store.mechanic.delete',
   'store.mechanic.update',
@@ -262,7 +264,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   logistics/dashboard, shipments/[id]/{assign,pickup,deliver,
       //   exception}) → 51; opening inventory allocation +1 → 52; paired warehouse transfer +1 → 53; transfer-part search endpoint +1 → 54.
       const files = listRouteFiles();
-      expect(files.length).toBe(54);
+      expect(files.length).toBe(55);
     });
 
     it('should have 98 requirePermission calls across all store routes', () => {
@@ -284,7 +286,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(98);
+      expect(count).toBe(100);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -832,7 +834,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(53);
+      expect(foundKeys.size).toBe(54);
     });
 
     it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
@@ -976,16 +978,17 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 10. SERVICE LAYER EXTRACTION (T-A-DEEP-STORE)
   // ═══════════════════════════════════════════════════════════════
   describe('10. Service Layer Extraction (T-A-DEEP-STORE)', () => {
-    it('should have 4 store service files', () => {
+    it('should have 5 store service files', () => {
       // T-A-DEEP-STORE: 3 service files (inventory, returns, shipments).
       // PHASE1-PROCUREMENT-SHIPPING-DEEP: +1 service file
       //   (store-procurement-service.ts for the PO lifecycle) → 4.
       const services = listServiceFiles();
-      expect(services.length).toBe(4);
+      expect(services.length).toBe(5);
       expect(services).toContain('src/lib/store-inventory-service.ts');
       expect(services).toContain('src/lib/store-returns-service.ts');
       expect(services).toContain('src/lib/store-shipments-service.ts');
       expect(services).toContain('src/lib/store-procurement-service.ts');
+      expect(services).toContain('src/lib/store-opening-balance-service.ts');
     });
 
     it('store-inventory-service.ts exports createMovement + listMovements', () => {
