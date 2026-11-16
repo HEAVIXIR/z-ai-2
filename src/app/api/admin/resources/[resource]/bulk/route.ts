@@ -43,6 +43,17 @@ async function resolveTenantCtx(
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
+  if (resourceKey === "payments") {
+    const [, authError] = await requireAdmin("payment.manage");
+    if (authError) return authError;
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+    return NextResponse.json(
+      { error: "عملیات گروهی روی دفتر مالی غیرفعال است؛ از گردش اختصاصی پرداخت استفاده کنید", code: "PAYMENT_BULK_MUTATION_DISABLED" },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
