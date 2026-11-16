@@ -11,6 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { createProvider, ServicesServiceError } from "@/lib/services-service";
@@ -116,7 +117,10 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
-  try {
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  try {
     const body = await req.json().catch(() => ({}));
     const provider = await createProvider({
       name: body.name,
