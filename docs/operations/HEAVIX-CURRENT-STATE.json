@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-16T08:49:16.028Z",
+  "updated_at_utc": "2026-11-16T12:59:00+03:30",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -170,7 +170,12 @@
     "Corrected prisma/preview-schema.prisma: Company.businessType now belongs to Company, not BrandFamily; no migration or database command was run.",
     "Replaced tests/preview-schema-sync.sh line-order diff with structural Prisma declaration comparison: model declaration/member ordering is normalized, enum value order is preserved, and datasource/client differences are normalized.",
     "Local tool-side structural comparison of Main and Preview schema contents returned exact canonical equality after the field correction; actual CI run #43834097936 is still in progress.",
-    "Read-only Cloudflare trigger audit found active Worker heavix-preview script tag 40270a318ea94b0a9102bc3c4b34f0cf, trigger 4104855d-7623-456f-91b9-6715cc8423fd, branch_includes=[main], branch_excludes=[]; selected Integration is not eligible for automatic Cloudflare Build."
+    "Read-only Cloudflare trigger audit found active Worker heavix-preview script tag 40270a318ea94b0a9102bc3c4b34f0cf, trigger 4104855d-7623-456f-91b9-6715cc8423fd, branch_includes=[main], branch_excludes=[]; selected Integration is not eligible for automatic Cloudflare Build.",
+    "Selectively transferred the reviewed PR #333 AI scraper route implementations into Integration: both /api/admin/ai-scraper and /api/admin/store/ai-scraper now use preflightAIRequest/recordAICost and the tested SCRAPER quota contract; shared safe-source-fetch.ts and ai-policy.ts were confirmed byte-identical between source and destination, so no redundant copy was made.",
+    "Reconciled admin navigation RBAC test fixtures with the route's explicit active/inactive navigation contract; test fixtures now mark stored groups and items active rather than relying on missing fields.",
+    "Updated Store shipment lifecycle contract tests to assert the implemented safer compare-and-swap transition (status + updatedAt + affected-row count) and the dedicated cancel/return workflows, rather than an obsolete textual pattern.",
+    "Diagnosed the 403 cascade in DB-backed route tests as missing same-origin Origin headers in the test harness while the CSRF middleware correctly fails closed; updated RBAC Phase B, brand, deal, listing, and legacy-admin-listing request helpers to use the explicit localhost:3000 origin.",
+    "Latest Integration head f2b0afa9f4a0813143cdf3b840944e17552694eb has new exact-head CI #43840734308 queued and OpenNext proof #43840734286 in progress; neither is green or complete yet."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -183,37 +188,28 @@
     "Global Listing.sourceUrl uniqueness decision after duplicate assessment.",
     "Media legal/consent policy, final route/RBAC/SEO acceptance and release-candidate PR.",
     "Production domain/DNS and Production deployment remain not performed.",
-    "CI run #43834097936 on Integration exact head 96bbad68 is in progress; no success claim until all required jobs complete."
+    "CI run #43834097936 on Integration exact head 96bbad68 is in progress; no success claim until all required jobs complete.",
+    "Do not claim CI/OpenNext success for f2b0afa9f4a0813143cdf3b840944e17552694eb until run #43840734308 and #43840734286 both complete successfully."
   ],
-  "next_action": "Poll GitHub Actions run #43834097936 on exact selected Integration head 96bbad68e3a142bb516c2babbe8a43f78e15c006. Fix any remaining failures on this branch only. Then build a dependency-aware transfer matrix for open PRs and move the reviewed capabilities into Integration in coherent batches, beginning with core product and identity/auth dependencies; do not merge PR #340 into recovery or start Cloudflare Builds.",
+  "next_action": "Poll exact-head CI #43840734308 and OpenNext proof #43840734286 on f2b0afa9f4a0813143cdf3b840944e17552694eb. Verify AI scraper policy-gate tests, CSRF same-origin test fixtures, navigation fixture, and shipment lifecycle contract. Then isolate remaining RBAC/seed-vs-test issues without weakening fail-closed authorization. Continue dependency-aware selective transfers into Integration; no broad PR merges.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 43834097936,
-    "sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "id": 43840734308,
+    "sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
-    "status": "in_progress",
+    "status": "queued",
     "conclusion": null,
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43834097936",
-    "note": "Triggered by the Preview schema ownership correction and structural schema-sync test on the selected Integration branch. Verify job results before claiming green."
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43840734308",
+    "note": "Exact-head CI run queued after selective transfer of policy-gated AI scraper implementations and correction of CSRF test request fixtures. OpenNext proof #43840734286 is in progress on the same exact head."
   },
-  "latest_code_head_sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+  "latest_code_head_sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
   "latest_ci_run": {
-    "id": 43834097936,
-    "sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "id": 43840734308,
+    "sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
-    "status": "in_progress",
+    "status": "queued",
     "conclusion": null,
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43834097936",
-    "jobs": {
-      "verify": "in_progress",
-      "audit_transaction": "in_progress",
-      "phase_tests": "in_progress",
-      "tls_proof": "in_progress",
-      "docker_build_proof": "in_progress",
-      "cloudflare_compatibility_report_only": "in_progress",
-      "workerd_runtime_smoke": "in_progress",
-      "legacy_archive_inventory": "skipped"
-    }
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43840734308"
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -255,7 +251,8 @@
     "PR #333 test suite had two consecutive assertion-only failures during test authoring; latest correction is cd8ef0e and the current CI run is in progress.",
     "PR #330 and #331 were retargeted to recovery and GitHub reports mergeable=false; neither was merged.",
     "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred.",
-    "PR #340 currently has integration as its head and recovery as its base; this is the reverse of the selected integration destination and must not be merged as-is."
+    "PR #340 currently has integration as its head and recovery as its base; this is the reverse of the selected integration destination and must not be merged as-is.",
+    "Exact-head CI after AI scraper, CSRF fixture, navigation fixture and shipment contract repairs is pending on f2b0afa9f4a0813143cdf3b840944e17552694eb. Prior head 96a68883 had 32/1266 security tests fail; those failures are being addressed with real implementation fixes and correct test-origin fixtures, not by disabling tests."
   ],
   "platform_roadmap": {
     "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
@@ -695,8 +692,10 @@
     "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved.",
     "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit.",
     "selected_integration_branch": "integration/preview-readiness-workerd-2026-11-15",
-    "selected_integration_head": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "selected_integration_head": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
     "tracking_pr": 340,
-    "tracking_pr_direction": "Integration branch is PR head; historical recovery is PR base. Do not merge as-is."
+    "tracking_pr_direction": "Integration branch to main (Draft only); no merge or deployment.",
+    "exact_head_ci_run": 43840734308,
+    "exact_head_opennext_run": 43840734286
   }
 }
