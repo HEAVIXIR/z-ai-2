@@ -80,7 +80,6 @@ model BrandFamily {
   nameEn      String?
   slug        String  @unique
   description String?
-  businessType String?
   logoUrl     String?
   website     String?
   country     String?
@@ -1234,6 +1233,7 @@ model Company {
   name        String
   slug        String   @unique
   description String?
+  businessType String?
   logoUrl     String?
   coverImage  String?
   website     String?
