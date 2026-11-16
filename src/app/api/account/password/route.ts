@@ -50,6 +50,11 @@ export async function POST(req: Request) {
       await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
       // Revoke every existing session; the current browser receives a fresh one below.
       await tx.session.deleteMany({ where: { userId: user.id } });
+      // Credential rotation invalidates outstanding reset and contact-change challenges.
+      await tx.verificationCode.updateMany({
+        where: { userId: user.id, type: { in: ["PASSWORD_RESET", "EMAIL_CHANGE", "MOBILE_CHANGE"] }, used: false },
+        data: { used: true },
+      });
     });
 
     await createUserSession(user.id);
