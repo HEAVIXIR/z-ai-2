@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig } from "@/lib/api-helpers";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
@@ -125,6 +126,9 @@ export async function POST(req: Request) {
       { error: "Forbidden: requires payment.manage" },
       { status: 403 },
     );
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const body = await req.json().catch(() => ({}));
