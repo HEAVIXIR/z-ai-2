@@ -210,7 +210,7 @@ export async function generateSitemap(): Promise<string> {
   }
 
   // Fetch public entities in parallel — fail open (skip on error)
-  const [categories, brands, listings, articles, modelRows] = await Promise.all([
+  const [categories, brands, listings, articles, companies, modelRows] = await Promise.all([
     db.category
       .findMany({
         where: { active: true },
@@ -235,6 +235,12 @@ export async function generateSitemap(): Promise<string> {
         select: { id: true, slug: true, updatedAt: true, publishedAt: true },
       })
       .catch(() => []),
+    db.company
+      .findMany({
+        where: { status: "ACTIVE", listings: { some: { status: "PUBLISHED" } } },
+        select: { id: true, slug: true, updatedAt: true },
+      })
+      .catch(() => []),
     db.productModel
       .findMany({
         where: { status: "ACTIVE", brand: { active: true } },
@@ -256,11 +262,12 @@ export async function generateSitemap(): Promise<string> {
   ]);
 
   // Fetch SEO overrides in parallel
-  const [catSEO, brandSEO, listingSEO, articleSEO, modelSEO] = await Promise.all([
+  const [catSEO, brandSEO, listingSEO, articleSEO, companySEO, modelSEO] = await Promise.all([
     fetchSeoMap("Category", categories.map((c) => c.id)),
     fetchSeoMap("Brand", brands.map((b) => b.id)),
     fetchSeoMap("Listing", listings.map((l) => l.id)),
     fetchSeoMap("Article", articles.map((a) => a.id)),
+    fetchSeoMap("Company", companies.map((c) => c.id)),
     fetchSeoMap("ProductModel", modelRows.map((m) => m.id)),
   ]);
 
@@ -313,6 +320,19 @@ export async function generateSitemap(): Promise<string> {
       lastmod: (a.publishedAt ?? a.updatedAt ?? new Date()).toISOString(),
       changefreq: seo?.sitemapChangeFreq ?? "monthly",
       priority: seo?.sitemapPriority ?? 0.5,
+    });
+  }
+
+  // Companies with published inventory
+  for (const company of companies) {
+    if (!company.slug) continue;
+    const seo = companySEO.get(company.id);
+    if (seo?.robotsIndex === false) continue;
+    entries.push({
+      loc: `${SITE_BASE_URL}/companies/${encodeURIComponent(company.slug)}`,
+      lastmod: (company.updatedAt ?? new Date()).toISOString(),
+      changefreq: seo?.sitemapChangeFreq ?? "weekly",
+      priority: seo?.sitemapPriority ?? 0.6,
     });
   }
 

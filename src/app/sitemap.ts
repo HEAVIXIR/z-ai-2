@@ -79,7 +79,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = SITE_BASE_URL;
 
   // Fetch all public entities in parallel.
-  const [categories, brands, listings, articles, modelRows] = await Promise.all([
+  const [categories, brands, listings, articles, companies, modelRows] = await Promise.all([
     db.category
       .findMany({
         where: { active: true },
@@ -116,6 +116,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         console.error("[sitemap] article lookup failed; article URLs omitted");
         return [];
       }),
+    db.company
+      .findMany({
+        where: { status: "ACTIVE", listings: { some: { status: "PUBLISHED" } } },
+        select: { id: true, slug: true, updatedAt: true },
+      })
+      .catch(() => {
+        console.error("[sitemap] company lookup failed; company URLs omitted");
+        return [];
+      }),
     db.productModel
       .findMany({
         where: { status: "ACTIVE", brand: { active: true } },
@@ -140,11 +149,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]);
 
   // Fetch SEO overrides in parallel.
-  const [catSEO, brandSEO, listingSEO, articleSEO, modelSEO] = await Promise.all([
+  const [catSEO, brandSEO, listingSEO, articleSEO, companySEO, modelSEO] = await Promise.all([
     getSEOOverridesByType("Category", categories.map((c) => c.id)),
     getSEOOverridesByType("Brand", brands.map((b) => b.id)),
     getSEOOverridesByType("Listing", listings.map((l) => l.id)),
     getSEOOverridesByType("Article", articles.map((a) => a.id)),
+    getSEOOverridesByType("Company", companies.map((c) => c.id)),
     getSEOOverridesByType("ProductModel", modelRows.map((m) => m.id)),
   ]);
 
@@ -204,6 +214,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: a.publishedAt ?? a.updatedAt ?? new Date(),
       changeFrequency: (seo?.sitemapChangeFreq ?? "monthly") as any,
       priority: seo?.sitemapPriority ?? 0.5,
+    });
+  }
+
+  // Companies with published inventory
+  for (const company of companies) {
+    if (!company.slug) continue;
+    const seo = companySEO.get(company.id);
+    if (seo?.robotsIndex === false) continue;
+    out.push({
+      url: `${base}/companies/${encodeURIComponent(company.slug)}`,
+      lastModified: company.updatedAt ?? new Date(),
+      changeFrequency: (seo?.sitemapChangeFreq ?? "weekly") as any,
+      priority: seo?.sitemapPriority ?? 0.6,
     });
   }
 
