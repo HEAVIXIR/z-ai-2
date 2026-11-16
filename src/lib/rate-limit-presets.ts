@@ -81,6 +81,23 @@ export const AI: RateLimitPreset = {
   label: "ai-gateway",
 };
 
+/** Public Sell in 7 Days application creation — 3 per hour per IP. */
+export const SELL_IN_7_DAYS_CREATE: RateLimitPreset = {
+  limit: 3,
+  windowMs: HOUR,
+  scope: "ip",
+  label: "sell-in-7-days-create",
+};
+
+/** Public tracking lookups — 10 per minute per IP (instance-local defense in depth). */
+export const SELL_IN_7_DAYS_TRACK: RateLimitPreset = {
+  limit: 10,
+  windowMs: MINUTE,
+  scope: "ip",
+  label: "sell-in-7-days-track",
+};
+
+
 /** Messaging endpoints (offers / messages / contact-seller) — 30/h/user. */
 export const MESSAGING: RateLimitPreset = {
   limit: 30,
@@ -124,6 +141,8 @@ export const RATE_LIMIT_PRESETS = {
   RESEND,
   UPLOAD,
   AI,
+  SELL_IN_7_DAYS_CREATE,
+  SELL_IN_7_DAYS_TRACK,
   MESSAGING,
   COMPANY_INVITATION,
   COMPANY_INVITATION_ACCEPT,

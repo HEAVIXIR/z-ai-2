@@ -3,6 +3,13 @@ import { db } from "@/lib/db";
 import { toEnDigits } from "@/lib/format";
 import { parseBig, parseNumber } from "@/lib/api-helpers";
 import { checkCsrf } from "@/lib/csrf";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { SELL_IN_7_DAYS_CREATE, SELL_IN_7_DAYS_TRACK } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
+import {
+  createSellIn7DaysTrackingCode,
+  toPublicSellIn7DaysTracking,
+} from "@/lib/sell-in-7-days-public";
 
 /* ============================================================
    /api/sell-in-7-days — public API for the "Sell in 7 Days"
@@ -19,31 +26,16 @@ export const dynamic = "force-dynamic";
 
 /** Default prepayment amount (Toman) if SiteSettings is unset. */
 const DEFAULT_PREPAYMENT = 500_000n;
-/** Default commission rate (%) on the sale price. */
-const DEFAULT_COMMISSION_RATE = 1;
-void DEFAULT_COMMISSION_RATE;
-
-function randomTrackingCode(): string {
-  // 8-char base32 (uppercase, no ambiguous chars).
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 8; i++) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return out;
-}
-
 async function uniqueTrackingCode(): Promise<string> {
   for (let i = 0; i < 10; i++) {
-    const code = randomTrackingCode();
+    const code = createSellIn7DaysTrackingCode();
     const existing = await db.sellIn7DaysApplication.findUnique({
       where: { trackingCode: code },
       select: { id: true },
     });
     if (!existing) return code;
   }
-  // Fallback — append a numeric suffix if all retries collided.
-  return randomTrackingCode() + Math.floor(Math.random() * 10);
+  throw new Error("Unable to allocate a unique tracking code");
 }
 
 async function getPrepaymentAmount(): Promise<bigint> {
@@ -79,28 +71,53 @@ export async function POST(req: NextRequest) {
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
+  const ip = getClientIp(req);
+  const createLimit = rateLimit({
+    key: rateLimitKey(ip, SELL_IN_7_DAYS_CREATE.label),
+    limit: SELL_IN_7_DAYS_CREATE.limit,
+    windowMs: SELL_IN_7_DAYS_CREATE.windowMs,
+  });
+  if (!createLimit.ok) {
+    const retryAfter = retryAfterSeconds(createLimit.resetAt);
+    return NextResponse.json(
+      { error: "درخواست‌های ثبت کمپین بیش از حد مجاز است. بعداً تلاش کنید." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "private, no-store" } },
+    );
+  }
+
+  const declaredLength = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 32_768) {
+    return NextResponse.json({ error: "حجم درخواست بیش از حد مجاز است." }, { status: 413 });
+  }
+
   let body: any = {};
   try {
-    body = await req.json();
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 32_768) {
+      return NextResponse.json({ error: "حجم درخواست بیش از حد مجاز است." }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "ساختار درخواست نامعتبر است." }, { status: 400 });
+    }
   } catch {
     return NextResponse.json({ error: "بدنهٔ درخواست نامعتبر است." }, { status: 400 });
   }
 
-  const sellerName = (body.sellerName ?? "").toString().trim();
-  const sellerMobileRaw = (body.sellerMobile ?? "").toString().trim();
-  const sellerEmail = (body.sellerEmail ?? "").toString().trim() || null;
-  const deviceName = (body.deviceName ?? "").toString().trim();
-  const categoryId = body.categoryId ? String(body.categoryId) : null;
-  const brandId = body.brandId ? String(body.brandId) : null;
-  const modelName = (body.modelName ?? "").toString().trim() || null;
+  const sellerName = typeof body.sellerName === "string" ? body.sellerName.trim() : "";
+  const sellerMobileRaw = typeof body.sellerMobile === "string" ? body.sellerMobile.trim() : "";
+  const sellerEmail = typeof body.sellerEmail === "string" ? body.sellerEmail.trim() || null : null;
+  const deviceName = typeof body.deviceName === "string" ? body.deviceName.trim() : "";
+  const categoryId = typeof body.categoryId === "string" && body.categoryId ? body.categoryId : null;
+  const brandId = typeof body.brandId === "string" && body.brandId ? body.brandId : null;
+  const modelName = typeof body.modelName === "string" ? body.modelName.trim() || null : null;
   const year = parseNumber(body.year);
   const workingHours = parseNumber(body.workingHours);
-  const condition = body.condition ? String(body.condition) : null;
-  const province = (body.province ?? "").toString().trim() || null;
-  const city = (body.city ?? "").toString().trim() || null;
+  const condition = typeof body.condition === "string" && body.condition ? body.condition : null;
+  const province = typeof body.province === "string" ? body.province.trim() || null : null;
+  const city = typeof body.city === "string" ? body.city.trim() || null : null;
   const expectedPrice = parseBig(body.expectedPrice);
-  const description = (body.description ?? "").toString().trim() || null;
-  const prepayNow = body.prepayNow !== false; // default true
+  const description = typeof body.description === "string" ? body.description.trim() || null : null;
 
   if (!sellerName || sellerName.length < 3) {
     return NextResponse.json({ error: "نام فروشنده الزامی است." }, { status: 400 });
@@ -114,26 +131,69 @@ export async function POST(req: NextRequest) {
   if (!deviceName || deviceName.length < 3) {
     return NextResponse.json({ error: "نام دستگاه الزامی است." }, { status: 400 });
   }
+  if (
+    sellerName.length > 120 ||
+    deviceName.length > 160 ||
+    (modelName && modelName.length > 160) ||
+    (sellerEmail && (sellerEmail.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(sellerEmail))) ||
+    (province && province.length > 100) ||
+    (city && city.length > 100) ||
+    (description && description.length > 4_000) ||
+    (categoryId && categoryId.length > 100) ||
+    (brandId && brandId.length > 100)
+  ) {
+    return NextResponse.json({ error: "یکی از فیلدها بیش از حد مجاز یا نامعتبر است." }, { status: 400 });
+  }
+  const currentYear = new Date().getFullYear();
+  if (body.year !== undefined && body.year !== null && body.year !== "" && year === null) {
+    return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
+  }
+  if (body.workingHours !== undefined && body.workingHours !== null && body.workingHours !== "" && workingHours === null) {
+    return NextResponse.json({ error: "ساعت کارکرد معتبر نیست." }, { status: 400 });
+  }
+  if (body.expectedPrice !== undefined && body.expectedPrice !== null && body.expectedPrice !== "" && expectedPrice === null) {
+    return NextResponse.json({ error: "قیمت مورد انتظار معتبر نیست." }, { status: 400 });
+  }
+  if (year !== null && (!Number.isInteger(year) || year < 1900 || year > currentYear + 1)) {
+    return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
+  }
+  if (workingHours !== null && (!Number.isInteger(workingHours) || workingHours < 0 || workingHours > 2_000_000)) {
+    return NextResponse.json({ error: "ساعت کارکرد معتبر نیست." }, { status: 400 });
+  }
+  if (expectedPrice !== null && (expectedPrice < 0n || expectedPrice > 1_000_000_000_000_000_000n)) {
+    return NextResponse.json({ error: "قیمت مورد انتظار معتبر نیست." }, { status: 400 });
+  }
+  const allowedConditions = new Set(["NEW", "USED", "REFURBISHED", "FOR_PARTS"]);
+  if (condition && !allowedConditions.has(condition)) {
+    return NextResponse.json({ error: "وضعیت دستگاه معتبر نیست." }, { status: 400 });
+  }
 
   const sellerMobile = normalizeMobile(sellerMobileRaw);
 
   // Optional validation: categoryId / brandId should exist if provided.
   if (categoryId) {
-    const cat = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+    const cat = await db.category.findFirst({
+      where: { id: categoryId, active: true, layer: "CATALOG" },
+      select: { id: true },
+    });
     if (!cat) return NextResponse.json({ error: "دسته‌بندی نامعتبر است." }, { status: 400 });
   }
   if (brandId) {
-    const brand = await db.brand.findUnique({ where: { id: brandId }, select: { id: true } });
+    const brand = await db.brand.findFirst({
+      where: { id: brandId, active: true, status: "ACTIVE" },
+      select: { id: true },
+    });
     if (!brand) return NextResponse.json({ error: "برند نامعتبر است." }, { status: 400 });
   }
 
   const prepaymentAmount = await getPrepaymentAmount();
   const trackingCode = await uniqueTrackingCode();
 
-  // For dev — if prepayNow=true, mark as paid immediately.
-  const prepaymentPaid = !!prepayNow;
-  const status = prepaymentPaid ? "PREPAYMENT_PAID" : "PENDING_PREPAYMENT";
-  const currentStep = prepaymentPaid ? 2 : 1; // step 1 done once prepaid
+  // Public form submission is NOT proof of payment. Until a verified
+  // payment callback exists, every public application remains unpaid.
+  const prepaymentPaid = false;
+  const status = "PENDING_PREPAYMENT";
+  const currentStep = 1;
 
   const application = await db.sellIn7DaysApplication.create({
     data: {
@@ -159,19 +219,34 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({
-    ok: true,
-    trackingCode: application.trackingCode,
-    id: application.id,
-    prepaymentPaid,
-    prepaymentAmount: prepaymentAmount.toString(),
-    currentStep: application.currentStep,
-    status: application.status,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      trackingCode: application.trackingCode,
+      prepaymentPaid: false,
+      currentStep: application.currentStep,
+      status: application.status,
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 /* ----------------------------- GET ------------------------------ */
 export async function GET(req: NextRequest) {
+  const ip = getClientIp(req);
+  const lookupLimit = rateLimit({
+    key: rateLimitKey(ip, SELL_IN_7_DAYS_TRACK.label),
+    limit: SELL_IN_7_DAYS_TRACK.limit,
+    windowMs: SELL_IN_7_DAYS_TRACK.windowMs,
+  });
+  if (!lookupLimit.ok) {
+    const retryAfter = retryAfterSeconds(lookupLimit.resetAt);
+    return NextResponse.json(
+      { error: "تعداد تلاش‌های پیگیری بیش از حد مجاز است. بعداً تلاش کنید." },
+      { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "private, no-store" } },
+    );
+  }
+
   const url = new URL(req.url);
   const code =
     (url.searchParams.get("trackingCode") ?? "").trim() ||
@@ -180,35 +255,34 @@ export async function GET(req: NextRequest) {
   if (!code) {
     return NextResponse.json(
       { error: "کد رهگیری را وارد کنید." },
-      { status: 400 },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  const normalizedCode = code.toUpperCase();
+  const isCurrentTrackingCode = /^[A-HJ-NP-Z2-9]{16}$/.test(normalizedCode);
+  const isLegacyTrackingCode = /^[A-Z0-9]{8}$/.test(normalizedCode);
+  if (!isCurrentTrackingCode && !isLegacyTrackingCode) {
+    return NextResponse.json(
+      { error: "قالب کد رهگیری معتبر نیست." },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
   const app = await db.sellIn7DaysApplication.findUnique({
-    where: { trackingCode: code.toUpperCase() },
+    where: { trackingCode: normalizedCode },
     select: {
-      id: true,
       trackingCode: true,
       deviceName: true,
-      sellerName: true,
-      sellerMobile: true,
-      sellerEmail: true,
       modelName: true,
       year: true,
       workingHours: true,
       condition: true,
       province: true,
       city: true,
-      expectedPrice: true,
-      description: true,
       prepaymentPaid: true,
-      prepaymentAmount: true,
       status: true,
       currentStep: true,
       inspectionDate: true,
-      valuationPrice: true,
-      salePrice: true,
-      commissionAmount: true,
       soldAt: true,
       createdAt: true,
       updatedAt: true,
@@ -220,7 +294,7 @@ export async function GET(req: NextRequest) {
   if (!app) {
     return NextResponse.json(
       { error: "درخواستی با این کد رهگیری یافت نشد." },
-      { status: 404 },
+      { status: 404, headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
@@ -240,21 +314,15 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({
-    ok: true,
-    application: {
-      ...app,
-      expectedPrice: app.expectedPrice?.toString() ?? null,
-      prepaymentAmount: app.prepaymentAmount?.toString() ?? null,
-      valuationPrice: app.valuationPrice?.toString() ?? null,
-      salePrice: app.salePrice?.toString() ?? null,
-      commissionAmount: app.commissionAmount?.toString() ?? null,
-      inspectionDate: app.inspectionDate?.toISOString() ?? null,
-      soldAt: app.soldAt?.toISOString() ?? null,
-      createdAt: app.createdAt.toISOString(),
-      updatedAt: app.updatedAt.toISOString(),
-      category,
-      brand,
+  return NextResponse.json(
+    {
+      ok: true,
+      application: toPublicSellIn7DaysTracking({
+        ...app,
+        category,
+        brand,
+      }),
     },
-  });
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
