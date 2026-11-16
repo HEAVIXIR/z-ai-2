@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
 import {
@@ -108,6 +109,9 @@ export async function PATCH(
       { error: "Forbidden: requires user.update" },
       { status: 403 },
     );
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
 
   try {

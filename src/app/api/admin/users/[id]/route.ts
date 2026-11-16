@@ -311,7 +311,8 @@ export async function PATCH(req: Request, { params }: Args) {
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: serializeUser(updated) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] mutation failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -367,6 +368,7 @@ export async function DELETE(req: Request, { params }: Args) {
     if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] mutation failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }

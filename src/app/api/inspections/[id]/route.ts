@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { scoreChecklist } from "@/lib/inspection-checklists";
 
@@ -139,6 +140,9 @@ export async function PATCH(
   const admin = user ? await rbacIsAdmin(user.id) : false;
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
 
   const contentType = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();

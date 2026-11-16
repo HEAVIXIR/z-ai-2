@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { INSPECTION_CREATE } from "@/lib/rate-limit-presets";
 
@@ -65,6 +66,9 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   const contentType = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (contentType !== "application/json") {
@@ -186,7 +190,7 @@ export async function GET() {
             price: true,
             province: true,
             city: true,
-            images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1 },
+            images: { select: { url: true }, orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1 },
           },
         },
       },
