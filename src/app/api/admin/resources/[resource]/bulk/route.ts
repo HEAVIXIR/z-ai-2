@@ -19,6 +19,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeBulkAction } from '@/lib/admin/bulk-export-engine';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { can, canBulkAction, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
 import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
@@ -59,6 +60,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   const hasPerm = await can(user?.id ?? null, actionDef.permission);
   const canBulk = await canBulkAction(user?.id ?? null, `bulk-${body.action}`, resourceKey);
