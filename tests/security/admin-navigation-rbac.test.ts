@@ -31,7 +31,7 @@ describe("GET /api/admin/navigation — canonical RBAC", () => {
     vi.clearAllMocks();
     getCurrentUser.mockResolvedValue({ id: "admin-1" });
     requirePermission.mockResolvedValue(undefined);
-    getUserPermissions.mockResolvedValue(["admin.navigation.read", "order.read", "store.read"]);
+    getUserPermissions.mockResolvedValue(["admin.navigation.read", "order.read"]);
     findGroups.mockResolvedValue([
       {
         key: "store",
