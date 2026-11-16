@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { slugify, parseBig } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
@@ -461,6 +462,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   await requirePermission(user.id, "ai.scraper.execute");
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
+  // External AI providers and paid scraping are disabled by the HEAVIX free-infrastructure policy.
+  return NextResponse.json(
+    { error: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY", message: "استخراج هوشمند تا زمان تأیید زیرساخت رایگان و مجاز غیرفعال است." },
+    { status: 503 },
+  );
 
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
