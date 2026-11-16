@@ -280,7 +280,7 @@ export async function addTrackingEvent(
       if (status === 'DISPATCHED' || status === 'DELIVERED') {
         const expectedOrderStatuses = status === 'DISPATCHED'
           ? ['CONFIRMED', 'PROCESSING']
-          : ['SHIPPED'];
+          : ['SHIPPED', 'CONFIRMED', 'PROCESSING'];
         const nextOrderStatus = status === 'DISPATCHED' ? 'SHIPPED' : 'DELIVERED';
         const orderChanged = await tx.order.updateMany({
           where: { id: existing.orderId, status: { in: expectedOrderStatuses } },
