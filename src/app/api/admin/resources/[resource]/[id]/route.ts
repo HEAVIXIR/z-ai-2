@@ -29,7 +29,7 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 export const dynamic = 'force-dynamic';
 
 // Store procurement and suppliers mutate only through dedicated transactional APIs.
-const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers']);
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments']);
 
 type Params = { params: Promise<{ resource: string; id: string }> };
 
@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
 
   if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
-    const permission = resourceKey === 'procurement' ? 'procurement.manage' : 'store.manage';
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : resourceKey === 'payments' ? 'payment.manage' : 'store.manage';
     const [, authError] = await requireAdmin(permission);
     if (authError) return authError;
     return NextResponse.json(
@@ -176,7 +176,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
 
   if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
-    const permission = resourceKey === 'procurement' ? 'procurement.manage' : 'store.manage';
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : resourceKey === 'payments' ? 'payment.manage' : 'store.manage';
     const [, authError] = await requireAdmin(permission);
     if (authError) return authError;
     return NextResponse.json(
