@@ -493,3 +493,5 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: listing mutation/media hardening `68f6166a`; single-primary constraint `5b09edab`; contract assertions `e116c822`.
 - Read-only review of purchase-order cancellation confirmed it uses a Serializable transaction, status compare-and-swap, and transactional audit outbox; no change required there.
 - No tests/typecheck/lint/build/CI/Actions, migration, seed, DB operation, deployment, Production or runtime change was performed.
+
+- Follow-up correction: listing image addition now computes the existing image count once, enforces the 10-image total, and ensures at most one primary image is selected when adding multiple staged assets; a requested new primary replaces the previous primary within the same listing scope. Commit `2f08159f`.
