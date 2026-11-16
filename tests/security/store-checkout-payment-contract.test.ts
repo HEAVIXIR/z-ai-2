@@ -35,6 +35,16 @@ describe("store checkout and manual-payment concurrency contracts", () => {
 
   });
 
+  it("blocks admin payment approval when the order is closed or approved totals would exceed the order", () => {
+    const route = read("src/app/api/admin/store/payments/[id]/route.ts");
+    expect(route).toMatch(/orderForApproval\.status/);
+    expect(route).toMatch(/paymentStatus === "PAID"/);
+    expect(route).toMatch(/status: "APPROVED", id: \{ not: existing\.id \}/);
+    expect(route).toMatch(/approvedElsewhere \+ candidateAmount > totalIrr/);
+    expect(route).toMatch(/STORE_PAYMENT_OVERPAYMENT/);
+    expect(route).toMatch(/isolationLevel: 'Serializable'/);
+  });
+
   it("submits manual payments with verified-mobile ownership and serializable revalidation", () => {
     const route = read("src/app/api/store/payments/manual/route.ts");
     expect(route).toMatch(/sessionUser\.mobileVerified/);
