@@ -38,8 +38,13 @@ describe("brand-scoped model canonical routing", () => {
       expect(source).toContain("db.productModel");
       expect(source).toMatch(/(?:fetchSeoMap|getSEOOverridesByType)\("ProductModel"/);
       expect(source).toContain('/brands/${encodeURIComponent(model.brand.slug)}/models/${encodeURIComponent(model.slug)}');
-      expect(source).toContain("model._count.listings > 0");
-      expect(source).toContain("model._count.generations > 0");
+      expect(source).toContain('seo?.robotsIndex === false');
     }
+    // The Next.js metadata sitemap allows descriptive, listed, or generated models;
+    // the service sitemap intentionally requires published inventory in its query.
+    expect(sitemap).toContain("model._count.listings > 0");
+    expect(sitemap).toContain("model._count.generations > 0");
+    expect(service).toContain('listings: { some: { status: "PUBLISHED" } }');
+    expect(service).toContain("m.brand?.active");
   });
 });
