@@ -160,11 +160,14 @@ async function linkFields(categoryId:string,fields:F[],scopeSlug:string){
   await db.categoryAttribute.upsert({
    where:{categoryId_attributeId:{categoryId,attributeId:a.id}},
    create:{categoryId,attributeId:a.id,required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
-   update:{required:!!x.required,filterable:!!x.filterable,searchable:true,sortable:false,displayOrder:i},
+   // Preserve administrator-managed field settings on reruns.
+   update:{},
   });
  }
 }
 async function main(){
+ if(!process.argv.includes("--apply")){console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");return;}
+ if(process.env.HEAVIX_ENV!=="preview")throw new Error("Refusing to seed: HEAVIX_ENV must be exactly preview.");
  const serviceRoot=await db.category.findUnique({where:{slug:"services"},select:{id:true}});
  const mineralRoot=await db.category.findUnique({where:{slug:"minerals-materials"},select:{id:true}});
  if(!serviceRoot||!mineralRoot)throw new Error("Missing service/mineral taxonomy roots; seed taxonomy first");

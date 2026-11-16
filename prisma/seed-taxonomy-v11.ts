@@ -681,6 +681,13 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \\\"preview\\\". No writes performed.");
+  }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
   // 1. TransactionTypes
@@ -689,7 +696,7 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true },
+      update: { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder },
     });
   }
 
@@ -699,7 +706,7 @@ async function main() {
     await db.serviceType.upsert({
       where: { key: s.key },
       create: s,
-      update: { nameFa: s.nameFa, nameEn: s.nameEn, icon: s.icon, sortOrder: s.sortOrder, active: true },
+      update: { nameFa: s.nameFa, nameEn: s.nameEn, icon: s.icon, sortOrder: s.sortOrder },
     });
   }
 
@@ -709,7 +716,7 @@ async function main() {
     await db.applicationIndustry.upsert({
       where: { key: i.key },
       create: i,
-      update: { nameFa: i.nameFa, nameEn: i.nameEn, icon: i.icon, sortOrder: i.sortOrder, active: true },
+      update: { nameFa: i.nameFa, nameEn: i.nameEn, icon: i.icon, sortOrder: i.sortOrder },
     });
   }
 

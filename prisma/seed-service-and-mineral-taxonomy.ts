@@ -20,7 +20,7 @@ const minerals: Record<string,N[]> = {
 };
 async function insert(parentId:string,path:string,nodes:N[],level:number,layer:string,domain:string){
  for(let i=0;i<nodes.length;i++){const n=nodes[i];const taxPath=path+"/"+n.slug;
-  const row=await db.category.upsert({where:{slug:n.slug},create:{name:n.name,nameEn:n.nameEn,slug:n.slug,parentId,level,layer,domain,taxPath,active:true,sortOrder:i+1},update:{name:n.name,nameEn:n.nameEn,parentId,level,layer,domain,taxPath,active:true,sortOrder:i+1},select:{id:true}});
+  const row=await db.category.upsert({where:{slug:n.slug},create:{name:n.name,nameEn:n.nameEn,slug:n.slug,parentId,level,layer,domain,taxPath,active:true,sortOrder:i+1},update:{name:n.name,nameEn:n.nameEn,parentId,level,layer,domain,taxPath,sortOrder:i+1},select:{id:true}});
   if(n.children?.length)await insert(row.id,taxPath,n.children,level+1,layer,domain);
  }
 }
@@ -32,6 +32,8 @@ function collectPlan(nodes: N[], parentSlug: string, layer: string, domain: stri
  }
 }
 async function main(){
+ if(!process.argv.includes("--apply")){console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");return;}
+ if(process.env.HEAVIX_ENV!=="preview")throw new Error("Refusing to seed: HEAVIX_ENV must be exactly preview.");
  const root=await db.category.findUnique({where:{slug:"services"},select:{id:true,slug:true,taxPath:true,level:true,layer:true,domain:true}});
  if(!root)throw new Error('Run seed-taxonomy-v11.ts first; services root missing');
  if(root.layer!=="SERVICE"||root.domain!=="SERVICE")throw new Error('The services root must have layer=SERVICE and domain=SERVICE; no writes were made');
