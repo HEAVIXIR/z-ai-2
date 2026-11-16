@@ -8,6 +8,41 @@ import { checkCsrf } from "@/lib/csrf";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const MAX_SUBSCRIPTION_BODY_BYTES = 16 * 1024;
+
+async function readBoundedSubscriptionBody(req: Request): Promise<Record<string, unknown> | null> {
+  const declaredLength = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_SUBSCRIPTION_BODY_BYTES) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_SUBSCRIPTION_BODY_BYTES) {
+      try { await reader.cancel(); } catch { /* request already closed */ }
+      return null;
+    }
+    chunks.push(value);
+  }
+  if (total === 0) return null;
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 function serialize(s: any) {
   return {
     ...s,
@@ -74,13 +109,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
   }
   try {
-    const declaredLength = Number(req.headers.get("content-length") ?? 0);
-    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
-      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
-    }
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    const body = await readBoundedSubscriptionBody(req);
+    if (!body) {
+      return NextResponse.json({ error: "Invalid or oversized request body" }, { status: 400 });
     }
     const allowedFields = new Set([
       "userId", "plan", "status", "featuredCredits", "analyticsAccess",
