@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import {
   updateShipment,
   ShipmentsServiceError,
@@ -57,6 +58,9 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try { await requirePermission(user.id, 'shipping.manage'); } catch {
     return NextResponse.json({ error: "Forbidden: requires shipping.manage" }, { status: 403 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   const { id } = await params;
   try {
