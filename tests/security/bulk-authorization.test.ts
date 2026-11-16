@@ -62,28 +62,23 @@ beforeEach(() => {
    ──────────────────────────────────────────────────────────────── */
 
 describe("canBulkAction — resource-aware lookup", () => {
-  it("declared bulk action + user HAS permission → returns true", async () => {
-    // paymentConfig declares bulk-verify with permission: 'payment.manage'
-    userPermsMock.mockResolvedValue(["payment.manage"]);
+  it("payments exposes no bulk financial actions → fails closed even for privileged users", async () => {
+    userPermsMock.mockResolvedValue(["payment.read", "payment.manage", "payment.refund"]);
 
-    const result = await canBulkAction("admin-1", "bulk-verify", "payments");
-
-    expect(result).toBe(true);
+    expect(paymentConfig.bulkActions ?? []).toEqual([]);
+    await expect(canBulkAction("admin-1", "bulk-verify", "payments")).resolves.toBe(false);
+    await expect(canBulkAction("admin-1", "bulk-refund", "payments")).resolves.toBe(false);
   });
 
-  it("declared bulk action + user LACKS permission → returns false", async () => {
-    // User has payment.read but NOT payment.manage
+  it("payment bulk operations remain unavailable to users without financial permissions", async () => {
     userPermsMock.mockResolvedValue(["payment.read"]);
-
-    const result = await canBulkAction("user-B", "bulk-verify", "payments");
-
-    expect(result).toBe(false);
+    await expect(canBulkAction("user-B", "bulk-verify", "payments")).resolves.toBe(false);
+    await expect(canBulkAction("user-B", "bulk-refund", "payments")).resolves.toBe(false);
   });
 
   it("UNDECLARED bulk action → returns false (fail-closed)", async () => {
-    // payments does NOT declare bulk-delete — only bulk-verify + bulk-refund.
-    // Even an admin with ALL permissions should be DENIED for undeclared
-    // bulk actions (resource explicitly did not authorize this operation).
+    // Payments declares no bulk operations. Even a fully privileged admin
+    // must be denied for any undeclared financial bulk action.
     userPermsMock.mockResolvedValue([
       "payment.read", "payment.manage", "payment.refund",
       "user.delete", "listing.delete",
@@ -113,16 +108,10 @@ describe("canBulkAction — resource-aware lookup", () => {
     expect(result).toBe(false);
   });
 
-  it("resource-aware lookup uses the declared bulkAction permission (not the legacy map)", async () => {
-    // paymentConfig.bulkActions[1] = bulk-refund, permission: 'payment.refund'
-    // Legacy map would have mapped bulk-refund → ??? (not in the 6-entry map)
-    // → would have fallen through to literal 'bulk-refund' lookup (always false).
-    // Resource-aware path correctly finds payment.refund.
+  it("does not authorize payment bulk-refund because the operation is not implemented", async () => {
     userPermsMock.mockResolvedValue(["payment.refund"]);
-
-    const result = await canBulkAction("admin-1", "bulk-refund", "payments");
-
-    expect(result).toBe(true);
+    expect(paymentConfig.bulkActions ?? []).toEqual([]);
+    await expect(canBulkAction("admin-1", "bulk-refund", "payments")).resolves.toBe(false);
   });
 
   it("products bulk-delete (declared in productConfig.bulkActions) → allowed when user has product.delete", async () => {
@@ -164,15 +153,14 @@ describe("canBulkAction — resource-aware lookup", () => {
    ──────────────────────────────────────────────────────────────── */
 
 describe("canBulkAction vs can — consistency", () => {
-  it("canBulkAction(user, action, resourceKey) returns the same as can(user, declaredPermission)", async () => {
-    // For declared bulk actions, canBulkAction should return exactly
-    // what can(user, declaredPermission) returns.
-    userPermsMock.mockResolvedValue(["payment.manage"]);
+  it("does not infer a bulk authorization from a standalone payment permission", async () => {
+    userPermsMock.mockResolvedValue(["payment.manage", "payment.refund"]);
 
-    const bulkResult = await canBulkAction("admin-1", "bulk-verify", "payments");
-    const directResult = await can("admin-1", "payment.manage");
+    const bulkVerify = await canBulkAction("admin-1", "bulk-verify", "payments");
+    const bulkRefund = await canBulkAction("admin-1", "bulk-refund", "payments");
 
-    expect(bulkResult).toBe(directResult);
-    expect(bulkResult).toBe(true);
+    expect(bulkVerify).toBe(false);
+    expect(bulkRefund).toBe(false);
+    await expect(can("admin-1", "payment.manage")).resolves.toBe(true);
   });
 });

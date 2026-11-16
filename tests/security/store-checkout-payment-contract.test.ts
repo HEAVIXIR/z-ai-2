@@ -126,9 +126,9 @@ describe("store checkout and manual-payment concurrency contracts", () => {
 
   it("keeps the main payment ledger append-only and blocks direct PAID/REFUNDED overrides", () => {
     const route = read("src/app/api/admin/payments/[id]/route.ts");
-    expect(route).toMatch(/PAYMENT_LEDGER_ACTION_REQUIRED/);
+    expect(route).toMatch(/PAYMENT_STATE_ACTION_REQUIRED/);
     expect(route).toMatch(/PAYMENT_LEDGER_IMMUTABLE/);
-    expect(route).toMatch(/status === "PAID" \|\| status === "REFUNDED"/);
+    expect(route).toMatch(/forbiddenFields = ["status", "type", "gateway", "paidAt"]/);
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
