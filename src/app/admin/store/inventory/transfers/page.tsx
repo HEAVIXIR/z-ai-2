@@ -7,6 +7,8 @@ import { ArrowRight, ArrowLeftRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
+const TRANSFER_PART_PAGE_SIZE = 100;
+
 export default async function InventoryTransfersPage() {
   const user = await getCurrentUser();
   if (!user) {
@@ -28,10 +30,12 @@ export default async function InventoryTransfersPage() {
     stock: number;
     inventoryBalances: Array<{ warehouseId: string; quantity: number; reserved: number }>;
   }> = [];
+  let initialHasMore = false;
+  let initialCursor: string | null = null;
   let loadError = false;
 
   try {
-    [warehouses, parts] = await Promise.all([
+    const [warehouseRows, partRows] = await Promise.all([
       storeDb.warehouse.findMany({
         where: { active: true },
         orderBy: { name: "asc" },
@@ -40,7 +44,7 @@ export default async function InventoryTransfersPage() {
       storeDb.part.findMany({
         where: { active: true },
         orderBy: [{ sku: "asc" }, { id: "asc" }],
-        take: 1000,
+        take: TRANSFER_PART_PAGE_SIZE + 1,
         select: {
           id: true,
           name: true,
@@ -54,6 +58,10 @@ export default async function InventoryTransfersPage() {
         },
       }),
     ]);
+    warehouses = warehouseRows;
+    initialHasMore = partRows.length > TRANSFER_PART_PAGE_SIZE;
+    parts = initialHasMore ? partRows.slice(0, TRANSFER_PART_PAGE_SIZE) : partRows;
+    initialCursor = initialHasMore ? parts[parts.length - 1]?.id ?? null : null;
   } catch (error) {
     loadError = true;
     console.error("[admin/store/inventory/transfers] load failed:", error);
@@ -88,7 +96,13 @@ export default async function InventoryTransfersPage() {
         </div>
       ) : (
         <>
-          <WarehouseTransferForm parts={parts} warehouses={warehouses} />
+          <WarehouseTransferForm
+            parts={parts}
+            warehouses={warehouses}
+            initialHasMore={initialHasMore}
+            initialCursor={initialCursor}
+            pageSize={TRANSFER_PART_PAGE_SIZE}
+          />
           <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs leading-6 text-zinc-600">
             <strong className="text-zinc-900">قواعد انتقال:</strong>
             <ul className="mt-2 list-disc space-y-1 pr-5">

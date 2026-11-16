@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, Loader2, Package, Warehouse } from "lucide-react";
 
@@ -24,30 +24,131 @@ const INPUT =
 export default function WarehouseTransferForm({
   parts,
   warehouses,
+  initialHasMore,
+  initialCursor,
+  pageSize,
 }: {
   parts: PartOption[];
   warehouses: WarehouseOption[];
+  initialHasMore: boolean;
+  initialCursor: string | null;
+  pageSize: number;
 }) {
   const router = useRouter();
+  const [loadedParts, setLoadedParts] = useState(parts);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [nextCursor, setNextCursor] = useState(initialCursor);
   const [partId, setPartId] = useState(parts[0]?.id ?? "");
   const [sourceWarehouseId, setSourceWarehouseId] = useState(warehouses[0]?.id ?? "");
   const [destinationWarehouseId, setDestinationWarehouseId] = useState(warehouses.find((w) => w.id !== warehouses[0]?.id)?.id ?? "");
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState("");
   const [search, setSearch] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const firstRender = useRef(true);
+  const activeSearch = useRef<AbortController | null>(null);
 
-  const filteredParts = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase();
-    if (!q) return parts;
-    return parts.filter((part) =>
-      [part.name, part.nameFa ?? "", part.sku].join(" ").toLocaleLowerCase().includes(q),
-    );
-  }, [parts, search]);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
 
-  const selectedPart = filteredParts.find((part) => part.id === partId);
+    activeSearch.current?.abort();
+    const controller = new AbortController();
+    activeSearch.current = controller;
+    setSearching(true);
+    setLoadingMore(false);
+    setSearchError("");
+
+    const debounceTimer = window.setTimeout(() => {
+      const params = new URLSearchParams({ limit: String(pageSize) });
+      if (search.trim()) params.set("q", search.trim());
+
+      fetch(`/api/admin/store/inventory/transfer-parts?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
+            throw new Error(payload?.error || "جستجوی قطعات انجام نشد");
+          }
+          setLoadedParts(payload.data);
+          setHasMore(payload.hasMore === true);
+          setNextCursor(typeof payload.nextCursor === "string" ? payload.nextCursor : null);
+          setPartId((current) =>
+            payload.data.some((part: PartOption) => part.id === current)
+              ? current
+              : payload.data[0]?.id ?? "",
+          );
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          setSearchError(err instanceof Error ? err.message : "خطای نامشخص در جستجوی قطعات");
+          setLoadedParts([]);
+          setHasMore(false);
+          setNextCursor(null);
+          setPartId("");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(debounceTimer);
+      controller.abort();
+    };
+  }, [search, pageSize]);
+
+  async function loadMore() {
+    if (!hasMore || !nextCursor || loadingMore || searching) return;
+    activeSearch.current?.abort();
+    const controller = new AbortController();
+    activeSearch.current = controller;
+    setLoadingMore(true);
+    setSearchError("");
+
+    const params = new URLSearchParams({
+      limit: String(pageSize),
+      cursor: nextCursor,
+    });
+    if (search.trim()) params.set("q", search.trim());
+
+    try {
+      const response = await fetch(`/api/admin/store/inventory/transfer-parts?${params.toString()}`, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
+        throw new Error(payload?.error || "بارگذاری صفحه بعد انجام نشد");
+      }
+      setLoadedParts((current) => {
+        const seen = new Set(current.map((part) => part.id));
+        return [...current, ...payload.data.filter((part: PartOption) => !seen.has(part.id))];
+      });
+      setHasMore(payload.hasMore === true);
+      setNextCursor(typeof payload.nextCursor === "string" ? payload.nextCursor : null);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      setSearchError(err instanceof Error ? err.message : "خطای نامشخص در بارگذاری قطعات");
+    } finally {
+      if (!controller.signal.aborted) setLoadingMore(false);
+    }
+  }
+
+  const selectedPart = loadedParts.find((part) => part.id === partId);
   const sourceBalance = selectedPart?.inventoryBalances.find(
     (balance) => balance.warehouseId === sourceWarehouseId,
   );
@@ -64,7 +165,8 @@ export default function WarehouseTransferForm({
     Number.isSafeInteger(qty) &&
     qty > 0 &&
     qty <= available &&
-    reason.trim(),
+    reason.trim() &&
+    !searching,
   );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -131,29 +233,53 @@ export default function WarehouseTransferForm({
           برای انتقال، حداقل یک قطعه و دو انبار فعال لازم است.
         </div>
       ) : (
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4" aria-busy={searching || loadingMore}>
           <div className="grid gap-3 lg:grid-cols-2">
             <label className="space-y-1.5 text-xs font-bold text-zinc-700">
-              جستجوی قطعه
+              جستجوی قطعه در کل فهرست فعال
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="نام قطعه یا SKU"
+                maxLength={100}
+                placeholder="نام فارسی، نام انگلیسی یا SKU"
                 className={INPUT}
+                aria-describedby="transfer-part-search-status"
               />
             </label>
             <label className="space-y-1.5 text-xs font-bold text-zinc-700">
               قطعه
-              <select value={partId} onChange={(event) => setPartId(event.target.value)} className={INPUT}>
-                {filteredParts.length === 0 ? (
+              <select
+                value={partId}
+                onChange={(event) => setPartId(event.target.value)}
+                className={INPUT}
+                disabled={searching || loadedParts.length === 0}
+              >
+                {loadedParts.length === 0 ? (
                   <option value="">نتیجه‌ای پیدا نشد</option>
-                ) : filteredParts.map((part) => (
+                ) : loadedParts.map((part) => (
                   <option key={part.id} value={part.id}>
                     {(part.nameFa || part.name)} · {part.sku}
                   </option>
                 ))}
               </select>
             </label>
+          </div>
+
+          <div id="transfer-part-search-status" role="status" aria-live="polite" className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-600">
+            {searching && <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> در حال جستجوی سمت سرور...</span>}
+            {!searching && !searchError && <span>{loadedParts.length.toLocaleString("fa-IR")} قطعه در نتایج بارگذاری شده است.</span>}
+            {searchError && <span className="text-red-700">{searchError}</span>}
+            {hasMore && !searching && (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-white px-3 py-1.5 font-bold text-violet-800 disabled:opacity-50"
+              >
+                {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {loadingMore ? "در حال بارگذاری..." : "بارگذاری قطعات بیشتر"}
+              </button>
+            )}
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
