@@ -37,7 +37,7 @@ describe("brand-scoped model canonical routing", () => {
     for (const source of [sitemap, service]) {
       expect(source).toContain("db.productModel");
       expect(source).toMatch(/(?:fetchSeoMap|getSEOOverridesByType)\("ProductModel"/);
-      expect(source).toContain('/brands/${model.brand.slug}/models/${model.slug}');
+      expect(source).toContain('/brands/${encodeURIComponent(model.brand.slug)}/models/${encodeURIComponent(model.slug)}');
       expect(source).toContain("model._count.listings > 0");
       expect(source).toContain("model._count.generations > 0");
     }

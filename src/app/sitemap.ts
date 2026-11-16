@@ -242,7 +242,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       model._count.generations > 0;
     if (!hasUsefulContent) continue;
     out.push({
-      url: `${base}/brands/${model.brand.slug}/models/${model.slug}`,
+      url: `${base}/brands/${encodeURIComponent(model.brand.slug)}/models/${encodeURIComponent(model.slug)}`,
       lastModified: model.updatedAt ?? new Date(),
       changeFrequency: (seo?.sitemapChangeFreq ?? "monthly") as any,
       priority: seo?.sitemapPriority ?? 0.5,
