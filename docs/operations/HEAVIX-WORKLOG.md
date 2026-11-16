@@ -505,3 +505,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: prevalidation `5ad9740846b9243bd210119c970b4d7337707ff0`; regex correction `7e6d450b63d707520eb477c14d8dee0963ded44e`; regression contract update recorded in the following commit.
 - This narrows partial mutation on invalid input but is not a full transaction across database writes and the media sidecar. Concurrent state changes between preflight and persistence remain a reason for exact-head tests and further transactional review.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Admin payment approval overpayment guard
+
+- Reviewed the admin payment decision endpoint. Although approval was already transactional and one-way from PENDING, it previously summed approved payments only after approving the current receipt; it did not reject a receipt whose approval would push the aggregate above the order total, and it did not reject approval for cancelled/refunded orders.
+- Added an in-transaction precondition before the payment status update: re-read the order, reject missing/closed/already-paid orders, aggregate other approved payments excluding the candidate receipt, and require safe positive integer amounts with the resulting total not exceeding the order total. Overpayment now returns HTTP 409 `STORE_PAYMENT_OVERPAYMENT`; state conflicts remain HTTP 409.
+- Added source-contract assertions for closed-order rejection, aggregate cap and Serializable transaction. Tests are authored but unexecuted.
+- Commits: implementation `23ac78155fd54b2872295c1d0b04e5b87077c5a8`; regression contract recorded in the following commit.
+- This protects the admin manual-receipt approval path. External gateway callback reconciliation and exact-head behavioral testing remain separate release checks.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
