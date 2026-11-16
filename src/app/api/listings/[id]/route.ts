@@ -226,7 +226,7 @@ export async function PATCH(req: Request, { params }: Args) {
       }
       const assetIds: string[] = [];
       for (const image of additions) {
-        const match = /^\\/api\\/media\\/([a-f0-9]{24})$/.exec(String(image?.url ?? image ?? ""));
+        const match = new RegExp("^/api/media/([a-f0-9]{24})$").exec(String(image?.url ?? image ?? ""));
         if (!match) {
           return NextResponse.json({ error: "تصاویر باید از مسیر امن رسانه بارگذاری شوند." }, { status: 400 });
         }
