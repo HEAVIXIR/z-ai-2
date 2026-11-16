@@ -65,39 +65,38 @@ export async function createShipment(
   userId?: string | null,
 ): Promise<any> {
   if (!orderId || !carrier) {
-    throw new ShipmentsServiceError(
-      400,
-      'orderId و carrier الزامی هستند',
-    );
+    throw new ShipmentsServiceError(400, 'orderId و carrier الزامی هستند');
   }
-
-  const existing = await storeDb.shipment.findUnique({ where: { orderId } });
-  if (existing) {
-    throw new ShipmentsServiceError(
-      400,
-      'سفارش قبلاً محموله دارد',
-    );
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, status: true, paymentStatus: true, shipment: { select: { id: true } } },
+      });
+      if (!order) throw new ShipmentsServiceError(404, 'سفارش یافت نشد');
+      if (order.shipment) throw new ShipmentsServiceError(409, 'سفارش قبلاً محموله دارد');
+      if (!['CONFIRMED', 'PROCESSING'].includes(order.status) || order.paymentStatus !== 'PAID') {
+        throw new ShipmentsServiceError(409, 'ایجاد محموله فقط برای سفارش تأییدشده و تسویه‌شده مجاز است');
+      }
+      const shipment = await tx.shipment.create({
+        data: { orderId, carrier, trackingCode: trackingCode || null, note: note || null },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.shipment.create',
+        entityType: 'Shipment',
+        entityId: shipment.id,
+        after: shipment,
+      });
+      return serializeShipment(shipment);
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error?.code === 'P2002' || error?.code === 'P2034') {
+      throw new ShipmentsServiceError(409, 'محموله برای این سفارش هم‌زمان ایجاد شده یا وضعیت سفارش تغییر کرده است');
+    }
+    throw error;
   }
-
-  const shipment = await storeDb.shipment.create({
-    data: {
-      orderId,
-      carrier,
-      trackingCode: trackingCode || null,
-      note: note || null,
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.shipment.create',
-    entityType: 'Shipment',
-    entityId: shipment.id,
-    after: shipment,
-  });
-
-  return shipment;
 }
 
 // ── updateShipment ───────────────────────────────────────
