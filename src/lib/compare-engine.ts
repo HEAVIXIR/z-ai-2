@@ -844,29 +844,11 @@ export async function generateAISummary(sessionId: string): Promise<string> {
 Data:
 ${JSON.stringify(payload)}`;
 
-  let summary = "";
-  try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    const zai = await ZAI.create();
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: "خلاصه را بنویس." },
-      ],
-      thinking: { type: "disabled" },
-    });
-    summary = (completion?.choices?.[0]?.message?.content ?? "").trim();
-  } catch (err) {
-    console.error("[compare-engine] AI summary failed:", err);
-    // Fall back to a deterministic local summary so the UI always has
-    // something useful to show.
-    summary = buildFallbackSummary(data);
-  }
-
-  if (!summary) {
-    summary = buildFallbackSummary(data);
-  }
+  // Hosted model calls are deliberately disabled until HEAVIX has an
+  // explicitly approved, verified-free provider. Do not restore a paid
+  // SDK call here as part of routine integration work.
+  // Keep the comparison summary available through deterministic local logic.
+  const summary = buildFallbackSummary(data);
 
   // Persist the summary on the session for cached reads.
   try {
