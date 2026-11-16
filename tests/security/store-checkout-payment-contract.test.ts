@@ -59,6 +59,26 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
+  it("serializes cumulative manual refunds and refuses unimplemented gateway refunds", () => {
+    const service = read("src/lib/commerce-service.ts");
+    expect(service).toMatch(/export async function refundPayment/);
+    expect(service).toMatch(/Number\.isSafeInteger\(amtIrr\)/);
+    expect(service).toMatch(/original\.method === 'GATEWAY' \|\| original\.gateway/);
+    expect(service).toMatch(/refund-of-payment:/);
+    expect(service).toMatch(/alreadyRefunded \+ amtIrr > Number\(original\.amountIrr\)/);
+    expect(service).toMatch(/updatedAt: original\.updatedAt/);
+    expect(service).toMatch(/isolationLevel: 'Serializable'/);
+    expect(service).toMatch(/enqueueAuditOutbox\(tx/);
+  });
+
+  it("keeps the main payment ledger append-only and blocks direct PAID/REFUNDED overrides", () => {
+    const route = read("src/app/api/admin/payments/[id]/route.ts");
+    expect(route).toMatch(/PAYMENT_LEDGER_ACTION_REQUIRED/);
+    expect(route).toMatch(/PAYMENT_LEDGER_IMMUTABLE/);
+    expect(route).toMatch(/status === "PAID" \|\| status === "REFUNDED"/);
+    expect(route).toMatch(/checkCsrf\(req\)/);
+  });
+
   it("blocks admin payment approval when the order is closed or approved totals would exceed the order", () => {
     const route = read("src/app/api/admin/store/payments/[id]/route.ts");
     expect(route).toMatch(/orderForApproval\.status/);
