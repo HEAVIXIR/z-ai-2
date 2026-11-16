@@ -4,6 +4,7 @@ import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
+import { readBoundedJsonObject } from "@/lib/http/bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,7 +84,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   try {
-    const body = await req.json();
+    const parsed = await readBoundedJsonObject(req, 16 * 1024);
+    if (!parsed.ok) {
+      return NextResponse.json({ success: false, error: parsed.error }, { status: parsed.status });
+    }
+    const body = parsed.value;
+    const allowedFields = new Set(["status", "note"]);
+    if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ success: false, error: "Unknown payment field" }, { status: 400 });
+    }
+    if (body.status !== undefined && (typeof body.status !== "string" || !ALLOWED_STATUSES.includes(body.status))) {
+      return NextResponse.json({ success: false, error: "وضعیت نامعتبر" }, { status: 400 });
+    }
+    if (body.note !== undefined && body.note !== null &&
+        (typeof body.note !== "string" || body.note.length > 1000)) {
+      return NextResponse.json({ success: false, error: "یادداشت نامعتبر است" }, { status: 400 });
+    }
     const result = await storeDb.$transaction(async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) return { notFound: true as const };
@@ -92,9 +108,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         // Refunds require the dedicated, auditable refund lifecycle; a status
         // patch must never mutate payment state or imply money was returned.
         return { refundUnsupported: true as const };
-      }
-      if (body.status !== undefined && !ALLOWED_STATUSES.includes(body.status)) {
-        return { invalidStatus: true as const };
       }
       // Approval/rejection are one-way decisions from PENDING. Replaying an
       // approval must not double-count its amount in the parent order total.
@@ -129,10 +142,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data.status = body.status;
         data.reviewedAt = new Date();
       }
-      if (body.note !== undefined) data.note = body.note || null;
-      if (body.referenceCode !== undefined) data.referenceCode = body.referenceCode || null;
-      if (body.gateway !== undefined) data.gateway = body.gateway || null;
-      if (body.refId !== undefined) data.refId = body.refId || null;
+      if (body.note !== undefined) data.note = body.note?.trim() || null;
       if (Object.keys(data).length === 0) return { noChanges: true as const };
 
       const payment = await tx.payment.update({
@@ -241,8 +251,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ success: true, data: serialize(result.payment) });
   } catch (e: any) {
-    console.error("[store/payments PATCH] error:", e);
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    console.error("[store/payments PATCH] failed");
+    return NextResponse.json({ success: false, error: "به‌روزرسانی پرداخت انجام نشد" }, { status: 500 });
   }
 }
 
@@ -268,6 +278,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!payment) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     return NextResponse.json({ success: true, data: serialize(payment) });
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
+    console.error("[store/payments GET] failed");
+    return NextResponse.json({ success: false, error: "دریافت اطلاعات پرداخت انجام نشد" }, { status: 500 });
   }
 }
