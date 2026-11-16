@@ -539,3 +539,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: cancellation service `f3c392873c46d7e3c286c882b3d000ab501c058c`; admin route `b848298715fe9422c146389c803de152e2193a97`; service message polish and regression contract/worklog are recorded in subsequent commits.
 - Added source-contract assertions for eligibility, Serializable isolation, SALE-ledger matching, exact reversal, coupon release and route delegation. Tests remain authored but unexecuted.
 - This is an unpaid/pre-dispatch cancellation path only. Paid-order cancellation and external gateway refunds remain separate; do not interpret wallet-credit return resolution as a gateway refund. No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Refund concurrency and main payment-ledger immutability
+
+- Reworked `refundPayment` from a sequence of independent writes into a Serializable transaction. It now validates safe positive IRR integers, compare-and-swaps the original APPROVED payment row, sums prior refunds linked to that original (including legacy note format), caps cumulative refunds at the source amount, recomputes the parent order payment status in the same transaction, and writes audit events through the transactional outbox.
+- Gateway-backed refunds fail closed because no provider-side refund adapter/confirmation is configured. The service no longer creates a local REFUNDED row that could falsely imply funds were returned by the external gateway.
+- Hardened the separate main-database `/api/admin/payments/[id]` endpoint: direct PAID/REFUNDED status changes are blocked in favor of provider/action workflows, and DELETE is now fail-closed so financial ledger rows cannot be hard-deleted. CSRF remains required.
+- Commits: refund transaction `76a716ae98c6c563ab7826cfb4159a841be83113`; direct status guard `b74c6438718978dcfef3567d15d905ab9574d52b`; append-only DELETE handler `190f6079f1788598137cde6bbe2ac857f1fd4642`; tests/worklog follow-up commits recorded alongside this entry.
+- Added regression contracts for cumulative refund caps, source-row compare-and-swap, gateway refund gate, transactional outbox and append-only payment ledger. Tests remain unexecuted.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
