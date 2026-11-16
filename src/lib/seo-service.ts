@@ -290,7 +290,7 @@ export async function generateSitemap(): Promise<string> {
     const seo = articleSEO.get(a.id);
     if (seo?.robotsIndex === false) continue;
     entries.push({
-      loc: `${SITE_BASE_URL}/knowledge/${a.slug}`,
+      loc: `${SITE_BASE_URL}/articles/${a.slug}`,
       lastmod: (a.publishedAt ?? a.updatedAt ?? new Date()).toISOString(),
       changefreq: seo?.sitemapChangeFreq ?? "monthly",
       priority: seo?.sitemapPriority ?? 0.5,

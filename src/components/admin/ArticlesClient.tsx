@@ -287,7 +287,7 @@ export default function ArticlesClient({
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-center gap-2">
                     <a
-                      href={`/knowledge/${a.slug}`}
+                      href={`/articles/${a.slug}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#F58220] hover:text-[#F58220]"

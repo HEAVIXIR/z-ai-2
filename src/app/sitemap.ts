@@ -178,7 +178,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const seo = articleSEO.get(a.id);
     if (seo?.robotsIndex === false) continue;
     out.push({
-      url: `${base}/knowledge/${a.slug}`,
+      url: `${base}/articles/${a.slug}`,
       lastModified: a.publishedAt ?? a.updatedAt ?? new Date(),
       changeFrequency: (seo?.sitemapChangeFreq ?? "monthly") as any,
       priority: seo?.sitemapPriority ?? 0.5,
