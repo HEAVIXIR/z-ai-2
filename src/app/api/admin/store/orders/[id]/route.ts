@@ -24,6 +24,9 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 const ALLOWED_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"];
+const ORDER_SHIPMENT_WORKFLOW_REQUIRED = "ORDER_SHIPMENT_WORKFLOW_REQUIRED";
+const ORDER_RETURN_WORKFLOW_REQUIRED = "ORDER_RETURN_WORKFLOW_REQUIRED";
+const ORDER_PAYMENT_STATUS_LEDGER_REQUIRED = "ORDER_PAYMENT_STATUS_LEDGER_REQUIRED";
 
 function toErrorResponse(e: unknown) {
   if (e instanceof CommerceServiceError) {
@@ -115,17 +118,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ success: false, error: "بدنه درخواست باید UTF-8 معتبر باشد" }, { status: 400 });
     }
 
-    let body: unknown;
+    let parsedBody: unknown;
     try {
-      body = raw.trim() ? JSON.parse(raw) : null;
+      parsedBody = raw.trim() ? JSON.parse(raw) : null;
     } catch {
       return NextResponse.json({ success: false, error: "JSON درخواست معتبر نیست" }, { status: 400 });
     }
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
       return NextResponse.json({ success: false, error: "بدنه درخواست باید یک شیء معتبر باشد" }, { status: 400 });
     }
 
-    const input = body as Record<string, unknown>;
+    const body = parsedBody as Record<string, unknown>;
+    const input = body;
+    if ("paymentStatus" in input) {
+      return NextResponse.json({
+        success: false,
+        error: "وضعیت پرداخت فقط از دفتر پرداخت محاسبه می‌شود",
+        code: ORDER_PAYMENT_STATUS_LEDGER_REQUIRED,
+      }, { status: 409 });
+    }
     const allowedFields = new Set(["status", "notes", "shippingAddress", "couponCode", "mechanicId"]);
     for (const key of Object.keys(input)) {
       if (!allowedFields.has(key)) {
@@ -183,6 +194,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!current) {
       return NextResponse.json({ success: false, error: "سفارش یافت نشد" }, { status: 404 });
     }
+    if ((body.status === "SHIPPED" || body.status === "DELIVERED") && body.status !== current.status) {
+      return NextResponse.json({
+        success: false,
+        error: "وضعیت ارسال و تحویل فقط از گردش رهگیری محموله قابل تغییر است",
+        code: ORDER_SHIPMENT_WORKFLOW_REQUIRED,
+      }, { status: 409 });
+    }
+    if (body.status === "RETURNED" && body.status !== current.status) {
+      return NextResponse.json({
+        success: false,
+        error: "وضعیت مرجوعی فقط از گردش اختصاصی مرجوعی قابل تغییر است",
+        code: ORDER_RETURN_WORKFLOW_REQUIRED,
+      }, { status: 409 });
+    }
     if (data.status === "CANCELLED" && data.status !== current.status) {
       const cancelled = await cancelStoreOrder(id, user.id);
       const refreshed = await getOrderDetail(id).catch(() => null);
@@ -193,10 +218,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const existing = await tx.order.findUnique({ where: { id } });
       if (!existing) return null;
       if ((data.status === "SHIPPED" || data.status === "DELIVERED") && data.status !== existing.status) {
-        throw new CommerceServiceError(409, "وضعیت ارسال و تحویل فقط از گردش رهگیری محموله قابل تغییر است");
+        throw new CommerceServiceError(409, ORDER_SHIPMENT_WORKFLOW_REQUIRED);
       }
       if (data.status === "RETURNED" && data.status !== existing.status) {
-        throw new CommerceServiceError(409, "وضعیت مرجوعی فقط از گردش اختصاصی مرجوعی قابل تغییر است");
+        throw new CommerceServiceError(409, ORDER_RETURN_WORKFLOW_REQUIRED);
       }
 
       if (data.mechanicId) {
