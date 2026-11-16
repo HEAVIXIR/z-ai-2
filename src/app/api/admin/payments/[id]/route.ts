@@ -246,43 +246,13 @@ export async function DELETE(req: Request, { params }: Args) {
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
-
-  try {
-    const { id } = await params;
-    return NextResponse.json(
-      { error: "حذف سخت رکورد مالی غیرفعال است؛ سوابق پرداخت باید با گردش ابطال/بازپرداخت مستند حفظ شوند", code: "PAYMENT_LEDGER_IMMUTABLE" },
-      { status: 409 },
-    );
-    const before = await db.payment.findUnique({ where: { id } });
-    if (!before) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-    await db.payment.delete({ where: { id } });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.delete",
-      entityType: "Payment",
-      entityId: id,
-      before: {
-        userId: before.userId,
-        amount: before.amount.toString(),
-        currency: before.currency,
-        type: before.type,
-        status: before.status,
-        gateway: before.gateway,
-        trackingCode: before.trackingCode,
-      },
-      reason: "via admin API",
-    });
-
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    trackError(err, { endpoint: "DELETE /api/admin/payments/[id]" });
-    return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
-  }
+  // Financial ledger rows are append-only. Reversals must create an
+  // auditable compensating record rather than deleting the source entry.
+  return NextResponse.json(
+    {
+      error: "حذف سخت رکورد مالی غیرفعال است؛ سوابق پرداخت باید با گردش ابطال/بازپرداخت مستند حفظ شوند",
+      code: "PAYMENT_LEDGER_IMMUTABLE",
+    },
+    { status: 409 },
+  );
 }
