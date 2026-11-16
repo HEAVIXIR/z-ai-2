@@ -431,3 +431,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Current selected branch head at this checkpoint: `933ad33103cc74b44d3b7aa4a4ca3c8ae92b0dc1`. It is 55 commits ahead and 0 commits behind `recovery/heavix-full-product-integration-2026-11-11` at comparison time. PR #340 remains Draft/open and unmerged.
 - No tests, typecheck, build, CI, Actions dispatch, migration, seed, database operation, deployment, Production or DNS change was run/performed for these commits. Do not infer runtime deployment from source commits.
 - Release remains incomplete: catalog/taxonomy data readiness, exact-current-head validation, authenticated Admin/browser acceptance, and final end-to-end payment/inventory/order workflow verification remain open. The broader recovery PR #307 is Draft and unmerged; its documented empty Preview catalog is a material listing-creation blocker. No broad branch merge is authorized.
+
+
+## 2026-11-16 — Payment and shipment mutation hardening
+
+- Read-only review confirmed the inventory reservation/release service already uses compare-and-swap updates inside transactions; procurement receiving uses a compare-and-swap on received quantity and keeps stock/ledger/outbox writes in the same transaction. These paths were not modified.
+- Added Origin/Referer CSRF validation to `POST /api/store/payments/gateway/request` and tightened the non-admin order ownership fallback to require a verified mobile number. Session user ownership remains supported; admin behavior is unchanged.
+- Added CSRF validation to `PATCH /api/admin/store/shipments/[id]`. Shipment tracking and exception routes were separately inspected and already enforce CSRF.
+- Commits: gateway request `b43bcee8a7b83e811ce891818d163f247da07120`; shipment update `ad81ffcb6bfec60165e0d9e83eb9875b960bbd2b`.
+- Verified source after write: both endpoints contain `checkCsrf(req)`; gateway ownership fallback contains `sessionUser.mobileVerified && sessionUser.mobile`.
+- Current branch head: `ad81ffcb6bfec60165e0d9e83eb9875b960bbd2b`; PR #340 remains Draft/open and unmerged.
+- No test/typecheck/build/CI/Actions/deploy, migration, seed, database or runtime operation was run. Exact-head validation and full payment callback race review remain outstanding; this is not a release approval.
