@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/request-context";
@@ -110,6 +111,10 @@ export async function PATCH(req: Request, { params }: Args) {
       { status: 403 },
     );
   }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -176,6 +181,10 @@ export async function DELETE(req: Request, { params }: Args) {
       { error: "Forbidden: requires company.delete" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
