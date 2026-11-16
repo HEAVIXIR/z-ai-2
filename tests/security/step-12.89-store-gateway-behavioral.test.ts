@@ -311,6 +311,20 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
     expect(res.status).toBe(409);
   });
+  it("NEGATIVE: matching but unverified phone without userId ownership → 403", async () => {
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: false, firstName: "X", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, userId: "another-user" });
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
+    expect(res.status).toBe(403);
+  });
+
+  it("NEGATIVE: fractional or unsafe payment amount → 400", async () => {
+    mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000.5 }));
+    expect(res.status).toBe(400);
+  });
+
 
   it("NEGATIVE: too many pending payments → 409", async () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
