@@ -482,3 +482,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: manual payment hardening `ac9d422f`; checkout cart/coupon logic `3749efb6` and transaction-scope correction `36f03deb`; behavioral tests `8de7291c`; contract tests `f1f89100`.
 - Source review confirmed stock decrement remains in the order-creation transaction through `decrementOrderStock`, with Part stock compare-and-swap, deterministic warehouse balance CAS, SALE movements, and audit-outbox records.
 - No tests, typecheck, lint, build, CI, Actions dispatch, migration, seed, database operation, deployment, Production or runtime change was performed. Gateway provider was not called.
+
+
+## 2026-11-16 — Seller listing mutation and media ownership hardening
+
+- Added CSRF checks to seller-scoped `/api/listings/[id]` PATCH and DELETE routes.
+- Image deletion, primary-image selection, and reordering now scope every database mutation to the target `listingId`; foreign listing image IDs are rejected rather than mutated.
+- Seller image additions now accept only stable internal `/api/media/<24-hex-id>` references, validate that each asset is the authenticated user's private staged Listing asset, enforce a single primary-image request and the shared 10-image cap, persist the stable media URL, and attach the asset to the exact listing through the media service. No arbitrary external image URL or cross-listing asset rebind is accepted.
+- Added seller listing/media assertions to `tests/security/store-checkout-payment-contract.test.ts`. Test source is authored, not executed.
+- Commits: listing mutation/media hardening `68f6166a`; single-primary constraint `5b09edab`; contract assertions `e116c822`.
+- Read-only review of purchase-order cancellation confirmed it uses a Serializable transaction, status compare-and-swap, and transactional audit outbox; no change required there.
+- No tests/typecheck/lint/build/CI/Actions, migration, seed, DB operation, deployment, Production or runtime change was performed.
