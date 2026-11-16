@@ -444,6 +444,14 @@ export async function receivePurchaseOrderItem(
         );
       }
 
+      // Match the global inventory lock order used by adjustStock/transferStock:
+      // lock Part before reading/updating its warehouse balances.
+      const lockedParts = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Part" WHERE id = ${poItem.partId} FOR UPDATE
+      `;
+      if (lockedParts.length !== 1) {
+        throw new ProcurementServiceError(404, 'قطعه سفارش خرید یافت نشد');
+      }
       const part = await tx.part.findUnique({
         where: { id: poItem.partId },
         select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
