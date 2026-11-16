@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { isAdmin } from "@/lib/authorization";
@@ -162,6 +163,10 @@ export async function PATCH(req: Request, { params }: Params) {
       { error: "Forbidden: missing permission 'listing.update'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   const user = await getCurrentUser();
   try {
@@ -476,7 +481,7 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 /* DELETE /api/admin/listings/[id]  (P0-RBAC: requires listing.delete) */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -486,6 +491,10 @@ export async function DELETE(_req: Request, { params }: Params) {
       { error: "Forbidden: missing permission 'listing.delete'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
