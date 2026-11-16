@@ -683,7 +683,8 @@ export async function releaseStock(
     throw new InventoryServiceError(400, 'تعداد باید عدد صحیح مثبت باشد');
   }
 
-  return storeDb.$transaction(async (tx) => {
+  try {
+    return await storeDb.$transaction(async (tx) => {
     const balance = await tx.inventoryBalance.findUnique({
       where: { partId_warehouseId: { partId, warehouseId } },
     });
@@ -724,7 +725,13 @@ export async function releaseStock(
     });
 
     return updated;
-  });
+  }, { isolationLevel: 'Serializable' });
+  } catch (err: any) {
+    if (err?.code === 'P2034') {
+      throw new InventoryServiceError(409, 'رزرو انبار هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+    }
+    throw err;
+  }
 }
 
 // ── getLowStockItems ──────────────────────────────────────
