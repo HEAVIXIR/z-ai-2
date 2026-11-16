@@ -88,9 +88,10 @@ const { PATCH } = await import("@/app/api/admin/users/[id]/route");
 /* ── Helpers ── */
 
 function makeReq(id: string, body: unknown): Request {
-  return new Request(`http://localhost/api/admin/users/${id}`, {
+  const url = new URL(`http://localhost:3000/api/admin/users/${id}`);
+  return new Request(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: url.origin },
     body: JSON.stringify(body),
   });
 }
