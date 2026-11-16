@@ -39,6 +39,7 @@ vi.mock("@/lib/authorization", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => ({})) }));
+vi.mock("@/lib/csrf", () => ({ checkCsrf: vi.fn(() => true) }));
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: () => ({ ok: true, resetAt: new Date(Date.now() + 60000) }),
   retryAfterSeconds: () => 60,
@@ -351,6 +352,14 @@ describe("PR #41: POST /api/store/payments/gateway/request — security", () => 
 
   it("NEGATIVE: non-owner → 403", async () => {
     mockCurrentUser = { id: "user-B", mobile: "09130000000", firstName: "B", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("NEGATIVE: matching phone without verified mobile → 403", async () => {
+    mockCurrentUser = { id: "user-B", mobile: "09120000000", mobileVerified: false, firstName: "B", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
     const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
