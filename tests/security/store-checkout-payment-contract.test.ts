@@ -29,6 +29,10 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(route).toMatch(/where: \{ id: imgId, listingId: id \}/);
     expect(route).toMatch(/asset\.uploadedBy !== auth\.userId/);
     expect(route).toMatch(/attachAsset\(asset\.id, "Listing", id, auth\.userId\)/);
+    expect(route.indexOf("Validate every requested image mutation")).toBeLessThan(route.indexOf("await db.listing.update"));
+    expect(route).toContain('new RegExp("^/api/media/([a-f0-9]{24})$")');
+    expect(route).toContain("فهرست حذف شامل تصویر متعلق به آگهی دیگر");
+
   });
 
   it("submits manual payments with verified-mobile ownership and serializable revalidation", () => {
