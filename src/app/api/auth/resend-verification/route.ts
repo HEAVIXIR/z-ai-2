@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 
     // Throttle: most recent EMAIL code must be at least 60s old.
     const latest = await db.verificationCode.findFirst({
-      where: { userId: user.id, type: "EMAIL" },
+      where: { userId: user.id, type: "EMAIL", used: false, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
     });
     if (latest && Date.now() - latest.createdAt.getTime() < 60 * 1000) {

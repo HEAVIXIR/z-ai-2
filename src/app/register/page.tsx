@@ -157,8 +157,11 @@ export default function RegisterPage() {
                 <label className="mb-1 block text-xs font-bold text-white/60">شماره موبایل *</label>
                 <input
                   value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
+                  onChange={(e) => setMobile(e.target.value.replace(/[^0-9۰-۹٠-٩+]/g, "").slice(0, 16))}
                   required
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={16}
                   dir="ltr"
                   className={inputCls + " text-right"}
                   placeholder="09123456789"
@@ -172,6 +175,8 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
+                  maxLength={254}
                   dir="ltr"
                   className={inputCls + " text-right"}
                   placeholder="you@example.com"
@@ -185,6 +190,9 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
                   className={inputCls}
                   placeholder="حداقل ۸ کاراکتر"
                 />
@@ -248,8 +256,11 @@ export default function RegisterPage() {
             <div className="mt-5">
               <input
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(e.target.value.replace(/\\D/g, "").slice(0, 6))}
                 required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
                 dir="ltr"
                 maxLength={6}
                 className={inputCls + " text-center text-2xl tracking-[0.5em] font-black"}

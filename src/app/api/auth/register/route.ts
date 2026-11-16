@@ -77,8 +77,8 @@ export async function POST(req: Request) {
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return NextResponse.json({ error: "ایمیل معتبر نیست" }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "رمز عبور حداقل ۶ کاراکتر باشد" }, { status: 400 });
+    if (password.length < 8 || password.length > 128) {
+      return NextResponse.json({ error: "رمز عبور باید بین ۸ تا ۱۲۸ کاراکتر باشد" }, { status: 400 });
     }
 
     mobile = toEnDigits(mobile);
@@ -178,6 +178,10 @@ export async function POST(req: Request) {
       await sendVerificationEmail(user.email, emailCode);
     } catch {
       emailDelivery = false;
+      await db.verificationCode.updateMany({
+        where: { userId: user.id, type: "EMAIL", used: false },
+        data: { used: true },
+      });
       console.error("[register] verification email delivery failed");
     }
 
