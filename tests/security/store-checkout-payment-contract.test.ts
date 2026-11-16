@@ -59,6 +59,25 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
+  it("serializes procurement receipt against the global Part-to-warehouse inventory lock order", () => {
+    const service = read("src/lib/store-procurement-service.ts");
+    const partLock = service.indexOf('SELECT id FROM "Part" WHERE id = ${poItem.partId} FOR UPDATE');
+    const partRead = service.indexOf("const part = await tx.part.findUnique", partLock);
+    const balanceRead = service.indexOf("tx.inventoryBalance.findMany", partRead);
+    expect(partLock).toBeGreaterThan(-1);
+    expect(partRead).toBeGreaterThan(partLock);
+    expect(balanceRead).toBeGreaterThan(partRead);
+    expect(service).toMatch(/isolationLevel: 'Serializable'/);
+  });
+
+  it("serializes reservation release and reports transaction conflicts", () => {
+    const service = read("src/lib/store-inventory-service.ts");
+    const release = service.slice(service.indexOf("export async function releaseStock"), service.indexOf("// ── getLowStockItems"));
+    expect(release).toMatch(/reserved: \{ decrement: qty \}/);
+    expect(release).toMatch(/isolationLevel: 'Serializable'/);
+    expect(release).toMatch(/err\?\.code === 'P2034'/);
+  });
+
   it("creates shipments only for paid confirmed orders and records audit atomically", () => {
     const service = read("src/lib/store-shipments-service.ts");
     expect(service).toMatch(/order\.paymentStatus !== 'PAID'/);
