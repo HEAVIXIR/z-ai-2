@@ -18,6 +18,12 @@ describe("private-page indexing policy", () => {
   it("marks private, transactional, utility, and time-sensitive route groups noindex", () => {
     const layouts = [
       "src/app/admin/layout.tsx",
+      "src/app/account/security/layout.tsx",
+      "src/app/company/register/layout.tsx",
+      "src/app/forgot-password/layout.tsx",
+      "src/app/verify-email/layout.tsx",
+      "src/app/transport/request/layout.tsx",
+      "src/app/sell-in-7-days/register/layout.tsx",
       "src/app/auctions/layout.tsx",
       "src/app/compare/layout.tsx",
       "src/app/dashboard/layout.tsx",
