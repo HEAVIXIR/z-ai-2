@@ -20,6 +20,7 @@ import { getResource, updateResource, deleteResource } from '@/lib/admin/data-ad
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { can, isAdmin } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
@@ -101,6 +102,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(updatePerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
@@ -167,7 +172,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 // ── DELETE: Delete resource ───────────────────────────────
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
 
   if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
@@ -187,6 +192,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(deletePerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   // PR-SC-00: tenant-scoped delete — non-owners get 404.
   const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);
