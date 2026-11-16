@@ -35,6 +35,14 @@ describe("store checkout and manual-payment concurrency contracts", () => {
 
   });
 
+  it("prevents direct admin overrides of ledger-derived payment and stock lifecycle states", () => {
+    const route = read("src/app/api/admin/store/orders/[id]/route.ts");
+    expect(route).toMatch(/ORDER_PAYMENT_STATUS_LEDGER_REQUIRED/);
+    expect(route).toMatch(/ORDER_STOCK_REVERSAL_REQUIRED/);
+    expect(route).toMatch(/body\.status === "CANCELLED" \|\| body\.status === "RETURNED"/);
+    expect(route).toMatch(/checkCsrf\(req\)/);
+  });
+
   it("blocks admin payment approval when the order is closed or approved totals would exceed the order", () => {
     const route = read("src/app/api/admin/store/payments/[id]/route.ts");
     expect(route).toMatch(/orderForApproval\.status/);
