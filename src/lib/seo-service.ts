@@ -325,12 +325,7 @@ export function getRobotsTxt(): string {
   return [
     "User-agent: *",
     "Allow: /",
-    "Disallow: /admin/",
     "Disallow: /api/",
-    "Disallow: /dashboard/",
-    "Disallow: /seller/",
-    "Disallow: /login",
-    "Disallow: /register",
     "",
     `Host: ${SITE_BASE_URL}`,
     `Sitemap: ${sitemapUrl}`,

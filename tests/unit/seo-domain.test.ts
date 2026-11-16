@@ -74,21 +74,11 @@ describe("robots.ts (official Next.js metadata route)", () => {
     expect(result.sitemap).toBe("https://heavix.ir/sitemap.xml");
   });
 
-  it("preserves the disallow list for private routes", async () => {
+  it("allows crawlers to observe private-page noindex and disallows API endpoints", async () => {
     const mod = await import("@/app/robots");
     const result = mod.default();
     const disallow = result.rules?.[0]?.disallow;
-    expect(Array.isArray(disallow)).toBe(true);
-    expect(disallow).toEqual(
-      expect.arrayContaining([
-        "/admin/",
-        "/api/",
-        "/dashboard/",
-        "/seller/",
-        "/login",
-        "/register",
-      ]),
-    );
+    expect(disallow).toEqual(["/api/"]);
   });
 
   it("allows the root path", async () => {
@@ -128,18 +118,12 @@ describe("seo-service.getRobotsTxt() (legacy Wave 3B producer)", () => {
     expect(txt).toContain("Sitemap: https://heavix.ir/sitemap.xml");
   });
 
-  it("contains the same disallow directives as the official robots.ts", async () => {
+  it("matches the official robots policy: only API endpoints are disallowed", async () => {
     const mod = await import("@/lib/seo-service");
     const txt = mod.getRobotsTxt();
-    for (const rule of [
-      "Disallow: /admin/",
-      "Disallow: /api/",
-      "Disallow: /dashboard/",
-      "Disallow: /seller/",
-      "Disallow: /login",
-      "Disallow: /register",
-    ]) {
-      expect(txt).toContain(rule);
+    expect(txt).toContain("Disallow: /api/");
+    for (const privateRoute of ["/admin/", "/dashboard/", "/seller/", "/login", "/register"]) {
+      expect(txt).not.toContain("Disallow: " + privateRoute);
     }
     expect(txt).toContain("User-agent: *");
     expect(txt).toContain("Allow: /");
