@@ -238,6 +238,11 @@ export async function PATCH(req: Request, { params }: Args) {
       if (additions.length > 10) {
         return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
       }
+      const existingCount = await db.listingImage.count({ where: { listingId: id } });
+      if (existingCount + additions.length > 10) {
+        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+      }
+      const hasRequestedPrimary = additions.some((image: any) => image?.isPrimary === true);
       const staged: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean; sortOrder: number }> = [];
       for (const [idx, image] of additions.entries()) {
         const imageUrl = String(image?.url ?? image ?? "");
@@ -260,26 +265,33 @@ export async function PATCH(req: Request, { params }: Args) {
           id: asset.id,
           url: asset.url,
           alt: typeof image?.alt === "string" ? image.alt.slice(0, 500) : null,
-          isPrimary: Boolean(image?.isPrimary) || (idx === 0 && (await db.listingImage.count({ where: { listingId: id } })) === 0),
+          isPrimary: Boolean(image?.isPrimary) || (!hasRequestedPrimary && idx === 0 && existingCount === 0),
           sortOrder: Number.isSafeInteger(image?.sortOrder) && image.sortOrder >= 0 ? image.sortOrder : idx,
         });
       }
       if (new Set(staged.map((asset) => asset.id)).size !== staged.length) {
         return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
       }
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
-      if (existingCount + staged.length > 10) {
-        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
-      }
       await db.listingImage.createMany({
         data: staged.map((asset, idx) => ({
           listingId: id,
           url: asset.url,
           alt: asset.alt,
-          isPrimary: asset.isPrimary && existingCount === 0,
+          isPrimary: asset.isPrimary,
           sortOrder: existingCount + idx,
         })),
       });
+      const primaryAsset = staged.find((asset) => asset.isPrimary);
+      if (primaryAsset) {
+        await db.listingImage.updateMany({
+          where: { listingId: id },
+          data: { isPrimary: false },
+        });
+        await db.listingImage.updateMany({
+          where: { listingId: id, url: primaryAsset.url },
+          data: { isPrimary: true },
+        });
+      }
       for (const asset of staged) {
         const attached = await attachAsset(asset.id, "Listing", id, auth.userId);
         if (!attached.ok) {
