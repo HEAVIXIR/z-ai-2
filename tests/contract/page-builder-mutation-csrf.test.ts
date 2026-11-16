@@ -28,4 +28,18 @@ describe("Page Builder mutation CSRF contracts", () => {
     expect(body).toBeGreaterThanOrEqual(0);
     expect(guard).toBeLessThan(body);
   });
+  
+  it("makes publish and rollback state changes atomic with audit", () => {
+    for (const file of [
+      "src/app/api/admin/pages/[id]/publish/route.ts",
+      "src/app/api/admin/pages/[id]/rollback/route.ts",
+    ]) {
+      const source = read(file);
+      expect(source).toContain("db.$transaction(async (tx)");
+      expect(source).toContain("tx.adminPage.update");
+      expect(source).toContain("tx.adminPageVersion.update");
+      expect(source).toContain("tx.auditLog.create");
+      expect(source).not.toContain("logAudit(");
+    }
+  });
 });
