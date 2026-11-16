@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,17 +42,20 @@ export async function GET() {
   }
 }
 
-/* PUT /api/admin/site-settings  (P0-RBAC: requires settings.manage) */
+/* PUT /api/admin/site-settings — same canonical permission as GET. */
 export async function PUT(req: Request) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!(await hasPermission(sessionUser.id, "settings.manage"))) {
+  if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
     return NextResponse.json(
       { error: "Forbidden: missing permission 'settings.manage'" },
       { status: 403 },
     );
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const body = await req.json().catch(() => ({}));
