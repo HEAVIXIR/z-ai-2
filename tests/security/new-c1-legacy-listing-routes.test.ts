@@ -63,7 +63,11 @@ beforeEach(() => {
 });
 
 function makeReq(url: string, init?: RequestInit): Request {
-  return new Request(url, init);
+  const target = new URL(url);
+  target.port = "3000";
+  const headers = new Headers(init?.headers);
+  headers.set("Origin", target.origin);
+  return new Request(target, { ...init, headers });
 }
 
 // ── /api/admin/listings (GET + POST) ───────────────────────
