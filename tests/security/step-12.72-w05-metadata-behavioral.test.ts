@@ -34,7 +34,7 @@ const mockListing = {
 };
 
 const mockCategory = { name: "بیل مکانیکی", slug: "excavator" };
-const mockBrand = { name: "Caterpillar", slug: "caterpillar" };
+const mockBrand = { id: "brand-1", name: "Caterpillar", slug: "caterpillar", active: true, logoUrl: null };
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -48,6 +48,9 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/brand-resolve", () => ({
   resolveBrandBySlugOrAlias: vi.fn(async () => null),
+}));
+vi.mock("@/lib/seo", () => ({
+  getSEO: vi.fn(async () => null),
 }));
 
 // Import AFTER mocks
@@ -146,5 +149,12 @@ describe("W-05: brands/[slug] generateMetadata", () => {
     (resolveBrandBySlugOrAlias as any).mockResolvedValue(null);
     const meta = await brandPage.generateMetadata({ params: Promise.resolve({ slug: "nonexistent" }) });
     expect(meta.title).toBe("برند یافت نشد");
+  });
+
+  it("NEGATIVE: inactive brand → noindex fallback metadata", async () => {
+    (resolveBrandBySlugOrAlias as any).mockResolvedValue({ ...mockBrand, active: false });
+    const meta = await brandPage.generateMetadata({ params: Promise.resolve({ slug: "inactive" }) });
+    expect(meta.title).toBe("برند یافت نشد");
+    expect(meta.robots).toEqual({ index: false, follow: false });
   });
 });
