@@ -158,7 +158,7 @@ export function CheckoutDialog({
       const res = await fetch("/api/store/payments/gateway/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: createdOrder.id, phone }),
+        body: JSON.stringify({ orderId: createdOrder.id }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "خطا در ایجاد درگاه");
@@ -185,7 +185,6 @@ export function CheckoutDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: createdOrder.id,
-          phone,
           method: mMethod,
           amountIrr: createdOrder.totalIrr,
           referenceCode: refCode,
