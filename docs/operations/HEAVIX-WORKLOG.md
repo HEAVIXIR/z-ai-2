@@ -419,3 +419,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - This is exact-head CI for the scraper PR, not for the recovery branch. PR #307's current recovery code head remains `bac8754...`; its exact-head CI/OpenNext after PR #317/#313 merges is still pending.
 - Vercel external check for PR #333 remains rate-limited. Its READY Preview is for the immediately preceding code-equivalent commit `a48dc078...`; Deployment Protection blocks anonymous route acceptance until the owner signs in through the secure browser profile.
 - No Production, DNS, Cloudflare Worker deploy, shared DB write, seed or migration was performed.
+
+
+## 2026-11-16 — Email-only account security and store mutation CSRF hardening
+
+- Owner decision: continue with six-digit email OTP as the only active verification/change-contact mechanism. SMS delivery is deferred until the production-domain release preparation; no SMS vendor, paid messaging service, or SMS OTP activation is authorized now.
+- Updated `src/app/account/security/security-center.tsx`: removed the interactive mobile-change form and its unused client handler/state. The existing mobile number and verification state remain visible; the UI clearly states that mobile changes are disabled until SMS infrastructure is prepared. The server endpoint remains fail-closed and returns `SMS_VERIFICATION_NOT_CONFIGURED` without changing the stored number.
+- Commit: `23f439edb4a39efaaeb9fa401d49080f943ece11`.
+- Added fail-closed Origin/Referer CSRF validation to authenticated wishlist mutations (`POST /api/store/wishlist`) and manual payment receipt submission (`POST /api/store/payments/manual`). Read-only wishlist GET and external payment gateway callback were not changed.
+- Commits: wishlist `30415d004d2fb1c2e781535e7ae5f98370558e40`; manual payment `933ad33103cc74b44d3b7aa4a4ca3c8ae92b0dc1`.
+- Current selected branch head at this checkpoint: `933ad33103cc74b44d3b7aa4a4ca3c8ae92b0dc1`. It is 55 commits ahead and 0 commits behind `recovery/heavix-full-product-integration-2026-11-11` at comparison time. PR #340 remains Draft/open and unmerged.
+- No tests, typecheck, build, CI, Actions dispatch, migration, seed, database operation, deployment, Production or DNS change was run/performed for these commits. Do not infer runtime deployment from source commits.
+- Release remains incomplete: catalog/taxonomy data readiness, exact-current-head validation, authenticated Admin/browser acceptance, and final end-to-end payment/inventory/order workflow verification remain open. The broader recovery PR #307 is Draft and unmerged; its documented empty Preview catalog is a material listing-creation blocker. No broad branch merge is authorized.
