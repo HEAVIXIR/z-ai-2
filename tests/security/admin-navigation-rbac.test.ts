@@ -35,30 +35,32 @@ describe("GET /api/admin/navigation — canonical RBAC", () => {
     findGroups.mockResolvedValue([
       {
         key: "store",
+        active: true,
         titleFa: "فروشگاه",
         titleEn: "Store",
         icon: "store",
         sortOrder: 1,
         items: [
-          { key: "orders", titleFa: "سفارش‌ها", titleEn: "Orders", href: "/admin/store/orders", icon: null, permissionKey: "order.read" },
-          { key: "procurement", titleFa: "تأمین", titleEn: "Procurement", href: "/admin/resources/procurement", icon: null, permissionKey: "procurement.read" },
-          { key: "general", titleFa: "عمومی", titleEn: "General", href: "/admin/general", icon: null, permissionKey: null },
+          { key: "orders", active: true, titleFa: "سفارش‌ها", titleEn: "Orders", href: "/admin/store/orders", icon: null, permissionKey: "order.read" },
+          { key: "procurement", active: true, titleFa: "تأمین", titleEn: "Procurement", href: "/admin/resources/procurement", icon: null, permissionKey: "procurement.read" },
+          { key: "general", active: true, titleFa: "عمومی", titleEn: "General", href: "/admin/general", icon: null, permissionKey: null },
         ],
       },
       {
         key: "system",
+        active: true,
         titleFa: "سیستم",
         titleEn: "System",
         icon: "settings",
         sortOrder: 2,
         items: [
-          { key: "danger", titleFa: "سیستم", titleEn: "System", href: "/admin/system", icon: null, permissionKey: "system.manage" },
+          { key: "danger", active: true, titleFa: "سیستم", titleEn: "System", href: "/admin/system", icon: null, permissionKey: "system.manage" },
         ],
       },
     ]);
     findStandalone.mockResolvedValue([
-      { key: "audit", titleFa: "گزارش ممیزی", titleEn: "Audit", href: "/admin/audit", icon: null, permissionKey: "audit.read" },
-      { key: "help", titleFa: "راهنما", titleEn: "Help", href: "/admin/help", icon: null, permissionKey: null },
+      { key: "audit", active: true, titleFa: "گزارش ممیزی", titleEn: "Audit", href: "/admin/audit", icon: null, permissionKey: "audit.read" },
+      { key: "help", active: true, titleFa: "راهنما", titleEn: "Help", href: "/admin/help", icon: null, permissionKey: null },
     ]);
   });
 
