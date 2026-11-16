@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
 import { getStoreUser } from "@/lib/store-auth";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
     // P0 FIX: Require authenticated session.
     const sessionUser = await getStoreUser();
     if (!sessionUser) {
