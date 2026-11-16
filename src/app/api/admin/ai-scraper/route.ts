@@ -16,7 +16,6 @@ const DIVAR_HOSTS = ["divar.ir", "divar.com"];
 const SHEYPOOR_HOSTS = ["sheypoor.com"];
 const MAX_BULK_IMPORT_URLS = 5;
 
-// Free-infrastructure policy: provider-backed scraping is intentionally fail-closed.
 const AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY = true;
 
 interface ScrapeResult {
@@ -466,20 +465,6 @@ export async function POST(req: Request) {
   }
   await requirePermission(user.id, "ai.scraper.execute");
 
-  if (!checkCsrf(req)) {
-    return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
-  }
-  if (AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
-        error: "اسکرپر هوشمند تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
-      },
-      { status: 503 },
-    );
-  }
-
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
 
@@ -510,7 +495,22 @@ export async function POST(req: Request) {
   let __resultSummary: any = null;
   let __errorMsg: string | null = null;
   try {
-    response = await _doPost(body, user, controller);
+    if (!checkCsrf(req)) {
+      __errorMsg = "CSRF origin validation failed";
+      response = NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
+    } else if (AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
+      __errorMsg = "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY";
+      response = NextResponse.json(
+        {
+          ok: false,
+          code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
+          error: "اسکرپر هوشمند تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
+        },
+        { status: 503 },
+      );
+    } else {
+      response = await _doPost(body, user, controller);
+    }
     // Best-effort: extract result summary from the response body for logging.
     try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
   } catch (err: any) {

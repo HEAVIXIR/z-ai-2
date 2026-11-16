@@ -41,8 +41,8 @@ describe("GET /api/admin/navigation — canonical RBAC", () => {
         icon: "store",
         sortOrder: 1,
         items: [
-          { key: "orders", active: true, titleFa: "سفارش‌ها", titleEn: "Orders", href: "/admin/store/orders", icon: null, permissionKey: "order.read" },
-          { key: "procurement", active: true, titleFa: "تأمین", titleEn: "Procurement", href: "/admin/resources/procurement", icon: null, permissionKey: "procurement.read" },
+          { key: "store__admin_store_orders", active: true, titleFa: "سفارش‌ها", titleEn: "Orders", href: "/admin/store/orders", icon: null, permissionKey: "order.read" },
+          { key: "store__admin_resources_procurement", active: true, titleFa: "تأمین", titleEn: "Procurement", href: "/admin/resources/procurement", icon: null, permissionKey: "procurement.read" },
           { key: "general", active: true, titleFa: "عمومی", titleEn: "General", href: "/admin/general", icon: null, permissionKey: null },
         ],
       },
@@ -100,7 +100,7 @@ describe("GET /api/admin/navigation — canonical RBAC", () => {
     expect(requirePermission).toHaveBeenCalledWith("admin-1", "admin.navigation.read");
     expect(body.data.mode).toBe("rbac");
     expect(body.data.groups).toHaveLength(1);
-    expect(body.data.groups[0].items.map((item: { key: string }) => item.key)).toEqual(["orders", "general"]);
+    expect(body.data.groups[0].items.map((item: { key: string }) => item.key)).toEqual(["store__admin_store_orders", "general"]);
     expect(body.data.standalone.map((item: { key: string }) => item.key)).toEqual(["help"]);
   });
 });

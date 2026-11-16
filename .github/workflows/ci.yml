@@ -358,10 +358,12 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
+        env:
+          HEAVIX_ENV: preview
         run: |
           bun run db:seed-rbac
-          bun run db:seed-brands-a
-          bun run db:seed-brands-b
+          bunx tsx prisma/seed-brands-a.ts --apply
+          bunx tsx prisma/seed-brands-b.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: audit-transaction-real (real status, no masking)
@@ -443,10 +445,12 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
+        env:
+          HEAVIX_ENV: preview
         run: |
           bun run db:seed-rbac
-          bun run db:seed-brands-a
-          bun run db:seed-brands-b
+          bunx tsx prisma/seed-brands-a.ts --apply
+          bunx tsx prisma/seed-brands-b.ts --apply
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: Seed phase catalog (STEP 13.53 P2-B)

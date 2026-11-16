@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 import { storeDb } from "@/lib/store-db";
 import { slugify } from "@/lib/api-helpers";
-
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
-import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Only the provider-backed scrape action is disabled; manual imports remain available.
 const AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY = true;
 
 /* ============================================================
@@ -596,39 +595,103 @@ async function _doPost(
    6. On failure: AIGatewayLog(failure) — including AbortError → 504
 */
 export async function POST(req: Request) {
+  // ── Existing auth (KEPT — defense-in-depth) ──
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await requirePermission(user.id, "store.manage");
+    await requirePermission(user.id, 'store.manage');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
 
-  if (!checkCsrf(req)) {
-    return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
-  }
-
+  // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
-  if (body.action === "scrape" && AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
+
+  // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "SCRAPER",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
     return NextResponse.json(
-      {
-        ok: false,
-        code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
-        error: "جستجوی هوشمند فروشگاه تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
-      },
-      { status: 503 },
+      { error: preflight.reason },
+      { status: preflight.statusCode },
     );
   }
+  const { policy } = preflight;
+  const startTime = Date.now();
 
-  // Manual import actions use only validated user-supplied data and never invoke an AI provider.
-  if (body.action === "import" || body.action === "bulk-import") {
-    return _doPost(body, user, new AbortController());
-  }
+  // ── STEP 11.43: AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
 
-  return NextResponse.json(
-    { ok: false, error: "action نامعتبر است (scrape | import | bulk-import)" },
-    { status: 400 },
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
   );
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  const isManualImport = body.action === "import" || body.action === "bulk-import";
+  try {
+    if (!checkCsrf(req)) {
+      __errorMsg = "CSRF origin validation failed";
+      response = NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
+    } else if (!isManualImport && AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
+      __errorMsg = "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY";
+      response = NextResponse.json(
+        {
+          ok: false,
+          code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
+          error: "جستجوی هوشمند فروشگاه تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
+        },
+        { status: 503 },
+      );
+    } else {
+      response = await _doPost(body, user, controller);
+    }
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success && !isManualImport) {
+      try {
+        await recordAICost("SCRAPER", policy.costCeilingUsd, user.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SCRAPER",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success && !isManualImport ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }

@@ -3037,13 +3037,8 @@ async function main() {
           sortable: !!field.sortable,
           displayOrder: order,
         },
-        update: {
-          required: required.has(field.key),
-          filterable: !!field.filterable,
-          searchable: !!field.searchable,
-          sortable: !!field.sortable,
-          displayOrder: order,
-        },
+        // Preserve administrator-managed per-category field settings.
+        update: {},
       });
     }
     applied.push({ slug: template.slug, fields: template.fields.length });
