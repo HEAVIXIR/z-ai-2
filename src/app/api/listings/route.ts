@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
 import { categoryLayerForTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
+import { toPublicListingDTO } from "@/lib/public-listing-dto";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
   normalizeSearchQuery,
@@ -113,27 +114,7 @@ export async function GET(req: Request) {
       // Re-shape to match the legacy /api/listings contract so the
       // existing client doesn't break: top-level `success` + `count` +
       // `data` array with brand/category/images nested objects.
-      const data = results.map((l) => ({
-        id: l.id,
-        slug: l.slug,
-        title: l.title,
-        description: l.description,
-        shortDesc: l.shortDesc,
-        price: l.price,
-        priceType: l.priceType,
-        listingType: l.listingType,
-        condition: l.condition,
-        province: l.province,
-        city: l.city,
-        year: l.year,
-        workingHours: l.workingHours,
-        featured: l.featured,
-        verified: l.verified,
-        publishedAt: l.publishedAt,
-        brand: l.brand,
-        category: l.category,
-        images: l.image ? [{ url: l.image }] : [],
-      }));
+      const data = results.map(toPublicListingDTO);
 
       // P2-23 Demand Engine — log the search (fire-and-forget).
       if (q) {
@@ -292,10 +273,7 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    const data = rows.map((l) => ({
-      ...l,
-      price: l.price ? l.price.toString() : null,
-    }));
+    const data = rows.map(toPublicListingDTO);
 
     // P2-23 Demand Engine — log the search (fire-and-forget).
     if (q) {

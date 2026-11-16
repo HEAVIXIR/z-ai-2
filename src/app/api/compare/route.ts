@@ -3,16 +3,13 @@ import { db } from "@/lib/db";
 import { createSession } from "@/lib/compare-engine";
 import { getCurrentUserId } from "@/lib/auth";
 import { trackEvent } from "@/lib/analytics";
+import { toPublicListingDTO } from "@/lib/public-listing-dto";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { COMPARE_CREATE, COMPARE_READ } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function serialize(l: any) {
-  return {
-    ...l,
-    price: l.price ? l.price.toString() : null,
-  };
-}
 
 /* ============================================================
    POST /api/compare — create a new comparison session.
@@ -23,6 +20,17 @@ function serialize(l: any) {
    Returns: { session: { id, shareToken, name, createdAt }, items: [{id}] }
    ============================================================ */
 export async function POST(req: Request) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_CREATE.label),
+    limit: COMPARE_CREATE.limit,
+    windowMs: COMPARE_CREATE.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد ساخت جلسه مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const body = await req.json().catch(() => ({}));
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 200) || null : null;
@@ -76,7 +84,7 @@ export async function POST(req: Request) {
         createdAt: session.createdAt,
       },
       items,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
@@ -92,6 +100,17 @@ export async function POST(req: Request) {
    new compare flow uses POST → /api/compare/[id].
    ============================================================ */
 export async function GET(req: Request) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_READ.label),
+    limit: COMPARE_READ.limit,
+    windowMs: COMPARE_READ.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد درخواست‌های مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const url = new URL(req.url);
     const idsParam = url.searchParams.get("ids") || "";
@@ -107,7 +126,7 @@ export async function GET(req: Request) {
     }
 
     const listings = await db.listing.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, status: "PUBLISHED" },
       include: {
         brand: { select: { id: true, name: true, nameEn: true } },
         category: { select: { id: true, name: true, nameEn: true } },
@@ -120,8 +139,8 @@ export async function GET(req: Request) {
       .filter(Boolean) as typeof listings;
 
     return NextResponse.json({
-      listings: ordered.map(serialize),
-    });
+      listings: ordered.map(toPublicListingDTO),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

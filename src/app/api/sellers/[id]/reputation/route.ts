@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkPublicApiRateLimit } from "@/lib/public-api-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,11 +17,28 @@ export const dynamic = "force-dynamic";
  * Per HEAVIX Master Execution Plan V3.0 Phase 10.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const rateLimit = checkPublicApiRateLimit(req, "seller-reputation");
+  const noStoreHeaders = { "Cache-Control": "private, no-store" };
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { ...noStoreHeaders, "Retry-After": String(rateLimit.retryAfter) } },
+    );
+  }
+
   try {
     const { id } = await params;
 
-    const user = await db.user.findUnique({
-      where: { id },
+    const user = await db.user.findFirst({
+      where: {
+        id,
+        userRoles: { some: { role: { key: "SELLER" } } },
+        status: "ACTIVE",
+        OR: [
+          { foundingStatus: null },
+          { foundingStatus: { is: { active: true } } },
+        ],
+      },
       select: {
         id: true,
         firstName: true,
@@ -35,7 +53,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     if (!user) {
-      return NextResponse.json({ error: "Seller not found" }, { status: 404 });
+      return NextResponse.json({ error: "Seller not found" }, { status: 404, headers: noStoreHeaders });
     }
 
     // Review stats
@@ -57,14 +75,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const cancelledDeals = await db.deal.count({ where: { sellerId: id, status: "CANCELLED" } }).catch(() => 0);
     const disputedDeals = await db.deal.count({ where: { sellerId: id, status: "DISPUTED" } }).catch(() => 0);
 
-    // Listing stats
-    const totalListings = await db.listing.count({ where: { sellerId: id } });
-    const publishedListings = await db.listing.count({ where: { sellerId: id, status: "PUBLISHED" } });
-    const verifiedListings = await db.listing.count({ where: { sellerId: id, verified: true } });
+    // Public reputation metrics expose only published inventory.
+    const publishedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED" },
+    });
+    const totalListings = publishedListings;
+    const verifiedListings = await db.listing.count({
+      where: { sellerId: id, status: "PUBLISHED", verified: true },
+    });
 
-    // Offer stats (response metrics)
+    // Offer stats are also scoped to published listings.
     const offersReceived = await db.listingOffer.count({
-      where: { listing: { sellerId: id } },
+      where: { listing: { sellerId: id, status: "PUBLISHED" } },
     }).catch(() => 0);
 
     // Build reputation signals
@@ -138,9 +160,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         offersReceived,
       },
       signals,
-    });
+    }, { headers: noStoreHeaders });
   } catch (err: any) {
     console.error("[reputation] error:", err);
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500, headers: noStoreHeaders });
   }
 }
