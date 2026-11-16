@@ -35,6 +35,22 @@ describe("store checkout and manual-payment concurrency contracts", () => {
 
   });
 
+  it("cancels only eligible unpaid orders and restores the exact checkout stock ledger", () => {
+    const service = read("src/lib/commerce-service.ts");
+    const route = read("src/app/api/admin/store/orders/[id]/route.ts");
+    expect(service).toMatch(/export async function cancelStoreOrder/);
+    expect(service).toMatch(/isolationLevel: "Serializable"/);
+    expect(service).toMatch(/type: "SALE"/);
+    expect(service).toMatch(/reference: orderId/);
+    expect(service).toMatch(/expected\.size !== consumed\.size/);
+    expect(service).toMatch(/type: "ADJUSTMENT"/);
+    expect(service).toMatch(/store\.inventory\.order_cancel_restore/);
+    expect(service).toMatch(/usedCount: \{ gt: 0 \}/);
+    expect(service).toMatch(/order\.paymentStatus !== "UNPAID"/);
+    expect(route).toMatch(/cancelStoreOrder\(id, user\.id\)/);
+    expect(route).toMatch(/ORDER_RETURN_WORKFLOW_REQUIRED/);
+  });
+
   it("prevents direct admin overrides of ledger-derived payment and stock lifecycle states", () => {
     const route = read("src/app/api/admin/store/orders/[id]/route.ts");
     expect(route).toMatch(/ORDER_PAYMENT_STATUS_LEDGER_REQUIRED/);
