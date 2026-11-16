@@ -142,7 +142,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data.status = body.status;
         data.reviewedAt = new Date();
       }
-      if (body.note !== undefined) data.note = body.note?.trim() || null;
+      if (typeof body.note === "string") data.note = body.note.trim() || null;
+      else if (body.note === null) data.note = null;
       if (Object.keys(data).length === 0) return { noChanges: true as const };
 
       const payment = await tx.payment.update({
