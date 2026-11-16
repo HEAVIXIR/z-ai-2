@@ -63,9 +63,13 @@ export async function POST(req: Request) {
     if (body.payerCard !== undefined && body.payerCard !== null && typeof body.payerCard !== "string") {
       return NextResponse.json({ error: "payerCard is invalid" }, { status: 400 });
     }
+    const payerCardDigits = typeof body.payerCard === "string" ? body.payerCard.replace(/\D/g, "") : "";
+    if (payerCardDigits.length > 4) {
+      return NextResponse.json({ error: "Only the last four card digits may be submitted" }, { status: 400 });
+    }
     const referenceCode = typeof body.referenceCode === "string" ? body.referenceCode.trim() || null : null;
     const payerName = typeof body.payerName === "string" ? body.payerName.trim() || null : null;
-    const payerCard = typeof body.payerCard === "string" ? body.payerCard.replace(/\D/g, "").slice(-16) || null : null;
+    const payerCard = payerCardDigits || null;
     const note = typeof body.note === "string" ? body.note.trim() || null : null;
 
     if (!orderId) {
