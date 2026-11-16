@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
@@ -123,6 +124,10 @@ export async function PATCH(req: Request, { params }: Args) {
       { error: "Forbidden: missing permission 'user.suspend'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -317,7 +322,7 @@ export async function PATCH(req: Request, { params }: Args) {
    (P0-RBAC: requires security.manage — destructive user deletion is reserved
     for security administrators; user.suspend covers the non-destructive case.)
 */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -327,6 +332,10 @@ export async function DELETE(_req: Request, { params }: Args) {
       { error: "Forbidden: missing permission 'security.manage'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
