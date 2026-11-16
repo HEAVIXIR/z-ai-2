@@ -12,6 +12,7 @@ describe("account security center contracts", () => {
     expect(route).toMatch(/getCurrentUser\(\)/);
     expect(route).toMatch(/verifyPassword\(currentPassword, user\.passwordHash\)/);
     expect(route).toMatch(/tx\.session\.deleteMany/);
+    expect(route).toMatch(/type: \{ in: \["PASSWORD_RESET", "EMAIL_CHANGE", "MOBILE_CHANGE"\] \}/);
     expect(route).toMatch(/createUserSession\(user\.id\)/);
   });
 
