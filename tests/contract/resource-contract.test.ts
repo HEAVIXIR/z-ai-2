@@ -79,23 +79,29 @@ describe('Universal Resource Contract — All 18 Resources', () => {
       });
 
       it('should declare create permission or explicitly disable generic creation', () => {
-        if (config.key === 'payments') {
-          // Financial ledger rows are created only through the dedicated
-          // audited manual-payment endpoint, never generic CRUD.
+        if (['payments', 'procurement', 'suppliers'].includes(config.key)) {
+          // These resources deliberately disable generic CRUD creation:
+          // payments use the audited payment endpoint; procurement and
+          // suppliers use their dedicated CSRF-protected Store APIs.
           expect(config.permissions.create).toBeUndefined();
         } else {
           expect(isNonEmptyString(config.permissions.create)).toBe(true);
         }
       });
 
-      it('should have update permission', () => {
-        expect(isNonEmptyString(config.permissions.update)).toBe(true);
+      it('should have update permission or explicitly disable generic updates', () => {
+        if (['payments', 'procurement', 'suppliers'].includes(config.key)) {
+          // Mutations are restricted to dedicated, domain-specific endpoints.
+          expect(config.permissions.update).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.update)).toBe(true);
+        }
       });
 
       it('should declare delete permission or explicitly disable destructive deletion', () => {
-        if (config.key === 'payments') {
-          // Payment records are immutable financial evidence; deletion is
-          // intentionally unavailable in both generic and dedicated APIs.
+        if (['payments', 'procurement', 'suppliers'].includes(config.key)) {
+          // These resources do not permit generic destructive deletion.
+          // Payment evidence is immutable; Store entities use lifecycle APIs.
           expect(config.permissions.delete).toBeUndefined();
         } else {
           expect(isNonEmptyString(config.permissions.delete)).toBe(true);
