@@ -563,3 +563,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added a regression contract for the payment-specific permission, CSRF check and `PAYMENT_BULK_MUTATION_DISABLED` response.
 - Implementation commit `7764e6de0c04e5c77cf22723334ad50b20f2e5a9`; regression contract/worklog updates recorded in subsequent commits.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Shipment lifecycle and tracking atomicity
+
+- Shipment creation now requires an existing CONFIRMED/PROCESSING order with `paymentStatus=PAID`; uniqueness/concurrency conflicts fail as HTTP 409. Creation and its audit-outbox row commit together in a Serializable transaction.
+- Shipment metadata PATCH can no longer mutate the lifecycle status directly. Status changes must append a tracking event through the dedicated tracking workflow.
+- Tracking now validates an explicit state-transition graph (PENDING → DISPATCHED → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED, with EXCEPTION recovery paths), conditionally claims the previous status/timestamp snapshot, and commits ShipmentTracking + parent snapshot + audit outbox in one Serializable transaction. DELIVERED and FAILED are terminal.
+- Added source-contract tests for paid-order shipment creation, atomic audit, transition validation, conditional update and append-only tracking event behavior. Tests remain unexecuted.
+- Commits: tracking/status transaction `603a92e9d31ae0d55a1739e49aafc5cc4f07c0a6`; shipment creation gate `27742cd082d9b5182445b2cf63c79883b2c141e3`; test/worklog follow-up commits recorded after these changes.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
