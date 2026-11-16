@@ -24,7 +24,7 @@ import {
 } from "@/lib/b2-media-storage";
 import { validateImageBuffer, sanitizeFilename } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
-import { logAudit, type AuditActorType } from "@/lib/audit";
+import { logAuditStrict, type AuditActorType } from "@/lib/audit";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
@@ -245,30 +245,55 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
   try {
     await putB2MediaObject(key, new Uint8Array(optimized.buffer), optimized.mime);
     await writeSidecar(sidecar);
-  } catch {
-    // Best-effort removal creates a B2 delete marker; bucket version retention
-    // remains unchanged and no existing object/version is touched.
-    await deleteB2MediaObject(key).catch(() => {});
+  } catch (error) {
+    // Compensate both writes because a timed-out PUT may have succeeded even
+    // when its response was lost. Version history remains governed by B2.
+    const cleanup = await Promise.allSettled([
+      deleteB2MediaObject(key),
+      deleteB2MediaObject(metadataKey(assetId)),
+    ]);
+    if (cleanup.some((result) => result.status === "rejected")) {
+      console.error("[media] failed upload cleanup incomplete", { assetId });
+    }
+    console.error("[media] B2 upload/sidecar write failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return { ok: false, error: "ذخیره‌سازی رسانه در فضای پایدار ناموفق بود." };
   }
 
-  await logAudit({
-    actorId: input.uploadedBy ?? null,
-    actorType: input.actorType ?? (input.uploadedBy ? "USER" : "SYSTEM"),
-    action: "media.upload",
-    entityType: "MediaAsset",
-    entityId: assetId,
-    after: {
-      filename: safeName,
-      url: sidecar.url,
-      mimeType: optimized.mime,
-      size: optimized.buffer.length,
-      entityTypeRef: sidecar.entityType,
-      entityIdRef: sidecar.entityId,
-      visibility,
-    },
-    reason: "بارگذاری رسانه در فضای پایدار B2",
-  }).catch(() => {});
+  try {
+    await logAuditStrict({
+      actorId: input.uploadedBy ?? null,
+      actorType: input.actorType ?? (input.uploadedBy ? "USER" : "SYSTEM"),
+      action: "media.upload",
+      entityType: "MediaAsset",
+      entityId: assetId,
+      after: {
+        filename: safeName,
+        url: sidecar.url,
+        mimeType: optimized.mime,
+        size: optimized.buffer.length,
+        entityTypeRef: sidecar.entityType,
+        entityIdRef: sidecar.entityId,
+        visibility,
+      },
+      reason: "بارگذاری رسانه در فضای پایدار B2",
+    });
+  } catch (error) {
+    const cleanup = await Promise.allSettled([
+      deleteB2MediaObject(key),
+      deleteB2MediaObject(metadataKey(assetId)),
+    ]);
+    if (cleanup.some((result) => result.status === "rejected")) {
+      console.error("[media] upload audit rollback incomplete", { assetId });
+    }
+    console.error("[media] upload audit failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    return { ok: false, error: "ثبت رویداد امنیتی رسانه ناموفق بود؛ بارگذاری تأیید نشد." };
+  }
 
   return { ok: true, asset: { ...sidecar } };
 }
@@ -313,21 +338,67 @@ export async function deleteAsset(
   if (!asset) return { ok: false, error: "رسانه یافت نشد." };
 
   try {
+    await logAuditStrict({
+      actorId: userId ?? null,
+      actorType: "ADMIN",
+      action: "media.delete.requested",
+      entityType: "MediaAsset",
+      entityId: assetId,
+      before: { filename: asset.filename, url: asset.url },
+      after: { state: "REQUESTED" },
+      reason: "درخواست حذف رسانه از فضای پایدار B2",
+    });
+  } catch (error) {
+    console.error("[media] delete request audit failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    return { ok: false, error: "ثبت رویداد حذف ناموفق بود؛ رسانه حذف نشد." };
+  }
+
+  try {
     await deleteB2MediaObject(asset.relativePath);
     await deleteB2MediaObject(metadataKey(assetId));
   } catch {
+    try {
+      await logAuditStrict({
+        actorId: userId ?? null,
+        actorType: "ADMIN",
+        action: "media.delete.failed",
+        entityType: "MediaAsset",
+        entityId: assetId,
+        before: { filename: asset.filename, url: asset.url },
+        after: { state: "FAILED" },
+        reason: "حذف رسانه از فضای پایدار B2 ناموفق بود",
+      });
+    } catch (auditError) {
+      console.error("[media] delete failure audit failed", {
+        assetId,
+        error: auditError instanceof Error ? auditError.message : "unknown",
+      });
+    }
     return { ok: false, error: "حذف رسانه از فضای پایدار ناموفق بود." };
   }
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: "ADMIN",
-    action: "media.delete",
-    entityType: "MediaAsset",
-    entityId: assetId,
-    before: { filename: asset.filename, url: asset.url },
-    reason: "حذف رسانه از فضای پایدار B2",
-  }).catch(() => {});
+  try {
+    await logAuditStrict({
+      actorId: userId ?? null,
+      actorType: "ADMIN",
+      action: "media.delete.completed",
+      entityType: "MediaAsset",
+      entityId: assetId,
+      before: { filename: asset.filename, url: asset.url },
+      after: { state: "DELETED" },
+      reason: "حذف رسانه از فضای پایدار B2 تکمیل شد",
+    });
+  } catch (error) {
+    // The durable request event already exists; report the completion-audit
+    // failure without pretending the external B2 delete can be rolled back.
+    console.error("[media] delete completion audit failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
 
   return { ok: true };
 }
@@ -379,7 +450,17 @@ export async function attachAsset(
     finalKey = objectKey(asset.id, asset.ext, Number.isNaN(uploadedAt.getTime()) ? new Date() : uploadedAt);
     try {
       await copyB2MediaObject(asset.relativePath, finalKey);
-    } catch {
+    } catch (error) {
+      await deleteB2MediaObject(finalKey).catch((cleanupError) => {
+        console.error("[media] failed copy cleanup incomplete", {
+          assetId,
+          error: cleanupError instanceof Error ? cleanupError.message : "unknown",
+        });
+      });
+      console.error("[media] B2 staging copy failed", {
+        assetId,
+        error: error instanceof Error ? error.message : "unknown",
+      });
       return { ok: false, error: "انتقال رسانه از فضای موقت به فضای نهایی B2 ناموفق بود." };
     }
   }
@@ -393,27 +474,62 @@ export async function attachAsset(
   };
   try {
     await writeSidecar(updated);
-  } catch {
-    // Keep the staging source in place so the existing stable URL still works.
+  } catch (error) {
+    // Keep the original staging object/sidecar as the source of truth and
+    // remove any final copy whose metadata could not be committed.
+    if (finalKey !== asset.relativePath) {
+      await deleteB2MediaObject(finalKey).catch((cleanupError) => {
+        console.error("[media] failed metadata rollback cleanup", {
+          assetId,
+          error: cleanupError instanceof Error ? cleanupError.message : "unknown",
+        });
+      });
+    }
+    console.error("[media] B2 sidecar update failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return { ok: false, error: "به‌روزرسانی متادیتای رسانه ناموفق بود." };
   }
 
-  if (finalKey !== asset.relativePath) {
-    // B2 bucket versioning is preserved; DeleteObject creates the normal
-    // delete marker and does not purge historical versions.
-    await deleteB2MediaObject(asset.relativePath).catch(() => {});
+  try {
+    await logAuditStrict({
+      actorId: userId ?? null,
+      actorType,
+      action: "media.attach",
+      entityType: "MediaAsset",
+      entityId: assetId,
+      before: { entityType: asset.entityType, entityId: asset.entityId },
+      after: { entityType, entityId },
+      reason: "اتصال رسانه به موجودیت",
+    });
+  } catch (error) {
+    const cleanup = await Promise.allSettled([
+      writeSidecar(asset),
+      ...(finalKey !== asset.relativePath ? [deleteB2MediaObject(finalKey)] : []),
+    ]);
+    if (cleanup.some((result) => result.status === "rejected")) {
+      console.error("[media] attach audit rollback incomplete", { assetId });
+    }
+    console.error("[media] attach audit failed", {
+      assetId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    return { ok: false, error: "ثبت رویداد اتصال رسانه ناموفق بود؛ اتصال تأیید نشد." };
   }
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType,
-    action: "media.attach",
-    entityType: "MediaAsset",
-    entityId: assetId,
-    before: { entityType: asset.entityType, entityId: asset.entityId },
-    after: { entityType, entityId },
-    reason: "اتصال رسانه به موجودیت",
-  }).catch(() => {});
+  if (finalKey !== asset.relativePath) {
+    // Remove the staging source only after the updated sidecar and strict
+    // audit row are durable. A failed delete is retained for later cleanup.
+    try {
+      await deleteB2MediaObject(asset.relativePath);
+    } catch (error) {
+      console.error("[media] stale staging object cleanup required", {
+        assetId,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
 
   return { ok: true, asset: updated };
 }

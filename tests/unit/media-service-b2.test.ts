@@ -65,7 +65,10 @@ vi.mock("@/lib/media-image-optimizer", () => ({
 
 vi.mock("@/lib/audit", () => ({
   logAudit: vi.fn(async () => undefined),
+  logAuditStrict: vi.fn(async () => undefined),
 }));
+
+import { logAuditStrict } from "@/lib/audit";
 
 import {
   attachAsset,
@@ -213,6 +216,60 @@ describe("B2-backed media service", () => {
     expect(b2State.deleteCalls).toContain(uploaded.asset!.relativePath);
     expect(b2State.deleteCalls).toContain("heavix-media/metadata/" + uploaded.asset!.id + ".json");
     expect(await getAsset(uploaded.asset!.id)).toBeNull();
+  });
+
+  it("rolls back uploaded B2 objects when the required audit write fails", async () => {
+    vi.mocked(logAuditStrict).mockRejectedValueOnce(new Error("audit unavailable"));
+    const result = await uploadAsset({
+      file: Buffer.from("seller image"),
+      uploadedBy: "seller_audit_failure",
+      entityType: "Listing",
+      visibility: "PRIVATE",
+      actorType: "USER",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(b2State.objects.size).toBe(0);
+    expect(b2State.deleteCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not delete a B2 asset when the required request audit fails", async () => {
+    const uploaded = await uploadAsset({
+      file: Buffer.from("admin image"),
+      uploadedBy: "admin_audit_failure",
+      actorType: "ADMIN",
+    });
+    vi.mocked(logAuditStrict).mockRejectedValueOnce(new Error("audit unavailable"));
+
+    const result = await deleteAsset(uploaded.asset!.id, "admin_audit_failure");
+
+    expect(result.ok).toBe(false);
+    expect(b2State.deleteCalls).toHaveLength(0);
+    expect(await getAsset(uploaded.asset!.id)).not.toBeNull();
+  });
+
+  it("restores the staged sidecar when the required attach audit fails", async () => {
+    const uploaded = await uploadAsset({
+      file: Buffer.from("seller image"),
+      uploadedBy: "seller_attach_audit",
+      entityType: "Listing",
+      visibility: "PRIVATE",
+      actorType: "USER",
+    });
+    vi.mocked(logAuditStrict).mockRejectedValueOnce(new Error("audit unavailable"));
+
+    const result = await attachAsset(
+      uploaded.asset!.id,
+      "Listing",
+      "listing_audit_failure",
+      "seller_attach_audit",
+    );
+
+    expect(result.ok).toBe(false);
+    expect((await getAsset(uploaded.asset!.id))?.status).toBe("STAGED");
+    expect((await getAsset(uploaded.asset!.id))?.entityId).toBeNull();
+    expect(b2State.copyCalls).toHaveLength(1);
+    expect(b2State.deleteCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("rejects an invalid asset id without touching B2", async () => {
