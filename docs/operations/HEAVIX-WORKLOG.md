@@ -495,3 +495,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - No tests/typecheck/lint/build/CI/Actions, migration, seed, DB operation, deployment, Production or runtime change was performed.
 
 - Follow-up correction: listing image addition now computes the existing image count once, enforces the 10-image total, and ensures at most one primary image is selected when adding multiple staged assets; a requested new primary replaces the previous primary within the same listing scope. Commit `2f08159f`.
+
+## 2026-11-16 — Seller listing partial-mutation guard
+
+- Read the latest seller listing PATCH implementation and found that it persisted ordinary listing fields before validating all requested image additions/removals/primary/reorder operations. A malformed or foreign image request could therefore return 4xx after the listing fields had already changed.
+- Added a preflight validation stage before the listing update: staged media references must match the internal `/api/media/<24-hex-id>` form and belong to the authenticated user as private, staged, unbound Listing assets; additions must be unique and respect the 10-image cap and single-primary rule; remove, primary and reorder IDs must all belong to the same listing.
+- Corrected the internal media-reference matcher and re-fetched the committed source to verify the exact expression and that the guard appears before `db.listing.update`.
+- Added source-contract assertions for validation ordering and cross-listing removal rejection in `tests/security/store-checkout-payment-contract.test.ts`.
+- Commits: prevalidation `5ad9740846b9243bd210119c970b4d7337707ff0`; regex correction `7e6d450b63d707520eb477c14d8dee0963ded44e`; regression contract update recorded in the following commit.
+- This narrows partial mutation on invalid input but is not a full transaction across database writes and the media sidecar. Concurrent state changes between preflight and persistence remain a reason for exact-head tests and further transactional review.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
