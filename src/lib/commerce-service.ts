@@ -199,7 +199,7 @@ export async function cancelStoreOrder(orderId: string, actorId: string): Promis
           data: { usedCount: { decrement: 1 } },
         });
         if (couponClaim.count !== 1) {
-          throw new CommerceServiceError(409, "مصرفیه کوپن با سفارش همگام نیست؛ لغو متوقف شد");
+          throw new CommerceServiceError(409, "مصرف کوپن با سفارش همگام نیست؛ لغو متوقف شد");
         }
       }
 
