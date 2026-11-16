@@ -352,7 +352,7 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 500000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 500000 }));
     expect(res.status).toBe(200);
   });
 });
