@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import {
@@ -53,7 +54,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
-  const { id } = await params;
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  const { id } = await params;
   try {
     const body = await req.json();
     const { existing, mechanic: m } = await updateMechanic(id, body);
@@ -73,7 +77,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -83,7 +87,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
-  const { id } = await params;
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  const { id } = await params;
   try {
     const { existing } = await deleteMechanic(id);
     await logAudit({
