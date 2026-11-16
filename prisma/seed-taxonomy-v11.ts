@@ -686,7 +686,7 @@ async function main() {
     return;
   }
   if (process.env.HEAVIX_ENV !== "preview") {
-    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \\\"preview\\\". No writes performed.");
+    throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
   }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
