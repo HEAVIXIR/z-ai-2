@@ -522,3 +522,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added source-contract assertions for both guard codes and CSRF coverage. This is an intentional safety gate, not completion of the cancellation workflow; the dedicated reversal service remains a release task.
 - Implementation commit `c566812d915ba2d2ac790627d99aa6027e205c7d`; regression contract update recorded in the following commit.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Admin manual billing CSRF closure
+
+- Continued the parallel admin mutation audit beyond Store orders and returns. The separate `/api/admin/payments` POST creates manual billing records, can mark them PAID immediately, and can activate a linked subscription; it had authentication and `payment.manage` permission but no CSRF validation.
+- Added fail-closed Origin/Referer CSRF validation after authentication/permission and before parsing or writing the manual payment request. Added the route to `tests/security/admin-mutation-csrf-contract.test.ts`.
+- Implementation commit `ec1e6f6e9b25028552e5902a2138c44977585e53`; regression contract update recorded in the following commit.
+- The separate subscription/payment activation transaction and ownership relationship remain part of the billing audit; this change only closes the request-origin gap.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
