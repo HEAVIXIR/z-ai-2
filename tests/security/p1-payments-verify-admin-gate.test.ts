@@ -58,10 +58,25 @@ beforeEach(() => {
   );
 });
 
+const TEST_ORIGIN = (() => {
+  if (process.env.HEAVIX_ENV === "preview") return "https://heavix-preview.heavixir.workers.dev";
+  const configured = [
+    process.env.HEAVIX_PREVIEW_URL,
+    process.env.NEXTAUTH_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.HEAVIX_PREVIEW_ORIGIN,
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ].find(Boolean);
+  if (!configured) return "http://localhost:3000";
+  return new URL(configured.includes("://") ? configured : `https://${configured}`).origin;
+})();
+
 function makeReq(body: unknown): Request {
   return new Request("http://localhost/api/payments/p1/verify", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
+    headers: { "Content-Type": "application/json", Origin: TEST_ORIGIN },
     body: JSON.stringify(body),
   });
 }
@@ -184,7 +199,7 @@ describe("POST /api/payments/[id]/verify", () => {
     mockCurrentUser = { id: "admin-1" };
     const invalidJson = new Request("http://localhost/api/payments/p1/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: TEST_ORIGIN },
       body: "{",
     });
     const malformed = await POST(invalidJson, ARGS);
