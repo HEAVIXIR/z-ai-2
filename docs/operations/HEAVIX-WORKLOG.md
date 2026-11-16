@@ -572,3 +572,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added source-contract tests for paid-order shipment creation, atomic audit, transition validation, conditional update and append-only tracking event behavior. Tests remain unexecuted.
 - Commits: tracking/status transaction `603a92e9d31ae0d55a1739e49aafc5cc4f07c0a6`; shipment creation gate `27742cd082d9b5182445b2cf63c79883b2c141e3`; test/worklog follow-up commits recorded after these changes.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Procurement/inventory lock-order consistency
+
+- The parallel inventory audit found that procurement receiving's comment promised the global Part → InventoryBalance lock order, but the implementation read the Part and balances before acquiring the Part row lock. Added an explicit PostgreSQL `FOR UPDATE` lock on the Part before reading warehouse balances, aligning the receipt path with `adjustStock`/`transferStock` and reducing deadlock/race exposure under concurrent inventory mutations.
+- Hardened `releaseStock` to use Serializable isolation and translate serialization conflicts into a controlled 409 instead of leaking a generic server error. Its existing conditional update still prevents decrementing more reserved quantity than exists.
+- Added regression contracts for lock acquisition order and serializable release conflict handling. Tests remain unexecuted.
+- Commits: procurement Part-lock `93633a42d6f9da0436deb8ba31cabb2fe2e905e5`; reservation-release serialization `ffce26cc8529decc84005e7539976e315d42c186`; tests/worklog follow-up recorded after these changes.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
