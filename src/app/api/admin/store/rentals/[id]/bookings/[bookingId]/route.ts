@@ -16,6 +16,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import {
   approveBooking,
@@ -62,7 +63,10 @@ export async function PATCH(req: Request, { params }: Params) {
       { status: 403 },
     );
   }
-  const { id, bookingId } = await params;
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  const { id, bookingId } = await params;
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? '').toLowerCase() as BookingAction;
