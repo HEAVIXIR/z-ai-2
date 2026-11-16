@@ -471,3 +471,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: `02117e9e` users; `a5633a27` payments; `d4bf9e2b` verification review; `c87a7497` verification revoke; `6e340cad` companies; `80742992` products; `47e4a2f4` parts; `cfa77334` requests; `70d642d7` auctions; `d1b441c1` listing rejection; `5dbdcea7` regression contract expansion.
 - These changes add request-origin protection after authentication and permission checks; they do not alter business data, role permissions, schema, or runtime.
 - No tests/typecheck/lint/build/CI/Actions, migration, seed, DB operation, deployment or runtime change was performed.
+
+
+## 2026-11-16 — Checkout and manual-payment concurrency hardening
+
+- Manual receipt submission now re-reads the order and payments inside a Serializable transaction, enforces ownership by user ID or verified mobile only, rejects cancelled/refunded/already-paid orders, rechecks the pending-receipt cap and pending+approved amount before insert, validates safe positive integer IRR amounts, bounds free-text/reference/card fields, and returns a conflict on Prisma serialization retry (`P2034`).
+- Checkout cart lines are now aggregated by part ID, require positive safe-integer quantities, and reject overflow. Customer upsert was moved after cart/catalog/price validation to avoid creating/updating a customer for invalid carts.
+- Coupon usage is claimed with a conditional `updateMany` inside the same transaction as order creation and stock consumption; the claim checks active state, immutable pricing/limit snapshot, expiry and remaining usage capacity. If the last use races or coupon eligibility changes, the order transaction rolls back and returns 409.
+- Added behavioral regression cases for unverified phone ownership and fractional payment amounts, plus `tests/security/store-checkout-payment-contract.test.ts` for checkout aggregation, coupon CAS, and serializable payment revalidation. These tests are authored but not executed.
+- Commits: manual payment hardening `ac9d422f`; checkout cart/coupon logic `3749efb6` and transaction-scope correction `36f03deb`; behavioral tests `8de7291c`; contract tests `f1f89100`.
+- Source review confirmed stock decrement remains in the order-creation transaction through `decrementOrderStock`, with Part stock compare-and-swap, deterministic warehouse balance CAS, SALE movements, and audit-outbox records.
+- No tests, typecheck, lint, build, CI, Actions dispatch, migration, seed, database operation, deployment, Production or runtime change was performed. Gateway provider was not called.
