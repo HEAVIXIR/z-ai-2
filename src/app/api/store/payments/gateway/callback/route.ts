@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
 import { verifyPayment } from "@/lib/store-zarinpal";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,9 +80,33 @@ export async function GET(req: Request) {
         const approvedSum = approvedPayments.reduce((sum: number, item: any) => sum + Number(item.amountIrr), 0);
         const totalIrr = Number(order.totalIrr);
         const paymentStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
-        await tx.order.update({
+        const currentOrder = await tx.order.findUnique({
           where: { id: order.id },
-          data: { paymentStatus },
+          select: { paymentStatus: true },
+        });
+        if (currentOrder && currentOrder.paymentStatus !== paymentStatus) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { paymentStatus },
+          });
+          await enqueueAuditOutbox(tx, {
+            actorId: null,
+            actorType: "SYSTEM",
+            action: "store.order.payment_status.sync",
+            entityType: "Order",
+            entityId: order.id,
+            before: { paymentStatus: currentOrder.paymentStatus },
+            after: { paymentStatus },
+          });
+        }
+        await enqueueAuditOutbox(tx, {
+          actorId: null,
+          actorType: "SYSTEM",
+          action: "store.payment.gateway.reject",
+          entityType: "Payment",
+          entityId: payment.id,
+          before: { status: "PENDING" },
+          after: { status: "REJECTED", orderId: order.id, amountIrr: String(payment.amountIrr) },
         });
       });
       return NextResponse.redirect(new URL(`/store?payment=failed&order=${order.orderNumber}`, url.origin));
@@ -108,10 +133,38 @@ export async function GET(req: Request) {
       const approvedSum = approvedPayments.reduce((sum: number, item: any) => sum + Number(item.amountIrr), 0);
       const totalIrr = Number(order.totalIrr);
       const paymentStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
+      const currentOrder = await tx.order.findUnique({
+        where: { id: order.id },
+        select: { paymentStatus: true, status: true },
+      });
+      if (!currentOrder || ["CANCELLED", "REFUNDED"].includes(currentOrder.status)) {
+        throw new Error("STORE_ORDER_CLOSED_DURING_PAYMENT_CALLBACK");
+      }
+      const nextOrderStatus = currentOrder.status === "PENDING" ? "CONFIRMED" : currentOrder.status;
       await tx.order.update({
         where: { id: order.id },
-        data: { paymentStatus, status: "CONFIRMED" },
+        data: { paymentStatus, status: nextOrderStatus },
       });
+      await enqueueAuditOutbox(tx, {
+        actorId: null,
+        actorType: "SYSTEM",
+        action: "store.payment.gateway.approve",
+        entityType: "Payment",
+        entityId: payment.id,
+        before: { status: "PENDING" },
+        after: { status: "APPROVED", orderId: order.id, amountIrr: String(payment.amountIrr), refId: verify.refId },
+      });
+      if (currentOrder.paymentStatus !== paymentStatus || currentOrder.status !== nextOrderStatus) {
+        await enqueueAuditOutbox(tx, {
+          actorId: null,
+          actorType: "SYSTEM",
+          action: "store.order.payment_status.sync",
+          entityType: "Order",
+          entityId: order.id,
+          before: { paymentStatus: currentOrder.paymentStatus, status: currentOrder.status },
+          after: { paymentStatus, status: nextOrderStatus },
+        });
+      }
       return { changed: true, status: "APPROVED" };
     });
 

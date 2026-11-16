@@ -3,6 +3,8 @@ import { storeDb } from "@/lib/store-db";
 import { requestPayment } from "@/lib/store-zarinpal";
 import { getStoreUserWithRole } from "@/lib/store-auth";
 import { checkCsrf } from "@/lib/csrf";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
+import { readBoundedJsonObject } from "@/lib/http/bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,10 +33,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const orderId = String(body.orderId || "");
+    const parsed = await readBoundedJsonObject(req, 8 * 1024);
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    const body = parsed.value;
+    if (Object.keys(body).some((key) => key !== "orderId")) {
+      return NextResponse.json({ error: "Unknown payment request field" }, { status: 400 });
+    }
+    const orderId = typeof body.orderId === "string" ? body.orderId.trim() : "";
 
-    if (!orderId) {
+    if (!orderId || orderId.length > 128) {
       return NextResponse.json({ error: "orderId الزامی است" }, { status: 400 });
     }
 
@@ -103,7 +110,7 @@ export async function POST(req: Request) {
         orderNumber: order.orderNumber,
       });
 
-      return tx.payment.create({
+      const created = await tx.payment.create({
         data: {
           orderId: order.id,
           customerId: order.customerId,
@@ -116,6 +123,15 @@ export async function POST(req: Request) {
           gatewayUrl,
         },
       });
+      await enqueueAuditOutbox(tx, {
+        actorId: sessionUser.id,
+        actorType: sessionUser.isAdmin ? "ADMIN" : "USER",
+        action: "store.payment.gateway.request",
+        entityType: "Payment",
+        entityId: created.id,
+        after: { orderId: order.id, amountIrr: String(amountIrr), method: created.gateway, status: created.status },
+      });
+      return created;
     });
 
     return NextResponse.json({

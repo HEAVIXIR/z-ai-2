@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
 import { getStoreUserWithRole } from "@/lib/store-auth";
 import { checkCsrf } from "@/lib/csrf";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
+import { readBoundedJsonObject } from "@/lib/http/bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,14 +38,35 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
+    const parsed = await readBoundedJsonObject(req, 16 * 1024);
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    const body = parsed.value;
+    const allowedFields = new Set(["orderId", "method", "amountIrr", "referenceCode", "payerName", "payerCard", "note"]);
+    if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown payment field" }, { status: 400 });
+    }
     const orderId = typeof body.orderId === "string" ? body.orderId.trim() : "";
-    const method = body.method === "CASH" ? "CASH" : "CARD";
-    const amountIrr = Number(body.amountIrr);
-    const referenceCode = body.referenceCode ? String(body.referenceCode).trim().slice(0, 120) : null;
-    const payerName = body.payerName ? String(body.payerName).trim().slice(0, 160) : null;
-    const payerCard = body.payerCard ? String(body.payerCard).replace(/\D/g, "").slice(-16) : null;
-    const note = body.note ? String(body.note).trim().slice(0, 1000) : null;
+    if (typeof body.method !== "string" || !["CARD", "CASH"].includes(body.method)) {
+      return NextResponse.json({ error: "method must be CARD or CASH" }, { status: 400 });
+    }
+    const method = body.method;
+    if (typeof body.amountIrr !== "number" || !Number.isSafeInteger(body.amountIrr)) {
+      return NextResponse.json({ error: "amountIrr must be a safe integer" }, { status: 400 });
+    }
+    const amountIrr = body.amountIrr;
+    for (const [field, max] of [["referenceCode", 120], ["payerName", 160], ["note", 1000]] as const) {
+      if (body[field] !== undefined && body[field] !== null &&
+          (typeof body[field] !== "string" || body[field].length > max)) {
+        return NextResponse.json({ error: `${field} is invalid` }, { status: 400 });
+      }
+    }
+    if (body.payerCard !== undefined && body.payerCard !== null && typeof body.payerCard !== "string") {
+      return NextResponse.json({ error: "payerCard is invalid" }, { status: 400 });
+    }
+    const referenceCode = typeof body.referenceCode === "string" ? body.referenceCode.trim() || null : null;
+    const payerName = typeof body.payerName === "string" ? body.payerName.trim() || null : null;
+    const payerCard = typeof body.payerCard === "string" ? body.payerCard.replace(/\D/g, "").slice(-16) || null : null;
+    const note = typeof body.note === "string" ? body.note.trim() || null : null;
 
     if (!orderId) {
       return NextResponse.json({ error: "orderId الزامی است" }, { status: 400 });
@@ -112,6 +135,21 @@ export async function POST(req: Request) {
           note,
         },
       });
+      await enqueueAuditOutbox(tx, {
+        actorId: sessionUser.id,
+        actorType: sessionUser.isAdmin ? "ADMIN" : "USER",
+        action: "store.payment.submit_manual",
+        entityType: "Payment",
+        entityId: payment.id,
+        after: {
+          orderId: order.id,
+          customerId: order.customerId,
+          amountIrr: String(amountIrr),
+          method,
+          status: payment.status,
+          referenceCode,
+        },
+      });
       return { payment };
     }, { isolationLevel: "Serializable" });
 
@@ -123,9 +161,13 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       payment: {
-        ...payment,
+        id: payment.id,
+        orderId: payment.orderId,
         amountIrr: Number(payment.amountIrr),
         amountUsd: Number(payment.amountUsd),
+        method: payment.method,
+        status: payment.status,
+        referenceCode: payment.referenceCode,
         createdAt: payment.createdAt?.toISOString?.() ?? null,
         reviewedAt: payment.reviewedAt?.toISOString?.() ?? null,
       },
@@ -140,7 +182,7 @@ export async function POST(req: Request) {
     }
     console.error("[api/store/payments/manual POST] error:", e);
     return NextResponse.json(
-      { error: e?.message ?? "Internal error" },
+      { error: "ثبت فیش پرداخت انجام نشد" },
       { status: 500 },
     );
   }
