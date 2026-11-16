@@ -21,6 +21,16 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(route).toMatch(/CouponUsageConflictError/);
   });
 
+
+  it("protects seller listing mutations and prevents cross-listing image mutation", () => {
+    const route = read("src/app/api/listings/[id]/route.ts");
+    expect((route.match(/checkCsrf\(req\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(route).toMatch(/where: \{ listingId: id, id: \{ in: ids \} \}/);
+    expect(route).toMatch(/where: \{ id: imgId, listingId: id \}/);
+    expect(route).toMatch(/asset\.uploadedBy !== auth\.userId/);
+    expect(route).toMatch(/attachAsset\(asset\.id, "Listing", id, auth\.userId\)/);
+  });
+
   it("submits manual payments with verified-mobile ownership and serializable revalidation", () => {
     const route = read("src/app/api/store/payments/manual/route.ts");
     expect(route).toMatch(/sessionUser\.mobileVerified/);
