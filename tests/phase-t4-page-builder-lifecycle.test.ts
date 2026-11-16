@@ -198,13 +198,15 @@ describe('T4 Page Builder Lifecycle — Auth Gates', () => {
 describe('T4 Page Builder Lifecycle — Audit Trail', () => {
   it('publish route logs audit with action page.publish', () => {
     const c = read(PAGES_PUBLISH_ROUTE);
-    expect(c).toMatch(/import.*logAudit.*from ['"]@\/lib\/audit['"]/);
+    expect(c).toContain("db.$transaction(async (tx)");
+    expect(c).toContain("tx.auditLog.create");
     expect(c).toMatch(/action:\s*['"]page\.publish['"]/);
   });
 
   it('rollback route logs audit with action page.rollback', () => {
     const c = read(PAGES_ROLLBACK_ROUTE);
-    expect(c).toMatch(/import.*logAudit.*from ['"]@\/lib\/audit['"]/);
+    expect(c).toContain("db.$transaction(async (tx)");
+    expect(c).toContain("tx.auditLog.create");
     expect(c).toMatch(/action:\s*['"]page\.rollback['"]/);
   });
 
