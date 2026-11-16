@@ -50,6 +50,15 @@ describe("administrative mutation CSRF contracts", () => {
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
+  it("routes universal payment mutations through the dedicated financial ledger API", () => {
+    const collection = read("src/app/api/admin/resources/[resource]/route.ts");
+    const detail = read("src/app/api/admin/resources/[resource]/[id]/route.ts");
+    expect(collection).toMatch(/new Set\(\['procurement', 'suppliers', 'payments'\]\)/);
+    expect(detail).toMatch(/new Set\(\['procurement', 'suppliers', 'payments'\]\)/);
+    expect(collection).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
+    expect(detail).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
+  });
+
   it("keeps paid AI scraper calls disabled under the free-infrastructure policy", () => {
     for (const routePath of [
       "src/app/api/admin/ai-scraper/route.ts",
