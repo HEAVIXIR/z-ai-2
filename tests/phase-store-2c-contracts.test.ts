@@ -371,7 +371,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       // purchase-orders/* under procurement) → all 4 domains now have
       // more than 2 read calls each.
       const expected: Record<string, number> = {
-        'inventory.read': 6,
+        'inventory.read': 7,
         'returns.read': 3,
         'shipping.read': 3,
         'procurement.read': 4,
@@ -380,10 +380,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         expect(counts[key]).toBe(expected[key]);
       }
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      expect(total).toBe(16);
+      expect(total).toBe(17);
     });
 
-    it('should have 27 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
+    it('should have 28 fine-grained domain manage permissions (inventory/returns/shipping/procurement.manage)', () => {
       // T-A-DEEP-STORE: 8 routes migrated from store.manage to domain-specific manage keys.
       //   inventory.manage × 1, returns.manage × 2, shipping.manage × 2, procurement.manage × 3
       // T1+T2-DEEP: +6 new manage calls (all under inventory + returns)
@@ -409,7 +409,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   Total = 11 + 3 + 7 + 6 = 27 domain-manage checks (the global baseline is tracked separately).
       const files = listRouteFiles();
       const expected: Record<string, number> = {
-        'inventory.manage': 11,
+        'inventory.manage': 12,
         'returns.manage': 3,
         'shipping.manage': 7,
         'procurement.manage': 6,
@@ -574,7 +574,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 2. AUDIT HOOK PRESENCE (combined: routes + services)
   // ═══════════════════════════════════════════════════════════════
   describe('2. Audit Hook Presence', () => {
-    it('should have 71 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
+    it('should have 74 audit calls across all store routes + services (logAudit + enqueueAuditOutbox)', () => {
       // STEP 15.95+ — Transactional Outbox: 6 service-scope logAudit calls
       // (3 in inventory service + 3 in returns service) were replaced with
       // enqueueAuditOutbox calls INSIDE the storeDb transaction. The audit
@@ -782,7 +782,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (71) cover the 64 counted database write calls', () => {
+    it('total audits (74) cover the 67 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -794,8 +794,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(64);
-      expect(totalAudit).toBe(71);
+      expect(totalMut).toBe(67);
+      expect(totalAudit).toBe(74);
     });
   });
 
