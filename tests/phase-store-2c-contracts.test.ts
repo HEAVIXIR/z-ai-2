@@ -172,6 +172,7 @@ const EXPECTED_ACTION_KEYS = [
   'store.currency_setting.update',
   'store.inventory.movement.create',
   'store.inventory.opening_balance.create',
+  'store.order.fulfillment.transition',
   'store.mechanic.create',
   'store.mechanic.delete',
   'store.mechanic.update',
@@ -593,10 +594,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
         count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      expect(count).toBe(71);
+      expect(count).toBe(74);
     });
 
-    it('counts 64 Store DB writes across routes + services, including transactions', () => {
+    it('counts 67 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -606,7 +607,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(64);
+      expect(count).toBe(67);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -822,7 +823,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   //     tests/phase-p9-services-logistics.test.ts) → 50.
   // ═══════════════════════════════════════════════════════════════
   describe('6. Action Key Coverage', () => {
-    it('should have all 53 expected action keys', () => {
+    it('should have all 55 expected action keys', () => {
       const files = readAllStoreFiles();
       const foundKeys = new Set<string>();
       for (const { content } of files) {
@@ -834,7 +835,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       for (const key of EXPECTED_ACTION_KEYS) {
         expect(foundKeys.has(key)).toBe(true);
       }
-      expect(foundKeys.size).toBe(54);
+      expect(foundKeys.size).toBe(55);
     });
 
     it('action keys follow the store.<entity>(.<sub>)?.<operation> convention', () => {
@@ -853,7 +854,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         for (const m of matches) {
           const key = m[1];
           expect(key).toMatch(
-            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel|restock|initial_allocation|transfer)$/,
+            /^store\.[a-z_]+(\.[a-z_]+)*\.(create|update|delete|import|reserve|release|add|inspect|resolve|submit|approve|receive|cancel|restock|initial_allocation|transfer|transition)$/,
           );
         }
       }
