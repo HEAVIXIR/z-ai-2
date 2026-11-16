@@ -89,7 +89,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!existing) return { notFound: true as const };
 
       if (body.status === "REFUNDED") {
-        return { conflict: true as const };
+        // Refunds require the dedicated, auditable refund lifecycle; a status
+        // patch must never mutate payment state or imply money was returned.
+        return { refundUnsupported: true as const };
       }
       if (body.status !== undefined && !ALLOWED_STATUSES.includes(body.status)) {
         return { invalidStatus: true as const };
@@ -203,6 +205,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     if ("notFound" in result) {
       return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
+    }
+    if ("refundUnsupported" in result) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "بازپرداخت نیز به گردش مستند مستقل نیاز دارد؛ تغییر وضعیت پرداخت به‌تنهایی مجاز نیست",
+          code: "STORE_PAYMENT_STATE_CONFLICT",
+        },
+        { status: 409 },
+      );
     }
     if ("invalidStatus" in result) {
       return NextResponse.json({ success: false, error: "وضعیت نامعتبر" }, { status: 400 });

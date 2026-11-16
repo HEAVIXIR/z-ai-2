@@ -61,9 +61,9 @@ describe('Procurement and supplier mutation safety', () => {
   });
 
   it('hard-blocks Universal Resource mutations for dedicated procurement and supplier domains', () => {
-    expect(universalCollection).toContain("new Set(['procurement', 'suppliers'])");
+    expect(universalCollection).toContain("new Set(['procurement', 'suppliers', 'payments'])");
     expect(universalCollection).toContain('DEDICATED_MUTATION_RESOURCES.has(resourceKey)');
-    expect(universalItem).toContain("new Set(['procurement', 'suppliers'])");
+    expect(universalItem).toContain("new Set(['procurement', 'suppliers', 'payments'])");
     expect(universalItem).toContain('DEDICATED_MUTATION_RESOURCES.has(resourceKey)');
     expect(universalItem.match(/DEDICATED_MUTATION_RESOURCES\.has\(resourceKey\)/g)).toHaveLength(2);
   });

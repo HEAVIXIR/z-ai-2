@@ -88,8 +88,10 @@ describe("Prisma Postgres workerd client contract", () => {
 
   it("keeps the SQLite Preview schema aligned while excluding only the Worker-only generator", () => {
     const sync = read("tests/preview-schema-sync.sh");
-    expect(sync).toContain("sed '/^generator workerClient {/,/^}/d'");
-    expect(sync).toContain('diff -u <(normalize_blank_lines "$TMP_MAIN") <(normalize_blank_lines "$TMP_SCHEMA")');
+    expect(sync).toContain('main.replace(/^generator workerClient\\s*\\{[\\s\\S]*?^\\}\\s*/m, "")');
+    expect(sync).toContain("function parseSchema(source, label)");
+    expect(sync).toContain("function canonicalize(blocks)");
+    expect(sync).toContain("Preview schema structurally matches Main");
   });
 
   it("blocks native PostgreSQL scalar-list fields unsupported by PPG 7.10.1", () => {
