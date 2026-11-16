@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         data: { email: payload.targetEmail, emailVerified: true },
       });
       await tx.verificationCode.updateMany({
-        where: { userId: user.id, type: "EMAIL_CHANGE", used: false },
+        where: { userId: user.id, type: { in: ["EMAIL_CHANGE", "PASSWORD_RESET"] }, used: false },
         data: { used: true },
       });
       // Rotate all sessions after changing the account's primary identifier.
