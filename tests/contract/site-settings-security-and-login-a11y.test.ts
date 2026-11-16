@@ -15,7 +15,7 @@ describe("site settings mutation security and login accessibility", () => {
   it("checks CSRF on settings PUT before parsing or mutating the request body", () => {
     const source = read("src/app/api/admin/site-settings/route.ts");
     const put = source.slice(source.indexOf("export async function PUT"));
-    expect(put).toContain('import { checkCsrf } from "@/lib/csrf"');
+    expect(source).toContain('import { checkCsrf } from "@/lib/csrf"');
     expect(put).toContain("if (!checkCsrf(req))");
     expect(put.indexOf("if (!checkCsrf(req))")).toBeLessThan(put.indexOf("req.json()"));
   });

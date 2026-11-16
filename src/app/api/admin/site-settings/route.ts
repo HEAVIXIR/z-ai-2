@@ -50,7 +50,7 @@ export async function PUT(req: Request) {
   }
   if (!(await hasPermission(sessionUser.id, "admin.settings.manage"))) {
     return NextResponse.json(
-      { error: "Forbidden: missing permission 'settings.manage'" },
+      { error: "Forbidden: missing permission 'admin.settings.manage'" },
       { status: 403 },
     );
   }
