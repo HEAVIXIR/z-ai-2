@@ -53,17 +53,30 @@ export async function POST(
       return NextResponse.json({ error: "Invalid payment id" }, { status: 400 });
     }
 
-    let body: unknown;
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+    if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+      return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+    }
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 8 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    let payload: Record<string, unknown>;
     try {
-      body = await req.json();
+      const parsed: unknown = JSON.parse(rawBody);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+      }
+      payload = parsed as Record<string, unknown>;
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    const allowedFields = new Set(["status", "trackingCode", "reason"]);
+    if (Object.keys(payload).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown payment verification field" }, { status: 400 });
     }
-
-    const payload = body as Record<string, unknown>;
     const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
     if (!ALLOWED_STATUSES.has(status)) {
       return NextResponse.json(
@@ -87,13 +100,12 @@ export async function POST(
       return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
     }
 
-    const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+    if (typeof payload.reason !== "string") {
+      return NextResponse.json({ error: "reason must be a string" }, { status: 400 });
+    }
+    const reason = payload.reason.trim();
     if (reason.length < 5 || reason.length > MAX_REASON_LENGTH) {
       return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
-    }
-
-    if (!checkCsrf(req)) {
-      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
     const result = await db.$transaction(async (tx) => {

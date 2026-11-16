@@ -173,12 +173,31 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+      return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
     }
-
-    const type = String(body.type ?? "").toUpperCase();
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    let body: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(rawBody);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const allowedFields = new Set(["userId", "amount", "type", "subscriptionId", "currency", "reason", "markPaid", "gateway", "trackingCode"]);
+    if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown payment field" }, { status: 400 });
+    }
+    if (typeof body.type !== "string") {
+      return NextResponse.json({ error: "type must be a string" }, { status: 400 });
+    }
+    const type = body.type.toUpperCase();
     if (type === "SUBSCRIPTION") {
       return NextResponse.json(
         {
@@ -195,14 +214,20 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (body.subscriptionId !== undefined && body.subscriptionId !== null && String(body.subscriptionId).trim()) {
+    if (body.subscriptionId !== undefined && body.subscriptionId !== null && typeof body.subscriptionId !== "string") {
+      return NextResponse.json({ error: "subscriptionId must be a string" }, { status: 400 });
+    }
+    if (body.subscriptionId !== undefined && body.subscriptionId !== null && body.subscriptionId.trim()) {
       return NextResponse.json(
         { error: "subscriptionId cannot be supplied for non-subscription payment types" },
         { status: 400 },
       );
     }
 
-    const userId = String(body.userId ?? "").trim();
+    if (typeof body.userId !== "string" || body.userId.trim().length > 128) {
+      return NextResponse.json({ error: "userId must be a valid string" }, { status: 400 });
+    }
+    const userId = body.userId.trim();
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
@@ -213,24 +238,41 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const currency = String(body.currency ?? "IRR").toUpperCase();
+    if (body.currency !== undefined && typeof body.currency !== "string") {
+      return NextResponse.json({ error: "currency must be a string" }, { status: 400 });
+    }
+    const currency = (body.currency ?? "IRR").toUpperCase();
     if (currency !== "IRR") {
       return NextResponse.json({ error: "Manual payments currently support IRR only" }, { status: 400 });
     }
-    const reason = String(body.reason ?? "").trim();
+    if (typeof body.reason !== "string") {
+      return NextResponse.json({ error: "reason must be a string" }, { status: 400 });
+    }
+    const reason = body.reason.trim();
     if (reason.length < 5 || reason.length > 500) {
       return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
     }
-    const markPaid = body.markPaid !== false;
+    if (body.markPaid !== undefined && typeof body.markPaid !== "boolean") {
+      return NextResponse.json({ error: "markPaid must be a boolean" }, { status: 400 });
+    }
+    const markPaid = body.markPaid ?? true;
 
-    const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
+    if (body.gateway !== undefined && typeof body.gateway !== "string") {
+      return NextResponse.json({ error: "gateway must be a string" }, { status: 400 });
+    }
+    const gateway = body.gateway ? body.gateway.toUpperCase() : "MANUAL";
     if (gateway !== "MANUAL") {
       return NextResponse.json(
         { error: "This endpoint records offline/manual payments only; online gateways require verified provider callbacks" },
         { status: 400 },
       );
     }
-    const trackingCode = body.trackingCode ? String(body.trackingCode).trim() : null;
+    if (body.trackingCode !== undefined && body.trackingCode !== null && typeof body.trackingCode !== "string") {
+      return NextResponse.json({ error: "trackingCode must be a string" }, { status: 400 });
+    }
+    const trackingCode = typeof body.trackingCode === "string" && body.trackingCode.trim()
+      ? body.trackingCode.trim()
+      : null;
     if (trackingCode && trackingCode.length > 100) {
       return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
     }
