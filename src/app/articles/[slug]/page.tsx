@@ -11,8 +11,8 @@
  *   • Lightweight markdown rendering (same rules as /knowledge/[slug])
  *   • Renders related articles (3 most recent published, different slug)
  *
- * NOTE: the legacy /knowledge/[slug] route continues to serve the
- * existing "هویکس دانش" UI; this new /articles/[slug] is the canonical
+ * NOTE: legacy /knowledge/[slug] URLs permanently redirect here.
+ * /articles/[slug] is the single canonical public article route.
  * content-engine public route (matches the new admin nav key).
  */
 
@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getArticle, readBrandId } from '@/lib/content-service';
+import { getSEO, parseStructuredDataOverride, serializeJsonLd } from '@/lib/seo';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { BookOpen, ArrowRight, Eye, Tag, Calendar, Building2 } from 'lucide-react';
@@ -52,11 +53,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  const title = `${article.title} | هویکس دانش`;
+  const seo = await getSEO("Article", article.id);
+  const title = seo?.metaTitle?.trim() || `${article.title} | هویکس دانش`;
   const description =
+    seo?.metaDescription?.trim() ||
     article.excerpt?.trim() ||
     `هویکس دانش — ${article.title}. راهنماها، مقایسه‌ها و نقد و بررسی ماشین‌آلات صنعتی در بازار هویکس.`;
-  const url = `/articles/${article.slug}`;
+  const url = seo?.canonicalUrl?.trim() || `/articles/${encodeURIComponent(article.slug)}`;
+  const index = seo?.robotsIndex ?? true;
+  const follow = seo?.robotsFollow ?? true;
   const brandId = readBrandId(article.tags);
   const keywords = [
     article.title,
@@ -72,24 +77,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     description,
     alternates: { canonical: url },
     openGraph: {
-      title,
-      description,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
       url,
       type: 'article',
       locale: 'fa_IR',
       siteName: 'HEAVIX',
-      images: article.coverImage ? [{ url: article.coverImage, width: 1200, height: 630, alt: article.title }] : undefined,
+      images: seo?.ogImage ? [{ url: seo.ogImage, alt: seo.ogTitle || title }] : article.coverImage ? [{ url: article.coverImage, width: 1200, height: 630, alt: article.title }] : undefined,
       publishedTime: article.publishedAt?.toISOString() ?? undefined,
       authors: ['هویکس دانش'],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
-      description,
-      images: article.coverImage ? [article.coverImage] : undefined,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : article.coverImage ? [article.coverImage] : undefined,
     },
     keywords,
-    robots: { index: true, follow: true },
+    robots: { index, follow },
   };
 }
 
@@ -161,6 +166,8 @@ export default async function ArticlePage({ params }: PageProps) {
     notFound();
   }
 
+  const seo = await getSEO("Article", article.id);
+
   // Best-effort view-count increment (non-blocking, fire-and-forget)
   db.article
     .update({ where: { id: article.id }, data: { viewCount: { increment: 1 } } })
@@ -171,8 +178,9 @@ export default async function ArticlePage({ params }: PageProps) {
     : [];
   const brandId = readBrandId(article.tags);
 
-  // JSON-LD structured data for SEO
-  const jsonLd = {
+  // JSON-LD structured data for SEO. Admin overrides are parsed and
+  // constrained to schema.org; serialization escapes HTML-significant bytes.
+  const defaultJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
     headline: article.title,
@@ -181,8 +189,9 @@ export default async function ArticlePage({ params }: PageProps) {
     datePublished: article.publishedAt?.toISOString() ?? undefined,
     author: { '@type': 'Organization', name: 'هویکس دانش' },
     publisher: { '@type': 'Organization', name: 'HEAVIX' },
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `/articles/${article.slug}` },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `/articles/${encodeURIComponent(article.slug)}` },
   };
+  const jsonLd = parseStructuredDataOverride(seo?.structuredData, defaultJsonLd);
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50">
@@ -309,7 +318,7 @@ export default async function ArticlePage({ params }: PageProps) {
       {/* JSON-LD structured data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
     </div>
   );

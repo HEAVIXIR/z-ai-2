@@ -22,12 +22,22 @@ import {
    • "تولید خودکار" button — auto-generate from entity.
    ============================================================ */
 
-type EntityType = "Category" | "Brand" | "Product" | "Listing" | "Article" | "Page";
+type EntityType =
+  | "Category"
+  | "Brand"
+  | "Product"
+  | "ProductModel"
+  | "Company"
+  | "Listing"
+  | "Article"
+  | "Page";
 
 const ENTITY_TYPES: EntityType[] = [
   "Category",
   "Brand",
   "Product",
+  "ProductModel",
+  "Company",
   "Listing",
   "Article",
   "Page",

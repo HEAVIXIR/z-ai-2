@@ -1,3 +1,4 @@
+// Public article sitemap URLs are canonical /articles pages; /knowledge is a redirect.
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";

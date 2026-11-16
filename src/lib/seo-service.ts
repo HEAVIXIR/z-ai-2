@@ -25,7 +25,7 @@ import {
   SEO_ENTITY_TYPES,
 } from "@/lib/seo";
 import { logAudit } from "@/lib/audit";
-import { SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL, SITE_NAME } from "@/lib/site-config";
 
 /* STEP 13.00: SITE_BASE_URL / SITE_NAME now imported from the single
    source of truth (@/lib/site-config). The previous local fallback
@@ -190,22 +190,25 @@ function xmlEscape(s: string): string {
  * Build the complete sitemap.xml document as a string.
  *
  * Queries:
- *   • static paths (/, /listings, /brands, /store, /knowledge, /categories)
- *   • all active categories  (slug)
- *   • all active brands      (slug)
- *   • all PUBLISHED listings (slug)
- *   • all published articles (slug)
+ *   • static public paths (including the /knowledge index)
+ *   • active categories and brands
+ *   • PUBLISHED listings and canonical /articles/{slug}
+ *   • ACTIVE companies and brand-scoped ProductModels with published inventory
  * • honors per-entity SEO overrides (robotsIndex / sitemapPriority /
  *   sitemapChangeFreq) — entities with robotsIndex=false are omitted.
  */
 export async function generateSitemap(): Promise<string> {
+  if (IS_PREVIEW_DEPLOYMENT) {
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+  }
+
   const entries: SitemapUrlEntry[] = [];
 
   // Static pages
   for (const p of STATIC_PATHS) {
     entries.push({
       loc: absoluteUrl(p.url),
-      lastmod: new Date().toISOString(),
       changefreq: p.changeFreq,
       priority: p.priority,
     });
@@ -245,23 +248,17 @@ export async function generateSitemap(): Promise<string> {
       .catch(() => []),
     db.productModel
       .findMany({
-        where: { status: "ACTIVE", brand: { active: true } },
+        where: { status: "ACTIVE", listings: { some: { status: "PUBLISHED" } } },
         select: {
           id: true,
           slug: true,
           updatedAt: true,
-          description: true,
-          brand: { select: { slug: true } },
-          _count: {
-            select: {
-              listings: { where: { status: "PUBLISHED" } },
-              generations: { where: { status: "ACTIVE" } },
-            },
-          },
+          brand: { select: { slug: true, active: true } },
         },
       })
       .catch(() => []),
   ]);
+  const models = modelRows.filter((m) => m.brand?.active && m.brand.slug);
 
   // Fetch SEO overrides in parallel
   const [catSEO, brandSEO, listingSEO, articleSEO, companySEO, modelSEO] = await Promise.all([
@@ -270,7 +267,7 @@ export async function generateSitemap(): Promise<string> {
     fetchSeoMap("Listing", listings.map((l) => l.id)),
     fetchSeoMap("Article", articles.map((a) => a.id)),
     fetchSeoMap("Company", companies.map((c) => c.id)),
-    fetchSeoMap("ProductModel", modelRows.map((m) => m.id)),
+    fetchSeoMap("ProductModel", models.map((m) => m.id)),
   ]);
 
   // Categories
@@ -312,19 +309,6 @@ export async function generateSitemap(): Promise<string> {
     });
   }
 
-  // Articles (knowledge base)
-  for (const a of articles) {
-    if (!a.slug) continue;
-    const seo = articleSEO.get(a.id);
-    if (seo?.robotsIndex === false) continue;
-    entries.push({
-      loc: `${SITE_BASE_URL}/articles/${a.slug}`,
-      lastmod: (a.publishedAt ?? a.updatedAt ?? new Date()).toISOString(),
-      changefreq: seo?.sitemapChangeFreq ?? "monthly",
-      priority: seo?.sitemapPriority ?? 0.5,
-    });
-  }
-
   // Companies with published inventory
   for (const company of companies) {
     if (!company.slug) continue;
@@ -338,19 +322,27 @@ export async function generateSitemap(): Promise<string> {
     });
   }
 
-  // Brand-scoped models — omit thin pages and honor per-model SEO directives.
-  for (const model of modelRows) {
+  // Brand-scoped models with published inventory
+  for (const model of models) {
     if (!model.slug || !model.brand?.slug) continue;
     const seo = modelSEO.get(model.id);
     if (seo?.robotsIndex === false) continue;
-    const hasUsefulContent =
-      Boolean(model.description?.trim()) ||
-      model._count.listings > 0 ||
-      model._count.generations > 0;
-    if (!hasUsefulContent) continue;
     entries.push({
-      loc: `${SITE_BASE_URL}/brands/${model.brand.slug}/models/${model.slug}`,
+      loc: `${SITE_BASE_URL}/brands/${encodeURIComponent(model.brand.slug)}/models/${encodeURIComponent(model.slug)}`,
       lastmod: (model.updatedAt ?? new Date()).toISOString(),
+      changefreq: seo?.sitemapChangeFreq ?? "weekly",
+      priority: seo?.sitemapPriority ?? 0.6,
+    });
+  }
+
+  // Articles (canonical content route)
+  for (const a of articles) {
+    if (!a.slug) continue;
+    const seo = articleSEO.get(a.id);
+    if (seo?.robotsIndex === false) continue;
+    entries.push({
+      loc: `${SITE_BASE_URL}/articles/${encodeURIComponent(a.slug)}`,
+      lastmod: (a.publishedAt ?? a.updatedAt ?? new Date()).toISOString(),
       changefreq: seo?.sitemapChangeFreq ?? "monthly",
       priority: seo?.sitemapPriority ?? 0.5,
     });
@@ -380,16 +372,20 @@ export async function generateSitemap(): Promise<string> {
  * /api/robots-txt or any other future consumer) can serve it.
  */
 export function getRobotsTxt(): string {
-  const sitemapUrl = absoluteUrl("/sitemap.xml");
-  return [
+  const lines = [
     "User-agent: *",
     "Allow: /",
+    // Private UI pages emit noindex metadata; crawlers must be able to
+    // fetch them to observe it. API endpoints remain disallowed.
     "Disallow: /api/",
     "",
     `Host: ${SITE_BASE_URL}`,
-    `Sitemap: ${sitemapUrl}`,
-    "",
-  ].join("\n");
+  ];
+  if (!IS_PREVIEW_DEPLOYMENT) {
+    lines.push(`Sitemap: ${absoluteUrl("/sitemap.xml")}`);
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 /* ── helpers ──────────────────────────────────────────────── */

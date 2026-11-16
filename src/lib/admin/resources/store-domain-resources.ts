@@ -92,21 +92,19 @@ export const inventoryConfig: AdminResourceConfig = {
     { key: 'partId', label: 'قطعه', type: 'relation', required: true,
       relation: { model: 'part', labelField: 'canonicalName' },
       validation: { message: 'انتخاب قطعه الزامی است' } },
-    // The generic adjustment endpoint deliberately rejects RETURN and TRANSFER.
-    // Keep those values in filters for historical ledger inspection only;
-    // return restocking and paired warehouse transfers have dedicated workflows.
     { key: 'type', label: 'نوع حرکت', type: 'select', required: true, options: [
       { value: 'RECEIVE', label: 'ورود' },
       { value: 'SALE', label: 'فروش' },
+      { value: 'RETURN', label: 'مرجوعی' },
+      { value: 'TRANSFER', label: 'انتقال' },
       { value: 'ADJUSTMENT', label: 'تعدیل' },
       { value: 'DAMAGE', label: 'خرابی' },
     ], validation: { message: 'نوع حرکت الزامی است' } },
     { key: 'quantity', label: 'تعداد', type: 'number', required: true,
       helpText: 'مثبت برای ورود، منفی برای خروج',
       validation: { message: 'تعداد باید عدد صحیح غیرصفر باشد' } },
-    { key: 'warehouseId', label: 'انبار', type: 'relation', required: true,
-      relation: { model: 'warehouse', labelField: 'name' },
-      validation: { message: 'انتخاب انبار الزامی است' } },
+    { key: 'warehouseId', label: 'انبار', type: 'relation',
+      relation: { model: 'warehouse', labelField: 'name' } },
     { key: 'reason', label: 'علت', type: 'textarea',
       validation: { maxLength: 500, message: 'علت نباید بیش از ۵۰۰ نویسه باشد' } },
     { key: 'reference', label: 'مرجع', type: 'text',
@@ -345,9 +343,11 @@ export const procurementConfig: AdminResourceConfig = {
   apiBase: '/api/admin/store/procurement',
   adminPath: '/admin/resources/procurement',
 
-  // Lifecycle mutations use the dedicated procurement API only.
   permissions: {
     read: 'procurement.read',
+    create: 'procurement.manage',
+    update: 'procurement.manage',
+    delete: 'procurement.manage',
     export: 'procurement.read',
   },
 
@@ -403,7 +403,7 @@ export const procurementConfig: AdminResourceConfig = {
       { value: 'AWARDED', label: 'تأمیدشده' },
       { value: 'COMPLETED', label: 'تکمیل‌شده' },
       { value: 'CANCELLED', label: 'لغوشده' },
-    ], permissions: { read: 'procurement.read' } },
+    ], permissions: { read: 'procurement.read', write: 'procurement.manage' } },
     { key: 'supplierId', label: 'تأمین‌کننده', type: 'relation',
       relation: { model: 'supplier', labelField: 'name' } },
   ],
@@ -415,8 +415,24 @@ export const procurementConfig: AdminResourceConfig = {
     { key: 'audit', label: 'ممیزی', type: 'audit' },
   ],
 
-  // Only export is exposed through the Universal Resource Engine.
+  actions: [
+    { key: 'publish', label: 'انتشار', icon: 'Send',
+      permission: 'procurement.manage', type: 'confirm',
+      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
+    { key: 'award', label: 'تأمید به', icon: 'Award',
+      permission: 'procurement.manage', type: 'modal',
+      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
+    { key: 'complete', label: 'تکمیل', icon: 'CheckCircle2',
+      permission: 'procurement.manage', type: 'confirm',
+      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
+    { key: 'cancel', label: 'لغو', icon: 'XCircle',
+      permission: 'procurement.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/procurement', apiMethod: 'PATCH' },
+  ],
+
   bulkActions: [
+    { key: 'bulk-publish', label: 'انتشار گروهی', icon: 'Send',
+      permission: 'procurement.manage', type: 'confirm' },
     { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
       permission: 'procurement.read', type: 'confirm' },
   ],
@@ -648,9 +664,11 @@ export const suppliersConfig: AdminResourceConfig = {
   apiBase: '/api/admin/store/suppliers',
   adminPath: '/admin/resources/suppliers',
 
-  // Supplier mutations use the dedicated CSRF-protected Store API.
   permissions: {
     read: 'store.read',
+    create: 'store.manage',
+    update: 'store.manage',
+    delete: 'store.manage',
     export: 'store.read',
   },
 
@@ -695,7 +713,7 @@ export const suppliersConfig: AdminResourceConfig = {
       validation: { maxLength: 500,
         message: 'نشانی نباید بیش از ۵۰۰ نویسه باشد' } },
     { key: 'active', label: 'فعال', type: 'boolean', defaultValue: true,
-      permissions: { read: 'store.read' } },
+      permissions: { read: 'store.read', write: 'store.manage' } },
   ],
 
   detailTabs: [
@@ -705,8 +723,26 @@ export const suppliersConfig: AdminResourceConfig = {
     { key: 'audit', label: 'ممیزی', type: 'audit' },
   ],
 
-  // Only export is exposed through the Universal Resource Engine.
+  actions: [
+    { key: 'activate', label: 'فعال‌سازی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'deactivate', label: 'غیرفعال‌سازی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'edit', label: 'ویرایش', icon: 'Pencil',
+      permission: 'store.manage', type: 'modal',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'PATCH' },
+    { key: 'delete', label: 'حذف', icon: 'Trash2',
+      permission: 'store.manage', type: 'confirm', variant: 'destructive',
+      apiPath: '/api/admin/store/suppliers', apiMethod: 'DELETE' },
+  ],
+
   bulkActions: [
+    { key: 'bulk-activate', label: 'فعال‌سازی گروهی', icon: 'ToggleRight',
+      permission: 'store.manage', type: 'confirm' },
+    { key: 'bulk-deactivate', label: 'غیرفعال‌سازی گروهی', icon: 'ToggleLeft',
+      permission: 'store.manage', type: 'confirm' },
     { key: 'bulk-export', label: 'خروجی گروهی', icon: 'Download',
       permission: 'store.read', type: 'confirm' },
   ],
@@ -1567,6 +1603,8 @@ export const seoConfig: AdminResourceConfig = {
       { value: 'Product', label: 'محصول' },
       { value: 'Listing', label: 'آگهی' },
       { value: 'Article', label: 'مقاله' },
+      { value: 'ProductModel', label: 'مدل ماشین‌آلات' },
+      { value: 'Company', label: 'شرکت' },
       { value: 'Page', label: 'صفحه' },
     ]},
   ],
@@ -1583,6 +1621,8 @@ export const seoConfig: AdminResourceConfig = {
       { value: 'Product', label: 'محصول' },
       { value: 'Listing', label: 'آگهی' },
       { value: 'Article', label: 'مقاله' },
+      { value: 'ProductModel', label: 'مدل ماشین‌آلات' },
+      { value: 'Company', label: 'شرکت' },
       { value: 'Page', label: 'صفحه' },
     ] },
     { key: 'entityId', label: 'شناسه محتوا', type: 'text', required: true,
@@ -1767,13 +1807,12 @@ export const rentalsConfig: AdminResourceConfig = {
   apiBase: '/api/admin/store/rentals',
   adminPath: '/admin/resources/rentals',
 
-  // Reuse the canonical Store permissions enforced by the dedicated API.
   permissions: {
-    read: 'store.read',
-    create: 'store.manage',
-    update: 'store.manage',
-    delete: 'store.manage',
-    export: 'store.read',
+    read: 'rentals.read',
+    create: 'rentals.manage',
+    update: 'rentals.manage',
+    delete: 'rentals.manage',
+    export: 'rentals.read',
   },
 
   columns: [
@@ -1813,5 +1852,5 @@ export const rentalsConfig: AdminResourceConfig = {
   bulkActions: [],
 
   audit: { enabled: true, entityType: 'RentalListing',
-    actions: ['store.manage'] },
+    actions: ['rentals.manage'] },
 };
