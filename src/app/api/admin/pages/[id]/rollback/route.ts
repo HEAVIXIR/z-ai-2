@@ -17,6 +17,7 @@ import { isAdmin } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
+import { checkCsrf } from '@/lib/csrf';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
@@ -28,6 +29,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const admin = await isAdmin(user.id);
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   if (!body?.versionId) return NextResponse.json({ error: 'versionId required' }, { status: 400 });
 

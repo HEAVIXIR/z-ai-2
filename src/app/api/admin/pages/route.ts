@@ -19,6 +19,7 @@ import { can } from '@/lib/authorization';
 import { validateLayout } from '@/lib/admin/page-builder/widget-registry';
 import { logAudit } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { checkCsrf } from '@/lib/csrf';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,10 @@ export async function POST(req: NextRequest) {
   const admin = await isAdmin(user.id);
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   if (!body?.key || !body?.title) {
     return NextResponse.json({ error: 'key and title required' }, { status: 400 });

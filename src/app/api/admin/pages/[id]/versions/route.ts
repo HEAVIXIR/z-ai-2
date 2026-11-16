@@ -13,6 +13,7 @@ import { isAdmin } from '@/lib/authorization';
 import { validateLayout } from '@/lib/admin/page-builder/widget-registry';
 import { logAudit } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { checkCsrf } from '@/lib/csrf';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const admin = await isAdmin(user.id);
   if (!admin) return NextResponse.json({ error: 'Forbidden: admin only' }, { status: 403 });
 
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
+  }
   // Validate page exists
   const page = await db.adminPage.findUnique({ where: { id: pageId } });
   if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 });

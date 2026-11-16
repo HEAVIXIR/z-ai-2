@@ -13,6 +13,7 @@ import { isAdmin } from '@/lib/authorization';
 import { validateLayout } from '@/lib/admin/page-builder/widget-registry';
 import { logAudit } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { checkCsrf } from '@/lib/csrf';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
@@ -42,6 +43,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const admin = await isAdmin(user.id);
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
 
@@ -62,6 +67,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const admin = await isAdmin(user.id);
   if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+
+  if (!checkCsrf(_req)) {
+    return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
+  }
   const before = await db.adminPage.findUnique({ where: { id } });
   if (!before) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
