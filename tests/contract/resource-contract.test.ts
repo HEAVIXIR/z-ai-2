@@ -90,7 +90,7 @@ describe('Universal Resource Contract — All 18 Resources', () => {
       });
 
       it('should have update permission or explicitly disable generic updates', () => {
-        if (['payments', 'procurement', 'suppliers'].includes(config.key)) {
+        if (['procurement', 'suppliers'].includes(config.key)) {
           // Mutations are restricted to dedicated, domain-specific endpoints.
           expect(config.permissions.update).toBeUndefined();
         } else {
