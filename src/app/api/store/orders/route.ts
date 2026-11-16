@@ -417,7 +417,7 @@ export async function POST(req: Request) {
       // Atomically claim a coupon use. If another checkout consumes the
       // final use or the coupon changes after validation, roll back the order.
       if (appliedCouponCode) {
-        const selectedCoupon = await storeDb.coupon.findUnique({
+        const selectedCoupon = await tx.coupon.findUnique({
           where: { code: appliedCouponCode },
         });
         if (!selectedCoupon) {
