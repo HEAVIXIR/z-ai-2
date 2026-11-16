@@ -67,47 +67,58 @@ export async function GET(req: Request) {
     });
 
     if (!verify.success) {
-      const result = await storeDb.payment.updateMany({
-        where: { id: payment.id, status: "PENDING" },
-        data: { status: "REJECTED" },
-      });
-      if (result.count > 0) {
-        await storeDb.order.update({
-          where: { id: order.id },
-          data: { paymentStatus: "UNPAID" },
+      await storeDb.$transaction(async (tx: any) => {
+        const rejected = await tx.payment.updateMany({
+          where: { id: payment.id, status: "PENDING" },
+          data: { status: "REJECTED" },
         });
-      }
+        if (rejected.count === 0) return;
+        const approvedPayments = await tx.payment.findMany({
+          where: { orderId: order.id, status: "APPROVED" },
+        });
+        const approvedSum = approvedPayments.reduce((sum: number, item: any) => sum + Number(item.amountIrr), 0);
+        const totalIrr = Number(order.totalIrr);
+        const paymentStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
+        await tx.order.update({
+          where: { id: order.id },
+          data: { paymentStatus },
+        });
+      });
       return NextResponse.redirect(new URL(`/store?payment=failed&order=${order.orderNumber}`, url.origin));
     }
 
-    // STEP 12.94 RACE FIX: Atomic CAS — only transition PENDING → APPROVED
-    const approveResult = await storeDb.payment.updateMany({
-      where: { id: payment.id, status: "PENDING" },
-      data: {
-        status: "APPROVED",
-        refId: verify.refId,
-        reviewedAt: new Date(),
-      },
-    });
+    // Keep the payment transition and the derived order payment state atomic.
+    const transition = await storeDb.$transaction(async (tx: any) => {
+      const approved = await tx.payment.updateMany({
+        where: { id: payment.id, status: "PENDING" },
+        data: {
+          status: "APPROVED",
+          refId: verify.refId,
+          reviewedAt: new Date(),
+        },
+      });
+      if (approved.count === 0) {
+        const latest = await tx.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
+        return { changed: false, status: latest?.status ?? "UNKNOWN" };
+      }
 
-    if (approveResult.count === 0) {
-      const param = String(payment.status) === "APPROVED" ? "success" : "failed";
-      return NextResponse.redirect(new URL(`/store?payment=${param}&order=${order.orderNumber}`, url.origin));
-    }
-
-    // recompute order's payment status from approved payments sum
-    await storeDb.$transaction(async (tx: any) => {
       const approvedPayments = await tx.payment.findMany({
         where: { orderId: order.id, status: "APPROVED" },
       });
-      const approvedSum = approvedPayments.reduce((s: number, p: any) => s + Number(p.amountIrr), 0);
+      const approvedSum = approvedPayments.reduce((sum: number, item: any) => sum + Number(item.amountIrr), 0);
       const totalIrr = Number(order.totalIrr);
-      const newPayStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
+      const paymentStatus = approvedSum >= totalIrr ? "PAID" : approvedSum > 0 ? "PARTIAL" : "UNPAID";
       await tx.order.update({
         where: { id: order.id },
-        data: { paymentStatus: newPayStatus, status: "CONFIRMED" },
+        data: { paymentStatus, status: "CONFIRMED" },
       });
+      return { changed: true, status: "APPROVED" };
     });
+
+    if (!transition.changed) {
+      const param = transition.status === "APPROVED" ? "success" : "failed";
+      return NextResponse.redirect(new URL(`/store?payment=${param}&order=${order.orderNumber}`, url.origin));
+    }
 
     return NextResponse.redirect(new URL(`/store?payment=success&order=${order.orderNumber}`, url.origin));
   } catch (e: any) {
