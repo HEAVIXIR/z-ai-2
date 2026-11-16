@@ -442,3 +442,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Verified source after write: both endpoints contain `checkCsrf(req)`; gateway ownership fallback contains `sessionUser.mobileVerified && sessionUser.mobile`.
 - Current branch head: `ad81ffcb6bfec60165e0d9e83eb9875b960bbd2b`; PR #340 remains Draft/open and unmerged.
 - No test/typecheck/build/CI/Actions/deploy, migration, seed, database or runtime operation was run. Exact-head validation and full payment callback race review remain outstanding; this is not a release approval.
+
+
+## 2026-11-16 — Gateway callback atomicity and regression coverage
+
+- Refactored public gateway callback state handling so both successful and rejected payment transitions, recomputation of aggregate approved payments, and the corresponding Order.paymentStatus update occur in one database transaction. The success path uses conditional PENDING→APPROVED compare-and-swap and reads the latest status when a concurrent callback already won; the rejection path no longer blindly resets an order to UNPAID when another approved partial payment exists.
+- Gateway request handler now checks authentication before CSRF (preserving anonymous 401 behavior), then validates Origin/Referer before parsing or creating a payment. Non-admin phone-based order ownership requires `mobileVerified` and a matching session mobile.
+- Updated `tests/security/step-12.89-store-gateway-behavioral.test.ts` to mock CSRF for route behavior tests and add a regression case rejecting an unverified matching phone.
+- Commits: callback transaction `1c5fb99b3aea7ada293ee29001163c78d61776be`; auth-first ordering `dc19c959a3517a6baa7893e4cab2fbecd11db9c2`; regression test `d5f0ca1702a72ba51f0c300d01b6b393dfe40e7f`.
+- Source-level re-fetch confirmed the success and rejection callback branches use transactions, gateway request has CSRF and verified-mobile checks, shipment PATCH has CSRF, and the regression case is present.
+- Current branch head: `d5f0ca1702a72ba51f0c300d01b6b393dfe40e7f`. No test, typecheck, build, CI, Actions dispatch, migration, seed, database operation, deployment or runtime change was run. Regression tests are authored but unexecuted; payment provider sandbox acceptance and exact-head CI remain outstanding.
