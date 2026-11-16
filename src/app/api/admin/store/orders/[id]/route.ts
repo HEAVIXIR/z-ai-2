@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
@@ -71,7 +72,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
-  const { id } = await params;
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  const { id } = await params;
   try {
     const body = await req.json();
     const existing = await storeDb.order.findUnique({ where: { id } });
