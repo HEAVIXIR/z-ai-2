@@ -79,7 +79,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = SITE_BASE_URL;
 
   // Fetch all public entities in parallel.
-  const [categories, brands, listings, articles] = await Promise.all([
+  const [categories, brands, listings, articles, modelRows] = await Promise.all([
     db.category
       .findMany({
         where: { active: true },
@@ -116,14 +116,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         console.error("[sitemap] article lookup failed; article URLs omitted");
         return [];
       }),
+    db.productModel
+      .findMany({
+        where: { status: "ACTIVE", brand: { active: true } },
+        select: {
+          id: true,
+          slug: true,
+          updatedAt: true,
+          description: true,
+          brand: { select: { slug: true } },
+          _count: {
+            select: {
+              listings: { where: { status: "PUBLISHED" } },
+              generations: { where: { status: "ACTIVE" } },
+            },
+          },
+        },
+      })
+      .catch(() => {
+        console.error("[sitemap] product model lookup failed; model URLs omitted");
+        return [];
+      }),
   ]);
 
   // Fetch SEO overrides in parallel.
-  const [catSEO, brandSEO, listingSEO, articleSEO] = await Promise.all([
+  const [catSEO, brandSEO, listingSEO, articleSEO, modelSEO] = await Promise.all([
     getSEOOverridesByType("Category", categories.map((c) => c.id)),
     getSEOOverridesByType("Brand", brands.map((b) => b.id)),
     getSEOOverridesByType("Listing", listings.map((l) => l.id)),
     getSEOOverridesByType("Article", articles.map((a) => a.id)),
+    getSEOOverridesByType("ProductModel", modelRows.map((m) => m.id)),
   ]);
 
   const out: MetadataRoute.Sitemap = [];
@@ -180,6 +202,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     out.push({
       url: `${base}/articles/${a.slug}`,
       lastModified: a.publishedAt ?? a.updatedAt ?? new Date(),
+      changeFrequency: (seo?.sitemapChangeFreq ?? "monthly") as any,
+      priority: seo?.sitemapPriority ?? 0.5,
+    });
+  }
+
+  // Brand-scoped models — thin pages without description, listings, or generations stay out.
+  for (const model of modelRows) {
+    if (!model.slug || !model.brand?.slug) continue;
+    const seo = modelSEO.get(model.id);
+    if (seo?.robotsIndex === false) continue;
+    const hasUsefulContent =
+      Boolean(model.description?.trim()) ||
+      model._count.listings > 0 ||
+      model._count.generations > 0;
+    if (!hasUsefulContent) continue;
+    out.push({
+      url: `${base}/brands/${model.brand.slug}/models/${model.slug}`,
+      lastModified: model.updatedAt ?? new Date(),
       changeFrequency: (seo?.sitemapChangeFreq ?? "monthly") as any,
       priority: seo?.sitemapPriority ?? 0.5,
     });

@@ -210,7 +210,7 @@ export async function generateSitemap(): Promise<string> {
   }
 
   // Fetch public entities in parallel — fail open (skip on error)
-  const [categories, brands, listings, articles] = await Promise.all([
+  const [categories, brands, listings, articles, modelRows] = await Promise.all([
     db.category
       .findMany({
         where: { active: true },
@@ -235,14 +235,33 @@ export async function generateSitemap(): Promise<string> {
         select: { id: true, slug: true, updatedAt: true, publishedAt: true },
       })
       .catch(() => []),
+    db.productModel
+      .findMany({
+        where: { status: "ACTIVE", brand: { active: true } },
+        select: {
+          id: true,
+          slug: true,
+          updatedAt: true,
+          description: true,
+          brand: { select: { slug: true } },
+          _count: {
+            select: {
+              listings: { where: { status: "PUBLISHED" } },
+              generations: { where: { status: "ACTIVE" } },
+            },
+          },
+        },
+      })
+      .catch(() => []),
   ]);
 
   // Fetch SEO overrides in parallel
-  const [catSEO, brandSEO, listingSEO, articleSEO] = await Promise.all([
+  const [catSEO, brandSEO, listingSEO, articleSEO, modelSEO] = await Promise.all([
     fetchSeoMap("Category", categories.map((c) => c.id)),
     fetchSeoMap("Brand", brands.map((b) => b.id)),
     fetchSeoMap("Listing", listings.map((l) => l.id)),
     fetchSeoMap("Article", articles.map((a) => a.id)),
+    fetchSeoMap("ProductModel", modelRows.map((m) => m.id)),
   ]);
 
   // Categories
@@ -292,6 +311,24 @@ export async function generateSitemap(): Promise<string> {
     entries.push({
       loc: `${SITE_BASE_URL}/articles/${a.slug}`,
       lastmod: (a.publishedAt ?? a.updatedAt ?? new Date()).toISOString(),
+      changefreq: seo?.sitemapChangeFreq ?? "monthly",
+      priority: seo?.sitemapPriority ?? 0.5,
+    });
+  }
+
+  // Brand-scoped models — omit thin pages and honor per-model SEO directives.
+  for (const model of modelRows) {
+    if (!model.slug || !model.brand?.slug) continue;
+    const seo = modelSEO.get(model.id);
+    if (seo?.robotsIndex === false) continue;
+    const hasUsefulContent =
+      Boolean(model.description?.trim()) ||
+      model._count.listings > 0 ||
+      model._count.generations > 0;
+    if (!hasUsefulContent) continue;
+    entries.push({
+      loc: `${SITE_BASE_URL}/brands/${model.brand.slug}/models/${model.slug}`,
+      lastmod: (model.updatedAt ?? new Date()).toISOString(),
       changefreq: seo?.sitemapChangeFreq ?? "monthly",
       priority: seo?.sitemapPriority ?? 0.5,
     });
