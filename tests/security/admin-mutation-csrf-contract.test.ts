@@ -8,6 +8,7 @@ const read = (relative: string) => fs.readFileSync(path.join(ROOT, relative), "u
 describe("administrative mutation CSRF contracts", () => {
   const protectedRoutes = [
     "src/app/api/admin/store/orders/[id]/route.ts",
+    "src/app/api/admin/store/returns/route.ts",
     "src/app/api/admin/store/categories/route.ts",
     "src/app/api/admin/store/categories/[id]/route.ts",
     "src/app/api/admin/store/brands/[id]/route.ts",
