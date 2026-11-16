@@ -610,3 +610,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - GitHub Actions run `43834097936` is running on exact head `96bbad68e3a142bb516c2babbe8a43f78e15c006`; final result remains pending.
 - Read-only Cloudflare Build trigger audit: Worker `heavix-preview`, script tag `40270a318ea94b0a9102bc3c4b34f0cf`, trigger `4104855d-7623-456f-91b9-6715cc8423fd`; `branch_includes=["main"]`, `branch_excludes=[]`. Selected Integration does not match the include list, so its GitHub push does not start a Cloudflare Build. Existing Preview Worker deployment and configuration were not changed.
 - No migrations, seeds, database writes, Production changes, DNS changes, Cloudflare Builds, or deployments were performed.
+
+
+## 2026-11-16 — Integration AI scraper policy gates, CSRF test harness and Store contract reconciliation
+
+- Reasserted the single selected destination: `integration/preview-readiness-workerd-2026-11-15`. All work remains on Integration; no source PR was merged wholesale.
+- Selectively transferred the reviewed PR #333 implementation for both `src/app/api/admin/ai-scraper/route.ts` and `src/app/api/admin/store/ai-scraper/route.ts`. These versions include the shared AI gateway `preflightAIRequest`/ `recordAICost` integration and SCRAPER policy gate. Their shared `safe-source-fetch.ts` and `ai-policy.ts` dependencies were already byte-identical on Integration, so no redundant changes were made.
+- Reconciled `tests/security/admin-navigation-rbac.test.ts` fixtures with explicit active/inactive navigation semantics by marking stored fixture groups/items active.
+- Updated Store order/shipment source-contract assertions to verify the implemented dedicated cancellation/return workflows and shipment compare-and-swap (status + updatedAt + affected-row count), replacing stale textual expectations.
+- Diagnosed the 403 cascade in DB-backed security tests: the request harness omitted the Origin header while production CSRF middleware correctly rejects mutation requests without a trusted same-origin Origin/Referer. Updated request helpers in RBAC Phase B, brands, deals, listings and legacy admin listings tests to use the explicit test origin `http://localhost:3000`. No production CSRF weakening or bypass was introduced.
+- Previous exact-head security run #43837954982 on `96a68883...` failed 32/1266 tests (8 files); the failures included scraper routes missing AI policy gates, stale navigation fixture activity flags, stale Store source-contract expectations, and mutation tests missing Origin headers. The run was diagnostic evidence only; no claim of green CI.
+- Current Integration code head before this documentation checkpoint: `f2b0afa9f4a0813143cdf3b840944e17552694eb`. Exact-head CI #43840734308 is queued and OpenNext proof #43840734286 is in progress. This documentation commit follows the code head; verify the current branch SHA and obtain new exact-head CI evidence before any release decision.
+- No PR was merged. No migrations, seeds, database writes, production changes, DNS changes, Cloudflare Builds, Worker deployments, Vercel deployments, or paid AI/scraping actions were performed.
