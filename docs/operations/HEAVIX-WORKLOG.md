@@ -598,3 +598,15 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Updated Phase Store-2C source-contract expectations to match the latest audited source: 65 writes (not 64), 54 action keys (not 53), and the explicit `transition` fulfillment audit verb. The latest observed run had 734/738 tests passing and four stale-count/convention assertions failing.
 - The latest observed OpenNext/TypeScript failure was isolated to the two dead scraper POST tails and missing navigation constants. A new build/test run was not manually dispatched; the next push may trigger configured PR checks.
 - No migrations, seeds, DB operations, manual workflow dispatches, deployment, Production or runtime changes were performed.
+
+
+## 2026-11-16 — Selected Integration branch reasserted and Prisma schema gate repaired
+
+- Owner explicitly reaffirmed `integration/preview-readiness-workerd-2026-11-15` as the single destination for all HEAVIX capabilities. Recovery is treated as a historical source line; PR #340 currently points from Integration into recovery and must not be merged in that direction.
+- On the selected Integration branch, corrected `prisma/preview-schema.prisma`: moved `businessType` from `BrandFamily` to `Company`, matching `prisma/schema.prisma`. No database, migration or seed operation was run.
+- Replaced line-order-based `tests/preview-schema-sync.sh` with a structural schema comparator. It normalizes the SQLite/Preview datasource and client output differences, removes the Worker-only generator, normalizes model declaration/member ordering, preserves enum value ordering, and reports the first structural mismatch.
+- Tool-side canonical comparison of Main and Preview schema contents returned exact equality after the correction (124 models). This is a source-level comparison, not a claim that CI or Prisma validation has passed.
+- Commits on selected Integration: schema ownership correction `c2ca5f95e8e02112fe6e58f970b24bdd40706a90`; structural test `96bbad68e3a142bb516c2babbe8a43f78e15c006`.
+- GitHub Actions run `43834097936` is running on exact head `96bbad68e3a142bb516c2babbe8a43f78e15c006`; final result remains pending.
+- Read-only Cloudflare Build trigger audit: Worker `heavix-preview`, script tag `40270a318ea94b0a9102bc3c4b34f0cf`, trigger `4104855d-7623-456f-91b9-6715cc8423fd`; `branch_includes=["main"]`, `branch_excludes=[]`. Selected Integration does not match the include list, so its GitHub push does not start a Cloudflare Build. Existing Preview Worker deployment and configuration were not changed.
+- No migrations, seeds, database writes, Production changes, DNS changes, Cloudflare Builds, or deployments were performed.

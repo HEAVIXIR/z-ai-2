@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-15T13:57:00.000Z",
+  "updated_at_utc": "2026-11-16T08:49:16.028Z",
   "repository": "HEAVIXIR/z-ai-2",
-  "active_branch": "recovery/heavix-full-product-integration-2026-11-11",
+  "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "3769f6b9d9c1553879e5eff14c587a896ab7ba1f",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -27,7 +27,7 @@
   },
   "cloudflare_quota": {
     "last_user_report": "Owner-reported: more than 2,000 of 3,000 monthly Cloudflare Build units had been consumed by 2026-11-11; exact dashboard count not independently verified. No speculative or automatic Cloudflare retries.",
-    "policy": "Avoid unnecessary builds/deployments; recovery branch is explicitly excluded from the non-production Cloudflare Build trigger. Prefer GitHub/local checks first."
+    "policy": "Avoid unnecessary builds/deployments; preserve the proven Webpack/NFT fast-build profile and never use Cloudflare Builds as a debugging loop. Read-only verification on 2026-11-16 found the active heavix-preview trigger includes only main and excludes no branches; selected Integration does not match and is not eligible to trigger a Cloudflare Build. Re-check trigger configuration before changing include patterns or pushing any newly eligible branch."
   },
   "verified_findings": [
     "Current main homepage uses PageRenderer and a five-widget default fallback.",
@@ -165,7 +165,12 @@
     "Consolidated AI scraper hardening in PR #333 and closed duplicate PR #332.",
     "Fixed CI workflow pull_request event types to include synchronize and edited on PR #333 branch.",
     "Added scraper regression assertions; two test-authoring failures were diagnosed and corrected, with latest CI run in progress.",
-    "Verified exact-head CI success for consolidated scraper PR #333 at commit cd8ef0e; all six substantive jobs passed."
+    "Verified exact-head CI success for consolidated scraper PR #333 at commit cd8ef0e; all six substantive jobs passed.",
+    "Owner reaffirmed integration/preview-readiness-workerd-2026-11-15 as the single selected destination for all HEAVIX capabilities; recovery is a historical source line, not the integration target.",
+    "Corrected prisma/preview-schema.prisma: Company.businessType now belongs to Company, not BrandFamily; no migration or database command was run.",
+    "Replaced tests/preview-schema-sync.sh line-order diff with structural Prisma declaration comparison: model declaration/member ordering is normalized, enum value order is preserved, and datasource/client differences are normalized.",
+    "Local tool-side structural comparison of Main and Preview schema contents returned exact canonical equality after the field correction; actual CI run #43834097936 is still in progress.",
+    "Read-only Cloudflare trigger audit found active Worker heavix-preview script tag 40270a318ea94b0a9102bc3c4b34f0cf, trigger 4104855d-7623-456f-91b9-6715cc8423fd, branch_includes=[main], branch_excludes=[]; selected Integration is not eligible for automatic Cloudflare Build."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -177,34 +182,36 @@
     "Canonical taxonomy/catalog reconciliation, approved Preview seed and model/attribute data acceptance.",
     "Global Listing.sourceUrl uniqueness decision after duplicate assessment.",
     "Media legal/consent policy, final route/RBAC/SEO acceptance and release-candidate PR.",
-    "Production domain/DNS and Production deployment remain not performed."
+    "Production domain/DNS and Production deployment remain not performed.",
+    "CI run #43834097936 on Integration exact head 96bbad68 is in progress; no success claim until all required jobs complete."
   ],
-  "next_action": "Poll GitHub Actions run #43721154092 to completion and fix any remaining failures on PR #333 head cd8ef0e. Then obtain owner Vercel sign-in via secure browser-profile setup for Preview/Admin acceptance. In parallel, run exact-head CI/OpenNext for recovery head bac8754 and resolve #330/#331 conflicts plus #312/#314 homepage direction. Do not touch Production or DNS.",
-  "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/307",
+  "next_action": "Poll GitHub Actions run #43834097936 on exact selected Integration head 96bbad68e3a142bb516c2babbe8a43f78e15c006. Fix any remaining failures on this branch only. Then build a dependency-aware transfer matrix for open PRs and move the reviewed capabilities into Integration in coherent batches, beginning with core product and identity/auth dependencies; do not merge PR #340 into recovery or start Cloudflare Builds.",
+  "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 43721154092,
-    "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
-    "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
-    "status": "completed",
-    "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
-    "note": "All six substantive jobs passed: verify, audit-transaction, phase-tests, tls-proof, docker-build-proof including Caddy→app HTTP 200, and Cloudflare compatibility report-only. Legacy archive inventory skipped."
+    "id": 43834097936,
+    "sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "branch": "integration/preview-readiness-workerd-2026-11-15",
+    "status": "in_progress",
+    "conclusion": null,
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43834097936",
+    "note": "Triggered by the Preview schema ownership correction and structural schema-sync test on the selected Integration branch. Verify job results before claiming green."
   },
-  "latest_code_head_sha": "bac875427f707c377afbadbdcda43bf5b3b0eb0d",
+  "latest_code_head_sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
   "latest_ci_run": {
-    "id": 43721154092,
-    "sha": "cd8ef0e78f49e351011bd4e80414187a51cd877e",
-    "branch": "fix/admin-ai-scraper-hardening-2026-11-15",
-    "status": "completed",
-    "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43721154092",
+    "id": 43834097936,
+    "sha": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "branch": "integration/preview-readiness-workerd-2026-11-15",
+    "status": "in_progress",
+    "conclusion": null,
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43834097936",
     "jobs": {
-      "verify": "success",
-      "audit_transaction": "success",
-      "phase_tests": "success",
-      "tls_proof": "success",
-      "docker_build_proof": "success",
-      "cloudflare_compatibility_report_only": "success",
+      "verify": "in_progress",
+      "audit_transaction": "in_progress",
+      "phase_tests": "in_progress",
+      "tls_proof": "in_progress",
+      "docker_build_proof": "in_progress",
+      "cloudflare_compatibility_report_only": "in_progress",
+      "workerd_runtime_smoke": "in_progress",
       "legacy_archive_inventory": "skipped"
     }
   },
@@ -247,7 +254,8 @@
     "B2 proof workflow skipped the preview-backup environment protection rules for the single Preview-only run; review this bypass before reuse.",
     "PR #333 test suite had two consecutive assertion-only failures during test authoring; latest correction is cd8ef0e and the current CI run is in progress.",
     "PR #330 and #331 were retargeted to recovery and GitHub reports mergeable=false; neither was merged.",
-    "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred."
+    "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred.",
+    "PR #340 currently has integration as its head and recovery as its base; this is the reverse of the selected integration destination and must not be merged as-is."
   ],
   "platform_roadmap": {
     "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
@@ -574,7 +582,8 @@
     "Global Listing.sourceUrl uniqueness decision remains open pending duplicate-data assessment.",
     "Media legal/consent policy for third-party images and seller contact data needs explicit product/legal acceptance.",
     "Cloudflare automatic build trigger for closed PR #332 branch remains configured; do not push that branch. Its prior build failed because build:cloudflare is missing; no deployment occurred.",
-    "Production domain, DNS, custom-domain binding and Production rollout remain intentionally untouched."
+    "Production domain, DNS, custom-domain binding and Production rollout remain intentionally untouched.",
+    "Selected Integration branch currently has PR #340 pointing into the historical recovery branch; do not merge in that direction. Consolidate capabilities into Integration and later correct/replace the tracking PR direction."
   ],
   "last_verified_legacy_parity": {
     "audited_at_utc": "2026-11-11T22:30:00.000Z",
@@ -684,6 +693,10 @@
     "main_unchanged": true,
     "release_ready": false,
     "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved.",
-    "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit."
+    "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit.",
+    "selected_integration_branch": "integration/preview-readiness-workerd-2026-11-15",
+    "selected_integration_head": "96bbad68e3a142bb516c2babbe8a43f78e15c006",
+    "tracking_pr": 340,
+    "tracking_pr_direction": "Integration branch is PR head; historical recovery is PR base. Do not merge as-is."
   }
 }

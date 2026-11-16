@@ -26,7 +26,7 @@ If any file is missing on the active branch, locate it in Git history/other know
 ## 3. Source-of-truth hierarchy
 
 - Current implementation source: `HEAVIXIR/z-ai-2`.
-- Active isolated implementation branch: `recovery/heavix-full-product-integration-2026-11-11`.
+- **Selected integration destination:** `integration/preview-readiness-workerd-2026-11-15`. This is the canonical branch for all future code consolidation and acceptance work. The recovery branch is a historical source line, not the destination.
 - Protected baseline at branch creation: `main` SHA `b4b6b4624ebed2ae3bdad023eb1532dbedad7001`.
 - Legacy reference only: `dellk00k/z`, branch `legacy/extracted-archives`, commit `bbb1f4947e4b1a05e39f7b510c5c7801d52389e7`.
 - `HEAVIXIR/z` is an archive/source reference, not the current app repo.
@@ -49,7 +49,7 @@ Never assume a legacy file is safe/current. Compare it with current code, schema
 
 ## 5. Non-negotiable safety and release constraints
 
-- Work on the recovery branch; do not commit to `main` directly.
+- Work on `integration/preview-readiness-workerd-2026-11-15` only for integration changes. Transfer reviewed work from feature/recovery branches into this selected destination; do not create another integration branch or commit to `main` directly.
 - No Production deploy, Production DB use, DNS edits, or stable Worker replacement.
 - Do not run migrations, seeds, destructive scripts, or DB writes against Preview until the exact DB binding/identity and operation are reviewed and explicitly gated.
 - First perform read-only inspections. Prove Preview App DB and Store DB identities independently. Prove Production DB is not bound to Preview.
@@ -64,7 +64,7 @@ Never assume a legacy file is safe/current. Compare it with current code, schema
 
 ### Phase 0 — Resume correctly
 - Read all documents listed in §2.
-- Fetch the current branch HEAD and compare it with the last checkpoint in `HEAVIX-CURRENT-STATE.json`.
+- Fetch `integration/preview-readiness-workerd-2026-11-15` HEAD and compare it with the last checkpoint in `HEAVIX-CURRENT-STATE.json`.
 - Read the latest worklog entry and inspect uncommitted/changed files if tool access allows.
 - Continue from the recorded **NEXT ACTION**. Do not repeat completed inventory.
 
@@ -102,14 +102,14 @@ Never assume a legacy file is safe/current. Compare it with current code, schema
 
 ## 7. Every agent must maintain the checkpoint
 
-After each meaningful work session, update these files in the same recovery branch:
+After each meaningful work session, update these files in the same selected Integration branch:
 
 - `docs/operations/HEAVIX-CURRENT-STATE.json` — current branch/head, status, completed items, blockers, next exact action, tests/deploy evidence, last updated UTC.
 - `docs/operations/HEAVIX-WORKLOG.md` — append-only chronological log: what was inspected/changed, paths, commit SHA, commands/tests and exact outcomes, what was not done.
 - Relevant plan/audit docs — update only when facts or decisions change.
 
 Before ending a session or handing off:
-1. Commit documentation and code together where appropriate.
+1. Commit documentation and code together on the selected Integration branch where appropriate.
 2. Update current-state JSON to the new resulting commit SHA.
 3. Record unverified items explicitly as `NOT VERIFIED`, not as completed.
 4. State the one next executable action, including exact paths/files and branch.
@@ -125,8 +125,8 @@ Only mark HEAVIX complete when all plan gates A–F pass, critical CI is green, 
 
 ## Latest operational checkpoint — 2026-11-11
 
-- Active branch: `recovery/heavix-full-product-integration-2026-11-11`.
-- Draft PR: `https://github.com/HEAVIXIR/z-ai-2/pull/307`; do not merge until owner review and all required checks are green.
+- Selected integration branch: `integration/preview-readiness-workerd-2026-11-15`.
+- Integration tracking PR: `https://github.com/HEAVIXIR/z-ai-2/pull/340` (head is the selected Integration branch; its current base is the historical recovery branch). Do not merge it as-is or reverse the integration direction.
 - Root homepage has been restored to the canonical 17-section HomePageSection composition. Admin GET exposes the same virtual defaults and PUT persists them by stable key. Public GET is read-only; no request-time DB writes. PageRenderer/PageBuilder remain for custom pages and preview flows.
 - Store order authorization has been hardened: no unauthenticated `userId` enumeration; guest lookup requires phone + exact high-entropy order number; order API responses are private/no-store.
 - Store and Marketplace detailed health endpoints now enforce route-level RBAC even though middleware intentionally bypasses `/health` paths for infrastructure probes.
