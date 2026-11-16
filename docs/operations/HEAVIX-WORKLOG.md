@@ -580,3 +580,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added regression contracts for lock acquisition order and serializable release conflict handling. Tests remain unexecuted.
 - Commits: procurement Part-lock `93633a42d6f9da0436deb8ba31cabb2fe2e905e5`; reservation-release serialization `ffce26cc8529decc84005e7539976e315d42c186`; tests/worklog follow-up recorded after these changes.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Shipment-to-order fulfillment synchronization
+
+- Closed a lifecycle gap: tracking previously updated Shipment/ShipmentTracking but did not advance the linked Order status. DISPATCHED now conditionally advances CONFIRMED/PROCESSING orders to SHIPPED; DELIVERED advances SHIPPED or valid active exception-recovery orders to DELIVERED. Both transitions and the shipment tracking append commit in the same Serializable transaction with transactional audit-outbox records.
+- The generic admin order PATCH now refuses direct SHIPPED/DELIVERED overrides (`ORDER_SHIPMENT_WORKFLOW_REQUIRED`); the shipment tracking workflow is the single writer for fulfillment lifecycle states. Other order metadata and the dedicated cancellation/return workflows remain separate.
+- Added source-contract assertions for order-state synchronization, conditional allowed-state updates, audit action and direct-override rejection. Tests remain unexecuted.
+- Commits: service sync `0eaeb47bc0a4a6a25c34ea020b87daaa2e369e01`; order PATCH guard `2fbe67afad451226e7d1b547c5a58a8485a3d035`; transition recovery adjustment, tests and worklog recorded in subsequent commits.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
