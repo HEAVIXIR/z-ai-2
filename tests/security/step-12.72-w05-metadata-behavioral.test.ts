@@ -39,7 +39,7 @@ const mockBrand = { id: "brand-1", name: "Caterpillar", slug: "caterpillar", act
 vi.mock("@/lib/db", () => ({
   db: {
     listing: {
-      findUnique: vi.fn(async () => null), // overridden per-test
+      findFirst: vi.fn(async () => null), // overridden per-test
     },
     category: {
       findFirst: vi.fn(async () => null),
@@ -61,7 +61,7 @@ const { db } = await import("@/lib/db");
 const { resolveBrandBySlugOrAlias } = await import("@/lib/brand-resolve");
 
 beforeEach(() => {
-  (db.listing.findUnique as any).mockResolvedValue(null);
+  (db.listing.findFirst as any).mockResolvedValue(null);
   (db.category.findFirst as any).mockResolvedValue(null);
   (resolveBrandBySlugOrAlias as any).mockResolvedValue(null);
 });
@@ -72,7 +72,7 @@ beforeEach(() => {
 
 describe("W-05: listings/[slug] generateMetadata", () => {
   it("POSITIVE: listing found → unique title with brand, description, canonical, OG", async () => {
-    (db.listing.findUnique as any).mockResolvedValue(mockListing);
+    (db.listing.findFirst as any).mockResolvedValue(mockListing);
     const meta = await listingPage.generateMetadata({ params: Promise.resolve({ slug: "test-listing" }) });
     expect(meta.title).toContain("بیل مکانیکی کاترپیلار 320");
     expect(meta.title).toContain("Caterpillar");
@@ -83,26 +83,26 @@ describe("W-05: listings/[slug] generateMetadata", () => {
   });
 
   it("POSITIVE: listing with no brand → title without brand suffix", async () => {
-    (db.listing.findUnique as any).mockResolvedValue({ ...mockListing, brand: null });
+    (db.listing.findFirst as any).mockResolvedValue({ ...mockListing, brand: null });
     const meta = await listingPage.generateMetadata({ params: Promise.resolve({ slug: "no-brand" }) });
     expect(meta.title).toBe("بیل مکانیکی کاترپیلار 320");
   });
 
   it("NEGATIVE: listing not found → fallback title", async () => {
-    (db.listing.findUnique as any).mockResolvedValue(null);
+    (db.listing.findFirst as any).mockResolvedValue(null);
     const meta = await listingPage.generateMetadata({ params: Promise.resolve({ slug: "nonexistent" }) });
     expect(meta.title).toBe("آگهی یافت نشد");
   });
 
   it("POSITIVE: OG image present when listing has image", async () => {
-    (db.listing.findUnique as any).mockResolvedValue(mockListing);
+    (db.listing.findFirst as any).mockResolvedValue(mockListing);
     const meta: any = await listingPage.generateMetadata({ params: Promise.resolve({ slug: "x" }) });
     expect(meta.openGraph?.images).toBeDefined();
     expect(meta.openGraph?.images[0]?.url).toBe("https://example.com/img1.jpg");
   });
 
   it("POSITIVE: OG image absent when listing has no image", async () => {
-    (db.listing.findUnique as any).mockResolvedValue({ ...mockListing, images: [] });
+    (db.listing.findFirst as any).mockResolvedValue({ ...mockListing, images: [] });
     const meta: any = await listingPage.generateMetadata({ params: Promise.resolve({ slug: "x" }) });
     expect(meta.openGraph?.images).toBeUndefined();
   });
