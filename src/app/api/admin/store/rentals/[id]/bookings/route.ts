@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { requestBooking, RentalServiceError } from "@/lib/rental-service";
@@ -100,7 +101,10 @@ export async function POST(req: Request, { params }: Params) {
       { status: 403 },
     );
   }
-  const { id } = await params;
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }  const { id } = await params;
   try {
     const body = await req.json().catch(() => ({}));
     if (!body.customerId) {
