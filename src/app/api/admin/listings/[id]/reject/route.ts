@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { requirePermission } from "@/lib/authorization";
 
@@ -26,6 +27,10 @@ export async function POST(req: Request, { params }: Params) {
     await requirePermission(user.id, 'listing.moderate');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires listing.moderate" }, { status: 403 });
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
