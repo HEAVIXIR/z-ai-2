@@ -452,3 +452,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: callback transaction `1c5fb99b3aea7ada293ee29001163c78d61776be`; auth-first ordering `dc19c959a3517a6baa7893e4cab2fbecd11db9c2`; regression test `d5f0ca1702a72ba51f0c300d01b6b393dfe40e7f`.
 - Source-level re-fetch confirmed the success and rejection callback branches use transactions, gateway request has CSRF and verified-mobile checks, shipment PATCH has CSRF, and the regression case is present.
 - Current branch head: `d5f0ca1702a72ba51f0c300d01b6b393dfe40e7f`. No test, typecheck, build, CI, Actions dispatch, migration, seed, database operation, deployment or runtime change was run. Regression tests are authored but unexecuted; payment provider sandbox acceptance and exact-head CI remain outstanding.
+
+
+## 2026-11-16 — Broad administrative mutation protection and free-only scraper gate
+
+- Added fail-closed Origin/Referer CSRF validation after authentication/permission checks to privileged mutation handlers across Store orders, categories, brands, car models, rentals/bookings, service requests/providers, mechanics, currency, and the universal admin resource create/update/delete/action/bulk APIs. Also protected admin listing bulk mutations and listing PATCH/DELETE, attachment creation, and media upload.
+- Added `tests/security/admin-mutation-csrf-contract.test.ts`, a source-contract regression suite covering 23 privileged mutation route files and both scraper gates. Test file authored, not executed.
+- Both `/api/admin/ai-scraper` and `/api/admin/store/ai-scraper` now fail closed with HTTP 503 `AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY` after auth/permission and CSRF checks. This prevents paid AI provider invocation and costly scraping under the current free-infrastructure decision; manual listing/part creation APIs remain the supported path.
+- Relevant commits: Store CSRF batch `f28c7b75` through `d718d1a7`; universal/admin listing/media CSRF batch `7c30d8a5` through `6d9ef1ca`; AI scraper gate `60feb008` and `bf4293f5`; regression contract `65f1412f`.
+- Source re-fetch confirmed CSRF guards exist in universal resource mutations, admin listing mutations, Store order/category/rental mutations, and scraper gate. The regression contract includes all patched routes.
+- No tests, typecheck, lint, build, CI, Actions dispatch, migration, seed, database operation, deploy, Production, or runtime change was run. No live AI provider or scraping request was made. Keep AI scraping disabled until a genuinely free, explicitly approved implementation is designed.
