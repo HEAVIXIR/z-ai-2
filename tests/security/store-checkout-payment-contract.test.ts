@@ -59,6 +59,25 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
+  it("creates shipments only for paid confirmed orders and records audit atomically", () => {
+    const service = read("src/lib/store-shipments-service.ts");
+    expect(service).toMatch(/order\.paymentStatus !== 'PAID'/);
+    expect(service).toMatch(/isolationLevel: 'Serializable'/);
+    expect(service).toMatch(/enqueueAuditOutbox\(tx/);
+    expect(service).toMatch(/order\.shipment/);
+  });
+
+  it("enforces ordered shipment transitions and atomically appends tracking plus audit", () => {
+    const service = read("src/lib/store-shipments-service.ts");
+    expect(service).toMatch(/const transitions: Record<string, string\[\]>/);
+    expect(service).toMatch(/transitions\[existing\.status\]/);
+    expect(service).toMatch(/where: \{ id: shipmentId, status: existing\.status, updatedAt: existing\.updatedAt \}/);
+    expect(service).toMatch(/tx\.shipmentTracking\.create/);
+    expect(service).toMatch(/enqueueAuditOutbox\(tx/);
+    expect(service).toMatch(/isolationLevel: 'Serializable'/);
+    expect(service).toMatch(/تغییر وضعیت محموله فقط از طریق ثبت رویداد رهگیری مجاز است/);
+  });
+
   it("serializes cumulative manual refunds and refuses unimplemented gateway refunds", () => {
     const service = read("src/lib/commerce-service.ts");
     expect(service).toMatch(/export async function refundPayment/);
