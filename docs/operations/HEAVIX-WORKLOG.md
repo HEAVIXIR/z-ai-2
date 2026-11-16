@@ -548,3 +548,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: refund transaction `76a716ae98c6c563ab7826cfb4159a841be83113`; direct status guard `b74c6438718978dcfef3567d15d905ab9574d52b`; append-only DELETE handler `190f6079f1788598137cde6bbe2ac857f1fd4642`; tests/worklog follow-up commits recorded alongside this entry.
 - Added regression contracts for cumulative refund caps, source-row compare-and-swap, gateway refund gate, transactional outbox and append-only payment ledger. Tests remain unexecuted.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Universal payment API containment
+
+- The payment audit found that the Universal Resource API still allowed generic POST/PATCH/DELETE mutations for the `payments` resource, bypassing the dedicated financial ledger safeguards even after the dedicated item route was hardened.
+- Added `payments` to the dedicated-mutation denylist for both universal collection and item routes, mapping the denial check to `payment.manage`. Reads remain available; mutations must use the dedicated payment endpoints/action workflows.
+- Added a regression contract asserting both universal routes deny payment mutations and use the payment-specific permission.
+- Commits: item API containment `1d60085a06cdeb6a13d30790928f057d650881b8`; collection API containment `640a1bdecacf37420634cd10950a9c8e9e119810`; test/worklog follow-up recorded in subsequent commits.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
