@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     if (typeof body.method !== "string" || !["CARD", "CASH"].includes(body.method)) {
       return NextResponse.json({ error: "method must be CARD or CASH" }, { status: 400 });
     }
-    const method = body.method;
+    const method = body.method as "CARD" | "CASH";
     if (typeof body.amountIrr !== "number" || !Number.isSafeInteger(body.amountIrr)) {
       return NextResponse.json({ error: "amountIrr must be a safe integer" }, { status: 400 });
     }
