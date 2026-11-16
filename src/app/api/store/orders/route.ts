@@ -39,6 +39,13 @@ function orderJson(body: unknown, init?: ResponseInit) {
      created (phone-only) but no userId is set.
    ============================================================ */
 
+class CouponUsageConflictError extends Error {
+  constructor() {
+    super("کد تخفیف هم‌زمان تغییر کرده یا ظرفیت استفاده آن تکمیل شده است");
+    this.name = "CouponUsageConflictError";
+  }
+}
+
 function genOrderNumber(): string {
   const t = Date.now().toString(36).toUpperCase().slice(-6);
   const secret = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
@@ -248,11 +255,25 @@ export async function POST(req: Request) {
     const notes = body.notes ? String(body.notes) : null;
     const mechanicId = body.mechanicId ? String(body.mechanicId) : null;
     const couponCode = body.couponCode ? String(body.couponCode).trim().toUpperCase() : null;
-    const itemsInput: Array<{ partId: string; quantity: number }> = Array.isArray(body.items)
-      ? body.items
-          .map((it: any) => ({ partId: String(it.partId || ""), quantity: Math.max(1, Number(it.quantity) || 1) }))
-          .filter((it) => it.partId)
-      : [];
+    const rawItems: unknown[] = Array.isArray(body.items) ? body.items : [];
+    const aggregatedItems = new Map<string, number>();
+    for (const rawItem of rawItems) {
+      if (!rawItem || typeof rawItem !== "object") {
+        return orderJson({ error: "اقلام سبد خرید نامعتبر است" }, { status: 400 });
+      }
+      const item = rawItem as Record<string, unknown>;
+      const partId = typeof item.partId === "string" ? item.partId.trim() : "";
+      const quantity = Number(item.quantity);
+      if (!partId || !Number.isSafeInteger(quantity) || quantity < 1) {
+        return orderJson({ error: "شناسه قطعه یا تعداد نامعتبر است" }, { status: 400 });
+      }
+      const combined = (aggregatedItems.get(partId) ?? 0) + quantity;
+      if (!Number.isSafeInteger(combined)) {
+        return orderJson({ error: "تعداد درخواستی بیش از حد مجاز است" }, { status: 400 });
+      }
+      aggregatedItems.set(partId, combined);
+    }
+    const itemsInput = [...aggregatedItems].map(([partId, quantity]) => ({ partId, quantity }));
 
     // Resolve the current HEAVIX user (if any).
     const sessionUser = await getStoreUserWithRole();
@@ -276,13 +297,6 @@ export async function POST(req: Request) {
     if (itemsInput.length === 0) {
       return orderJson({ error: "سبد خرید خالی است" }, { status: 400 });
     }
-
-    // upsert customer
-    const customer = await storeDb.customer.upsert({
-      where: { phone: finalPhone },
-      update: { name: finalName, family: finalFamily || "", address },
-      create: { phone: finalPhone, name: finalName, family: finalFamily || "", address },
-    });
 
     // load parts (active only) — snapshot prices
     const partIds = itemsInput.map((it) => it.partId);
@@ -354,6 +368,13 @@ export async function POST(req: Request) {
     const totalUsd = subtotalUsd + shippingUsd;
     const totalIrr = Math.max(0, subtotalIrr + Math.round(shippingUsd * eff.rate * (1 + (eff.marginPercent || 0) / 100)) - discountIrr);
 
+    // Persist the customer only after cart and pricing validation has succeeded.
+    const customer = await storeDb.customer.upsert({
+      where: { phone: finalPhone },
+      update: { name: finalName, family: finalFamily || "", address },
+      create: { phone: finalPhone, name: finalName, family: finalFamily || "", address },
+    });
+
     // create order + items + decrement stock + increment soldCount + bump coupon usage
     const orderNumber = genOrderNumber();
     const order = await storeDb.$transaction(async (tx) => {
@@ -393,12 +414,36 @@ export async function POST(req: Request) {
         await decrementOrderStock(tx, it.partId, it.quantity, o.id, sessionUser?.id ?? null);
       }
 
-      // bump coupon usage
+      // Atomically claim a coupon use. If another checkout consumes the
+      // final use or the coupon changes after validation, roll back the order.
       if (appliedCouponCode) {
-        await tx.coupon.update({
+        const selectedCoupon = await storeDb.coupon.findUnique({
           where: { code: appliedCouponCode },
+        });
+        if (!selectedCoupon) {
+          throw new CouponUsageConflictError();
+        }
+        const now = new Date();
+        const where: any = {
+          code: appliedCouponCode,
+          active: true,
+          value: selectedCoupon.value,
+          type: selectedCoupon.type,
+          minOrderIrr: selectedCoupon.minOrderIrr,
+          usageLimit: selectedCoupon.usageLimit,
+          expiresAt: selectedCoupon.expiresAt,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        };
+        if (selectedCoupon.usageLimit > 0) {
+          where.usedCount = { lt: selectedCoupon.usageLimit };
+        }
+        const claimed = await tx.coupon.updateMany({
+          where,
           data: { usedCount: { increment: 1 } },
         });
+        if (claimed.count !== 1) {
+          throw new CouponUsageConflictError();
+        }
       }
 
       // update customer stats
@@ -421,6 +466,9 @@ export async function POST(req: Request) {
       linkedToUser: !!sessionUser?.id,
     });
   } catch (e: any) {
+    if (e instanceof CouponUsageConflictError) {
+      return orderJson({ error: e.message }, { status: 409 });
+    }
     if (e instanceof OrderStockConflictError) {
       return orderJson(
         { error: "موجودی یکی از قطعات تغییر کرده یا کافی نیست؛ سبد خرید را به‌روزرسانی کنید" },
