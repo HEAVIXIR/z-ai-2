@@ -31,12 +31,16 @@ describe("manual marketplace payment creation transaction contract", () => {
   });
 
   it("fails closed for malformed/non-object request bodies through the shared bounded parser", () => {
+    const storeManualSource = fs.readFileSync(
+      path.join(ROOT, "src/app/api/store/payments/manual/route.ts"),
+      "utf8",
+    );
     const parser = fs.readFileSync(
       path.join(ROOT, "src/lib/http/bounded-json.ts"),
       "utf8",
     );
-    expect(source).toContain("readBoundedJsonObject(req, 16 * 1024)");
-    expect(source).toContain("if (!parsed.ok)");
+    expect(storeManualSource).toContain("readBoundedJsonObject(req, 16 * 1024)");
+    expect(storeManualSource).toContain("if (!parsed.ok)");
     expect(parser).toContain('!parsed || typeof parsed !== "object" || Array.isArray(parsed)');
   });
 });
