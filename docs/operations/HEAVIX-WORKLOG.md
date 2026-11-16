@@ -556,3 +556,10 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added a regression contract asserting both universal routes deny payment mutations and use the payment-specific permission.
 - Commits: item API containment `1d60085a06cdeb6a13d30790928f057d650881b8`; collection API containment `640a1bdecacf37420634cd10950a9c8e9e119810`; test/worklog follow-up recorded in subsequent commits.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Universal bulk payment mutation containment
+
+- Extended the financial-ledger boundary to the Universal Resource bulk-action endpoint. Payment resources now fail closed with HTTP 409 after `payment.manage` authorization and CSRF validation; bulk status changes/refunds cannot bypass the dedicated payment workflows.
+- Added a regression contract for the payment-specific permission, CSRF check and `PAYMENT_BULK_MUTATION_DISABLED` response.
+- Implementation commit `7764e6de0c04e5c77cf22723334ad50b20f2e5a9`; regression contract/worklog updates recorded in subsequent commits.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
