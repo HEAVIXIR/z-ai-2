@@ -54,8 +54,9 @@ describe("store checkout and manual-payment concurrency contracts", () => {
   it("prevents direct admin overrides of ledger-derived payment and stock lifecycle states", () => {
     const route = read("src/app/api/admin/store/orders/[id]/route.ts");
     expect(route).toMatch(/ORDER_PAYMENT_STATUS_LEDGER_REQUIRED/);
-    expect(route).toMatch(/ORDER_STOCK_REVERSAL_REQUIRED/);
-    expect(route).toMatch(/body\.status === "CANCELLED" \|\| body\.status === "RETURNED"/);
+    expect(route).toMatch(/cancelStoreOrder\(id, user\.id\)/);
+    expect(route).toMatch(/ORDER_RETURN_WORKFLOW_REQUIRED/);
+    expect(route).toMatch(/ORDER_SHIPMENT_WORKFLOW_REQUIRED/);
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
@@ -92,7 +93,10 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(service).toMatch(/store\.order\.fulfillment\.transition/);
     expect(service).toMatch(/status === 'DISPATCHED' \|\| status === 'DELIVERED'/);
     expect(service).toMatch(/nextOrderStatus = status === 'DISPATCHED' \? 'SHIPPED' : 'DELIVERED'/);
-    expect(service).toMatch(/status: \{ in: expectedOrderStatuses \}/);
+    expect(service).toMatch(/expectedOrderStatuses\.includes\(orderBefore\.status\)/);
+    expect(service).toMatch(/status: orderBefore\.status/);
+    expect(service).toMatch(/updatedAt: orderBefore\.updatedAt/);
+    expect(service).toMatch(/orderChanged\.count !== 1/);
     expect(route).toMatch(/ORDER_SHIPMENT_WORKFLOW_REQUIRED/);
     expect(route).toMatch(/body\.status === "SHIPPED" \|\| body\.status === "DELIVERED"/);
   });
