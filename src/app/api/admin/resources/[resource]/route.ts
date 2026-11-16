@@ -37,6 +37,7 @@ import { parseQueryParams } from '@/lib/admin/query/query-builder';
 import { listResources, createResource } from '@/lib/admin/data-adapter';
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { auditCreate, auditMutation } from '@/lib/audit-foundation';
 import { can, isAdmin } from '@/lib/authorization';
@@ -165,6 +166,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(createPerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   // Parse body
   const body = await req.json().catch(() => null);
