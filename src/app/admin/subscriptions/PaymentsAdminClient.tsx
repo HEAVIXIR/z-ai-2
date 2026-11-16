@@ -21,7 +21,7 @@ import { toFa, formatCompactPrice, faDate } from "@/lib/format";
    • "رد پرداخت" button per PENDING payment → POST verify
      { status: "FAILED" }
    • "ایجاد پرداخت دستی" form → POST /api/admin/payments
-     { userId, amount, type, subscriptionId?, trackingCode?,
+     { userId, amount, type, trackingCode?,
        markPaid: true }
    ============================================================ */
 
@@ -73,9 +73,9 @@ export default function PaymentsAdminClient() {
   const [form, setForm] = useState({
     userId: "",
     amount: "",
-    type: "SUBSCRIPTION",
-    subscriptionId: "",
+    type: "FEATURED_LISTING",
     trackingCode: "",
+    reason: "",
     gateway: "MANUAL",
     markPaid: true,
   });
@@ -108,12 +108,22 @@ export default function PaymentsAdminClient() {
   }, [load]);
 
   async function verify(id: string, status: "PAID" | "FAILED") {
+    const reason = window.prompt(
+      status === "PAID"
+        ? "دلیل و مرجع بررسی پرداخت را وارد کنید:"
+        : "دلیل رد پرداخت را وارد کنید:",
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 5 || reason.trim().length > 500) {
+      alert("دلیل باید بین ۵ تا ۵۰۰ نویسه باشد.");
+      return;
+    }
     setBusy(id);
     try {
       const res = await fetch(`/api/payments/${id}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, reason: reason.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -128,8 +138,8 @@ export default function PaymentsAdminClient() {
 
   async function submitManual(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.userId.trim() || !form.amount.trim()) {
-      alert("شناسه کاربر و مبلغ الزامی است.");
+    if (!form.userId.trim() || !form.amount.trim() || form.reason.trim().length < 5) {
+      alert("شناسه کاربر، مبلغ و دلیل ثبت (حداقل ۵ نویسه) الزامی است.");
       return;
     }
     setSubmitting(true);
@@ -141,9 +151,9 @@ export default function PaymentsAdminClient() {
           userId: form.userId.trim(),
           amount: form.amount.replace(/[^\d]/g, ""),
           type: form.type,
-          subscriptionId: form.subscriptionId.trim() || undefined,
           trackingCode: form.trackingCode.trim() || undefined,
-          gateway: form.gateway,
+          reason: form.reason.trim(),
+          gateway: "MANUAL",
           markPaid: form.markPaid,
         }),
       });
@@ -155,9 +165,9 @@ export default function PaymentsAdminClient() {
       setForm({
         userId: "",
         amount: "",
-        type: "SUBSCRIPTION",
-        subscriptionId: "",
-        trackingCode: "",
+        type: "FEATURED_LISTING",
+            trackingCode: "",
+        reason: "",
         gateway: "MANUAL",
         markPaid: true,
       });
@@ -246,26 +256,12 @@ export default function PaymentsAdminClient() {
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
               >
-                <option value="SUBSCRIPTION">اشتراک</option>
                 <option value="FEATURED_LISTING">آگهی ویژه</option>
                 <option value="PROMOTION">پیشنهاد ویژه</option>
                 <option value="LEAD_FEE">کمیسیون سرنخ</option>
                 <option value="INSPECTION_FEE">هزینه بازرسی</option>
               </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-bold text-zinc-700">
-                شناسه اشتراک (اختیاری)
-              </label>
-              <input
-                value={form.subscriptionId}
-                onChange={(e) =>
-                  setForm({ ...form, subscriptionId: e.target.value })
-                }
-                placeholder="cuid..."
-                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
-                dir="ltr"
-              />
+              <p className="mt-1 text-[10px] text-amber-700">ثبت دستی پرداخت اشتراک تا تکمیل واحد پول، مبلغ سروری و دوره‌ی صورتحساب غیرفعال است.</p>
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-bold text-zinc-700">
@@ -291,8 +287,6 @@ export default function PaymentsAdminClient() {
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs"
               >
                 <option value="MANUAL">دستی / آفلاین</option>
-                <option value="ZARINPAL">زرین‌پال</option>
-                <option value="PAYIR">پی‌یار</option>
               </select>
             </div>
           </div>
@@ -416,19 +410,25 @@ export default function PaymentsAdminClient() {
                     </td>
                     <td className="px-4 py-3">
                       {p.status === "PENDING" ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => verify(p.id, "PAID")}
-                            disabled={busy === p.id}
-                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                          >
-                            {busy === p.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3" />
-                            )}
-                            تأیید پرداخت
-                          </button>
+                        <div className="flex flex-col items-start gap-1">
+                          {p.type === "SUBSCRIPTION" ? (
+                            <span className="text-[10px] font-semibold text-amber-700">
+                              تأیید تا تکمیل صورتحساب غیرفعال است
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => verify(p.id, "PAID")}
+                              disabled={busy === p.id}
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              {busy === p.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3" />
+                              )}
+                              تأیید پرداخت
+                            </button>
+                          )}
                           <button
                             onClick={() => verify(p.id, "FAILED")}
                             disabled={busy === p.id}

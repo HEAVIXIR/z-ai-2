@@ -1,4 +1,7 @@
 import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { toFa, formatCompactPrice, faDate } from "@/lib/format";
 import {
   Crown,
@@ -61,6 +64,20 @@ const PLAN_FEATURES = [
 ];
 
 export default async function SubscriptionsPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return <div className="p-8 text-center text-zinc-500">Unauthorized</div>;
+  }
+  try {
+    await requirePermission(user.id, "subscription.read");
+  } catch {
+    return (
+      <div className="p-8 text-center text-zinc-500">
+        Forbidden: requires subscription.read
+      </div>
+    );
+  }
+
   const [subscriptions, stats] = await Promise.all([
     db.premiumSubscription.findMany({
       orderBy: { createdAt: "desc" },
@@ -85,6 +102,14 @@ export default async function SubscriptionsPage() {
       active,
     })),
   ]);
+
+  await logAudit({
+    actorId: user.id,
+    actorType: "ADMIN",
+    action: "admin.subscriptions.list_view",
+    entityType: "PremiumSubscription",
+    reason: `viewed subscriptions admin page (count=${subscriptions.length})`,
+  });
 
   const statCards = [
     {

@@ -239,32 +239,6 @@ function makeStatusHandler(
 registerActionHandler('confirm', makeStatusHandler('CONFIRMED', 'confirmedAt'));
 registerActionHandler('cancel',  makeStatusHandler('CANCELLED', 'cancelledAt'));
 
-// Payment lifecycle (R7 payments): refund
-// STEP 11.19: Uses ATOMIC CONDITIONAL UPDATE (updateMany with expected status)
-// instead of plain update. This prevents race conditions where two concurrent
-// requests both pass the precondition check and both execute the refund.
-// updateMany with { id, status: expectedStatus } in the WHERE clause ensures
-// exactly one request succeeds — the other gets count=0 and we throw.
-registerActionHandler('refund', async (item) => {
-  const model = (item as any).__prismaModel;
-  const currentStatus = String(item.status ?? '');
-
-  // Conditional update: only succeeds if status is still what we expect
-  const result = await model.updateMany({
-    where: { id: item.id, status: currentStatus },
-    data: { status: 'REFUNDED' },
-  });
-
-  if (result.count === 0) {
-    throw new Error(
-      `ATOMIC_UPDATE_FAILED: Payment ${item.id} status is no longer "${currentStatus}" — concurrent modification detected`,
-    );
-  }
-
-  // Return the updated item (re-fetch to get the full record)
-  return await model.findUnique({ where: { id: item.id } });
-});
-
 // Closure lifecycle (R12 rfqs, R18 buy-requests): close
 registerActionHandler('close', makeStatusHandler('CLOSED', 'closedAt'));
 
@@ -311,6 +285,17 @@ export async function executeAction(
     return { success: false, action: actionKey, entityId, message: 'Resource not found' };
   }
 
+  // Marketplace refunds stay fail-closed until immutable evidence proves money movement.
+  if (resourceKey === 'payments' && actionKey === 'refund') {
+    return {
+      success: false,
+      action: actionKey,
+      entityId,
+      message: 'Refunds are unavailable until an evidence-backed refund workflow is implemented',
+      error: 'ACTION_UNAVAILABLE',
+    };
+  }
+
   // 1. Find action definition in config
   const action = config.actions?.find(a => a.key === actionKey);
   if (!action) {
@@ -342,6 +327,18 @@ export async function executeAction(
 
   if (!before) {
     return { success: false, action: actionKey, entityId, message: 'Entity not found' };
+  }
+
+  // Subscription payments cannot be manually marked PAID until canonical billing
+  // snapshots exist; fail closed before any financial mutation or audit.
+  if (resourceKey === 'payments' && actionKey === 'verify' && String(before.type ?? '') === 'SUBSCRIPTION') {
+    return {
+      success: false,
+      action: actionKey,
+      entityId,
+      message: 'Subscription payment verification is unavailable until canonical billing and term snapshots are implemented',
+      error: 'SUBSCRIPTION_BILLING_UNAVAILABLE',
+    };
   }
 
   // PR-SC-00: row-level ownership check. If the resource declares ownership
