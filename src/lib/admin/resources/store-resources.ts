@@ -263,7 +263,7 @@ export const paymentConfig: AdminResourceConfig = {
 
   permissions: {
     read: 'payment.read',
-    update: 'payment.manage', delete: 'payment.manage',
+    update: 'payment.manage',
     export: 'payment.read',
   },
 

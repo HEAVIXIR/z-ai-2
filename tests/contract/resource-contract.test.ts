@@ -78,8 +78,10 @@ describe('Universal Resource Contract — All 18 Resources', () => {
         expect(isNonEmptyString(config.permissions.read)).toBe(true);
       });
 
-      it('should have create permission', () => {
-        if (['procurement', 'suppliers'].includes(config.key)) {
+      it('should declare create permission or explicitly disable generic creation', () => {
+        if (config.key === 'payments') {
+          // Financial ledger rows are created only through the dedicated
+          // audited manual-payment endpoint, never generic CRUD.
           expect(config.permissions.create).toBeUndefined();
         } else {
           expect(isNonEmptyString(config.permissions.create)).toBe(true);
@@ -87,15 +89,13 @@ describe('Universal Resource Contract — All 18 Resources', () => {
       });
 
       it('should have update permission', () => {
-        if (['procurement', 'suppliers'].includes(config.key)) {
-          expect(config.permissions.update).toBeUndefined();
-        } else {
-          expect(isNonEmptyString(config.permissions.update)).toBe(true);
-        }
+        expect(isNonEmptyString(config.permissions.update)).toBe(true);
       });
 
-      it('should have delete permission', () => {
-        if (['procurement', 'suppliers'].includes(config.key)) {
+      it('should declare delete permission or explicitly disable destructive deletion', () => {
+        if (config.key === 'payments') {
+          // Payment records are immutable financial evidence; deletion is
+          // intentionally unavailable in both generic and dedicated APIs.
           expect(config.permissions.delete).toBeUndefined();
         } else {
           expect(isNonEmptyString(config.permissions.delete)).toBe(true);
