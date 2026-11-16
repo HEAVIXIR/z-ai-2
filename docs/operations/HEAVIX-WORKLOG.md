@@ -514,3 +514,11 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Commits: implementation `23ac78155fd54b2872295c1d0b04e5b87077c5a8`; regression contract recorded in the following commit.
 - This protects the admin manual-receipt approval path. External gateway callback reconciliation and exact-head behavioral testing remain separate release checks.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Fail-closed order lifecycle guard
+
+- Reviewed the admin order PATCH route and found it could directly set `paymentStatus` (including PAID/REFUNDED) without a matching Payment ledger transition. It could also set `CANCELLED` or `RETURNED` without reversing the exact warehouse allocations created by checkout.
+- Added fail-closed guards: payment status is now ledger-derived and cannot be changed through the generic order metadata endpoint; cancellation/return status transitions are rejected there until a dedicated transactional stock-reversal workflow is implemented. Other supported order metadata/status updates remain on the existing route.
+- Added source-contract assertions for both guard codes and CSRF coverage. This is an intentional safety gate, not completion of the cancellation workflow; the dedicated reversal service remains a release task.
+- Implementation commit `c566812d915ba2d2ac790627d99aa6027e205c7d`; regression contract update recorded in the following commit.
+- No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
