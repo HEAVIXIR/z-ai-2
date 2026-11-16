@@ -588,3 +588,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added source-contract assertions for order-state synchronization, conditional allowed-state updates, audit action and direct-override rejection. Tests remain unexecuted.
 - Commits: service sync `0eaeb47bc0a4a6a25c34ea020b87daaa2e369e01`; order PATCH guard `2fbe67afad451226e7d1b547c5a58a8485a3d035`; transition recovery adjustment, tests and worklog recorded in subsequent commits.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+
+## 2026-11-16 — Preview build/typecheck blocker repair
+
+- Fixed Admin Navigation API compilation by importing the canonical group and standalone definitions from the existing shared navigation-defaults module; no DB seed or navigation data write was performed.
+- Kept both AI scraper POST routes fail-closed after authentication, permission and CSRF checks, and removed unreachable legacy provider execution after the unconditional 503. This removes TypeScript errors in dead code without enabling paid AI or scraping.
+- Aligned `prisma/preview-schema.prisma` with the existing main-schema identity-core additions: Company.businessType and membership/invitation back-relations, User commercial persona/membership/invitation relations, and the three identity models. This is a schema-file synchronization only; no migration or database command was run.
+- Updated Phase Store-2C source-contract expectations to match the latest audited source: 65 writes (not 64), 54 action keys (not 53), and the explicit `transition` fulfillment audit verb. The latest observed run had 734/738 tests passing and four stale-count/convention assertions failing.
+- The latest observed OpenNext/TypeScript failure was isolated to the two dead scraper POST tails and missing navigation constants. A new build/test run was not manually dispatched; the next push may trigger configured PR checks.
+- No migrations, seeds, DB operations, manual workflow dispatches, deployment, Production or runtime changes were performed.

@@ -12,6 +12,7 @@ import { db } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { getUserPermissions } from '@/lib/rbac';
+import { ADMIN_NAVIGATION_GROUPS, ADMIN_NAVIGATION_STANDALONES } from '@/lib/admin/navigation-defaults';
 
 export const dynamic = 'force-dynamic';
 
