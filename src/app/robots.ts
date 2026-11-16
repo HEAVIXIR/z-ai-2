@@ -3,9 +3,10 @@ import { absoluteUrl } from "@/lib/seo";
 import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 /**
- * Public pages remain crawlable in Preview so search engines can observe
- * the page-level noindex directive. Preview intentionally omits the sitemap;
- * Production publishes the canonical sitemap and host.
+ * Public pages remain crawlable. Private UI routes publish page-level
+ * noindex metadata, so crawlers must be allowed to fetch them and observe
+ * that directive. Only API endpoints are disallowed at crawl level.
+ * Preview intentionally omits the sitemap.
  */
 export const revalidate = 3600;
 export const runtime = "nodejs";
@@ -16,8 +17,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // Private application routes are never crawlable.
-        disallow: ["/admin/", "/api/", "/dashboard/", "/seller/", "/login", "/register"],
+        disallow: ["/api/"],
       },
     ],
     ...(!IS_PREVIEW_DEPLOYMENT
