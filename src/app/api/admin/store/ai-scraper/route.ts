@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { storeDb } from "@/lib/store-db";
 import { slugify } from "@/lib/api-helpers";
+import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
 
@@ -603,15 +603,76 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
 
-  if (!checkCsrf(req)) {
-    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  // ── Parse body once (used for both preflight inputLength + downstream) ──
+  const body = await req.json().catch(() => ({}));
+
+  // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
+  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const preflight = await preflightAIRequest({
+    taskType: "SCRAPER",
+    user: { id: user.id },
+    inputLength: inputLen,
+  });
+  if (!preflight.ok) {
+    return NextResponse.json(
+      { error: preflight.reason },
+      { status: preflight.statusCode },
+    );
   }
+  const { policy } = preflight;
+  const startTime = Date.now();
 
-  // External AI providers and paid scraping are disabled by the HEAVIX free-infrastructure policy.
-  return NextResponse.json(
-    { error: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY", message: "استخراج هوشمند تا زمان تأیید زیرساخت رایگان و مجاز غیرفعال است." },
-    { status: 503 },
+  // ── STEP 11.43: AbortController timeout ──
+  const controller = new AbortController();
+  const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
+
+  let response: NextResponse = NextResponse.json(
+    { error: "Server error" },
+    { status: 500 },
   );
-
-  // Keep this endpoint fail-closed until an approved free provider is configured.
+  let __resultSummary: any = null;
+  let __errorMsg: string | null = null;
+  try {
+    response = await _doPost(body, user, controller);
+    try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
+  } catch (err: any) {
+    if (err?.name === "AbortError" || controller.signal.aborted) {
+      __errorMsg = `timeout after ${policy.timeoutMs}ms`;
+      response = NextResponse.json(
+        { error: "Gateway Timeout" },
+        { status: 504 },
+      );
+    } else {
+      __errorMsg = err?.message ?? "unknown";
+      response = NextResponse.json(
+        { error: err?.message ?? "Server error" },
+        { status: 500 },
+      );
+    }
+  } finally {
+    clearTimeout(timeoutTimer);
+    const latencyMs = Date.now() - startTime;
+    const success = response.status >= 200 && response.status < 300;
+    if (success) {
+      try {
+        await recordAICost("SCRAPER", policy.costCeilingUsd, user.id);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await db.aIGatewayLog.create({
+        data: {
+          taskType: "SCRAPER",
+          model: policy.model === "default" ? "z-ai-default" : policy.model,
+          input: JSON.stringify(body).substring(0, 500),
+          output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
+          latencyMs,
+          cost: success ? policy.costCeilingUsd : 0,
+          success,
+          error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
+          userId: user.id,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+  return response;
 }
