@@ -141,6 +141,15 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
+      if (status === "PAID" || status === "REFUNDED") {
+        return NextResponse.json(
+          { error: "وضعیت PAID/REFUNDED فقط از مسیر تأیید درگاه یا گردش بازپرداخت مستند قابل ثبت است", code: "PAYMENT_LEDGER_ACTION_REQUIRED" },
+          { status: 409 },
+        );
+      }
+      if (status === "AUTHORIZED" && existing.status !== "PENDING") {
+        return NextResponse.json({ error: "فقط پرداخت در انتظار قابل مجازسازی است" }, { status: 409 });
+      }
       data.status = status ?? existing.status;
     }
 
@@ -240,6 +249,10 @@ export async function DELETE(req: Request, { params }: Args) {
 
   try {
     const { id } = await params;
+    return NextResponse.json(
+      { error: "حذف سخت رکورد مالی غیرفعال است؛ سوابق پرداخت باید با گردش ابطال/بازپرداخت مستند حفظ شوند", code: "PAYMENT_LEDGER_IMMUTABLE" },
+      { status: 409 },
+    );
     const before = await db.payment.findUnique({ where: { id } });
     if (!before) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
