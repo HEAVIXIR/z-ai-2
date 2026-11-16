@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import {
   getOrderDetail,
+  cancelStoreOrder,
   CommerceServiceError,
 } from "@/lib/commerce-service";
 
@@ -89,11 +90,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         { status: 409 },
       );
     }
-    // Cancellation/return must reverse the exact checkout stock allocations.
-    // This metadata endpoint cannot safely perform that multi-ledger workflow.
-    if ((body.status === "CANCELLED" || body.status === "RETURNED") && body.status !== existing.status) {
+    if (body.status === "CANCELLED" && body.status !== existing.status) {
+      const cancelled = await cancelStoreOrder(id, user.id);
+      const refreshed = await getOrderDetail(id).catch(() => null);
+      return NextResponse.json({ success: true, data: refreshed ?? cancelled });
+    }
+    // RETURNED remains exclusively owned by the inspected returns workflow.
+    if (body.status === "RETURNED" && body.status !== existing.status) {
       return NextResponse.json(
-        { success: false, error: "لغو یا مرجوعی سفارش نیازمند گردش اختصاصی بازگردانی موجودی و ثبت حسابرسی است", code: "ORDER_STOCK_REVERSAL_REQUIRED" },
+        { success: false, error: "مرجوعی سفارش فقط از گردش اختصاصی ثبت، کارشناسی و حل‌وفصل مرجوعی مجاز است", code: "ORDER_RETURN_WORKFLOW_REQUIRED" },
         { status: 409 },
       );
     }
