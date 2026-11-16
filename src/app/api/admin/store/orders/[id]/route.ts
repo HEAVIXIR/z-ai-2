@@ -81,6 +81,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const existing = await storeDb.order.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
+    // Payment state is derived from approved/refunded Payment ledger rows.
+    // Directly setting it here would bypass the financial ledger.
+    if (body.paymentStatus !== undefined && body.paymentStatus !== existing.paymentStatus) {
+      return NextResponse.json(
+        { success: false, error: "وضعیت پرداخت فقط از گردش ثبت و تأیید پرداخت قابل تغییر است", code: "ORDER_PAYMENT_STATUS_LEDGER_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    // Cancellation/return must reverse the exact checkout stock allocations.
+    // This metadata endpoint cannot safely perform that multi-ledger workflow.
+    if ((body.status === "CANCELLED" || body.status === "RETURNED") && body.status !== existing.status) {
+      return NextResponse.json(
+        { success: false, error: "لغو یا مرجوعی سفارش نیازمند گردش اختصاصی بازگردانی موجودی و ثبت حسابرسی است", code: "ORDER_STOCK_REVERSAL_REQUIRED" },
+        { status: 409 },
+      );
+    }
+
     const data: any = {};
     if (body.status !== undefined) {
       if (!ALLOWED_STATUSES.includes(body.status)) {
