@@ -40,8 +40,6 @@ export default function AccountSecurityCenter() {
   const [emailCode, setEmailCode] = useState("");
   const [emailStep, setEmailStep] = useState<"request" | "verify">("request");
 
-  const [newMobile, setNewMobile] = useState("");
-  const [mobilePassword, setMobilePassword] = useState("");
 
   useEffect(() => {
     fetch("/api/account/identity", { credentials: "same-origin" })
@@ -106,13 +104,6 @@ export default function AccountSecurityCenter() {
     });
   }
 
-  async function requestMobileChange(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    await run(async () => {
-      await postJson("/api/account/mobile-change", { mobile: newMobile, currentPassword: mobilePassword });
-    });
-  }
-
   if (loading) return <div className="flex items-center justify-center rounded-2xl border border-white/10 p-10 text-white/50"><Loader2 className="ml-2 h-5 w-5 animate-spin" />در حال دریافت اطلاعات حساب…</div>;
 
   return (
@@ -142,12 +133,9 @@ export default function AccountSecurityCenter() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-4 flex items-center gap-3"><Smartphone className="h-5 w-5 text-[#F58220]" /><div><h2 className="font-bold">شماره موبایل</h2><p className="text-xs text-white/45">تغییر و تأیید شماره پس از اتصال سرویس پیامکی فعال می‌شود.</p></div></div>
         {identity && <div className="mb-4 flex flex-wrap items-center gap-2 text-sm"><span dir="ltr" className="text-white/80">{identity.mobile}</span><span className={identity.mobileVerified ? "rounded-full bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300" : "rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-300"}>{identity.mobileVerified ? "تأییدشده" : "تأییدنشده"}</span></div>}
-        <form onSubmit={requestMobileChange} className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-white/60">شماره جدید<input value={newMobile} onChange={e=>setNewMobile(e.target.value)} inputMode="tel" autoComplete="tel" maxLength={16} dir="ltr" className={inputClass + " mt-1"} placeholder="+98…" /></label>
-          <label className="text-xs text-white/60">رمز عبور فعلی<input value={mobilePassword} onChange={e=>setMobilePassword(e.target.value)} type="password" autoComplete="current-password" className={inputClass + " mt-1"} /></label>
-          <button disabled={busy || !newMobile || !mobilePassword} className="h-11 rounded-xl border border-white/15 px-4 text-sm font-bold text-white/50 disabled:cursor-not-allowed sm:col-span-2">تغییر موبایل (پس از فعال‌سازی پیامک)</button>
-        </form>
-        <p className="mt-3 text-xs leading-6 text-amber-200/70">تا زمانی که ارائه‌دهنده پیامک و OTP تأیید نشده باشد، شماره فعلی نه حذف می‌شود و نه تغییر می‌کند.</p>
+        <div role="note" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm leading-7 text-amber-100/80">
+          در حال حاضر فقط تأیید ایمیلی فعال است. تغییر شماره موبایل تا زمان آماده‌سازی زیرساخت پیامکی برای انتشار روی دامنه اصلی غیرفعال است؛ شماره فعلی شما بدون تغییر باقی می‌ماند.
+        </div>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
