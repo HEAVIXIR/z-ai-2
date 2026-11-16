@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkCsrf } from "@/lib/csrf";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
@@ -6,7 +7,6 @@ import { slugify, parseBig } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import ZAI from "z-ai-web-dev-sdk";
 import { logAudit } from "@/lib/audit";
-import { checkCsrf } from "@/lib/csrf";
 import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-source-fetch";
 
 export const runtime = "nodejs";
