@@ -56,10 +56,55 @@ describe("R45 canonical authentication contract", () => {
     expect(authz).toContain("where: { userId, user: { status: 'ACTIVE' }, role: { key: 'ADMIN' } }");
   });
 
+  it("admin seller directory reads canonical SELLER UserRole", () => {
+    const s = read("src/app/admin/sellers/page.tsx");
+    expect(s).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+    expect(s).not.toContain('where: { role: "SELLER" }');
+  });
+
+  it("admin seller detail page scopes IDs to canonical SELLER UserRole", () => {
+    const s = read("src/app/admin/sellers/[id]/page.tsx");
+    expect(s).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+    expect(s).toContain('const displayRole = "SELLER"');
+    expect(s).not.toContain("getUserRoleWithFallback");
+  });
+
+  it("seller lifecycle mutations and audit writes share a transaction", () => {
+    const s = read("src/lib/seller-service.ts");
+    expect(s).toContain("async function writeSellerAudit");
+    expect(s).toContain("await tx.auditLog.create");
+    expect(s).not.toContain("logAudit");
+    for (const method of ["registerSeller", "verifySeller", "suspendSeller"]) {
+      const start = s.indexOf(`export async function ${method}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const next = s.indexOf("\nexport async function ", start + 1);
+      const body = s.slice(start, next === -1 ? s.length : next);
+      expect(body).toContain("db.$transaction");
+      expect(body).toContain("writeSellerAudit(tx");
+    }
+  });
+
+  it("seller lifecycle API validates bounded JSON and hides internal errors", () => {
+    const s = read("src/app/api/admin/sellers/[id]/route.ts");
+    expect(s).toContain('contentType !== "application/json"');
+    expect(s).toContain("16 * 1024");
+    expect(s).toContain("req.body?.getReader()");
+    expect(s).toContain('new TextDecoder("utf-8", { fatal: true })');
+    expect(s).toContain("Unknown request field");
+    expect(s).toContain('{ error: "Unable to update seller" }');
+    expect(s).not.toContain('{ error: err?.message ?? "Server error" }');
+  });
+
+  it("seller detail service rejects users without canonical SELLER UserRole", () => {
+    const s = read("src/lib/seller-service.ts");
+    expect(s).toContain('userRoles: { some: { role: { key: "SELLER" } } }');
+    expect(s).toContain('role: "SELLER"');
+  });
+
   it("registerSeller assigns canonical SELLER UserRole", () => {
     const s = read("src/lib/seller-service.ts");
     expect(s).toContain('where: { key: "SELLER" }');
-    expect(s).toContain("db.userRole.upsert");
-    expect(s).not.toContain('role: "SELLER"');
+    expect(s).toContain("tx.userRole.upsert");
+    expect(s).not.toContain('data: { role: "SELLER"');
   });
 });

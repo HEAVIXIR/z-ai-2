@@ -130,6 +130,14 @@ export const COMPARE_READ: RateLimitPreset = {
   label: "compare-read",
 };
 
+/** POST /api/inspections — 5 requests per hour per authenticated user (instance-local defense in depth). */
+export const INSPECTION_CREATE: RateLimitPreset = {
+  limit: 5,
+  windowMs: HOUR,
+  scope: "user",
+  label: "inspection-create",
+};
+
 /** Messaging endpoints (offers / messages / contact-seller) — 30/h/user. */
 export const MESSAGING: RateLimitPreset = {
   limit: 30,
@@ -179,6 +187,7 @@ export const RATE_LIMIT_PRESETS = {
   COMPARE_ADD_ITEM,
   COMPARE_READ,
   COMPARE_AI_SUMMARY,
+  INSPECTION_CREATE,
   MESSAGING,
   COMPANY_INVITATION,
   COMPANY_INVITATION_ACCEPT,
