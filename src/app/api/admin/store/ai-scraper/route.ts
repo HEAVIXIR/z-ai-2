@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { storeDb } from "@/lib/store-db";
@@ -602,6 +603,16 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
+  // External AI providers and paid scraping are disabled by the HEAVIX free-infrastructure policy.
+  return NextResponse.json(
+    { error: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY", message: "استخراج هوشمند تا زمان تأیید زیرساخت رایگان و مجاز غیرفعال است." },
+    { status: 503 },
+  );
 
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
