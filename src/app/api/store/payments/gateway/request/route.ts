@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { storeDb } from "@/lib/store-db";
 import { requestPayment } from "@/lib/store-zarinpal";
 import { getStoreUserWithRole } from "@/lib/store-auth";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
     const sessionUser = await getStoreUserWithRole();
     if (!sessionUser) {
       return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
@@ -44,7 +48,7 @@ export async function POST(req: Request) {
 
     if (!sessionUser.isAdmin) {
       const isOwner = order.userId === sessionUser.id ||
-        (order.customer && order.customer.phone === sessionUser.mobile);
+        (sessionUser.mobileVerified && sessionUser.mobile && order.customer && order.customer.phone === sessionUser.mobile);
       if (!isOwner) {
         return NextResponse.json({ error: "دسترسی غیرمجاز" }, { status: 403 });
       }
