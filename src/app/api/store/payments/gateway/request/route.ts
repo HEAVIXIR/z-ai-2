@@ -23,12 +23,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    if (!checkCsrf(req)) {
-      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
-    }
     const sessionUser = await getStoreUserWithRole();
     if (!sessionUser) {
       return NextResponse.json({ error: "احراز هویت الزامی است" }, { status: 401 });
+    }
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
     const body = await req.json();
