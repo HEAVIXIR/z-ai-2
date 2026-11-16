@@ -58,9 +58,11 @@ const DB_URL = process.env.DATABASE_URL || '';
 const RUN = DB_URL.length > 0;
 
 function makeReq(method: string, url: string, body?: unknown): Request {
-  return new Request(url, {
+  const target = new URL(url);
+  target.port = "3000";
+  return new Request(target, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json", Origin: target.origin },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
