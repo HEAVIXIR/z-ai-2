@@ -282,26 +282,35 @@ export async function addTrackingEvent(
           ? ['CONFIRMED', 'PROCESSING']
           : ['SHIPPED', 'CONFIRMED', 'PROCESSING'];
         const nextOrderStatus = status === 'DISPATCHED' ? 'SHIPPED' : 'DELIVERED';
-        const orderChanged = await tx.order.updateMany({
-          where: { id: existing.orderId, status: { in: expectedOrderStatuses } },
-          data: { status: nextOrderStatus },
+        const orderBefore = await tx.order.findUnique({
+          where: { id: existing.orderId },
+          select: { id: true, status: true, updatedAt: true },
         });
-        if (orderChanged.count !== 1) {
+        if (!orderBefore || !expectedOrderStatuses.includes(orderBefore.status)) {
           throw new ShipmentsServiceError(
             409,
             'وضعیت سفارش با چرخه محموله سازگار نیست؛ ابتدا سفارش را بررسی کنید',
           );
         }
-        const order = await tx.order.findUnique({ where: { id: existing.orderId } });
-        if (!order) throw new ShipmentsServiceError(404, 'سفارش مرتبط با محموله یافت نشد');
+        const orderChanged = await tx.order.updateMany({
+          where: {
+            id: orderBefore.id,
+            status: orderBefore.status,
+            updatedAt: orderBefore.updatedAt,
+          },
+          data: { status: nextOrderStatus },
+        });
+        if (orderChanged.count !== 1) {
+          throw new ShipmentsServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده است');
+        }
         await enqueueAuditOutbox(tx, {
           actorId: userId ?? null,
           actorType: 'ADMIN',
           action: 'store.order.fulfillment.transition',
           entityType: 'Order',
-          entityId: order.id,
-          before: { status: expectedOrderStatuses, shipmentStatus: existing.status },
-          after: { status: order.status, shipmentStatus: status },
+          entityId: orderBefore.id,
+          before: { status: orderBefore.status, shipmentStatus: existing.status },
+          after: { status: nextOrderStatus, shipmentStatus: status },
         });
       }
 
