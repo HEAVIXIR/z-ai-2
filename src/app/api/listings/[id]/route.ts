@@ -213,6 +213,63 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
+    // Validate every requested image mutation before changing the listing row.
+    // This keeps malformed/foreign media requests from producing partial updates.
+    if (Array.isArray(body.addImages)) {
+      const additions = body.addImages;
+      if (additions.length > 10 || additions.filter((image: any) => image?.isPrimary === true).length > 1) {
+        return NextResponse.json({ error: "فهرست تصاویر یا تصویر اصلی نامعتبر است." }, { status: 400 });
+      }
+      const existingCount = await db.listingImage.count({ where: { listingId: id } });
+      if (existingCount + additions.length > 10) {
+        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+      }
+      const assetIds: string[] = [];
+      for (const image of additions) {
+        const match = /^\\/api\\/media\\/([a-f0-9]{24})$/.exec(String(image?.url ?? image ?? ""));
+        if (!match) {
+          return NextResponse.json({ error: "تصاویر باید از مسیر امن رسانه بارگذاری شوند." }, { status: 400 });
+        }
+        assetIds.push(match[1]);
+      }
+      if (new Set(assetIds).size !== assetIds.length) {
+        return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+      }
+      for (const assetId of assetIds) {
+        const asset = await getAsset(assetId);
+        if (!asset || asset.uploadedBy !== auth.userId || asset.visibility !== "PRIVATE" ||
+            asset.status !== "STAGED" || asset.entityType !== "Listing" || asset.entityId !== null) {
+          return NextResponse.json({ error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." }, { status: 403 });
+        }
+      }
+    }
+    if (Array.isArray(body.removeImages)) {
+      const ids = body.removeImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
+      const owned = await db.listingImage.findMany({ where: { listingId: id, id: { in: ids } }, select: { id: true } });
+      if (owned.length !== ids.length) {
+        return NextResponse.json({ error: "فهرست حذف شامل تصویر متعلق به آگهی دیگر یا نامعتبر است." }, { status: 403 });
+      }
+    }
+    if (body.setPrimaryImage) {
+      const owned = await db.listingImage.findFirst({
+        where: { id: String(body.setPrimaryImage), listingId: id }, select: { id: true },
+      });
+      if (!owned) return NextResponse.json({ error: "تصویر متعلق به این آگهی نیست." }, { status: 404 });
+    }
+    if (Array.isArray(body.reorderImages)) {
+      const ids = body.reorderImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
+      const owned = await db.listingImage.findMany({ where: { listingId: id, id: { in: ids } }, select: { id: true } });
+      if (owned.length !== ids.length) {
+        return NextResponse.json({ error: "فهرست تصاویر شامل تصویر متعلق به آگهی دیگر است." }, { status: 403 });
+      }
+    }
+
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
       const msg = String(updateErr?.message ?? "");
