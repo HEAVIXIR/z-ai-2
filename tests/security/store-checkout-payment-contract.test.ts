@@ -86,6 +86,17 @@ describe("store checkout and manual-payment concurrency contracts", () => {
     expect(service).toMatch(/order\.shipment/);
   });
 
+  it("synchronizes order SHIPPED/DELIVERED states through shipment tracking only", () => {
+    const service = read("src/lib/store-shipments-service.ts");
+    const route = read("src/app/api/admin/store/orders/[id]/route.ts");
+    expect(service).toMatch(/store\.order\.fulfillment\.transition/);
+    expect(service).toMatch(/status === 'DISPATCHED' \|\| status === 'DELIVERED'/);
+    expect(service).toMatch(/nextOrderStatus = status === 'DISPATCHED' \? 'SHIPPED' : 'DELIVERED'/);
+    expect(service).toMatch(/status: \{ in: expectedOrderStatuses \}/);
+    expect(route).toMatch(/ORDER_SHIPMENT_WORKFLOW_REQUIRED/);
+    expect(route).toMatch(/body\.status === "SHIPPED" \|\| body\.status === "DELIVERED"/);
+  });
+
   it("enforces ordered shipment transitions and atomically appends tracking plus audit", () => {
     const service = read("src/lib/store-shipments-service.ts");
     expect(service).toMatch(/const transitions: Record<string, string\[\]>/);
