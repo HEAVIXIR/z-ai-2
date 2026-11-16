@@ -114,6 +114,6 @@ describe("admin store payment mutation CSRF protection", () => {
     const patchHandler = detail.slice(patchStart, getStart);
     expect(detail).toContain('import { checkCsrf } from "@/lib/csrf"');
     expect(patchHandler).toContain("checkCsrf(req)");
-    expect(patchHandler.indexOf("checkCsrf(req)")).toBeLessThan(patchHandler.indexOf("const body = await req.json()"));
+    expect(patchHandler.indexOf("checkCsrf(req)")).toBeLessThan(patchHandler.indexOf("readBoundedJsonObject(req, 16 * 1024)"));
   });
 });
