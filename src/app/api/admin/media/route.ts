@@ -11,11 +11,6 @@ export const dynamic = "force-dynamic";
 const MAX_UPLOAD_REQUEST_BYTES = MAX_UPLOAD_BYTES + 256 * 1024;
 
 async function readBoundedMultipartRequest(req: Request): Promise<Request | NextResponse> {
-  const contentType = req.headers.get("content-type") ?? "";
-  if (!/^multipart\/form-data\s*;.*boundary=/i.test(contentType)) {
-    return NextResponse.json({ ok: false, error: "نوع محتوای درخواست نامعتبر است." }, { status: 415 });
-  }
-
   const declaredLength = req.headers.get("content-length");
   if (declaredLength !== null) {
     if (!/^\d+$/.test(declaredLength)) {
@@ -24,6 +19,11 @@ async function readBoundedMultipartRequest(req: Request): Promise<Request | Next
     if (Number(declaredLength) > MAX_UPLOAD_REQUEST_BYTES) {
       return NextResponse.json({ ok: false, error: "حجم درخواست بیش از حد مجاز است." }, { status: 413 });
     }
+  }
+
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!/^multipart\/form-data\s*;.*boundary=/i.test(contentType)) {
+    return NextResponse.json({ ok: false, error: "نوع محتوای درخواست نامعتبر است." }, { status: 415 });
   }
 
   const reader = req.body?.getReader();
