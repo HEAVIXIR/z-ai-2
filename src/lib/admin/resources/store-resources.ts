@@ -350,9 +350,8 @@ export const paymentConfig: AdminResourceConfig = {
     },
   ],
 
-  bulkActions: [
-    { key: 'bulk-verify', label: 'تأیید گروهی', icon: 'CheckCircle', permission: 'payment.manage', type: 'confirm', confirmMessage: 'پرداخت‌های انتخاب‌شده تأیید شوند؟' },
-  ],
+  // Bulk financial actions are disabled; each payment requires individual evidence review.
+  bulkActions: [],
 
   relations: [
     { label: 'سفارش مرتبط', resource: 'orders', filterField: 'paymentId' },

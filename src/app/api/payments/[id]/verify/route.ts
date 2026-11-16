@@ -47,10 +47,6 @@ export async function POST(
     );
   }
 
-  if (!checkCsrf(req)) {
-    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
-  }
-
   try {
     const { id } = await params;
     if (!id || id.length > 128) {
@@ -94,6 +90,10 @@ export async function POST(
     const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
     if (reason.length < 5 || reason.length > MAX_REASON_LENGTH) {
       return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
+    }
+
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
     const result = await db.$transaction(async (tx) => {
