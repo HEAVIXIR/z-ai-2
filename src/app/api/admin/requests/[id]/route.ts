@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
@@ -32,6 +33,10 @@ export async function PATCH(req: Request, { params }: Params) {
       { error: "Forbidden: requires request.manage" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -83,7 +88,7 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 /* DELETE /api/admin/requests/[id] */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -93,6 +98,10 @@ export async function DELETE(_req: Request, { params }: Params) {
       { error: "Forbidden: requires request.manage" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
