@@ -30,6 +30,16 @@ describe("administrative mutation CSRF contracts", () => {
     "src/app/api/admin/listings/[id]/route.ts",
     "src/app/api/admin/attachments/route.ts",
     "src/app/api/admin/upload/route.ts",
+    "src/app/api/admin/users/[id]/route.ts",
+    "src/app/api/admin/payments/[id]/route.ts",
+    "src/app/api/admin/verifications/[id]/review/route.ts",
+    "src/app/api/admin/verifications/[id]/revoke/route.ts",
+    "src/app/api/admin/companies/[id]/route.ts",
+    "src/app/api/admin/products/[id]/route.ts",
+    "src/app/api/admin/parts/[id]/route.ts",
+    "src/app/api/admin/requests/[id]/route.ts",
+    "src/app/api/admin/auctions/[id]/route.ts",
+    "src/app/api/admin/listings/[id]/reject/route.ts",
   ];
 
   it.each(protectedRoutes)("requires CSRF validation in %s", (routePath) => {
