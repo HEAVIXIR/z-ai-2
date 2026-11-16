@@ -33,9 +33,11 @@
  *   bunx tsx prisma/seed-test-fixtures.ts
  */
 import { db } from "../src/lib/db";
+import { assertTestSeedTarget } from "./test-seed-guard";
 import bcrypt from "bcryptjs";
 
 async function main() {
+  assertTestSeedTarget("seed-test-fixtures.ts");
   console.log("=== P3 SEED: TEST FIXTURES ===\n");
 
   // ── 0. Reference admin user (must already exist) ──

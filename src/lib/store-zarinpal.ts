@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 /**
  * HEAVIX store — payment gateway integration (Zarinpal-compatible).
  *
@@ -11,8 +13,13 @@
  * gateway callback URL so the full UX is demoable end-to-end.
  */
 
-const MERCHANT_ID = process.env.ZARINPAL_MERCHANT_ID || ""; // empty = mock mode
-const SANDBOX = !MERCHANT_ID;
+const MERCHANT_ID = process.env.ZARINPAL_MERCHANT_ID || "";
+// Mock payment is strictly development/test-only. A missing production
+// merchant ID must fail closed; it must never turn a real checkout into
+// a free successful mock payment.
+const SANDBOX = !MERCHANT_ID && process.env.NODE_ENV !== "production";
+const MISSING_PRODUCTION_CONFIG =
+  !MERCHANT_ID && process.env.NODE_ENV === "production";
 const API_BASE = "https://api.zarinpal.com/pg/v4/payment";
 const START_PAY = "https://www.zarinpal.com/pg/StartPay/";
 
@@ -43,9 +50,12 @@ export interface GatewayVerifyResult {
 
 /** Step 1: request a payment authority from the gateway. */
 export async function requestPayment(opts: GatewayRequest): Promise<GatewayRequestResult> {
+  if (MISSING_PRODUCTION_CONFIG) {
+    throw new Error("ZARINPAL_MERCHANT_ID is required in production; mock payments are disabled");
+  }
   if (SANDBOX) {
-    // Mock: generate a fake authority and a local mock-gateway URL.
-    const authority = `MOCK-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    // Mock: use a cryptographically random authority in non-production only.
+    const authority = `MOCK-${Date.now()}-${randomBytes(16).toString("hex")}`;
     const gatewayUrl = `/store?payment=mock&Authority=${authority}&Amount=${opts.amountIrr}`;
     return { authority, gatewayUrl, method: "MOCK" };
   }
@@ -72,6 +82,9 @@ export async function requestPayment(opts: GatewayRequest): Promise<GatewayReque
 
 /** Step 2: verify the payment after the user returns from the gateway. */
 export async function verifyPayment(opts: GatewayVerify): Promise<GatewayVerifyResult> {
+  if (MISSING_PRODUCTION_CONFIG) {
+    return { refId: null, success: false };
+  }
   if (SANDBOX) {
     // Mock: success when status is OK (our mock gateway always returns OK).
     return { refId: `MOCK-REF-${Date.now()}`, success: opts.status === "OK" };

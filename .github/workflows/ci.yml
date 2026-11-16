@@ -107,6 +107,8 @@ jobs:
       - name: Seed catalog data
         env:
           HEAVIX_ENV: preview
+          NODE_ENV: test
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bunx tsx prisma/seed-brands-a.ts --apply
           bunx tsx prisma/seed-brands-b.ts --apply
@@ -360,6 +362,8 @@ jobs:
       - name: Seed RBAC + catalog
         env:
           HEAVIX_ENV: preview
+          NODE_ENV: test
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bun run db:seed-rbac
           bunx tsx prisma/seed-brands-a.ts --apply
@@ -447,6 +451,8 @@ jobs:
       - name: Seed RBAC + catalog
         env:
           HEAVIX_ENV: preview
+          NODE_ENV: test
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bun run db:seed-rbac
           bunx tsx prisma/seed-brands-a.ts --apply
@@ -454,6 +460,9 @@ jobs:
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: Seed phase catalog (STEP 13.53 P2-B)
+        env:
+          NODE_ENV: test
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: bun run db:seed-phase-catalog
       - name: Phase integration tests (real status, no masking)
         run: bunx vitest run tests/phase*.test.ts
