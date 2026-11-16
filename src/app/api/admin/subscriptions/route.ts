@@ -169,6 +169,9 @@ export async function POST(req: Request) {
       if (body.expiresAt === null) {
         data.expiresAt = null;
       } else {
+        if (typeof body.expiresAt !== "string" && typeof body.expiresAt !== "number") {
+          return NextResponse.json({ error: "expiresAt must be a valid date" }, { status: 400 });
+        }
         const expiresAt = new Date(body.expiresAt);
         if (!Number.isFinite(expiresAt.getTime())) {
           return NextResponse.json({ error: "expiresAt must be a valid date" }, { status: 400 });

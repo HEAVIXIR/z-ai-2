@@ -39,7 +39,6 @@ export async function GET(_req: Request, { params }: Params) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
-  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
@@ -127,6 +126,7 @@ export async function DELETE(req: Request, { params }: Params) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await requirePermission(user.id, "subscription.manage");
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
