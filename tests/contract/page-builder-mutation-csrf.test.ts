@@ -5,17 +5,17 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
 
-describe("Page Builder mutation CSRF contracts", () => {
+describe("Page Builder mutation CSRF and audit contracts", () => {
   const cases = [
     ["src/app/api/admin/pages/route.ts", "POST", "req"],
     ["src/app/api/admin/pages/[id]/route.ts", "PATCH", "req"],
-    ["src/app/api/admin/pages/[id]/route.ts", "DELETE", "_req"],
+    ["src/app/api/admin/pages/[id]/route.ts", "DELETE", "req"],
     ["src/app/api/admin/pages/[id]/versions/route.ts", "POST", "req"],
     ["src/app/api/admin/pages/[id]/publish/route.ts", "POST", "req"],
     ["src/app/api/admin/pages/[id]/rollback/route.ts", "POST", "req"],
   ] as const;
 
-  it.each(cases)("%s %s rejects cross-origin mutation before side effects", (file, method, requestName) => {
+  it.each(cases)("%s %s rejects cross-origin mutation before body parsing or writes", (file, method, requestName) => {
     const source = read(file);
     expect(source).toContain("checkCsrf");
     const signature = `export async function ${method}(${requestName}:`;
@@ -28,16 +28,28 @@ describe("Page Builder mutation CSRF contracts", () => {
     expect(body).toBeGreaterThanOrEqual(0);
     expect(guard).toBeLessThan(body);
   });
-  
-  it("makes publish and rollback state changes atomic with audit", () => {
+
+  it("bounds the request body for page creation, metadata updates, and version creation", () => {
     for (const file of [
+      "src/app/api/admin/pages/route.ts",
+      "src/app/api/admin/pages/[id]/route.ts",
+      "src/app/api/admin/pages/[id]/versions/route.ts",
+    ]) {
+      expect(read(file)).toContain("readBoundedJson");
+    }
+  });
+
+  it("makes every Page Builder mutation atomic with its audit record", () => {
+    const routes = [
+      "src/app/api/admin/pages/route.ts",
+      "src/app/api/admin/pages/[id]/route.ts",
+      "src/app/api/admin/pages/[id]/versions/route.ts",
       "src/app/api/admin/pages/[id]/publish/route.ts",
       "src/app/api/admin/pages/[id]/rollback/route.ts",
-    ]) {
+    ];
+    for (const file of routes) {
       const source = read(file);
       expect(source).toContain("db.$transaction(async (tx)");
-      expect(source).toContain("tx.adminPage.update");
-      expect(source).toContain("tx.adminPageVersion.update");
       expect(source).toContain("tx.auditLog.create");
       expect(source).not.toContain("logAudit(");
     }
