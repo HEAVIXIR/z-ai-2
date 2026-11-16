@@ -274,6 +274,37 @@ export async function addTrackingEvent(
           description: description || null,
         },
       });
+
+      // Order fulfillment state is derived from the shipment lifecycle.
+      // Do not let shipment and order snapshots drift apart.
+      if (status === 'DISPATCHED' || status === 'DELIVERED') {
+        const expectedOrderStatuses = status === 'DISPATCHED'
+          ? ['CONFIRMED', 'PROCESSING']
+          : ['SHIPPED'];
+        const nextOrderStatus = status === 'DISPATCHED' ? 'SHIPPED' : 'DELIVERED';
+        const orderChanged = await tx.order.updateMany({
+          where: { id: existing.orderId, status: { in: expectedOrderStatuses } },
+          data: { status: nextOrderStatus },
+        });
+        if (orderChanged.count !== 1) {
+          throw new ShipmentsServiceError(
+            409,
+            'وضعیت سفارش با چرخه محموله سازگار نیست؛ ابتدا سفارش را بررسی کنید',
+          );
+        }
+        const order = await tx.order.findUnique({ where: { id: existing.orderId } });
+        if (!order) throw new ShipmentsServiceError(404, 'سفارش مرتبط با محموله یافت نشد');
+        await enqueueAuditOutbox(tx, {
+          actorId: userId ?? null,
+          actorType: 'ADMIN',
+          action: 'store.order.fulfillment.transition',
+          entityType: 'Order',
+          entityId: order.id,
+          before: { status: expectedOrderStatuses, shipmentStatus: existing.status },
+          after: { status: order.status, shipmentStatus: status },
+        });
+      }
+
       const shipment = await tx.shipment.findUnique({ where: { id: shipmentId } });
       if (!shipment) throw new ShipmentsServiceError(404, 'محموله پس از ثبت رویداد یافت نشد');
 
