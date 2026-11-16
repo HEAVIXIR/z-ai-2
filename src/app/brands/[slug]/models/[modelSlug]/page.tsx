@@ -29,6 +29,7 @@ export async function generateMetadata({
   const model = await db.productModel.findFirst({
     where: { slug: modelSlug, brandId: brand.id, status: "ACTIVE" },
     select: {
+      id: true,
       name: true,
       description: true,
       _count: {
