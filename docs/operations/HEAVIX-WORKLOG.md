@@ -530,3 +530,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Implementation commit `ec1e6f6e9b25028552e5902a2138c44977585e53`; regression contract update recorded in the following commit.
 - The separate subscription/payment activation transaction and ownership relationship remain part of the billing audit; this change only closes the request-origin gap.
 - No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
+
+## 2026-11-16 — Transactional unpaid-order cancellation and stock restoration
+
+- Replaced the blanket admin cancellation block with a dedicated `cancelStoreOrder` service and routed only `CANCELLED` transitions through it. The service uses a Serializable store transaction, conditional order-state claim, and the exact `SALE` StockMovement rows created by checkout; it verifies their quantities against OrderItems before reversing anything.
+- Restores each original part/warehouse allocation, updates `Part.stock` and `soldCount`, writes positive `ADJUSTMENT` movements and transactional audit-outbox events, and releases the coupon usage claim. Any missing/mismatched movement ledger, inventory drift, sold-count inconsistency, concurrent update, pending/approved payment, dispatched shipment, or existing return causes a fail-closed conflict and rolls back all writes.
+- `RETURNED` remains blocked from generic order PATCH and must go through the dedicated inspected Return workflow, which already performs warehouse restock and wallet-credit refund transactionally.
+- Commits: cancellation service `f3c392873c46d7e3c286c882b3d000ab501c058c`; admin route `b848298715fe9422c146389c803de152e2193a97`; service message polish and regression contract/worklog are recorded in subsequent commits.
+- Added source-contract assertions for eligibility, Serializable isolation, SALE-ledger matching, exact reversal, coupon release and route delegation. Tests remain authored but unexecuted.
+- This is an unpaid/pre-dispatch cancellation path only. Paid-order cancellation and external gateway refunds remain separate; do not interpret wallet-credit return resolution as a gateway refund. No tests, typecheck, lint, build, CI, Actions, migrations, seeds, database operations, deployment, Production or runtime changes were run.
