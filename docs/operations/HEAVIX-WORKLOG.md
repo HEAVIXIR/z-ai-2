@@ -462,3 +462,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Relevant commits: Store CSRF batch `f28c7b75` through `d718d1a7`; universal/admin listing/media CSRF batch `7c30d8a5` through `6d9ef1ca`; AI scraper gate `60feb008` and `bf4293f5`; regression contract `65f1412f`.
 - Source re-fetch confirmed CSRF guards exist in universal resource mutations, admin listing mutations, Store order/category/rental mutations, and scraper gate. The regression contract includes all patched routes.
 - No tests, typecheck, lint, build, CI, Actions dispatch, migration, seed, database operation, deploy, Production, or runtime change was run. No live AI provider or scraping request was made. Keep AI scraping disabled until a genuinely free, explicitly approved implementation is designed.
+
+
+## 2026-11-16 — Marketplace/admin trust and commerce mutation CSRF closure
+
+- Extended fail-closed CSRF checks to privileged mutations for users (suspend/update/delete), payments (update/delete), company verification review/revoke, company update/delete, product update/delete, part update/delete, buy-request update/delete, auction update/delete, and listing rejection.
+- Expanded `tests/security/admin-mutation-csrf-contract.test.ts` to cover these additional 10 route files (33 privileged mutation route files in total, plus the two scraper policy checks). The contract suite remains unexecuted.
+- Commits: `02117e9e` users; `a5633a27` payments; `d4bf9e2b` verification review; `c87a7497` verification revoke; `6e340cad` companies; `80742992` products; `47e4a2f4` parts; `cfa77334` requests; `70d642d7` auctions; `d1b441c1` listing rejection; `5dbdcea7` regression contract expansion.
+- These changes add request-origin protection after authentication and permission checks; they do not alter business data, role permissions, schema, or runtime.
+- No tests/typecheck/lint/build/CI/Actions, migration, seed, DB operation, deployment or runtime change was performed.
