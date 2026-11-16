@@ -30,8 +30,14 @@ describe("manual marketplace payment creation transaction contract", () => {
     expect(source).toContain("online gateways require verified provider callbacks");
   });
 
-  it("fails closed for malformed/non-object request bodies", () => {
-    expect(source).toContain("if (!body || typeof body !== \"object\" || Array.isArray(body))");
+  it("fails closed for malformed/non-object request bodies through the shared bounded parser", () => {
+    const parser = fs.readFileSync(
+      path.join(ROOT, "src/lib/http/bounded-json.ts"),
+      "utf8",
+    );
+    expect(source).toContain("readBoundedJsonObject(req, 16 * 1024)");
+    expect(source).toContain("if (!parsed.ok)");
+    expect(parser).toContain('!parsed || typeof parsed !== "object" || Array.isArray(parsed)');
   });
 });
 
