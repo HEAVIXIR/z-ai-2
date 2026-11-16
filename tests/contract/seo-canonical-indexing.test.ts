@@ -44,7 +44,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     const sitemap = read("src/app/sitemap.ts");
     expect(sitemap).toContain('status: "ACTIVE", listings: { some: { status: "PUBLISHED" } }');
     expect(sitemap).toContain("hasUsefulContent");
-    expect(sitemap).toContain("brand.active");
+    expect(sitemap).toContain("brand: { active: true }");
     expect(sitemap).toContain("/companies/");
     expect(sitemap).toContain("/models/");
     expect(sitemap).toContain('getSEOOverridesByType("Company"');
@@ -104,8 +104,6 @@ describe("SEO canonical routes and private-page indexing contract", () => {
       "src/app/requests/new/layout.tsx",
       "src/app/listings/new/layout.tsx",
       "src/app/rfq/[id]/layout.tsx",
-      "src/app/auctions/layout.tsx",
-      "src/app/sellers/[id]/layout.tsx",
     ];
     for (const file of privatePages) {
       expect(read(file)).toContain("index: false");

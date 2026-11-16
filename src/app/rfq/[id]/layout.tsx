@@ -6,6 +6,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function PrivatePageLayout({ children }: { children: ReactNode }) {
+export default function PrivateRFQLayout({ children }: { children: ReactNode }) {
   return children;
 }
