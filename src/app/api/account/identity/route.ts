@@ -47,6 +47,8 @@ export async function GET() {
       ok: true,
       identity: {
         userId: user.id,
+        email: user.email,
+        mobile: user.mobile,
         accountStatus: user.status,
         contact: {
           emailVerified: user.emailVerified,

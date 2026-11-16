@@ -212,3 +212,27 @@ export async function sendVerificationEmail(email: string, code: string): Promis
       '<p style="font-size:11px;color:#aaa">اگر شما این درخواست را ارسال نکرده‌اید، این پیام را نادیده بگیرید.</p></div>',
   });
 }
+
+
+export async function sendEmailChangeVerification(email: string, code: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: "تأیید ایمیل جدید حساب HEAVIX",
+    text: [
+      "درخواست تغییر ایمیل حساب HEAVIX ثبت شده است.",
+      "",
+      "کد تأیید شش‌رقمی: " + code,
+      "این کد تا ۱۰ دقیقه معتبر است و فقط یک‌بار استفاده می‌شود.",
+      "تا زمان تأیید کد، ایمیل قبلی حساب شما حفظ می‌شود.",
+      "اگر این درخواست از طرف شما نبوده، این پیام را نادیده بگیرید.",
+    ].join("\n"),
+    html:
+      '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;border:1px solid #eee;border-radius:12px">' +
+      '<h2 style="color:#F58220">تأیید ایمیل جدید HEAVIX</h2>' +
+      '<p>کد تأیید شش‌رقمی:</p>' +
+      '<p style="font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;background:#fafafa;padding:16px;border-radius:8px">' +
+      escapeHtml(code) +
+      '</p><p style="font-size:12px;color:#888">اعتبار کد: ۱۰ دقیقه</p><p style="font-size:12px;color:#888">ایمیل قبلی تا تأیید این کد حفظ می‌شود.</p></div>',
+    sensitive: true,
+  });
+}

@@ -80,6 +80,7 @@ export default async function AdminLayout({
             </p>
           </div>
           <div className="mr-4 flex shrink-0 items-center gap-3">
+            <Link href="/account/security" className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-[#F58220] hover:text-[#F58220">پروفایل و امنیت</Link>
             <Link
               href="/"
               target="_blank"
