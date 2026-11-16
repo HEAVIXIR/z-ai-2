@@ -24,7 +24,7 @@ describe("Page Builder mutation CSRF contracts", () => {
     const handler = source.slice(start);
     expect(handler).toContain(`if (!checkCsrf(${requestName}))`);
     const guard = handler.indexOf(`if (!checkCsrf(${requestName}))`);
-    const body = handler.search(/req\.json\(\)|db\.[A-Za-z]+\.(?:create|update|delete|upsert)\(/);
+    const body = handler.search(/readBoundedJson\(req|req\.json\(\)|db\.\$transaction|db\.[A-Za-z]+\.(?:create|update|delete|upsert)\(/);
     expect(body).toBeGreaterThanOrEqual(0);
     expect(guard).toBeLessThan(body);
   });
