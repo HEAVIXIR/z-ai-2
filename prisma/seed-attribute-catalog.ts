@@ -1469,6 +1469,16 @@ async function upsertAttr(a: AttrSeed): Promise<string> {
 // ════════════════════════════════════════════════════════════
 
 async function main() {
+  if (
+    !process.argv.includes("--legacy-overwrite") ||
+    !process.argv.includes("--confirm-legacy-overwrite")
+  ) {
+    console.warn("BLOCKED: legacy attribute catalog seed is not part of the canonical bootstrap. Use seed-category-specific-attributes.ts and seed-service-mineral-attributes.ts.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing legacy attribute overwrite: HEAVIX_ENV must be exactly preview.");
+  }
   console.log("══════════════════════════════════════════════════");
   console.log("HEAVIX Attribute Master Seed — HBR Catalog V1.0");
   console.log("══════════════════════════════════════════════════");
