@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { slugify, uniqueSlug } from "@/lib/api-helpers";
 import { requirePermission } from "@/lib/authorization";
@@ -85,6 +86,10 @@ export async function PATCH(req: Request, { params }: Args) {
   } catch {
     return NextResponse.json({ error: "Forbidden: requires product.update" }, { status: 403 });
   }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -165,7 +170,7 @@ export async function PATCH(req: Request, { params }: Args) {
 }
 
 /* DELETE /api/admin/products/[id] — admin delete. */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -174,6 +179,10 @@ export async function DELETE(_req: Request, { params }: Args) {
     await requirePermission(user.id, 'product.delete');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires product.delete" }, { status: 403 });
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
