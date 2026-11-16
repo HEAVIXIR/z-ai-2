@@ -90,6 +90,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         { status: 409 },
       );
     }
+    // Shipment tracking is the sole writer for SHIPPED/DELIVERED order states.
+    if ((body.status === "SHIPPED" || body.status === "DELIVERED") && body.status !== existing.status) {
+      return NextResponse.json(
+        { success: false, error: "وضعیت ارسال و تحویل سفارش فقط از چرخه رهگیری محموله قابل تغییر است", code: "ORDER_SHIPMENT_WORKFLOW_REQUIRED" },
+        { status: 409 },
+      );
+    }
     if (body.status === "CANCELLED" && body.status !== existing.status) {
       const cancelled = await cancelStoreOrder(id, user.id);
       const refreshed = await getOrderDetail(id).catch(() => null);
