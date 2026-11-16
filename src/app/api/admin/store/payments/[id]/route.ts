@@ -101,6 +101,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       const data: any = {};
+      if (body.status === "APPROVED" && existing.orderId) {
+        const orderForApproval = await tx.order.findUnique({
+          where: { id: existing.orderId },
+          select: { id: true, totalIrr: true, status: true, paymentStatus: true },
+        });
+        if (!orderForApproval || ["CANCELLED", "REFUNDED"].includes(orderForApproval.status) ||
+            orderForApproval.paymentStatus === "PAID") {
+          return { conflict: true as const };
+        }
+        const otherApproved = await tx.payment.aggregate({
+          where: { orderId: existing.orderId, status: "APPROVED", id: { not: existing.id } },
+          _sum: { amountIrr: true },
+        });
+        const totalIrr = Number(orderForApproval.totalIrr ?? 0);
+        const approvedElsewhere = Number(otherApproved._sum.amountIrr ?? 0);
+        const candidateAmount = Number(existing.amountIrr ?? 0);
+        if (!Number.isSafeInteger(totalIrr) || totalIrr <= 0 ||
+            !Number.isSafeInteger(approvedElsewhere) || !Number.isSafeInteger(candidateAmount) ||
+            candidateAmount <= 0 || approvedElsewhere + candidateAmount > totalIrr) {
+          return { overpayment: true as const };
+        }
+      }
       if (body.status !== undefined) {
         data.status = body.status;
         data.reviewedAt = new Date();
@@ -188,11 +210,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if ("noChanges" in result) {
       return NextResponse.json({ success: false, error: "هیچ تغییری برای ثبت ارسال نشده است" }, { status: 400 });
     }
+    if ("overpayment" in result) {
+      return NextResponse.json(
+        { success: false, error: "تأیید این فیش باعث عبور مجموع پرداخت‌های تأییدشده از مبلغ سفارش می‌شود", code: "STORE_PAYMENT_OVERPAYMENT" },
+        { status: 409 },
+      );
+    }
     if ("conflict" in result) {
       return NextResponse.json(
         {
           success: false,
-          error: "پرداخت فقط از وضعیت در انتظار قابل تصمیم‌گیری است؛ بازپرداخت نیز به گردش مستند مستقل نیاز دارد",
+          error: "پرداخت فقط از وضعیت در انتظار قابل تصمیم‌گیری است؛ سفارش لغوشده/بازپرداخت‌شده یا پرداخت‌شده قابل تأیید نیست",
           code: "STORE_PAYMENT_STATE_CONFLICT",
         },
         { status: 409 },
