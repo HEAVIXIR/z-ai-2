@@ -1,37 +1,49 @@
-name: HEAVIX App Preview ProductModelAttribute Migration
+name: HEAVIX Preview Paired Main + Store Additive Migrations
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: This workflow can only migrate the dedicated App Preview database
+        description: Only the dedicated HEAVIX App Preview and Store Preview databases
         required: true
         type: choice
         options:
-          - APP_PREVIEW_ONLY
+          - APP_AND_STORE_PREVIEW_ONLY
       confirm:
-        description: Type APPLY_PRODUCT_MODEL_ATTRIBUTES_TO_APP_PREVIEW
+        description: Type APPLY_REVIEWED_ADDITIVE_MIGRATIONS_TO_PREVIEW
+        required: true
+        type: string
+      backup_run_id:
+        description: Successful paired encrypted backup workflow run ID from this exact commit
         required: true
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: heavix-app-preview-product-model-attributes-migration
+  group: heavix-paired-preview-additive-migrations
   cancel-in-progress: false
 
 jobs:
-  migrate-app-preview:
-    name: Apply one reviewed migration to App Preview only
+  migrate-preview:
+    name: Verify backup, then apply reviewed additive migrations to both Preview databases
     if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     runs-on: ubuntu-latest
     environment: preview-backup
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
       STORE_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
       HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      HEAVIX_STORE_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID }}
+      B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
       DISPATCH_TARGET: ${{ inputs.target }}
       DISPATCH_CONFIRM: ${{ inputs.confirm }}
 
@@ -41,97 +53,201 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - name: Enforce exact branch, commit and explicit App Preview confirmation
+      - name: Enforce exact branch, commit and Preview-only dispatch confirmation
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$DISPATCH_TARGET" = "APP_PREVIEW_ONLY"
-          test "$DISPATCH_CONFIRM" = "APPLY_PRODUCT_MODEL_ATTRIBUTES_TO_APP_PREVIEW"
-          echo "Exact branch, commit and App Preview-only dispatch gates passed."
+          test "$DISPATCH_TARGET" = "APP_AND_STORE_PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "APPLY_REVIEWED_ADDITIVE_MIGRATIONS_TO_PREVIEW"
+          [[ "$BACKUP_RUN_ID" =~ ^[0-9]{6,20}$ ]]
+          echo "Exact Integration branch, commit and Preview-only dispatch gates passed."
 
-      - name: Install Bun and locked dependencies
-        uses: oven-sh/setup-bun@v2
+      - name: Verify successful paired backup workflow from the exact commit
+        id: backup-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BACKUP_RUN_ID")"
+          test "$(jq -r '.status' <<<"$run_json")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$run_json")" = "success"
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$GITHUB_SHA"
+          test "$(jq -r '.head_branch' <<<"$run_json")" = "integration/preview-readiness-workerd-2026-11-15"
+          test "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch"
+          case "$(jq -r '.path' <<<"$run_json")" in
+            .github/workflows/prisma-preview-backup-to-b2.yml*) ;;
+            *) echo "Backup run is not the approved paired Preview backup workflow."; exit 1 ;;
+          esac
+          echo "PASS: paired backup run completed successfully on this exact commit."
+
+      - name: Download non-secret paired backup evidence from the verified run
+        uses: actions/download-artifact@v4
         with:
-          bun-version: "1.4.4"
+          name: heavix-preview-paired-backup-evidence
+          run-id: ${{ inputs.backup_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/heavix-backup-evidence
 
-      - name: Install PostgreSQL client
+      - name: Install PostgreSQL client, AWS CLI and age
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes postgresql-client
+          sudo apt-get install --yes postgresql-client awscli age
 
-      - name: Validate exact App Preview identity and migration preconditions
+      - name: Verify encrypted backup objects, checksum and restored-backup manifest
         shell: bash
         env:
-          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
+          test "$B2_BUCKET" = "heavix-db-backups"
+          test -n "$B2_APPLICATION_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test -n "$AGE_IDENTITY"
+
+          EVIDENCE="$RUNNER_TEMP/heavix-backup-evidence/backup-evidence.txt"
+          test -s "$EVIDENCE"
+          test "$(grep -c '^format=heavix-preview-paired-backup-evidence-v1$' "$EVIDENCE")" -eq 1
+          test "$(grep -c "^backup_sha=$GITHUB_SHA$" "$EVIDENCE")" -eq 1
+          test "$(grep -c "^backup_run_id=$BACKUP_RUN_ID$" "$EVIDENCE")" -eq 1
+          PREFIX="$(sed -n 's/^backup_prefix=//p' "$EVIDENCE")"
+          ATTEMPT="$(sed -n 's/^backup_run_attempt=//p' "$EVIDENCE")"
+          [[ "$ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PREFIX" =~ ^preview/paired/[0-9]{4}/[0-9]{2}/[0-9]{2}/$GITHUB_SHA/$BACKUP_RUN_ID-$ATTEMPT$ ]]
+
+          WORK="$RUNNER_TEMP/heavix-backup-verify"
+          mkdir -m 700 -p "$WORK"
+          sed -n '/^[0-9a-f]{64}  /p' "$EVIDENCE" > "$WORK/ENCRYPTED_SHA256SUMS"
+          test "$(wc -l < "$WORK/ENCRYPTED_SHA256SUMS" | tr -d ' ')" -eq 3
+
+          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
+          ENDPOINT="https://$B2_S3_ENDPOINT"
+          for file in main.dump.age store.dump.age manifest.txt.age; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/$file" --only-show-errors
+            test -s "$WORK/$file"
+          done
+          (cd "$WORK" && sha256sum -c ENCRYPTED_SHA256SUMS)
+
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/manifest.txt" "$WORK/manifest.txt.age"
+          grep -Fxq "main_system_identifier=7701427422680793119" "$WORK/manifest.txt"
+          grep -Fxq "store_system_identifier=7701425043360235551" "$WORK/manifest.txt"
+          grep -Fxq "postgres_major=17" "$WORK/manifest.txt"
+          CREATED="$(sed -n 's/^created_utc=//p' "$WORK/manifest.txt")"
+          test -n "$CREATED"
+          CREATED_EPOCH="$(date -u -d "$CREATED" +%s)"
+          NOW_EPOCH="$(date -u +%s)"
+          (( CREATED_EPOCH <= NOW_EPOCH + 300 ))
+          (( NOW_EPOCH - CREATED_EPOCH <= 21600 ))
+          echo "PASS: exact-commit paired backup is recent, encrypted, read-back checksum-valid and its source manifest matches both Preview clusters."
+
+      - name: Install frozen dependencies and validate both Prisma schemas
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma validate --schema=prisma/schema.prisma
+          bunx prisma validate --schema=prisma/store/schema.prisma
+
+      - name: Validate exact Preview identities and every migration precondition
+        shell: bash
+        env:
+          EXPECTED_APP_SYSTEM_IDENTIFIER: "7701427422680793119"
+          EXPECTED_STORE_SYSTEM_IDENTIFIER: "7701425043360235551"
         run: |
           set -euo pipefail
           test -n "$DATABASE_URL"
           test -n "$STORE_DATABASE_URL"
           test "$DATABASE_URL" != "$STORE_DATABASE_URL"
           [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          [[ "$HEAVIX_STORE_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
           (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
-          test -f prisma/migrations/20261114150000_product_model_attributes/migration.sql
-
+          (( HEAVIX_STORE_PREVIEW_DATABASE_OID <= 4294967295 ))
           export PGSSLMODE=verify-full
-          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname = current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
-          expected="postgres|$HEAVIX_APP_PREVIEW_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
-          test "$identity" = "$expected" || {
-            echo "App Preview identity mismatch; refusing migration. Actual identity was not printed."
+
+          verify_identity() {
+            local label="$1" url="$2" oid="$3" system="$4"
+            local actual expected
+            actual="$(psql "$url" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+            expected="postgres|$oid|$system"
+            test "$actual" = "$expected" || {
+              echo "$label Preview identity mismatch; actual identity redacted and no migration applied."
+              return 1
+            }
+          }
+          verify_identity App "$DATABASE_URL" "$HEAVIX_APP_PREVIEW_DATABASE_OID" "$EXPECTED_APP_SYSTEM_IDENTIFIER"
+          verify_identity Store "$STORE_DATABASE_URL" "$HEAVIX_STORE_PREVIEW_DATABASE_OID" "$EXPECTED_STORE_SYSTEM_IDENTIFIER"
+
+          app_history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          store_history="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$app_history" = "2|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key"
+          test "$store_history" = "2|0001_init_store_baseline,0002_add_audit_outbox"
+
+          app_incomplete="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          store_incomplete="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          test "$app_incomplete" = "0"
+          test "$store_incomplete" = "0"
+
+          app_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public."HeroConfig"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig')))::text || '|' || (to_regclass('public."ProductModelAttribute"') IS NULL)::text || '|' || (to_regclass('public."ProductModel"') IS NOT NULL)::text || '|' || (to_regclass('public."Category"') IS NOT NULL)::text || '|' || (to_regclass('public."AttributeDefinition"') IS NOT NULL)::text || '|' || (to_regclass('public."Company"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Company' AND column_name='businessType'))::text || '|' || (to_regclass('public."User"') IS NOT NULL)::text || '|' || (to_regclass('public."UserCommercialPersona"') IS NULL)::text || '|' || (to_regclass('public."CompanyMembership"') IS NULL)::text || '|' || (to_regclass('public."CompanyInvitation"') IS NULL)::text")"
+          test "$app_preconditions" = "true|true|true|true|true|true|true|true|true|true|true|true" || {
+            echo "App Preview schema drift or a pending migration precondition mismatch; refusing all migrations."
             exit 1
           }
 
-          successful_migrations="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
-          expected_migrations="3|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates"
-          test "$successful_migrations" = "$expected_migrations" || {
-            echo "Unexpected App Preview migration history; refusing to apply any migration."
+          store_preconditions="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public."PurchaseOrder"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='PurchaseOrder' AND column_name='submittedBy'))::text")"
+          test "$store_preconditions" = "true|true" || {
+            echo "Store Preview schema drift or PurchaseOrder precondition mismatch; refusing all migrations."
             exit 1
           }
 
-          preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.' || chr(34) || 'ProductModelAttribute' || chr(34)) IS NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'ProductModel' || chr(34)) IS NOT NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'Category' || chr(34)) IS NOT NULL)::text || '|' || (to_regclass('public.' || chr(34) || 'AttributeDefinition' || chr(34)) IS NOT NULL)::text")"
-          test "$preconditions" = "true|true|true|true" || {
-            echo "ProductModelAttribute migration preconditions failed; refusing migration."
-            exit 1
-          }
+          test "$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')" = "6"
+          test "$(find prisma/store/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')" = "3"
+          echo "PASS: both Preview identities, exact migration histories, no failed/incomplete migrations, schema preconditions and full repository migration inventory."
 
-          migration_dir_count="$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')"
-          test "$migration_dir_count" = "4" || {
-            echo "Unexpected number of App migration files; refusing to apply more than the reviewed migration."
-            exit 1
-          }
-          echo "PASS: App Preview identity, migration history, referenced tables and single-pending-migration checks."
-
-      - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Apply the single reviewed App Preview migration
+      - name: Apply reviewed additive Main migrations
         run: bunx prisma migrate deploy --schema=prisma/schema.prisma
 
-      - name: Verify migration record and resulting schema
+      - name: Apply reviewed additive Store migrations
+        run: bunx prisma migrate deploy --schema=prisma/store/schema.prisma
+
+      - name: Verify exact final migration histories and resulting schema
         shell: bash
         env:
-          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          EXPECTED_APP_SYSTEM_IDENTIFIER: "7701427422680793119"
+          EXPECTED_STORE_SYSTEM_IDENTIFIER: "7701425043360235551"
         run: |
           set -euo pipefail
           export PGSSLMODE=verify-full
-          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname = current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
-          expected="postgres|$HEAVIX_APP_PREVIEW_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
-          test "$identity" = "$expected" || {
-            echo "Post-migration identity mismatch; stopping."
+
+          app_history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          store_history="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$app_history" = "6|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations"
+          test "$store_history" = "3|0001_init_store_baseline,0002_add_audit_outbox,0003_purchase_order_submitter"
+
+          app_schema="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig'))::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public' AND t.relname='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Company' AND column_name='businessType')::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('UserCommercialPersona','CompanyMembership','CompanyInvitation'))::text")"
+          test "$app_schema" = "2|11|4|4|1|3" || {
+            echo "Main Preview post-migration schema fingerprint mismatch."
             exit 1
           }
 
-          successful_migrations="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
-          expected_migrations="4|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes"
-          test "$successful_migrations" = "$expected_migrations"
-
-          schema_fingerprint="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public' AND t.relname='ProductModelAttribute')::text")"
-          test "$schema_fingerprint" = "11|4|4" || {
-            echo "Post-migration ProductModelAttribute schema fingerprint mismatch."
-            exit 1
-          }
+          store_schema="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='PurchaseOrder' AND column_name='submittedBy'")"
+          test "$store_schema" = "1"
 
           bunx prisma migrate status --schema=prisma/schema.prisma
-          echo "PASS: only the reviewed ProductModelAttribute migration is recorded and its table, indexes and constraints are present."
+          bunx prisma migrate status --schema=prisma/store/schema.prisma
+
+          {
+            echo "## HEAVIX Preview additive migration result"
+            echo "- Commit: `$GITHUB_SHA`"
+            echo "- App Preview: six expected migrations recorded; additive schema fingerprint verified."
+            echo "- Store Preview: three expected migrations recorded; nullable submittedBy column verified."
+            echo "- Backup: paired encrypted B2 backup and restore proof completed before migration."
+            echo "- Production: not accessed."
+          } >> "$GITHUB_STEP_SUMMARY"
