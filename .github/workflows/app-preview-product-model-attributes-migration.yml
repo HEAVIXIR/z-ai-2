@@ -149,10 +149,24 @@ jobs:
           (( NOW_EPOCH - CREATED_EPOCH <= 21600 ))
           echo "PASS: exact-commit paired backup is recent, encrypted, read-back checksum-valid and its source manifest matches both Preview clusters."
 
-      - name: Install frozen dependencies and validate both Prisma schemas
+      - name: Set up pinned Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
+      - name: Verify Bun runtime and install frozen dependencies
+        shell: bash
         run: |
           set -euo pipefail
+          command -v bun
+          bun --version
+          test "$(bun --version)" = "1.3.4"
           bun install --frozen-lockfile
+
+      - name: Validate both Prisma schemas
+        shell: bash
+        run: |
+          set -euo pipefail
           bunx prisma validate --schema=prisma/schema.prisma
           bunx prisma validate --schema=prisma/store/schema.prisma
 
