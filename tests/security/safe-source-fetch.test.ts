@@ -32,6 +32,26 @@ describe("SSRF-safe source fetch", () => {
     expect(isAllowedSourceUrl("https://127.0.0.1/")).toBe(false);
   });
 
+  it("supports a separate reviewed allowlist without widening marketplace defaults", () => {
+    const storeHosts = ["parts.example.ir", "vendor.example.com"];
+    expect(isAllowedSourceUrl("https://parts.example.ir/item/1", storeHosts)).toBe(true);
+    expect(isAllowedSourceUrl("https://cdn.parts.example.ir/item/1", storeHosts)).toBe(true);
+    expect(isAllowedSourceUrl("https://parts.example.ir.attacker.test/item/1", storeHosts)).toBe(false);
+    expect(isAllowedSourceUrl("https://parts.example.ir/item/1")).toBe(false);
+    expect(isAllowedSourceUrl("https://attacker.test/", ["*.example.ir"])).toBe(false);
+  });
+
+  it("revalidates redirects against the same provider-specific allowlist", async () => {
+    const storeHosts = ["parts.example.ir", "vendor.example.com"];
+    const deps = dependencies(
+      [["1.1.1.1"]],
+      [{ html: "", title: "", redirect: "https://attacker.test/steal" }],
+    );
+    await expect(fetchAllowedSourcePage("https://parts.example.ir/item/1", undefined, deps, storeHosts))
+      .rejects.toThrow("دامنه یا درگاه غیرمجاز");
+    expect(deps.lookup).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
     "169.254.1.1", "172.16.0.1", "172.31.255.254", "192.0.0.1",
