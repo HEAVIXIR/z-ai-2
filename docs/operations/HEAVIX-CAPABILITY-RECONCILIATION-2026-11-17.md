@@ -89,3 +89,12 @@ For each row record: domain, capability, source branch + source SHA, source comm
 - [ ] Run targeted auth/scraper tests and full CI on exact selected SHA.
 - [ ] Verify successful Preview registration, six-digit delivery, verification, login, Admin/RBAC and both scraper workflows.
 - [ ] Update this matrix with exact evidence and remaining blockers.
+
+
+### Historical Cloudflare Preview evidence for the auth branches
+
+- Cloudflare's Preview registry contains a deployed Preview for `integration/heavix-unified` created 2026-11-15 17:28 UTC. Its deployment was created 17:32 UTC from commit annotation `21dc30c`.
+- The Preview deployment metadata lists only ASSETS, B2, App/Store database, HEAVIX environment, and backup-control bindings. It does not list Google OAuth, SMTP, Firebase, or other Google-service credential bindings.
+- The deployed `fix/email-only-registration-verification-2026-11-14` Preview also has no Google OAuth or SMTP bindings in its deployment metadata. Its latest recorded deployment was 2026-11-14 17:14 UTC.
+- The Cloudflare account has only one Worker script, `heavix-preview`; no second Worker script with a separate Google integration was found.
+- Therefore the successful six-digit-code experience described by the owner is **not yet tied to a proven Cloudflare Preview deployment or a proven Google provider configuration**. It may have been exercised through a different hosting path, build-time configuration, or a different Google service not represented in the inspected Worker bindings. Do not guess which. Trace the exact test commit, workflow, deployment URL, and service/API before changing provider code or secrets.
