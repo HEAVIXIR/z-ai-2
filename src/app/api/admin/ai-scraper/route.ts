@@ -16,7 +16,9 @@ const DIVAR_HOSTS = ["divar.ir", "divar.com"];
 const SHEYPOOR_HOSTS = ["sheypoor.com"];
 const MAX_BULK_IMPORT_URLS = 5;
 
-const AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY = true;
+// Provider execution is an explicit per-environment opt-in; the scraper implementation remains available.
+// This gate is checked before AI preflight so a disabled environment never reserves budget.
+
 
 interface ScrapeResult {
   url: string;
@@ -465,6 +467,21 @@ export async function POST(req: Request) {
   }
   await requirePermission(user.id, "ai.scraper.execute");
 
+  // Validate same-origin requests before AI preflight; preflight atomically reserves budget.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
+  }
+  if (process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true") {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "AI_SCRAPER_NOT_ENABLED_IN_ENVIRONMENT",
+        error: "اسکرپر آگهی در این محیط آماده است، اما اجرای سرویس‌دهندهٔ هوش مصنوعی تا فعال‌سازی تنظیم محیطی مجاز نیست.",
+      },
+      { status: 503 },
+    );
+  }
+
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
 
@@ -495,22 +512,7 @@ export async function POST(req: Request) {
   let __resultSummary: any = null;
   let __errorMsg: string | null = null;
   try {
-    if (!checkCsrf(req)) {
-      __errorMsg = "CSRF origin validation failed";
-      response = NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
-    } else if (AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
-      __errorMsg = "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY";
-      response = NextResponse.json(
-        {
-          ok: false,
-          code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
-          error: "اسکرپر هوشمند تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
-        },
-        { status: 503 },
-      );
-    } else {
-      response = await _doPost(body, user, controller);
-    }
+    response = await _doPost(body, user, controller);
     // Best-effort: extract result summary from the response body for logging.
     try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
   } catch (err: any) {
