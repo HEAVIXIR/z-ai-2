@@ -98,6 +98,19 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // OpenNext/esbuild needs the workerd-conditioned pg-cloudflare entrypoints.
+  // Next's output file tracer otherwise omits these dynamically required files.
+  outputFileTracingIncludes: {
+    "**/*": [
+      "./node_modules/pg-cloudflare/dist/**",
+      "./node_modules/pg-cloudflare/esm/**",
+      // Prisma's engineType="client" Worker clients load this WASM compiler
+      // at runtime. Without explicit tracing includes, Next/OpenNext can omit
+      // it from the deployed bundle and every Prisma query fails with ENOENT.
+      "./src/lib/generated/main-worker-client/query_compiler_bg.wasm",
+      "./src/lib/generated/store-worker-client/query_compiler_bg.wasm",
+    ],
+  },
   typescript: {
     // F-013: build MUST fail on type errors. Was previously `true` which masked
     // security-relevant type mismatches at build time.
