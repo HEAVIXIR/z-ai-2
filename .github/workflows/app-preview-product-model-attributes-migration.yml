@@ -177,54 +177,113 @@ jobs:
           EXPECTED_STORE_SYSTEM_IDENTIFIER: "7701425043360235551"
         run: |
           set -euo pipefail
-          test -n "$DATABASE_URL"
-          test -n "$STORE_DATABASE_URL"
-          test "$DATABASE_URL" != "$STORE_DATABASE_URL"
-          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
-          [[ "$HEAVIX_STORE_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
-          (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
-          (( HEAVIX_STORE_PREVIEW_DATABASE_OID <= 4294967295 ))
+
+          require_nonempty() {
+            local label="$1" value="$2"
+            if [[ -z "$value" ]]; then
+              echo "FAIL: $label is not configured; refusing all migrations."
+              return 1
+            fi
+            echo "PASS: $label is configured."
+          }
+          require_nonempty "App Preview database URL" "$DATABASE_URL"
+          require_nonempty "Store Preview database URL" "$STORE_DATABASE_URL"
+          if [[ "$DATABASE_URL" == "$STORE_DATABASE_URL" ]]; then
+            echo "FAIL: App and Store Preview database URLs must be distinct; values redacted."
+            exit 1
+          fi
+          echo "PASS: App and Store Preview database URLs are distinct."
+
+          for item in "App:$HEAVIX_APP_PREVIEW_DATABASE_OID" "Store:$HEAVIX_STORE_PREVIEW_DATABASE_OID"; do
+            label="${item%%:*}"
+            oid="${item#*:}"
+            if [[ ! "$oid" =~ ^[1-9][0-9]{0,9}$ ]] || (( oid > 4294967295 )); then
+              echo "FAIL: $label Preview database OID is missing or outside the valid PostgreSQL OID range."
+              exit 1
+            fi
+            echo "PASS: $label Preview database OID has valid format and range."
+          done
           export PGSSLMODE=verify-full
+          echo "PASS: PostgreSQL TLS mode is verify-full."
+
+          run_query() {
+            local label="$1" url="$2" sql="$3"
+            if ! QUERY_RESULT="$(psql "$url" -XAtq -v ON_ERROR_STOP=1 -c "$sql" 2>/dev/null)"; then
+              echo "FAIL: $label query failed (connection, TLS, permission, or SQL error); connection details redacted."
+              return 1
+            fi
+          }
 
           verify_identity() {
             local label="$1" url="$2" oid="$3" system="$4"
-            local actual expected
-            actual="$(psql "$url" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+            local expected
+            run_query "$label Preview identity" "$url" "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())"
             expected="postgres|$oid|$system"
-            test "$actual" = "$expected" || {
-              echo "$label Preview identity mismatch; actual identity redacted and no migration applied."
+            if [[ "$QUERY_RESULT" != "$expected" ]]; then
+              echo "FAIL: $label Preview identity did not match the configured exact identity; observed values redacted."
               return 1
-            }
+            fi
+            echo "PASS: $label Preview exact database identity."
           }
           verify_identity App "$DATABASE_URL" "$HEAVIX_APP_PREVIEW_DATABASE_OID" "$EXPECTED_APP_SYSTEM_IDENTIFIER"
           verify_identity Store "$STORE_DATABASE_URL" "$HEAVIX_STORE_PREVIEW_DATABASE_OID" "$EXPECTED_STORE_SYSTEM_IDENTIFIER"
 
-          app_history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
-          store_history="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
-          test "$app_history" = "2|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key"
-          test "$store_history" = "2|0001_init_store_baseline,0002_add_audit_outbox"
-
-          app_incomplete="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
-          store_incomplete="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
-          test "$app_incomplete" = "0"
-          test "$store_incomplete" = "0"
-
-          app_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public."HeroConfig"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig')))::text || '|' || (to_regclass('public."ProductModelAttribute"') IS NULL)::text || '|' || (to_regclass('public."ProductModel"') IS NOT NULL)::text || '|' || (to_regclass('public."Category"') IS NOT NULL)::text || '|' || (to_regclass('public."AttributeDefinition"') IS NOT NULL)::text || '|' || (to_regclass('public."Company"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Company' AND column_name='businessType'))::text || '|' || (to_regclass('public."User"') IS NOT NULL)::text || '|' || (to_regclass('public."UserCommercialPersona"') IS NULL)::text || '|' || (to_regclass('public."CompanyMembership"') IS NULL)::text || '|' || (to_regclass('public."CompanyInvitation"') IS NULL)::text")"
-          test "$app_preconditions" = "true|true|true|true|true|true|true|true|true|true|true|true" || {
-            echo "App Preview schema drift or a pending migration precondition mismatch; refusing all migrations."
+          run_query "App successful migration history" "$DATABASE_URL" "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL"
+          if [[ "$QUERY_RESULT" != "2|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key" ]]; then
+            echo "FAIL: App Preview successful migration history is not the exact reviewed baseline; observed history redacted."
             exit 1
-          }
+          fi
+          echo "PASS: App Preview successful migration history matches the exact reviewed baseline."
 
-          store_preconditions="$(psql "$STORE_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public."PurchaseOrder"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='PurchaseOrder' AND column_name='submittedBy'))::text")"
-          test "$store_preconditions" = "true|true" || {
-            echo "Store Preview schema drift or PurchaseOrder precondition mismatch; refusing all migrations."
+          run_query "Store successful migration history" "$STORE_DATABASE_URL" "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL"
+          if [[ "$QUERY_RESULT" != "2|0001_init_store_baseline,0002_add_audit_outbox" ]]; then
+            echo "FAIL: Store Preview successful migration history is not the exact reviewed baseline; observed history redacted."
             exit 1
-          }
+          fi
+          echo "PASS: Store Preview successful migration history matches the exact reviewed baseline."
 
-          test "$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')" = "6"
-          test "$(find prisma/store/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')" = "3"
-          echo "PASS: both Preview identities, exact migration histories, no failed/incomplete migrations, schema preconditions and full repository migration inventory."
+          run_query "App unfinished migration count" "$DATABASE_URL" "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL"
+          if [[ "$QUERY_RESULT" != "0" ]]; then
+            echo "FAIL: App Preview has unfinished migrations; count redacted."
+            exit 1
+          fi
+          echo "PASS: App Preview has no unfinished migrations."
 
+          run_query "Store unfinished migration count" "$STORE_DATABASE_URL" "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL"
+          if [[ "$QUERY_RESULT" != "0" ]]; then
+            echo "FAIL: Store Preview has unfinished migrations; count redacted."
+            exit 1
+          fi
+          echo "PASS: Store Preview has no unfinished migrations."
+
+          run_query "App schema preconditions" "$DATABASE_URL" "SELECT (to_regclass('public.\"HeroConfig\"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig')))::text || '|' || (to_regclass('public.\"ProductModelAttribute\"') IS NULL)::text || '|' || (to_regclass('public.\"ProductModel\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"Category\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"AttributeDefinition\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"Company\"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Company' AND column_name='businessType'))::text || '|' || (to_regclass('public.\"User\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"UserCommercialPersona\"') IS NULL)::text || '|' || (to_regclass('public.\"CompanyMembership\"') IS NULL)::text || '|' || (to_regclass('public.\"CompanyInvitation\"') IS NULL)::text"
+          if [[ "$QUERY_RESULT" != "true|true|true|true|true|true|true|true|true|true|true|true" ]]; then
+            echo "FAIL: App Preview schema preconditions do not match the reviewed migration starting state; schema details redacted."
+            exit 1
+          fi
+          echo "PASS: all 12 App Preview schema preconditions."
+
+          run_query "Store schema preconditions" "$STORE_DATABASE_URL" "SELECT (to_regclass('public.\"PurchaseOrder\"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='PurchaseOrder' AND column_name='submittedBy'))::text"
+          if [[ "$QUERY_RESULT" != "true|true" ]]; then
+            echo "FAIL: Store Preview schema preconditions do not match the reviewed migration starting state; schema details redacted."
+            exit 1
+          fi
+          echo "PASS: both Store Preview schema preconditions."
+
+          app_inventory="$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')"
+          store_inventory="$(find prisma/store/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')"
+          if [[ "$app_inventory" != "6" ]]; then
+            echo "FAIL: App repository migration inventory does not contain the six reviewed migrations."
+            exit 1
+          fi
+          echo "PASS: App repository migration inventory contains six migrations."
+          if [[ "$store_inventory" != "3" ]]; then
+            echo "FAIL: Store repository migration inventory does not contain the three reviewed migrations."
+            exit 1
+          fi
+          echo "PASS: Store repository migration inventory contains three migrations."
+          echo "PASS: every Preview identity, migration-history, unfinished-migration, schema-precondition and repository-inventory gate."
+          
       - name: Apply reviewed additive Main migrations
         run: bunx prisma migrate deploy --schema=prisma/schema.prisma
 
