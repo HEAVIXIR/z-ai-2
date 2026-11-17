@@ -375,14 +375,7 @@ async function main() {
       select: { id: true },
     });
     if (existing) {
-      await db.attachment.update({
-        where: { id: existing.id },
-        data: {
-          capacity: a.capacity,
-          condition: a.condition,
-          status: "ACTIVE",
-        },
-      });
+      // Existing attachment metadata may be administrator-curated; preserve it.
     } else {
       await db.attachment.create({
         data: {
@@ -410,14 +403,7 @@ async function main() {
       select: { id: true },
     });
     if (existing) {
-      await db.part.update({
-        where: { id: existing.id },
-        data: {
-          oemNumber: p.oemNumber,
-          condition: p.condition,
-          status: "ACTIVE",
-        },
-      });
+      // Existing part metadata may be administrator-curated; preserve it.
     } else {
       await db.part.create({
         data: {
@@ -459,11 +445,8 @@ async function main() {
           relationType: e.relationType,
         },
       },
-      update: {
-        confidence: e.confidence ?? null,
-        source: e.source ?? null,
-        verified: e.verified ?? false,
-      },
+      // Preserve reviewed/administrator-managed edge evidence on reruns.
+      update: {},
       create: {
         sourceEntityType: e.sourceType,
         sourceEntityId: src.id,
