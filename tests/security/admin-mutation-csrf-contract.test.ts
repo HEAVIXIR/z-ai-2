@@ -69,17 +69,17 @@ describe("administrative mutation CSRF contracts", () => {
 
   it("keeps provider-backed scraper execution explicitly gated after auth and CSRF, before AI budget preflight", () => {
     const marketplace = read("src/app/api/admin/ai-scraper/route.ts");
-    expect(marketplace).toMatch(/requirePermission\\(user\\.id, "ai\\.scraper\\.execute"\\)/);
-    expect(marketplace).toMatch(/checkCsrf\\(req\\)/);
-    expect(marketplace).toMatch(/process\\.env\\.HEAVIX_AI_SCRAPER_ENABLED !== "true"/);
+    expect(marketplace).toContain('requirePermission(user.id, "ai.scraper.execute")');
+    expect(marketplace).toContain("checkCsrf(req)");
+    expect(marketplace).toContain('process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
     expect(marketplace.indexOf("checkCsrf(req)")).toBeLessThan(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED"));
     expect(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED")).toBeLessThan(marketplace.indexOf("preflightAIRequest({"));
 
     const store = read("src/app/api/admin/store/ai-scraper/route.ts");
-    expect(store).toMatch(/requirePermission\\(user\\.id, ['"]store\\.manage['"]\\)/);
-    expect(store).toMatch(/checkCsrf\\(req\\)/);
-    expect(store).toMatch(/process\\.env\\.HEAVIX_STORE_SCRAPER_ENABLED !== "true"/);
-    expect(store).toMatch(/!isManualImport/);
+    expect(store).toContain("requirePermission(user.id, 'store.manage')");
+    expect(store).toContain("checkCsrf(req)");
+    expect(store).toContain('process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true"');
+    expect(store).toContain("!isManualImport");
     expect(store.indexOf("checkCsrf(req)")).toBeLessThan(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED"));
     expect(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(store.indexOf("preflightAIRequest({"));
   });
