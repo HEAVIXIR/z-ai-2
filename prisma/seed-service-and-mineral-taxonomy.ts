@@ -25,11 +25,29 @@ async function insert(parentId:string,path:string,nodes:N[],level:number,layer:s
   if(n.children?.length)await insert(row.id,taxPath,n.children,level+1,layer,domain);
  }
 }
-type PlannedCategory = { slug: string; parentSlug: string; layer: string; domain: string };
-function collectPlan(nodes: N[], parentSlug: string, layer: string, domain: string, out: PlannedCategory[]) {
+type PlannedCategory = {
+ slug: string;
+ parentSlug: string;
+ layer: string;
+ domain: string;
+ level: number;
+ taxPath: string;
+};
+function collectPlan(
+ nodes: N[],
+ parentSlug: string,
+ layer: string,
+ domain: string,
+ parentPath: string,
+ level: number,
+ out: PlannedCategory[],
+) {
  for (const node of nodes) {
-  out.push({ slug: node.slug, parentSlug, layer, domain });
-  if (node.children?.length) collectPlan(node.children, node.slug, layer, domain, out);
+  const taxPath = parentPath + "/" + node.slug;
+  out.push({ slug: node.slug, parentSlug, layer, domain, level, taxPath });
+  if (node.children?.length) {
+   collectPlan(node.children, node.slug, layer, domain, taxPath, level + 1, out);
+  }
  }
 }
 async function main(){
@@ -41,21 +59,21 @@ async function main(){
  const mineralRoots=await db.category.findMany({where:{slug:{in:Object.keys(minerals)}},select:{id:true,slug:true,taxPath:true,level:true,layer:true,domain:true}});
  const mineralRootBySlug=new Map(mineralRoots.map(p=>[p.slug,p]));
  const plan:PlannedCategory[]=[];
- collectPlan(tree,root.slug,"SERVICE","SERVICE",plan);
+ collectPlan(tree,root.slug,"SERVICE","SERVICE",root.taxPath??"services",(root.level??0)+1,plan);
  for(const [slug,nodes] of Object.entries(minerals)){
   const p=mineralRootBySlug.get(slug);
-  if(p)collectPlan(nodes,slug,p.layer??"CATALOG",p.domain??"MATERIAL",plan);
+  if(p)collectPlan(nodes,slug,p.layer??"CATALOG",p.domain??"MATERIAL",p.taxPath??slug,(p.level??1)+1,plan);
  }
  const slugs=plan.map(x=>x.slug);
  if(new Set(slugs).size!==slugs.length)throw new Error("Duplicate category slug in supplemental taxonomy plan; no writes were made");
- const existing=await db.category.findMany({where:{slug:{in:slugs}},select:{id:true,slug:true,parentId:true,layer:true,domain:true}});
+ const existing=await db.category.findMany({where:{slug:{in:slugs}},select:{id:true,slug:true,parentId:true,layer:true,domain:true,level:true,taxPath:true}});
  const existingBySlug=new Map(existing.map(x=>[x.slug,x]));
  for(const item of plan){
   const row=existingBySlug.get(item.slug);
   if(!row)continue;
   const expectedParent=mineralRootBySlug.get(item.parentSlug)??existingBySlug.get(item.parentSlug)??(item.parentSlug===root.slug?root:null);
-  if(!expectedParent||row.parentId!==expectedParent.id||row.layer!==item.layer||row.domain!==item.domain){
-   throw new Error(`Category slug collision or parent/layer/domain mismatch for "${item.slug}" (expected parent "${item.parentSlug}", layer "${item.layer}", domain "${item.domain}"); no writes were made`);
+  if(!expectedParent||row.parentId!==expectedParent.id||row.layer!==item.layer||row.domain!==item.domain||row.level!==item.level||row.taxPath!==item.taxPath){
+   throw new Error(`Category hierarchy collision for "${item.slug}" (expected parent "${item.parentSlug}", layer "${item.layer}", domain "${item.domain}", level "${item.level}", taxPath "${item.taxPath}"); no writes were made`);
   }
  }
  await insert(root.id,root.taxPath??"services",tree,(root.level??0)+1,"SERVICE","SERVICE");
