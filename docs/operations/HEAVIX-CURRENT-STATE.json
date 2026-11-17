@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-18T00:00:00.000Z",
+  "updated_at_utc": "2026-11-18T00:15:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "acc92432cda153f273bd83e712c41ab385ec284a",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "8acbb3fb13d902dd14e4dd98b64eefc424299685",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -82,7 +82,10 @@
     "2026-11-18: Historical integration/heavix-unified source contains six-digit email verification and Google OAuth2 Gmail API delivery; selected Preview lacks the required Gmail binding names according to prior audit. Exact historical provider configuration still requires provenance verification.",
     "2026-11-18: Scraper disable regressions are identified in commits bf4293f5 and 70c38469. Hardened Marketplace implementation exists on fix/admin-ai-scraper-hardening-2026-11-15; Store scraper recovery is a separate task. No paid provider calls are authorized.",
     "2026-11-18: Taxonomy source reconciliation inventory contains 622 records, 531 unique candidate slugs and 54 combined parent-path/layer/domain conflicts; no seed is authorized.",
-    "2026-11-18: Added execution report docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md and appended worklog. No Production/DNS/stable Worker/secret/DB/migration/seed changes."
+    "2026-11-18: Added execution report docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md and appended worklog. No Production/DNS/stable Worker/secret/DB/migration/seed changes.",
+    "2026-11-18 isolated Integration Preview read-only route acceptance: homepage, login, anonymous admin gate, health, taxonomy, transaction types, service types, excavator attributes and services endpoints all returned HTTP 200. Health reported both DBs up; taxonomy children, transaction types, service types and excavator attributes remained empty; services returned records.",
+    "2026-11-18 selected-branch Marketplace scraper route is full implementation with safe URL handling, server-side re-fetch, pending import, CSRF/RBAC, AI preflight, timeout and audit, but provider path is gated by HEAVIX_AI_SCRAPER_ENABLED and invokes ZAI provider APIs.",
+    "2026-11-18 selected-branch Store scraper has manual import paths while provider discovery is separately gated by HEAVIX_STORE_SCRAPER_ENABLED and configured source-host allowlist. Manual-import AI budget behavior requires tests; neither scraper provider flag was enabled."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -199,7 +202,9 @@
     "Created docs/operations/HEAVIX-RECONCILIATION-2026-11-18.md and appended the worklog with current evidence.",
     "Reviewed mandatory continuity, architecture, security, quota, capability, taxonomy, archive-provenance, seed-runbook, worklog and current-state documents.",
     "Inspected Issue #337, PR #340 and Integration Preview workflow #44187433734.",
-    "Recorded 2026-11-18 evidence-led continuation report and append-only worklog."
+    "Recorded 2026-11-18 evidence-led continuation report and append-only worklog.",
+    "Completed read-only route acceptance on isolated Integration Preview and recorded HTTP status/data observations.",
+    "Fetched and reviewed selected Marketplace/Store scraper source, hardened Marketplace candidate, and historical Gmail registration/email source; updated operational report and append-only worklog."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -221,11 +226,11 @@
     "Store DB is down in the latest Integration-preview health result."
   ],
   "next_action": [
-    "Refresh exact Integration branch HEAD and associated exact-commit CI; do not assume the previous SHA is current.",
-    "Run read-only route acceptance against isolated Integration Preview for homepage, login, admin, health, taxonomy, transaction types, attributes, services and listing wizard.",
-    "Diagnose canonical heavix-preview App/Store database OID mismatch using read-only evidence only; do not read or print secret values.",
-    "Reconcile Gmail OAuth2 verification source and hardened Marketplace/Store scraper implementations file-by-file with tests and no paid-provider execution.",
-    "Keep Issue #337 open until database identity, canonical source decisions, migration and explicit additive-seed gates are satisfied."
+    "Add code/tests separating no-cost manual scraper import from provider-backed AI discovery; prove no AI budget reservation/cost for manual Store imports and implement equivalent no-ZAI Marketplace manual import.",
+    "Reconcile historical Gmail OAuth2 verification config with secure Preview binding names and verify delivery without exposing secret values.",
+    "Resolve taxonomy source conflicts and catalog bootstrap plan; do not seed until exact App/Store Preview identity, migration history, backup and explicit additive-seed gates pass.",
+    "Run authenticated owner/admin and listing-wizard acceptance after email configuration and catalog bootstrap gates pass.",
+    "Refresh exact Integration HEAD/CI before any deployment; keep canonical stable Preview, Production and DNS untouched."
   ],
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
