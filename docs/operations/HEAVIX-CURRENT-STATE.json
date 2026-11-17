@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-17T22:37:29.209Z",
+  "updated_at_utc": "2026-11-18T00:00:00.000Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "acc92432cda153f273bd83e712c41ab385ec284a",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -75,7 +75,14 @@
     "PR #333 Vercel Preview deployment dpl_EU6G6wRuNKB4R5dvk7uWPMHLKQAM reached READY for commit a48dc078, but Deployment Protection blocked anonymous runtime acceptance.",
     "PR #330 and #331 retargeted to recovery but currently non-mergeable; PR #312 and #314 homepage changes conflict with the current recovery line.",
     "Cloudflare automatic build on PR #332 branch previously failed due missing build:cloudflare script; no Worker deployment occurred and trigger remains configured.",
-    "PR #333 exact-head GitHub Actions run #43721154092 passed on cd8ef0e78f49e351011bd4e80414187a51cd877e; all six substantive jobs passed, including security tests and Docker Caddy-to-app HTTP 200."
+    "PR #333 exact-head GitHub Actions run #43721154092 passed on cd8ef0e78f49e351011bd4e80414187a51cd877e; all six substantive jobs passed, including security tests and Docker Caddy-to-app HTTP 200.",
+    "2026-11-18: Integration Preview workflow #44187433734 completed successfully; all build-and-preview steps passed, including OpenNext build and deployment to the isolated Integration Worker Preview. This is not proof of canonical stable Preview identity or Production readiness.",
+    "2026-11-18: Issue #337 remains open; Preview catalog is not usable for listing creation until exact App/Store identity, canonical taxonomy reconciliation, migration history and explicit seed authorization gates pass.",
+    "2026-11-18: PR #340 remains Draft/open and unmerged; it is a CI validation vehicle only.",
+    "2026-11-18: Historical integration/heavix-unified source contains six-digit email verification and Google OAuth2 Gmail API delivery; selected Preview lacks the required Gmail binding names according to prior audit. Exact historical provider configuration still requires provenance verification.",
+    "2026-11-18: Scraper disable regressions are identified in commits bf4293f5 and 70c38469. Hardened Marketplace implementation exists on fix/admin-ai-scraper-hardening-2026-11-15; Store scraper recovery is a separate task. No paid provider calls are authorized.",
+    "2026-11-18: Taxonomy source reconciliation inventory contains 622 records, 531 unique candidate slugs and 54 combined parent-path/layer/domain conflicts; no seed is authorized.",
+    "2026-11-18: Added execution report docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md and appended worklog. No Production/DNS/stable Worker/secret/DB/migration/seed changes."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -189,7 +196,10 @@
     "Verified exact-head CI #44189645298 and OpenNext proof #44189645381 passed on 7a439a140acad87e4f538684fcffd4ca6722f0e6.",
     "Deployed owner-approved diagnostic build to canonical Preview only: Worker version 24 4c92c1fb-41f6-4487-bce7-c24a8a9f39ae at 100% traffic; build and dry-run passed; post-deploy health gate correctly failed closed.",
     "Verified both App and Store system identifiers match, but both expected Database OID bindings mismatch actual runtime OID 5; secret values were not read.",
-    "Created docs/operations/HEAVIX-RECONCILIATION-2026-11-18.md and appended the worklog with current evidence."
+    "Created docs/operations/HEAVIX-RECONCILIATION-2026-11-18.md and appended the worklog with current evidence.",
+    "Reviewed mandatory continuity, architecture, security, quota, capability, taxonomy, archive-provenance, seed-runbook, worklog and current-state documents.",
+    "Inspected Issue #337, PR #340 and Integration Preview workflow #44187433734.",
+    "Recorded 2026-11-18 evidence-led continuation report and append-only worklog."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -210,7 +220,13 @@
     "No canonical Worker code was deployed; active version #22 remains on the 2026-11-11 code bundle.",
     "Store DB is down in the latest Integration-preview health result."
   ],
-  "next_action": "Obtain a separate explicit owner approval to update only the two Preview OID secret values HEAVIX_APP_PREVIEW_DATABASE_OID and HEAVIX_STORE_PREVIEW_DATABASE_OID to the verified runtime OID 5. If approved, update those Preview secrets only, redeploy through the guarded canonical Preview workflow, and require / plus /api/health to pass with both App and Store up. Do not bypass the identity guard. Then verify Gmail OAuth2 email delivery and complete registration/login/Admin RBAC acceptance; reconcile taxonomy seed sources without writing until separately approved; verify seller listing/media lifecycle; keep scraper provider execution gated; only after Preview foundation is healthy resume Phase 6 Price Intelligence + Compare (Issue #95). PR #340 stays Draft.",
+  "next_action": [
+    "Refresh exact Integration branch HEAD and associated exact-commit CI; do not assume the previous SHA is current.",
+    "Run read-only route acceptance against isolated Integration Preview for homepage, login, admin, health, taxonomy, transaction types, attributes, services and listing wizard.",
+    "Diagnose canonical heavix-preview App/Store database OID mismatch using read-only evidence only; do not read or print secret values.",
+    "Reconcile Gmail OAuth2 verification source and hardened Marketplace/Store scraper implementations file-by-file with tests and no paid-provider execution.",
+    "Keep Issue #337 open until database identity, canonical source decisions, migration and explicit additive-seed gates are satisfied."
+  ],
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
     "id": 44189645298,
