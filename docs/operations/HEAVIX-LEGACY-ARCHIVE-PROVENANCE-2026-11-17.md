@@ -111,7 +111,7 @@ The exact-hash-matched archived brand arrays contain:
 | `prisma/seed-brands-b.ts` | 450 |
 | **Total source entries** | **647** |
 
-Across both arrays, the source produces 621 distinct slug candidates and 25 repeated slug values. Repeated slugs may represent the same brand being associated with multiple industries; they are not automatically invalid duplicates and must be adjudicated with family, parent, alias, and industry relationships.
+Across both arrays, the source produces 621 distinct slug candidates and 25 repeated slug values. A read-only comparison of all 25 repeated-slug groups found that every repeated group uses the same English and Persian brand names; the repeated entries are re-upserts of the same brand identity with additional industry assignments, not 25 separate brand identities. Atlas Copco appears three times; the other 24 slug groups appear twice. The repeated slugs are: `caterpillar`, `cat`, `perkins`, `hitachi`, `jcb`, `kobelco`, `doosan`, `kubota`, `yanmar`, `wacker-neuson`, `lovol`, `atlas-copco`, `kaishan`, `metso`, `weir`, `clark`, `putzmeister`, `schwing`, `mack`, `deutz`, `dongfeng`, `foton`, `carraro`, `bkt`, and `bandit`. Some entries overlap existing industry assignments and others add industries; they must be reconciled at the relationship level rather than counted as additional brands. The current Phase B helper is additive for industry links and preserves curated identity fields by default.
 
 The source header for Phase A declares 39 industries and 18 brand families. These source-array counts are not interchangeable with the separate 629-brand historical database target.
 
