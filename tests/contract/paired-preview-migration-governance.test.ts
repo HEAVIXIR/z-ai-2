@@ -33,8 +33,8 @@ describe("Paired Preview migration governance", () => {
     expect(migration).toContain("PGSSLMODE=verify-full");
     expect(migration).toContain("2|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key");
     expect(migration).toContain("2|0001_init_store_baseline,0002_add_audit_outbox");
-    expect(migration).toContain("app_incomplete");
-    expect(migration).toContain("store_incomplete");
+    expect(migration).toContain("PASS: all 12 App Preview schema preconditions.");
+    expect(migration).toContain("PASS: both Store Preview schema preconditions.");
     expect(migration).toContain("ProductModelAttribute");
     expect(migration).toContain("CompanyInvitation");
     expect(migration).toContain("PurchaseOrder");
