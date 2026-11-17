@@ -882,3 +882,24 @@ jobs:
 
           echo "PASS: read-only diagnostics completed. No DDL, DML, Prisma migration, deployment, or Production connection was invoked."
 
+      - name: Set up Bun for Prisma schema parity check
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Compare both Preview databases to exact Prisma datamodels (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGSSLMODE=verify-full
+          echo "### App Preview vs prisma/schema.prisma (read-only diff; exit 2 means drift)"
+          bunx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          echo "PASS: App Preview database matches prisma/schema.prisma."
+          echo "### Store Preview vs prisma/store/schema.prisma (read-only diff; exit 2 means drift)"
+          bunx prisma migrate diff --from-url "$STORE_DATABASE_URL" --to-schema-datamodel prisma/store/schema.prisma --exit-code
+          echo "PASS: Store Preview database matches prisma/store/schema.prisma."
+          echo "PASS: both Preview databases match their exact Prisma datamodels; no database writes were performed."
+
