@@ -46,3 +46,27 @@ describe("Phase A brand seed preservation", () => {
     expect(PHASE_A_SEED).toContain('db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: {} });');
   });
 });
+
+
+describe("Taxonomy seed preservation", () => {
+  const V11 = readFileSync("prisma/seed-taxonomy-v11.ts", "utf-8");
+  const SERVICE_MINERAL = readFileSync("prisma/seed-service-and-mineral-taxonomy.ts", "utf-8");
+
+  it("preserves existing category labels, icon, order and featured state in V1.1", () => {
+    expect(V11).toContain("Preserve curated labels, icon, ordering and featured state.");
+    expect(V11).toContain("update: {\n      layer: c.layer,");
+    expect(V11).not.toContain("featured: c.featured ?? false,\n    },\n  });");
+  });
+
+  it("preserves existing transaction, service, industry and location metadata", () => {
+    expect(V11).toContain("where: { key: t.key },\n      create: t,\n      update: {},");
+    expect(V11).toContain("where: { key: s.key },\n      create: s,\n      update: {},");
+    expect(V11).toContain("where: { key: i.key },\n      create: i,\n      update: {},");
+  });
+
+  it("preserves service/mineral category labels while applying hierarchy links", () => {
+    expect(SERVICE_MINERAL).toContain("Preserve curated labels and ordering; refresh only hierarchy identity.");
+    expect(SERVICE_MINERAL).toContain("update:{parentId,level,layer,domain,taxPath}");
+    expect(SERVICE_MINERAL).toContain('update:{}});');
+  });
+});
