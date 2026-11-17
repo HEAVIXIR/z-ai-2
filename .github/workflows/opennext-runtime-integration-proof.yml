@@ -1,6 +1,7 @@
 name: OpenNext runtime integration proof
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -42,6 +43,7 @@ on:
   push:
     branches:
       - test/opennext-runtime-integration
+      - integration/preview-readiness-workerd-2026-11-15
 
 permissions:
   contents: read
