@@ -271,6 +271,17 @@ jobs:
           echo "Encrypted B2 upload and read-back verified."
           echo "Object prefix: s3://$B2_BUCKET/$PREFIX"
           echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence"
+          mkdir -m 700 -p "$EVIDENCE"
+          {
+            echo "format=heavix-preview-paired-backup-evidence-v1"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "backup_prefix=$PREFIX"
+            cat "$WORK/ENCRYPTED_SHA256SUMS"
+          } > "$EVIDENCE/backup-evidence.txt"
+          chmod 600 "$EVIDENCE/backup-evidence.txt"
 
       - name: Decrypt, verify plaintext checksums and restore both databases
         shell: bash
@@ -329,23 +340,12 @@ jobs:
           test "$store_count" -gt 0
           echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
           echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
-      - name: Publish non-secret paired backup evidence for the gated Preview migration
+      - name: Verify backup evidence survived the disposable restore proof
         shell: bash
         run: |
           set -euo pipefail
-          WORK="$RUNNER_TEMP/heavix-b2"
-          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence"
-          mkdir -m 700 -p "$EVIDENCE"
-          test -n "${HEAVIX_BACKUP_PREFIX:-}"
-          {
-            echo "format=heavix-preview-paired-backup-evidence-v1"
-            echo "backup_sha=$GITHUB_SHA"
-            echo "backup_run_id=$GITHUB_RUN_ID"
-            echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
-            echo "backup_prefix=$HEAVIX_BACKUP_PREFIX"
-            cat "$WORK/ENCRYPTED_SHA256SUMS"
-          } > "$EVIDENCE/backup-evidence.txt"
-          chmod 600 "$EVIDENCE/backup-evidence.txt"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
 
       - name: Upload paired backup evidence
         uses: actions/upload-artifact@v4
