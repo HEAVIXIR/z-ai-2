@@ -127,7 +127,6 @@ async function llmExtractPart(
   pageText: string,
   url: string,
   fallbackTitle?: string,
-  signal?: AbortSignal,
 ): Promise<PartsScrapeSuggestion | null> {
   const sys = `تو دستیار هوش مصنوعی فروشگاه قطعات هویکس هستی.
 محتوای یک صفحهٔ وب از سایت‌های ایرانی فروش قطعات خودرو یا ماشین‌آلات را دریافت می‌کنی.
@@ -262,7 +261,7 @@ async function scrapePartFromUrl(
     const text = (html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") || title).trim();
 
     // If LLM extract fails, try to use the raw page title + first image.
-    let suggestion = await llmExtractPart(zai, text || html, url, title, signal);
+    let suggestion = await llmExtractPart(zai, text || html, url, title);
 
     if (!suggestion) {
       const imgs = extractImagesFromHtml(html, url);
