@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/authorization';
 import { revalidatePath } from 'next/cache';
 import { checkCsrf } from '@/lib/csrf';
+import { readBoundedJson } from '@/lib/read-bounded-json';
 
 export const dynamic = 'force-dynamic';
 type Params = { params: Promise<{ id: string }> };
@@ -20,8 +21,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!(await isAdmin(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!checkCsrf(req)) return NextResponse.json({ error: 'CSRF check failed' }, { status: 403 });
 
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.versionId !== 'string' || !body.versionId.trim()) {
+  const parsed = await readBoundedJson<Record<string, unknown>>(req, 8 * 1024);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const body = parsed.value;
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.versionId !== 'string' || !body.versionId.trim()) {
     return NextResponse.json({ error: 'versionId required' }, { status: 400 });
   }
 

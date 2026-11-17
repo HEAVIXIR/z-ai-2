@@ -34,6 +34,8 @@ describe("Page Builder mutation CSRF and audit contracts", () => {
       "src/app/api/admin/pages/route.ts",
       "src/app/api/admin/pages/[id]/route.ts",
       "src/app/api/admin/pages/[id]/versions/route.ts",
+      "src/app/api/admin/pages/[id]/publish/route.ts",
+      "src/app/api/admin/pages/[id]/rollback/route.ts",
     ]) {
       expect(read(file)).toContain("readBoundedJson");
     }
