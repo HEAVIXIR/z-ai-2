@@ -67,6 +67,7 @@ describe("Taxonomy seed preservation", () => {
   it("preserves service/mineral category labels while applying hierarchy links", () => {
     expect(SERVICE_MINERAL).toContain("Preserve curated labels and ordering; refresh only hierarchy identity.");
     expect(SERVICE_MINERAL).toContain("update:{parentId,level,layer,domain,taxPath}");
+    expect(SERVICE_MINERAL).toContain("row.level!==item.level||row.taxPath!==item.taxPath");
     expect(SERVICE_MINERAL).toContain('update:{}});');
   });
 
