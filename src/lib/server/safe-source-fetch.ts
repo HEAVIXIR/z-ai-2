@@ -7,7 +7,7 @@ const SOURCE_REQUEST_TIMEOUT_MS = 12_000;
 
 function normalizeAllowedHosts(hosts: string[]): string[] {
   return hosts
-    .map((host) => host.trim().toLowerCase().replace(/^\\.+|\\.+$/g, ""))
+    .map((host) => host.trim().toLowerCase().replace(/^\.+|\.+$/g, ""))
     .filter((host) =>
       host.length > 0 &&
       host.length <= 253 &&
