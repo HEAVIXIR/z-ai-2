@@ -89,6 +89,7 @@ describe("Catalog and attribute seed preservation", () => {
   it("checks existing namespaced attribute definitions before the first write", () => {
     expect(CATEGORY_ATTRIBUTES).toContain("Validate pre-existing namespaced keys too, before any seed write.");
     expect(CATEGORY_ATTRIBUTES).toContain("Existing namespaced AttributeDefinition");
+    expect(CATEGORY_ATTRIBUTES).toContain("if (!attribute.key) continue;");
     expect(CATEGORY_ATTRIBUTES).toContain("seed aborted before writes");
   });
 });
