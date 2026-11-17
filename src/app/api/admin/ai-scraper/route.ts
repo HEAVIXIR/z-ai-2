@@ -392,7 +392,7 @@ async function _doPost(
       const query = String(body.query ?? "").trim();
       if (!query) return NextResponse.json({ error: "query is required" }, { status: 400 });
       const num = Math.max(1, Math.min(10, Number(body.num) || 5));
-      const urls = (await searchAdUrls(zai, query, num)).filter(isAllowedSourceUrl);
+      const urls = (await searchAdUrls(zai, query, num)).filter((url) => isAllowedSourceUrl(url));
       const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
       return NextResponse.json({ ok: true, results });
     }
