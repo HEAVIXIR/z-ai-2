@@ -146,7 +146,7 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(runner).toContain("concurrent request isolation");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("environment: preview-backup");
-    expect(workflow).toContain("refs/heads/recovery/heavix-full-product-integration-2026-11-11");
+    expect(workflow).toContain("refs/heads/integration/preview-readiness-workerd-2026-11-15");
     expect(workflow).toContain("secrets.MAIN_PREVIEW_DATABASE_URL");
     expect(workflow).toContain("secrets.STORE_PREVIEW_DATABASE_URL");
     expect(workflow).toContain("bun run test:workerd");
