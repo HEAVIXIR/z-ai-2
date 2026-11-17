@@ -572,6 +572,99 @@ const TREE: CatSeed[] = [
 // ════════════════════════════════════════════════════════════
 // 5. LOCATIONS — Iran: 1 country + 31 provinces + cities
 // ════════════════════════════════════════════════════════════
+const LEGACY_ROOT_REPARENT_SLUGS = [
+  "excavator", "loader", "bulldozer", "grader", "dump-truck",
+  "crane", "road-roller", "forklift", "generator", "compressor",
+  "concrete-machinery", "agricultural", "spare-parts", "mining-equipment",
+  "aerial-platform", "forestry",
+] as const;
+
+type PlannedTaxonomyCategory = {
+  slug: string;
+  parentSlug: string | null;
+  layer: CatSeed["layer"];
+  domain: string | null;
+  level: number;
+  taxPath: string;
+};
+
+function collectTaxonomyPlan(
+  nodes: CatSeed[],
+  parentSlug: string | null = null,
+  parentPath?: string,
+  level = 0,
+  out: PlannedTaxonomyCategory[] = [],
+): PlannedTaxonomyCategory[] {
+  for (const node of nodes) {
+    const taxPath = parentPath ? `${parentPath}.${node.slug}` : node.slug;
+    const domain = node.domain ?? (node.layer === "CATALOG" ? "MACHINE" : null);
+    out.push({ slug: node.slug, parentSlug, layer: node.layer, domain, level, taxPath });
+    if (node.children?.length) {
+      collectTaxonomyPlan(node.children, node.slug, taxPath, level + 1, out);
+    }
+  }
+  return out;
+}
+
+// Read-only hierarchy validation. It runs before the first upsert so unexpected
+// slug collisions or administrator-managed reparenting stop the entire seed.
+async function preflightTaxonomyHierarchy(): Promise<void> {
+  const plan = collectTaxonomyPlan(TREE);
+  const plannedBySlug = new Map(plan.map((item) => [item.slug, item]));
+  if (plannedBySlug.size !== plan.length) {
+    throw new Error("Duplicate category slug in V1.1 taxonomy plan; no writes were made");
+  }
+
+  const missingLegacyTargets = LEGACY_ROOT_REPARENT_SLUGS.filter((slug) => !plannedBySlug.has(slug));
+  if (missingLegacyTargets.length) {
+    throw new Error(`Legacy reparent allowlist is not represented in the taxonomy plan: ${missingLegacyTargets.join(", ")}; no writes were made`);
+  }
+
+  const missingParents = plan
+    .filter((item) => item.parentSlug !== null && !plannedBySlug.has(item.parentSlug))
+    .map((item) => `${item.slug}->${item.parentSlug}`);
+  if (missingParents.length) {
+    throw new Error(`Taxonomy plan contains missing parents: ${missingParents.join(", ")}; no writes were made`);
+  }
+
+  const existing = await db.category.findMany({
+    where: { slug: { in: plan.map((item) => item.slug) } },
+    select: { id: true, slug: true, parentId: true, level: true, layer: true, domain: true, taxPath: true },
+  });
+  const existingBySlug = new Map(existing.map((row) => [row.slug, row]));
+
+  for (const item of plan) {
+    const row = existingBySlug.get(item.slug);
+    if (!row) continue;
+
+    const expectedParent = item.parentSlug ? existingBySlug.get(item.parentSlug) : undefined;
+    const isLegacyRootAwaitingReviewedReparent =
+      LEGACY_ROOT_REPARENT_SLUGS.includes(item.slug as (typeof LEGACY_ROOT_REPARENT_SLUGS)[number]) &&
+      row.parentId === null &&
+      row.level === 0 &&
+      row.taxPath === item.slug;
+
+    if (row.layer !== item.layer || row.domain !== item.domain) {
+      throw new Error(`Category layer/domain collision for "${item.slug}" (expected ${item.layer}/${item.domain ?? "null"}); no writes were made`);
+    }
+
+    if (item.parentSlug !== null && !expectedParent) {
+      if (isLegacyRootAwaitingReviewedReparent) continue;
+      throw new Error(`Expected parent "${item.parentSlug}" is not present for existing category "${item.slug}"; no writes were made`);
+    }
+
+    const expectedParentId = expectedParent?.id ?? null;
+    const hierarchyMatches =
+      row.parentId === expectedParentId &&
+      row.level === item.level &&
+      row.taxPath === item.taxPath;
+
+    if (!hierarchyMatches && !isLegacyRootAwaitingReviewedReparent) {
+      throw new Error(`Category hierarchy collision for "${item.slug}" (expected parent "${item.parentSlug ?? "<root>"}", level ${item.level}, taxPath "${item.taxPath}"); no writes were made`);
+    }
+  }
+}
+
 type ProvinceSeed = { name: string; cities: string[] };
 
 const IRAN_PROVINCES: ProvinceSeed[] = [
@@ -687,6 +780,9 @@ async function main() {
   }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
+  console.log("Preflighting existing category hierarchy (read-only)...");
+  await preflightTaxonomyHierarchy();
+
   // 1. TransactionTypes
   console.log(`1/6 Seeding ${TRANSACTIONS.length} TransactionTypes (HBR §18)...`);
   for (const t of TRANSACTIONS) {
@@ -775,12 +871,7 @@ async function main() {
   });
 
   // Verify reparenting: check that the 16 legacy root slugs are no longer at root level
-  const LEGACY_ROOT_SLUGS = [
-    "excavator", "loader", "bulldozer", "grader", "dump-truck",
-    "crane", "road-roller", "forklift", "generator", "compressor",
-    "concrete-machinery", "agricultural", "spare-parts", "mining-equipment",
-    "aerial-platform", "forestry",
-  ];
+  const LEGACY_ROOT_SLUGS = LEGACY_ROOT_REPARENT_SLUGS;
   const stillAtRoot: string[] = [];
   for (const slug of LEGACY_ROOT_SLUGS) {
     const cat = await db.category.findUnique({
