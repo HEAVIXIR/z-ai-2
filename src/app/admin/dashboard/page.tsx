@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
 import { toFa, timeAgo, formatCompactPrice } from "@/lib/format";
 import { ReleaseReadinessPanel } from "@/components/admin/ReleaseReadinessPanel";
+import { getAdminDashboardSnapshot } from "@/lib/admin/dashboard-snapshot";
 import {
   Megaphone,
   Building2,
@@ -31,7 +31,7 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 export default async function DashboardPage() {
-  const [
+  const {
     totalListings,
     publishedListings,
     featuredListings,
@@ -44,74 +44,10 @@ export default async function DashboardPage() {
     recentOffers,
     featureFlags,
     aiStats,
+    aiSuccess,
+    aiFailed,
     catalogIssues,
-  ] = await Promise.all([
-    db.listing.count(),
-    db.listing.count({ where: { status: "PUBLISHED" } }),
-    db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
-    db.brand.count(),
-    db.category.count({ where: { parentId: null } }),
-    db.listing.aggregate({ _sum: { viewCount: true } }),
-    db.listing.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 6,
-      include: {
-        brand: { select: { name: true } },
-        category: { select: { name: true, icon: true } },
-      },
-    }),
-    db.buyRequest.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        title: true,
-        category: true,
-        city: true,
-        createdAt: true,
-      },
-    }),
-    db.rFQ.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        title: true,
-        machineType: true,
-        status: true,
-        createdAt: true,
-      },
-    }),
-    db.listingOffer.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { listing: { select: { title: true, slug: true } } },
-    }),
-    db.featureFlag.findMany({ orderBy: { createdAt: "asc" } }),
-    db.aIGatewayLog.aggregate({
-      _count: true,
-      _sum: { latencyMs: true },
-      _avg: { latencyMs: true },
-    }),
-    Promise.all([
-      db.listing.count({ where: { status: "PUBLISHED", images: { none: {} } } }),
-      db.listing.count({ where: { status: "PUBLISHED", price: null } }),
-      db.listing.count({ where: { status: "PUBLISHED", brandId: null } }),
-      db.listing.count({ where: { status: "PUBLISHED", categoryId: null } }),
-      db.listing.count({
-        where: {
-          status: "PUBLISHED",
-          OR: [{ description: null }, { description: "" }],
-        },
-      }),
-    ]),
-  ]);
-
-  // AI gateway success/fail breakdown
-  const [aiSuccess, aiFailed] = await Promise.all([
-    db.aIGatewayLog.count({ where: { success: true } }),
-    db.aIGatewayLog.count({ where: { success: false } }),
-  ]);
+  } = await getAdminDashboardSnapshot();
 
   // Catalog health score (weighted formula)
   const weights = { high: 12, medium: 6, low: 3 };
