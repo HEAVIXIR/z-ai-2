@@ -139,10 +139,8 @@ try {
     }
   }
 
-  const collisions = await target.query(
-    'SELECT id, email FROM "User" WHERE id = $1 OR lower(email) = lower($2) OR ($3::text IS NOT NULL AND mobile = $3) FOR UPDATE',
-    [owner.id, OWNER_EMAIL, owner.mobile],
-  );
+  const collisionSql = 'SELECT id, email FROM "User" WHERE id = $1 OR lower(email) = lower($2) OR ($3::text IS NOT NULL AND mobile = $3)' + (mode === "APPLY" ? " FOR UPDATE" : "");
+  const collisions = await target.query(collisionSql, [owner.id, OWNER_EMAIL, owner.mobile]);
   if (collisions.rowCount !== 0) throw new Error("Target identity/email/mobile collision detected; transfer blocked.");
 
   const roleIdCollisions = await target.query(
