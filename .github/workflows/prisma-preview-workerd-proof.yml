@@ -40,14 +40,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "$GITHUB_REF" in
-            refs/heads/recovery/heavix-full-product-integration-2026-11-11|refs/heads/fix/preview-proof-hero-migration-fingerprint-2026-11-15|refs/heads/integration/preview-readiness-workerd-2026-11-15)
-              ;;
-            *)
-              echo "Refusing Workerd proof on an unapproved branch: $GITHUB_REF" >&2
-              exit 1
-              ;;
-          esac
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15" || {
+            echo "Refusing Workerd proof outside the canonical Integration branch." >&2
+            exit 1
+          }
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           echo "Running Workerd proof against exact selected commit: $GITHUB_SHA"
 
