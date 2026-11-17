@@ -666,3 +666,13 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added `docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md` (commit f63b15b4c5e3f447619ed09ab416677ed7634428) with evidence, constraints, capability gaps and next execution order.
 - No Production/DNS/stable Worker change, secrets read/write, DB access/write, migration, seed, paid AI call or PR merge was performed.
 - Next: refresh exact Integration HEAD and CI, perform read-only route acceptance on isolated Preview, diagnose canonical Preview App/Store OID mismatch without reading secret values, then reconcile auth and scraper source implementations file-by-file.
+
+
+## 2026-11-18 — Integration Preview route acceptance and scraper source review
+
+- Read-only acceptance on isolated Integration Preview: `/`, `/login`, `/admin`, `/api/health`, `/api/taxonomy`, `/api/transaction-types`, `/api/service-types`, `/api/attributes?category=excavator`, and `/api/services?limit=50` all returned HTTP 200.
+- `/api/health` returned App DB and Store DB as up. Taxonomy roots exist but children are empty; transaction types, service types and excavator attributes return empty arrays; services return records. Anonymous `/admin` returns the login surface. Owner authentication was not tested.
+- Fetched and inspected current selected-branch Marketplace and Store scraper route sources plus hardened Marketplace candidate branch and historical Gmail registration/email sources.
+- Clarified current scraper status: Marketplace route code is present with safe-source allowlisting, server-side refetch, pending listing import, CSRF/RBAC, AI preflight, timeout and audit, but provider execution is gated by HEAVIX_AI_SCRAPER_ENABLED and depends on ZAI web search/LLM. Store route includes manual imports while provider discovery is separately gated by HEAVIX_STORE_SCRAPER_ENABLED and an explicit host allowlist; manual-import budget behavior still needs tests.
+- Explicitly did not enable either provider flag because no-cost provider/quota evidence is not established. No scraper API was invoked.
+- Updated `docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md` with route acceptance and source-level scraper/auth findings.
