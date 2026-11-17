@@ -465,7 +465,7 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "ai.scraper.execute");
+  await requirePermission(user.id, "ai.execute");
 
   // Validate same-origin requests before AI preflight; preflight atomically reserves budget.
   if (!checkCsrf(req)) {
