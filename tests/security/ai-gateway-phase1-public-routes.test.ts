@@ -104,12 +104,15 @@ beforeEach(() => {
 });
 
 function makePostReq(url: string, body: any): Request {
-  const origin = new URL(url).origin;
-  return new Request(url, {
+  const requestUrl = new URL(url);
+  if (requestUrl.hostname === "localhost" && !requestUrl.port) {
+    requestUrl.port = "3000";
+  }
+  return new Request(requestUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Origin: origin,
+      Origin: requestUrl.origin,
     },
     body: JSON.stringify(body),
   });
