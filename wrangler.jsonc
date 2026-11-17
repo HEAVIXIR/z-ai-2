@@ -10,8 +10,6 @@
   // Placement optimizes fetch execution near the observed backend; static
   // assets remain served from the nearest edge location.
   "placement": { "mode": "smart" },
-  // bcrypt password verification is CPU-bound; allow bounded headroom on Preview.
-  "limits": { "cpu_ms": 2000 },
   "vars": {
     "HEAVIX_ENV": "preview",
     "NODE_ENV": "production",
