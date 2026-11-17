@@ -1,5 +1,6 @@
 name: HEAVIX Canonical Preview Worker Deploy
 # Owner-approved, Preview-only redacted DB identity diagnostic deployment request (2026-11-18).
+# Re-authorized by owner for the current Integration head; Production and database writes remain prohibited.
 
 on:
   push:
