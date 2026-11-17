@@ -16,13 +16,14 @@ The 22 September 2026 Master Execution Plan records a historical snapshot of **5
 
 The repository contains a previously excluded machine taxonomy source that is useful for recovery, but must not be applied as a second competing tree:
 
-- `prisma/seed-machine-taxonomy.ts`: 303 category slug entries in the legacy 16-group machine tree.
-- `prisma/seed-taxonomy-v11.ts`: 279 category slug entries in the newer V1.1 taxonomy.
-- `prisma/seed-service-and-mineral-taxonomy.ts`: 41 slug entries, of which 40 are additional unique slugs after overlap.
-- Combined source union: **531 unique candidate slugs**.
-- The sources contain **92 repeated slugs**; **52 repeated slugs have different Persian labels** between source definitions. Parent paths and layer assignments also need reconciliation.
+- `prisma/seed-machine-taxonomy.ts`: **302** category slug entries in the legacy 16-group machine tree.
+- `prisma/seed-taxonomy-v11.ts`: **279** category slug entries in the newer V1.1 taxonomy.
+- `prisma/seed-service-and-mineral-taxonomy.ts`: **41** category slug entries (31 service-tree records and 10 mineral-subtree records).
+- Combined source records: **622**; combined source union: **531 unique candidate slugs**.
+- The current source snapshot contains **91 repeated slugs**; **50** have different primary `name` labels, and **54** have different parent-path/layer/domain signatures.
+- The exact read-only inventory, including all repeated definitions and source paths, is recorded in [HEAVIX-TAXONOMY-SOURCE-RECONCILIATION-2026-11-17.md](./HEAVIX-TAXONOMY-SOURCE-RECONCILIATION-2026-11-17.md).
 
-This reduces the apparent gap against the 539-row snapshot to 8 candidate slugs, but **531 is not a verified final category count**. The older machine tree and V1.1 tree differ in hierarchy and naming, and the 539/295/287 figures do not yet share a proven scope. Do not concatenate or execute both trees blindly.
+These counts were re-extracted from the three source trees at Integration commit `f777174966238c0eac304ad3f02f815a74aaecea`; they supersede the earlier 303/92/52 figures in this runbook for that snapshot. The inventory is source-only, not a database export. It reduces the apparent gap against the 539-row snapshot to 8 candidate slugs, but **531 is not a verified final category count**. The older machine tree and V1.1 tree differ in hierarchy and naming, and the 539/295/287 figures do not yet share a proven scope. Do not concatenate or execute both trees blindly.
 
 ### Brand source recovery audit (read-only)
 
