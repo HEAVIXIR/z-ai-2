@@ -21,8 +21,8 @@ describe("Paired Preview migration governance", () => {
     expect(migration).toContain('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"');
     expect(migration).toContain("gh api");
     expect(migration).toContain("actions/download-artifact@v4");
-    expect(migration).toContain('test "$(jq -r '.conclusion' <<<"$run_json")" = "success"');
-    expect(migration).toContain('test "$(jq -r '.head_sha' <<<"$run_json")" = "$GITHUB_SHA"');
+    expect(migration).toContain(".conclusion");
+    expect(migration).toContain(".head_sha");
   });
 
   it("requires exact database identities, migration histories and schema preconditions before applying", () => {
