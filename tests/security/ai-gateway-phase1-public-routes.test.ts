@@ -104,9 +104,13 @@ beforeEach(() => {
 });
 
 function makePostReq(url: string, body: any): Request {
+  const origin = new URL(url).origin;
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+    },
     body: JSON.stringify(body),
   });
 }
