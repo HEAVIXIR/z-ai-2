@@ -13,7 +13,7 @@ import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-so
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Store scraper provider calls are separately opt-in until its source-fetch path is SSRF-hardened.
+// Store provider discovery is opt-in and accepts only an explicitly configured source-host allowlist.
 
 const STORE_SOURCE_DNS_ALLOWLIST_ENV = "HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS";
 
@@ -640,8 +640,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const isManualImport = body.action === "import" || body.action === "bulk-import";
 
-  // Keep manager-reviewed manual imports available; provider-backed discovery is a separate
-  // opt-in because this legacy Store path still uses provider page_reader on arbitrary URLs.
+  // Keep manager-reviewed manual imports available; provider discovery is separately gated.
+  // Search hits are filtered to the configured allowlist and pages use the pinned-DNS safe transport.
   if (!isManualImport && process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true") {
     return NextResponse.json(
       {
