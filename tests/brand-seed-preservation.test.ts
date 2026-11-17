@@ -69,6 +69,18 @@ describe("Taxonomy seed preservation", () => {
     expect(SERVICE_MINERAL).toContain("update:{parentId,level,layer,domain,taxPath}");
     expect(SERVICE_MINERAL).toContain('update:{}});');
   });
+
+  it("preflights V1.1 hierarchy collisions before the first write", () => {
+    expect(V11).toContain("async function preflightTaxonomyHierarchy()");
+    expect(V11).toContain("const LEGACY_ROOT_REPARENT_SLUGS = [");
+    expect(V11).toContain("Category hierarchy collision");
+    expect(V11).toContain("Category layer/domain collision");
+    expect(V11).toContain("isLegacyRootAwaitingReviewedReparent");
+    expect(V11).toContain("await preflightTaxonomyHierarchy();");
+    expect(V11.indexOf("await preflightTaxonomyHierarchy();")).toBeLessThan(
+      V11.indexOf("db.transactionType.upsert("),
+    );
+  });
 });
 
 
