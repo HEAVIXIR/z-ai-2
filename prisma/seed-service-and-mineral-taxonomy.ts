@@ -20,7 +20,8 @@ const minerals: Record<string,N[]> = {
 };
 async function insert(parentId:string,path:string,nodes:N[],level:number,layer:string,domain:string){
  for(let i=0;i<nodes.length;i++){const n=nodes[i];const taxPath=path+"/"+n.slug;
-  const row=await db.category.upsert({where:{slug:n.slug},create:{name:n.name,nameEn:n.nameEn,slug:n.slug,parentId,level,layer,domain,taxPath,active:true,sortOrder:i+1},update:{name:n.name,nameEn:n.nameEn,parentId,level,layer,domain,taxPath,sortOrder:i+1},select:{id:true}});
+  const row=await db.category.upsert({where:{slug:n.slug},create:{name:n.name,nameEn:n.nameEn,slug:n.slug,parentId,level,layer,domain,taxPath,active:true,sortOrder:i+1},// Preserve curated labels and ordering; refresh only hierarchy identity.
+  update:{parentId,level,layer,domain,taxPath},select:{id:true}});
   if(n.children?.length)await insert(row.id,taxPath,n.children,level+1,layer,domain);
  }
 }
@@ -59,7 +60,7 @@ async function main(){
  }
  await insert(root.id,root.taxPath??"services",tree,(root.level??0)+1,"SERVICE","SERVICE");
  for(const [slug,nodes] of Object.entries(minerals)){const p=mineralRootBySlug.get(slug);if(p)await insert(p.id,p.taxPath??slug,nodes,(p.level??1)+1,p.layer??"CATALOG",p.domain??"MATERIAL");}
- await db.transactionType.upsert({where:{key:"SERVICE_OFFER"},create:{key:"SERVICE_OFFER",nameFa:"ارائه خدمات",nameEn:"Service Offer",icon:"wrench",sortOrder:2,active:true},update:{nameFa:"ارائه خدمات",nameEn:"Service Offer",icon:"wrench",sortOrder:2,active:true}});
+ await db.transactionType.upsert({where:{key:"SERVICE_OFFER"},create:{key:"SERVICE_OFFER",nameFa:"ارائه خدمات",nameEn:"Service Offer",icon:"wrench",sortOrder:2,active:true},update:{}});
  console.log("Supplemental service and mineral taxonomy seeded");
 }
 main().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.$disconnect());
