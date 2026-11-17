@@ -27,12 +27,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.versionId !== 'string' || !body.versionId.trim()) {
     return NextResponse.json({ error: 'versionId required' }, { status: 400 });
   }
+  // Keep the validated identifier in a narrowed local before entering the async transaction callback.
+  const versionId = body.versionId as string;
 
   try {
     const result = await db.$transaction(async (tx) => {
       const [page, targetVersion] = await Promise.all([
         tx.adminPage.findUnique({ where: { id: pageId } }),
-        tx.adminPageVersion.findUnique({ where: { id: body.versionId } }),
+        tx.adminPageVersion.findUnique({ where: { id: versionId } }),
       ]);
       if (!page) return { error: 'PAGE_NOT_FOUND' as const };
       if (!targetVersion || targetVersion.pageId !== pageId) return { error: 'VERSION_NOT_FOUND' as const };
