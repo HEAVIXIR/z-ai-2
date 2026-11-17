@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
+const PHASE_A_SEED = readFileSync("prisma/seed-brands-a.ts", "utf-8");
 const PHASE_B_SEED = readFileSync("prisma/seed-brands-b.ts", "utf-8");
 
 describe("Phase B brand seed preservation", () => {
@@ -30,5 +31,18 @@ describe("Phase B brand seed preservation", () => {
       "where: { brandId_industry: { brandId: brand.id, industry: ind } }",
     );
     expect(PHASE_B_SEED).toContain("update: {},");
+  });
+});
+
+
+describe("Phase A brand seed preservation", () => {
+  it("makes identity refresh an explicit opt-in", () => {
+    expect(PHASE_A_SEED).toContain("refreshIdentity?: boolean;");
+    expect(PHASE_A_SEED).toContain("update: b.refreshIdentity ? {");
+    expect(PHASE_A_SEED).toContain("} : {},");
+  });
+  it("preserves existing industries and brand families by default", () => {
+    expect(PHASE_A_SEED).toContain('db.industry.upsert({ where: { key: ind.key }, create: ind, update: {} });');
+    expect(PHASE_A_SEED).toContain('db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: {} });');
   });
 });
