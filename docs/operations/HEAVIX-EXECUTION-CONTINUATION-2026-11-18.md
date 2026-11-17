@@ -117,3 +117,25 @@ Tested with cache bypass/read-only retrieval against:
 Interpretation: the two database connections are reachable in this isolated Integration Preview, but a healthy connection is not equivalent to a correctly bootstrapped product catalog. The listing wizard remains blocked by empty transaction types and attributes. The anonymous Admin response confirms the login gate only; successful owner authentication and post-login RBAC were not tested.
 
 No authenticated login, registration, email send, listing submission, database write, seed, migration or paid provider call was attempted.
+
+
+## Additional source-code inspection — scraper routes on the selected branch
+
+The selected Integration branch is more advanced than the initial commit-level regression summary alone suggests. Current route files were fetched and inspected directly:
+
+- Marketplace route `src/app/api/admin/ai-scraper/route.ts` contains the full search/scrape/import/bulk-import flow, URL allowlisting, server-side re-fetch before import, pending listing creation, audit, CSRF, permission checks, AI gateway preflight, timeout and cost logging. It is not a permanently replaced 503 stub in the currently selected branch snapshot.
+- Marketplace execution is nevertheless blocked unless `HEAVIX_AI_SCRAPER_ENABLED=true`; this gate returns HTTP 503 before AI preflight. The implementation calls `ZAI.create()` and provider web search/LLM extraction, so enabling this path without proving a no-cost provider and quota would violate the owner's zero-cost constraint.
+- Store route `src/app/api/admin/store/ai-scraper/route.ts` contains search, extraction, single import and bulk import. Provider discovery is gated by `HEAVIX_STORE_SCRAPER_ENABLED=true` and an explicit source-host allowlist. Manager-reviewed manual import actions are intentionally allowed when provider discovery is disabled; however, the current path still passes through AI policy preflight, so it needs a code/test review to prove that manual import cannot reserve or consume paid AI budget.
+- Marketplace legacy synthetic `action` endpoints return 410; supported real-source `mode` endpoints are used instead.
+- The historical registration route confirms six-digit EMAIL verification with a 10-minute expiry, bcrypt hashing, public role forced to BUYER, and a canonical UserRole(BUYER) row. Email delivery failure is reported without returning the OTP. The Gmail API code path is present in `src/lib/email.ts`, but delivery remains unverified until the correct secret bindings are configured securely.
+
+### Required scraper remediation decision
+
+Do not simply set either scraper enable flag. First separate no-cost deterministic/manual workflows from provider-backed discovery:
+1. Keep provider-backed discovery disabled unless an explicitly free provider, rate limits, data rights, and quotas are proven.
+2. Ensure manual source URL import uses the allowlisted safe fetch path, server-side extraction/validation, pending review, audit, and no AI preflight/cost reservation.
+3. For Store manual import, add tests proving no AI budget/cost is reserved and the manager permission is mandatory.
+4. For Marketplace, provide a manual import path that does not instantiate ZAI or invoke provider web search/LLM; preserve server-side safe fetch and pending review.
+5. Add tests for disabled-provider behavior, host allowlist, redirects/DNS pinning, timeout, max bulk size, duplicate detection, no direct publication, audit actor and no paid calls.
+
+These are code-level requirements; no scraper endpoint was invoked during this inspection.
