@@ -8,11 +8,26 @@ import { slugify } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
+import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-source-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Store scraper provider calls are separately opt-in until its source-fetch path is SSRF-hardened.
+
+const STORE_SOURCE_DNS_ALLOWLIST_ENV = "HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS";
+
+function getStoreSourceAllowedHosts(): string[] {
+  return (process.env[STORE_SOURCE_DNS_ALLOWLIST_ENV] ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isAllowedStoreSourceUrl(url: string): boolean {
+  const hosts = getStoreSourceAllowedHosts();
+  return hosts.length > 0 && isAllowedSourceUrl(url, hosts);
+}
 
 /* ============================================================
    /api/admin/store/ai-scraper
@@ -84,7 +99,7 @@ function extractImagesFromHtml(html: string, baseUrl: string): string[] {
           /* skip */
         }
       }
-      if (!seen.has(url)) {
+      if (!seen.has(url) && isAllowedStoreSourceUrl(url)) {
         seen.add(url);
         out.push(url);
       }
@@ -112,6 +127,7 @@ async function llmExtractPart(
   pageText: string,
   url: string,
   fallbackTitle?: string,
+  signal?: AbortSignal,
 ): Promise<PartsScrapeSuggestion | null> {
   const sys = `تو دستیار هوش مصنوعی فروشگاه قطعات هویکس هستی.
 محتوای یک صفحهٔ وب از سایت‌های ایرانی فروش قطعات خودرو یا ماشین‌آلات را دریافت می‌کنی.
@@ -218,7 +234,7 @@ async function searchIranianPartsSites(
           : [];
       for (const item of list) {
         const url: string | undefined = item.url || item.link;
-        if (!url || seen.has(url)) continue;
+        if (!url || seen.has(url) || !isAllowedStoreSourceUrl(url)) continue;
         seen.add(url);
         all.push({ url, title: item.title, snippet: item.snippet });
       }
@@ -234,17 +250,19 @@ async function searchIranianPartsSites(
 async function scrapePartFromUrl(
   zai: any,
   hit: WebSearchHit,
+  signal?: AbortSignal,
 ): Promise<PartsScrapeSuggestion | null> {
   const url = hit.url!;
+  if (!isAllowedStoreSourceUrl(url)) return null;
   try {
-    const result = await zai.functions.invoke("page_reader", { url });
-    const data = result?.data || result || {};
+    const allowedHosts = getStoreSourceAllowedHosts();
+    const data = await fetchAllowedSourcePage(url, signal, undefined, allowedHosts);
     const html: string = data.html || "";
     const title: string = data.title || "";
     const text = (html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") || title).trim();
 
     // If LLM extract fails, try to use the raw page title + first image.
-    let suggestion = await llmExtractPart(zai, text || html, url, title);
+    let suggestion = await llmExtractPart(zai, text || html, url, title, signal);
 
     if (!suggestion) {
       const imgs = extractImagesFromHtml(html, url);
@@ -270,9 +288,17 @@ async function scrapePartFromUrl(
       if (imgs[0]) suggestion.imageUrl = imgs[0];
     }
 
+    if (suggestion.imageUrl && !isAllowedStoreSourceUrl(suggestion.imageUrl)) {
+      suggestion.imageUrl = null;
+    }
     return suggestion;
   } catch (err) {
-    console.error("[store/ai-scraper] page_reader error for", url, err);
+    if (signal?.aborted) {
+      const abortError = new Error("درخواست دریافت صفحه قطعه لغو شد.");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
+    console.error("[store/ai-scraper] safe page fetch error for", url, err);
     return null;
   }
 }
@@ -470,7 +496,7 @@ async function _doPost(
       const suggestions: PartsScrapeSuggestion[] = [];
       for (const hit of hits) {
         if (suggestions.length >= limit) break;
-        const s = await scrapePartFromUrl(zai, hit);
+        const s = await scrapePartFromUrl(zai, hit, controller.signal);
         if (s) suggestions.push(s);
       }
 
