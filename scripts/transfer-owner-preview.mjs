@@ -10,7 +10,9 @@
  * - Refuses schema drift, missing role mappings, FK dependencies, and any target collision.
  * - APPLY is additionally gated by a same-SHA successful paired encrypted backup workflow.
  */
-import { Client } from "pg";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { Client } = require(process.env.PG_MODULE_PATH || "pg");
 
 const OWNER_EMAIL = "heavixir@gmail.com";
 const SOURCE_SYSTEM_ID = "7707373027511054367";
