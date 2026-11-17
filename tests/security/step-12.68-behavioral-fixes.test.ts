@@ -82,9 +82,9 @@ describe("W-03: POST /api/listings auth + sellerId integrity (P0-C-03)", () => {
     expect(postIdx).toBeGreaterThan(-1);
     const postBody = routeContent.slice(postIdx);
 
-    // Auth check must appear before body parsing
+    // Auth must run before the bounded JSON reader consumes the request stream.
     const authIdx = postBody.indexOf("getCurrentUser()");
-    const bodyIdx = postBody.indexOf("req.json()");
+    const bodyIdx = postBody.indexOf("readBoundedJson");
     expect(authIdx).toBeGreaterThan(-1);
     expect(bodyIdx).toBeGreaterThan(-1);
     expect(authIdx).toBeLessThan(bodyIdx);
