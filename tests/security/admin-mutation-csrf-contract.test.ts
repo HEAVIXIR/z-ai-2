@@ -67,14 +67,20 @@ describe("administrative mutation CSRF contracts", () => {
     expect(detail).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
   });
 
-  it("keeps paid AI scraper calls disabled under the free-infrastructure policy", () => {
-    for (const routePath of [
-      "src/app/api/admin/ai-scraper/route.ts",
-      "src/app/api/admin/store/ai-scraper/route.ts",
-    ]) {
-      const route = read(routePath);
-      expect(route).toMatch(/AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY/);
-      expect(route).toMatch(/checkCsrf\(req\)/);
-    }
+  it("keeps provider-backed scraper execution explicitly gated after auth and CSRF, before AI budget preflight", () => {
+    const marketplace = read("src/app/api/admin/ai-scraper/route.ts");
+    expect(marketplace).toMatch(/requirePermission\\(user\\.id, "ai\\.scraper\\.execute"\\)/);
+    expect(marketplace).toMatch(/checkCsrf\\(req\\)/);
+    expect(marketplace).toMatch(/process\\.env\\.HEAVIX_AI_SCRAPER_ENABLED !== "true"/);
+    expect(marketplace.indexOf("checkCsrf(req)")).toBeLessThan(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED"));
+    expect(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED")).toBeLessThan(marketplace.indexOf("preflightAIRequest({"));
+
+    const store = read("src/app/api/admin/store/ai-scraper/route.ts");
+    expect(store).toMatch(/requirePermission\\(user\\.id, ['"]store\\.manage['"]\\)/);
+    expect(store).toMatch(/checkCsrf\\(req\\)/);
+    expect(store).toMatch(/process\\.env\\.HEAVIX_STORE_SCRAPER_ENABLED !== "true"/);
+    expect(store).toMatch(/!isManualImport/);
+    expect(store.indexOf("checkCsrf(req)")).toBeLessThan(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED"));
+    expect(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(store.indexOf("preflightAIRequest({"));
   });
 });
