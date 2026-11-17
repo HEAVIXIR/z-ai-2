@@ -12,7 +12,7 @@ import ZAI from "z-ai-web-dev-sdk";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY = true;
+// Store scraper provider calls are separately opt-in until its source-fetch path is SSRF-hardened.
 
 /* ============================================================
    /api/admin/store/ai-scraper
@@ -606,8 +606,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
 
+  // Validate CSRF before quota/budget preflight; rejected requests must not reserve AI budget.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
+  }
+
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
+  const isManualImport = body.action === "import" || body.action === "bulk-import";
+
+  // Keep manager-reviewed manual imports available; provider-backed discovery is a separate
+  // opt-in because this legacy Store path still uses provider page_reader on arbitrary URLs.
+  if (!isManualImport && process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true") {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "STORE_SCRAPER_NOT_ENABLED_IN_ENVIRONMENT",
+        error: "جستجوی هوشمند قطعات تا تکمیل دریافت امن منابع و فعال‌سازی تنظیم محیطی در این محیط اجرا نمی‌شود.",
+      },
+      { status: 503 },
+    );
+  }
 
   // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
   const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
@@ -635,24 +654,8 @@ export async function POST(req: Request) {
   );
   let __resultSummary: any = null;
   let __errorMsg: string | null = null;
-  const isManualImport = body.action === "import" || body.action === "bulk-import";
   try {
-    if (!checkCsrf(req)) {
-      __errorMsg = "CSRF origin validation failed";
-      response = NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
-    } else if (!isManualImport && AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY) {
-      __errorMsg = "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY";
-      response = NextResponse.json(
-        {
-          ok: false,
-          code: "AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY",
-          error: "جستجوی هوشمند فروشگاه تا زمان فراهم‌شدن زیرساخت رایگان غیرفعال است.",
-        },
-        { status: 503 },
-      );
-    } else {
-      response = await _doPost(body, user, controller);
-    }
+    response = await _doPost(body, user, controller);
     try { __resultSummary = await response.clone().json(); } catch { /* non-JSON */ }
   } catch (err: any) {
     if (err?.name === "AbortError" || controller.signal.aborted) {
