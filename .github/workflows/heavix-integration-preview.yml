@@ -97,8 +97,30 @@ jobs:
         run: |
           set -euo pipefail
           output="$(bunx wrangler preview --name "integration/preview-readiness-workerd-2026-11-15" --worker-name "heavix-preview" --json)"
-          printf '%s\n' "$output"
-          preview_url="$(printf '%s' "$output" | jq -er '.preview.urls[0]')"
+          printf '%s\\n' "$output"
+          # Wrangler may emit human-readable progress before its JSON result.
+          # Scan for the JSON object containing preview.urls instead of piping
+          # the entire mixed stdout stream directly into jq.
+          preview_url="$(printf '%s' "$output" | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              for (let i = 0; i < input.length; i++) {
+                if (input[i] !== "{") continue;
+                try {
+                  const parsed = JSON.parse(input.slice(i));
+                  const url = parsed && parsed.preview && parsed.preview.urls && parsed.preview.urls[0];
+                  if (typeof url === "string" && url.startsWith("https://")) {
+                    process.stdout.write(url);
+                    return;
+                  }
+                } catch (_) {}
+              }
+              process.stderr.write("Could not locate Wrangler preview JSON containing preview.urls[0].\\n");
+              process.exit(1);
+            });
+          ')"
           test -n "$preview_url"
           echo "preview_url=$preview_url" >> "$GITHUB_OUTPUT"
 
