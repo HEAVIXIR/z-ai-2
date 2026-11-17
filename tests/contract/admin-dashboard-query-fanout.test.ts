@@ -4,7 +4,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const source = fs.readFileSync(
-  path.join(ROOT, "src/app/admin/dashboard/page.tsx"),
+  path.join(ROOT, "src/lib/admin/dashboard-snapshot.ts"),
   "utf8",
 );
 
