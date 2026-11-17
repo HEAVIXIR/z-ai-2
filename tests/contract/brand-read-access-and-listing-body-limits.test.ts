@@ -40,7 +40,8 @@ describe("taxonomy brand read access and listing request limits", () => {
 
     const csrf = post.indexOf("checkCsrf(req)");
     const parser = post.indexOf("readBoundedJson<Record<string, any>>");
-    expect(post).toContain("MAX_LISTING_REQUEST_BODY_BYTES = 512 * 1024");
+    expect(route).toContain("const MAX_LISTING_REQUEST_BODY_BYTES = 512 * 1024");
+    expect(post).toContain("MAX_LISTING_REQUEST_BODY_BYTES");
     expect(csrf).toBeGreaterThanOrEqual(0);
     expect(parser).toBeGreaterThan(csrf);
     expect(post).not.toContain("req.json()");
