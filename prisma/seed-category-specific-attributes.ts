@@ -2869,6 +2869,31 @@ async function buildResolvedFieldKeyMap(): Promise<{
     }
   }
 
+  // Validate pre-existing namespaced keys too, before any seed write.
+  const namespacedKeys = [...resolvedSignatures.keys()].filter((resolvedKey) => !allKeys.includes(resolvedKey));
+  if (namespacedKeys.length) {
+    const existingNamespaced = await db.attributeDefinition.findMany({
+      where: { key: { in: namespacedKeys } },
+      include: { options: { orderBy: { sortOrder: "asc" }, select: { value: true } } },
+    });
+    for (const attribute of existingNamespaced) {
+      const actualSignature = fieldSignature({
+        type: attribute.type as AttrType,
+        unit: attribute.unit ?? undefined,
+        fa: attribute.labelFa ?? attribute.name,
+        en: attribute.labelEn ?? attribute.nameEn ?? "",
+        options: attribute.options.map((option) => option.value),
+        filterable: attribute.filterable,
+        searchable: attribute.searchable,
+        sortable: attribute.sortable,
+        card: attribute.visibleOnCard,
+      });
+      if (resolvedSignatures.get(attribute.key) !== actualSignature) {
+        throw new Error(`Existing namespaced AttributeDefinition "${attribute.key}" is incompatible; seed aborted before writes.`);
+      }
+    }
+  }
+
   return {
     byTemplateAndKey,
     conflictingKeyCount: [...signaturesByKey.values()].filter((signatures) => signatures.size > 1).length,
