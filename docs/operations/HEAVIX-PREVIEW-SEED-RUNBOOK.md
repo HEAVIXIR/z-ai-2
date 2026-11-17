@@ -77,6 +77,19 @@ The read-only audit currently shows: Category=16 (all root-level), Brand=10, Pro
 
 **Do not run the canonical seed sequence or mark restoration complete yet.** Recover and reconcile the original source records, names, parent paths, brand aliases/families, industries, BrandCategory links, models, attributes, and options first. The read-only verifier remains fail-closed against the documented 539-category / 629-brand snapshot until the baseline scope itself is resolved.
 
+### Manual Preview diagnostics dispatch blocker (verified 2026-11-17)
+
+The dedicated read-only workflow at `.github/workflows/preview-readonly-migration-diagnostics.yml` is present on `integration/preview-readiness-workerd-2026-11-15`, but it is absent from the repository default branch `main`. The Integration copy declares `workflow_dispatch`; the current `main` copy of `.github/workflows/ci.yml` does not declare `workflow_dispatch` either. Consequently, GitHub Actions does not expose the dedicated workflow for manual dispatch from this repository's default branch. A missing workflow page or missing **Run workflow** button is an expected repository-registration limitation, not an operator error.
+
+Do not copy this workflow to `main`, merge PR #340, or change the default branch as an informal workaround. Any such change requires a separate owner-approved decision and completion of the project's branch/PR gates.
+
+The existing `main` workflow `.github/workflows/prisma-preview-workerd-proof.yml` is **not an equivalent fallback**. It checks out the pinned historical commit `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994`, whose local Wrangler/Miniflare proof expects only two App migrations and two Store migrations. The current Integration proof code expects six App migrations and three Store migrations. That workflow also starts a local Workerd harness; it does not prove which databases the deployed Cloudflare Preview Worker is bound to. Do not dispatch it as a substitute for the current paired diagnostics.
+
+The current Integration CI run `44075800377` completed successfully, but its `Preview read-only paired migration diagnostics` job was skipped. CI success is not Preview database identity or migration-history proof.
+
+Until an owner-approved dispatch route is available and a successful run verifies both Preview database identities and migration histories, keep the database acceptance gate closed. Do not run migrations, taxonomy/attribute/catalog seeds, or deployment on the strength of CI success alone.
+
+
 ## Required schema first
 
 Before catalog seeds, the target Preview branch must have the migration:
