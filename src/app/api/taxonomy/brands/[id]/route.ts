@@ -16,6 +16,9 @@ interface Params {
 
 /* GET /api/taxonomy/brands/[id] — full detail. */
 export async function GET(_req: Request, { params }: Params) {
+  const __auth = await requireAdminPermission("taxonomy.read");
+  if (__auth.error) return __auth.error;
+
   try {
     const { id } = await params;
     const brand = await db.brand.findUnique({

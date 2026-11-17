@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
 
 /* GET /api/taxonomy/brands — search, sort, filter. */
 export async function GET(req: Request) {
+  const __auth = await requireAdminPermission("taxonomy.read");
+  if (__auth.error) return __auth.error;
+
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
@@ -23,7 +26,10 @@ export async function GET(req: Request) {
     const verification = url.searchParams.get("verification") || undefined;
     const industry = url.searchParams.get("industry") || undefined;
     const sort = url.searchParams.get("sort") || "name";
-    const limit = Number(url.searchParams.get("limit")) || 200;
+    const requestedLimit = Number(url.searchParams.get("limit") ?? url.searchParams.get("pageSize"));
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(300, Math.max(1, Math.trunc(requestedLimit)))
+      : 200;
 
     const where: any = {};
     if (status) where.status = status;
@@ -68,13 +74,14 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      brands: brands.map((b) => ({
-        ...b,
-        listingsCount: b._count.listings,
-        _count: undefined,
-      })),
-    });
+    const data = brands.map((b) => ({
+      ...b,
+      listingsCount: b._count.listings,
+      _count: undefined,
+    }));
+
+    // Preserve both response keys for existing admin consumers.
+    return NextResponse.json({ brands: data, data });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

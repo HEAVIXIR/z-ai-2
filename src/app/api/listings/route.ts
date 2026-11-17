@@ -18,9 +18,12 @@ import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
 import { getAsset, attachAsset } from "@/lib/media-service";
 import { validateListingAttributeValues } from "@/lib/listing-attributes";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const MAX_LISTING_REQUEST_BODY_BYTES = 512 * 1024;
 
 /* GET /api/listings — PUBLIC listing search. No auth required.
    Query:
@@ -325,9 +328,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
     if (!checkCsrf(req)) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+
+    const parsedBody = await readBoundedJson<Record<string, any>>(
+      req,
+      MAX_LISTING_REQUEST_BODY_BYTES,
+    );
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        { error: parsedBody.error },
+        { status: parsedBody.status },
+      );
+    }
+    const body = parsedBody.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
     }
 
     const title = String(body.title ?? "").trim();
