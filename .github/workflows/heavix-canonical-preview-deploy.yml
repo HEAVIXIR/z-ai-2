@@ -41,15 +41,11 @@ jobs:
         run: |
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "integration/preview-readiness-workerd-2026-11-15"
-          node -e '
-            const fs = require("fs");
-            const c = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8").replace(/\/\/.*$/gm, ""));
-            if (c.name !== "heavix-preview") throw new Error("Unexpected Worker name");
-            if (c.vars?.HEAVIX_ENV !== "preview") throw new Error("Worker is not Preview-only");
-            if (c.routes?.length) throw new Error("Routes are forbidden in this Preview deployment");
-            if (c.env?.production) throw new Error("Production environment config is forbidden");
-            console.log("Preview-only Worker guard passed.");
-          '
+          grep -Eq '^  "name": "heavix-preview",' wrangler.jsonc
+          grep -Eq '^    "HEAVIX_ENV": "preview",' wrangler.jsonc
+          ! grep -Eq '^  "routes"[[:space:]]*:' wrangler.jsonc
+          ! grep -Eq '^  "env"[[:space:]]*:' wrangler.jsonc
+          echo "Preview-only Worker guard passed."
           test -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" || {
             echo "::error::CLOUDFLARE_API_TOKEN is not configured."
             exit 1
