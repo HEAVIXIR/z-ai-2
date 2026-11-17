@@ -82,5 +82,9 @@ describe("administrative mutation CSRF contracts", () => {
     expect(store).toContain("!isManualImport");
     expect(store.indexOf("checkCsrf(req)")).toBeLessThan(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED"));
     expect(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(store.indexOf("preflightAIRequest({"));
+    expect(store).toContain('process.env[STORE_SOURCE_DNS_ALLOWLIST_ENV]');
+    expect(store).toContain("fetchAllowedSourcePage(url, signal, undefined, allowedHosts)");
+    expect(store).toContain("isAllowedStoreSourceUrl(url)");
+    expect(store).not.toContain('zai.functions.invoke("page_reader"');
   });
 });
