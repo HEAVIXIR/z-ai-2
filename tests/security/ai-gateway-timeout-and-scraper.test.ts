@@ -150,6 +150,9 @@ vi.mock("z-ai-web-dev-sdk", () => ({
 beforeEach(() => {
   mockCurrentUser = null;
   mockPreflightOk = true;
+  // Enable provider routes only in mocked tests; no real provider call is made.
+  process.env.HEAVIX_AI_SCRAPER_ENABLED = "true";
+  process.env.HEAVIX_STORE_SCRAPER_ENABLED = "true";
 });
 
 function readSource(rel: string): string {
@@ -162,7 +165,10 @@ function readSource(rel: string): string {
 function makePostReq(url: string, body: any): Request {
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://localhost:3000",
+    },
     body: JSON.stringify(body),
   });
 }
@@ -255,6 +261,25 @@ const SCRAPER_ROUTES = [
   { name: "admin/ai-scraper",       rel: "admin/ai-scraper/route.ts" },
   { name: "admin/store/ai-scraper", rel: "admin/store/ai-scraper/route.ts" },
 ];
+
+describe("Scraper environment gates and preflight ordering", () => {
+  it("Marketplace provider execution is configurable and the CSRF/env gates precede budget reservation", () => {
+    const src = readSource("admin/ai-scraper/route.ts");
+    expect(src).toContain('process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
+    expect(src.indexOf("checkCsrf(req)")).toBeLessThan(src.indexOf("preflightAIRequest("));
+    expect(src.indexOf("HEAVIX_AI_SCRAPER_ENABLED")).toBeLessThan(src.indexOf("preflightAIRequest("));
+    expect(src).not.toContain("AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY");
+  });
+
+  it("Store provider discovery has its own opt-in while manual imports remain available", () => {
+    const src = readSource("admin/store/ai-scraper/route.ts");
+    expect(src).toContain('process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true"');
+    expect(src).toContain('const isManualImport = body.action === "import" || body.action === "bulk-import"');
+    expect(src.indexOf("checkCsrf(req)")).toBeLessThan(src.indexOf("preflightAIRequest("));
+    expect(src.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(src.indexOf("preflightAIRequest("));
+    expect(src).not.toContain("AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY");
+  });
+});
 
 describe("STEP 11.43 Work Item 2B: scraper routes have preflightAIRequest", () => {
   for (const r of SCRAPER_ROUTES) {
