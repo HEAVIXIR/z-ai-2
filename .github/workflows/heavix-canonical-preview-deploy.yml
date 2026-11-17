@@ -1,4 +1,5 @@
 name: HEAVIX Canonical Preview Worker Deploy
+# Owner-approved, Preview-only redacted DB identity diagnostic deployment request (2026-11-18).
 
 on:
   push:
