@@ -95,3 +95,25 @@ The selected branch contains the current request-scoped Prisma Worker runtime an
 ## Actions not performed in this report
 
 No Production deployment, DNS change, stable Worker replacement, secret read/write, database connection, migration, seed, data mutation, paid AI/scraper call, or PR merge was performed.
+
+
+## 2026-11-18 isolated Integration Preview read-only route acceptance
+
+Tested with cache bypass/read-only retrieval against:
+`https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev`
+
+| Route | HTTP | Observation |
+|---|---:|---|
+| `/` | 200 | Persian HEAVIX homepage rendered with navigation, category and brand selections, service/featured sections and listing links |
+| `/login` | 200 | Login form and verification/recovery links rendered |
+| `/admin` | 200 | Anonymous request received the login surface; no admin content exposed |
+| `/api/health` | 200 | `db=up`, `storeDb=up` |
+| `/api/taxonomy` | 200 | Root categories returned, but child arrays empty |
+| `/api/transaction-types` | 200 | `types=[]` |
+| `/api/service-types` | 200 | `types=[]` |
+| `/api/attributes?category=excavator` | 200 | `attributes=[]` |
+| `/api/services?limit=50` | 200 | Service records returned |
+
+Interpretation: the two database connections are reachable in this isolated Integration Preview, but a healthy connection is not equivalent to a correctly bootstrapped product catalog. The listing wizard remains blocked by empty transaction types and attributes. The anonymous Admin response confirms the login gate only; successful owner authentication and post-login RBAC were not tested.
+
+No authenticated login, registration, email send, listing submission, database write, seed, migration or paid provider call was attempted.
