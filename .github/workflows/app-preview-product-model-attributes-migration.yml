@@ -230,14 +230,16 @@ jobs:
 
           run_query "App successful migration history" "$DATABASE_URL" "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL"
           if [[ "$QUERY_RESULT" != "2|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key" ]]; then
-            echo "FAIL: App Preview successful migration history is not the exact reviewed baseline; observed history redacted."
+            echo "DIAGNOSTIC: App Preview successful migration history (migration names and count only): $QUERY_RESULT"
+            echo "FAIL: App Preview successful migration history is not the exact reviewed baseline; refusing all migrations."
             exit 1
           fi
           echo "PASS: App Preview successful migration history matches the exact reviewed baseline."
 
           run_query "Store successful migration history" "$STORE_DATABASE_URL" "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL"
           if [[ "$QUERY_RESULT" != "2|0001_init_store_baseline,0002_add_audit_outbox" ]]; then
-            echo "FAIL: Store Preview successful migration history is not the exact reviewed baseline; observed history redacted."
+            echo "DIAGNOSTIC: Store Preview successful migration history (migration names and count only): $QUERY_RESULT"
+            echo "FAIL: Store Preview successful migration history is not the exact reviewed baseline; refusing all migrations."
             exit 1
           fi
           echo "PASS: Store Preview successful migration history matches the exact reviewed baseline."
