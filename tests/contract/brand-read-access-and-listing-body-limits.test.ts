@@ -34,6 +34,30 @@ describe("taxonomy brand read access and listing request limits", () => {
     expect(detailQuery).toBeGreaterThan(guard);
   });
 
+  it("bounds brand creation and rejects invalid JSON shapes before database writes", () => {
+    const route = source("src/app/api/taxonomy/brands/route.ts");
+    const post = route.slice(route.indexOf("export async function POST"));
+
+    expect(route).toContain('import { readBoundedJson } from "@/lib/read-bounded-json"');
+    expect(post).toContain("readBoundedJson<unknown>(req, 128 * 1024)");
+    expect(post).toContain("Array.isArray(parsed.value)");
+    expect(post.indexOf("checkCsrf(req)")).toBeLessThan(post.indexOf("readBoundedJson<unknown>"));
+    expect(post.indexOf("readBoundedJson<unknown>")).toBeLessThan(post.indexOf("db.$transaction"));
+    expect(post).not.toContain("req.json()");
+  });
+
+  it("bounds brand updates before reading existing records or mutating relations", () => {
+    const route = source("src/app/api/taxonomy/brands/[id]/route.ts");
+    const patch = route.slice(route.indexOf("export async function PATCH"));
+
+    expect(route).toContain('import { readBoundedJson } from "@/lib/read-bounded-json"');
+    expect(patch).toContain("readBoundedJson<unknown>(req, 128 * 1024)");
+    expect(patch).toContain("Array.isArray(parsed.value)");
+    expect(patch.indexOf("checkCsrf(req)")).toBeLessThan(patch.indexOf("readBoundedJson<unknown>"));
+    expect(patch.indexOf("readBoundedJson<unknown>")).toBeLessThan(patch.indexOf("db.brand.findUnique"));
+    expect(patch).not.toContain("req.json()");
+  });
+
   it("bounds listing JSON bytes and rejects CSRF before consuming the body", () => {
     const route = source("src/app/api/listings/route.ts");
     const post = route.slice(route.indexOf("export async function POST"));
