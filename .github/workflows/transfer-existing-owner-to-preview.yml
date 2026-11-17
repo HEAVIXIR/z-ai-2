@@ -98,8 +98,13 @@ jobs:
           case "$TARGET_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Target URL scheme invalid."; exit 1 ;; esac
           echo "PASS: both protected PostgreSQL URLs are present, distinct and redacted."
 
-      - name: Install PostgreSQL client library
-        run: npm install --no-save --ignore-scripts --package-lock=false pg@8.16.3
+      - name: Install isolated PostgreSQL client library
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$RUNNER_TEMP/heavix-owner-transfer-pg"
+          npm install --prefix "$install_dir" --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+          echo "PG_MODULE_PATH=$install_dir/node_modules/pg" >> "$GITHUB_ENV"
 
       - name: Run guarded Preview owner transfer preflight or apply
         shell: bash
