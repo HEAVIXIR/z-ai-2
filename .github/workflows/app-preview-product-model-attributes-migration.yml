@@ -152,7 +152,7 @@ jobs:
       - name: Set up pinned Bun runtime
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.4
+          bun-version: 1.4.4
 
       - name: Verify Bun runtime and install frozen dependencies
         shell: bash
@@ -160,7 +160,7 @@ jobs:
           set -euo pipefail
           command -v bun
           bun --version
-          test "$(bun --version)" = "1.3.4"
+          test "$(bun --version)" = "1.4.4"
           bun install --frozen-lockfile
 
       - name: Validate both Prisma schemas
