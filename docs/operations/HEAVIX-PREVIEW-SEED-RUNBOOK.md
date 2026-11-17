@@ -85,9 +85,22 @@ Do not copy this workflow to `main`, merge PR #340, or change the default branch
 
 The existing `main` workflow `.github/workflows/prisma-preview-workerd-proof.yml` is **not an equivalent fallback**. It checks out the pinned historical commit `b94b9d6f3540e8f4467b1d4ac051d5ef050c0994`, whose local Wrangler/Miniflare proof expects only two App migrations and two Store migrations. The current Integration proof code expects six App migrations and three Store migrations. That workflow also starts a local Workerd harness; it does not prove which databases the deployed Cloudflare Preview Worker is bound to. Do not dispatch it as a substitute for the current paired diagnostics.
 
-The current Integration CI run `44075800377` completed successfully, but its `Preview read-only paired migration diagnostics` job was skipped. CI success is not Preview database identity or migration-history proof.
+Integration CI run [`44079023353`](https://github.com/HEAVIXIR/z-ai-2/actions/runs/44079023353) completed successfully on commit `4a92096d2d6697e36287f56e23f7c03da0cde566`; all seven executed jobs passed. OpenNext run [`44079023363`](https://github.com/HEAVIXIR/z-ai-2/actions/runs/44079023363) also completed successfully. The `Preview read-only paired migration diagnostics` job was skipped, so CI success is not Preview database identity or migration-history proof.
 
 Until an owner-approved dispatch route is available and a successful run verifies both Preview database identities and migration histories, keep the database acceptance gate closed. Do not run migrations, taxonomy/attribute/catalog seeds, or deployment on the strength of CI success alone.
+
+
+### Legacy archive provenance inventory (verified 2026-11-17)
+
+The owner manually dispatched the read-only workflow `Legacy archive provenance inventory` on the Integration branch. Run [44081068912](https://github.com/HEAVIXIR/z-ai-2/actions/runs/44081068912) completed successfully on the exact Integration commit `4a92096d2d6697e36287f56e23f7c03da0cde566`. Artifact `legacy-member-provenance` (ID `14328005542`) contains the path/hash inventory and summary.
+
+Key results: 13 valid ZIP archives, 1,715 file occurrences, 909 unique paths, all 54 import-manifest paths present, 445 identical target paths, 383 content-different paths requiring review, and 27 unmapped paths. All 27 unmapped paths are generated Store Client outputs under `src/lib/generated/store-client/`; none is a missing taxonomy seed source. No archive member was extracted or executed.
+
+The archive's machine seed is an exact hash match for the historical source at commit `500aa1faf26c`. Its tree has 285 entries (16 L1 / 172 L2 / 97 L3), compared with 302 entries in current Integration (16 / 182 / 104). Current Integration adds 17 slugs (10 L2, 7 L3); no old slugs were removed and shared primary labels are unchanged. The archived brand pair contains 647 source entries and 621 distinct slug candidates, with 25 repeated slug values; current Phase B also includes one explicit Iveco `refreshIdentity: true` correction. These are source facts, not canonical approvals.
+
+Seven archived members (machine taxonomy, v4 taxonomy, brand batches A/B, attribute seeds, and corrected V1.1 reference) have exact SHA-256 matches to historical files at `500aa1faf26c`. The archive does not contain the newer V1.1/service-mineral seed files. The full comparison and hashes are recorded in [HEAVIX-LEGACY-ARCHIVE-PROVENANCE-2026-11-17.md](./HEAVIX-LEGACY-ARCHIVE-PROVENANCE-2026-11-17.md).
+
+This inventory improves source provenance but does not satisfy the 539-category / 629-brand baseline, prove live Preview Worker↔database identity, or authorize any seed. Keep all migration and seed gates closed until the existing requirements are met.
 
 
 ## Required schema first
