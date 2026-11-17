@@ -70,3 +70,25 @@ describe("Taxonomy seed preservation", () => {
     expect(SERVICE_MINERAL).toContain('update:{}});');
   });
 });
+
+
+describe("Catalog and attribute seed preservation", () => {
+  const CATALOG = readFileSync("prisma/seed-catalog.ts", "utf-8");
+  const CATEGORY_ATTRIBUTES = readFileSync("prisma/seed-category-specific-attributes.ts", "utf-8");
+
+  it("preserves existing compatibility edge evidence", () => {
+    expect(CATALOG).toContain("Preserve reviewed/administrator-managed edge evidence on reruns.");
+    expect(CATALOG).toContain("update: {},");
+  });
+
+  it("preserves existing attachment and part metadata", () => {
+    expect(CATALOG).toContain("Existing attachment metadata may be administrator-curated; preserve it.");
+    expect(CATALOG).toContain("Existing part metadata may be administrator-curated; preserve it.");
+  });
+
+  it("checks existing namespaced attribute definitions before the first write", () => {
+    expect(CATEGORY_ATTRIBUTES).toContain("Validate pre-existing namespaced keys too, before any seed write.");
+    expect(CATEGORY_ATTRIBUTES).toContain("Existing namespaced AttributeDefinition");
+    expect(CATEGORY_ATTRIBUTES).toContain("seed aborted before writes");
+  });
+});
