@@ -27,10 +27,17 @@ const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
 const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 
 function requireExpectedDatabaseOid(value: string | undefined, label: string): string {
-  if (!value || !/^[1-9]\d{0,9}$/.test(value) || Number(value) > 4_294_967_295) {
+  const valid = Boolean(value && /^[1-9]\d{0,9}$/.test(value) && Number(value) <= 4_294_967_295);
+  if (!valid) {
+    // Safe diagnostics only: never log the binding value or a connection URL.
+    console.error("[db-identity] expected database OID missing or invalid", {
+      database: label,
+      configured: Boolean(value),
+      validFormat: valid,
+    });
     throw new Error(label + ": missing or invalid HEAVIX database OID; refusing to create a database client");
   }
-  return value;
+  return value!;
 }
 
 export class PreviewIdentityMismatchError extends Error {
@@ -82,12 +89,38 @@ export function withIdentityGuard<TClient extends object>(
         const strings = Object.assign([identitySql], {
           raw: [identitySql],
         }) as unknown as TemplateStringsArray;
-        const rows = (await Reflect.apply(rawMethod, client, [strings])) as
-          | Array<{ system_identifier: string; database_oid: string }>
-          | undefined;
-        const actual = rows?.[0]?.system_identifier ?? "";
-        const actualOid = rows?.[0]?.database_oid ?? "";
+        let actual = "";
+        let actualOid = "";
+        try {
+          const rows = (await Reflect.apply(rawMethod, client, [strings])) as
+            | Array<{ system_identifier: string; database_oid: string }>
+            | undefined;
+          actual = rows?.[0]?.system_identifier ?? "";
+          actualOid = rows?.[0]?.database_oid ?? "";
+        } catch (error) {
+          const candidateCode = error && typeof error === "object" && "code" in error
+            ? (error as { code?: unknown }).code
+            : undefined;
+          const errorCode = typeof candidateCode === "string" && /^[A-Z0-9_]{1,32}$/.test(candidateCode)
+            ? candidateCode
+            : undefined;
+          console.error("[db-identity] identity query failed", {
+            database: label,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            ...(errorCode ? { errorCode } : {}),
+          });
+          throw error;
+        }
         if (actual !== expectedSystemIdentifier || actualOid !== expectedDatabaseOid) {
+          // Do not log either system identifier or the expected OID. The two
+          // booleans plus actual database OID are enough to locate a wrong
+          // cluster vs. wrong database without disclosing connection secrets.
+          console.error("[db-identity] Preview database identity mismatch", {
+            database: label,
+            systemIdentifierMatches: actual === expectedSystemIdentifier,
+            databaseOidMatches: actualOid === expectedDatabaseOid,
+            actualDatabaseOid: actualOid || null,
+          });
           throw new PreviewIdentityMismatchError(
             actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label,
           );
