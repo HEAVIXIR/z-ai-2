@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   paired-backup:
-    if: github.ref == 'refs/heads/security/active-session-hardening-2026-11-08'
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -50,7 +50,7 @@ jobs:
           DISPATCH_CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
           test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
@@ -270,6 +270,7 @@ jobs:
           (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
           echo "Encrypted B2 upload and read-back verified."
           echo "Object prefix: s3://$B2_BUCKET/$PREFIX"
+          echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
 
       - name: Decrypt, verify plaintext checksums and restore both databases
         shell: bash
@@ -328,3 +329,28 @@ jobs:
           test "$store_count" -gt 0
           echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
           echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
+      - name: Publish non-secret paired backup evidence for the gated Preview migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-b2"
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence"
+          mkdir -m 700 -p "$EVIDENCE"
+          test -n "${HEAVIX_BACKUP_PREFIX:-}"
+          {
+            echo "format=heavix-preview-paired-backup-evidence-v1"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "backup_prefix=$HEAVIX_BACKUP_PREFIX"
+            cat "$WORK/ENCRYPTED_SHA256SUMS"
+          } > "$EVIDENCE/backup-evidence.txt"
+          chmod 600 "$EVIDENCE/backup-evidence.txt"
+
+      - name: Upload paired backup evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          path: ${{ runner.temp }}/heavix-preview-backup-evidence/backup-evidence.txt
+          if-no-files-found: error
+          retention-days: 3
