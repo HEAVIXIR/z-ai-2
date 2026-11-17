@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-import { isAdmin } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
@@ -48,6 +47,20 @@ export async function POST(req: Request) {
           email ? { email: String(email).toLowerCase() } : {},
         ].filter((c) => Object.keys(c).length > 0),
       },
+      select: {
+        id: true,
+        passwordHash: true,
+        status: true,
+        emailVerified: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        mobile: true,
+        userType: true,
+        mobileVerified: true,
+        userRoles: { select: { role: { select: { key: true } } } },
+      },
     });
 
     if (!user) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
@@ -65,6 +78,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // Resolve canonical RBAC roles in the initial user lookup. This avoids
+    // two additional permission queries on every successful login.
+    let roles = (user.userRoles ?? []).map((entry) => entry.role.key);
+
     // Preview-only owner bootstrap: exact allowlisted, verified account must
     // successfully authenticate with its password before receiving ADMIN.
     const isPreviewDeployment = process.env.HEAVIX_ENV === "preview";
@@ -73,7 +90,7 @@ export async function POST(req: Request) {
       isPreviewDeployment &&
       ownerEmail &&
       user.email.toLowerCase() === ownerEmail &&
-      !(await isAdmin(user.id))
+      !roles.includes("ADMIN")
     ) {
       const adminRole = await db.role.findUnique({
         where: { key: "ADMIN" },
@@ -90,15 +107,14 @@ export async function POST(req: Request) {
           data: { role: "ADMIN" },
         });
 
-        const replaceableRoles = await tx.userRole.findMany({
-          where: { userId: user.id, role: { key: { in: ["ADMIN", "SELLER", "BUYER"] } } },
-          select: { id: true },
+        // Delete the replaceable default roles directly; avoid a read-before-delete
+        // round trip while keeping custom roles untouched.
+        await tx.userRole.deleteMany({
+          where: {
+            userId: user.id,
+            role: { key: { in: ["ADMIN", "SELLER", "BUYER"] } },
+          },
         });
-        if (replaceableRoles.length) {
-          await tx.userRole.deleteMany({
-            where: { id: { in: replaceableRoles.map((r) => r.id) } },
-          });
-        }
 
         await tx.userRole.upsert({
           where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
@@ -106,6 +122,8 @@ export async function POST(req: Request) {
           update: {},
         });
       });
+
+      roles = [...roles.filter((key) => !["ADMIN", "SELLER", "BUYER"].includes(key)), "ADMIN"];
 
       await logAudit({
         actorId: user.id,
@@ -125,12 +143,7 @@ export async function POST(req: Request) {
     });
     await createUserSession(user.id);
 
-    const admin = await isAdmin(user.id);
-    const userRoles = await db.userRole.findMany({
-      where: { userId: user.id },
-      select: { role: { select: { key: true } } },
-    });
-    const roles = userRoles.map((r) => r.role.key);
+    const admin = roles.includes("ADMIN");
     const role = admin ? "admin" : (roles[0] ?? "BUYER");
 
     return NextResponse.json({
