@@ -634,17 +634,14 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       active: true,
       showOnHome: true,
     },
+    // Preserve curated labels, icon, ordering and featured state. Only apply
+    // the reviewed hierarchy/layer path needed by this taxonomy reconciliation.
     update: {
-      name: c.name,
-      nameEn: c.nameEn ?? null,
       layer: c.layer,
-      icon: c.icon ?? null,
       domain: domain ?? null,
       taxPath,
       parentId: parentId ?? null,
       level,
-      sortOrder: c.sortOrder ?? 0,
-      featured: c.featured ?? false,
     },
   });
 
@@ -696,7 +693,7 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder },
+      update: {},
     });
   }
 
@@ -706,7 +703,7 @@ async function main() {
     await db.serviceType.upsert({
       where: { key: s.key },
       create: s,
-      update: { nameFa: s.nameFa, nameEn: s.nameEn, icon: s.icon, sortOrder: s.sortOrder },
+      update: {},
     });
   }
 
@@ -716,7 +713,7 @@ async function main() {
     await db.applicationIndustry.upsert({
       where: { key: i.key },
       create: i,
-      update: { nameFa: i.nameFa, nameEn: i.nameEn, icon: i.icon, sortOrder: i.sortOrder },
+      update: {},
     });
   }
 
@@ -733,7 +730,7 @@ async function main() {
   const iran = await db.country.upsert({
     where: { name: "ایران" },
     create: { name: "ایران", nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
-    update: { nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
+    update: {},
   });
 
   let totalCities = 0;
@@ -742,13 +739,13 @@ async function main() {
     const prov = await db.province.upsert({
       where: { countryId_name: { countryId: iran.id, name: pr.name } },
       create: { countryId: iran.id, name: pr.name, sortOrder: p + 1 },
-      update: { sortOrder: p + 1 },
+      update: {},
     });
     for (let c = 0; c < pr.cities.length; c++) {
       await db.city.upsert({
         where: { provinceId_name: { provinceId: prov.id, name: pr.cities[c] } },
         create: { provinceId: prov.id, name: pr.cities[c], sortOrder: c + 1 },
-        update: { sortOrder: c + 1 },
+        update: {},
       });
       totalCities++;
     }
