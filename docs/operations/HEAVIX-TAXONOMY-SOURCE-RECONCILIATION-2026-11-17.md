@@ -25,7 +25,12 @@
 | Slugs present in 2+ source records | 91 |
 | Extra repeated occurrences beyond first definition | 91 |
 | Slugs with different primary `name` labels | 50 |
-| Slugs with different parent path / layer / domain signatures | 54 |
+| Slugs with different parent paths | 54 |
+| Slugs with different layers | 1 |
+| Slugs with different effective domains | 12 |
+| Slugs with different combined parent-path/layer/domain signatures | 54 |
+
+Effective V1.1 domain values follow the seed implementation: an omitted `domain` on a `CATALOG` category resolves to `MACHINE`; this inventory does not treat that omission as an unknown domain. The 54 combined identity conflicts are driven by parent-path differences; layer and effective-domain differences are separately counted above.
 
 These counts are the exact extraction result for the recorded commit. They supersede older runbook counts if those differ. The historical 539-category snapshot remains a separate, unverified target and must not be treated as reconciled by this source union.
 
@@ -50,15 +55,15 @@ Each row shows the source-defined primary label, normalized category path, and l
 | `concrete-mixer` | legacy-machine: “میکسر بتن” — `machinery/concrete-asphalt/concrete-mixer` (`CATALOG/MACHINE`)<br>v1.1: “میکسر بتن” — `machinery/road-construction/concrete-machinery/concrete-mixer` (`CATALOG/MACHINE`) |
 | `concrete-pump` | legacy-machine: “پمپ بتن” — `machinery/concrete-asphalt/concrete-pump` (`CATALOG/MACHINE`)<br>v1.1: “پمپ بتن” — `machinery/road-construction/concrete-machinery/concrete-pump` (`CATALOG/MACHINE`) |
 | `cone-crusher` | legacy-machine: “سنگ‌شکن مخروطی” — `machinery/crushing-processing/cone-crusher` (`CATALOG/MACHINE`)<br>v1.1: “مخروطی” — `machinery/crushing-screening/cone-crusher` (`CATALOG/MACHINE`) |
-| `container-forklift` | legacy-machine: “Container” — `machinery/forklift-material/forklift/container-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک کانتینری” — `machinery/forklift-warehouse/forklift/container-forklift` (`CATALOG/?`) |
+| `container-forklift` | legacy-machine: “Container” — `machinery/forklift-material/forklift/container-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک کانتینری” — `machinery/forklift-warehouse/forklift/container-forklift` (`CATALOG/MACHINE`) |
 | `core-drill` | legacy-machine: “Core Drill” — `machinery/drilling/core-drill` (`CATALOG/MACHINE`)<br>v1.1: “مغزه‌گیر” — `machinery/drilling-rigs/core-drill` (`CATALOG/MACHINE`) |
 | `cranes-lifting` | legacy-machine: “۰۶ جرثقیل، بالابر و لیفتینگ” — `machinery/cranes-lifting` (`CATALOG/MACHINE`)<br>v1.1: “۰۱.۰۵ جرثقیل و بالابر” — `machinery/cranes-lifting` (`CATALOG/MACHINE`) |
 | `crawler-crane` | legacy-machine: “جرثقیل زنجیری” — `machinery/cranes-lifting/crawler-crane` (`CATALOG/MACHINE`)<br>v1.1: “جرثقیل زنجیری” — `machinery/cranes-lifting/crawler-crane` (`CATALOG/MACHINE`) |
 | `cutting-equipment` | legacy-machine: “تجهیزات برش صنعتی” — `machinery/power-energy/cutting-equipment` (`CATALOG/MACHINE`)<br>v1.1: “تجهیزات برش” — `industrial-equipment/cutting-equipment` (`CATALOG/INDUSTRIAL_EQUIPMENT`) |
-| `diesel-forklift` | legacy-machine: “Diesel” — `machinery/forklift-material/forklift/diesel-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک دیزلی” — `machinery/forklift-warehouse/forklift/diesel-forklift` (`CATALOG/?`) |
+| `diesel-forklift` | legacy-machine: “Diesel” — `machinery/forklift-material/forklift/diesel-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک دیزلی” — `machinery/forklift-warehouse/forklift/diesel-forklift` (`CATALOG/MACHINE`) |
 | `double-drum-roller` | legacy-machine: “دو‌درام” — `machinery/road-construction/road-roller/double-drum-roller` (`CATALOG/MACHINE`)<br>v1.1: “غلتک دو‌درام” — `machinery/road-construction/road-roller/double-drum-roller` (`CATALOG/MACHINE`) |
 | `drill-rig` | legacy-machine: “Drill Rig” — `machinery/drilling/drill-rig` (`CATALOG/MACHINE`)<br>v1.1: “Drill Rig” — `machinery/drilling-rigs/drill-rig` (`CATALOG/MACHINE`) |
-| `electric-forklift` | legacy-machine: “Electric” — `machinery/forklift-material/forklift/electric-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک برقی” — `machinery/forklift-warehouse/forklift/electric-forklift` (`CATALOG/?`) |
+| `electric-forklift` | legacy-machine: “Electric” — `machinery/forklift-material/forklift/electric-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک برقی” — `machinery/forklift-warehouse/forklift/electric-forklift` (`CATALOG/MACHINE`) |
 | `excavator` | legacy-machine: “بیل مکانیکی” — `machinery/road-construction/excavator` (`CATALOG/MACHINE`)<br>v1.1: “بیل مکانیکی” — `machinery/road-construction/excavator` (`CATALOG/MACHINE`) |
 | `excavator-chain` | legacy-machine: “زنجیری” — `machinery/road-construction/excavator/excavator-chain` (`CATALOG/MACHINE`)<br>v1.1: “زنجیری” — `machinery/road-construction/excavator/excavator-chain` (`CATALOG/MACHINE`) |
 | `excavator-wheel` | legacy-machine: “چرخ لاستیکی” — `machinery/road-construction/excavator/excavator-wheel` (`CATALOG/MACHINE`)<br>v1.1: “چرخ لاستیکی” — `machinery/road-construction/excavator/excavator-wheel` (`CATALOG/MACHINE`) |
@@ -70,11 +75,11 @@ Each row shows the source-defined primary label, normalized category path, and l
 | `fuel-station-equipment` | legacy-machine: “تجهیزات جایگاه سوخت” — `machinery/power-energy/fuel-station-equipment` (`CATALOG/MACHINE`)<br>v1.1: “تجهیزات جایگاه سوخت” — `industrial-equipment/fuel-station-equipment` (`CATALOG/INDUSTRIAL_EQUIPMENT`) |
 | `fuel-storage-tank` | legacy-machine: “مخزن ذخیره سوخت” — `machinery/power-energy/fuel-station-equipment/fuel-storage-tank` (`CATALOG/MACHINE`)<br>v1.1: “مخزن ذخیره سوخت” — `industrial-equipment/fuel-station-equipment/fuel-storage-tank` (`CATALOG/INDUSTRIAL_EQUIPMENT`) |
 | `gantry-crane` | legacy-machine: “جرثقیل دروازه‌ای” — `machinery/cranes-lifting/gantry-crane` (`CATALOG/MACHINE`)<br>v1.1: “گانتری کرین” — `machinery/port-machinery/gantry-crane` (`CATALOG/MACHINE`) |
-| `gasoline-forklift` | legacy-machine: “Gasoline” — `machinery/forklift-material/forklift/gasoline-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک بنزینی” — `machinery/forklift-warehouse/forklift/gasoline-forklift` (`CATALOG/?`) |
+| `gasoline-forklift` | legacy-machine: “Gasoline” — `machinery/forklift-material/forklift/gasoline-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک بنزینی” — `machinery/forklift-warehouse/forklift/gasoline-forklift` (`CATALOG/MACHINE`) |
 | `generator` | legacy-machine: “ژنراتور” — `machinery/power-energy/generator` (`CATALOG/MACHINE`)<br>v1.1: “ژنراتور” — `industrial-equipment/generator` (`CATALOG/INDUSTRIAL_EQUIPMENT`) |
 | `geotechnical-drill` | legacy-machine: “Geotechnical Drill” — `machinery/drilling/geotechnical-drill` (`CATALOG/MACHINE`)<br>v1.1: “حفاری ژئوتکنیک” — `machinery/drilling-rigs/geotechnical-drill` (`CATALOG/MACHINE`) |
 | `grader` | legacy-machine: “گریدر” — `machinery/road-construction/grader` (`CATALOG/MACHINE`)<br>v1.1: “گریدر” — `machinery/road-construction/grader` (`CATALOG/MACHINE`) |
-| `heavy-duty-forklift` | legacy-machine: “Heavy Duty” — `machinery/forklift-material/forklift/heavy-duty-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک سنگین” — `machinery/forklift-warehouse/forklift/heavy-duty-forklift` (`CATALOG/?`) |
+| `heavy-duty-forklift` | legacy-machine: “Heavy Duty” — `machinery/forklift-material/forklift/heavy-duty-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک سنگین” — `machinery/forklift-warehouse/forklift/heavy-duty-forklift` (`CATALOG/MACHINE`) |
 | `heavy-haulage` | legacy-machine: “ماشین حمل فوق‌سنگین” — `machinery/industrial-haulage/heavy-haulage` (`CATALOG/MACHINE`)<br>v1.1: “حمل سنگین” — `transport-logistics/heavy-haulage` (`SERVICE/TRANSPORT`) |
 | `hvac-equipment` | legacy-machine: “تجهیزات تهویه مطبوع” — `machinery/power-energy/hvac-equipment` (`CATALOG/MACHINE`)<br>v1.1: “تجهیزات تهویه” — `industrial-equipment/hvac-equipment` (`CATALOG/INDUSTRIAL_EQUIPMENT`) |
 | `impact-crusher` | legacy-machine: “سنگ‌شکن ضربه‌ای” — `machinery/crushing-processing/impact-crusher` (`CATALOG/MACHINE`)<br>v1.1: “ضربه‌ای” — `machinery/crushing-screening/impact-crusher` (`CATALOG/MACHINE`) |
@@ -84,7 +89,7 @@ Each row shows the source-defined primary label, normalized category path, and l
 | `jumbo-drill` | legacy-machine: “Jumbo Drill” — `machinery/drilling/jumbo-drill` (`CATALOG/MACHINE`)<br>v1.1: “جامبو حفاری تونل” — `machinery/drilling-rigs/jumbo-drill` (`CATALOG/MACHINE`) |
 | `lhd` | legacy-machine: “LHD” — `machinery/mining-machinery/lhd` (`CATALOG/MACHINE`)<br>v1.1: “LHD” — `machinery/mining-machinery/lhd` (`CATALOG/MACHINE`) |
 | `loader` | legacy-machine: “لودر” — `machinery/road-construction/loader` (`CATALOG/MACHINE`)<br>v1.1: “لودر” — `machinery/road-construction/loader` (`CATALOG/MACHINE`) |
-| `lpg-forklift` | legacy-machine: “LPG” — `machinery/forklift-material/forklift/lpg-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک LPG” — `machinery/forklift-warehouse/forklift/lpg-forklift` (`CATALOG/?`) |
+| `lpg-forklift` | legacy-machine: “LPG” — `machinery/forklift-material/forklift/lpg-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک LPG” — `machinery/forklift-warehouse/forklift/lpg-forklift` (`CATALOG/MACHINE`) |
 | `marine-crane` | legacy-machine: “جرثقیل دریایی” — `machinery/cranes-lifting/marine-crane` (`CATALOG/MACHINE`)<br>v1.1: “جرثقیل دریایی” — `machinery/cranes-lifting/marine-crane` (`CATALOG/MACHINE`) |
 | `mini-excavator` | legacy-machine: “مینی بیل” — `machinery/road-construction/excavator/mini-excavator` (`CATALOG/MACHINE`)<br>v1.1: “مینی بیل” — `machinery/road-construction/excavator/mini-excavator` (`CATALOG/MACHINE`) |
 | `mining-excavator-machine` | legacy-machine: “بیل معدنی” — `machinery/mining-machinery/mining-excavator-machine` (`CATALOG/MACHINE`)<br>v1.1: “بیل معدنی” — `machinery/mining-machinery/mining-excavator-machine` (`CATALOG/MACHINE`) |
@@ -103,12 +108,12 @@ Each row shows the source-defined primary label, normalized category path, and l
 | `road-construction` | legacy-machine: “۰۱ ماشین‌آلات راهسازی و عمرانی” — `machinery/road-construction` (`CATALOG/MACHINE`)<br>v1.1: “۰۱.۰۱ ماشین‌آلات راهسازی و عمرانی” — `machinery/road-construction` (`CATALOG/MACHINE`) |
 | `road-roller` | legacy-machine: “غلتک” — `machinery/road-construction/road-roller` (`CATALOG/MACHINE`)<br>v1.1: “غلتک” — `machinery/road-construction/road-roller` (`CATALOG/MACHINE`) |
 | `rotary-drill` | legacy-machine: “Rotary Drill” — `machinery/drilling/rotary-drill` (`CATALOG/MACHINE`)<br>v1.1: “Rotary Drill” — `machinery/drilling-rigs/rotary-drill` (`CATALOG/MACHINE`) |
-| `rough-terrain-forklift` | legacy-machine: “Rough Terrain” — `machinery/forklift-material/forklift/rough-terrain-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک آفرود” — `machinery/forklift-warehouse/forklift/rough-terrain-forklift` (`CATALOG/?`) |
+| `rough-terrain-forklift` | legacy-machine: “Rough Terrain” — `machinery/forklift-material/forklift/rough-terrain-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک آفرود” — `machinery/forklift-warehouse/forklift/rough-terrain-forklift` (`CATALOG/MACHINE`) |
 | `scraper` | legacy-machine: “اسکریپر” — `machinery/road-construction/scraper` (`CATALOG/MACHINE`)<br>v1.1: “اسکریپر” — `machinery/road-construction/scraper` (`CATALOG/MACHINE`) |
 | `screen` | legacy-machine: “سرند” — `machinery/crushing-processing/screen` (`CATALOG/MACHINE`)<br>v1.1: “سرند” — `machinery/crushing-screening/screen` (`CATALOG/MACHINE`) |
 | `shotcrete-machine` | legacy-machine: “Shotcrete Machine” — `machinery/tunnel-underground/shotcrete-machine` (`CATALOG/MACHINE`)<br>v1.1: “شاتکریت” — `machinery/road-construction/concrete-machinery/shotcrete-machine` (`CATALOG/MACHINE`) |
 | `shovel` | legacy-machine: “شاول” — `machinery/mining-machinery/shovel` (`CATALOG/MACHINE`)<br>v1.1: “شاول” — `machinery/mining-machinery/shovel` (`CATALOG/MACHINE`) |
-| `side-loader-forklift` | legacy-machine: “Side Loader” — `machinery/forklift-material/forklift/side-loader-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک جانبی” — `machinery/forklift-warehouse/forklift/side-loader-forklift` (`CATALOG/?`) |
+| `side-loader-forklift` | legacy-machine: “Side Loader” — `machinery/forklift-material/forklift/side-loader-forklift` (`CATALOG/MACHINE`)<br>v1.1: “لیفتراک جانبی” — `machinery/forklift-warehouse/forklift/side-loader-forklift` (`CATALOG/MACHINE`) |
 | `single-drum-roller` | legacy-machine: “تک‌درام” — `machinery/road-construction/road-roller/single-drum-roller` (`CATALOG/MACHINE`)<br>v1.1: “غلتک تک‌درام” — `machinery/road-construction/road-roller/single-drum-roller` (`CATALOG/MACHINE`) |
 | `sized-iron-ore` | mineral: “سنگ آهن دانه‌بندی” — `mineral-root-unknown/sized-iron-ore/sized-iron-ore` (`CATALOG/MATERIAL`)<br>mineral: “سنگ آهن دانه‌بندی” — `mineral-root-unknown/sized-iron-ore` (`CATALOG/MATERIAL`) |
 | `skid-steer-loader` | legacy-machine: “Skid Steer” — `machinery/road-construction/loader/skid-steer-loader` (`CATALOG/MACHINE`)<br>v1.1: “اسکید استیر” — `machinery/road-construction/loader/skid-steer-loader` (`CATALOG/MACHINE`) |
