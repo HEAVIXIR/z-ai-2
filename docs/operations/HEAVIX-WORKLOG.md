@@ -652,3 +652,17 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Created `docs/operations/HEAVIX-RECONCILIATION-2026-11-18.md` (commit c9a03308ecd402fbea63cfbb92a5e270e1ec829a) with evidence, repository inventory, workflow results, current Preview diagnosis, and next gates.
 - No Production deployment, DNS change, secret-value read/change, schema change, migration, seed, database write, password change, auth/RBAC weakening, scraper provider enablement, or B2 object operation occurred.
 - **Next action requires separate owner approval:** correct only `HEAVIX_APP_PREVIEW_DATABASE_OID` and `HEAVIX_STORE_PREVIEW_DATABASE_OID` to the verified runtime OID `5`, then rerun the guarded Preview deployment and health gate. Do not bypass the identity guard.
+
+
+## 2026-11-18 — Evidence-led continuation and capability reconciliation
+
+- Re-read the mandatory continuation protocol, machine-readable checkpoint, capability reconciliation, legacy archive provenance, taxonomy source reconciliation, Preview seed runbook, Cloudflare quota policy, CI/Preview binding audit, project principles, architecture overview, integration plan and legacy inventory.
+- Confirmed Integration Preview workflow #44187433734 completed successfully on its exact selected-branch commit: dependencies, Prisma clients, OpenNext build, isolated Integration Worker Preview deployment and response verification all passed.
+- Inspected Issue #337: catalog remains blocked pending exact App/Store Preview identity proof, taxonomy source reconciliation, migration-history verification and explicit additive-seed approval.
+- Inspected PR #340: Draft/open validation vehicle targeting main; not merged. It does not authorize DB writes, stable Worker replacement, Production deployment or Cloudflare Workers Builds reconnection.
+- Reconciled auth source: historical `integration/heavix-unified` contains six-digit email verification and Google OAuth2 Gmail API delivery. The selected Preview audit reports missing Gmail binding names; exact configuration provenance remains to be verified.
+- Reconciled scraper regression: selected branch commits bf4293f5 and 70c38469 disabled provider-backed Marketplace/Store scraper routes. Fuller hardened Marketplace implementation exists on fix/admin-ai-scraper-hardening-2026-11-15; Store implementation needs separate recovery. No paid provider execution is authorized.
+- Reviewed taxonomy conflict inventory: 622 source records, 531 unique candidate slugs, 54 combined parent-path/layer/domain conflicts. No seed is safe until canonical decisions and DB identity gates are complete.
+- Added `docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md` (commit f63b15b4c5e3f447619ed09ab416677ed7634428) with evidence, constraints, capability gaps and next execution order.
+- No Production/DNS/stable Worker change, secrets read/write, DB access/write, migration, seed, paid AI call or PR merge was performed.
+- Next: refresh exact Integration HEAD and CI, perform read-only route acceptance on isolated Preview, diagnose canonical Preview App/Store OID mismatch without reading secret values, then reconcile auth and scraper source implementations file-by-file.
