@@ -17,7 +17,7 @@ describe("Prisma Preview Workerd dispatch safety contract", () => {
 
   it("uses a protected environment and the exact selected recovery commit", () => {
     expect(workflow).toContain("environment: preview-backup");
-    expect(workflow).toContain("refs/heads/recovery/heavix-full-product-integration-2026-11-11");
+    expect(workflow).toContain('test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"');
     expect(workflow).toContain("ref: ${{ github.sha }}");
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"');
     expect(workflow).not.toContain("b94b9d6f3540e8f4467b1d4ac051d5ef050c0994");
