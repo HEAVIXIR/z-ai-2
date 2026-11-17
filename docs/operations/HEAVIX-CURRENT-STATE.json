@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-16T12:59:00+03:30",
+  "updated_at_utc": "2026-11-17T20:40:00.675Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -15,10 +15,18 @@
   "preview": {
     "url": "https://heavix-preview.heavixir.workers.dev",
     "must_preserve_existing_url": true,
-    "deployment_status": "Recovery candidate NOT DEPLOYED. Existing Worker heavix-preview remains active deployment 9c079e5b-e3df-4295-80e0-e930d2d25552, version #17 063ce438-ca3a-4482-b416-9260b780bccf at 100% traffic. previews_enabled=false; Preview list empty. Current read-only smoke: root timeout, /api/health 503, /api/services 500, /services 404, /api/opennext-runtime-proof 404.",
-    "database_identity_app": "NOT VERIFIED",
-    "database_identity_store": "NOT VERIFIED",
-    "production_isolation": "NOT VERIFIED"
+    "deployment_status": "Canonical Worker heavix-preview is active on version #22 (b9690474-b947-4945-9535-31255a5b578b) at 100% traffic. Version #22 was created by a secret/config update; its script ETag matches version #19 from 2026-11-11, so the application code bundle is stale relative to selected Integration. Preserve version #17 as a historical rollback baseline; it is not the active version.",
+    "database_identity_app": "NOT VERIFIED. Integration preview health returned db=up, but the exact Worker binding OID has not been independently tied to MAIN_PREVIEW_DATABASE_URL.",
+    "database_identity_store": "NOT VERIFIED. Latest Integration preview health returned storeDb=down.",
+    "production_isolation": "NOT VERIFIED",
+    "active_worker_version": {
+      "number": 22,
+      "id": "b9690474-b947-4945-9535-31255a5b578b",
+      "traffic_percent": 100,
+      "created_at_utc": "2026-11-17T17:41:08.180649Z",
+      "trigger": "secret/config update",
+      "script_etag_same_as_version_19": true
+    }
   },
   "production_and_dns": {
     "production_changes_allowed": false,
@@ -188,28 +196,34 @@
     "Global Listing.sourceUrl uniqueness decision after duplicate assessment.",
     "Media legal/consent policy, final route/RBAC/SEO acceptance and release-candidate PR.",
     "Production domain/DNS and Production deployment remain not performed.",
-    "CI run #43834097936 on Integration exact head 96bbad68 is in progress; no success claim until all required jobs complete.",
-    "Do not claim CI/OpenNext success for f2b0afa9f4a0813143cdf3b840944e17552694eb until run #43840734308 and #43840734286 both complete successfully."
+    "Do not claim CI/OpenNext success for f2b0afa9f4a0813143cdf3b840944e17552694eb until run #43840734308 and #43840734286 both complete successfully.",
+    "Canonical Worker login failure on version #22 is not independently captured in Cloudflare logs; CPU failures are proven on Integration Preview.",
+    "Workers account billing plan was not independently verified by the Cloudflare API; Free-plan is supported by repository history and runtime CPU behavior.",
+    "Actual Worker App/Store database identities and Production isolation remain NOT VERIFIED; no read-only proof workflow was dispatched.",
+    "No CPU budget or billing plan was changed; no bcrypt rounds were weakened; no password was reset or submitted.",
+    "No canonical Worker code was deployed; active version #22 remains on the 2026-11-11 code bundle.",
+    "Store DB is down in the latest Integration-preview health result."
   ],
-  "next_action": "Poll exact-head CI #43840734308 and OpenNext proof #43840734286 on f2b0afa9f4a0813143cdf3b840944e17552694eb. Verify AI scraper policy-gate tests, CSRF same-origin test fixtures, navigation fixture, and shipment lifecycle contract. Then isolate remaining RBAC/seed-vs-test issues without weakening fail-closed authorization. Continue dependency-aware selective transfers into Integration; no broad PR merges.",
+  "next_action": "Do not merge or deploy. Obtain an explicit owner decision on Workers Paid (minimum $5/month) or an approved alternative CPU-capable authentication/runtime architecture: Cloudflare logs show four distinct Integration-preview POST /api/auth/login CPU-limit failures and two admin-dashboard CPU-limit failures; the repository reverted limits.cpu_ms=2000 specifically for Free-plan compatibility. The connected Cloudflare API does not expose plan checkout. After the plan/runtime decision, restore a bounded CPU budget only if eligible, rerun exact-head CI/OpenNext and Preview login/SSR smoke, then perform the separately approved read-only App/Store OID proof tied to the actual Worker bindings. Resolve Store DB down and verify transfer-target/runtime DB equivalence before considering Preview release.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 43840734308,
-    "sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
+    "id": 44147305639,
+    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
-    "status": "queued",
-    "conclusion": null,
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43840734308",
-    "note": "Exact-head CI run queued after selective transfer of policy-gated AI scraper implementations and correction of CSRF test request fixtures. OpenNext proof #43840734286 is in progress on the same exact head."
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305639",
+    "note": "Exact-head CI on selected Integration branch; successful."
   },
-  "latest_code_head_sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
+  "latest_code_head_sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
   "latest_ci_run": {
-    "id": 43840734308,
-    "sha": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
+    "id": 44147305639,
+    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
-    "status": "queued",
-    "conclusion": null,
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/43840734308"
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305639",
+    "note": "Exact-head CI on selected Integration branch; successful."
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -226,11 +240,11 @@
     ]
   },
   "latest_verified_ci_run": {
-    "id": 42979858320,
-    "sha": "b74d23b9014ac42437d62181b06ffd1fcfcd9be4",
+    "id": 44147305639,
+    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/42979858320",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305639",
     "jobs": [
       "verify",
       "phase-tests",
@@ -239,10 +253,7 @@
       "docker-build-proof",
       "Cloudflare compatibility (report-only)"
     ],
-    "skipped": [
-      "Legacy archive inventory (read-only)"
-    ],
-    "note": "Exact PR-head run independently verified; all six main jobs passed. Legacy archive inventory skipped."
+    "note": "Latest exact-head CI run verified successful on 2026-11-17."
   },
   "confirmed_blockers": [
     "Vercel Preview for scraper branch is READY but protected by Vercel login; no browser/admin acceptance performed.",
@@ -251,8 +262,11 @@
     "PR #333 test suite had two consecutive assertion-only failures during test authoring; latest correction is cd8ef0e and the current CI run is in progress.",
     "PR #330 and #331 were retargeted to recovery and GitHub reports mergeable=false; neither was merged.",
     "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred.",
-    "PR #340 currently has integration as its head and recovery as its base; this is the reverse of the selected integration destination and must not be merged as-is.",
-    "Exact-head CI after AI scraper, CSRF fixture, navigation fixture and shipment contract repairs is pending on f2b0afa9f4a0813143cdf3b840944e17552694eb. Prior head 96a68883 had 32/1266 security tests fail; those failures are being addressed with real implementation fixes and correct test-origin fixtures, not by disabling tests."
+    "Integration-preview login POSTs are confirmed to fail with 'Worker exceeded CPU time limit' (four distinct requests on 2026-11-17); admin dashboard SSR also hit the same CPU limit. Cloudflare Free allows 10 ms/request; repository history explicitly reverted a 2000 ms CPU budget for Free-plan compatibility. Current account billing plan is not independently verified.",
+    "Canonical Worker code is stale: active version #22 script ETag matches version #19 from 2026-11-11; current Integration app source has not been promoted.",
+    "Latest Integration-preview health: App DB up, Store DB down. Exact Worker App/Store binding OID identity proof remains NOT VERIFIED.",
+    "Transfer workflow source HEAVIX_OWNER_SOURCE_DATABASE_URL is not a Worker runtime binding; target MAIN_PREVIEW_DATABASE_URL is not proven to be the same database as Worker DATABASE_URL because the transfer script checks cluster system ID but not target DB OID.",
+    "PR #340 is Draft with Integration head and main base; do not merge until CPU, database identity, Store health, artifact provenance and acceptance gates pass."
   ],
   "platform_roadmap": {
     "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
@@ -392,7 +406,7 @@
     ],
     "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
   },
-  "latest_documentation_checkpoint_commit_sha": "c311854b689cb3876407f30fa401ba180301a3f4",
+  "latest_documentation_checkpoint_commit_sha": "953feb06050ebcd19bef9e1b089f0972c743b84d",
   "legacy_snapshot_reconciliation": {
     "status": "SOURCE ARCHIVE IDENTITY VERIFIED; FILE-LEVEL CURRENT-BRANCH PARITY STILL IN PROGRESS",
     "source_repository": "HEAVIXIR/z",
@@ -580,7 +594,11 @@
     "Media legal/consent policy for third-party images and seller contact data needs explicit product/legal acceptance.",
     "Cloudflare automatic build trigger for closed PR #332 branch remains configured; do not push that branch. Its prior build failed because build:cloudflare is missing; no deployment occurred.",
     "Production domain, DNS, custom-domain binding and Production rollout remain intentionally untouched.",
-    "Selected Integration branch currently has PR #340 pointing into the historical recovery branch; do not merge in that direction. Consolidate capabilities into Integration and later correct/replace the tracking PR direction."
+    "Selected Integration branch currently has PR #340 pointing into the historical recovery branch; do not merge in that direction. Consolidate capabilities into Integration and later correct/replace the tracking PR direction.",
+    "CPU execution ceiling: four Integration-preview login POSTs and two admin dashboard requests were terminated with 'Worker exceeded CPU time limit'. Current wrangler.jsonc has no limits.cpu_ms; repository history reverted 2000 ms because of Free-plan compatibility. Obtain an owner decision on Workers Paid or an approved alternative before attempting login validation or deployment.",
+    "Store database remains down in Integration-preview health. Exact Store binding identity and connectivity are NOT VERIFIED.",
+    "Canonical Worker active version #22 has unchanged application script ETag since version #19 on 2026-11-11; no code deployment from current Integration head.",
+    "Exact identity between transfer target MAIN_PREVIEW_DATABASE_URL and Worker runtime DATABASE_URL is NOT VERIFIED; transfer script did not check target database OID."
   ],
   "last_verified_legacy_parity": {
     "audited_at_utc": "2026-11-11T22:30:00.000Z",
@@ -630,7 +648,7 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "3769f6b9d9c1553879e5eff14c587a896ab7ba1f",
+  "documentation_head": "953feb06050ebcd19bef9e1b089f0972c743b84d",
   "recovery_latest_exact_head_ci": {
     "id": 43714375711,
     "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
@@ -692,10 +710,79 @@
     "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved.",
     "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit.",
     "selected_integration_branch": "integration/preview-readiness-workerd-2026-11-15",
-    "selected_integration_head": "f2b0afa9f4a0813143cdf3b840944e17552694eb",
+    "selected_integration_head": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
     "tracking_pr": 340,
-    "tracking_pr_direction": "Integration branch to main (Draft only); no merge or deployment.",
-    "exact_head_ci_run": 43840734308,
-    "exact_head_opennext_run": 43840734286
+    "tracking_pr_direction": "Integration branch to main (Draft only; not merged).",
+    "exact_head_ci_run": 44147305639,
+    "exact_head_opennext_run": 44147305523,
+    "exact_head_ci_status": "SUCCESS",
+    "exact_head_opennext_status": "SUCCESS",
+    "cpu_gate": "BLOCKED: confirmed CPU-limit failures on Integration-preview login and admin SSR; plan/CPU budget decision required.",
+    "app_db_identity": "NOT VERIFIED",
+    "store_db_identity": "NOT VERIFIED; latest preview health storeDb=down",
+    "canonical_worker_code": "STALE: active version #22 ETag unchanged from version #19 (2026-11-11)."
+  },
+  "latest_opennext_proof_run": {
+    "id": 44147305523,
+    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305523",
+    "note": "OpenNext/Workerd proof successful on selected Integration branch."
+  },
+  "integration_preview": {
+    "url": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
+    "workflow_run": 44147268527,
+    "source_commit": "416842cc7d11772700a6875db57518d5cb91bd58",
+    "current_code_head": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "workflow_mode": "wrangler preview (not wrangler deploy)",
+    "health": {
+      "app_db": "up",
+      "store_db": "down"
+    },
+    "note": "Compare 416842cc... to current head 4d7c791... showed only transfer-existing-owner-to-preview.yml changed; app source is unchanged."
+  },
+  "runtime_login_cpu_audit": {
+    "status": "CPU-limit failure CONFIRMED for Integration Preview login; canonical Worker login failure NOT VERIFIED by logs.",
+    "distinct_failed_login_posts": [
+      {
+        "at": "2026-11-17T13:01:44.658Z",
+        "version": "73d22852-785a-4832-8b5b-65a0ef18f2f9",
+        "ray_id": "a5beed011f70d22a"
+      },
+      {
+        "at": "2026-11-17T13:01:49.039Z",
+        "version": "73d22852-785a-4832-8b5b-65a0ef18f2f9",
+        "ray_id": "a5beed1cae78d22a"
+      },
+      {
+        "at": "2026-11-17T14:20:22.688Z",
+        "version": "cc3e3ad6-f991-444d-9db8-f361e6443e01",
+        "ray_id": "a5bf603129301d10"
+      },
+      {
+        "at": "2026-11-17T14:21:31.037Z",
+        "version": "cc3e3ad6-f991-444d-9db8-f361e6443e01",
+        "ray_id": "a5bf61dc69bb1d10"
+      }
+    ],
+    "additional_admin_dashboard_cpu_failures": [
+      {
+        "at": "2026-11-17T19:50:34.792Z",
+        "version": "3b8c83f7-94a1-4b5c-ae5c-dfca84008456"
+      },
+      {
+        "at": "2026-11-17T19:50:37.984Z",
+        "version": "3b8c83f7-94a1-4b5c-ae5c-dfca84008456"
+      }
+    ],
+    "history": {
+      "cpu_limit_added_commit": "b54b5206f496379661a348a4454ad5d9cb802f97",
+      "cpu_limit_reverted_commit": "c1a06de469a2bc28916a0e2523ffff0625a5bc4c",
+      "revert_reason": "keep Free-plan Worker deployment compatible",
+      "current_config_has_cpu_ms": false
+    },
+    "canonical_worker_login_events": "No canonical-version POST /api/auth/login event was found in the seven-day query result.",
+    "plan_status": "Free-plan compatibility is explicitly stated by the repository revert; current billing plan was not independently returned by Cloudflare API."
   }
 }
