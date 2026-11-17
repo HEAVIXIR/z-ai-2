@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-17T20:40:00.675Z",
+  "updated_at_utc": "2026-11-17T22:37:29.209Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -15,17 +15,17 @@
   "preview": {
     "url": "https://heavix-preview.heavixir.workers.dev",
     "must_preserve_existing_url": true,
-    "deployment_status": "Canonical Worker heavix-preview is active on version #22 (b9690474-b947-4945-9535-31255a5b578b) at 100% traffic. Version #22 was created by a secret/config update; its script ETag matches version #19 from 2026-11-11, so the application code bundle is stale relative to selected Integration. Preserve version #17 as a historical rollback baseline; it is not the active version.",
-    "database_identity_app": "NOT VERIFIED. Integration preview health returned db=up, but the exact Worker binding OID has not been independently tied to MAIN_PREVIEW_DATABASE_URL.",
-    "database_identity_store": "NOT VERIFIED. Latest Integration preview health returned storeDb=down.",
-    "production_isolation": "NOT VERIFIED",
+    "deployment_status": "Canonical Preview Worker heavix-preview deployed from selected Integration commit 7a439a140acad87e4f538684fcffd4ca6722f0e6; post-deploy health gate failed because App and Store Database OID guards rejected their configured expected OIDs.",
+    "database_identity_app": "MISMATCH: systemIdentifierMatches=true; databaseOidMatches=false; actualDatabaseOid=5. Secret value not read.",
+    "database_identity_store": "MISMATCH: systemIdentifierMatches=true; databaseOidMatches=false; actualDatabaseOid=5. Secret value not read.",
+    "production_isolation": "No Production deployment or DNS change occurred in this checkpoint; full Production database isolation remains NOT VERIFIED.",
     "active_worker_version": {
-      "number": 22,
-      "id": "b9690474-b947-4945-9535-31255a5b578b",
+      "number": 24,
+      "id": "4c92c1fb-41f6-4487-bce7-c24a8a9f39ae",
       "traffic_percent": 100,
-      "created_at_utc": "2026-11-17T17:41:08.180649Z",
-      "trigger": "secret/config update",
-      "script_etag_same_as_version_19": true
+      "created_at_utc": "2026-11-17T22:32:38.606199Z",
+      "trigger": "wrangler version_upload",
+      "deployment_id": "39c8193d-1eae-41f4-a705-193a88e00f37"
     }
   },
   "production_and_dns": {
@@ -183,7 +183,13 @@
     "Reconciled admin navigation RBAC test fixtures with the route's explicit active/inactive navigation contract; test fixtures now mark stored groups and items active rather than relying on missing fields.",
     "Updated Store shipment lifecycle contract tests to assert the implemented safer compare-and-swap transition (status + updatedAt + affected-row count) and the dedicated cancel/return workflows, rather than an obsolete textual pattern.",
     "Diagnosed the 403 cascade in DB-backed route tests as missing same-origin Origin headers in the test harness while the CSRF middleware correctly fails closed; updated RBAC Phase B, brand, deal, listing, and legacy-admin-listing request helpers to use the explicit localhost:3000 origin.",
-    "Latest Integration head f2b0afa9f4a0813143cdf3b840944e17552694eb has new exact-head CI #43840734308 queued and OpenNext proof #43840734286 in progress; neither is green or complete yet."
+    "Latest Integration head f2b0afa9f4a0813143cdf3b840944e17552694eb has new exact-head CI #43840734308 queued and OpenNext proof #43840734286 in progress; neither is green or complete yet.",
+    "Inventoried 246 tracked docs/ files and reviewed core architecture, project principles, corrected reference, roadmap, operations, security/data governance, database, deployment, taxonomy, media, Store, homepage, and runtime-proof documents; inspected ten unique uploaded project/history files after duplicate detection.",
+    "Reconciled GitHub inventory: 32 open Issues/4 closed; 60 open PRs (58 Draft/2 ready); 247 closed PRs (143 merged/104 closed unmerged).",
+    "Verified exact-head CI #44189645298 and OpenNext proof #44189645381 passed on 7a439a140acad87e4f538684fcffd4ca6722f0e6.",
+    "Deployed owner-approved diagnostic build to canonical Preview only: Worker version 24 4c92c1fb-41f6-4487-bce7-c24a8a9f39ae at 100% traffic; build and dry-run passed; post-deploy health gate correctly failed closed.",
+    "Verified both App and Store system identifiers match, but both expected Database OID bindings mismatch actual runtime OID 5; secret values were not read.",
+    "Created docs/operations/HEAVIX-RECONCILIATION-2026-11-18.md and appended the worklog with current evidence."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -204,26 +210,24 @@
     "No canonical Worker code was deployed; active version #22 remains on the 2026-11-11 code bundle.",
     "Store DB is down in the latest Integration-preview health result."
   ],
-  "next_action": "Do not merge or deploy. Obtain an explicit owner decision on Workers Paid (minimum $5/month) or an approved alternative CPU-capable authentication/runtime architecture: Cloudflare logs show four distinct Integration-preview POST /api/auth/login CPU-limit failures and two admin-dashboard CPU-limit failures; the repository reverted limits.cpu_ms=2000 specifically for Free-plan compatibility. The connected Cloudflare API does not expose plan checkout. After the plan/runtime decision, restore a bounded CPU budget only if eligible, rerun exact-head CI/OpenNext and Preview login/SSR smoke, then perform the separately approved read-only App/Store OID proof tied to the actual Worker bindings. Resolve Store DB down and verify transfer-target/runtime DB equivalence before considering Preview release.",
+  "next_action": "Obtain a separate explicit owner approval to update only the two Preview OID secret values HEAVIX_APP_PREVIEW_DATABASE_OID and HEAVIX_STORE_PREVIEW_DATABASE_OID to the verified runtime OID 5. If approved, update those Preview secrets only, redeploy through the guarded canonical Preview workflow, and require / plus /api/health to pass with both App and Store up. Do not bypass the identity guard. Then verify Gmail OAuth2 email delivery and complete registration/login/Admin RBAC acceptance; reconcile taxonomy seed sources without writing until separately approved; verify seller listing/media lifecycle; keep scraper provider execution gated; only after Preview foundation is healthy resume Phase 6 Price Intelligence + Compare (Issue #95). PR #340 stays Draft.",
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 44147305639,
-    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "id": 44189645298,
+    "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305639",
-    "note": "Exact-head CI on selected Integration branch; successful."
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44189645298"
   },
-  "latest_code_head_sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+  "latest_code_head_sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
   "latest_ci_run": {
-    "id": 44147305639,
-    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "id": 44189645298,
+    "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305639",
-    "note": "Exact-head CI on selected Integration branch; successful."
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44189645298"
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -261,12 +265,16 @@
     "B2 proof workflow skipped the preview-backup environment protection rules for the single Preview-only run; review this bypass before reuse.",
     "PR #333 test suite had two consecutive assertion-only failures during test authoring; latest correction is cd8ef0e and the current CI run is in progress.",
     "PR #330 and #331 were retargeted to recovery and GitHub reports mergeable=false; neither was merged.",
-    "No production seed, migration, DB write, Cloudflare Worker deploy or DNS change occurred.",
     "Integration-preview login POSTs are confirmed to fail with 'Worker exceeded CPU time limit' (four distinct requests on 2026-11-17); admin dashboard SSR also hit the same CPU limit. Cloudflare Free allows 10 ms/request; repository history explicitly reverted a 2000 ms CPU budget for Free-plan compatibility. Current account billing plan is not independently verified.",
     "Canonical Worker code is stale: active version #22 script ETag matches version #19 from 2026-11-11; current Integration app source has not been promoted.",
     "Latest Integration-preview health: App DB up, Store DB down. Exact Worker App/Store binding OID identity proof remains NOT VERIFIED.",
     "Transfer workflow source HEAVIX_OWNER_SOURCE_DATABASE_URL is not a Worker runtime binding; target MAIN_PREVIEW_DATABASE_URL is not proven to be the same database as Worker DATABASE_URL because the transfer script checks cluster system ID but not target DB OID.",
-    "PR #340 is Draft with Integration head and main base; do not merge until CPU, database identity, Store health, artifact provenance and acceptance gates pass."
+    "PR #340 is Draft with Integration head and main base; do not merge until CPU, database identity, Store health, artifact provenance and acceptance gates pass.",
+    "Canonical Preview version 24 is deployed, but App and Store health fail closed because both configured Preview Database OID secrets mismatch actual runtime database OID 5; both system identifiers match.",
+    "Separate owner approval is required before changing HEAVIX_APP_PREVIEW_DATABASE_OID and HEAVIX_STORE_PREVIEW_DATABASE_OID secret values. Do not read or disclose current values.",
+    "Canonical root is HTTP 500 and /api/health is HTTP 503; /login is HTTP 200. No canonical owner-login or authenticated admin acceptance has been performed.",
+    "Production isolation is not fully proven even though no Production deployment or DNS change occurred in this checkpoint.",
+    "PR #340 remains Draft with Integration head and main base; do not merge until Preview health and all release gates pass."
   ],
   "platform_roadmap": {
     "path": "docs/product/HEAVIX-PLATFORM-ROADMAP-WEB-THEN-NATIVE-MOBILE.md",
@@ -306,6 +314,34 @@
     "cloudflare_stable_preview": {
       "url": "https://heavix-preview.heavixir.workers.dev",
       "status": "existing old Worker remains active; no new Worker deployment"
+    },
+    "canonical_preview": {
+      "url": "https://heavix-preview.heavixir.workers.dev",
+      "worker": "heavix-preview",
+      "version": 24,
+      "version_id": "4c92c1fb-41f6-4487-bce7-c24a8a9f39ae",
+      "traffic_percent": 100,
+      "commit": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+      "workflow_run": 44189632968,
+      "workflow_conclusion": "failure_at_health_gate",
+      "http": {
+        "/": 500,
+        "/login": 200,
+        "/api/health": 503,
+        "/api/taxonomy": 500,
+        "/api/transaction-types": 500
+      },
+      "app_db": {
+        "system_identifier_matches": true,
+        "database_oid_matches": false,
+        "actual_database_oid": "5"
+      },
+      "store_db": {
+        "system_identifier_matches": true,
+        "database_oid_matches": false,
+        "actual_database_oid": "5"
+      },
+      "note": "Both remote OID secret binding names exist; secret values were not read. Expected OID bindings mismatch runtime OID 5."
     }
   },
   "media_storage_audit": {
@@ -406,7 +442,7 @@
     ],
     "owner_direction": "End-to-end migration is owned by the project execution agent. Prior audits and partial transfers into dellk00k/z are part of the same unfinished migration history, not a fresh project. Recover and reconcile all prior decisions, manifests and transfers; avoid needless re-audits while verifying provenance and current parity. Maintain durable version-controlled handoff records after each meaningful milestone."
   },
-  "latest_documentation_checkpoint_commit_sha": "953feb06050ebcd19bef9e1b089f0972c743b84d",
+  "latest_documentation_checkpoint_commit_sha": "c9a03308ecd402fbea63cfbb92a5e270e1ec829a",
   "legacy_snapshot_reconciliation": {
     "status": "SOURCE ARCHIVE IDENTITY VERIFIED; FILE-LEVEL CURRENT-BRANCH PARITY STILL IN PROGRESS",
     "source_repository": "HEAVIXIR/z",
@@ -554,7 +590,35 @@
       ]
     },
     "recovery_code_head": "5e1ad2341d713221840d335fa318a74ce9e5668f",
-    "opennext_audit_artifact_digest": "sha256:8a0b1023e941b28578cecf442ef95fa434d94e069bdf6a899cdb171b128c5534"
+    "opennext_audit_artifact_digest": "sha256:8a0b1023e941b28578cecf442ef95fa434d94e069bdf6a899cdb171b128c5534",
+    "selected_integration_head": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+    "exact_head_ci": {
+      "run_id": 44189645298,
+      "conclusion": "success"
+    },
+    "exact_head_opennext": {
+      "run_id": 44189645381,
+      "conclusion": "success"
+    },
+    "canonical_preview_deploy": {
+      "run_id": 44189632968,
+      "conclusion": "failure_at_health_gate",
+      "worker_version_id": "4c92c1fb-41f6-4487-bce7-c24a8a9f39ae"
+    },
+    "integration_preview": {
+      "run_id": 44187433734,
+      "conclusion": "success",
+      "app_db": "up",
+      "store_db": "up"
+    },
+    "owner_transfer": {
+      "run_id": 44156862822,
+      "conclusion": "success"
+    },
+    "paired_b2_backup": {
+      "run_id": 44149581960,
+      "conclusion": "success"
+    }
   },
   "last_cloudflare_builds": {
     "infra_timeout": {
@@ -580,25 +644,19 @@
     }
   },
   "blockers": [
-    "Exact-head CI and OpenNext runtime proof are still required on current recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d; successful PR #307 checks are from prior head c5eda9e.",
-    "Current recovery head has not yet been redeployed to Vercel Preview; previous recovery Preview health success is for c5eda9e only.",
-    "PR #333 exact-head CI is green, but Vercel runtime/browser acceptance is still blocked by Deployment Protection and the rate-limited external check.",
-    "Vercel Deployment Protection blocks anonymous access to PR #333 Preview. Owner must sign in through a secure browser profile before runtime/admin acceptance.",
     "Admin owner login and role/RBAC acceptance have not been verified; source presence does not prove owner access.",
-    "Actual Cloudflare Worker App/Store database identities and Production isolation remain NOT VERIFIED.",
     "B2 adapter proof passed on an older commit; actual B2 bindings on the active Worker and full seller staging/finalization/media lifecycle remain NOT VERIFIED.",
-    "PR #330 and #331 are non-mergeable after retarget to recovery; resolve conflicts without overwriting recovery changes.",
-    "PR #312 and #314 contain divergent/conflicting homepage changes; choose performance and parent-only category behavior, then integrate with tests.",
     "Canonical catalog reconciliation is incomplete; no shared or Production seed has been applied.",
     "Global Listing.sourceUrl uniqueness decision remains open pending duplicate-data assessment.",
     "Media legal/consent policy for third-party images and seller contact data needs explicit product/legal acceptance.",
     "Cloudflare automatic build trigger for closed PR #332 branch remains configured; do not push that branch. Its prior build failed because build:cloudflare is missing; no deployment occurred.",
     "Production domain, DNS, custom-domain binding and Production rollout remain intentionally untouched.",
-    "Selected Integration branch currently has PR #340 pointing into the historical recovery branch; do not merge in that direction. Consolidate capabilities into Integration and later correct/replace the tracking PR direction.",
     "CPU execution ceiling: four Integration-preview login POSTs and two admin dashboard requests were terminated with 'Worker exceeded CPU time limit'. Current wrangler.jsonc has no limits.cpu_ms; repository history reverted 2000 ms because of Free-plan compatibility. Obtain an owner decision on Workers Paid or an approved alternative before attempting login validation or deployment.",
-    "Store database remains down in Integration-preview health. Exact Store binding identity and connectivity are NOT VERIFIED.",
-    "Canonical Worker active version #22 has unchanged application script ETag since version #19 on 2026-11-11; no code deployment from current Integration head.",
-    "Exact identity between transfer target MAIN_PREVIEW_DATABASE_URL and Worker runtime DATABASE_URL is NOT VERIFIED; transfer script did not check target database OID."
+    "Canonical Preview version 24 is deployed, but App and Store health fail closed because both configured Preview Database OID secrets mismatch actual runtime database OID 5; both system identifiers match.",
+    "Separate owner approval is required before changing HEAVIX_APP_PREVIEW_DATABASE_OID and HEAVIX_STORE_PREVIEW_DATABASE_OID secret values. Do not read or disclose current values.",
+    "Canonical root is HTTP 500 and /api/health is HTTP 503; /login is HTTP 200. No canonical owner-login or authenticated admin acceptance has been performed.",
+    "Production isolation is not fully proven even though no Production deployment or DNS change occurred in this checkpoint.",
+    "PR #340 remains Draft with Integration head and main base; do not merge until Preview health and all release gates pass."
   ],
   "last_verified_legacy_parity": {
     "audited_at_utc": "2026-11-11T22:30:00.000Z",
@@ -648,7 +706,7 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "953feb06050ebcd19bef9e1b089f0972c743b84d",
+  "documentation_head": "c9a03308ecd402fbea63cfbb92a5e270e1ec829a",
   "recovery_latest_exact_head_ci": {
     "id": 43714375711,
     "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
@@ -723,24 +781,24 @@
     "canonical_worker_code": "STALE: active version #22 ETag unchanged from version #19 (2026-11-11)."
   },
   "latest_opennext_proof_run": {
-    "id": 44147305523,
-    "sha": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "id": 44189645381,
+    "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44147305523",
-    "note": "OpenNext/Workerd proof successful on selected Integration branch."
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44189645381",
+    "note": "Exact-head OpenNext/Workerd proof successful."
   },
   "integration_preview": {
     "url": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
-    "workflow_run": 44147268527,
-    "source_commit": "416842cc7d11772700a6875db57518d5cb91bd58",
-    "current_code_head": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "workflow_run": 44187433734,
+    "source_commit": "ba14c199d1ab2716fdf28d394f6771f44408d707",
+    "current_code_head": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
     "workflow_mode": "wrangler preview (not wrangler deploy)",
     "health": {
       "app_db": "up",
-      "store_db": "down"
+      "store_db": "up"
     },
-    "note": "Compare 416842cc... to current head 4d7c791... showed only transfer-existing-owner-to-preview.yml changed; app source is unchanged."
+    "note": "Latest completed Integration Preview run before the workflow-trigger-only commit; safe identity diagnostics were included."
   },
   "runtime_login_cpu_audit": {
     "status": "CPU-limit failure CONFIRMED for Integration Preview login; canonical Worker login failure NOT VERIFIED by logs.",
