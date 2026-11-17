@@ -5,12 +5,31 @@ const ALLOWED_SOURCE_HOSTS = ["divar.ir", "divar.com", "sheypoor.com"];
 const SOURCE_DNS_LOOKUP_TIMEOUT_MS = 8_000;
 const SOURCE_REQUEST_TIMEOUT_MS = 12_000;
 
-export function isAllowedSourceUrl(raw: string): boolean {
+function normalizeAllowedHosts(hosts: string[]): string[] {
+  return hosts
+    .map((host) => host.trim().toLowerCase().replace(/^\\.+|\\.+$/g, ""))
+    .filter((host) =>
+      host.length > 0 &&
+      host.length <= 253 &&
+      !host.includes("*") &&
+      host.split(".").every((label) =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+      ),
+    );
+}
+
+export function isAllowedSourceUrl(
+  raw: string,
+  allowedHosts: string[] = ALLOWED_SOURCE_HOSTS,
+): boolean {
   try {
     const url = new URL(raw);
     if (url.protocol !== "https:" || url.username || url.password) return false;
     const host = url.hostname.toLowerCase();
-    return ALLOWED_SOURCE_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    const approved = normalizeAllowedHosts(allowedHosts);
+    return approved.some((domain) => host === domain || host.endsWith(`.${domain}`));
   } catch {
     return false;
   }
@@ -181,6 +200,7 @@ export async function fetchAllowedSourcePage(
   rawUrl: string,
   signal?: AbortSignal,
   dependencies: SourceFetchDependencies = defaultDependencies,
+  allowedHosts: string[] = ALLOWED_SOURCE_HOSTS,
 ): Promise<{ html: string; title: string }> {
   let current: URL;
   try {
@@ -190,7 +210,7 @@ export async function fetchAllowedSourcePage(
   }
 
   for (let hop = 0; hop <= 4; hop++) {
-    if (!isAllowedSourceUrl(current.toString()) || (current.port && current.port !== "443")) {
+    if (!isAllowedSourceUrl(current.toString(), allowedHosts) || (current.port && current.port !== "443")) {
       throw new Error("مسیر انتقال به دامنه یا درگاه غیرمجاز مسدود شد.");
     }
     if (signal?.aborted) throw new Error("درخواست دریافت صفحه لغو شد.");
