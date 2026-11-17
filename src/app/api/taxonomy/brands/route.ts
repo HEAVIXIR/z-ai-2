@@ -6,6 +6,7 @@ import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
 import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,7 +96,14 @@ export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
   if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
-    const body = await req.json().catch(() => ({}));
+    const parsed = await readBoundedJson<unknown>(req, 128 * 1024);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    }
+    if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body = parsed.value as Record<string, any>;
     if (!body.name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
