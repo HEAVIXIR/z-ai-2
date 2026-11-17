@@ -67,13 +67,13 @@ const expected = {
     databaseName: "postgres",
     databaseOid: appDatabaseOid,
     systemIdentifier: "7701427422680793119",
-    migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key", "20261112160000_add_selectable_hero_templates", "20261114150000_product_model_attributes"],
+    migrations: ["20261025081255_init_postgresql_baseline", "20261025193000_add_auditlog_idempotency_key", "20261112160000_add_selectable_hero_templates", "20261114150000_product_model_attributes", "20261116120000_industrial_marketplace_identity_core", "20261116130000_company_invitations"],
   },
   store: {
     databaseName: "postgres",
     databaseOid: storeDatabaseOid,
     systemIdentifier: "7701425043360235551",
-    migrations: ["0001_init_store_baseline", "0002_add_audit_outbox"],
+    migrations: ["0001_init_store_baseline", "0002_add_audit_outbox", "0003_purchase_order_submitter"],
   },
 };
 const configDir = await mkdtemp(resolve(root, ".heavix-workerd-proof-"));
