@@ -86,7 +86,7 @@ vi.mock("z-ai-web-dev-sdk", () => ({
       chat: {
         completions: {
           create: vi.fn(async () => ({
-            choices: [{ message: { content: '{"price":1000,"note":"ok"}' } }],
+            choices: [{ message: { content: '{"title":"بیل مکانیکی","price":1000}' } }],
           })),
         },
       },
