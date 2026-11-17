@@ -37,15 +37,22 @@ export default function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [k]: k === "email" ? identifier.toLowerCase() : identifier, password }),
       });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.error || "ورود ناموفق بود.");
-        setLoading(false); return;
+      const responseText = await res.text();
+      let data: { ok?: boolean; error?: string; role?: string };
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        setError(`پاسخ سرور قابل‌خواندن نیست (HTTP ${res.status}). لطفاً بعداً تلاش کنید.`);
+        return;
+      }
+      if (!res.ok || !data.ok) {
+        setError(data.error || `ورود ناموفق بود (HTTP ${res.status}).`);
+        return;
       }
       router.push(data.role === "admin" ? "/admin/dashboard" : "/dashboard");
       router.refresh();
-    } catch {
-      setError("خطای شبکه. دوباره تلاش کنید.");
+    } catch (err) {
+      setError(err instanceof Error ? "ارتباط با سرور برقرار نشد. اتصال را بررسی و دوباره تلاش کنید." : "خطای غیرمنتظره در ارتباط با سرور.");
     } finally { setLoading(false); }
   }
 
