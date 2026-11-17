@@ -70,6 +70,8 @@ describe("administrative mutation CSRF contracts", () => {
   it("keeps provider-backed scraper execution explicitly gated after auth and CSRF, before AI budget preflight", () => {
     const marketplace = read("src/app/api/admin/ai-scraper/route.ts");
     expect(marketplace).toContain('requirePermission(user.id, "ai.execute")');
+    const navigation = read("src/lib/admin/navigation-defaults.ts");
+    expect(navigation).toContain("href: '/admin/ai-scraper', permissionKey: 'ai.execute'");
     expect(marketplace).toContain("checkCsrf(req)");
     expect(marketplace).toContain('process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
     expect(marketplace.indexOf("checkCsrf(req)")).toBeLessThan(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED"));
