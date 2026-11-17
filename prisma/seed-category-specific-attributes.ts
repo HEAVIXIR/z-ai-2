@@ -2877,6 +2877,7 @@ async function buildResolvedFieldKeyMap(): Promise<{
       include: { options: { orderBy: { sortOrder: "asc" }, select: { value: true } } },
     });
     for (const attribute of existingNamespaced) {
+      if (!attribute.key) continue;
       const actualSignature = fieldSignature({
         type: attribute.type as AttrType,
         unit: attribute.unit ?? undefined,
