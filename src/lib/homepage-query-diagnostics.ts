@@ -78,7 +78,7 @@ export function sanitizeHomepageQueryError(queryName: string, error: unknown) {
   ].map((value) => safeString(value, SAFE_PRISMA_CODE)).find(Boolean);
   const databaseCode = originalCode ?? safeString(meta?.code, SAFE_META_CODE);
   const adapterKind = safeString(record?.kind, /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/);
-  const clientVersion = safeString(record?.clientVersion, /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(?:[-+][A-Za-z0-9.-]+)?$/);
+  const clientVersion = safeString(record?.clientVersion, /^\d{1,3}\.\d{1,3}\.\d{1,3}(?:[-+][A-Za-z0-9.-]+)?$/);
   const model = safeString(meta?.modelName ?? meta?.model_name, SAFE_IDENTIFIER);
   const field = safeString(meta?.field_name ?? meta?.fieldName, SAFE_IDENTIFIER);
   const column = safeString(record?.column, SAFE_QUALIFIED_IDENTIFIER)

@@ -129,7 +129,13 @@ jobs:
           PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
         run: |
           set -euo pipefail
-          root_code="$(curl --retry 8 --retry-delay 3 --retry-connrefused --retry-all-errors --max-time 20 -sS -f -o "$RUNNER_TEMP/heavix-preview-root.html" -w '%{http_code}' "$PREVIEW_URL/" 2>/dev/null || true)"
+          root_code="000"
+          for attempt in {1..9}; do
+            root_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-root.html" -w '%{http_code}' "$PREVIEW_URL/" || true)"
+            root_code="${root_code:-000}"
+            [ "$root_code" = "200" ] && break
+            sleep 3
+          done
           echo "HEAVIX_PREVIEW_ROOT_HTTP=$root_code"
           health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
           echo "HEAVIX_PREVIEW_HEALTH_HTTP=$health_code"

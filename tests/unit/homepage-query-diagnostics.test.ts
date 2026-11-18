@@ -97,7 +97,7 @@ describe("homepage query diagnostics", () => {
       clientVersion: "7.10.1",
       classification: "schema-object-missing",
     });
-    expect(serialized).not.toContain("publishedAt\\" does not exist");
+    expect(serialized).not.toContain('column "publishedAt" does not exist');
     expect(serialized).not.toContain("DATABASE_URL");
     expect(serialized).not.toContain("secret");
   });
