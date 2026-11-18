@@ -299,3 +299,20 @@ Before changing the canonical seed or adding the next migration:
 7. Keep the PR Draft and Production untouched until all gates pass.
 
 **Scope boundary:** the owner has now explicitly authorized broad project work, including Preview-only migration after the paired encrypted backup and safety workflow gates. This does not authorize Production changes. No database migration, seed, or real-data write has been run by this design step. The no-cost rule is absolute: do not top up TinyFish or use paid automation/AI/search/storage plans; if a required step is not possible on a free tier, report it and use a free/manual alternative.
+
+
+## 13. Expanded industrial/mining scope and immediate wizard focus — 2026-11-18
+
+Owner reaffirmed the zero-cost policy and requested broad future coverage for mineral sales/sourcing, mining contractors, project participation and investment, with a high-priority target of finishing the practical listing registration flow in the next focused 1–2 hour work window.
+
+- New architecture ADR committed: `docs/architecture/HEAVIX-INDUSTRIAL-MINING-COMMERCE-DOMAIN-ADR-001-2026-11-18.md`
+- Commit: `9f7cfd5eb673095aa534f8bfe1e1638d05ff6c69`
+- The ADR defines separate but connected domains for commodity/lot trade, mining projects/tenements/technical reports/resource estimates, contractors/work packages, sourcing/tenders, rental, services, employment, financing and investment.
+- It reuses the current Main Prisma catalog, company, location, dynamic attributes, Listing, BuyRequest, RFQ, Auction, inspection, transport and audit concepts; it also records Store's separate RentalListing/RentalBooking, ServiceProvider/ServiceRequest, ProcurementRequest and PurchaseOrder as bounded-context references. No cross-database Prisma relations are allowed.
+- Historical Main SQLite schema inspection confirmed richer RFQ/RFQQuote and Auction/AuctionBid structures; they are behavior references only, not PostgreSQL migration sources.
+- Existing product docs `docs/PRODUCT-MACHINERY-INVESTMENT.md` and `docs/PRODUCT-FINANCING-LEASING-PARTNERSHIPS.md` are binding design constraints: no lending, fund collection, capital pooling or participation CTA until legal gates, licensed operator, KYC, escrow/custody, disclosures and audit are verified.
+- Global research patterns reviewed: Schema.org Offer/GoodRelations; World Bank RFP/RFB/RFQ/direct selection; WHO procurement method separation; MinesOnline, MINEX, MineralTrade and mining project/investment marketplaces. These are benchmark patterns, not code to copy.
+- Critical immediate wizard gaps reaffirmed from source: WANTED still routes through Listing rather than canonical BuyRequest; BuyRequest loses quantity and stores category/brand as text; RENT currently represents offer only, not rental request; machine Brand/Model step must be conditional for mineral/service/project subjects; seller B2 media provider/readback/attachment still requires Preview proof.
+- Next active work is the ordinary listing wizard (not investment/tender release): inventory all form/API callers, fix canonical WANTED persistence, make Brand/Model conditional, separate rental request behavior with reuse-first audit, verify media lifecycle, then run focused tests and exact-SHA CI. Do not claim the 1–2 hour target met until the seven-step browser journey passes.
+- The ADR is design-gated. No new schema migration, seed, database write, Preview migration, Production action or paid tool execution was performed by this entry.
+- Owner explicitly reiterated that no paid tools/services/credits are authorized. TinyFish top-up and paid automation must not be attempted. Continue only with current free/connected tools and manual workflows.
