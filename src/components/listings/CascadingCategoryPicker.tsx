@@ -155,9 +155,19 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
       })}
 
       {error && (
-        <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 text-xs text-red-300">
-          {error}
-        </p>
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 text-xs text-red-300">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => {
+              const failedParent = path[path.length - 1];
+              if (failedParent) void select(failedParent, path.length - 1);
+            }}
+            className="mt-2 rounded-lg border border-red-300/30 px-3 py-1.5 font-bold hover:bg-red-300/10"
+          >
+            تلاش مجدد برای دریافت زیر‌دسته‌ها
+          </button>
+        </div>
       )}
 
       {path.length > 0 && (
