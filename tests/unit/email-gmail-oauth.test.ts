@@ -105,19 +105,19 @@ describe("HEAVIX Gmail OAuth2 email delivery", () => {
     // MIME transfer-encoding is base64; assert decoded part bodies rather than
     // searching for the original UTF-8 text in the encoded wire representation.
     const plainTextPart = mime.match(
-      /Content-Type: text\\/plain; charset="UTF-8"\\r\\nContent-Transfer-Encoding: base64\\r\\n\\r\\n([\\s\\S]*?)\\r\\n--heavix_[a-f0-9]+/,
+      /Content-Type: text\/plain; charset="UTF-8"\r\\nContent-Transfer-Encoding: base64\r\\n\r\\n([\s\\S]*?)\r\\n--heavix_[a-f0-9]+/,
     );
     const htmlPart = mime.match(
-      /Content-Type: text\\/html; charset="UTF-8"\\r\\nContent-Transfer-Encoding: base64\\r\\n\\r\\n([\\s\\S]*?)\\r\\n--heavix_[a-f0-9]+--/,
+      /Content-Type: text\/html; charset="UTF-8"\r\\nContent-Transfer-Encoding: base64\r\\n\r\\n([\s\\S]*?)\r\\n--heavix_[a-f0-9]+--/,
     );
 
     expect(plainTextPart?.[1]).toBeDefined();
     expect(htmlPart?.[1]).toBeDefined();
     expect(
-      Buffer.from(plainTextPart![1].replace(/\\r\\n/g, ""), "base64").toString("utf8"),
+      Buffer.from(plainTextPart![1].replace(/\r\\n/g, ""), "base64").toString("utf8"),
     ).toBe("Plain-text verification body");
     expect(
-      Buffer.from(htmlPart![1].replace(/\\r\\n/g, ""), "base64").toString("utf8"),
+      Buffer.from(htmlPart![1].replace(/\r\\n/g, ""), "base64").toString("utf8"),
     ).toBe("<p>HTML verification body</p>");
   });
 
