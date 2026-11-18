@@ -133,6 +133,7 @@ export default function AttributeFields({
   const [attributes, setAttributes] = useState<AttributeDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const firedLoadedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -179,7 +180,7 @@ export default function AttributeFields({
     return () => {
       alive = false;
     };
-  }, [categoryId, modelId]);
+  }, [categoryId, modelId, retryKey]);
 
   if (!categoryId) {
     return (
@@ -200,8 +201,15 @@ export default function AttributeFields({
 
   if (error && attributes.length === 0) {
     return (
-      <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs font-bold text-red-400">
-        ⚠ {error}
+      <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs font-bold text-red-300">
+        <p>⚠ {error}</p>
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mt-3 rounded-lg border border-red-300/30 px-3 py-1.5 font-bold hover:bg-red-300/10"
+        >
+          تلاش مجدد برای بارگذاری ویژگی‌ها
+        </button>
       </div>
     );
   }
