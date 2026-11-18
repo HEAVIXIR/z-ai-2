@@ -23,6 +23,7 @@ const MAX_BULK_IMPORT_URLS = 5;
 interface ScrapeResult {
   url: string;
   title?: string;
+  publishedAt?: string | null;
   description?: string;
   price?: string | null;
   images: string[];
@@ -40,6 +41,20 @@ interface ScrapeResult {
 function extractPhones(text: string): string[] {
   const matches = text.match(/0\d{10}|\+98\d{10}|09\d{9}/g) || [];
   return Array.from(new Set(matches));
+}
+
+function extractPublishedAt(html: string): string | null {
+  const candidates = [
+    html.match(/article:published_time.{0,120}?content=["']([^"']+)["']/i)?.[1],
+    html.match(/datePublished.{0,40}?["']([0-9]{4}-[0-9]{2}-[0-9]{2}[^"']*)["']/i)?.[1],
+    html.match(/<time[^>]+datetime=["']([^"']+)["']/i)?.[1],
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const date = new Date(candidate);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+  return null;
 }
 
 function extractPrice(text: string): string | null {
@@ -61,6 +76,7 @@ async function llmExtract(
   const sys = `You are HEAVIX listing extractor. Given raw HTML / page text from a Persian classified ad (Divar/Sheypoor), extract structured JSON with these keys:
 {
   "title": string,
+  "publishedAt": string (ISO 8601 publication date) or null,
   "description": string (Persian, 200-600 chars),
   "price": string (digits only, Toman) or null,
   "phone": string (Iran mobile like 09xxxxxxxxx) or null,
@@ -136,6 +152,7 @@ async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<S
     return {
       url,
       title: llm.title || title || undefined,
+      publishedAt: llm.publishedAt || extractPublishedAt(html),
       description: llm.description || text.slice(0, 600) || undefined,
       price: llm.price || extractPrice(text),
       // Remote third-party image URLs are intentionally not sent to the browser.
@@ -431,8 +448,16 @@ async function _doPost(
       }
       const urls = (await searchAdUrls(zai, searchTerms.filter(Boolean).join(" "), num))
         .filter((url) => isAllowedSourceUrl(url));
-      const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
-      return NextResponse.json({ ok: true, results, searched: { query, categoryId: categoryId || null, serviceTypeId: serviceTypeId || null, transactionTypeId: transactionTypeId || null, dateDays: dateDays || null } });
+      const extracted = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
+      const cutoff = Number.isInteger(dateDays) && dateDays > 0 && dateDays <= 365
+        ? Date.now() - dateDays * 24 * 60 * 60 * 1000
+        : null;
+      const results = cutoff == null ? extracted : extracted.filter((item) => {
+        if (!item.publishedAt) return true; // Keep undated source pages visible; date is marked unknown in the UI.
+        const published = new Date(item.publishedAt).getTime();
+        return Number.isNaN(published) || published >= cutoff;
+      });
+      return NextResponse.json({ ok: true, results, searched: { query, categoryId: categoryId || null, serviceTypeId: serviceTypeId || null, transactionTypeId: transactionTypeId || null, dateDays: dateDays || null }, dateFilter: cutoff == null ? null : { days: dateDays, cutoff: new Date(cutoff).toISOString(), checked: extracted.length, returned: results.length, unknownDateCount: extracted.filter((item) => !item.publishedAt).length } });
     }
 
     if (mode === "scrape") {
