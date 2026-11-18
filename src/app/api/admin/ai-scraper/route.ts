@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 const DIVAR_HOSTS = ["divar.ir", "divar.com"];
 const SHEYPOOR_HOSTS = ["sheypoor.com"];
-const MAX_BULK_IMPORT_URLS = 5;
+const MAX_BULK_IMPORT_URLS = 30;
 
 // Provider execution is an explicit per-environment opt-in; the scraper implementation remains available.
 // This gate is checked before AI preflight so a disabled environment never reserves budget.
