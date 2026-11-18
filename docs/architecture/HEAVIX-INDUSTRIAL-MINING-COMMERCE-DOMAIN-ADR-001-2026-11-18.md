@@ -399,3 +399,54 @@ The renderer and typed validation components may be shared. The field definition
 ### 13.5 Implementation gate
 
 The current AttributeFields component is a generic typed renderer and the category endpoint is already requested with categoryId + optional modelId. That alone does **not** prove full path, subject-class, generation or transaction-specific profile resolution. Before claiming this requirement complete, inspect and extend the actual attribute API, Prisma relations/seeds/admin tooling, and server-side listing validation. Do not solve it with hard-coded frontend conditionals or one giant attribute catalogue. Build a canonical, versioned profile-resolution contract and cover it with contract tests before changing the user-facing wizard.
+
+## 14. Canonical taxonomy redesign — owner clarification (2026-11-19)
+
+**Decision:** Build a stable hierarchy for what a subject is, and model application/industry, commercial intent, service activity and configuration as separate dimensions. Do not create duplicate machine identities to represent different industries.
+
+### 14.1 Separate dimensions
+1. Commercial intent: sale offer, purchase request, rental offer/request, service offer/request, job offer/seeker. Not a category.
+2. Subject taxonomy: machinery/equipment, parts/components, minerals/materials, services, workforce, projects/assets.
+3. Machine family/type: excavator, wheel loader, bulldozer, grader, crane, dump truck, crusher, drill rig, pump, compressor. One canonical identity per type.
+4. Application/industry: mining, road construction, civil/building construction, concrete, asphalt, recycling, ports/material handling, agriculture/forestry, energy/process industry. Many-to-many with machine types.
+5. Configuration/capacity: operating-weight band, payload, bucket capacity, power, reach, track/wheel configuration. Prefer typed attributes or controlled ranges, not arbitrary category children.
+6. Brand/model/generation: only when relevant and compatible with the selected subject.
+7. Service activity: trading/import-export, maintenance/repair/overhaul, inspection/testing, engineering, construction/installation, mining contracting, drilling/blasting, logistics, environmental/rehabilitation.
+8. Service subject: equipment family/type, material, plant, site or project. A repair service for an excavator references the same canonical excavator type used by sale and rental.
+
+### 14.2 Navigation and data rules
+- Each canonical tree node has one semantic meaning and one parent. Do not create Mining Excavator and Road Excavator as separate machine types.
+- Use explicit many-to-many applicability relations for machine type ↔ application/industry and service activity ↔ subject family/type.
+- Contextual navigation may combine dimensions without creating duplicate category rows.
+- Example UI path: Heavy machinery → Mining equipment → Excavator → 20–25 tonne class. In the canonical model Excavator is the machine type; Mining is its application. The UI resolves to the same excavator ID used in Heavy machinery → Road equipment → Excavator.
+- Service path: Services → Repair → Heavy machinery → Excavator. It reuses the canonical excavator type/specification profile and adds repair scope fields.
+- Parts are classified by component family and linked to compatible machine families/models; do not force parts into the machinery tree.
+- Rental is an intent/workflow: Rental → Heavy machinery → Excavator. Compose excavator technical fields with rental-specific rate, duration, deposit, availability, operator/fuel/transport and mobilisation fields.
+- 22 tonne is a capacity/configuration class, not a machine type or brand/model.
+- Never delete/re-parent existing taxonomy records in place. Inventory IDs and create explicit old-to-new mapping, aliases and redirects.
+
+### 14.3 Proposed top-level navigation (draft, subject to audit)
+- Machinery & equipment: heavy machinery; light/compact machinery; industrial plant/process equipment; material handling/lifting; power generation/utilities; agricultural/forestry/port equipment.
+- Parts, components & attachments.
+- Minerals, metals & bulk materials.
+- Services: trading/import-export; maintenance/repair/overhaul; inspection/testing/certification; engineering/consulting/design; construction/installation/commissioning; mining contracting/operations; drilling/blasting/extraction/processing; logistics/transport; environmental/safety/rehabilitation.
+- Workforce & employment.
+- Mining projects, assets & rights (separate controlled journey).
+- Procurement events (RFI/RFQ/RFP/RFB/tenders; mechanisms/workflows, not equipment categories).
+
+This is not yet the final dictionary or a database mutation. Validate against existing HEAVIX docs, seeds, APIs, category/attribute/model links, listing counts, search facets, UNSPSC crosswalks and official manufacturer product families. External standards are crosswalks, not a blind replacement for user navigation.
+
+### 14.4 Progressive form resolver
+Resolve the form from intent + canonical subject family/type + selected application context + capacity/configuration + compatible brand/model/generation + intent-specific commercial profile. Technical attributes come from subject/model profiles; commercial fields from intent; service scope from service activity. Retain application context even when it is not itself a canonical category.
+
+### 14.5 Execution sequence and gate
+1. Export taxonomy IDs, parent IDs, slugs, active/order, intent links, category-attribute links, brand/model links and listing counts.
+2. Audit historic docs, old repositories, seeds, issues/PRs, APIs and Store taxonomy; distinguish historical proposals from runtime truth.
+3. Compare to UNSPSC and official manufacturer product-family taxonomies, recording source and mapping confidence.
+4. Publish canonical Persian/English dictionary: definition, inclusion/exclusion, synonyms, parent, application tags, eligible intents and form-profile key.
+5. Create old-ID → canonical-ID mapping; preserve listing history, slugs, SEO routes and attribute values.
+6. Define machine type/application separately, including multi-application machinery.
+7. Build versioned specification profiles and server-side form resolution.
+8. Then update seed/admin/API/search and prepare additive migration. Preview backup gates remain mandatory; Production untouched.
+
+**Status:** architecture decision recorded. Export, historical audit, external crosswalk, final dictionary, mapping, migrations and runtime wizard integration remain outstanding; no claim of completed normalization.
