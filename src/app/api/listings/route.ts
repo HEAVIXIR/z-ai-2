@@ -371,6 +371,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع معامله معتبر یا فعال نیست." }, { status: 400 });
     }
 
+    const isServiceTransaction = ["SERVICE_REQUEST", "SERVICE_OFFER"].includes(transactionType.key);
+    let selectedServiceType: { id: string; key: string } | null = null;
+    if (isServiceTransaction) {
+      if (!body.serviceTypeId) {
+        return NextResponse.json({ error: "انتخاب نوع خدمت الزامی است." }, { status: 400 });
+      }
+      selectedServiceType = await db.serviceType.findFirst({
+        where: { id: String(body.serviceTypeId), active: true },
+        select: { id: true, key: true },
+      });
+      if (!selectedServiceType) {
+        return NextResponse.json({ error: "نوع خدمت انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+    } else if (body.serviceTypeId) {
+      return NextResponse.json({ error: "نوع خدمت فقط برای ثبت خدمات قابل استفاده است." }, { status: 400 });
+    }
+
     if (body.categoryId) {
       const expectedLayer = categoryLayerForTransactionType(transactionType.key);
       const category = await db.category.findFirst({
@@ -572,6 +589,131 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: attributeValidation.error }, { status: 400 });
     }
 
+
+    // Domain-specific records are validated before opening the transaction and
+    // created atomically with the Listing below.
+    let auctionData: null | {
+      title: string;
+      description: string | null;
+      startPrice: bigint;
+      reservePrice: bigint | null;
+      minIncrement: bigint;
+      startDate: Date;
+      endDate: Date;
+      status: string;
+    } = null;
+    if (transactionType.key === "AUCTION") {
+      const auctionInput = body.auction && typeof body.auction === "object" ? body.auction : {};
+      const startPrice = parseBig(auctionInput.startPrice);
+      const minIncrement = parseBig(auctionInput.minIncrement);
+      const reservePrice = auctionInput.reservePrice === undefined || auctionInput.reservePrice === ""
+        ? null
+        : parseBig(auctionInput.reservePrice);
+      const startDate = auctionInput.startDate ? new Date(String(auctionInput.startDate)) : null;
+      const endDate = auctionInput.endDate ? new Date(String(auctionInput.endDate)) : null;
+      if (startPrice === null || startPrice <= 0n || minIncrement === null || minIncrement <= 0n) {
+        return NextResponse.json({ error: "قیمت پایه و حداقل افزایش مزایده باید اعداد مثبت باشند." }, { status: 400 });
+      }
+      if (auctionInput.reservePrice !== undefined && auctionInput.reservePrice !== "" && (reservePrice === null || reservePrice < startPrice)) {
+        return NextResponse.json({ error: "قیمت ذخیره مزایده باید خالی یا حداقل برابر قیمت پایه باشد." }, { status: 400 });
+      }
+      if (!startDate || Number.isNaN(startDate.getTime()) || !endDate || Number.isNaN(endDate.getTime())) {
+        return NextResponse.json({ error: "زمان شروع و پایان مزایده معتبر نیست." }, { status: 400 });
+      }
+      if (startDate.getTime() < Date.now() - 60_000 || endDate <= startDate) {
+        return NextResponse.json({ error: "شروع مزایده نباید در گذشته باشد و پایان باید بعد از شروع باشد." }, { status: 400 });
+      }
+      auctionData = {
+        title,
+        description: body.description ? String(body.description).slice(0, 5000) : null,
+        startPrice,
+        reservePrice,
+        minIncrement,
+        startDate,
+        endDate,
+        status: "SCHEDULED",
+      };
+    } else if (body.auction) {
+      return NextResponse.json({ error: "اطلاعات مزایده فقط برای نوع معامله AUCTION قابل استفاده است." }, { status: 400 });
+    }
+
+    let rfqData: null | {
+      title: string;
+      description: string | null;
+      machineType: string | null;
+      brandPref: string | null;
+      quantity: number;
+      specJson: string;
+      budgetMin: bigint | null;
+      budgetMax: bigint | null;
+      location: string | null;
+      deadline: Date | null;
+      terms: string | null;
+      status: string;
+      buyerName: string | null;
+      buyerPhone: string;
+      buyerEmail: string | null;
+      buyerId: string;
+    } = null;
+    if (transactionType.key === "QUOTE") {
+      const rfqInput = body.rfq && typeof body.rfq === "object" ? body.rfq : {};
+      const quantity = Number(rfqInput.quantity ?? 1);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+        return NextResponse.json({ error: "تعداد موردنیاز باید عدد صحیح بین ۱ تا ۱۰۰۰۰ باشد." }, { status: 400 });
+      }
+      const budgetMin = rfqInput.budgetMin === undefined || rfqInput.budgetMin === "" ? null : parseBig(rfqInput.budgetMin);
+      const budgetMax = rfqInput.budgetMax === undefined || rfqInput.budgetMax === "" ? null : parseBig(rfqInput.budgetMax);
+      if ((rfqInput.budgetMin !== undefined && rfqInput.budgetMin !== "" && budgetMin === null) ||
+          (rfqInput.budgetMax !== undefined && rfqInput.budgetMax !== "" && budgetMax === null) ||
+          (budgetMin !== null && budgetMin < 0n) || (budgetMax !== null && budgetMax < 0n) ||
+          (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax)) {
+        return NextResponse.json({ error: "بازه بودجه استعلام معتبر نیست." }, { status: 400 });
+      }
+      let deadline: Date | null = null;
+      if (rfqInput.deadline) {
+        deadline = new Date(String(rfqInput.deadline));
+        if (Number.isNaN(deadline.getTime()) || deadline <= new Date()) {
+          return NextResponse.json({ error: "مهلت استعلام باید یک تاریخ معتبر در آینده باشد." }, { status: 400 });
+        }
+      }
+      const [buyer, rfqCategory, rfqBrand] = await Promise.all([
+        db.user.findUnique({
+          where: { id: user.id },
+          select: { firstName: true, lastName: true, mobile: true, email: true },
+        }),
+        db.category.findUnique({ where: { id: String(body.categoryId) }, select: { name: true } }),
+        body.brandId ? db.brand.findUnique({ where: { id: String(body.brandId) }, select: { name: true } }) : Promise.resolve(null),
+      ]);
+      if (!buyer?.mobile) {
+        return NextResponse.json({ error: "شماره همراه معتبر برای ثبت استعلام در حساب شما ثبت نشده است." }, { status: 400 });
+      }
+      rfqData = {
+        title,
+        description: body.description ? String(body.description).slice(0, 5000) : null,
+        machineType: rfqCategory?.name ?? null,
+        brandPref: rfqBrand?.name ?? null,
+        quantity,
+        specJson: JSON.stringify({
+          categoryId: String(body.categoryId),
+          brandId: body.brandId ? String(body.brandId) : null,
+          modelId: body.modelId ? String(body.modelId) : null,
+          attributeValues: Array.isArray(body.attributeValues) ? body.attributeValues : [],
+        }),
+        budgetMin,
+        budgetMax,
+        location: selectedCity?.name ?? selectedProvince?.name ?? null,
+        deadline,
+        terms: rfqInput.terms ? String(rfqInput.terms).trim().slice(0, 3000) : null,
+        status: "OPEN",
+        buyerName: [buyer.firstName, buyer.lastName].filter(Boolean).join(" ").trim() || null,
+        buyerPhone: buyer.mobile,
+        buyerEmail: buyer.email ?? null,
+        buyerId: user.id,
+      };
+    } else if (body.rfq) {
+      return NextResponse.json({ error: "اطلاعات RFQ فقط برای نوع معامله QUOTE قابل استفاده است." }, { status: 400 });
+    }
+
     const slug = await uniqueSlug(db.listing, body.slug || title);
     // W-03 FIX: sellerId is derived ONLY from the authenticated session.
     // Any sellerId value in the request body is deliberately ignored.
@@ -585,6 +727,7 @@ export async function POST(req: Request) {
       priceType: body.priceType || "NEGOTIABLE",
       listingType: transactionType.key,
       transactionTypeId: transactionType.id,
+      serviceTypeId: selectedServiceType?.id ?? null,
       condition: body.condition || "USED",
       province: selectedProvince?.name ?? (requestedProvinceId ? null : body.province ?? null),
       city: selectedCity?.name ?? (requestedCityId ? null : body.city ?? null),
@@ -641,6 +784,8 @@ export async function POST(req: Request) {
         data: {
           ...data,
           ...(serialNumber ? { passport: { create: { serialNumber } } } : {}),
+          ...(auctionData ? { auctions: { create: auctionData } } : {}),
+          ...(rfqData ? { rfq: { create: rfqData } } : {}),
           ...(stagedAssets.length
             ? {
                 images: {
@@ -653,6 +798,10 @@ export async function POST(req: Request) {
                 },
               }
             : {}),
+        },
+        include: {
+          auctions: { select: { id: true } },
+          rfq: { select: { id: true } },
         },
       });
 
@@ -709,6 +858,8 @@ export async function POST(req: Request) {
       status: listing.status,
       mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
       mediaPendingCount: mediaPendingIds.length,
+      auctionId: listing.auctions[0]?.id ?? null,
+      rfqId: listing.rfq?.id ?? null,
     });
   } catch (err: any) {
     trackError(err, { endpoint: "POST /api/listings" });
