@@ -152,7 +152,7 @@ beforeEach(() => {
   mockPreflightOk = true;
   // Enable provider routes only in mocked tests; no real provider call is made.
   process.env.HEAVIX_AI_SCRAPER_ENABLED = "true";
-  process.env.HEAVIX_STORE_SCRAPER_ENABLED = "true";
+  process.env.HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS = "parts.example.test";
 });
 
 function readSource(rel: string): string {

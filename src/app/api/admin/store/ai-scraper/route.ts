@@ -646,14 +646,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const isManualImport = body.action === "import" || body.action === "bulk-import";
 
-  // Keep manager-reviewed manual imports available; provider discovery is separately gated.
-  // Search hits are filtered to the configured allowlist and pages use the pinned-DNS safe transport.
-  if (!isManualImport && process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true") {
+  // Discovery requires an explicit host allowlist; no global activation flag is used.
+  // Manual imports remain available, while discovery fails closed before AI budget preflight
+  // if no source hosts are configured. Every result/page is still checked by the safe transport.
+  if (!isManualImport && getStoreSourceAllowedHosts().length === 0) {
     return NextResponse.json(
       {
         ok: false,
-        code: "STORE_SCRAPER_NOT_ENABLED_IN_ENVIRONMENT",
-        error: "جستجوی هوشمند قطعات تا تکمیل دریافت امن منابع و فعال‌سازی تنظیم محیطی در این محیط اجرا نمی‌شود.",
+        code: "STORE_SCRAPER_SOURCE_ALLOWLIST_NOT_CONFIGURED",
+        error: "برای جستجوی قطعات، ابتدا دامنه‌های مجاز منابع را در HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS تنظیم کنید.",
       },
       { status: 503 },
     );
