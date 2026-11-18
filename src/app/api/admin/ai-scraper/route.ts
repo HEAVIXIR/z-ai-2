@@ -193,6 +193,13 @@ async function importListing(s: ScrapeResult, actorId: string) {
     throw new Error("استخراج معتبر آگهی کامل نیست؛ پیش‌نویس ساخته نشد.");
   }
   const title = s.title || "بدون عنوان";
+  const selectedTransaction = s.selectedTransactionTypeId
+    ? await db.transactionType.findUnique({ where: { id: s.selectedTransactionTypeId }, select: { key: true } })
+    : null;
+  const validListingTypes = new Set(["SALE", "RENT", "AUCTION", "WANTED", "SERVICE_OFFER", "SERVICE_REQUEST", "QUOTE"]);
+  const listingType = selectedTransaction && validListingTypes.has(selectedTransaction.key)
+    ? selectedTransaction.key
+    : "SALE";
   const toBoundedInteger = (value: unknown, min: number, max: number): number | null => {
     const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
     return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
@@ -329,6 +336,7 @@ async function importListing(s: ScrapeResult, actorId: string) {
       title,
       description: s.description,
       shortDesc: s.description?.slice(0, 150),
+      listingType,
       price: parseBig(s.price),
       priceType: s.price ? "FIXED" : "NEGOTIABLE",
       condition: normalizedCondition,
