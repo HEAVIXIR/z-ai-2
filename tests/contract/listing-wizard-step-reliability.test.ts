@@ -23,8 +23,13 @@ describe("Listing wizard seven-step source contract", () => {
   it("uses industrial marketplace language rather than machine-only wording", () => {
     expect(wizard).toContain("ثبت آگهی در بازار صنعتی HEAVIX");
     expect(wizard).toContain("کالا، مواد معدنی، خدمات یا فرصت صنعتی");
-    expect(wizard).toContain('title="دسته‌بندی موضوع آگهی"');
-    expect(wizard).toContain('title="موقعیت کالا، خدمت یا پروژه"');
+    expect(wizard).toContain("<CascadingCategoryPicker");
+    expect(categoryPicker).toContain("دسته اصلی");
+    expect(categoryPicker).toContain("سطح ${level + 1} دسته‌بندی");
+    expect(wizard).toContain("<LocationPicker");
+    expect(location).toContain("کشور");
+    expect(location).toContain("استان");
+    expect(location).toContain("شهر");
     expect(wizard).not.toContain("ثبت آگهی ماشین‌آلات");
   });
 
