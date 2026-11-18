@@ -24,6 +24,8 @@ interface ScrapeResult {
   url: string;
   title?: string;
   publishedAt?: string | null;
+  selectedCategoryId?: string | null;
+  selectedTransactionTypeId?: string | null;
   description?: string;
   price?: string | null;
   images: string[];
@@ -215,8 +217,8 @@ async function importListing(s: ScrapeResult, actorId: string) {
     if (exact.length === 1) brandId = exact[0].id;
   }
 
-  let categoryId: string | null = null;
-  if (s.category) {
+  let categoryId: string | null = s.selectedCategoryId || null;
+  if (!categoryId && s.category) {
     const candidates = await db.category.findMany({
       where: { OR: [{ name: { equals: s.category, mode: "insensitive" } }, { nameEn: { equals: s.category, mode: "insensitive" } }, { slug: { equals: slugify(s.category) } }] },
       select: { id: true, name: true, nameEn: true, slug: true },
@@ -345,6 +347,7 @@ async function importListing(s: ScrapeResult, actorId: string) {
       brandId,
       categoryId,
       modelId,
+      transactionTypeId: s.selectedTransactionTypeId || null,
       ...(extractedAttributeValues.length ? { attributeValues: { create: extractedAttributeValues } } : {}),
       status: "PENDING",
       verified: false,
@@ -450,7 +453,11 @@ async function _doPost(
       }
       const urls = (await searchAdUrls(zai, searchTerms.filter(Boolean).join(" "), num))
         .filter((url) => isAllowedSourceUrl(url));
-      const extracted = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
+      const extracted = await Promise.all(urls.slice(0, num).map(async (u) => ({
+        ...(await scrapeUrl(zai, u, controller.signal)),
+        selectedCategoryId: categoryId || null,
+        selectedTransactionTypeId: transactionTypeId || null,
+      })));
       const cutoff = Number.isInteger(dateDays) && dateDays > 0 && dateDays <= 365
         ? Date.now() - dateDays * 24 * 60 * 60 * 1000
         : null;
@@ -477,7 +484,17 @@ async function _doPost(
       const sourceUrl = String(submitted?.url ?? "").trim();
       if (!sourceUrl) return NextResponse.json({ error: "scraped.url is required" }, { status: 400 });
       if (!isAllowedSourceUrl(sourceUrl)) return NextResponse.json({ error: "دامنه این آگهی در فهرست منابع مجاز نیست." }, { status: 400 });
+      const selectedCategoryId = typeof submitted?.selectedCategoryId === "string" ? submitted.selectedCategoryId : null;
+      const selectedTransactionTypeId = typeof submitted?.selectedTransactionTypeId === "string" ? submitted.selectedTransactionTypeId : null;
+      if (selectedCategoryId && !(await db.category.findFirst({ where: { id: selectedCategoryId, active: true }, select: { id: true } }))) {
+        return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      if (selectedTransactionTypeId && !(await db.transactionType.findFirst({ where: { id: selectedTransactionTypeId, active: true }, select: { id: true } }))) {
+        return NextResponse.json({ error: "نوع آگهی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
       const scraped = await scrapeUrl(zai, sourceUrl, controller.signal);
+      scraped.selectedCategoryId = selectedCategoryId;
+      scraped.selectedTransactionTypeId = selectedTransactionTypeId;
       if (!scraped.title || (scraped.description || "").startsWith("Error scraping:")) {
         return NextResponse.json({ error: "استخراج مجدد سمت سرور ناموفق بود؛ پیش‌نویسی ساخته نشد." }, { status: 502 });
       }
