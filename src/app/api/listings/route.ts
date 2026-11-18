@@ -3,6 +3,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
+import { logAudit } from "@/lib/audit";
 import { categoryLayerForTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { toPublicListingDTO } from "@/lib/public-listing-dto";
@@ -817,6 +818,37 @@ export async function POST(req: Request) {
       }
       return created;
     });
+
+    if (listing.rfq) {
+      try {
+        await logAudit({
+          actorId: user.id,
+          actorType: "USER",
+          action: "marketplace.rfq.create",
+          entityType: "RFQ",
+          entityId: listing.rfq.id,
+          after: { listingId: listing.id, title: listing.rfq.title, status: listing.rfq.status, quantity: listing.rfq.quantity },
+          reason: `ثبت استعلام قیمت مرتبط با آگهی ${listing.title}`,
+        });
+      } catch (auditError) {
+        console.error("[listings] RFQ audit deferred", auditError instanceof Error ? auditError.message : "unknown");
+      }
+    }
+    for (const auction of listing.auctions) {
+      try {
+        await logAudit({
+          actorId: user.id,
+          actorType: "USER",
+          action: "marketplace.auction.create",
+          entityType: "Auction",
+          entityId: auction.id,
+          after: { listingId: listing.id, status: "SCHEDULED" },
+          reason: `ایجاد مزایده برای آگهی ${listing.title}`,
+        });
+      } catch (auditError) {
+        console.error("[listings] Auction audit deferred", auditError instanceof Error ? auditError.message : "unknown");
+      }
+    }
 
     const mediaPendingIds: string[] = [];
     if (stagedAssets.length) {

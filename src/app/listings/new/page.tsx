@@ -91,6 +91,7 @@ type TaxRoot = {
 };
 
 type ModelOption = { id: string; name: string; nameEn: string | null };
+type ServiceTypeOption = { id: string; key: string; nameFa: string; nameEn: string | null };
 
 export default function NewListingPage() {
   const [step, setStep] = useState(1);
@@ -107,6 +108,21 @@ export default function NewListingPage() {
   // Form state — V1.1
   // The first step is valid only after an active transaction type is loaded and selected.
   const [transactionType, setTransactionType] = useState<string>("");
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([]);
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [auction, setAuction] = useState({
+    reservePrice: "",
+    minIncrement: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [rfq, setRfq] = useState({
+    quantity: "1",
+    budgetMin: "",
+    budgetMax: "",
+    deadline: "",
+    terms: "",
+  });
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
@@ -188,11 +204,13 @@ export default function NewListingPage() {
           catalogRoots?: TaxRoot[];
           marketplaceRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
+          serviceTypes?: ServiceTypeOption[];
         };
         if (alive) {
           setCatalogRoots(data.catalogRoots ?? []);
           setMarketplaceRoots(data.marketplaceRoots ?? []);
           setServiceRoots(data.serviceRoots ?? []);
+          setServiceTypes(data.serviceTypes ?? []);
         }
       } catch {
         if (alive) setTaxonomyError("دریافت دسته‌بندی‌ها ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
@@ -323,6 +341,9 @@ export default function NewListingPage() {
   const handleTransactionTypeChange = (nextType: string) => {
     if (nextType === transactionType) return;
     setTransactionType(nextType);
+    setServiceTypeId("");
+    setAuction({ reservePrice: "", minIncrement: "", startDate: "", endDate: "" });
+    setRfq({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "", terms: "" });
     setCategoryId("");
     setCategoryPath([]);
     setBrandId("");
@@ -350,9 +371,19 @@ export default function NewListingPage() {
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
-      if (isServiceFlow || isRequestFlow) return true; // service, wanted, and RFQ flows do not require price or gallery
-      if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
-      if (isAuction) return images.length >= 1; // auction price optional at submission
+      if (isServiceFlow) return Boolean(serviceTypeId);
+      if (transactionType === "QUOTE") {
+        const quantity = Number(rfq.quantity);
+        const min = rfq.budgetMin ? Number(rfq.budgetMin.replace(/[^\\d]/g, "")) : null;
+        const max = rfq.budgetMax ? Number(rfq.budgetMax.replace(/[^\\d]/g, "")) : null;
+        return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
+          (min === null || (Number.isFinite(min) && min >= 0)) &&
+          (max === null || (Number.isFinite(max) && max >= 0)) &&
+          (min === null || max === null || min <= max);
+      }
+      if (isRequestFlow) return true;
+      if (isRent) return Boolean(form.price && form.rentalPeriod && images.length >= 1);
+      if (isAuction) return Boolean(form.price && auction.minIncrement && auction.startDate && auction.endDate && images.length >= 1);
       return form.price && images.length >= 1;
     }
     return true;
@@ -400,9 +431,29 @@ export default function NewListingPage() {
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
+        serviceTypeId: isServiceFlow ? serviceTypeId : undefined,
         attributeValues: attributePayload,
         images: images.map((url) => ({ url })),
       };
+
+      if (transactionType === "QUOTE") {
+        body.rfq = {
+          quantity: Number(rfq.quantity),
+          budgetMin: rfq.budgetMin || undefined,
+          budgetMax: rfq.budgetMax || undefined,
+          deadline: rfq.deadline ? new Date(`${rfq.deadline}T23:59:00`).toISOString() : undefined,
+          terms: rfq.terms.trim() || undefined,
+        };
+      }
+      if (isAuction) {
+        body.auction = {
+          startPrice: form.price.replace(/[^\\d]/g, ""),
+          reservePrice: auction.reservePrice || undefined,
+          minIncrement: auction.minIncrement,
+          startDate: new Date(auction.startDate).toISOString(),
+          endDate: new Date(auction.endDate).toISOString(),
+        };
+      }
 
       // P2-5b — Rental fields (sent only when transactionType=RENT).
       if (isRent) {
@@ -966,6 +1017,84 @@ export default function NewListingPage() {
                       }
                     />
                     <div className="mt-6 space-y-5">
+                      {isServiceFlow && (
+                        <div className="rounded-2xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-5">
+                          <label className={labelCls}>نوع خدمت تخصصی *</label>
+                          <select
+                            value={serviceTypeId}
+                            onChange={(e) => setServiceTypeId(e.target.value)}
+                            className={inputCls}
+                            disabled={taxonomyLoading}
+                          >
+                            <option value="">انتخاب نوع خدمت</option>
+                            {serviceTypes.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.nameFa}{item.nameEn ? ` — ${item.nameEn}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {serviceTypes.length === 0 && !taxonomyLoading && (
+                            <p role="alert" className="mt-2 text-xs text-amber-300">
+                              نوع خدمت فعالی ثبت نشده است. ابتدا فهرست را دوباره دریافت کنید.
+                              <button type="button" onClick={() => setTaxonomyRetryKey((key) => key + 1)} className="mr-2 font-bold text-[#F58220] underline">تلاش مجدد</button>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {transactionType === "QUOTE" && (
+                        <div className="rounded-2xl border border-sky-400/20 bg-sky-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-sky-300">جزئیات استعلام قیمت (RFQ)</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className={labelCls}>تعداد موردنیاز *</label>
+                              <input value={rfq.quantity} onChange={(e) => setRfq((v) => ({ ...v, quantity: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>مهلت دریافت پیشنهاد</label>
+                              <input type="date" value={rfq.deadline} onChange={(e) => setRfq((v) => ({ ...v, deadline: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل بودجه (تومان)</label>
+                              <input value={rfq.budgetMin} onChange={(e) => setRfq((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداکثر بودجه (تومان)</label>
+                              <input value={rfq.budgetMax} onChange={(e) => setRfq((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <label className={labelCls}>شرایط تأمین و تحویل</label>
+                            <textarea value={rfq.terms} onChange={(e) => setRfq((v) => ({ ...v, terms: e.target.value }))} rows={3} maxLength={3000} className={inputCls} />
+                          </div>
+                        </div>
+                      )}
+
+                      {isAuction && (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-amber-300">شرایط مزایده</p>
+                          <p className="mb-3 text-xs text-white/55">قیمت پایه از فیلد قیمت بالا دریافت می‌شود؛ سایر پارامترها باید دقیق وارد شوند.</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className={labelCls}>قیمت ذخیره (اختیاری)</label>
+                              <input value={auction.reservePrice} onChange={(e) => setAuction((v) => ({ ...v, reservePrice: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل افزایش هر پیشنهاد *</label>
+                              <input value={auction.minIncrement} onChange={(e) => setAuction((v) => ({ ...v, minIncrement: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>تاریخ و ساعت شروع *</label>
+                              <input type="datetime-local" value={auction.startDate} onChange={(e) => setAuction((v) => ({ ...v, startDate: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>تاریخ و ساعت پایان *</label>
+                              <input type="datetime-local" value={auction.endDate} onChange={(e) => setAuction((v) => ({ ...v, endDate: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {!isServiceFlow && (
                         <div className="grid gap-5 sm:grid-cols-2">
                           <div>
@@ -1185,6 +1314,22 @@ export default function NewListingPage() {
                     />
                     <div className="mt-6 space-y-4">
                       <ReviewRow label="نوع معامله" value={transactionType} />
+                      {isServiceFlow && <ReviewRow label="نوع خدمت" value={serviceTypes.find((item) => item.id === serviceTypeId)?.nameFa ?? "—"} />}
+                      {transactionType === "QUOTE" && (
+                        <>
+                          <ReviewRow label="تعداد موردنیاز" value={rfq.quantity || "—"} />
+                          <ReviewRow label="بازه بودجه" value={[rfq.budgetMin, rfq.budgetMax].filter(Boolean).join(" تا ") || "توافقی"} />
+                          <ReviewRow label="مهلت استعلام" value={rfq.deadline || "—"} />
+                        </>
+                      )}
+                      {isAuction && (
+                        <>
+                          <ReviewRow label="حداقل افزایش مزایده" value={auction.minIncrement || "—"} />
+                          <ReviewRow label="قیمت ذخیره" value={auction.reservePrice || "—"} />
+                          <ReviewRow label="شروع مزایده" value={auction.startDate || "—"} />
+                          <ReviewRow label="پایان مزایده" value={auction.endDate || "—"} />
+                        </>
+                      )}
                       <ReviewRow
                         label="دسته‌بندی"
                         value={categoryPath.map((item) => item.name).join(" / ") || "—"}
