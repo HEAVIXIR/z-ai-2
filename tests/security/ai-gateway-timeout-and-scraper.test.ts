@@ -262,22 +262,24 @@ const SCRAPER_ROUTES = [
   { name: "admin/store/ai-scraper", rel: "admin/store/ai-scraper/route.ts" },
 ];
 
-describe("Scraper environment gates and preflight ordering", () => {
-  it("Marketplace provider execution is configurable and the CSRF/env gates precede budget reservation", () => {
+describe("Scraper authorization, source safety, and preflight ordering", () => {
+  it("Marketplace search has no artificial activation flag and keeps auth + CSRF before AI preflight", () => {
     const src = readSource("admin/ai-scraper/route.ts");
-    expect(src).toContain('process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
+    expect(src).toContain('requirePermission(user.id, "ai.execute")');
+    expect(src).not.toContain("HEAVIX_AI_SCRAPER_ENABLED");
+    expect(src.indexOf("getCurrentUser()")).toBeLessThan(src.indexOf("checkCsrf(req)"));
     expect(src.indexOf("checkCsrf(req)")).toBeLessThan(src.indexOf("preflightAIRequest("));
-    expect(src.indexOf("HEAVIX_AI_SCRAPER_ENABLED")).toBeLessThan(src.indexOf("preflightAIRequest("));
-    expect(src).not.toContain("AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY");
+    expect(src).toContain("isAllowedSourceUrl");
   });
 
-  it("Store provider discovery has its own opt-in while manual imports remain available", () => {
+  it("Store discovery remains constrained by an explicit host allowlist and manual imports are distinct", () => {
     const src = readSource("admin/store/ai-scraper/route.ts");
-    expect(src).toContain('process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true"');
+    expect(src).toContain("HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS");
     expect(src).toContain('const isManualImport = body.action === "import" || body.action === "bulk-import"');
+    expect(src).not.toContain("HEAVIX_STORE_SCRAPER_ENABLED");
+    expect(src.indexOf("getCurrentUser()")).toBeLessThan(src.indexOf("checkCsrf(req)"));
     expect(src.indexOf("checkCsrf(req)")).toBeLessThan(src.indexOf("preflightAIRequest("));
-    expect(src.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(src.indexOf("preflightAIRequest("));
-    expect(src).not.toContain("AI_SCRAPER_DISABLED_BY_FREE_INFRA_POLICY");
+    expect(src).toContain("isAllowedStoreSourceUrl");
   });
 });
 
@@ -624,21 +626,21 @@ describe("AI scraper hardening follow-up", () => {
     expect(route).toContain("importListing(s, user.id)");
   });
 
-  it("caps bulk imports at five URLs and rejects non-string URL entries", () => {
+  it("bounds bulk imports at thirty URLs and rejects non-string or disallowed URL entries", () => {
     const route = readSource("admin/ai-scraper/route.ts");
-    expect(route).toContain("const MAX_BULK_IMPORT_URLS = 5");
+    expect(route).toContain("const MAX_BULK_IMPORT_URLS = 30");
     expect(route).toContain("urls.length > MAX_BULK_IMPORT_URLS");
-    expect(route).toContain("typeof u !== \"string\" || !isAllowedSourceUrl(u)");
+    expect(route).toContain('typeof u !== "string" || !isAllowedSourceUrl(u)');
   });
 
-  it("caps UI bulk selection and avoids state-updater side effects", () => {
+  it("allows selecting all returned results without a stale five-item UI cap", () => {
     const client = fs.readFileSync(
       path.resolve(process.cwd(), "src/components/admin/AIScraperClient.tsx"),
       "utf-8",
     );
-    expect(client).toContain("const MAX_BULK_IMPORT_SELECTION = 5");
-    expect(client).toContain(".slice(0, MAX_BULK_IMPORT_SELECTION)");
-    expect(client).toContain("selected.size >= MAX_BULK_IMPORT_SELECTION");
+    expect(client).not.toContain("MAX_BULK_IMPORT_SELECTION");
+    expect(client).not.toContain("selected.size >=");
+    expect(client).toContain("new Set(prev).add(index)");
     const updaterStart = client.indexOf("setSelected(prev => {", client.indexOf("const toggle ="));
     const updaterEnd = client.indexOf("});", updaterStart);
     expect(client.slice(updaterStart, updaterEnd)).not.toContain("setError");
