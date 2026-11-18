@@ -14,9 +14,18 @@ const createListingApi = read("src/app/api/listings/route.ts");
 describe("Listing wizard seven-step source contract", () => {
   it("keeps the seven user-facing sections in the declared order", () => {
     expect(wizard).toContain('const STEP_LABELS = [');
-    for (const label of ["نوع معامله", "دسته‌بندی", "برند و مدل", "مشخصات فنی", "موقعیت", "جزئیات", "تکمیل"]) {
+    for (const label of ["نوع معامله", "دسته‌بندی", "برند و مدل", "مشخصات تخصصی", "موقعیت", "جزئیات", "تکمیل"]) {
       expect(wizard).toContain(`"${label}"`);
     }
+  });
+
+
+  it("uses industrial marketplace language rather than machine-only wording", () => {
+    expect(wizard).toContain("ثبت آگهی در بازار صنعتی HEAVIX");
+    expect(wizard).toContain("کالا، مواد معدنی، خدمات یا فرصت صنعتی");
+    expect(wizard).toContain('title="دسته‌بندی موضوع آگهی"');
+    expect(wizard).toContain('title="موقعیت کالا، خدمت یا پروژه"');
+    expect(wizard).not.toContain("ثبت آگهی ماشین‌آلات");
   });
 
   it("loads transaction types from the canonical endpoint and requires explicit selection", () => {
