@@ -700,3 +700,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Added these legacy-parity and consumer findings as a comment on Issue #345.
 - No code/schema/migration/seed/database/Preview/Production/Worker changes; no paid provider use. No CI was triggered for the documentation-only commits. Prior CI/OpenNext evidence remains tied to `b56e73b1...` only.
 - Next: write the canonical BuyRequest lifecycle contract and test matrix, then implement the API/UI contract alignment and lifecycle eligibility checks without introducing a duplicate source of truth. Decide whether quantity/spec fields require a reviewed additive schema migration; if yes, use the exact-identity paired Main+Store Preview backup gate only.
+
+
+## 2026-11-19 — Integration Preview HTTP 500: observability investigation
+
+- Rechecked CI run #44408767864 on exact Integration HEAD `55c9c559b68442020bda08e2c984564b9c4f2228`: overall SUCCESS.
+- Rechecked Integration Preview workflow #44408761521: Build and Preview deploy succeeded, but root reachability failed with repeated HTTP 500 responses. The deployed Preview SHA was `e989b4d4998774c2d202c6f27a7edfe2424f8ee2`, one commit behind the latest test-only head. Deployment version: `5468c091-8920-42b3-bdd7-af4073c3b73b`.
+- Queried Cloudflare Workers Observability for Preview slug `integration-preview-readiness-workerd-2026-11-15`. Correlated root trace `2f33115dae4d55b19ec3d2785b6bccac` showed HTTP 500, a Prisma error log and stack beginning `tx (worker.js:60359:38)`. Prisma Accelerate fetch spans to `db.prisma.io/v0/statement?db=postgres` completed in about 724ms, but the actual statement outcome/error is not exposed by those spans. Exact Prisma error code and model/query remain unconfirmed.
+- Read `src/app/page.tsx` from Integration. Homepage runs multiple parallel cached reads and additional listing/category/count/request/article/hero queries; this establishes likely query paths to inspect, not a confirmed root cause.
+- Opened Issue #346 with the observed evidence, investigation plan and strict non-production guardrails: https://github.com/HEAVIXIR/z-ai-2/issues/346.
+- No code or schema changes, no database writes/migrations/seeds, no Production deploy, no secrets/DNS/Worker configuration changes, no paid providers.
+- Outcome: CI green; Preview deployment succeeded; runtime acceptance FAILED. Integration is not release-ready. Next: obtain full Prisma exception/statement error and validate Preview DB identity/schema/migration history read-only before a narrow code fix.
