@@ -44,8 +44,8 @@ import {
    Steps:
    1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST/SERVICE_OFFER
    2. دسته‌بندی (Category)          — CATALOG only, cascading root → child → grandchild
-   3. برند و مدل                     — brand typeahead + model select (filtered by brand)
-   4. مشخصات فنی دستگاه               — dynamic inherited attributes for selected machine/category
+   3. اطلاعات پایه                  — title/description; optional brand/model when relevant
+   4. مشخصات تخصصی                  — dynamic inherited attributes for selected subject/category
    5. موقعیت (Location)              — country/province/city cascading
    6. جزئیات                          — title, description, price/rental period, images, contact
    7. بازبینی و تأیید                — review + POST /api/listings
@@ -668,9 +668,9 @@ export default function NewListingPage() {
                       <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
                     </div>
                     <p className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-5 text-white/50">
-                      نوع معامله فیلد جریان را تعیین می‌کند: «فروش» و «اجاره» برای کاتالوگ ماشین‌آلات،
-                      «درخواست» برای درخواست خرید، «پیشنهاد قیمت» برای RFQ، «مزایده» برای حراج،
-                      و «ارائه خدمات» برای معرفی خدمات قابل ارائه و «درخواست خدمت» برای ثبت نیاز خریدار.
+                      نوع فعالیت، مسیر ثبت را تعیین می‌کند: عرضه یا درخواست کالا و تجهیزات، اجاره دارایی،
+                      استعلام قیمت و مزایده به‌عنوان روش معامله، یا معرفی خدمت و ثبت درخواست خدمت.
+                      دسته‌بندی و مشخصات بعدی بر اساس موضوع انتخاب‌شده تنظیم می‌شوند.
                     </p>
                   </div>
                 )}
