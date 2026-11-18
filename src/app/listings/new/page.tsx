@@ -152,6 +152,9 @@ export default function NewListingPage() {
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
   const [marketplaceRoots, setMarketplaceRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
+  const [taxonomyLoading, setTaxonomyLoading] = useState(true);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [taxonomyRetryKey, setTaxonomyRetryKey] = useState(0);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
   const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
@@ -171,10 +174,12 @@ export default function NewListingPage() {
   // ── Fetch V1.1 catalog roots ──
   useEffect(() => {
     let alive = true;
+    setTaxonomyLoading(true);
+    setTaxonomyError(null);
     (async () => {
       try {
         const res = await fetch("/api/taxonomy", { cache: "no-store" });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error("taxonomy unavailable");
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
           marketplaceRoots?: TaxRoot[];
@@ -182,15 +187,21 @@ export default function NewListingPage() {
         };
         if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
         if (alive && data.marketplaceRoots) setMarketplaceRoots(data.marketplaceRoots);
-        if (alive && data.serviceRoots) setServiceRoots(data.serviceRoots);
+        if (alive) {
+          setCatalogRoots(data.catalogRoots ?? []);
+          setMarketplaceRoots(data.marketplaceRoots ?? []);
+          setServiceRoots(data.serviceRoots ?? []);
+        }
       } catch {
-        /* swallow */
+        if (alive) setTaxonomyError("دریافت دسته‌بندی‌ها ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
+      } finally {
+        if (alive) setTaxonomyLoading(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [taxonomyRetryKey]);
 
   // ── Debounced alias-aware brand search ──
   useEffect(() => {
@@ -608,9 +619,21 @@ export default function NewListingPage() {
                         : "نوع دستگاه، زیرشاخه و زیرنوع تخصصی را انتخاب کنید"}
                     />
 
-                    {categoryRoots.length === 0 ? (
+                    {taxonomyLoading ? (
                       <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
-                        در حال بارگذاری دسته‌بندی‌ها… اگر ظاهر نشد، ابتدا دسته‌های کاتالوگ را در پنل مدیریت اضافه کنید.
+                        <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#F58220]" />
+                        در حال بارگذاری دسته‌بندی‌ها…
+                      </div>
+                    ) : taxonomyError ? (
+                      <div role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-500/[0.06] p-5 text-center text-sm text-red-200">
+                        <p>{taxonomyError}</p>
+                        <button type="button" onClick={() => setTaxonomyRetryKey((current) => current + 1)} className="mt-3 rounded-lg border border-red-300/30 px-4 py-2 font-bold hover:bg-red-300/10">
+                          تلاش مجدد
+                        </button>
+                      </div>
+                    ) : categoryRoots.length === 0 ? (
+                      <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
+                        هنوز دسته‌بندی فعالی برای این نوع معامله تعریف نشده است.
                       </div>
                     ) : (
                       <div className="mt-6">
