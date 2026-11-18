@@ -70,8 +70,14 @@ export async function GET(req: Request) {
       },
     ]);
 
+    const data = items.map(serialize);
+    // Keep the historical `requests` field while satisfying the current
+    // AdminRequestsPage contract (`success` + `data`). Both aliases point
+    // to the same serialized rows so consumers cannot drift.
     return NextResponse.json({
-      requests: items.map(serialize),
+      success: true,
+      data,
+      requests: data,
       total,
       stats,
     });
