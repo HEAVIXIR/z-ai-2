@@ -24,13 +24,13 @@
 - Repository: `HEAVIXIR/z-ai-2`
 - Active branch: `integration/preview-readiness-workerd-2026-11-15`
 - Draft PR: [#340](https://github.com/HEAVIXIR/z-ai-2/pull/340)
-- Latest verified PR head at this record: `9d13fe64315892d16682a4df8138c6da4fd0915a`
+- Current PR head at this record: `23d74a2083d2eb0252a6f4779d41e52f295c2c94` (this continuity-register documentation commit).
 - PR state observed: OPEN, DRAFT, not merged; base `main`.
 - The PR description explicitly prohibits Production deployment, database migration/seed, and Cloudflare Worker build. Workers Builds remains disconnected; Preview builds remain disabled pending release gates and separate owner approval.
 
 ### Exact-head CI evidence
 
-The following GitHub Actions runs were fetched for commit `9d13fe64315892d16682a4df8138c6da4fd0915a`:
+The following GitHub Actions runs were fetched for the immediately preceding code/documentation head `9d13fe64315892d16682a4df8138c6da4fd0915a`:
 
 | Workflow | Run | Result | Evidence |
 |---|---:|---|---|
@@ -43,7 +43,7 @@ OpenNext #792 returned successful steps including Worker build and real App Rout
 
 **Explicitly skipped in CI #3766:** `Preview read-only paired migration diagnostics` and `Legacy archive inventory (read-only)`. Their skipped status must not be represented as completed evidence. The commit combined-status endpoint returned no separate status contexts; the successful GitHub Actions runs above are the available exact-head evidence.
 
-Re-check the PR head and Actions before relying on these results; they are valid only for the SHA shown above.
+The current head `23d74a2083d2eb0252a6f4779d41e52f295c2c94` adds this continuity register only. A workflow-run lookup for that exact SHA returned no runs at the time of recording. Therefore CI/OpenNext success is verified for `9d13fe...`, **not** for the current head `23d74a...`. Re-check the PR head and Actions before relying on these results; discard stale SHA evidence after any further commit.
 
 ## 3. Canonical documentation index
 
