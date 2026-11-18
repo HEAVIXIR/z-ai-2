@@ -99,7 +99,7 @@ Cross-step acceptance:
 - Current UI: `src/app/listings/new/page.tsx`, seven visible steps; step 1 uses `TransactionTypePicker`, step 2 uses `CascadingCategoryPicker`, step 3 handles brand/model/basic data, step 4 uses `AttributeFields`, step 5 uses `LocationPicker`, step 6 details/media, step 7 review and POST.
 - Current submission API: `src/app/api/listings/route.ts`. It derives seller identity from the session, checks CSRF, validates active transaction type and terminal category/layer, validates brand/model, enforces staged media ownership and listing image limits, checks location hierarchy and validates attribute values. It creates a pending listing. Each of these source-level controls still requires focused tests and Preview evidence.
 - Current image component: `src/components/listings/ListingImageUploader.tsx` calls `POST /api/media/staging`, not the Admin upload endpoint. It expects a stable media URL and submits those URLs with the listing. Therefore the old Admin-only upload finding must not be copied forward as a current fact without checking the staging route and actual B2 object lifecycle.
-- Current taxonomy endpoint: `src/app/api/taxonomy/route.ts` currently queries categories with `level <= 2`, returning root/child and selected machinery grandchildren. The category picker and all active terminal-category depths must be checked against the actual taxonomy tree; deeper active leaves could be unreachable if they exist beyond the returned depth.
+- Current taxonomy endpoint: `src/app/api/taxonomy/route.ts` initially returns categories with `level <= 2` and selected machinery grandchildren. However, `CascadingCategoryPicker` lazily calls `/api/taxonomy/categories/[id]` for each selected node when children are not embedded, so the depth limit alone does not prove deeper leaves are unreachable. Verify that every active terminal path is reachable through this lazy-loading contract and that inactive/missing nodes fail safely.
 - Current source files and branch history include candidate implementations `feat/listing-wizard-end-to-end-2026-11-14`, `fix/listing-persistence-integrity-2026-11-14`, and `fix/listing-attributes-atomic-2026-11-14`. These are behavior sources for file-by-file reconciliation, not candidates for blind branch merge.
 - Legacy extracted snapshot contains `extracted/src/src/app/listings/new/page.tsx`; the old wizard and current wizard must be compared by behavior and contract, not filename alone.
 - Not yet verified: complete POST transaction tail, media staging and B2 runtime behavior, every wizard step's exact validation, full taxonomy depth coverage, database persistence readback, and browser Preview journey.
@@ -154,3 +154,27 @@ A capability is complete only when:
 ## 7. Execution continuity and honest limits
 
 This is a persistent repository plan. Work can be resumed from this file and the append-only worklog in later sessions. ChatGPT cannot continue executing tools autonomously between messages or while the conversation is inactive; no unattended background work is claimed. During each active session, continue the next unchecked batch, update exact evidence, and leave a precise next action. Do not create recurring paid jobs or external automation without explicit approval.
+
+
+## 8. First implementation batch — 2026-11-18
+
+The following source changes are committed to the selected Integration branch. They are not yet declared runtime-verified; exact-head CI/OpenNext and Preview acceptance remain required.
+
+- `034609ca979af67cc53341bff7a438b1016ad35f`: added this persistent plan.
+- `66230e2d30991d8196db2fd460d2c443d280b475`: removed implicit SALE auto-selection in `TransactionTypePicker`; user must explicitly select a transaction type. Added retry when the transaction-type API fails or returns an empty list.
+- `0ef323061764a49cfd1d9b0aa502dc0a74e07899`: taxonomy fetch now distinguishes loading, error and empty states; adds retry instead of leaving the category step on a permanent loading placeholder.
+- `a7c6b057bf2975c022d5c7d160340c431068f942`: category child loading now exposes a retry action.
+- `7a64439ce0f56912b5c9d23e8b509aaae7c18145`: dynamic attribute loading now exposes a retry action when no cached attributes are available.
+- `e03cb2fbb1e76d23fa212411f7d9f7698d5ee1fc`: country/province/city loading failures are surfaced with independent retry controls.
+- `df43de4848a2a719f958181e53cebb5bf6c69097` and `0f350cb36d2e8ffb4c42bbb0349ab547b2e8c05a`: added the seven-step listing wizard source-contract tests and retry assertions.
+- `12e887ddcf39aa48cf613b36e0bcacdd75da5cc9`: removed duplicate taxonomy state updates from the wizard fetch effect.
+- Tracking issue: [#344 — Continuous capability recovery and end-to-end listing wizard acceptance](https://github.com/HEAVIXIR/z-ai-2/issues/344).
+
+### Remaining in the first listing batch
+
+- Review and harden brand/model lookup failure and retry UX.
+- Validate the exact attribute payload mapping and required-field behavior for every supported attribute type.
+- Validate all transaction-specific fields and their persistence (including service offer/request, WANTED, QUOTE, AUCTION and RENT).
+- Verify the complete media lifecycle against isolated Preview B2 storage, including upload, readback, attach, retry and cleanup; no live B2 operation is claimed here.
+- Add behavioral tests that cover all seven steps, transaction variants, invalid selections, API outages, back/forward navigation and persisted readback.
+- Run exact-head CI/OpenNext and then isolated Preview browser acceptance; no deployment or data write until gates pass.
