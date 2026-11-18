@@ -413,12 +413,14 @@ async function _doPost(
 
     if (mode === "search") {
       const query = String(body.query ?? "").trim();
-      if (!query) return NextResponse.json({ error: "query is required" }, { status: 400 });
       const num = Math.max(1, Math.min(30, Number(body.num) || 15));
-      const searchTerms: string[] = [query];
       const categoryId = typeof body.categoryId === "string" ? body.categoryId.trim() : "";
       const serviceTypeId = typeof body.serviceTypeId === "string" ? body.serviceTypeId.trim() : "";
       const transactionTypeId = typeof body.transactionTypeId === "string" ? body.transactionTypeId.trim() : "";
+      if (!query && !categoryId && !serviceTypeId && !transactionTypeId) {
+        return NextResponse.json({ error: "عبارت جستجو یا حداقل یک دسته‌بندی/خدمت را انتخاب کنید." }, { status: 400 });
+      }
+      const searchTerms: string[] = query ? [query] : [];
       if (categoryId) {
         const category = await db.category.findFirst({
           where: { id: categoryId, active: true },
