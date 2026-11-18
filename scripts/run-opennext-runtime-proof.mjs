@@ -127,27 +127,54 @@ try {
 
   let response;
   let lastError;
+  let lastHttpResponse;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (preview.exit) {
       throw new Error(`OpenNext preview exited before readiness (code=${preview.exit.code}, signal=${preview.exit.signal}).`);
     }
     try {
-      response = await fetch(new URL(routePath, baseUrl), {
+      const candidate = await fetch(new URL(routePath, baseUrl), {
         headers: {
           accept: "application/json",
           authorization: `Bearer ${proofGateToken}`,
         },
         signal: AbortSignal.timeout(3_000),
       });
-      break;
+      if (candidate.status === 200) {
+        response = candidate;
+        break;
+      }
+      // Wrangler may bind its local preview listener before the Worker runtime
+      // is ready. Treat early HTTP responses as readiness failures too; do not
+      // mistake a transient 403/404/503 response for a completed smoke request.
+      lastHttpResponse = {
+        status: candidate.status,
+        contentType: candidate.headers.get("content-type"),
+        body: (await candidate.text()).slice(0, 240),
+      };
     } catch (error) {
       lastError = error;
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
     }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
   }
-  if (!response) throw new Error(`OpenNext preview did not become ready: ${lastError?.name ?? "timeout"}`);
-  const body = await response.json();
+  if (!response) {
+    throw new Error(
+      `OpenNext preview did not become ready: ${JSON.stringify({
+        networkError: lastError?.name ?? null,
+        lastHttpResponse,
+      })}`,
+    );
+  }
+  const responseText = await response.text();
+  let body;
+  try {
+    body = JSON.parse(responseText);
+  } catch {
+    throw new Error(
+      `OpenNext proof route returned non-JSON content (HTTP ${response.status}, content-type=${response.headers.get("content-type")}): ${responseText.slice(0, 240)}`,
+    );
+  }
   assert.equal(response.status, 200, `Proof route returned HTTP ${response.status}: ${JSON.stringify(body)}`);
   assert.equal(body.result, "PASS");
   assert.equal(body.mode, "SMOKE_ONLY");
