@@ -349,3 +349,53 @@ The seven-step wizard should support only combinations whose API, schema, permis
 3. **Separate domain journeys:** contractor work packages/tenders, mining projects/tenements, employment and investment opportunities. These should have tailored wizards/data rooms, not be squeezed into the generic machine listing form.
 
 The form may share seven visual steps, but the field schema and validation are conditional by subject and intent. The number of visible steps may collapse when a step is not applicable; a universal machine Brand/Model step is not mandatory for minerals, services or projects.
+
+
+## 13. Progressive, subject-specific form composition — owner clarification (2026-11-19)
+
+**Decision:** The registration wizard is a progressive form compiler, not a universal form with hundreds of optional fields. Each selection narrows the valid subject and the next form contract. By the technical-specification step, the system must resolve one applicable specification profile (or a small, explicitly composed set of profiles) for the selected intent + full category path + subject class + optional brand/model + applicable product generation. Only fields in that resolved profile are rendered.
+
+### 13.1 Resolution inputs and precedence
+
+1. Commercial intent / direction (for example sale offer vs rental offer vs rental request).
+2. Full terminal category path, not just the root category.
+3. Subject class and technical family (for example heavy equipment → mining equipment → excavator).
+4. Capacity / size / operating class when represented in taxonomy (for example 22-ton class).
+5. Brand, model and generation when applicable and selected.
+6. Intent-specific commercial profile (sale, rental, purchase request, service request, etc.).
+
+The resolved form is the intersection of applicable subject specifications and intent-specific fields, with explicit overrides only where a narrower profile is defined. A model selection may refine or override category defaults; it must not silently erase inherited required attributes.
+
+### 13.2 Separate profiles, shared renderer
+
+- Excavator, wheel loader, bulldozer, crusher, drill rig, mineral lot, mining project, contractor work package and employment each have distinct specification profiles.
+- Sale excavator and rental excavator share core equipment identity/specifications but use different commercial/operational sections (price vs rate basis, availability window, minimum term, deposit, operator/fuel/transport, mobilisation, inspection and handover).
+- Mineral commodity forms use assay/grade, moisture, impurities, size, quantity/unit, origin, lot/stock, delivery and certificates; they do not show engine, gearbox, hydraulic or machine model fields.
+- Contractor/work-package forms use discipline, scope, fleet/workforce capacity, site, HSE, qualifications, milestones and deliverables; they do not reuse a machine product form.
+- Brand/model controls are conditional capabilities of a subject profile, never mandatory wizard steps for subjects where they do not apply.
+
+The renderer and typed validation components may be shared. The field definitions, sections, applicability and validation contracts must remain domain-specific. This avoids duplicating UI code without collapsing different domain forms into one schema.
+
+### 13.3 Attribute definition and inheritance contract
+
+- Category-level attributes provide defaults for a category family.
+- Child-category attributes add or refine fields; inherited definitions are de-duplicated by stable attribute key.
+- Model/generation-level attributes refine only that model/family and carry explicit precedence and compatibility rules.
+- Intent-specific profiles add commercial fields without polluting the technical identity schema.
+- Every field carries stable key, type, unit/dimension, requiredness, display order, section/group, applicability, validation constraints, filter/search visibility, and provenance/verification semantics where relevant.
+- Values are stored with typed validation and canonical IDs; unit conversions are dimension-aware. Numeric values are never accepted without their declared unit where the dimension requires one.
+- Unknown, not applicable, not disclosed and not yet measured are distinct states where the domain needs them; they must not be conflated with zero or an empty string.
+
+### 13.4 UI behavior and data integrity
+
+- Each prior selection narrows the next step and determines which step sections are visible. Non-applicable steps collapse or are omitted rather than showing empty generic controls.
+- Changing an upstream selection invalidates only dependent downstream selections/values, with a clear confirmation when user-entered data would be discarded.
+- The technical step is grouped into meaningful sections (e.g. general, engine/powertrain, hydraulic, undercarriage, dimensions/capacity, cabin/safety), not one flat list.
+- Show required fields first, then relevant optional fields; advanced/rare fields may be progressively disclosed. Do not render hundreds of irrelevant attributes.
+- The server independently resolves and validates the same profile from canonical IDs. It must not trust a client-supplied profile ID, category path, model compatibility or arbitrary attribute keys.
+- Persist the resolved profile/version with the submission so later taxonomy edits do not reinterpret historical listing data.
+- Acceptance tests must prove at least: a model-specific excavator form, a different loader form, mineral lot form, rental excavator form, and contractor/work-package form; assert both required fields and absence of irrelevant fields.
+
+### 13.5 Implementation gate
+
+The current AttributeFields component is a generic typed renderer and the category endpoint is already requested with categoryId + optional modelId. That alone does **not** prove full path, subject-class, generation or transaction-specific profile resolution. Before claiming this requirement complete, inspect and extend the actual attribute API, Prisma relations/seeds/admin tooling, and server-side listing validation. Do not solve it with hard-coded frontend conditionals or one giant attribute catalogue. Build a canonical, versioned profile-resolution contract and cover it with contract tests before changing the user-facing wizard.
