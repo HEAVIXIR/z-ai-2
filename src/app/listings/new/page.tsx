@@ -185,8 +185,6 @@ export default function NewListingPage() {
           marketplaceRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
         };
-        if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
-        if (alive && data.marketplaceRoots) setMarketplaceRoots(data.marketplaceRoots);
         if (alive) {
           setCatalogRoots(data.catalogRoots ?? []);
           setMarketplaceRoots(data.marketplaceRoots ?? []);
