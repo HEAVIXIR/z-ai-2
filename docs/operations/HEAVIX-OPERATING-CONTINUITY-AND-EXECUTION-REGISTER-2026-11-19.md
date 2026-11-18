@@ -24,7 +24,7 @@
 - Repository: `HEAVIXIR/z-ai-2`
 - Active branch: `integration/preview-readiness-workerd-2026-11-15`
 - Draft PR: [#340](https://github.com/HEAVIXIR/z-ai-2/pull/340)
-- Current PR head at this record: `23d74a2083d2eb0252a6f4779d41e52f295c2c94` (this continuity-register documentation commit).
+- The current PR head is authoritative in GitHub PR #340 metadata. Do not rely on a copied SHA in this living register; every session must re-fetch it before acting.
 - PR state observed: OPEN, DRAFT, not merged; base `main`.
 - The PR description explicitly prohibits Production deployment, database migration/seed, and Cloudflare Worker build. Workers Builds remains disconnected; Preview builds remain disabled pending release gates and separate owner approval.
 
@@ -43,7 +43,7 @@ OpenNext #792 returned successful steps including Worker build and real App Rout
 
 **Explicitly skipped in CI #3766:** `Preview read-only paired migration diagnostics` and `Legacy archive inventory (read-only)`. Their skipped status must not be represented as completed evidence. The commit combined-status endpoint returned no separate status contexts; the successful GitHub Actions runs above are the available exact-head evidence.
 
-The current head `23d74a2083d2eb0252a6f4779d41e52f295c2c94` adds this continuity register only. A workflow-run lookup for that exact SHA returned no runs at the time of recording. Therefore CI/OpenNext success is verified for `9d13fe...`, **not** for the current head `23d74a...`. Re-check the PR head and Actions before relying on these results; discard stale SHA evidence after any further commit.
+The subsequent commits `23d74a...` and `e6e7e1...` updated this documentation register only; workflow-run lookups for those documentation commits returned no associated runs at the time of checking. Therefore CI/OpenNext success is verified for `9d13fe...`, **not** for later documentation-only heads. Re-check the PR head and Actions before relying on these results; discard stale SHA evidence after any further commit.
 
 ## 3. Canonical documentation index
 
