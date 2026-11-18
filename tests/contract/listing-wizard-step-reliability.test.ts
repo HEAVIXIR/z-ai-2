@@ -31,6 +31,7 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).toContain("taxonomyError");
     expect(wizard).toContain("setTaxonomyRetryKey((current) => current + 1)");
     expect(categoryPicker).toContain("/api/taxonomy/categories/");
+    expect(categoryPicker).toContain("تلاش مجدد برای دریافت زیر‌دسته‌ها");
   });
 
   it("loads brand, model and inherited category attributes through their domain APIs", () => {
@@ -38,10 +39,12 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).toContain("/api/taxonomy/brands/");
     expect(attributes).toContain("/api/categories/");
     expect(attributes).toContain("/attributes");
+    expect(attributes).toContain("تلاش مجدد برای بارگذاری ویژگی‌ها");
   });
 
   it("uses canonical location APIs and authenticated staged media upload", () => {
     expect(location).toContain('fetch("/api/locations"');
+    expect(location).toContain("تلاش مجدد");
     expect(media).toContain('fetch("/api/media/staging"');
   });
 
