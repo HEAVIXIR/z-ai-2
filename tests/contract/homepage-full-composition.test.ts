@@ -17,7 +17,7 @@ describe("HEAVIX full homepage composition contract", () => {
   });
 
   it("uses cached database-backed homepage sections, retains inactive rows for admin configuration, and keeps public rendering read-only", () => {
-    expect(homepageSource).toContain("getCachedHomePageSections()");
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("homepage.sections", getCachedHomePageSections)');
     expect(homepageSource).toContain(".filter((s) => s.active)");
     expect(cachedQueriesSource).toContain("db.homePageSection.findMany");
     expect(cachedQueriesSource).toContain("// Keep inactive rows: mergeHomepageSections needs them to preserve admin-disabled sections.");

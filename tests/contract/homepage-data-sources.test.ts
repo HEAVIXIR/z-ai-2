@@ -9,11 +9,11 @@ const cachedQueriesSource = readFileSync(path.join(root, "src/lib/homepage-cache
 
 describe("public homepage renderer contracts", () => {
   it("uses the canonical database-backed homepage composition and cached independent sources", () => {
-    expect(homepageSource).toContain("getCachedHomePageSections()");
-    expect(homepageSource).toContain("getCachedCatalogCategories()");
-    expect(homepageSource).toContain("getCachedTopBrands()");
-    expect(homepageSource).toContain("getCachedActiveRequests()");
-    expect(homepageSource).toContain("getCachedArticles()");
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("homepage.sections", getCachedHomePageSections)');
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("category.catalog", getCachedCatalogCategories)');
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("brand.top", getCachedTopBrands)');
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("request.active", getCachedActiveRequests)');
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("article.published", getCachedArticles)');
     expect(homepageSource).toContain("db.listing.findMany");
     expect(homepageSource).toContain("getActiveStats");
 
