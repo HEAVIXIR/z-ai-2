@@ -316,3 +316,15 @@ Owner reaffirmed the zero-cost policy and requested broad future coverage for mi
 - Next active work is the ordinary listing wizard (not investment/tender release): inventory all form/API callers, fix canonical WANTED persistence, make Brand/Model conditional, separate rental request behavior with reuse-first audit, verify media lifecycle, then run focused tests and exact-SHA CI. Do not claim the 1–2 hour target met until the seven-step browser journey passes.
 - The ADR is design-gated. No new schema migration, seed, database write, Preview migration, Production action or paid tool execution was performed by this entry.
 - Owner explicitly reiterated that no paid tools/services/credits are authorized. TinyFish top-up and paid automation must not be attempted. Continue only with current free/connected tools and manual workflows.
+
+
+## 14. Listing wizard UX alignment — 2026-11-18
+
+Source-only UX improvements on Integration:
+- `7705b5be5af9f458f03762fe3fbc658d165d6743`: changed the wizard hero, subject/category, attribute and location copy from machine-only wording to industrial marketplace wording.
+- `1eb6b35f1c900fc2f2a50daab30d621028839e10`: added source-contract assertions for the broader industrial language.
+- `3acee8250062379d47f04dd9621e4dbf68ed303e`: changed the step label to generic base information and made brand/model optional in the step title/subtitle.
+- `7ac35f1c31a7b57b1407a87b1ba8d31ec59703a8`: aligned the test contract with the new step label.
+- `e87c9ad88b54040512ff1e11bedc1b013770fd2c`: corrected wizard comments and Step 1 explanation so it no longer implies every listing is a machine.
+
+These changes do not add mineral assay/lot fields, canonical BuyRequest quantity/spec persistence, rental-request workflow, or project/contractor/investment journeys. Those remain explicit blockers/workstreams in ADR-001. CI #3738 and OpenNext #764 were cancelled while branch updates were arriving; no exact-SHA pass is claimed for the latest source commit. Re-run exact-head CI/OpenNext before acceptance.
