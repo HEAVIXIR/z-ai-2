@@ -163,6 +163,8 @@ export default function NewListingPage() {
   const [brandQuery, setBrandQuery] = useState("");
   const [brandResults, setBrandResults] = useState<BrandSuggestion[]>([]);
   const [brandLoading, setBrandLoading] = useState(false);
+  const [brandError, setBrandError] = useState<string | null>(null);
+  const [brandRetryKey, setBrandRetryKey] = useState(0);
   const [brandOpen, setBrandOpen] = useState(false);
   const brandAbort = useRef<AbortController | null>(null);
   const brandWrapRef = useRef<HTMLDivElement>(null);
@@ -170,6 +172,8 @@ export default function NewListingPage() {
   // Models of selected brand
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsRetryKey, setModelsRetryKey] = useState(0);
 
   // ── Fetch V1.1 catalog roots ──
   useEffect(() => {
@@ -201,17 +205,19 @@ export default function NewListingPage() {
     };
   }, [taxonomyRetryKey]);
 
-  // ── Debounced alias-aware brand search ──
+  // ── Debounced alias-aware brand search with visible retry state ──
   useEffect(() => {
     const q = brandQuery.trim();
     if (!q) {
       setBrandResults([]);
       setBrandLoading(false);
+      setBrandError(null);
       setBrandOpen(false);
       brandAbort.current?.abort();
       return;
     }
     setBrandLoading(true);
+    setBrandError(null);
     const t = setTimeout(async () => {
       brandAbort.current?.abort();
       const ctrl = new AbortController();
@@ -223,16 +229,24 @@ export default function NewListingPage() {
         });
         if (!res.ok) throw new Error("brand search failed");
         const data = (await res.json()) as { brands: BrandSuggestion[] };
+        if (ctrl.signal.aborted) return;
         setBrandResults(data.brands ?? []);
         setBrandOpen(true);
       } catch {
-        /* swallow abort + transient errors */
+        if (!ctrl.signal.aborted) {
+          setBrandResults([]);
+          setBrandOpen(false);
+          setBrandError("جستجوی برند انجام نشد. اتصال را بررسی کنید و دوباره تلاش کنید.");
+        }
       } finally {
-        setBrandLoading(false);
+        if (!ctrl.signal.aborted) setBrandLoading(false);
       }
     }, 250);
-    return () => clearTimeout(t);
-  }, [brandQuery, categoryId]);
+    return () => {
+      clearTimeout(t);
+      brandAbort.current?.abort();
+    };
+  }, [brandQuery, categoryId, brandRetryKey]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
@@ -258,38 +272,42 @@ export default function NewListingPage() {
     setAttrErrors({});
   };
 
-  // ── Fetch models when brand changes ──
+  // ── Fetch models when brand changes; failures stay visible and retryable ──
   useEffect(() => {
     if (!brandId) {
       setModels([]);
+      setModelsLoading(false);
+      setModelsError(null);
       return;
     }
-    let alive = true;
+    const controller = new AbortController();
     setModelsLoading(true);
+    setModelsError(null);
     (async () => {
       try {
         const res = await fetch(
-          `/api/taxonomy/brands/${brandId}/models${categoryId ? `?categoryId=${categoryId}` : ""}`,
-          { cache: "no-store" },
+          `/api/taxonomy/brands/${encodeURIComponent(brandId)}/models${categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : ""}`,
+          { cache: "no-store", signal: controller.signal },
         );
         if (!res.ok) throw new Error("models fetch failed");
         const data = (await res.json()) as {
           data: Array<{ id: string; name: string; nameEn: string | null }>;
         };
-        if (!alive) return;
+        if (controller.signal.aborted) return;
         setModels(
           (data.data ?? []).map((m) => ({ id: m.id, name: m.name, nameEn: m.nameEn })),
         );
       } catch {
-        if (alive) setModels([]);
+        if (!controller.signal.aborted) {
+          setModels([]);
+          setModelsError("دریافت مدل‌های این برند ناموفق بود. دوباره تلاش کنید.");
+        }
       } finally {
-        if (alive) setModelsLoading(false);
+        if (!controller.signal.aborted) setModelsLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [brandId, categoryId]);
+    return () => controller.abort();
+  }, [brandId, categoryId, modelsRetryKey]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -744,6 +762,14 @@ export default function NewListingPage() {
                             {form.brandLabel}
                           </div>
                         )}
+                        {brandError && (
+                          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
+                            <span>{brandError}</span>
+                            <button type="button" onClick={() => setBrandRetryKey((key) => key + 1)} className="font-bold text-[#F58220] underline">
+                              تلاش مجدد
+                            </button>
+                          </div>
+                        )}
 
                         {brandOpen && brandQuery.trim() && (
                           <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-[0_25px_60px_rgba(0,0,0,.6)]">
@@ -829,6 +855,14 @@ export default function NewListingPage() {
                             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
                           )}
                         </div>
+                        {modelsError && (
+                          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
+                            <span>{modelsError}</span>
+                            <button type="button" onClick={() => setModelsRetryKey((key) => key + 1)} className="font-bold text-[#F58220] underline">
+                              تلاش مجدد
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div>
