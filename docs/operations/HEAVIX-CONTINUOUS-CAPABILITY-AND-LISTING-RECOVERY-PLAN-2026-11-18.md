@@ -224,3 +224,78 @@ Source changes committed on Integration:
 - The new Main migration has not been applied to any database. No Preview/Production database writes, seeds, or real listing submissions were performed.
 - PR #340 remains Draft/open; no merge or Production release was performed.
 
+
+
+## 12. Marketplace transaction architecture — owner direction and design gate (2026-11-18)
+
+The owner explicitly directed that the marketplace transaction domain and Prisma model be designed comprehensively before expanding the listing wizard. The owner also set a hard cost policy: use free-tier tools and services only; do not incur charges, top up wallets, start paid trials, or enable paid capabilities. A paid service is not authorized merely because it is technically available. Prefer existing GitHub/Cloudflare/Vercel/Prisma integrations and free workflows; check for cost before any external execution.
+
+### 12.1 Current-state facts verified from Integration source
+
+- `TransactionType` is currently a small lookup model with `key/nameFa/nameEn/description/icon/active/sortOrder`; it does not encode direction, subject kind, or workflow profile.
+- `prisma/seed-taxonomy-v11.ts` currently seeds six values only: `SALE`, `RENT`, `WANTED`, `QUOTE`, `AUCTION`, `SERVICE_REQUEST`. The seed header calls these the HBR V1.1 six transaction types.
+- `Listing` currently has legacy `listingType` (default `SALE`), optional `transactionTypeId`, optional `serviceTypeId`, rental columns (`rentalPeriod`, `deposit`, `minimumRentalPeriod`, `operatorIncluded`, `fuelIncluded`, `transportIncluded`, `availabilityStart/End`), and relations to `Auction` and `RFQ`.
+- `BuyRequest` is a separate demand-side model and `/api/wanted` + `wanted-service.ts` are its canonical workflow. It currently stores category and brand preferences as text, and quantity is recorded in audit metadata but has no persisted column. It has no normalized category/brand/model foreign keys or structured attribute relation.
+- `RFQ` and `Auction` already exist as specialized models. `RFQ` has quotes and procurement requirements; `Auction` has bid rules and bids. They are not a substitute for a general-purpose request/offer intent taxonomy.
+- No dedicated tender/RFP/RFI lifecycle model, rental request model, or employment/job model was found in the inspected Prisma schema.
+- Existing category layers are `CATALOG`, `MARKETPLACE`, `SERVICE`, and `FALLBACK`; category describes the subject taxonomy, not the commercial intent.
+
+### 12.2 Proposed canonical commercial intents (eight)
+
+These are independent user intents, not eight unrelated implementations of the same concept:
+
+| Canonical key | Persian label | Direction | Subject/workflow |
+|---|---|---|---|
+| `SALE_OFFER` | عرضه برای فروش | OFFER | Asset/product |
+| `PURCHASE_REQUEST` | درخواست خرید | REQUEST | Asset/product |
+| `RENTAL_OFFER` | عرضه برای اجاره | OFFER | Rental asset |
+| `RENTAL_REQUEST` | درخواست اجاره | REQUEST | Rental asset |
+| `SERVICE_OFFER` | عرضه خدمات | OFFER | Service/project |
+| `SERVICE_REQUEST` | درخواست خدمات | REQUEST | Service/project |
+| `JOB_OFFER` | فرصت شغلی / جذب نیرو | OFFER | Employment |
+| `JOB_SEEKER` | جویای کار | REQUEST | Employment profile/request |
+
+Do not blindly rename or delete legacy keys. Preserve a compatibility map during transition:
+- `SALE` → `SALE_OFFER`
+- `RENT` → `RENTAL_OFFER`
+- `WANTED` → `PURCHASE_REQUEST`
+- `SERVICE_OFFER` and `SERVICE_REQUEST` remain semantically aligned.
+- `QUOTE` is not a commercial intent; it is a procurement/response mechanism and must be mapped to RFQ semantics only after all callers and stored rows are inventoried.
+- `AUCTION` is not an intent; it is a sale/asset-disposition mechanism and must be represented as an Auction process attached to an eligible offer.
+- No existing key or data row may be removed until usage, backfill, API compatibility, UI labels, analytics, SEO, and old links are mapped and tested.
+
+### 12.3 Independent axes — prevent overlap and conflicting semantics
+
+1. **Commercial intent**: offer/request plus business purpose, represented by canonical intent records.
+2. **Subject taxonomy**: machine, spare part, mineral/material, industrial asset, transport, technical service, contractor/project, workforce, and future verticals. Categories remain independent of intent; a mineral category can be offered for sale, requested for purchase, or involved in a supply tender.
+3. **Deal/procurement mechanism**: fixed price, negotiable, direct contract, RFQ, RFI, RFP, open tender, sealed tender, forward auction, reverse auction, and (where appropriate) booking/instant reservation. Mechanism must be validated against eligible intents.
+4. **Fulfillment/contract terms**: delivery, rental period, availability, deposit, operator/fuel/transport inclusion, project milestones, recurring supply, workforce schedule, and service geography.
+5. **Lifecycle/status**: draft, moderation, published/open, responses received, negotiation/evaluation, awarded/accepted, in execution, completed, expired, cancelled, rejected/disputed. Keep workflow-specific states in the relevant domain, not one overloaded status string.
+6. **Parties and authority**: user, company, branch, buyer/requester, seller/supplier, employer, candidate, tender owner, invited bidder, evaluator, and auditor. Organization-scoped roles and confidentiality must be modeled explicitly.
+
+### 12.4 Prisma design direction (design first; no migration or database write yet)
+
+- Strengthen `TransactionType` into a canonical, seeded reference with stable key, direction (`OFFER/REQUEST`), subject/workflow family (`ASSET/SERVICE/EMPLOYMENT`), workflow profile, eligible category layers, required specialized terms, active/version/sort order, and explicit legacy aliases. Prefer normalized relation tables for allowed mechanisms and category layers rather than comma-separated strings.
+- Keep the existing `Listing` as the offer-side aggregate and `BuyRequest` as the demand-side aggregate for the compatibility phase. Do not create a second generic classifieds table or duplicate each feature into separate ad tables without a clear lifecycle boundary. Add normalized foreign keys and structured requirements to BuyRequest; quantity must be persisted with appropriate decimal/unit semantics, not only in audit JSON.
+- Add a deliberate shared set of reusable relations for category, brand, model, location, organization, typed attributes, media, documents, and audit provenance to both offer and request aggregates. Preserve legacy text columns during a staged migration; backfill and dual-read/write only after an explicit mapping and rehearsal.
+- Keep `ServiceType` as the service catalogue/classification. It is not a transaction intent and must not be used as a substitute for service offer/request direction.
+- Move rental-specific terms toward a dedicated rental terms/availability model with period unit, minimum/maximum duration, pricing basis, deposit, included operator/fuel/transport, availability windows/calendar, delivery/pickup, maintenance/inspection and cancellation terms. Existing Listing rental columns are legacy compatibility fields until a safe migration/backfill plan exists. Rental requests need their own required period, location, capacity/specification and desired date range.
+- Keep `Auction` as a specialized process with forward/reverse direction, schedule, increments, reserve/starting rules, eligibility, deposits if ever supported, bid confidentiality, extensions, cancellation, award and immutable bid/audit history. Do not encode an auction as a category or a transaction intent.
+- Expand procurement beyond a single RFQ label: a common sourcing event with explicit `RFI/RFQ/RFP/TENDER` subtype, open/sealed submission policy, lots, documents, questions/addenda, deadlines/timezone, eligibility, evaluation criteria, supplier invitations, bid/quote versions, scoring, award and audit trail. Reverse auctions remain a distinct mechanism. Supplier submissions must not be visible to competing suppliers.
+- Model employment separately from generic services: employer/job opportunity, candidate/job-seeker profile, skills/certifications/experience, work location or remote/rotation, compensation range, employment type, schedule, application, screening, interview and offer. Protect candidate personal data and consent; public job-seeker exposure must be opt-in.
+- Consider future-ready but not launch-blocking domains: recurring supply contracts, framework agreements, subcontracting, consignment, leasing/lease-to-own, asset disposal/scrap, inspection/valuation, transport/logistics, installation/commissioning, maintenance contracts, project tenders, and mineral offtake/supply agreements. Add them through mechanism/workflow profiles, not arbitrary one-off transaction keys unless the lifecycle is genuinely distinct.
+- Use explicit decimal quantity + unit, currency-aware monetary fields, timezone-aware deadlines, country-scoped location FKs, structured JSON only for versioned domain-specific payloads (not as a replacement for queryable relational fields), and provenance/audit records for seller-entered vs verified vs imported/AI-extracted facts.
+- Keep schema strings/enums consistent with the repository's Prisma/PostgreSQL/SQLite/Workerd generation constraints. Evaluate referential actions, indexes, uniqueness, nullable migration safety, query plans, generated Worker client, preview schema parity, seed idempotency, and rollback/forward-repair before implementation.
+
+### 12.5 Required design and migration gates
+
+Before changing the canonical seed or adding the next migration:
+1. Inventory every caller, seed, API, UI component, admin taxonomy editor, analytics event, search filter, public URL, and legacy data use of `SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST/SERVICE_OFFER`.
+2. Produce a decision matrix for all eight intents × allowed subject categories × allowed mechanisms × required fields × owning API/model × permissions × lifecycle.
+3. Map existing `Listing`, `BuyRequest`, `RFQ`, `Auction`, `ServiceType`, `Rental` and employment-related code; distinguish reusable behavior from dead/legacy paths.
+4. Create a versioned architecture decision record and entity-relationship diagram; validate against representative scenarios: excavator sale, mineral purchase request, equipment rental offer/request, mineral analysis service, maintenance contract, workforce vacancy, job seeker profile, sealed mining-services tender, supplier RFQ, forward auction and reverse auction.
+5. Generate and validate a Prisma schema diff, migration SQL, Main/Preview schema parity, seed idempotency and data-preservation tests. Rehearse on isolated disposable databases before any Preview apply.
+6. Run exact-SHA CI and end-to-end workflow tests, including permissions, ownership, confidentiality, idempotency, audit, cancellation, expiration, and concurrent submissions.
+7. Keep the PR Draft and Production untouched until all gates pass.
+
+**Scope boundary:** the owner has now explicitly authorized broad project work, including Preview-only migration after the paired encrypted backup and safety workflow gates. This does not authorize Production changes. No database migration, seed, or real-data write has been run by this design step. The no-cost rule is absolute: do not top up TinyFish or use paid automation/AI/search/storage plans; if a required step is not possible on a free tier, report it and use a free/manual alternative.
