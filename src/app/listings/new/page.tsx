@@ -374,8 +374,8 @@ export default function NewListingPage() {
       if (isServiceFlow) return Boolean(serviceTypeId);
       if (transactionType === "QUOTE") {
         const quantity = Number(rfq.quantity);
-        const min = rfq.budgetMin ? Number(rfq.budgetMin.replace(/[^\d]/g, "")) : null;
-        const max = rfq.budgetMax ? Number(rfq.budgetMax.replace(/[^\d]/g, "")) : null;
+        const min = rfq.budgetMin ? BigInt(rfq.budgetMin.replace(/[^\d]/g, "")) : null;
+        const max = rfq.budgetMax ? BigInt(rfq.budgetMax.replace(/[^\d]/g, "")) : null;
         return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
           (min === null || min >= 0n) &&
           (max === null || max >= 0n) &&

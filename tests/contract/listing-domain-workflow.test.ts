@@ -34,6 +34,14 @@ describe("Listing transaction-specific domain persistence", () => {
     expect(wizard).toContain("quantity: Number(rfq.quantity)");
   });
 
+
+  it("does not expose auctions whose parent Listing is still pending moderation", () => {
+    const publicList = read("src/app/api/auctions/route.ts");
+    const publicDetail = read("src/app/api/auctions/[id]/route.ts");
+    expect(publicList).toContain('listing: { status: "PUBLISHED" }');
+    expect(publicDetail).toContain('where: { id, listing: { status: "PUBLISHED" } }');
+  });
+
   it("does not collapse WANTED into the RFQ domain", () => {
     expect(api).toContain("transactionType.key === \"QUOTE\"");
     expect(api).not.toContain("transactionType.key === \"WANTED\"");
