@@ -207,3 +207,20 @@ The project owner explicitly authorized preparing Prisma Schema and migration ch
 - No existing rows are backfilled, deleted, or rewritten.
 - No database command, migration apply, seed, Preview mutation, or Production mutation has been executed.
 - The schema/migration still requires Prisma validation, generated-client/typecheck, isolated PostgreSQL migration rehearsal, API/UI implementation and exact-SHA CI. It is not yet runtime-verified.
+
+## 11. Domain persistence implementation — 2026-11-18 (continued)
+
+Source changes committed on Integration:
+- `6de80f7e275bb455b77e061c27d21eb0e4f2d107`: additive Prisma relations and migration `20261118152000_link_listing_service_rfq`; migration README and owner-approved scope recorded.
+- `24c949d21cdf9e090b73f51d59e9f0536b86967c`: paired Preview migration governance workflow, Workerd migration fingerprint, and contract coverage updated from six to seven Main migrations; added schema-relation contract test. The workflow remains manual and was not invoked.
+- `b9516bd9718578843d467e3411cc719b133d3a67`: POST /api/listings validates active ServiceType, validates Auction configuration, and creates Auction or linked RFQ inside the same Listing database transaction; returns resulting domain IDs.
+- `1819de33decaab88e4b3ce315e8d4fa5a0f4f073`: wizard receives ServiceType, Auction scheduling/increment/reserve fields, and QUOTE RFQ quantity/budget/deadline/terms; RFQ and Auction audit events are written best-effort after commit.
+- `63e373da1f0397929ad708a913d793a039b0435f`: contract test added for service, auction and RFQ wizard/API contracts; UI digit normalization and client budget comparison hardened.
+
+### Remaining / not yet verified
+- WANTED in the seven-step wizard is still not routed to the canonical BuyRequest service; it remains a known gap and must not be represented as completed. It must be completed without conflating BuyRequest with RFQ and without dropping dynamic requirement data.
+- Dynamic attribute and service-specific validation still needs transaction-by-transaction behavioral coverage.
+- Exact-head CI, Prisma validation/typecheck, OpenNext and Preview browser acceptance have not yet been confirmed for the final code.
+- The new Main migration has not been applied to any database. No Preview/Production database writes, seeds, or real listing submissions were performed.
+- PR #340 remains Draft/open; no merge or Production release was performed.
+
