@@ -37,9 +37,11 @@ export default function TransactionTypePicker({
   const [types, setTypes] = useState<TransactionTypeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     (async () => {
       try {
         const res = await fetch("/api/transaction-types", { cache: "no-store" });
@@ -47,10 +49,6 @@ export default function TransactionTypePicker({
         const data = (await res.json()) as { types: TransactionTypeOption[] };
         if (!alive) return;
         setTypes(data.types ?? []);
-        if (!value && (data.types ?? []).length > 0) {
-          const sale = data.types.find((t) => t.key === "SALE");
-          if (sale) onChange(sale.key);
-        }
       } catch {
         if (alive) setError(true);
       } finally {
@@ -60,7 +58,7 @@ export default function TransactionTypePicker({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [retryKey]);
 
   if (loading) {
     return (
@@ -78,7 +76,14 @@ export default function TransactionTypePicker({
         className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-xs leading-6 text-amber-200"
       >
         دریافت فهرست نوع معامله در حال حاضر ممکن نیست. این یک خطای اتصال سرویس است؛
-        لطفاً کمی بعد دوباره تلاش کنید. عبارت فنی خطا برای کاربر نمایش داده نمی‌شود.
+        لطفاً دوباره تلاش کنید. عبارت فنی خطا برای کاربر نمایش داده نمی‌شود.
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mr-2 rounded-lg border border-amber-300/30 px-3 py-1 font-bold text-amber-100 hover:bg-amber-300/10"
+        >
+          تلاش مجدد
+        </button>
       </div>
     );
   }
@@ -87,6 +92,13 @@ export default function TransactionTypePicker({
     return (
       <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-6 text-center text-xs text-white/45">
         هنوز نوع معامله‌ای برای انتخاب تعریف نشده است.
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 font-bold text-white/70 hover:text-white"
+        >
+          بارگذاری مجدد
+        </button>
       </div>
     );
   }
