@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { isBuyRequestMatchEligible } from "@/lib/wanted-eligibility";
 
 /* ============================================================
    HEAVIX — AI Matching: BuyRequest ↔ Listing (FIX-GAPS-1)
@@ -190,10 +191,12 @@ export async function matchRequestToListings(
       city: true,
       province: true,
       status: true,
+      publishedAt: true,
+      expiresAt: true,
     },
   });
 
-  if (!req) {
+  if (!req || !isBuyRequestMatchEligible(req)) {
     return { matches: [] };
   }
 
@@ -250,8 +253,13 @@ export async function matchAllRequests(): Promise<{
   totalRequests: number;
   totalMatches: number;
 }> {
+  const now = new Date();
   const requests = await db.buyRequest.findMany({
-    where: { status: "ACTIVE" },
+    where: {
+      status: "ACTIVE",
+      publishedAt: { lte: now },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
     select: { id: true, title: true },
     take: 500, // safety cap
   });
