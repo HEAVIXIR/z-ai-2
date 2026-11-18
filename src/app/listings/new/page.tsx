@@ -55,7 +55,7 @@ const STEP_LABELS = [
   "نوع معامله",
   "دسته‌بندی",
   "برند و مدل",
-  "مشخصات فنی",
+  "مشخصات تخصصی",
   "موقعیت",
   "جزئیات",
   "تکمیل",
@@ -597,10 +597,10 @@ export default function NewListingPage() {
                     <Sparkles className="h-3.5 w-3.5" />
                     HEAVIX LISTING · TAXONOMY V1.1
                   </span>
-                  <h1 className="text-3xl font-black text-white lg:text-4xl">ثبت آگهی ماشین‌آلات</h1>
+                  <h1 className="text-3xl font-black text-white lg:text-4xl">ثبت آگهی در بازار صنعتی HEAVIX</h1>
                   <p className="mt-2 max-w-xl text-sm leading-7 text-white/45">
-                    در ۷ مرحله ساده، دستگاه خود را در بزرگ‌ترین بازار ماشین‌آلات سنگین ایران ثبت کنید.
-                    نوع معامله، دسته‌بندی، ویژگی‌ها و موقعیت را تعیین کنید.
+                    در ۷ مرحله، کالا، مواد معدنی، خدمات یا فرصت صنعتی خود را معرفی کنید.
+                    نوع فعالیت، موضوع، مشخصات و موقعیت را متناسب با نیازتان ثبت کنید.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -680,10 +680,10 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Layers3 className="h-5 w-5" />}
-                      title={isServiceFlow ? "دسته‌بندی خدمات" : "دسته‌بندی دستگاه و کالا"}
+                      title={isServiceFlow ? "دسته‌بندی خدمات" : "دسته‌بندی موضوع آگهی"}
                       subtitle={isServiceFlow
                         ? "حوزه خدمت، زیرحوزه و خدمت تخصصی موردنظر را انتخاب کنید"
-                        : "نوع دستگاه، زیرشاخه و زیرنوع تخصصی را انتخاب کنید"}
+                        : "موضوع، گروه و زیرگروه مرتبط با کالا، ماده معدنی یا فعالیت صنعتی را انتخاب کنید"}
                     />
 
                     {taxonomyLoading ? (
@@ -728,8 +728,8 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
-                      title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات فنی دستگاه"}
-                      subtitle={`فرم فنی متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "دستگاه"} — ${form.brandLabel || "برند انتخاب‌شده"} ${models.find((m) => m.id === modelId)?.name ?? ""}`}
+                      title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات تخصصی موضوع آگهی"}
+                      subtitle={`مشخصات متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "موضوع انتخاب‌شده"}${form.brandLabel ? ` — ${form.brandLabel}` : ""}${models.find((m) => m.id === modelId)?.name ? ` ${models.find((m) => m.id === modelId)?.name}` : ""}`}
                     />
                     <div className="mt-6">
                       <AttributeFields
@@ -985,8 +985,8 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<MapPin className="h-5 w-5" />}
-                      title="موقعیت دستگاه"
-                      subtitle="کشور، استان و شهر دستگاه را انتخاب کنید (پیش‌فرض: ایران)"
+                      title="موقعیت کالا، خدمت یا پروژه"
+                      subtitle="کشور، استان و شهر مرتبط با عرضه یا درخواست را انتخاب کنید (پیش‌فرض: ایران)"
                     />
                     <div className="mt-6">
                       <LocationPicker value={location} onChange={setLocation} />
