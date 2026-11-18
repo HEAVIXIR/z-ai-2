@@ -68,16 +68,21 @@ export function sanitizeHomepageQueryError(queryName: string, error: unknown) {
     ?? "UnknownError";
   const causeName = safeString(cause?.name, /^[A-Za-z][A-Za-z0-9_$]{0,79}$/)
     ?? safeConstructorName(cause);
+  const originalCode = safeString(record?.originalCode, SAFE_META_CODE);
   const prismaCode = [
     record?.code,
+    record?.originalCode,
     cause?.code,
     nestedError?.code,
     firstError?.code,
   ].map((value) => safeString(value, SAFE_PRISMA_CODE)).find(Boolean);
-  const databaseCode = safeString(meta?.code, SAFE_META_CODE);
+  const databaseCode = originalCode ?? safeString(meta?.code, SAFE_META_CODE);
+  const adapterKind = safeString(record?.kind, /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/);
+  const clientVersion = safeString(record?.clientVersion, /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(?:[-+][A-Za-z0-9.-]+)?$/);
   const model = safeString(meta?.modelName ?? meta?.model_name, SAFE_IDENTIFIER);
   const field = safeString(meta?.field_name ?? meta?.fieldName, SAFE_IDENTIFIER);
-  const column = safeString(meta?.column ?? meta?.column_name, SAFE_IDENTIFIER);
+  const column = safeString(record?.column, SAFE_QUALIFIED_IDENTIFIER)
+    ?? safeString(meta?.column ?? meta?.column_name, SAFE_IDENTIFIER);
   const table = safeString(meta?.table ?? meta?.table_name, SAFE_QUALIFIED_IDENTIFIER);
   const rawTarget = meta?.target;
   const target = Array.isArray(rawTarget)
@@ -85,7 +90,7 @@ export function sanitizeHomepageQueryError(queryName: string, error: unknown) {
     : typeof rawTarget === "string"
       ? rawTarget.split(",").map((item) => safeString(item.trim(), SAFE_IDENTIFIER)).filter((item): item is string => Boolean(item)).slice(0, 8)
       : undefined;
-  const message = [record?.message, cause?.message, nestedError?.message, firstError?.message, responseData?.message]
+  const message = [record?.originalMessage, record?.message, cause?.message, nestedError?.message, firstError?.message, responseData?.message]
     .find((value) => typeof value === "string");
   const responseStatus = typeof response?.status === "number" && Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
     ? response.status
@@ -107,6 +112,8 @@ export function sanitizeHomepageQueryError(queryName: string, error: unknown) {
     classification: classifyErrorMessage(message),
     ...(prismaCode ? { prismaCode } : {}),
     ...(databaseCode ? { databaseCode } : {}),
+    ...(adapterKind ? { adapterKind } : {}),
+    ...(clientVersion ? { clientVersion } : {}),
     ...(model ? { model } : {}),
     ...(field ? { field } : {}),
     ...(column ? { column } : {}),

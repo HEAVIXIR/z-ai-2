@@ -2,6 +2,11 @@ name: HEAVIX Preview read-only paired migration diagnostics
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - ".github/workflows/preview-readonly-migration-diagnostics.yml"
 
 permissions:
   contents: read
@@ -76,6 +81,15 @@ jobs:
 
           inspect_history App "$DATABASE_URL"
           inspect_history Store "$STORE_DATABASE_URL"
+
+          echo "### App Preview homepage Listing columns"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name IN ('id','status','featured','verified','showInLatest','publishedAt','createdAt','brandId','categoryId','modelId') ORDER BY ordinal_position"
+          missing_listing_columns="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(required.column_name, ', ' ORDER BY required.column_name) FROM (VALUES ('id'),('status'),('featured'),('verified'),('showInLatest'),('publishedAt'),('createdAt'),('brandId'),('categoryId'),('modelId')) AS required(column_name) WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema='public' AND c.table_name='Listing' AND c.column_name=required.column_name)")"
+          if [[ -n "$missing_listing_columns" ]]; then
+            echo "::error::App Preview Listing schema is missing required homepage columns: $missing_listing_columns"
+            exit 1
+          fi
+          echo "PASS: App Preview Listing columns required by homepage queries exist."
 
           echo "### App Preview relevant schema objects"
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND ((table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig')) OR (table_name='Company' AND column_name='businessType') OR (table_name='PurchaseOrder' AND column_name='submittedBy')) ORDER BY table_name, ordinal_position"

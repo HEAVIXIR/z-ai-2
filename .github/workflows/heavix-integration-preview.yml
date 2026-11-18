@@ -129,14 +129,27 @@ jobs:
           PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
         run: |
           set -euo pipefail
-          curl --retry 8 --retry-delay 3 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/" -o /dev/null
-          echo "PASS: Integration Preview root returned HTTP 200."
+          root_code="$(curl --retry 8 --retry-delay 3 --retry-connrefused --retry-all-errors --max-time 20 -sS -f -o "$RUNNER_TEMP/heavix-preview-root.html" -w '%{http_code}' "$PREVIEW_URL/" 2>/dev/null || true)"
+          echo "HEAVIX_PREVIEW_ROOT_HTTP=$root_code"
           health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
           echo "HEAVIX_PREVIEW_HEALTH_HTTP=$health_code"
           if [ -s "$RUNNER_TEMP/heavix-preview-health.json" ]; then
             cat "$RUNNER_TEMP/heavix-preview-health.json"
           fi
-          echo "Preview reachability passed; DB health remains a separate acceptance gate."
+          {
+            echo "- Root HTTP: ${root_code:-000}"
+            echo "- Health HTTP: ${health_code:-000}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$root_code" != "200" ]; then
+            echo "::error::Integration Preview root must return HTTP 200 (received ${root_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Integration Preview root returned HTTP 200."
+          if [ "$health_code" != "200" ]; then
+            echo "::warning::Preview root is healthy but the separate database health route returned ${health_code:-000}."
+          else
+            echo "PASS: Integration Preview health route returned HTTP 200."
+          fi
 
       - name: Publish Preview URL in job summary
         if: always() && steps.preview.outputs.preview_url != ''
@@ -146,8 +159,8 @@ jobs:
           {
             echo "## HEAVIX Integration Preview"
             echo
-            echo "- Branch: `integration/preview-readiness-workerd-2026-11-15`"
-            echo "- Commit: `${GITHUB_SHA}`"
+            echo "- Branch: integration/preview-readiness-workerd-2026-11-15"
+            echo "- Commit: ${GITHUB_SHA}"
             echo "- Preview: ${PREVIEW_URL}"
             echo "- Production deploy: not invoked"
             echo "- Database migrations/seeds: not invoked"

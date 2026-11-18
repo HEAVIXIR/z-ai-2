@@ -78,6 +78,30 @@ describe("homepage query diagnostics", () => {
     expect(serialized).not.toContain("authorization");
   });
 
+  it("extracts allowlisted PPG adapter code, kind, column and version without raw message", () => {
+    const error = {
+      originalCode: "42703",
+      originalMessage: 'column "publishedAt" does not exist; DATABASE_URL=secret',
+      kind: "ColumnNotFound",
+      column: "publishedAt",
+      clientVersion: "7.10.1",
+    };
+
+    const diagnostic = sanitizeHomepageQueryError("listing.featured", error);
+    const serialized = JSON.stringify(diagnostic);
+
+    expect(diagnostic).toMatchObject({
+      databaseCode: "42703",
+      adapterKind: "ColumnNotFound",
+      column: "publishedAt",
+      clientVersion: "7.10.1",
+      classification: "schema-object-missing",
+    });
+    expect(serialized).not.toContain("publishedAt\\" does not exist");
+    expect(serialized).not.toContain("DATABASE_URL");
+    expect(serialized).not.toContain("secret");
+  });
+
   it("drops malformed codes and arbitrary metadata", () => {
     const error = Object.assign(new Error("unknown argument"), {
       code: "postgres://secret",
