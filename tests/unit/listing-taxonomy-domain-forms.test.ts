@@ -29,7 +29,9 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     const wizard = read("src/app/listings/new/page.tsx");
     expect(wizard).toContain('const isServiceFlow = isServiceRequest || isServiceOffer');
     expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots");
-    expect(wizard).toContain("if (isServiceFlow || isRequestFlow) return true");
+    expect(wizard).toContain("if (isServiceFlow) return Boolean(serviceTypeId);");
+    expect(wizard).toContain('if (transactionType === "QUOTE")');
+    expect(wizard).toContain("if (isRequestFlow) return true");
   });
 
   it("does not overwrite a globally shared attribute with an incompatible category definition", () => {
