@@ -133,10 +133,11 @@ async function searchAdUrls(zai: any, query: string, num = 10): Promise<string[]
         : Array.isArray(r?.items)
           ? r.items
           : [];
-  const urls = rows
-    .map((item: any) => item?.url || item?.link || item?.href)
-    .filter((value: unknown): value is string => typeof value === "string" && /^https:\/\//i.test(value));
-  return [...new Set(urls)];
+  const urls: string[] = rows.flatMap((item: any) => {
+    const value = item?.url || item?.link || item?.href;
+    return typeof value === "string" && /^https:\/\//i.test(value) ? [value] : [];
+  });
+  return Array.from(new Set<string>(urls));
 }
 
 async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<ScrapeResult> {
