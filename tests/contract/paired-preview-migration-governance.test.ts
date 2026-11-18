@@ -33,7 +33,7 @@ describe("Paired Preview migration governance", () => {
     expect(migration).toContain("PGSSLMODE=verify-full");
     expect(migration).toContain("4|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes");
     expect(migration).toContain("2|0001_init_store_baseline,0002_add_audit_outbox");
-    expect(migration).toContain("PASS: all 12 App Preview schema preconditions.");
+    expect(migration).toContain("PASS: all 16 App Preview schema preconditions.");
     expect(migration).toContain("PASS: both Store Preview schema preconditions.");
     expect(migration).toContain("ProductModelAttribute");
     expect(migration).toContain("CompanyInvitation");
@@ -43,7 +43,7 @@ describe("Paired Preview migration governance", () => {
   it("applies both schemas independently and verifies exact final migration sets", () => {
     expect(migration).toContain("prisma migrate deploy --schema=prisma/schema.prisma");
     expect(migration).toContain("prisma migrate deploy --schema=prisma/store/schema.prisma");
-    expect(migration).toContain("6|20261025081255_init_postgresql_baseline");
+    expect(migration).toContain("7|20261025081255_init_postgresql_baseline");
     expect(migration).toContain("0003_purchase_order_submitter");
     expect(migration).toContain("prisma migrate status --schema=prisma/schema.prisma");
     expect(migration).toContain("prisma migrate status --schema=prisma/store/schema.prisma");
@@ -68,6 +68,7 @@ describe("Paired Preview migration governance", () => {
       "20261114150000_product_model_attributes",
       "20261116120000_industrial_marketplace_identity_core",
       "20261116130000_company_invitations",
+      "20261118152000_link_listing_service_rfq",
     ]) {
       expect(proof).toContain(name);
       expect(migrationReadme).toContain(name);
