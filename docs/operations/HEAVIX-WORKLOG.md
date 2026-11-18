@@ -689,3 +689,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Decision: do not hot-wire the wizard to the legacy `/api/wanted` endpoint yet. That would preserve data loss (quantity/specs/identity), bypass the current listing moderation contract, and risk duplicate/inconsistent records. First reconcile canonical domain relationship and migration needs; keep WANTED distinct from SALE, QUOTE/RFQ, rental offer and rental request.
 - No code, Prisma schema, migration, seed, Preview/Production DB, Worker, secret, DNS, or infrastructure was changed. No paid provider was used.
 - Next smallest safe action: inspect legacy WANTED implementation and all BuyerRequest/Matching/Admin/Seller consumers; draft canonical BuyRequest v2 relationship and field mapping; then implement narrowly with contract tests and a reviewed paired Preview migration only if schema change is unavoidable.
+
+
+## 2026-11-19 — WANTED legacy parity and lifecycle consumer audit
+
+- Continued source audit on Integration after Issue #345 creation; current starting branch head was `573ea1519f9f884d95b254529f03883a6e6d1f2c`.
+- Inspected extracted legacy snapshot `dellk00k/z@bbb1f4947e4b1a05e39f7b510c5c7801d52389e7`: `BuyRequestForm.tsx`, `/requests/new`, `/api/requests`, and `/api/wanted`. Legacy had a separate simple request form (title/description, free-text category/brand, SALE/RENT, budget, city, deadline and contact), not a structured quantity/specification form. Therefore quantity/spec data is a HEAVIX target capability/gap, but must not be misrepresented as a fully working legacy feature that was lost. Legacy also had overlapping request entry routes; do not port them blindly.
+- Inspected current consumers: `src/lib/matching-service.ts`, `src/app/api/wanted/[id]/matches/route.ts`, `src/app/admin/requests/page.tsx`, `src/app/api/admin/requests/route.ts`.
+- Found two additional current source-level defects to include in Issue #345: (1) Admin requests UI expects `{success,data}`, while API returns `{requests,total,stats}`, so the list loader does not consume the actual response contract; (2) public wanted-match route invokes matching without the service rejecting CLOSED/FULFILLED/expired/unpublished BuyRequests. Eligibility must be enforced server-side.
+- Added these legacy-parity and consumer findings as a comment on Issue #345.
+- No code/schema/migration/seed/database/Preview/Production/Worker changes; no paid provider use. No CI was triggered for the documentation-only commits. Prior CI/OpenNext evidence remains tied to `b56e73b1...` only.
+- Next: write the canonical BuyRequest lifecycle contract and test matrix, then implement the API/UI contract alignment and lifecycle eligibility checks without introducing a duplicate source of truth. Decide whether quantity/spec fields require a reviewed additive schema migration; if yes, use the exact-identity paired Main+Store Preview backup gate only.
