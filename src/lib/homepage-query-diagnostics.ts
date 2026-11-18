@@ -1,7 +1,7 @@
 const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const SAFE_QUALIFIED_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_.]{0,95}$/;
 const SAFE_QUERY_NAME = /^[a-z0-9][a-z0-9_.-]{0,79}$/;
-const SAFE_PRISMA_CODE = /^P\\d{4}$/;
+const SAFE_PRISMA_CODE = /^P\d{4}$/;
 const SAFE_META_CODE = /^[A-Z0-9_]{1,16}$/;
 
 type UnknownRecord = Record<string, unknown>;
