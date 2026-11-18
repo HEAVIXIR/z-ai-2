@@ -70,7 +70,7 @@ export default function AIScraperClient() {
   };
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() && !categoryId && !serviceTypeId && !transactionTypeId) return;
     setSearching(true); setError(null); setMessage(null);
     setResults([]); setSelected(new Set()); setImported(new Set());
     try {
@@ -160,7 +160,7 @@ export default function AIScraperClient() {
             <Search className="h-4 w-4 text-zinc-400" />
             <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="مثلاً بیل مکانیکی کوماتسو PC220 یا خدمات تعمیر موتور" className="mr-2 h-full flex-1 bg-transparent text-sm text-zinc-900 outline-none" />
           </div>
-          <button type="button" onClick={handleSearch} disabled={searching || !query.trim()} className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white disabled:opacity-50">
+          <button type="button" onClick={handleSearch} disabled={searching || (!query.trim() && !categoryId && !serviceTypeId && !transactionTypeId)} className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white disabled:opacity-50">
             {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             {searching ? "در حال جستجو و استخراج..." : "جستجوی آگهی‌های واقعی"}
           </button>
