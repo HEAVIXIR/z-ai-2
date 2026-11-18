@@ -42,6 +42,15 @@ describe("Listing wizard seven-step source contract", () => {
     expect(attributes).toContain("تلاش مجدد برای بارگذاری ویژگی‌ها");
   });
 
+  it("surfaces brand and model lookup failures with explicit retry controls", () => {
+    expect(wizard).toContain("brandError");
+    expect(wizard).toContain("setBrandRetryKey((key) => key + 1)");
+    expect(wizard).toContain("modelsError");
+    expect(wizard).toContain("setModelsRetryKey((key) => key + 1)");
+    expect(wizard).toContain("brandAbort.current?.abort()");
+    expect(wizard).toContain("controller.signal.aborted");
+  });
+
   it("uses canonical location APIs and authenticated staged media upload", () => {
     expect(location).toContain('fetch("/api/locations"');
     expect(location).toContain("تلاش مجدد");
