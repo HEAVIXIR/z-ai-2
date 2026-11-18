@@ -219,6 +219,7 @@ model ServiceType {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+  listings    Listing[]
 }
 
 // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 3): homepage Services section.
@@ -518,6 +519,9 @@ model Listing {
   product          Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
   transactionTypeId String?
   transactionType   TransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+  serviceTypeId     String?
+  serviceType        ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  rfq                RFQ?
   countryId      String?
   country        Country?  @relation(fields: [countryId], references: [id], onDelete: SetNull)
   provinceId     String?
@@ -553,6 +557,7 @@ model Listing {
   // REVIEW-01 — reviews anchored to this listing
   reviews        Review[]
   deals          Deal[]
+  @@index([serviceTypeId])
 }
 
 model ListingImage {
@@ -886,6 +891,8 @@ model DemandSignal {
 
 model RFQ {
   id          String   @id @default(cuid())
+  listingId   String?  @unique
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   title       String
   description String?
   // requirements
