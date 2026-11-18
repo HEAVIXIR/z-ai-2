@@ -54,7 +54,7 @@ import {
 const STEP_LABELS = [
   "نوع معامله",
   "دسته‌بندی",
-  "برند و مدل",
+  "اطلاعات پایه",
   "مشخصات تخصصی",
   "موقعیت",
   "جزئیات",
@@ -757,10 +757,10 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
-                      title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "برند، مدل و اطلاعات پایه"}
+                      title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "اطلاعات پایه و برند/مدل اختیاری"}
                       subtitle={isServiceFlow
                         ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
-                        : "در صورت ارتباط برند و مدل را انتخاب کنید و اطلاعات آگهی را تکمیل کنید"}
+                         : "عنوان و شرح را تکمیل کنید؛ انتخاب برند و مدل فقط در صورت ارتباط با موضوع آگهی لازم است"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
