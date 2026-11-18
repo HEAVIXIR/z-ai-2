@@ -101,18 +101,24 @@ Return ONLY the JSON object, no markdown, no explanation.`;
 }
 
 /** Use web_search to find ad URLs for a query. */
-async function searchAdUrls(zai: any, query: string, num = 5): Promise<string[]> {
-  try {
-    const r = await zai.functions.invoke("web_search", {
-      query: `${query} site:divar.ir OR site:sheypoor.com`,
-      num,
-    });
-    if (Array.isArray(r)) return r.map((x: any) => x.url || x.link).filter(Boolean);
-    if (r?.results) return r.results.map((x: any) => x.url).filter(Boolean);
-    return [];
-  } catch {
-    return [];
-  }
+async function searchAdUrls(zai: any, query: string, num = 10): Promise<string[]> {
+  const r = await zai.functions.invoke("web_search", {
+    query: `(${query}) (site:divar.ir OR site:sheypoor.com)`,
+    num,
+  });
+  const rows = Array.isArray(r)
+    ? r
+    : Array.isArray(r?.results)
+      ? r.results
+      : Array.isArray(r?.data?.results)
+        ? r.data.results
+        : Array.isArray(r?.items)
+          ? r.items
+          : [];
+  const urls = rows
+    .map((item: any) => item?.url || item?.link || item?.href)
+    .filter((value: unknown): value is string => typeof value === "string" && /^https:\/\//i.test(value));
+  return [...new Set(urls)];
 }
 
 async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<ScrapeResult> {
@@ -391,10 +397,42 @@ async function _doPost(
     if (mode === "search") {
       const query = String(body.query ?? "").trim();
       if (!query) return NextResponse.json({ error: "query is required" }, { status: 400 });
-      const num = Math.max(1, Math.min(10, Number(body.num) || 5));
-      const urls = (await searchAdUrls(zai, query, num)).filter((url) => isAllowedSourceUrl(url));
+      const num = Math.max(1, Math.min(30, Number(body.num) || 15));
+      const searchTerms: string[] = [query];
+      const categoryId = typeof body.categoryId === "string" ? body.categoryId.trim() : "";
+      const serviceTypeId = typeof body.serviceTypeId === "string" ? body.serviceTypeId.trim() : "";
+      const transactionTypeId = typeof body.transactionTypeId === "string" ? body.transactionTypeId.trim() : "";
+      if (categoryId) {
+        const category = await db.category.findFirst({
+          where: { id: categoryId, active: true },
+          select: { name: true, nameEn: true },
+        });
+        if (category) searchTerms.push(category.name, category.nameEn || "");
+      }
+      if (serviceTypeId) {
+        const service = await db.serviceType.findFirst({
+          where: { id: serviceTypeId, active: true },
+          select: { nameFa: true, nameEn: true },
+        });
+        if (service) searchTerms.push(service.nameFa, service.nameEn || "");
+      }
+      if (transactionTypeId) {
+        const transaction = await db.transactionType.findFirst({
+          where: { id: transactionTypeId, active: true },
+          select: { nameFa: true, nameEn: true },
+        });
+        if (transaction) searchTerms.push(transaction.nameFa, transaction.nameEn || "");
+      }
+      const dateDays = Number(body.dateDays);
+      if (Number.isInteger(dateDays) && dateDays > 0 && dateDays <= 365) {
+        const after = new Date(Date.now() - dateDays * 24 * 60 * 60 * 1000);
+        const ymd = after.toISOString().slice(0, 10);
+        searchTerms.push(`after:${ymd}`);
+      }
+      const urls = (await searchAdUrls(zai, searchTerms.filter(Boolean).join(" "), num))
+        .filter((url) => isAllowedSourceUrl(url));
       const results = await Promise.all(urls.slice(0, num).map((u) => scrapeUrl(zai, u, controller.signal)));
-      return NextResponse.json({ ok: true, results });
+      return NextResponse.json({ ok: true, results, searched: { query, categoryId: categoryId || null, serviceTypeId: serviceTypeId || null, transactionTypeId: transactionTypeId || null, dateDays: dateDays || null } });
     }
 
     if (mode === "scrape") {
@@ -471,17 +509,6 @@ export async function POST(req: Request) {
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
   }
-  if (process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true") {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "AI_SCRAPER_NOT_ENABLED_IN_ENVIRONMENT",
-        error: "اسکرپر آگهی در این محیط آماده است، اما اجرای سرویس‌دهندهٔ هوش مصنوعی تا فعال‌سازی تنظیم محیطی مجاز نیست.",
-      },
-      { status: 503 },
-    );
-  }
-
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
 
