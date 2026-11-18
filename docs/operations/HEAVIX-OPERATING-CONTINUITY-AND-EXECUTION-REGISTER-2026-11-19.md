@@ -179,3 +179,15 @@ For each work session, append/update:
 - **Links to issue, PR, commit and artifacts**
 
 Never write “done”, “fixed”, “green”, “deployed”, “migrated”, or “complete” without stating the evidence class and exact source of proof.
+
+
+## 2026-11-19 — Latest verified continuation addendum (supersedes older SHA snapshots)
+
+- Latest inspected Integration HEAD: `b56e73b1b49f7649adaadba5cdd7a6e1933bed4f` (re-fetch before future writes).
+- PR #340: OPEN, DRAFT, base `main`; not merged. Workers Builds remains disconnected and Preview builds disabled. No Production deployment, migration, seed, Worker activation or infrastructure change is authorized.
+- Exact-head CI: run #44406718607 SUCCESS. Seven jobs passed: `phase-tests`, `Workerd runtime smoke (no database)`, `audit-transaction`, `Cloudflare compatibility (report-only)`, `tls-proof`, `verify`, `docker-build-proof`. Preview paired-migration diagnostics and legacy archive inventory were SKIPPED, not passed.
+- Exact-head OpenNext runtime proof: run #44406718688 SUCCESS, including Worker build and real App Router path smoke without DB credentials. This is not live Preview or Production proof.
+- P0 listing audit found a concrete WANTED gap: listing wizard submits WANTED through `POST /api/listings` without creating canonical `BuyRequest`; dedicated `POST /api/wanted` is disconnected from wizard. Current BuyRequest persistence loses quantity (audit-only) and canonical taxonomy IDs/specification values (free-text category/brand mapping).
+- Issue #345 created: https://github.com/HEAVIXIR/z-ai-2/issues/345. This issue is now the tracked P0 implementation vehicle for WANTED/BuyRequest integration and structured persistence.
+- No application code/schema/migration/seed or data mutation occurred in this audit batch. No Preview/Production deployment, secret read/write, paid provider call, DNS change or Worker activation occurred.
+- Next: legacy parity audit + canonical BuyRequest/Listing relationship decision, then narrow implementation and tests. Do not bypass paired encrypted Backblaze B2 backup, exact DB identity and explicit Preview migration gates.
