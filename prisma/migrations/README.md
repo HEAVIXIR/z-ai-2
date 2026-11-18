@@ -18,6 +18,7 @@ The active main migration history currently includes six append-only PostgreSQL 
 - `20261114150000_product_model_attributes/migration.sql`
 - `20261116120000_industrial_marketplace_identity_core/migration.sql`
 - `20261116130000_company_invitations/migration.sql`
+- `20261118152000_link_listing_service_rfq/migration.sql`
 
 The active Store/Outbox migration history currently includes three append-only PostgreSQL migrations:
 

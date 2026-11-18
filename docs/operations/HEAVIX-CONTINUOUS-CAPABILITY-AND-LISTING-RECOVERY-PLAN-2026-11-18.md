@@ -190,3 +190,20 @@ The following source changes are committed to the selected Integration branch. T
 - **Data-model blocker found:** Prisma has a standalone `ServiceType` model and the taxonomy endpoint returns active `serviceTypes`, but `Listing` has no `serviceTypeId` relation/field. The wizard currently routes service transactions through SERVICE-layer categories and stores SERVICE_OFFER/SERVICE_REQUEST in `transactionTypeId`; it does not persist a selected ServiceType. Do not silently encode this into an unrelated field. Classify service-type selection/persistence as `BLOCKED_DATA` pending an explicitly approved schema/migration decision. No migration or database write was performed.
 - Additional audit still required: transaction-specific validation for WANTED/QUOTE/AUCTION/SERVICE_OFFER/SERVICE_REQUEST/RENT; required-field and serialization matrix for all dynamic attribute types; brand/model retry; media staging/readback/attach/retry/cleanup; browser-based Preview acceptance.
 - Current Integration branch head at this log entry: `b51bda6e530a65061026ddfa2d44e4fa695ffde7`.
+
+## 10. Owner authorization and domain-relation implementation — 2026-11-18
+
+The project owner explicitly authorized preparing Prisma Schema and migration changes on the Integration branch. This approval does **not** authorize applying migrations to Preview, Production, or any operational database, nor seeding or mutating real data.
+
+### Domain decisions grounded in the existing code
+- `SERVICE_REQUEST` and `SERVICE_OFFER`: add an optional, nullable `Listing.serviceTypeId` foreign key to the canonical `ServiceType` model. The API must require an active ServiceType for service transactions and reject mismatched/inactive values.
+- `AUCTION`: `Listing.auctions Auction[]` and `Auction.listingId` already provide a real relation. No duplicate Auction schema relation or migration is needed. The listing POST must create one Auction record with all required commercial/date fields in the same database transaction.
+- `QUOTE`: add an optional, unique `RFQ.listingId` relation to Listing. Standalone RFQs remain valid; existing RFQ rows remain null. The wizard/API must create the linked RFQ atomically with the listing and preserve the RFQ's own lifecycle.
+- `WANTED`: the canonical existing demand domain is `BuyRequest` via `wanted-service.ts`, not RFQ. Do not merge WANTED and QUOTE semantics. The wizard's current WANTED routing remains a separate required follow-up to route through the BuyRequest domain and preserve structured demand data.
+
+### Additive migration prepared
+- Migration: `20261118152000_link_listing_service_rfq`
+- Adds nullable `Listing.serviceTypeId` and nullable unique `RFQ.listingId`, with indexes/FKs using `ON DELETE SET NULL`.
+- No existing rows are backfilled, deleted, or rewritten.
+- No database command, migration apply, seed, Preview mutation, or Production mutation has been executed.
+- The schema/migration still requires Prisma validation, generated-client/typecheck, isolated PostgreSQL migration rehearsal, API/UI implementation and exact-SHA CI. It is not yet runtime-verified.
