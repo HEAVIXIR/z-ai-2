@@ -374,11 +374,11 @@ export default function NewListingPage() {
       if (isServiceFlow) return Boolean(serviceTypeId);
       if (transactionType === "QUOTE") {
         const quantity = Number(rfq.quantity);
-        const min = rfq.budgetMin ? Number(rfq.budgetMin.replace(/[^\\d]/g, "")) : null;
-        const max = rfq.budgetMax ? Number(rfq.budgetMax.replace(/[^\\d]/g, "")) : null;
+        const min = rfq.budgetMin ? Number(rfq.budgetMin.replace(/[^\d]/g, "")) : null;
+        const max = rfq.budgetMax ? Number(rfq.budgetMax.replace(/[^\d]/g, "")) : null;
         return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
-          (min === null || (Number.isFinite(min) && min >= 0)) &&
-          (max === null || (Number.isFinite(max) && max >= 0)) &&
+          (min === null || min >= 0n) &&
+          (max === null || max >= 0n) &&
           (min === null || max === null || min <= max);
       }
       if (isRequestFlow) return true;
@@ -447,7 +447,7 @@ export default function NewListingPage() {
       }
       if (isAuction) {
         body.auction = {
-          startPrice: form.price.replace(/[^\\d]/g, ""),
+          startPrice: form.price.replace(/[^\d]/g, ""),
           reservePrice: auction.reservePrice || undefined,
           minIncrement: auction.minIncrement,
           startDate: new Date(auction.startDate).toISOString(),
@@ -1048,7 +1048,7 @@ export default function NewListingPage() {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <label className={labelCls}>تعداد موردنیاز *</label>
-                              <input value={rfq.quantity} onChange={(e) => setRfq((v) => ({ ...v, quantity: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={rfq.quantity} onChange={(e) => setRfq((v) => ({ ...v, quantity: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>مهلت دریافت پیشنهاد</label>
@@ -1056,11 +1056,11 @@ export default function NewListingPage() {
                             </div>
                             <div>
                               <label className={labelCls}>حداقل بودجه (تومان)</label>
-                              <input value={rfq.budgetMin} onChange={(e) => setRfq((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={rfq.budgetMin} onChange={(e) => setRfq((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>حداکثر بودجه (تومان)</label>
-                              <input value={rfq.budgetMax} onChange={(e) => setRfq((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={rfq.budgetMax} onChange={(e) => setRfq((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                           </div>
                           <div className="mt-4">
@@ -1077,11 +1077,11 @@ export default function NewListingPage() {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <label className={labelCls}>قیمت ذخیره (اختیاری)</label>
-                              <input value={auction.reservePrice} onChange={(e) => setAuction((v) => ({ ...v, reservePrice: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={auction.reservePrice} onChange={(e) => setAuction((v) => ({ ...v, reservePrice: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>حداقل افزایش هر پیشنهاد *</label>
-                              <input value={auction.minIncrement} onChange={(e) => setAuction((v) => ({ ...v, minIncrement: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={auction.minIncrement} onChange={(e) => setAuction((v) => ({ ...v, minIncrement: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>تاریخ و ساعت شروع *</label>
@@ -1120,7 +1120,7 @@ export default function NewListingPage() {
                           <div>
                             <label className={labelCls}>
                               {isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                              {!isAuction && !isRequestFlow && "*"}
+                              {!isRequestFlow && "*"}
                             </label>
                             <input
                               value={form.price}
