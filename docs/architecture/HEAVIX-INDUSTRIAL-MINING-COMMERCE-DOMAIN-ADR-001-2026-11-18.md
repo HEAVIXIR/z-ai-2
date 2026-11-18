@@ -300,3 +300,52 @@ The immediate deliverable is a dependable seven-step registration flow for curre
 - Do not treat investment opportunity as an ordinary Listing or permit a public participation CTA before legal gate.
 - Do not copy Store database tables into Main or create cross-database Prisma FKs.
 - Do not implement every future feature in the first wizard release; design the extension points now, then ship in dependency order.
+
+
+## 12. Intent × subject × mechanism compatibility matrix
+
+This matrix is a validation contract. It does not imply that every row is already implemented or should appear in the first public wizard release.
+
+| Intent | Eligible subjects | Normal mechanisms | Minimum specific data |
+|---|---|---|---|
+| SALE_OFFER | Machine, vehicle, part, attachment, industrial equipment, mineral/material lot, surplus inventory | Fixed price, negotiable, direct deal, forward auction | Subject/category, title, condition where relevant, quantity/unit where fungible, price/currency or contact-for-price policy, location/origin, seller/company, evidence/media |
+| PURCHASE_REQUEST | Machine, part, attachment, equipment, mineral/material lot, consumables | Direct sourcing, RFQ, RFI, RFP, RFB/tender, reverse auction where suitable | Required subject/specification, quantity/unit, budget/currency, delivery/location, deadline, requester/company, substitution tolerance |
+| RENTAL_OFFER | Machine, vehicle, plant, tool, industrial asset | Booking/reservation, quote, negotiated contract | Asset, rate basis/currency, availability, minimum duration, deposit, operator/fuel/transport, mobilisation, site, condition/inspection |
+| RENTAL_REQUEST | Machine, vehicle, plant, tool, industrial asset | RFQ, invited quote, RFP/tender for large packages | Asset/spec, capacity, quantity, rental period, start/end window, site, operator/ancillary needs, budget, deadline |
+| SERVICE_OFFER | Inspection, repair, engineering, mining contractor, drilling, processing, logistics, maintenance, lab/testing, environmental and consulting services | Direct negotiation, RFQ, RFP, framework agreement | ServiceType, scope, service area/site, qualifications/licences, capacity, schedule, deliverables, SLA, price basis, evidence |
+| SERVICE_REQUEST | Same service subject families | RFQ, RFP, RFB/tender, direct selection | Scope/spec, site conditions, quantity/units, deliverables, schedule/milestones, HSE/site rules, budget, deadline, qualification criteria |
+| JOB_OFFER | Employment roles, shift/roster, contract positions, project vacancies | Application, screening, interview, offer | Role, skills, certifications, experience, location/rotation, schedule, employment type, compensation range, employer and application deadline |
+| JOB_SEEKER | Candidate profile and availability | Opt-in matching, application, recruiter contact | Skills, verified certificates, experience, availability, desired role/location/rotation, work authorization; identity/contact private by default |
+
+### Subject-specific required field profiles
+
+**Mineral / bulk material**
+- Commodity/product form, grade and assay basis, moisture/impurity thresholds, size/spec, quantity and unit (including DMT/WMT where relevant), minimum lot, available stock/production capacity, origin/mine/loading point, delivery destination, Incoterms, price basis/currency, assay/lab/origin/permit documents.
+- Distinguish measured assay, seller declaration, lab certificate, independent verification and AI extraction. A commodity lot is not a mineral right or mining project.
+
+**Mining project / mineral right**
+- Project stage, primary/secondary commodities, jurisdiction, licence/tenement IDs and holder, area, ownership/beneficial ownership, resource/reserve classification, reporting standard, competent person, effective date, infrastructure/access, permits, environmental/social status, capex/opex where disclosed, production history/capacity, technical reports and controlled data-room documents.
+- Deal structure: asset/share sale, licence assignment, lease, farm-in/earn-in/work commitment, JV, royalty/streaming, offtake, toll treatment, strategic partnership or financing referral.
+- Resource/reserve figures must never be promoted from AI-inferred or seller-entered to verified without source evidence and qualified review.
+
+**Mining contractor / work package**
+- Contractor company, discipline/capabilities, geographic coverage, equipment fleet, workforce capacity, licences/certifications, HSE system/record, insurance, references, project scale and availability.
+- Work package: scope, quantities/units, drawings/specification revisions, site access/conditions, mobilisation, schedule, milestones, payment basis, acceptance criteria, HSE requirements, bonds/guarantees only where legally and commercially applicable.
+
+**Procurement event**
+- Method and stage, lots/line items, specs/units, supplier eligibility, public/invited/sealed visibility, clarification/addenda timeline, submission deadline/timezone, technical/commercial envelopes, evaluation criteria/weights, evaluator assignments, award and contract references.
+- Sealed bids must be private until the configured opening event. The platform must retain immutable timestamps and audit all access/decisions.
+
+**Investment opportunity (legal-gated)**
+- Opportunity model A/B/C/D or project-specific equity/JV/farm-in/royalty/streaming/debt/offtake referral, underlying asset/project, operator legal identity, jurisdiction, target/use of proceeds, risk register, fees, term, exit scenarios, conflicts, disclosures and legal-review status.
+- Until the legal rollout gate passes, no capital commitments, pooled funds, payments, escrow balances, subscriptions or participation calls-to-action. A draft opportunity record is not a financial product approval.
+
+### First wizard release: supported scope vs later modules
+
+The seven-step wizard should support only combinations whose API, schema, permissions and tests are ready. The intended release sequence is:
+
+1. **First operational completion:** SALE_OFFER, PURCHASE_REQUEST (canonical BuyRequest), RENTAL_OFFER, SERVICE_OFFER and SERVICE_REQUEST, with existing Auction and RFQ as optional mechanisms where their data contracts are verified.
+2. **Next controlled extension:** RENTAL_REQUEST and mineral commodity offers/requests after required persistence and unit/assay validation exist.
+3. **Separate domain journeys:** contractor work packages/tenders, mining projects/tenements, employment and investment opportunities. These should have tailored wizards/data rooms, not be squeezed into the generic machine listing form.
+
+The form may share seven visual steps, but the field schema and validation are conditional by subject and intent. The number of visible steps may collapse when a step is not applicable; a universal machine Brand/Model step is not mandatory for minerals, services or projects.
