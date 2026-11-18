@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
+const wizard = read("src/app/listings/new/page.tsx");
+const transactionPicker = read("src/components/listings/TransactionTypePicker.tsx");
+const categoryPicker = read("src/components/listings/CascadingCategoryPicker.tsx");
+const attributes = read("src/components/listings/AttributeFields.tsx");
+const location = read("src/components/listings/LocationPicker.tsx");
+const media = read("src/components/listings/ListingImageUploader.tsx");
+const createListingApi = read("src/app/api/listings/route.ts");
+
+describe("Listing wizard seven-step source contract", () => {
+  it("keeps the seven user-facing sections in the declared order", () => {
+    expect(wizard).toContain('const STEP_LABELS = [');
+    for (const label of ["نوع معامله", "دسته‌بندی", "برند و مدل", "مشخصات فنی", "موقعیت", "جزئیات", "تکمیل"]) {
+      expect(wizard).toContain(`"${label}"`);
+    }
+  });
+
+  it("loads transaction types from the canonical endpoint and requires explicit selection", () => {
+    expect(transactionPicker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(transactionPicker).toContain('onClick={() => onChange(t.key)}');
+    expect(transactionPicker).toContain("setRetryKey((current) => current + 1)");
+    expect(transactionPicker).not.toMatch(/if\s*\(!value\s*&&[\s\S]*?onChange\(sale\.key\)/);
+  });
+
+  it("surfaces taxonomy loading failures instead of leaving a permanent loading placeholder", () => {
+    expect(wizard).toContain('fetch("/api/taxonomy", { cache: "no-store" })');
+    expect(wizard).toContain("taxonomyError");
+    expect(wizard).toContain("setTaxonomyRetryKey((current) => current + 1)");
+    expect(categoryPicker).toContain("/api/taxonomy/categories/");
+  });
+
+  it("loads brand, model and inherited category attributes through their domain APIs", () => {
+    expect(wizard).toContain("/api/brands/search?q=");
+    expect(wizard).toContain("/api/taxonomy/brands/");
+    expect(attributes).toContain("/api/categories/");
+    expect(attributes).toContain("/attributes");
+  });
+
+  it("uses canonical location APIs and authenticated staged media upload", () => {
+    expect(location).toContain('fetch("/api/locations"');
+    expect(media).toContain('fetch("/api/media/staging"');
+  });
+
+  it("submits through the authenticated listing API with server-side transaction and attribute validation", () => {
+    expect(wizard).toContain('fetch("/api/listings"');
+    expect(createListingApi).toContain("getCurrentUser()");
+    expect(createListingApi).toContain("checkCsrf(req)");
+    expect(createListingApi).toContain("validateListingAttributeValues");
+    expect(createListingApi).toContain('status: "PENDING"');
+  });
+});
