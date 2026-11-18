@@ -28,6 +28,7 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
 import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
 import { mergeHomepageSections } from "@/lib/homepage/sections";
+import { withHomepageQueryDiagnostics } from "@/lib/homepage-query-diagnostics";
 import {
   getCachedTopBrands,
   getCachedHomePageSections,
@@ -74,10 +75,10 @@ export default async function HomePage() {
   // Load independent homepage configuration and taxonomy queries together.
   // This avoids serial database round-trips before the listing queries can start.
   const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
-    getCachedTopBrands(),
-    getCachedCatalogCategories(),
-    getCachedHomeCategoryConfig(),
-    getCachedSiteSettings(),
+    withHomepageQueryDiagnostics("brand.top", getCachedTopBrands),
+    withHomepageQueryDiagnostics("category.catalog", getCachedCatalogCategories),
+    withHomepageQueryDiagnostics("config.home-category", getCachedHomeCategoryConfig),
+    withHomepageQueryDiagnostics("config.site-settings", getCachedSiteSettings),
   ]);
 
   // Falls back to generation 1 when no admin configuration exists.
@@ -97,35 +98,35 @@ export default async function HomePage() {
     activeListings, brandCount, categoryCount, featuredCount,
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
-    db.listing.findMany({
+    withHomepageQueryDiagnostics("listing.featured", () => db.listing.findMany({
       where: { status: "PUBLISHED", featured: true },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
       include: listingInclude,
-    }),
-    db.listing.findMany({
+    })),
+    withHomepageQueryDiagnostics("listing.verified", () => db.listing.findMany({
       where: verifiedOnlyFlag
         ? { status: "PUBLISHED", verified: true }
         : { status: "PUBLISHED" },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
       include: listingInclude as any,
-    }),
-    db.listing.findMany({
+    })),
+    withHomepageQueryDiagnostics("listing.latest", () => db.listing.findMany({
       where: { status: "PUBLISHED", showInLatest: true },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: 10,
       include: listingInclude as any,
-    }),
-    db.listing.count({ where: { status: "PUBLISHED" } }),
-    getCachedBrandCount(),
-    db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } }),
-    db.listing.count({ where: { status: "PUBLISHED", featured: true } }),
-    getCachedActiveRequests(),
-    getCachedArticles(),
-    getCachedHotSearches(),
-    getCachedHomePageSections(),
-    getCachedHeroConfig(),
+    })),
+    withHomepageQueryDiagnostics("listing.published-count", () => db.listing.count({ where: { status: "PUBLISHED" } })),
+    withHomepageQueryDiagnostics("brand.active-count", getCachedBrandCount),
+    withHomepageQueryDiagnostics("category.root-count", () => db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } })),
+    withHomepageQueryDiagnostics("listing.featured-count", () => db.listing.count({ where: { status: "PUBLISHED", featured: true } })),
+    withHomepageQueryDiagnostics("request.active", getCachedActiveRequests),
+    withHomepageQueryDiagnostics("article.published", getCachedArticles),
+    withHomepageQueryDiagnostics("search.hot", getCachedHotSearches),
+    withHomepageQueryDiagnostics("homepage.sections", getCachedHomePageSections),
+    withHomepageQueryDiagnostics("homepage.hero-config", getCachedHeroConfig),
   ]);
   const resolvedHomeSections = mergeHomepageSections(homeSections);
 
@@ -139,14 +140,14 @@ export default async function HomePage() {
   ].filter((id): id is string => typeof id === "string" && id.length > 0);
 
   const [machineCategoryCards, trustedBrandRows, activeStats, heroCardListingRows] = await Promise.all([
-    (async (): Promise<MachineCategoryCard[]> => {
-      const machinery = await getCachedMachineryRoot();
+    withHomepageQueryDiagnostics("category.machine-cards", async (): Promise<MachineCategoryCard[]> => {
+      const machinery = await withHomepageQueryDiagnostics("category.machinery-root", getCachedMachineryRoot);
       if (!machinery) return [];
       const parentId =
         homeCategoryConfig.generation === 2 && homeCategoryConfig.parentId
           ? homeCategoryConfig.parentId
           : machinery.id;
-      const rows = await getCachedL1Children(parentId);
+      const rows = await withHomepageQueryDiagnostics("category.l1-children", () => getCachedL1Children(parentId));
       return rows.map((c) => ({
         id: c.id,
         name: c.name,
@@ -157,27 +158,27 @@ export default async function HomePage() {
         description: c.description,
         listingCount: c._count.listings,
       }));
-    })(),
-    (async () => {
+    }),
+    withHomepageQueryDiagnostics("brand.trusted", async () => {
       const [displayBrands, featuredBrands] = await Promise.all([
-        getCachedBrandDisplayIds(),
-        getCachedFeaturedBrandIds(),
+        withHomepageQueryDiagnostics("brand.display-ids", getCachedBrandDisplayIds),
+        withHomepageQueryDiagnostics("brand.featured-ids", getCachedFeaturedBrandIds),
       ]);
       const ids = Array.from(new Set<string>([
         ...displayBrands.map((d) => d.brandId),
         ...featuredBrands.map((b) => b.id),
       ]));
-      return ids.length ? getCachedTrustedBrands(ids) : [];
-    })(),
+      return ids.length ? withHomepageQueryDiagnostics("brand.trusted-by-ids", () => getCachedTrustedBrands(ids)) : [];
+    }),
     getActiveStats({ listings: activeListings, brands: brandCount }),
     heroCardListingIds.length > 0
-      ? db.listing.findMany({
+      ? withHomepageQueryDiagnostics("listing.hero-cards", () => db.listing.findMany({
           where: { id: { in: heroCardListingIds }, status: "PUBLISHED" },
           include: {
             brand: { select: { name: true } },
             images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const, take: 1 },
           },
-        })
+        }))
       : Promise.resolve([]),
   ]);
   const trustedBrands: TrustedBrand[] = trustedBrandRows.map((b) => ({
