@@ -42,25 +42,33 @@ export default function LocationPicker({
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingProvinces, setLoadingProvinces] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
+  const [countryError, setCountryError] = useState(false);
+  const [provinceError, setProvinceError] = useState(false);
+  const [cityError, setCityError] = useState(false);
+  const [countryRetry, setCountryRetry] = useState(0);
+  const [provinceRetry, setProvinceRetry] = useState(0);
+  const [cityRetry, setCityRetry] = useState(0);
 
   // 1) Load country list (default to ایران)
   useEffect(() => {
     let alive = true;
+    setCountryError(false);
     (async () => {
       try {
         const res = await fetch("/api/locations", { cache: "no-store" });
         if (!res.ok) throw new Error("fetch failed");
         const data = (await res.json()) as { countries: Country[] };
         if (!alive) return;
-        setCountries(data.countries ?? []);
-        if (!value.countryId && data.countries.length > 0) {
+        const countryList = data.countries ?? [];
+        setCountries(countryList);
+        if (!value.countryId && countryList.length > 0) {
           const iran =
-            data.countries.find((c) => c.code === "IR" || c.name === "ایران") ??
-            data.countries[0];
+            countryList.find((c) => c.code === "IR" || c.name === "ایران") ??
+            countryList[0];
           onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "" });
         }
       } catch {
-        /* swallow */
+        if (alive) setCountryError(true);
       } finally {
         if (alive) setLoadingCountries(false);
       }
@@ -68,7 +76,7 @@ export default function LocationPicker({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [countryRetry]);
 
   // 2) Load provinces when country changes
   useEffect(() => {
@@ -78,6 +86,7 @@ export default function LocationPicker({
       return;
     }
     let alive = true;
+    setProvinceError(false);
     setLoadingProvinces(true);
     (async () => {
       try {
@@ -95,7 +104,10 @@ export default function LocationPicker({
           onChange({ ...value, provinceId: "", cityId: "" });
         }
       } catch {
-        if (alive) setProvinces([]);
+        if (alive) {
+          setProvinces([]);
+          setProvinceError(true);
+        }
       } finally {
         if (alive) setLoadingProvinces(false);
       }
@@ -103,7 +115,7 @@ export default function LocationPicker({
     return () => {
       alive = false;
     };
-  }, [value.countryId]);
+  }, [value.countryId, countryRetry, provinceRetry]);
 
   // 3) Load cities when province changes
   useEffect(() => {
@@ -112,6 +124,7 @@ export default function LocationPicker({
       return;
     }
     let alive = true;
+    setCityError(false);
     setLoadingCities(true);
     (async () => {
       try {
@@ -127,7 +140,10 @@ export default function LocationPicker({
           onChange({ ...value, cityId: "" });
         }
       } catch {
-        if (alive) setCities([]);
+        if (alive) {
+          setCities([]);
+          setCityError(true);
+        }
       } finally {
         if (alive) setLoadingCities(false);
       }
@@ -135,7 +151,7 @@ export default function LocationPicker({
     return () => {
       alive = false;
     };
-  }, [value.provinceId]);
+  }, [value.provinceId, cityRetry]);
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
@@ -167,6 +183,12 @@ export default function LocationPicker({
             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
           )}
         </div>
+        {countryError && (
+          <p role="alert" className="mt-2 text-xs text-red-300">
+            دریافت کشورها ناموفق بود.
+            <button type="button" onClick={() => setCountryRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
+          </p>
+        )}
       </div>
 
       {/* Province */}
@@ -202,6 +224,12 @@ export default function LocationPicker({
             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
           )}
         </div>
+        {provinceError && (
+          <p role="alert" className="mt-2 text-xs text-red-300">
+            دریافت استان‌ها ناموفق بود.
+            <button type="button" onClick={() => setProvinceRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
+          </p>
+        )}
       </div>
 
       {/* City */}
@@ -237,6 +265,12 @@ export default function LocationPicker({
             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
           )}
         </div>
+        {cityError && (
+          <p role="alert" className="mt-2 text-xs text-red-300">
+            دریافت شهرها ناموفق بود.
+            <button type="button" onClick={() => setCityRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
+          </p>
+        )}
       </div>
     </div>
   );
