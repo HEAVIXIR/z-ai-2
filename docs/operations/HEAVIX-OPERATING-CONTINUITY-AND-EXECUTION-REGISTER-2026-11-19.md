@@ -191,3 +191,11 @@ Never write “done”, “fixed”, “green”, “deployed”, “migrated”
 - Issue #345 created: https://github.com/HEAVIXIR/z-ai-2/issues/345. This issue is now the tracked P0 implementation vehicle for WANTED/BuyRequest integration and structured persistence.
 - No application code/schema/migration/seed or data mutation occurred in this audit batch. No Preview/Production deployment, secret read/write, paid provider call, DNS change or Worker activation occurred.
 - Next: legacy parity audit + canonical BuyRequest/Listing relationship decision, then narrow implementation and tests. Do not bypass paired encrypted Backblaze B2 backup, exact DB identity and explicit Preview migration gates.
+
+
+## 2026-11-19 — WANTED legacy parity and consumer findings
+
+- Legacy reference inspected at `dellk00k/z@bbb1f4947e4b1a05e39f7b510c5c7801d52389e7`. Legacy had a separate request form/API with title, description, free-text category/brand, SALE/RENT, budget, location, deadline and contact; it did not provide structured quantity/specification persistence. Legacy also had overlapping request endpoints. Treat structured quantity/specification as a target gap, not as a proven legacy regression; do not port legacy request routes without security adaptation.
+- Additional current defects recorded on Issue #345: Admin Requests page expects `{success,data}` while its API returns `{requests,total,stats}`; public wanted matching currently lacks server-side status/expiry eligibility rejection before candidate computation.
+- Issue #345 comment contains source paths and these additional findings. Keep the WANTED workstream as a single canonical domain; avoid parallel APIs and duplicate request records.
+- These are code/source observations only; no live Preview or Production acceptance inferred. No code/schema/data/infra change in this audit batch.
