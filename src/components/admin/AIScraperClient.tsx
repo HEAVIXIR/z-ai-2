@@ -9,6 +9,7 @@ import {
 type ScrapedListing = {
   url: string;
   title?: string;
+  publishedAt?: string | null;
   description?: string;
   price?: string | null;
   images: string[];
@@ -233,6 +234,7 @@ export default function AIScraperClient() {
                 {s.year && <div className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />سال {fmt(s.year)}</div>}
                 {s.hours !== null && s.hours !== undefined && <div className="flex items-center gap-1"><Gauge className="h-3.5 w-3.5" />{fmt(s.hours)} ساعت</div>}
                 {s.location && <div className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{s.location}</div>}
+                <div className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{s.publishedAt ? new Date(s.publishedAt).toLocaleDateString("fa-IR") : "تاریخ انتشار نامشخص"}</div>
                 {s.phone && <div className="flex items-center gap-1" dir="ltr"><Phone className="h-3.5 w-3.5" />{s.phone}</div>}
                 {s.brand && <div>برند: {s.brand}</div>}
                 {s.category && <div>دسته پیشنهادی: {s.category}</div>}
