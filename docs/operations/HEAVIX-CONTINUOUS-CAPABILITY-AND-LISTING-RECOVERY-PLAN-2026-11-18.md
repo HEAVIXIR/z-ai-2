@@ -178,3 +178,15 @@ The following source changes are committed to the selected Integration branch. T
 - Verify the complete media lifecycle against isolated Preview B2 storage, including upload, readback, attach, retry and cleanup; no live B2 operation is claimed here.
 - Add behavioral tests that cover all seven steps, transaction variants, invalid selections, API outages, back/forward navigation and persisted readback.
 - Run exact-head CI/OpenNext and then isolated Preview browser acceptance; no deployment or data write until gates pass.
+
+
+## 9. Follow-up execution log — 2026-11-18 (continued)
+
+- `afc02549cab6370b4060f00dd32d8c2dd1319ccb`: updated the stale scraper security/source-contract tests to reflect the current Integration behavior (no artificial Marketplace activation flag, auth + CSRF before AI preflight, allowlisted source validation, and the current 30-URL import bound).
+- `6b0bbb69c3653423b9700b05052eab0bc6135672`: aligned the Admin mutation/CSRF contract test with the same current scraper authorization contract. These are test expectation changes only; they do not weaken runtime authorization or source URL validation.
+- OpenNext run `44330599937` failed after the Worker bundle was successfully generated. The failure was in the local preview readiness probe: the script accepted the first HTTP response (including transient non-ready responses) as ready and immediately attempted JSON parsing. The observed body was plain `Forbidden`, which caused a misleading JSON parse exception.
+- `b51bda6e530a65061026ddfa2d44e4fa695ffde7`: changed the OpenNext smoke runner to keep polling until an HTTP 200 response, retain bounded diagnostics for non-200 responses, and report non-JSON response details without exposing the ephemeral token. Exact-head CI/OpenNext reruns are pending/in progress; this change is not yet considered verified.
+- Listing wizard source audit confirmed the current POST handler persists `transactionTypeId`, `listingType`, category, optional brand/model, canonical location IDs, validated typed attributes, and staged image relations atomically; moderation status remains PENDING. This is source inspection, not runtime acceptance.
+- **Data-model blocker found:** Prisma has a standalone `ServiceType` model and the taxonomy endpoint returns active `serviceTypes`, but `Listing` has no `serviceTypeId` relation/field. The wizard currently routes service transactions through SERVICE-layer categories and stores SERVICE_OFFER/SERVICE_REQUEST in `transactionTypeId`; it does not persist a selected ServiceType. Do not silently encode this into an unrelated field. Classify service-type selection/persistence as `BLOCKED_DATA` pending an explicitly approved schema/migration decision. No migration or database write was performed.
+- Additional audit still required: transaction-specific validation for WANTED/QUOTE/AUCTION/SERVICE_OFFER/SERVICE_REQUEST/RENT; required-field and serialization matrix for all dynamic attribute types; brand/model retry; media staging/readback/attach/retry/cleanup; browser-based Preview acceptance.
+- Current Integration branch head at this log entry: `b51bda6e530a65061026ddfa2d44e4fa695ffde7`.
