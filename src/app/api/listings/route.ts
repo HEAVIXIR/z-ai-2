@@ -802,7 +802,7 @@ export async function POST(req: Request) {
         },
         include: {
           auctions: { select: { id: true } },
-          rfq: { select: { id: true } },
+          rfq: { select: { id: true, title: true, status: true, quantity: true } },
         },
       });
 
