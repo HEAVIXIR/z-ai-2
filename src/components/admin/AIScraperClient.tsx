@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search, Loader2, Plus, CheckCircle2, Phone, Image as ImageIcon,
   Sparkles, ExternalLink, MapPin, Calendar, Gauge, DollarSign, ShieldCheck,
@@ -23,6 +23,13 @@ type ScrapedListing = {
 
 export default function AIScraperClient() {
   const [query, setQuery] = useState("");
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; nameEn?: string | null; layer?: string; level?: number }>>([]);
+  const [serviceTypes, setServiceTypes] = useState<Array<{ id: string; nameFa: string; nameEn?: string | null }>>([]);
+  const [transactionTypes, setTransactionTypes] = useState<Array<{ id: string; nameFa: string; nameEn?: string | null }>>([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [transactionTypeId, setTransactionTypeId] = useState("");
+  const [dateDays, setDateDays] = useState("30");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ScrapedListing[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -31,7 +38,21 @@ export default function AIScraperClient() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const MAX_BULK_IMPORT_SELECTION = 5;
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch("/api/taxonomy/categories").then((r) => r.ok ? r.json() : Promise.reject(new Error("دریافت دسته‌بندی‌ها ناموفق بود."))),
+      fetch("/api/taxonomy").then((r) => r.ok ? r.json() : Promise.reject(new Error("دریافت خدمات ناموفق بود."))),
+    ]).then(([categoryData, taxonomyData]) => {
+      if (cancelled) return;
+      setCategories(Array.isArray(categoryData.flat) ? categoryData.flat : []);
+      setServiceTypes(Array.isArray(taxonomyData.serviceTypes) ? taxonomyData.serviceTypes : []);
+      setTransactionTypes(Array.isArray(taxonomyData.transactionTypes) ? taxonomyData.transactionTypes : []);
+    }).catch((e) => {
+      if (!cancelled) setError(e?.message ?? "دریافت ساختار دسته‌بندی‌ها ناموفق بود.");
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const sourceName = (url: string) => {
     try {
@@ -54,7 +75,7 @@ export default function AIScraperClient() {
     try {
       const res = await fetch("/api/admin/ai-scraper", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "search", query: query.trim(), num: 10 }),
+        body: JSON.stringify({ mode: "search", query: query.trim(), num: 30, categoryId: categoryId || null, serviceTypeId: serviceTypeId || null, transactionTypeId: transactionTypeId || null, dateDays: dateDays === "all" ? null : Number(dateDays) }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "جستجو ناموفق بود.");
@@ -84,7 +105,7 @@ export default function AIScraperClient() {
   };
 
   const importSelected = async () => {
-    const indexes = [...selected].filter(i => !imported.has(i)).slice(0, MAX_BULK_IMPORT_SELECTION);
+    const indexes = [...selected].filter(i => !imported.has(i));
     if (!indexes.length) return;
     setBulkImporting(true); setError(null);
     let done = 0;
@@ -114,10 +135,6 @@ export default function AIScraperClient() {
       });
       return;
     }
-    if (selected.size >= MAX_BULK_IMPORT_SELECTION) {
-      setError(`حداکثر ${MAX_BULK_IMPORT_SELECTION.toLocaleString("fa-IR")} آگهی را در هر نوبت انتخاب کنید.`);
-      return;
-    }
     setSelected(prev => new Set(prev).add(index));
   };
 
@@ -140,14 +157,47 @@ export default function AIScraperClient() {
         <div className="flex flex-wrap gap-2">
           <div className="flex h-12 min-w-[220px] flex-1 items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 px-4">
             <Search className="h-4 w-4 text-zinc-400" />
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="مثلاً بیل مکانیکی کوماتسو PC220" className="mr-2 h-full flex-1 bg-transparent text-sm text-zinc-900 outline-none" />
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="مثلاً بیل مکانیکی کوماتسو PC220 یا خدمات تعمیر موتور" className="mr-2 h-full flex-1 bg-transparent text-sm text-zinc-900 outline-none" />
           </div>
           <button type="button" onClick={handleSearch} disabled={searching || !query.trim()} className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white disabled:opacity-50">
             {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             {searching ? "در حال جستجو و استخراج..." : "جستجوی آگهی‌های واقعی"}
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-zinc-400">در نسخه فعلی فقط دامنه‌های مجاز دیوار و شیپور واکشی می‌شوند؛ منابع دیگر تا زمان بررسی و اضافه‌شدن به فهرست مجاز فعال نیستند.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="block text-xs font-bold text-zinc-700">
+            دسته‌بندی آگهی
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه دسته‌بندی‌ها</option>
+              {categories.map((item) => <option key={item.id} value={item.id}>{`${" ".repeat(Math.min(item.level || 0, 4) * 2)}${item.name}${item.layer ? ` · ${item.layer}` : ""}`}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            نوع خدمت
+            <select value={serviceTypeId} onChange={(e) => setServiceTypeId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه خدمات</option>
+              {serviceTypes.map((item) => <option key={item.id} value={item.id}>{item.nameFa}{item.nameEn ? ` · ${item.nameEn}` : ""}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            نوع آگهی / معامله
+            <select value={transactionTypeId} onChange={(e) => setTransactionTypeId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه انواع</option>
+              {transactionTypes.map((item) => <option key={item.id} value={item.id}>{item.nameFa}{item.nameEn ? ` · ${item.nameEn}` : ""}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            بازه انتشار آگهی
+            <select value={dateDays} onChange={(e) => setDateDays(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="7">۷ روز اخیر</option>
+              <option value="20">۲۰ روز اخیر</option>
+              <option value="30">یک ماه اخیر</option>
+              <option value="90">۹۰ روز اخیر</option>
+              <option value="all">بدون محدودیت زمانی</option>
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-400">دسته‌بندی‌ها و خدمات مستقیماً از طبقه‌بندی فعال HEAVIX خوانده می‌شوند؛ دسته‌های جدید نیز پس از ثبت در طبقه‌بندی در این فهرست ظاهر خواهند شد.</p>
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -156,7 +206,7 @@ export default function AIScraperClient() {
       {results.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-3">
           <span className="text-xs font-bold text-zinc-600">{selected.size.toLocaleString("fa-IR")} انتخاب‌شده از {results.length.toLocaleString("fa-IR")}</span>
-          <button type="button" onClick={() => setSelected(selected.size === Math.min(MAX_BULK_IMPORT_SELECTION, results.length) ? new Set() : new Set(results.slice(0, MAX_BULK_IMPORT_SELECTION).map((_, i) => i)))} className="text-xs font-bold text-[#F58220]">انتخاب حداکثر ۵ مورد / لغو انتخاب</button>
+          <button type="button" onClick={() => setSelected(selected.size === results.length ? new Set() : new Set(results.map((_, i) => i)))} className="text-xs font-bold text-[#F58220]">انتخاب همه نتایج / لغو انتخاب</button>
           <button type="button" onClick={importSelected} disabled={!selected.size || bulkImporting} className="mr-auto inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {bulkImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} ورود انتخاب‌شده‌ها به صف بررسی
           </button>
