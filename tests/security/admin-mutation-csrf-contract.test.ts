@@ -67,23 +67,24 @@ describe("administrative mutation CSRF contracts", () => {
     expect(detail).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
   });
 
-  it("keeps provider-backed scraper execution explicitly gated after auth and CSRF, before AI budget preflight", () => {
+  it("keeps scraper authorization and CSRF ahead of AI preflight without an artificial activation flag", () => {
     const marketplace = read("src/app/api/admin/ai-scraper/route.ts");
     expect(marketplace).toContain('requirePermission(user.id, "ai.execute")');
     const navigation = read("src/lib/admin/navigation-defaults.ts");
     expect(navigation).toContain("href: '/admin/ai-scraper', permissionKey: 'ai.execute'");
     expect(marketplace).toContain("checkCsrf(req)");
-    expect(marketplace).toContain('process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
-    expect(marketplace.indexOf("checkCsrf(req)")).toBeLessThan(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED"));
-    expect(marketplace.indexOf("HEAVIX_AI_SCRAPER_ENABLED")).toBeLessThan(marketplace.indexOf("preflightAIRequest({"));
+    expect(marketplace).not.toContain("HEAVIX_AI_SCRAPER_ENABLED");
+    expect(marketplace.indexOf("getCurrentUser()")).toBeLessThan(marketplace.indexOf("checkCsrf(req)"));
+    expect(marketplace.indexOf("checkCsrf(req)")).toBeLessThan(marketplace.indexOf("preflightAIRequest({"));
+    expect(marketplace).toContain("isAllowedSourceUrl");
 
     const store = read("src/app/api/admin/store/ai-scraper/route.ts");
     expect(store).toContain("requirePermission(user.id, 'store.manage')");
     expect(store).toContain("checkCsrf(req)");
-    expect(store).toContain('process.env.HEAVIX_STORE_SCRAPER_ENABLED !== "true"');
+    expect(store).not.toContain("HEAVIX_STORE_SCRAPER_ENABLED");
     expect(store).toContain("!isManualImport");
-    expect(store.indexOf("checkCsrf(req)")).toBeLessThan(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED"));
-    expect(store.indexOf("HEAVIX_STORE_SCRAPER_ENABLED")).toBeLessThan(store.indexOf("preflightAIRequest({"));
+    expect(store.indexOf("getCurrentUser()")).toBeLessThan(store.indexOf("checkCsrf(req)"));
+    expect(store.indexOf("checkCsrf(req)")).toBeLessThan(store.indexOf("preflightAIRequest({"));
     expect(store).toContain('process.env[STORE_SOURCE_DNS_ALLOWLIST_ENV]');
     expect(store).toContain("fetchAllowedSourcePage(url, signal, undefined, allowedHosts)");
     expect(store).toContain("isAllowedStoreSourceUrl(url)");
