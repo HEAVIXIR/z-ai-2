@@ -14,7 +14,7 @@ const createListingApi = read("src/app/api/listings/route.ts");
 describe("Listing wizard seven-step source contract", () => {
   it("keeps the seven user-facing sections in the declared order", () => {
     expect(wizard).toContain('const STEP_LABELS = [');
-    for (const label of ["نوع معامله", "دسته‌بندی", "برند و مدل", "مشخصات تخصصی", "موقعیت", "جزئیات", "تکمیل"]) {
+    for (const label of ["نوع معامله", "دسته‌بندی", "اطلاعات پایه", "مشخصات تخصصی", "موقعیت", "جزئیات", "تکمیل"]) {
       expect(wizard).toContain(`"${label}"`);
     }
   });
