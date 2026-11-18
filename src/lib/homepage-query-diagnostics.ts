@@ -24,8 +24,12 @@ function safePropertyNames(record: UnknownRecord | null): string[] {
 }
 
 function safeConstructorName(value: unknown): string | undefined {
-  const record = asRecord(value);
-  return safeString(asRecord(record?.constructor)?.name, /^[A-Za-z][A-Za-z0-9_$]{0,79}$/);
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return undefined;
+  const constructor = (value as { constructor?: unknown }).constructor;
+  const name = typeof constructor === "function"
+    ? (constructor as { name?: unknown }).name
+    : undefined;
+  return safeString(name, /^[A-Za-z][A-Za-z0-9_$]{0,79}$/);
 }
 
 function classifyErrorMessage(value: unknown): string {
