@@ -199,3 +199,16 @@ Never write “done”, “fixed”, “green”, “deployed”, “migrated”
 - Additional current defects recorded on Issue #345: Admin Requests page expects `{success,data}` while its API returns `{requests,total,stats}`; public wanted matching currently lacks server-side status/expiry eligibility rejection before candidate computation.
 - Issue #345 comment contains source paths and these additional findings. Keep the WANTED workstream as a single canonical domain; avoid parallel APIs and duplicate request records.
 - These are code/source observations only; no live Preview or Production acceptance inferred. No code/schema/data/infra change in this audit batch.
+
+
+## 2026-11-19 — Integration Preview runtime failure investigation
+
+- Re-verified PR #340 remains OPEN + DRAFT; Integration remains separate from `main`.
+- Latest Integration source/test head verified from CI run #44408767864: `55c9c559b68442020bda08e2c984564b9c4f2228`. CI conclusion: SUCCESS. The run includes the final WANTED eligibility tests; skipped jobs (if any) remain skipped and must not be represented as passing.
+- Preview workflow #44408761521 deployed Preview successfully but failed its root reachability step. Its deployment tested `e989b4d4998774c2d202c6f27a7edfe2424f8ee2`, one test-only commit behind the current Integration head. `GET /` returned HTTP 500 after retries. The preview deployment version was `5468c091-8920-42b3-bdd7-af4073c3b73b`.
+- Cloudflare Observability correlated the failure to a homepage request with `prisma:error`; the stack begins at `tx (worker.js:60359:38)`. Root request wall time was approximately 2.1s, CPU 82–127ms. Multiple outbound requests to Prisma Accelerate (`db.prisma.io/v0/statement?db=postgres`) completed at the fetch-span level. This does NOT prove the SQL statements succeeded and does NOT identify the exact Prisma error code or failing model.
+- Current source audit of `src/app/page.tsx` confirms the homepage starts with multiple concurrent cached Prisma reads and then launches several listing/count/request/article/hero queries. This is a candidate query surface, not yet a proven culprit.
+- Created Issue #346 to track exact Prisma exception extraction, Preview DB identity/schema comparison, narrow Integration fix, regression coverage and exact-SHA Preview revalidation: https://github.com/HEAVIXIR/z-ai-2/issues/346.
+- No Production deploy, DB mutation, migration, seed, secret/DNS change, Worker activation or paid provider use. No PR merge.
+- **Current release gate: BLOCKED.** CI is green but live Preview root is not. Do not call Preview accepted or PR #340 merge-ready.
+- Next smallest safe action: retrieve the complete exception/underlying Prisma response for the correlated trace, then compare homepage's first queries with the isolated Preview schema and paired migration history. Do not run migrations/seeds or change DB identity while diagnosing.
