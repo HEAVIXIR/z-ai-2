@@ -124,13 +124,18 @@ type DecodedImage = {
 /** Prefer ImageBitmap, but retain a broadly supported HTMLImageElement fallback. */
 async function decodeImage(file: File): Promise<DecodedImage> {
   if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(file);
-    return {
-      width: bitmap.width,
-      height: bitmap.height,
-      draw: (context, width, height) => context.drawImage(bitmap, 0, 0, width, height),
-      close: () => bitmap.close(),
-    };
+    try {
+      const bitmap = await createImageBitmap(file);
+      return {
+        width: bitmap.width,
+        height: bitmap.height,
+        draw: (context, width, height) => context.drawImage(bitmap, 0, 0, width, height),
+        close: () => bitmap.close(),
+      };
+    } catch {
+      // Some browsers expose ImageBitmap but fail to decode specific images.
+      // Continue through the HTMLImageElement fallback before surfacing an error.
+    }
   }
 
   if (typeof Image === "undefined" || typeof URL?.createObjectURL !== "function") {
