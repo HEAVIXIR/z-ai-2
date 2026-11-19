@@ -420,6 +420,7 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     expect(ui).toContain("entry.selectedOptionIds = arr.map(String)");
     // Ordinary listings still consume the legacy textValue representation.
     expect(ui).toContain('entry.textValue = entry.selectedOptionIds.join(",");');
+    expect(ui).toContain("(Array.isArray(raw) && raw.length === 0)");
   });
 
   it("normalizes legacy MULTI_SELECT text without treating it as the TEXT slot", () => {
