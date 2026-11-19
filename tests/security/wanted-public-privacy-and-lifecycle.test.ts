@@ -41,6 +41,13 @@ describe("WANTED public privacy and lifecycle safety", () => {
     expect(route).toContain("{ status: 404 }");
   });
 
+  it("filters both public listing search paths to supply-side transaction types", () => {
+    const search = read("src/lib/search.ts");
+    const route = read("src/app/api/listings/route.ts");
+    expect(search).toContain("listingType: { in: [...SUPPLY_LISTING_TYPES] }");
+    expect(route).toContain("listingType: { in: [...SUPPLY_LISTING_TYPES] }");
+  });
+
   it("routes the WANTED wizard through the canonical BuyRequest API", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
-import { categoryLayerForTransactionType, isRequestTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
+import { categoryLayerForTransactionType, isRequestTransactionType, requiresListingImage, requiresListingPrice, SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { toPublicListingDTO } from "@/lib/public-listing-dto";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
@@ -152,7 +152,12 @@ export async function GET(req: Request) {
     // (so the `attributeValues: { some: ... }` AND clauses can be
     // composed) but route text/brand/category through the normalized
     // search helpers.
-    const where: any = { status: "PUBLISHED" };
+    const where: any = {
+      status: "PUBLISHED",
+      // Keep the attribute-filter path consistent with searchListings:
+      // public catalog results are supply listings only.
+      listingType: { in: [...SUPPLY_LISTING_TYPES] },
+    };
 
     if (q) {
       const textClause = buildSearchWhere(
