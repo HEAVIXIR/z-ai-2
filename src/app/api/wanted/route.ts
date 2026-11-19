@@ -355,18 +355,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // H.2.4c (P0 data integrity): fail-closed taxonomy validation.
-    // Previously createWanted resolved categoryId/brandId to display names
-    // best-effort and silently stored NULL on a miss, while modelId and
-    // serviceTypeId were accepted unvalidated (audit-only). A direct API
-    // caller could submit arbitrary/garbage IDs and produce a BuyRequest
-    // with a NULL category or a modelId that does not belong to the
-    // supplied brand. The directive requires invalid taxonomy IDs and
-    // mismatched brand/model/category combinations to fail closed at the
-    // API boundary. The structured FK persistence itself remains blocked
-    // on the migration freeze; this validation runs against the live
-    // Category/Brand/ProductModel/ServiceType tables so the IDs are at
-    // least provably valid before the request enters the moderation queue.
+    // H.2/H.3 (P0 data integrity): fail-closed taxonomy validation.
+    // Every supplied Category/Brand/ProductModel/ServiceType ID is checked
+    // against active canonical rows and mismatched brand/model/category
+    // combinations are rejected before createWanted writes the real FKs.
+    // The service then validates category/model attribute membership and
+    // typed values before the atomic BuyRequest + attribute transaction.
     const requestedCategoryId = categoryId ? String(categoryId) : null;
     const requestedBrandId = brandId ? String(brandId) : null;
     const requestedModelId = modelId ? String(modelId) : null;
@@ -433,10 +427,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع خدمت انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
     }
 
-    // H.2.4c: attributeValues shape validation. The structured FK
-    // persistence is blocked on the migration freeze, but the payload
-    // must still be a well-formed array of attribute snapshots so the
-    // audit `after` payload (the only current carrier) is not garbage.
+    // H.3: basic attribute payload shape validation at the API boundary.
+    // createWanted performs authoritative type, option-ownership,
+    // category/model-membership and required-field validation, then stores
+    // normalized values in canonical parent/child relational tables.
     if (attributeValues !== undefined && attributeValues !== null) {
       if (!Array.isArray(attributeValues)) {
         return NextResponse.json({ error: "attributeValues باید یک آرایه باشد." }, { status: 400 });
