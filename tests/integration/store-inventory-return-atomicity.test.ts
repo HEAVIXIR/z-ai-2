@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
 import { adjustStock } from '@/lib/store-inventory-service';
-import { resolveReturn } from '@/lib/store-returns-service';
+import { inspectReturn, resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
 
@@ -13,6 +13,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   let orderId: string | undefined;
   let orderItemId: string | undefined;
   let returnId: string | undefined;
+  let outboxIds: string[] = [];
 
   beforeEach(async () => {
     const tag = suffix();
@@ -39,6 +40,10 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
   });
 
   afterEach(async () => {
+    if (outboxIds.length > 0) {
+      await storeDb.auditOutbox.deleteMany({ where: { id: { in: outboxIds } } });
+      outboxIds = [];
+    }
     if (returnId) {
       await storeDb.return.deleteMany({ where: { id: returnId } });
       returnId = undefined;
@@ -181,4 +186,82 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
     expect(transactions).toHaveLength(1);
     expect(transactions[0]?.amount).toBe(500);
   }, 15000);
+
+  it('commits inspection status, item flags, and all audit outbox rows together', async () => {
+    if (!partId) throw new Error('fixture setup incomplete');
+    const tag = suffix();
+    const customer = await storeDb.customer.create({
+      data: {
+        phone: '+1888' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),
+        name: 'Inspection',
+        family: 'Atomicity',
+        walletBalanceIrr: 0,
+      },
+    });
+    customerId = customer.id;
+
+    const order = await storeDb.order.create({
+      data: {
+        orderNumber: 'INSPECT-ORDER-' + tag,
+        customerId: customer.id,
+        subtotalUsd: 10,
+        totalUsd: 10,
+        totalIrr: 1000,
+        currencyRateAtOrder: 100,
+        marginPercentAtOrder: 0,
+      },
+    });
+    orderId = order.id;
+
+    const orderItem = await storeDb.orderItem.create({
+      data: {
+        orderId: order.id,
+        partId,
+        partNameSnapshot: 'Inspection part',
+        quantity: 2,
+        unitPriceUsd: 5,
+        unitPriceIrr: 500,
+        lineTotalUsd: 10,
+        lineTotalIrr: 1000,
+      },
+    });
+    orderItemId = orderItem.id;
+
+    const ret = await storeDb.return.create({
+      data: { orderId: order.id, reason: 'inspection transaction test', status: 'APPROVED' },
+    });
+    returnId = ret.id;
+
+    const item = await storeDb.returnItem.create({
+      data: {
+        returnId: ret.id,
+        orderItemId: orderItem.id,
+        quantity: 1,
+        condition: 'UNOPENED',
+        restockable: false,
+      },
+    });
+
+    const result = await inspectReturn(ret.id, 'inspection complete', [{
+      itemId: item.id,
+      restockable: true,
+      condition: 'UNOPENED',
+    }]);
+
+    expect(result.status).toBe('INSPECTED');
+    expect(result.inspection).toBe('inspection complete');
+    expect(result.items[0].restockable).toBe(true);
+
+    const events = await storeDb.auditOutbox.findMany({
+      where: { payloadJson: { contains: ret.id } },
+      select: { id: true, payloadJson: true, status: true },
+    });
+    outboxIds = events.map((event: any) => event.id);
+    expect(events).toHaveLength(2);
+    expect(events.every((event: any) => event.status === 'PENDING')).toBe(true);
+    const payloads = events.map((event: any) => JSON.parse(event.payloadJson));
+    expect(payloads.map((payload: any) => payload.entityType).sort()).toEqual(['Return', 'ReturnItem']);
+    expect(payloads.every((payload: any) => payload.action === 'store.return.inspect')).toBe(true);
+  }, 15000);
+
 });
