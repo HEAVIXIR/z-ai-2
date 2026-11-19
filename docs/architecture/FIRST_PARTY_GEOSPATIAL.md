@@ -67,3 +67,25 @@ a later infrastructure decision, not silently enabled by this migration.
 - Build zone-aware filters and clustered map search.
 - Add self-hosted tile server and offline/rollback procedures before production
   map traffic is enabled.
+
+## Reviewed source candidates (not yet imported)
+
+A public candidate repository, `sajaddp/list-of-cities-in-Iran`, reports a
+versioned 1404 administrative workbook projection with 31 provinces, 484
+counties, 1,193 districts, and 1,672 CODEREC=5 city records. It explicitly
+distinguishes city from county and separately classifies 1,481 real-city
+records and 191 derived urban-zone records. These counts are useful as
+cross-check targets, not as permission to ingest the files.
+
+**Important licensing gate:** the candidate repository declares GNU GPL v3.
+HEAVIX must not copy its generated data files into this commercial codebase
+until provenance, applicable data rights, and compatibility have been
+reviewed. The upstream README also says the official source is a Ministry of
+Interior workbook but does not make the repository itself a legal authority.
+Acquire and verify the source through an authorized official channel or obtain
+a compatible explicit data license first. The source-faithful 1,672-record
+projection must not be mistaken for 1,672 distinct real urban cities.
+
+The separate coordinate enrichment in that project comes from GeoNames under
+CC BY 4.0 and requires attribution; it is not an official boundary or city
+centroid source. Do not treat it as precise equipment-location data.
