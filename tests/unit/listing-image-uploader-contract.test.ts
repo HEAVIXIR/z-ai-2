@@ -24,6 +24,9 @@ describe("Listing image upload contract", () => {
     expect(source).toContain("FREE_LISTING_IMAGE_POLICY");
     expect(source).toContain("policyReady");
     expect(source).toContain("const maxImages = policy.maxImages");
+    expect(source).toContain('next.tier === "PREMIUM"');
+    expect(source).toContain("required = false");
+    expect(source).toContain("افزودن تصویر اختیاری است");
     expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
     expect(source).toContain('fetch("/api/media/staging"');
   });
