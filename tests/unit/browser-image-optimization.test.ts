@@ -97,6 +97,15 @@ describe("prepareImageForUpload", () => {
     expect(decode).not.toHaveBeenCalled();
   });
 
+  it("matches the server decoded-pixel limit before browser decoding", async () => {
+    const file = pngFile(MAX_IMAGE_UPLOAD_BYTES + 1, 4000, 3200);
+    const decode = vi.fn();
+    vi.stubGlobal("createImageBitmap", decode);
+
+    await expect(prepareImageForUpload(file)).rejects.toThrow("ابعاد تصویر بیش از حد مجاز است.");
+    expect(decode).not.toHaveBeenCalled();
+  });
+
   it("refuses oversized animated PNGs rather than flattening animation", async () => {
     const file = pngFile(MAX_IMAGE_UPLOAD_BYTES + 1, 800, 600, true);
     const decode = vi.fn();
