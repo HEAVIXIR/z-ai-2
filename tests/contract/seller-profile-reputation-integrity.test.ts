@@ -39,7 +39,7 @@ describe("public seller profile reputation integrity", () => {
   });
 
   it("aggregates public views from published listings only", () => {
-    expect(source).toContain('where: { sellerId: seller.id, status: "PUBLISHED" }');
+    expect(source).toContain('where: { sellerId: seller.id, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } }');
   });
 
   it("does not expose draft or hidden listing counts in public trust/reputation APIs", () => {

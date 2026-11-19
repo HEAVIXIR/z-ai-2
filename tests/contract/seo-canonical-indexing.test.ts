@@ -84,7 +84,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
     expect(read("src/app/listings/[slug]/page.tsx")).toContain('getSEO("Listing", listing.id)');
     expect(read("src/app/brands/[slug]/page.tsx")).toContain('getSEO("Brand", brand.id)');
     expect(read("src/app/categories/[slug]/page.tsx")).toContain('getSEO("Category", category.id)');
-    expect(read("src/app/listings/[slug]/page.tsx")).toContain('where: { slug, status: "PUBLISHED" }');
+    expect(read("src/app/listings/[slug]/page.tsx")).toContain('where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } }');
   });
 
   it("preserves existing robots policy when an SEO update omits robots directives", () => {
