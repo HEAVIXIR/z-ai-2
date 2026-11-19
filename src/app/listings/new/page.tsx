@@ -357,7 +357,7 @@ export default function NewListingPage() {
     setServiceTypeId("");
     setAuction({ reservePrice: "", minIncrement: "", startDate: "", endDate: "" });
     setRfq({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "", terms: "" });
-    setWanted({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "" });
+    setWanted({ intent: "SALE", quantity: "1", budgetMin: "", budgetMax: "", deadline: "" });
     setCategoryId("");
     setCategoryPath([]);
     setBrandId("");
