@@ -29,7 +29,7 @@ describe("first-party geospatial contract", () => {
 
   it("stores operational zone boundaries as portable GeoJSON", () => {
     expect(schema).toMatch(/model GeoZone \{/);
-    expect(schema).toMatch(/boundaryGeoJson\s+Json/);
+    expect(schema).toMatch(/boundaryGeoJson\s+String/);
     expect(migration).toContain('CREATE TABLE "GeoZone"');
   });
 
