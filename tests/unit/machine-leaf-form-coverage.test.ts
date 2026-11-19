@@ -54,12 +54,12 @@ describe("definitive machine terminal form coverage", () => {
     const terminalSlugs: string[] = [];
 
     for (const root of roots) {
-      const start = lines.findIndex((line) => line.match(/slug:\\s*"([^"]+)"/)?.[1] === root);
+      const start = lines.findIndex((line) => line.match(/slug:\s*"([^"]+)"/)?.[1] === root);
       expect(start).toBeGreaterThanOrEqual(0);
       const rootIndent = lines[start].match(/^ */)?.[0].length ?? 0;
       let end = lines.length;
       for (let index = start + 1; index < lines.length; index += 1) {
-        const slug = lines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+        const slug = lines[index].match(/slug:\s*"([^"]+)"/)?.[1];
         const indent = lines[index].match(/^ */)?.[0].length ?? 0;
         if (slug && indent === rootIndent) {
           end = index;
@@ -68,26 +68,26 @@ describe("definitive machine terminal form coverage", () => {
       }
 
       for (let index = start + 1; index < end; index += 1) {
-        const slug = lines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+        const slug = lines[index].match(/slug:\s*"([^"]+)"/)?.[1];
         if (!slug) continue;
         const indent = lines[index].match(/^ */)?.[0].length ?? 0;
         let nextSibling = end;
         for (let next = index + 1; next < end; next += 1) {
-          const nextSlug = lines[next].match(/slug:\\s*"([^"]+)"/)?.[1];
+          const nextSlug = lines[next].match(/slug:\s*"([^"]+)"/)?.[1];
           const nextIndent = lines[next].match(/^ */)?.[0].length ?? 0;
           if (nextSlug && nextIndent <= indent) {
             nextSibling = next;
             break;
           }
         }
-        const hasChildren = lines.slice(index, nextSibling).some((line) => /children:\\s*\\[/.test(line));
+        const hasChildren = lines.slice(index, nextSibling).some((line) => /children:\s*\\[/.test(line));
         if (!hasChildren) terminalSlugs.push(slug);
       }
     }
 
     const formBlock = formSeed.slice(templateStart, templateEnd);
-    const literal = [...formBlock.matchAll(/slug:\\s*"([^"]+)"/g)].map((match) => match[1]);
-    const generated = [...formBlock.matchAll(/leafForm\\("([^"]+)"/g)].map((match) => match[1]);
+    const literal = [...formBlock.matchAll(/slug:\s*"([^"]+)"/g)].map((match) => match[1]);
+    const generated = [...formBlock.matchAll(/leafForm\("([^"]+)"/g)].map((match) => match[1]);
     const templateSet = new Set([...literal, ...generated]);
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
 
