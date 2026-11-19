@@ -43,7 +43,7 @@ export function isServiceTransactionType(key: string): boolean {
 
 export function isRequestTransactionType(key: string): boolean {
   const normalized = String(key ?? "").trim().toUpperCase();
-  return normalized === "WANTED" || normalized === "QUOTE";
+  return normalized === "WANTED" || normalized === "QUOTE" || normalized === "SERVICE_REQUEST";
 }
 
 /**
