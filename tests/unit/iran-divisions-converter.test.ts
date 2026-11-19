@@ -9,7 +9,8 @@ function fixture() {
     ["4", "3", "مرکزی", "01", "3"],
     ["5", "4", "تهران", "1001", "5"],
     ["6", "5", "تهران ۱", "2001", "7"],
-    ["7", "4", "آبادی نمونه", "100001", "6"],
+    ["8", "4", "دهستان نمونه", "5001", "4"],
+    ["7", "8", "آبادی نمونه", "100001", "6"],
   ];
   return ["Id,ParentCountryDivisionId,Name,Code,DivisionType", ...rows.map((r) => r.join(","))].join("\r\n");
 }
@@ -41,7 +42,7 @@ describe("Iran administrative CSV converter", () => {
       "1,,ایران,00,0",
       "2,99,شهر,1001,5",
     ].join("\n");
-    expect(() => convertIranDivisionsCsv(text)).toThrow(/no resolvable province ancestor/);
+    expect(() => convertIranDivisionsCsv(text)).toThrow(/missing parent 99/);
   });
 
   it("keeps urban zones separate and resolves city province through county and district", () => {
