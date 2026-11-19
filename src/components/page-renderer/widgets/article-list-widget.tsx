@@ -3,6 +3,7 @@ import Link from 'next/link';
 export default function ArticleListWidget({ props, data }: { props: Record<string, any>; data?: any }) {
   const items = (data as Record<string, any>[]) || [];
   const limit = Number(props.limit) || 6;
+  if (items.length === 0) return null;
   return (
     <div>
       {props.title && <h2 className="mb-4 text-center text-lg font-bold">{props.title}</h2>}
