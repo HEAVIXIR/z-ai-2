@@ -161,6 +161,14 @@ jobs:
             echo "app_database_oid=${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
             cat "$WORK/SHA256SUMS"
           } > "$WORK/manifest.txt"
+          # Snapshot selected critical table counts into the encrypted manifest.
+          # Any concurrent Preview write between pg_dump and this count check
+          # causes the restore gate to fail closed rather than accepting drift.
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            count="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            [[ "$count" =~ ^[0-9]+$ ]]
+            printf 'rowcount_%s=%s\n' "$table" "$count" >> "$WORK/manifest.txt"
+          done
           age -r "$AGE_RECIPIENT" -o "$WORK/app-preview.dump.age" "$WORK/app-preview.dump"
           age -r "$AGE_RECIPIENT" -o "$WORK/manifest.txt.age" "$WORK/manifest.txt"
           (cd "$WORK" && sha256sum app-preview.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS)
@@ -229,6 +237,15 @@ jobs:
           test -s "$WORK/expected-public-tables.txt"
           diff -u "$WORK/expected-public-tables.txt" "$WORK/restored-public-tables.txt"
 
+          # Compare row counts for critical business and migration tables
+          # against the encrypted backup manifest, not merely table presence.
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            expected_count="$(sed -n "s/^rowcount_${table}=//p" "$WORK/manifest.txt")"
+            test -n "$expected_count"
+            actual_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            test "$actual_count" = "$expected_count"
+          done
+
           # Prove the restored backup is at the exact seven-migration
           # pre-state, then exercise the actual H.3 DDL against the disposable
           # PostgreSQL 17 restore before touching the live Preview database.
@@ -243,7 +260,24 @@ jobs:
           test "$restored_fks" = "9"
           restored_indexes="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
           test "$restored_indexes" = "3"
-          echo "PASS: encrypted backup decrypted, full public-table inventory matched, seven-migration state restored, and H.3 migration SQL applied + verified on disposable PostgreSQL 17 ($table_count public tables)."
+
+          # Recovery rehearsal: restore the same pre-migration backup a second
+          # time into a fresh disposable DB. This is the documented recovery
+          # path if the live Preview migration ever needs to be rolled back.
+          createdb -h 127.0.0.1 -U restore app_preview_recovery
+          if grep -Eq ' EXTENSION - prisma_postgres' "$WORK/restore.list"; then
+            pg_restore --exit-on-error --no-owner --no-acl --use-list="$WORK/restore.filtered.list" -h 127.0.0.1 -U restore -d app_preview_recovery "$WORK/app-preview.dump"
+          else
+            pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_recovery "$WORK/app-preview.dump"
+          fi
+          recovery_tables="$(psql -h 127.0.0.1 -U restore -d app_preview_recovery -XAtq -v ON_ERROR_STOP=1 -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")"
+          diff -u "$WORK/expected-public-tables.txt" <(printf '%s\n' "$recovery_tables")
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            expected_count="$(sed -n "s/^rowcount_${table}=//p" "$WORK/manifest.txt")"
+            actual_count="$(psql -h 127.0.0.1 -U restore -d app_preview_recovery -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            test "$actual_count" = "$expected_count"
+          done
+          echo "PASS: encrypted backup decrypted; full table inventory and critical row counts matched; H.3 DDL passed on a disposable restore; second clean restore rehearsed recovery on PostgreSQL 17."
           rm -rf "$WORK"
 
       - name: Recheck App Preview identity and exact migration gate immediately before apply
