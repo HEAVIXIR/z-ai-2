@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import {
   FREE_LISTING_IMAGE_POLICY,
-  PAID_LISTING_IMAGE_POLICY,
+  PRO_LISTING_IMAGE_POLICY,
+  PREMIUM_LISTING_IMAGE_POLICY,
   type ListingImagePolicy,
 } from "@/lib/listing-image-policy-shared";
 
@@ -26,9 +27,10 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
     return FREE_LISTING_IMAGE_POLICY;
   }
 
+  const planCode = subscription.plan.trim().toUpperCase();
   const plan = await db.subscriptionPlan.findUnique({
-    where: { code: subscription.plan.trim().toUpperCase() },
-    select: { active: true, priceMonthly: true, priceYearly: true, maxListings: true },
+    where: { code: planCode },
+    select: { active: true, priceMonthly: true, priceYearly: true, maxListings: true, maxImages: true },
   });
 
   const isPaidPlan = Boolean(
@@ -36,7 +38,24 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
     ((plan.priceMonthly ?? 0n) > 0n || (plan.priceYearly ?? 0n) > 0n),
   );
 
-  return isPaidPlan
-    ? { ...PAID_LISTING_IMAGE_POLICY, maxListings: Math.max(0, plan?.maxListings ?? PAID_LISTING_IMAGE_POLICY.maxListings) }
-    : FREE_LISTING_IMAGE_POLICY;
+  if (!isPaidPlan) return FREE_LISTING_IMAGE_POLICY;
+
+  const tierPolicy = planCode === "PREMIUM"
+    ? PREMIUM_LISTING_IMAGE_POLICY
+    : PRO_LISTING_IMAGE_POLICY;
+
+  // Plan DB values may still be stale until the approved seed is applied.
+  // The commercial caps remain authoritative and DB values can only tighten them.
+  const configuredMaxListings = Number(plan?.maxListings ?? 0);
+  const configuredMaxImages = Number(plan?.maxImages ?? 0);
+
+  return {
+    ...tierPolicy,
+    maxListings: configuredMaxListings > 0
+      ? Math.min(configuredMaxListings, tierPolicy.maxListings)
+      : tierPolicy.maxListings,
+    maxImages: configuredMaxImages > 0
+      ? Math.min(configuredMaxImages, tierPolicy.maxImages)
+      : tierPolicy.maxImages,
+  };
 }
