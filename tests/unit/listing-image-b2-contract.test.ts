@@ -19,9 +19,9 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain("assetId: result.asset.id");
   });
 
-  it("routes the seller listing uploader through staging and caps images at ten", () => {
+  it("routes the seller listing uploader through staging and applies the resolved plan cap", () => {
     const uploader = read("src/components/listings/ListingImageUploader.tsx");
-    expect(uploader).toContain("maxImages = 10");
+    expect(uploader).toContain("const maxImages = policy.maxImages");
     expect(uploader).toContain('fetch("/api/media/staging"');
     expect(uploader).not.toContain('fetch("/api/admin/upload"');
     expect(uploader).toContain("if (files.length > remaining)");
@@ -33,7 +33,7 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain("rawImages.length > imagePolicy.maxImages");
     expect(route).toContain("rawAssetIds.length > imagePolicy.maxImages");
     expect(route).toContain("asset.size > imagePolicy.maxImageBytes");
-    expect(route).toContain("rawAssetIds.length > 10");
+    expect(route).toContain("rawAssetIds.length > imagePolicy.maxImages");
     expect(route).toContain("asset.uploadedBy !== user.id");
     expect(route).toContain('asset.visibility !== "PRIVATE"');
     expect(route).toContain('asset.status !== "STAGED"');
