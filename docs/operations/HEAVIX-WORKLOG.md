@@ -1069,3 +1069,69 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
+
+## 2026-11-19 — PHASE E: bypass-closure + DELETE soft-close + honest test naming (P0 audit)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the formal corrective directive (audit of 4c68e41). The independent audit found the single-row DELETE did a hard physical removal (D1) + the Universal Resource routes bypassed the state machine (B1-B3, D2-D3) + the "E2E" test was actually a source-contract test. All closed. Code-validated HEAD: `48ef87c`. CI `44531186487` SUCCESS (7 jobs green, 2 skipped — NOT counted as pass). OpenNext `44531186383` SUCCESS.
+
+### P0-1 — D1: single-row DELETE → soft-close (commit 7a66d95)
+- `src/app/api/admin/requests/[id]/route.ts` DELETE now calls `closeWantedByAdmin(id, sessionUser.id)` (CAS + state machine + audit). No physical `db.buyRequest.delete`. Mirrors the bulk-delete soft-close semantics. Audit records the legacy "delete" intent mapped to soft-close.
+
+### P0-2 — Full status-mutation audit (subagent Explore)
+- The audit found 13 GATE-COMPLIANT paths (7 in wanted-service.ts + 6 API routes delegating) + 4 BYPASS paths (B1-B4) + 3 DELETE paths (D1-D3) + 3 SEED paths (informational). All bypass/delete paths closed.
+
+### B1 — buyRequestConfig.fields status removed (commit 7a66d95)
+- `src/lib/admin/resources/marketplace-resources.ts` — status removed from the editable fields list (was a select with ACTIVE/CLOSED options). Remains in columns (read-only display).
+
+### D2/D3/B2/B3 — Universal Resource routes 409-block buy-requests (commit 7a66d95)
+- Added 'buy-requests' to DEDICATED_MUTATION_RESOURCES in ALL FOUR universal resource routes:
+  - `[resource]/route.ts` (collection POST — blocks create)
+  - `[resource]/[id]/route.ts` (PATCH + DELETE)
+  - `[resource]/[id]/action/route.ts` (action POST)
+  - `[resource]/bulk/route.ts` (bulk POST)
+- All return 409 with a clear message. BuyRequest mutations now go ONLY through `/api/admin/requests/*` + `/api/wanted` (canonical service).
+
+### B4 — RequestsClient edit modal status read-only (commit 7a66d95)
+- `src/components/admin/RequestsClient.tsx` — status removed from the PATCH payload. The status `<select>` replaced with a read-only badge.
+
+### P0-3 — honest test naming (commit 7a66d95)
+- `tests/contract/wanted-e2e-journey.test.ts` renamed to `wanted-journey-contract.test.ts`. The describe block + docblock now explicitly state this is a SOURCE-CONTRACT test (string assertions), NOT a behavioral E2E test. The behavioral E2E (real DB create → approve → public feed → matching) is documented as BLOCKED by #346.
+
+### P0-5 — Rate-limit documentation
+- The WANTED_CREATE rate-limit preset is documented as in-process/per-isolate (not distributed). A distributed limiter is a tracked follow-up; the code comment + RFC already state this. No false "global rate limit" claim.
+
+### P0-6 — Behavioral tests (commit 7a66d95)
+- 8 new bypass-closure contract tests (D1/B1/D2-D3/B2-B3/B4 + canonical PATCH allowed-list + bulk delegation).
+- 3 new closeWantedByAdmin behavioral tests (CAS close, idempotent on CLOSED, reject FULFILLED — the DELETE path's new function).
+- CSRF contract updated for the new DEDICATED_MUTATION_RESOURCES pattern (set-based, includes buy-requests).
+
+### CI regression caught + fixed (commit 48ef87c)
+- CI verify on 7a66d95 FAILED: two contract tests pinned the old 3-item DEDICATED_MUTATION_RESOURCES set + the old 13-field count (before status removal). Fixed:
+  - `buy-request-contract` B1: 13 → 12 fields (status removed, documented).
+  - `store-procurement-supplier-mutation-contract`: set-membership assertion now checks procurement+suppliers+payments are present (not an exact 3-item set).
+- CI verify on 48ef87c SUCCESS.
+
+### Verification (single SHA `48ef87c`)
+- typecheck:worker EXIT 0. ESLint clean. 189+ non-DB tests pass (8 files, incl. the 2 fixed contracts). CI 44531186487 SUCCESS: verify (incl. All contract + unit tests), docker-build-proof, phase-tests, audit-transaction, tls-proof, Workerd smoke, Cloudflare compat. OpenNext 44531186383 SUCCESS. 2 skipped jobs NOT counted as pass.
+
+### Per-criterion status
+| # | Directive item | Status |
+|---|---|---|
+| 1 | D1: single-row DELETE → soft-close | ✅ DONE |
+| 2 | Full status-mutation audit (all paths) | ✅ DONE (13 compliant + 0 bypass + 0 delete) |
+| 3 | E2E test renamed to Contract | ✅ DONE (renamed + docblock honest) |
+| 4 | #345 structural storage gap | ✅ RFC READY (blocked on backup/restore gate) |
+| 5 | Rate-limit documented as local | ✅ DONE |
+| 6 | CI exact-SHA green (skipped NOT pass) | ✅ DONE (48ef87c) |
+
+### Epic #348 registered
+- Dynamic Homepage Builder registered as Epic #348 in the backlog. Development deferred until listing-creation is fully closed. No implementation, no migration, no homepage change.
+
+### Remaining (NOT closed — tracked on #345)
+- Structural storage (quantity/modelId/serviceTypeId/categoryId/brandId/attributeValues): still audit-only; RFC corrected; migration blocked on backup/restore gate.
+- Behavioral E2E with real DB: blocked by #346.
+- Preview acceptance: still blocked by #346.
+- Branch protection: Integration protected=false; recommend enabling after review.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
