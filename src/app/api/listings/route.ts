@@ -535,6 +535,7 @@ export async function POST(req: Request) {
     // WANTED requests are stored separately and never consume this Listing quota.
     const activeListingWhere = {
       sellerId: user.id,
+      listingType: { in: [...SUPPLY_LISTING_TYPES] },
       status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] },
     };
     if (imagePolicy.maxListings > 0) {
