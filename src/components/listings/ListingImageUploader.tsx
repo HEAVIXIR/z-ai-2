@@ -14,12 +14,14 @@ type Props = {
   images: string[];
   onChange: (images: string[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
+  required?: boolean;
 };
 
 export default function ListingImageUploader({
   images,
   onChange,
   onUploadingChange,
+  required = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -39,7 +41,7 @@ export default function ListingImageUploader({
         const next = payload?.policy as ListingImagePolicy | undefined;
         if (
           next &&
-          (next.tier === "FREE" || next.tier === "PAID") &&
+          (next.tier === "FREE" || next.tier === "PRO" || next.tier === "PREMIUM") &&
           Number.isInteger(next.maxImages) &&
           Number.isInteger(next.maxImageBytes)
         ) {
@@ -130,7 +132,7 @@ export default function ListingImageUploader({
   return (
     <div>
       <label className="mb-1.5 block text-xs font-bold text-white/60">
-        تصاویر دستگاه *
+        تصاویر دستگاه{required ? " *" : " (اختیاری)"}
       </label>
       <button
         type="button"
@@ -152,7 +154,7 @@ export default function ListingImageUploader({
           {uploading ? "در حال آپلود تصاویر واقعی..." : !policyReady ? "در حال بررسی سطح اشتراک..." : "تصاویر دستگاه را انتخاب کنید"}
         </span>
         <span className="mt-1 text-[11px] text-white/30">
-          {policy.tier === "PAID" ? "حساب ویژه" : "حساب رایگان"} · حداکثر {maxImages} عکس · هر عکس تا {policy.maxImageBytes / (1024 * 1024)} مگابایت · بهینه‌سازی خودکار
+          {policy.tier === "PREMIUM" ? "اشتراک پریمیوم" : policy.tier === "PRO" ? "اشتراک حرفه‌ای" : "اشتراک پایه"} · حداکثر {maxImages} عکس · هر عکس تا {policy.maxImageBytes / (1024 * 1024)} مگابایت · بهینه‌سازی خودکار
         </span>
         {uploading && (
           <span className="mt-2 text-xs text-[#F58220]">
@@ -216,7 +218,7 @@ export default function ListingImageUploader({
       )}
       <div className="mt-3 flex items-center justify-between text-[11px] text-white/35">
         <span>{images.length} از {maxImages} تصویر آپلود شده</span>
-        <span>حداقل یک تصویر الزامی است</span>
+        <span>{required ? "حداقل یک تصویر الزامی است" : "افزودن تصویر اختیاری است"}</span>
       </div>
     </div>
   );
