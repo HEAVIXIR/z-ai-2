@@ -23,6 +23,12 @@ describe("admin subscription mutation transaction contract", () => {
     expect(source).toContain("update: updateData");
     expect(source).not.toContain("update: data");
   });
+  it("serializes a zero BigInt subscription amount as \"0\" rather than null", () => {
+    const source = read("src/app/api/admin/subscriptions/route.ts");
+    expect(source).toContain("amount: s.amount == null ? null : s.amount.toString(),");
+    expect(source).not.toContain("amount: s.amount ? s.amount.toString() : null,");
+  });
+
   it("rejects requests that contain no subscription mutation fields", () => {
     const source = read("src/app/api/admin/subscriptions/route.ts");
     expect(source).toContain('mutableFields.length === 0');
