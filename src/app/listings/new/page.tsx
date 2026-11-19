@@ -590,6 +590,8 @@ export default function NewListingPage() {
 
       const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
       if (isDemandSubmission) {
+        // BuyRequest has one canonical description field; preserve the wizard summary too.
+        body.description = [form.shortDesc.trim(), form.description.trim()].filter(Boolean).join("\n\n") || undefined;
         body.listingType = "WANTED";
         body.transactionType = "WANTED";
         body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent;
