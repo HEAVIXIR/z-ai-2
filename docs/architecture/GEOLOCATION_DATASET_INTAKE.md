@@ -93,3 +93,23 @@ metadata before use. It emits a dataset SHA-256 and a separate source-file
 SHA-256. Rights status remains `PENDING` and commercial use remains disabled;
 conversion does not imply approval. Output is a local review artifact only:
 there is no database, Preview, or Production write path.
+
+
+## Canonical Iran location catalog and stable source codes
+
+The current first-party dataset is
+`prisma/data/iran-locations-1404.json` with its SHA-256 manifest and README.
+It exposes only Country → Province → City for the listing selector. The
+existing upstream projection contains 1 country, 31 provinces, and 1,479
+distinct city labels (from 1,481 source records; two same-province duplicate
+labels were collapsed by the pre-existing dataset).
+
+Province and City now have nullable, unique `sourceCode` columns in both
+PostgreSQL and Preview/SQLite schemas. The additive migration
+`20261120113000_location_source_codes` adds those columns and unique indexes;
+existing records remain valid with NULL codes. The reviewed seed upserts by
+the existing natural keys and fills sourceCode without replacing city names,
+coordinates, or other curated metadata.
+
+The migration file has been authored but not executed. The seed remains
+fail-closed while the manifest is pending; no database write has occurred.
