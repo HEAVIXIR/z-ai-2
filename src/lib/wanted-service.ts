@@ -135,6 +135,28 @@ async function brand_idToName(brandId: string | null | undefined): Promise<strin
   }
 }
 
+/**
+ * Parse the free-text `deadline` string into a concrete `expiresAt`
+ * Date so the matching eligibility helper (isBuyRequestMatchEligible)
+ * can actually enforce expiration. The deadline column is a plain
+ * String (no schema migration involved), so we accept any value
+ * that Date can parse into a valid timestamp — ISO 8601 dates
+ * ("2026-12-31"), full date-times ("2026-12-31T23:59:59Z"), etc.
+ * Anything that fails to parse (relative text, Persian dates without
+ * a converter, garbage) leaves expiresAt null, so the request stays
+ * matchable until it is explicitly closed.
+ */
+function parseDeadlineToExpiresAt(
+  deadline: string | null | undefined,
+): Date | null {
+  if (!deadline) return null;
+  const s = String(deadline).trim();
+  if (!s) return null;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 // ── createWanted ────────────────────────────────────────────
 /**
  * Create a new wanted request (BuyRequest) and publish it to the
@@ -213,6 +235,16 @@ export async function createWanted(params: {
     brand_idToName(brandId),
   ]);
 
+  // ── Lifecycle timestamps ──
+  // publishedAt is set to NOW so the request is immediately eligible
+  // for matching (isBuyRequestMatchEligible requires publishedAt <= now).
+  // expiresAt is derived from the free-text deadline when it parses
+  // into a valid Date; otherwise it stays null and the request remains
+  // matchable until it is explicitly closed. This is the wire-up that
+  // makes the existing eligibility helper actually enforce expiration.
+  const publishedAt = new Date();
+  const expiresAt = parseDeadlineToExpiresAt(deadline);
+
   // ── Persist ──
   const request = await db.buyRequest.create({
     data: {
@@ -226,6 +258,8 @@ export async function createWanted(params: {
       city: city ? String(city).slice(0, 120) : null,
       province: province ? String(province).slice(0, 120) : null,
       deadline: deadline ? String(deadline).slice(0, 120) : null,
+      publishedAt,
+      expiresAt,
       requesterName: requesterName ? String(requesterName).slice(0, 120) : null,
       requesterPhone: requesterPhone ? String(requesterPhone).slice(0, 40) : null,
       status: STATUS_PUBLISHED, // schema-active = publicly visible
@@ -253,7 +287,12 @@ export async function createWanted(params: {
       status: "PUBLISHED", // the task-spec semantic status
       schemaStatus: request.status, // what we actually wrote
       description: description ? String(description).slice(0, 500) : null,
-      quantity: quantity ?? null, // preserved (no schema column)
+      // DECISION (quantity): BuyRequest has no `quantity` column, and
+      // schema migrations are locked pending a fresh backup. Quantity
+      // is therefore preserved in the audit `after` payload ONLY (the
+      // record stays self-describing) until a migration that adds the
+      // column is approved. See worklog + follow-up issue.
+      quantity: quantity ?? null, // preserved (no schema column — audit-only)
       budgetMin:
         toBigInt(budgetMin) !== null ? toBigInt(budgetMin)!.toString() : null,
       budgetMax:
@@ -265,6 +304,11 @@ export async function createWanted(params: {
       transactionType: transactionType || "SALE",
       province: province ?? null,
       city: city ?? null,
+      // Lifecycle timestamps — recorded so the audit trail proves
+      // expiration was wired (expiresAt derived from deadline).
+      publishedAt: publishedAt.toISOString(),
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
+      deadlineRaw: deadline ? String(deadline).slice(0, 120) : null,
     },
     reason: `ثبت درخواست خرید: ${request.title}`,
   });
