@@ -8988,3 +8988,86 @@ Stage Summary:
 - H.1 preserved: `/dashboard/wanted` success destination, server-side auth +
   `userId` ownership filter, public WANTED ACTIVE-only, Step 1 intent selector.
 - Token scrubbed from disk after use; no leakage in commits/logs/issues.
+
+---
+
+## PHASE H.3 — WANTED structured storage implementation (2026-11-19)
+
+**Branch:** `integration/preview-readiness-workerd-2026-11-15`
+**Directive:** Senior-manager H.3 (fix attribute model + WANTED migration, implement
+atomic storage + DB-level idempotency, complete validation + read paths).
+
+### Implemented (code authored — migration execution still gated)
+
+**Schema (`prisma/schema.prisma`):**
+- `BuyRequest` gains canonical structured columns: `quantity Int?`,
+  `categoryId/brandId/modelId/serviceTypeId String?` (FK, SetNull), `intent String?`,
+  `idempotencyKey String? @unique` (DB-enforced idempotency).
+- Relations: `categoryRef/brandRef/modelRef/serviceTypeRef` (SetNull on taxonomy delete).
+- **Parent/child attribute model** (fixes the H.2-rev2 senior-manager audit finding):
+  - `BuyRequestAttributeValue` (parent): one row per (request, attribute). Real FK to
+    `AttributeDefinition` (Cascade). `@@unique([buyRequestId, attributeId])`.
+  - `BuyRequestAttributeOption` (child): one row per selected option for MULTI_SELECT.
+    Real FK to `AttributeOption` (Cascade) + to parent (Cascade).
+    `@@unique([attributeValueId, optionId])`.
+  - No partial indexes, no ON DELETE SET NULL collision (the flaw the manager caught).
+- Back-relations added to Category, Brand, ProductModel, ServiceType,
+  AttributeDefinition, AttributeOption.
+
+**Migration (`prisma/migrations/20261119160000_wanted_structural_storage/migration.sql`):**
+- Additive, nullable columns. Real FK constraints. 9 FKs + 3 unique indexes +
+  6 supporting indexes. Execution-ready.
+
+**Separate guarded workflow (`.github/workflows/app-preview-wanted-structural-migration.yml`):**
+- Independent of PR #347 (which applies `20261118152000_link_listing_service_rfq`).
+- Expects 7 pre-apply / 8 post-apply (i.e. #347's migration already ran).
+- Own typed confirmation `APPLY_APP_PREVIEW_20261119160000`.
+- Same backup + read-back + disposable-restore + identity-verify gate as #347.
+
+**Service layer (`src/lib/wanted-service.ts`):**
+- `createWanted` now writes the structured FK columns + attribute parent/child rows
+  inside a single `$transaction` (atomic — no orphan BuyRequest without its spec).
+- DB-level idempotency: `idempotencyKey` written to `BuyRequest.idempotencyKey` (@unique).
+  `catch P2002` on concurrent double-submit → fetch existing row → return idempotently.
+  Closes the truly-concurrent gap the audit-log-backed idempotency left open.
+- `getWanted` returns structured fields + resolved taxonomy names + attribute
+  parent/child (read path complete).
+- `listWanted` filters by canonical `categoryId` FK (no more name-resolution best-effort).
+
+**Attribute validation (`src/lib/buy-request-attributes.ts` — new):**
+- `validateBuyRequestAttributeValues` mirrors `validateListingAttributeValues`:
+  fail-closed on type/slot mismatch, category/model membership (CategoryAttribute +
+  ProductModelAttribute outOfScope), SELECT option ownership, MULTI_SELECT option
+  ownership. Runs BEFORE the create so a bad payload never reaches the transaction.
+
+**Dashboard (`src/app/dashboard/wanted/page.tsx`):**
+- Displays structured taxonomy names (categoryRef/brandRef/modelRef/serviceTypeRef) +
+  quantity, alongside the existing free-text display names.
+
+**API (`src/app/api/wanted/route.ts`):**
+- `?mine=true` returns structured fields + resolved taxonomy names.
+
+### Tests
+- `tests/contract/phase-h2-listing-form-hardening.test.ts`: 37 contract tests (was 26),
+  all green. New H.3 block (11 tests) locks: schema columns, FK relations, parent/child
+  model, back-relations, migration SQL, createWanted atomic write + P2002 catch,
+  attribute validation, getWanted read path, listWanted canonical filter, dashboard
+  display, separate guarded workflow.
+- typecheck + lint clean (0 errors).
+- Full suite: 4554 passed, 133 failed (all DB/env-dependent — same level as before,
+  no new regressions).
+
+### Still BLOCKED (migration execution — per directive)
+- The migration file exists in `prisma/migrations/` but is NOT executed. It applies
+  only via the separate guarded workflow, on the Integration branch, after #347's
+  migration has run (7 pre / 8 post), with backup + read-back + disposable-restore.
+- Preview #346 still blocked (schema drift). #347 still awaiting external write-access
+  reviewer approval.
+- Real DB round-trip behavioral tests (quantity/categoryId/brandId+modelId/serviceTypeId/
+  attributeValues typed round-trip, fail-closed invalid IDs, idempotent replay, negative
+  ownership) are GATED on the migration being applied — they run in CI with PostgreSQL
+  once the guarded workflow dispatches.
+
+### Identity preservation
+- H.1 preserved. H.2 preserved (CSRF, rate-limit, bounded body, fail-closed taxonomy
+  validation, reject action, dashboard counters). Token scrubbed from disk after use.

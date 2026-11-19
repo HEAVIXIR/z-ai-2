@@ -253,4 +253,157 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(rfc).toContain("P2002");
     });
   });
+
+  // ── H.3: WANTED structured storage (canonical FKs + parent/child attributes) ──
+  describe("H.3: BuyRequest stores structured fields canonically (not audit-only)", () => {
+    it("schema.prisma declares the structured-spec columns on BuyRequest", () => {
+      const schema = read("prisma/schema.prisma");
+      expect(schema).toContain("quantity        Int?");
+      expect(schema).toContain("categoryId      String?");
+      expect(schema).toContain("brandId         String?");
+      expect(schema).toContain("modelId         String?");
+      expect(schema).toContain("serviceTypeId   String?");
+      expect(schema).toContain("intent          String?");
+      // DB-enforced idempotency column (@unique).
+      expect(schema).toContain("idempotencyKey  String?  @unique");
+    });
+
+    it("schema.prisma declares the structured-spec FK relations (SetNull on taxonomy delete)", () => {
+      const schema = read("prisma/schema.prisma");
+      expect(schema).toContain('categoryRef     Category?        @relation("BuyRequestCategory"');
+      expect(schema).toContain('brandRef        Brand?           @relation("BuyRequestBrand"');
+      expect(schema).toContain('modelRef        ProductModel?    @relation("BuyRequestModel"');
+      expect(schema).toContain('serviceTypeRef  ServiceType?     @relation("BuyRequestService"');
+      // SetNull: deleting a taxonomy row nulls the FK (request survives).
+      expect(schema).toMatch(/categoryRef.*onDelete: SetNull/);
+    });
+
+    it("schema.prisma uses the PARENT/CHILD attribute model (not single-table + partial indexes)", () => {
+      const schema = read("prisma/schema.prisma");
+      // Parent: one row per (request, attribute). No partial indexes.
+      expect(schema).toContain("model BuyRequestAttributeValue");
+      expect(schema).toContain('attribute     AttributeDefinition @relation("BuyRequestAttributeValueAttribute"');
+      expect(schema).toContain("@@unique([buyRequestId, attributeId])");
+      // Child: one row per selected option for MULTI_SELECT.
+      expect(schema).toContain("model BuyRequestAttributeOption");
+      expect(schema).toContain("@@unique([attributeValueId, optionId])");
+      // The parent has selectedOptions relation to the child.
+      expect(schema).toContain("selectedOptions BuyRequestAttributeOption[]");
+      // The child FK to AttributeOption is Cascade (not SetNull — avoids the collision).
+      expect(schema).toContain('option          AttributeOption @relation("BuyRequestAttributeOptionOption"');
+    });
+
+    it("back-relations exist on Category, Brand, ProductModel, ServiceType, AttributeDefinition, AttributeOption", () => {
+      const schema = read("prisma/schema.prisma");
+      expect(schema).toContain('buyRequests BuyRequest[]  @relation("BuyRequestCategory")');
+      expect(schema).toContain('buyRequests BuyRequest[]  @relation("BuyRequestBrand")');
+      expect(schema).toContain('buyRequests BuyRequest[]  @relation("BuyRequestModel")');
+      expect(schema).toContain('buyRequests BuyRequest[]  @relation("BuyRequestService")');
+      expect(schema).toContain('buyRequestValues BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueAttribute")');
+      expect(schema).toContain('buyRequestValues     BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueOption")');
+      expect(schema).toContain('buyRequestOptionRows BuyRequestAttributeOption[]  @relation("BuyRequestAttributeOptionOption")');
+    });
+
+    it("migration SQL file exists and declares the parent/child tables + real FKs + idempotencyKey unique", () => {
+      const sql = read("prisma/migrations/20261119160000_wanted_structural_storage/migration.sql");
+      // BuyRequest structured columns.
+      expect(sql).toContain('ADD COLUMN "quantity"');
+      expect(sql).toContain('ADD COLUMN "categoryId"');
+      expect(sql).toContain('ADD COLUMN "idempotencyKey"');
+      // DB-enforced idempotency unique index.
+      expect(sql).toContain('CREATE UNIQUE INDEX "BuyRequest_idempotencyKey_key"');
+      // Parent table with real FK to AttributeDefinition (Cascade).
+      expect(sql).toContain('CREATE TABLE "BuyRequestAttributeValue"');
+      expect(sql).toContain('"BuyRequestAttributeValue_attributeId_fkey"');
+      expect(sql).toContain('FOREIGN KEY ("attributeId") REFERENCES "AttributeDefinition"("id") ON DELETE CASCADE');
+      // Child table with real FK to AttributeOption (Cascade) + AttributeValue (Cascade).
+      expect(sql).toContain('CREATE TABLE "BuyRequestAttributeOption"');
+      expect(sql).toContain('"BuyRequestAttributeOption_optionId_fkey"');
+      expect(sql).toContain('FOREIGN KEY ("optionId") REFERENCES "AttributeOption"("id") ON DELETE CASCADE');
+      expect(sql).toContain('"BuyRequestAttributeOption_attributeValueId_fkey"');
+      // Unique indexes: parent (request, attribute) + child (value, option).
+      expect(sql).toContain('"BuyRequestAttributeValue_buyRequestId_attributeId_key"');
+      expect(sql).toContain('"BuyRequestAttributeOption_attributeValueId_optionId_key"');
+    });
+
+    it("createWanted writes the structured FK columns + attribute parent/child in an atomic transaction", () => {
+      const svc = read("src/lib/wanted-service.ts");
+      // The structured columns are written to BuyRequest.create data.
+      expect(svc).toContain("quantity: quantity ?? null");
+      expect(svc).toContain("categoryId: categoryId ?? null");
+      expect(svc).toContain("brandId: brandId ?? null");
+      expect(svc).toContain("modelId: modelId ?? null");
+      expect(svc).toContain("serviceTypeId: serviceTypeId ?? null");
+      expect(svc).toContain("intent: resolvedIntent");
+      expect(svc).toContain("idempotencyKey: idempotencyKey ?? null");
+      // The attribute parent/child rows are created inside the same $transaction.
+      expect(svc).toContain("db.$transaction");
+      expect(svc).toContain("attributeValues: {");
+      expect(svc).toContain("selectedOptions: {");
+      // DB-level idempotency: catch P2002 on concurrent double-submit.
+      expect(svc).toContain("Prisma.PrismaClientKnownRequestError");
+      expect(svc).toContain("err.code === \"P2002\"");
+      expect(svc).toContain("idempotencyKey, userId");
+    });
+
+    it("createWanted validates attribute type + category/model membership before persisting", () => {
+      const svc = read("src/lib/wanted-service.ts");
+      expect(svc).toContain("validateBuyRequestAttributeValues");
+      expect(svc).toContain("if (!validation.ok)");
+      expect(svc).toContain("throw new WantedServiceError(400, validation.error)");
+      // The validator file exists.
+      const validator = read("src/lib/buy-request-attributes.ts");
+      expect(validator).toContain("export async function validateBuyRequestAttributeValues");
+      expect(validator).toContain("CategoryAttribute");
+      expect(validator).toContain("ProductModelAttribute");
+      expect(validator).toContain("outOfScope");
+      expect(validator).toContain("MULTI_SELECT");
+      expect(validator).toContain("selectedOptionIds");
+    });
+
+    it("getWanted returns the structured-spec fields + attribute parent/child (read path complete)", () => {
+      const svc = read("src/lib/wanted-service.ts");
+      expect(svc).toContain("quantity: true");
+      expect(svc).toContain("categoryId: true");
+      expect(svc).toContain("categoryRef: { select: { name: true } }");
+      expect(svc).toContain("brandRef: { select: { name: true } }");
+      expect(svc).toContain("modelRef: { select: { name: true } }");
+      expect(svc).toContain("serviceTypeRef: { select: { nameFa: true } }");
+      expect(svc).toContain("selectedOptions: { select: { optionId: true } }");
+      expect(svc).toContain("categoryName: request.categoryRef?.name ?? null");
+    });
+
+    it("listWanted filters by canonical categoryId FK (not name-resolution) + returns structured fields", () => {
+      const svc = read("src/lib/wanted-service.ts");
+      expect(svc).toContain("if (categoryId) where.categoryId = categoryId");
+      expect(svc).toContain("if (brandId) where.brandId = brandId");
+      // No more category_idToName best-effort fallback in listWanted.
+      const listBlock = svc.split("export async function listWanted")[1]?.split("export async function")[0] ?? "";
+      expect(listBlock).not.toContain("categoryName = categoryId");
+    });
+
+    it("dashboard/wanted displays the structured taxonomy names + quantity", () => {
+      const dash = read("src/app/dashboard/wanted/page.tsx");
+      expect(dash).toContain("r.categoryRef?.name ?? r.category");
+      expect(dash).toContain("r.brandRef?.name ?? r.brandPref");
+      expect(dash).toContain("r.modelRef?.name");
+      expect(dash).toContain("r.serviceTypeRef?.nameFa");
+      expect(dash).toContain("r.quantity != null");
+      expect(dash).toContain("toFa(r.quantity)");
+    });
+
+    it("separate guarded workflow exists for the WANTED migration (independent of #347)", () => {
+      const wf = read(".github/workflows/app-preview-wanted-structural-migration.yml");
+      expect(wf).toContain("APPLY_APP_PREVIEW_20261119160000");
+      expect(wf).toContain("heavix-app-preview-wanted-structural-migration");
+      // Expects 7 pre-apply (i.e. #347's migration already ran) + 8 post.
+      expect(wf).toContain('expected_history="7|');
+      expect(wf).toContain('expected="8|');
+      expect(wf).toContain("20261119160000_wanted_structural_storage");
+      // Schema preconditions: WANTED tables/columns absent before apply.
+      expect(wf).toContain("column_name='quantity'");
+      expect(wf).toContain("table_name='BuyRequestAttributeValue'");
+      expect(wf).toContain("table_name='BuyRequestAttributeOption'");
+    });
+  });
 });

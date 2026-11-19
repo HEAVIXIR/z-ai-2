@@ -57,6 +57,8 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { matchBuyRequest, BuyRequestMatchResult } from "@/lib/matching-service";
 import { normalizeDemandIntent, isValidDemandIntent } from "@/lib/transaction-type-routing";
+import { validateBuyRequestAttributeValues, type NormalizedBuyRequestAttributeValue } from "@/lib/buy-request-attributes";
+import { Prisma } from "@prisma/client";
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class WantedServiceError extends Error {
@@ -354,35 +356,127 @@ export async function createWanted(params: {
   // and existing rows keep matching SALE + AUCTION supply.
   const resolvedIntent = normalizeDemandIntent(intent ?? transactionType);
 
-  // ── Persist ──
-  const request = await db.buyRequest.create({
-    data: {
-      title: title.trim().slice(0, 200),
-      description: description ? String(description).slice(0, 2000) : null,
-      category: categoryName ?? (category ? String(category).trim().slice(0, 120) : null),
-      brandPref: brandName ?? (brandPref ? String(brandPref).trim().slice(0, 120) : null),
-      transaction: resolvedIntent,
-      budgetMin: toBigInt(budgetMin),
-      budgetMax: toBigInt(budgetMax),
-      city: city ? String(city).slice(0, 120) : null,
-      province: province ? String(province).slice(0, 120) : null,
-      deadline: deadline ? String(deadline).slice(0, 120) : null,
-      publishedAt,
-      expiresAt,
-      requesterName: requesterName ? String(requesterName).slice(0, 120) : null,
-      requesterPhone: requesterPhone ? String(requesterPhone).slice(0, 40) : null,
-      status: STATUS_PENDING, // moderation gate — admin must approve before publication
-      verified: false,
-      userId,
-    },
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      category: true,
-      brandPref: true,
-    },
-  });
+  // ── H.3: validate attribute values (fail-closed type + category/model membership) ──
+  // Mirrors validateListingAttributeValues but for the BuyRequest parent/child
+  // attribute tables. Runs BEFORE the create so a bad payload never reaches the
+  // transaction. The validated values are written inside the same $transaction
+  // as the BuyRequest row (atomic — an attribute write failure rolls back the
+  // whole request, no orphan BuyRequest without its spec).
+  let validatedAttributes: NormalizedBuyRequestAttributeValue[] = [];
+  if (Array.isArray(attributeValues) && attributeValues.length > 0) {
+    const validation = await validateBuyRequestAttributeValues(
+      db,
+      { categoryId, modelId },
+      attributeValues,
+      false, // isAdmin — sellers cannot self-assert ADMIN_VERIFIED
+      false, // enforceRequired — the wizard already gates required fields client-side
+    );
+    if (!validation.ok) {
+      throw new WantedServiceError(400, validation.error);
+    }
+    validatedAttributes = validation.values;
+  }
+
+  // ── H.3: Persist (atomic — BuyRequest + structured FKs + attribute parent/child) ──
+  // All structured fields now have real columns (migration
+  // 20261119160000_wanted_structural_storage). The create + attribute writes
+  // commit together inside a $transaction so a failure in any part rolls back
+  // the whole request (no orphan BuyRequest, no orphan attribute rows).
+  //
+  // DB-level idempotency: idempotencyKey is written to BuyRequest.idempotencyKey
+  // (@unique). A truly concurrent double-submit (race before either request
+  // audits) is caught by the P2002 unique violation — we fetch the existing
+  // row and return it idempotently. This closes the gap the audit-log-backed
+  // idempotency leaves open (sequential retries were already handled in the
+  // API route via findIdempotentResult).
+  let request: { id: string; title: string; status: string; category: string | null; brandPref: string | null };
+  try {
+    request = await db.$transaction(async (tx) => {
+      const created = await tx.buyRequest.create({
+        data: {
+          title: title.trim().slice(0, 200),
+          description: description ? String(description).slice(0, 2000) : null,
+          // Free-text display names are KEPT for back-compat (search/display
+          // that reads the string columns). The canonical FKs below are what
+          // the matching engine + structured filters use.
+          category: categoryName ?? (category ? String(category).trim().slice(0, 120) : null),
+          brandPref: brandName ?? (brandPref ? String(brandPref).trim().slice(0, 120) : null),
+          transaction: resolvedIntent,
+          budgetMin: toBigInt(budgetMin),
+          budgetMax: toBigInt(budgetMax),
+          city: city ? String(city).slice(0, 120) : null,
+          province: province ? String(province).slice(0, 120) : null,
+          deadline: deadline ? String(deadline).slice(0, 120) : null,
+          publishedAt,
+          expiresAt,
+          requesterName: requesterName ? String(requesterName).slice(0, 120) : null,
+          requesterPhone: requesterPhone ? String(requesterPhone).slice(0, 40) : null,
+          status: STATUS_PENDING, // moderation gate — admin must approve before publication
+          verified: false,
+          userId,
+          // ── H.3 structured-spec columns (canonical FKs) ──
+          quantity: quantity ?? null,
+          categoryId: categoryId ?? null,
+          brandId: brandId ?? null,
+          modelId: modelId ?? null,
+          serviceTypeId: serviceTypeId ?? null,
+          intent: resolvedIntent,
+          idempotencyKey: idempotencyKey ?? null,
+          // ── H.3 attribute parent/child rows (nested create, same transaction) ──
+          ...(validatedAttributes.length
+            ? {
+                attributeValues: {
+                  create: validatedAttributes.map((av) => ({
+                    attributeId: av.attributeId,
+                    textValue: av.textValue,
+                    numberValue: av.numberValue,
+                    booleanValue: av.booleanValue,
+                    dateValue: av.dateValue,
+                    optionId: av.optionId,
+                    unit: av.unit,
+                    sourceType: av.sourceType,
+                    confidence: av.confidence,
+                    sourceReference: av.sourceReference,
+                    verifiedAt: av.verifiedAt,
+                    verifiedBy: av.verifiedBy,
+                    // MULTI_SELECT child rows (one per selected option).
+                    ...(av.selectedOptionIds.length
+                      ? {
+                          selectedOptions: {
+                            create: av.selectedOptionIds.map((oid) => ({ optionId: oid })),
+                          },
+                        }
+                      : {}),
+                  })),
+                },
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          category: true,
+          brandPref: true,
+        },
+      });
+      return created;
+    });
+  } catch (err: unknown) {
+    // H.3: DB-enforced idempotency — a truly concurrent double-submit with the
+    // same idempotencyKey hits the @unique constraint (P2002). Fetch the
+    // existing row and return it idempotently instead of erroring.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002" && idempotencyKey) {
+      const existing = await db.buyRequest.findFirst({
+        where: { idempotencyKey, userId },
+        select: { id: true, title: true, status: true, category: true, brandPref: true },
+      });
+      if (existing) {
+        return { id: existing.id, status: existing.status };
+      }
+    }
+    throw err;
+  }
 
   // ── Audit (best-effort) ──
   await logAudit({
@@ -397,12 +491,10 @@ export async function createWanted(params: {
       status: "PENDING_REVIEW", // the task-spec semantic status (awaiting moderation)
       schemaStatus: request.status, // what we actually wrote (PENDING)
       description: description ? String(description).slice(0, 500) : null,
-      // DECISION (quantity): BuyRequest has no `quantity` column, and
-      // schema migrations are locked pending a fresh backup. Quantity
-      // is therefore preserved in the audit `after` payload ONLY (the
-      // record stays self-describing) until a migration that adds the
-      // column is approved. See worklog + follow-up issue.
-      quantity: quantity ?? null, // preserved (no schema column — audit-only)
+      // H.3: quantity is now a real BuyRequest column (migration
+      // 20261119160000). The audit `after` payload mirrors it for the
+      // audit trail; the canonical value lives in BuyRequest.quantity.
+      quantity: quantity ?? null,
       budgetMin:
         toBigInt(budgetMin) !== null ? toBigInt(budgetMin)!.toString() : null,
       budgetMax:
@@ -412,9 +504,12 @@ export async function createWanted(params: {
       category: categoryName ?? category ?? null,
       brandPref: brandName ?? brandPref ?? null,
       modelId: modelId ?? null,
-      serviceTypeId: serviceTypeId ?? null, // audit-only until schema migration
-      // Structured attribute snapshots are audit-only until the BuyRequest
-      // schema has a dedicated specification relation (migration gated).
+      serviceTypeId: serviceTypeId ?? null, // H.3: now a real FK column
+      // H.3: structured attribute snapshots are now persisted canonically in
+      // BuyRequestAttributeValue (parent) + BuyRequestAttributeOption (child).
+      // The audit payload records the count for the trail; the values live in
+      // the typed relation.
+      attributeValuesPersisted: validatedAttributes.length,
       attributeValues: Array.isArray(attributeValues) ? attributeValues.slice(0, 100) : [],
       // Demand intent: the canonical value stored in BuyRequest.transaction
       // (resolvedIntent), plus the raw inputs the caller sent (intent /
@@ -455,6 +550,7 @@ export async function createWanted(params: {
 export async function listWanted(params: {
   status?: string | null;
   categoryId?: string | null;
+  brandId?: string | null;
   limit?: number | null;
   offset?: number | null;
 }): Promise<{
@@ -472,12 +568,25 @@ export async function listWanted(params: {
     status: string;
     verified: boolean;
     createdAt: Date;
+    // H.3 structured-spec fields (canonical, for structured filtering/matching).
+    quantity: number | null;
+    categoryId: string | null;
+    brandId: string | null;
+    modelId: string | null;
+    serviceTypeId: string | null;
+    intent: string | null;
+    // H.3 resolved taxonomy names (single round-trip).
+    categoryName: string | null;
+    brandName: string | null;
+    modelName: string | null;
+    serviceTypeName: string | null;
   }>;
   total: number;
 }> {
   const {
     status = "ACTIVE",
     categoryId = null,
+    brandId = null,
     limit = 20,
     offset = 0,
   } = params;
@@ -485,26 +594,20 @@ export async function listWanted(params: {
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
   const safeOffset = Math.max(0, Number(offset) || 0);
 
-  // Resolve categoryId → category name (best-effort).
-  let categoryName: string | null = null;
-  if (categoryId) {
-    categoryName = await category_idToName(categoryId);
-    // If the lookup failed, fall back to the raw id — best-effort
-    // text match against BuyRequest.category. This keeps the
-    // filter usable even when the Category table is empty.
-    if (!categoryName) categoryName = categoryId;
-  }
-
-  // Build the where clause.
+  // H.3: filter by the canonical categoryId FK (no more name-resolution).
+  // Legacy rows with categoryId=null are excluded by an exact-id filter; the
+  // free-text `category` column is kept for display only.
   const now = new Date();
   const where: {
     status?: string;
-    category?: string;
+    categoryId?: string;
+    brandId?: string;
     publishedAt?: { lte: Date };
     OR?: Array<{ expiresAt: null } | { expiresAt: { gt: Date } }>;
   } = {};
   if (status) where.status = status;
-  if (categoryName) where.category = categoryName;
+  if (categoryId) where.categoryId = categoryId;
+  if (brandId) where.brandId = brandId;
   if (status === STATUS_PUBLISHED) {
     // Public ACTIVE feed must not surface unpublished or expired requests.
     where.publishedAt = { lte: now };
@@ -531,6 +634,18 @@ export async function listWanted(params: {
         status: true,
         verified: true,
         createdAt: true,
+        // H.3 structured-spec columns.
+        quantity: true,
+        categoryId: true,
+        brandId: true,
+        modelId: true,
+        serviceTypeId: true,
+        intent: true,
+        // H.3 resolved taxonomy names.
+        categoryRef: { select: { name: true } },
+        brandRef: { select: { name: true } },
+        modelRef: { select: { name: true } },
+        serviceTypeRef: { select: { nameFa: true } },
       },
     }),
     db.buyRequest.count({ where }),
@@ -538,9 +653,30 @@ export async function listWanted(params: {
 
   return {
     items: items.map((r) => ({
-      ...r,
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      category: r.category,
+      brandPref: r.brandPref,
+      transaction: r.transaction,
       budgetMin: r.budgetMin ? r.budgetMin.toString() : null,
       budgetMax: r.budgetMax ? r.budgetMax.toString() : null,
+      city: r.city,
+      province: r.province,
+      status: r.status,
+      verified: r.verified,
+      createdAt: r.createdAt,
+      // H.3 structured-spec fields.
+      quantity: r.quantity,
+      categoryId: r.categoryId,
+      brandId: r.brandId,
+      modelId: r.modelId,
+      serviceTypeId: r.serviceTypeId,
+      intent: r.intent,
+      categoryName: r.categoryRef?.name ?? null,
+      brandName: r.brandRef?.name ?? null,
+      modelName: r.modelRef?.name ?? null,
+      serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
     })),
     total,
   };
@@ -572,6 +708,31 @@ export async function getWanted(id: string): Promise<{
   expiresAt: Date | null;
   createdAt: Date;
   userId: string | null;
+  // H.3 structured-spec fields (canonical).
+  quantity: number | null;
+  categoryId: string | null;
+  brandId: string | null;
+  modelId: string | null;
+  serviceTypeId: string | null;
+  intent: string | null;
+  // H.3 resolved taxonomy names (for display without a second round-trip).
+  categoryName: string | null;
+  brandName: string | null;
+  modelName: string | null;
+  serviceTypeName: string | null;
+  // H.3 typed attribute values (parent + child MULTI_SELECT options).
+  attributeValues: Array<{
+    id: string;
+    attributeId: string;
+    textValue: string | null;
+    numberValue: number | null;
+    booleanValue: boolean | null;
+    dateValue: Date | null;
+    optionId: string | null;
+    unit: string | null;
+    sourceType: string | null;
+    selectedOptions: Array<{ optionId: string }>;
+  }>;
   matchCount: number;
 }> {
   if (!id) {
@@ -598,6 +759,33 @@ export async function getWanted(id: string): Promise<{
       expiresAt: true,
       createdAt: true,
       userId: true,
+      // H.3 structured-spec columns.
+      quantity: true,
+      categoryId: true,
+      brandId: true,
+      modelId: true,
+      serviceTypeId: true,
+      intent: true,
+      // H.3 resolved taxonomy names (single round-trip via the FK relations).
+      categoryRef: { select: { name: true } },
+      brandRef: { select: { name: true } },
+      modelRef: { select: { name: true } },
+      serviceTypeRef: { select: { nameFa: true } },
+      // H.3 typed attribute values (parent rows + child MULTI_SELECT options).
+      attributeValues: {
+        select: {
+          id: true,
+          attributeId: true,
+          textValue: true,
+          numberValue: true,
+          booleanValue: true,
+          dateValue: true,
+          optionId: true,
+          unit: true,
+          sourceType: true,
+          selectedOptions: { select: { optionId: true } },
+        },
+      },
     },
   });
   if (!request) {
@@ -617,9 +805,46 @@ export async function getWanted(id: string): Promise<{
   }
 
   return {
-    ...request,
+    id: request.id,
+    title: request.title,
+    description: request.description,
+    category: request.category,
+    brandPref: request.brandPref,
+    transaction: request.transaction,
     budgetMin: request.budgetMin ? request.budgetMin.toString() : null,
     budgetMax: request.budgetMax ? request.budgetMax.toString() : null,
+    city: request.city,
+    province: request.province,
+    deadline: request.deadline,
+    status: request.status,
+    verified: request.verified,
+    publishedAt: request.publishedAt,
+    expiresAt: request.expiresAt,
+    createdAt: request.createdAt,
+    userId: request.userId,
+    // H.3 structured-spec fields.
+    quantity: request.quantity,
+    categoryId: request.categoryId,
+    brandId: request.brandId,
+    modelId: request.modelId,
+    serviceTypeId: request.serviceTypeId,
+    intent: request.intent,
+    categoryName: request.categoryRef?.name ?? null,
+    brandName: request.brandRef?.name ?? null,
+    modelName: request.modelRef?.name ?? null,
+    serviceTypeName: request.serviceTypeRef?.nameFa ?? null,
+    attributeValues: request.attributeValues.map((av) => ({
+      id: av.id,
+      attributeId: av.attributeId,
+      textValue: av.textValue,
+      numberValue: av.numberValue,
+      booleanValue: av.booleanValue,
+      dateValue: av.dateValue,
+      optionId: av.optionId,
+      unit: av.unit,
+      sourceType: av.sourceType,
+      selectedOptions: av.selectedOptions.map((so) => ({ optionId: so.optionId })),
+    })),
     matchCount,
   };
 }

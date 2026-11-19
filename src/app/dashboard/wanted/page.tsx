@@ -66,6 +66,18 @@ export default async function DashboardWantedPage() {
       createdAt: true,
       publishedAt: true,
       expiresAt: true,
+      // H.3 structured-spec fields (canonical, for dashboard display).
+      quantity: true,
+      categoryId: true,
+      brandId: true,
+      modelId: true,
+      serviceTypeId: true,
+      intent: true,
+      // H.3 resolved taxonomy names (single round-trip via the FK relations).
+      categoryRef: { select: { name: true } },
+      brandRef: { select: { name: true } },
+      modelRef: { select: { name: true } },
+      serviceTypeRef: { select: { nameFa: true } },
     },
   });
 
@@ -131,8 +143,11 @@ export default async function DashboardWantedPage() {
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40">
                         <span>{intentLabel}</span>
                         <span>·</span>
-                        <span>{r.category ?? "—"}</span>
-                        {r.brandPref && <><span>·</span><span>{r.brandPref}</span></>}
+                        <span>{r.categoryRef?.name ?? r.category ?? "—"}</span>
+                        {(r.brandRef?.name ?? r.brandPref) && <><span>·</span><span>{r.brandRef?.name ?? r.brandPref}</span></>}
+                        {r.modelRef?.name && <><span>·</span><span>{r.modelRef.name}</span></>}
+                        {r.serviceTypeRef?.nameFa && <><span>·</span><span>{r.serviceTypeRef.nameFa}</span></>}
+                        {r.quantity != null && <><span>·</span><span>تعداد: {toFa(r.quantity)}</span></>}
                         <span>·</span>
                         <span>{budgetStr}</span>
                         {(r.city || r.province) && <><span>·</span><span>{[r.province, r.city].filter(Boolean).join("، ")}</span></>}
