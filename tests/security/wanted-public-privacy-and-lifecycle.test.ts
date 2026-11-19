@@ -23,6 +23,45 @@ describe("WANTED public privacy and lifecycle safety", () => {
     expect(source).toContain("WantedServiceError(403");
   });
 
+  it("limits the public wanted feed to active, published and unexpired requests", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    const service = read("src/lib/wanted-service.ts");
+    const listSection = service.split("// ── listWanted ──")[1]?.split("// ── getWanted ──")[0] ?? "";
+    expect(route).toContain('const status = "ACTIVE"');
+    expect(listSection).toContain("where.publishedAt = { lte: now }");
+    expect(listSection).toContain("{ expiresAt: null }");
+    expect(listSection).toContain("{ expiresAt: { gt: now } }");
+  });
+
+  it("hides closed, unpublished and expired requests from public detail", () => {
+    const route = read("src/app/api/wanted/[id]/route.ts");
+    expect(route).toContain('request.status !== "ACTIVE"');
+    expect(route).toContain("request.publishedAt.getTime() > now");
+    expect(route).toContain("request.expiresAt.getTime() <= now");
+    expect(route).toContain("{ status: 404 }");
+  });
+
+  it("routes the WANTED wizard through the canonical BuyRequest API", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain("body.deadline");
+    expect(page).toContain("body.quantity");
+  });
+
+  it("passes validated deadline and taxonomy location names into createWanted", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain("normalizedDeadline");
+    expect(route).toContain("deadline: normalizedDeadline");
+    expect(route).toContain("selectedProvince?.name");
+    expect(route).toContain("selectedCity?.name");
+  });
+
+  it("records model and typed-attribute snapshot in audit until schema migration", () => {
+    const service = read("src/lib/wanted-service.ts");
+    expect(service).toContain("modelId: modelId ?? null");
+    expect(service).toContain("attributeValues: Array.isArray(attributeValues)");
+  });
+
   it("records the actual user as the close actor", () => {
     const source = read("src/lib/wanted-service.ts");
     const closeSection = source.split("// ── closeWanted ──")[1]?.split("// ── getWantedMatches ──")[0] ?? "";

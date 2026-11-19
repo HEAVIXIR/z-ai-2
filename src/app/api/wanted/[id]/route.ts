@@ -43,6 +43,15 @@ export async function GET(
   try {
     const { id } = await params;
     const request = await getWanted(id);
+    const now = Date.now();
+    if (
+      request.status !== "ACTIVE" ||
+      !(request.publishedAt instanceof Date) ||
+      request.publishedAt.getTime() > now ||
+      (request.expiresAt instanceof Date && request.expiresAt.getTime() <= now)
+    ) {
+      return NextResponse.json({ error: "درخواست خرید یافت نشد" }, { status: 404 });
+    }
     // Never expose internal account identifiers on the public detail API.
     const { userId: _ownerId, ...publicRequest } = request;
     return NextResponse.json({ success: true, data: publicRequest });

@@ -95,8 +95,9 @@ export async function GET(req: Request) {
       });
     }
 
-    // Public paginated list (default status=ACTIVE).
-    const status = url.searchParams.get("status")?.trim() || "ACTIVE";
+    // Public callers may only enumerate active requests. Non-active
+    // lifecycle states are available through the authenticated ?mine=true path.
+    const status = "ACTIVE";
     const categoryId = url.searchParams.get("categoryId")?.trim() || null;
     const limit = Number(url.searchParams.get("limit")) || 20;
     const offset = Number(url.searchParams.get("offset")) || 0;
@@ -139,22 +140,73 @@ export async function POST(req: Request) {
       budgetMax,
       categoryId,
       brandId,
+      modelId,
+      attributeValues,
       transactionType,
       province,
       city,
+      provinceId,
+      cityId,
+      deadline,
     } = body;
+
+    const requestedProvinceId = provinceId ? String(provinceId) : null;
+    const requestedCityId = cityId ? String(cityId) : null;
+    const [selectedCity, selectedProvince] = await Promise.all([
+      requestedCityId
+        ? db.city.findUnique({
+            where: { id: requestedCityId },
+            select: { id: true, name: true, province: { select: { id: true, name: true } } },
+          })
+        : Promise.resolve(null),
+      requestedProvinceId
+        ? db.province.findUnique({
+            where: { id: requestedProvinceId },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    if (requestedCityId && !selectedCity) {
+      return NextResponse.json({ error: "شهر انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+    if (requestedProvinceId && !selectedProvince) {
+      return NextResponse.json({ error: "استان انتخاب‌شده معتبر نیست." }, { status: 400 });
+    }
+    if (selectedCity && selectedProvince && selectedCity.province.id !== selectedProvince.id) {
+      return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+
+    const normalizedQuantity = quantity === undefined || quantity === null || quantity === ""
+      ? null
+      : Number(quantity);
+    if (normalizedQuantity !== null &&
+        (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 10000)) {
+      return NextResponse.json({ error: "تعداد باید عدد صحیح بین ۱ تا ۱۰۰۰۰ باشد." }, { status: 400 });
+    }
+
+    let normalizedDeadline: string | null = null;
+    if (deadline !== undefined && deadline !== null && String(deadline).trim()) {
+      const parsedDeadline = new Date(String(deadline));
+      if (Number.isNaN(parsedDeadline.getTime()) || parsedDeadline.getTime() <= Date.now()) {
+        return NextResponse.json({ error: "مهلت درخواست باید یک تاریخ معتبر در آینده باشد." }, { status: 400 });
+      }
+      normalizedDeadline = parsedDeadline.toISOString();
+    }
 
     const created = await createWanted({
       title,
       description,
-      quantity,
+      quantity: normalizedQuantity,
       budgetMin,
       budgetMax,
       categoryId,
       brandId,
+      modelId,
+      attributeValues,
       transactionType,
-      province,
-      city,
+      province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : province),
+      city: selectedCity?.name ?? (requestedCityId ? null : city),
+      deadline: normalizedDeadline,
       userId,
     });
 
@@ -167,6 +219,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
+      ok: true,
       success: true,
       id: created.id,
       status: created.status,

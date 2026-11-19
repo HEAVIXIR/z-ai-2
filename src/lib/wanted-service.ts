@@ -195,6 +195,8 @@ export async function createWanted(params: {
   deadline?: string | null;
   requesterName?: string | null;
   requesterPhone?: string | null;
+  modelId?: string | null;
+  attributeValues?: unknown[] | null;
   userId: string;
 }): Promise<{ id: string; status: string }> {
   const {
@@ -213,6 +215,8 @@ export async function createWanted(params: {
     deadline = null,
     requesterName = null,
     requesterPhone = null,
+    modelId = null,
+    attributeValues = null,
     userId,
   } = params;
 
@@ -301,6 +305,10 @@ export async function createWanted(params: {
       brandId: brandId ?? null,
       category: categoryName ?? category ?? null,
       brandPref: brandName ?? brandPref ?? null,
+      modelId: modelId ?? null,
+      // Structured attribute snapshots are audit-only until the BuyRequest
+      // schema has a dedicated specification relation (migration gated).
+      attributeValues: Array.isArray(attributeValues) ? attributeValues.slice(0, 100) : [],
       transactionType: transactionType || "SALE",
       province: province ?? null,
       city: city ?? null,
@@ -373,12 +381,20 @@ export async function listWanted(params: {
   }
 
   // Build the where clause.
+  const now = new Date();
   const where: {
     status?: string;
     category?: string;
+    publishedAt?: { lte: Date };
+    OR?: Array<{ expiresAt: null } | { expiresAt: { gt: Date } }>;
   } = {};
   if (status) where.status = status;
   if (categoryName) where.category = categoryName;
+  if (status === STATUS_PUBLISHED) {
+    // Public ACTIVE feed must not surface unpublished or expired requests.
+    where.publishedAt = { lte: now };
+    where.OR = [{ expiresAt: null }, { expiresAt: { gt: now } }];
+  }
 
   const [items, total] = await Promise.all([
     db.buyRequest.findMany({
@@ -437,6 +453,8 @@ export async function getWanted(id: string): Promise<{
   deadline: string | null;
   status: string;
   verified: boolean;
+  publishedAt: Date | null;
+  expiresAt: Date | null;
   createdAt: Date;
   userId: string | null;
   matchCount: number;
@@ -461,6 +479,8 @@ export async function getWanted(id: string): Promise<{
       deadline: true,
       status: true,
       verified: true,
+      publishedAt: true,
+      expiresAt: true,
       createdAt: true,
       userId: true,
     },

@@ -123,6 +123,12 @@ export default function NewListingPage() {
     deadline: "",
     terms: "",
   });
+  const [wanted, setWanted] = useState({
+    quantity: "1",
+    budgetMin: "",
+    budgetMax: "",
+    deadline: "",
+  });
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
@@ -344,6 +350,7 @@ export default function NewListingPage() {
     setServiceTypeId("");
     setAuction({ reservePrice: "", minIncrement: "", startDate: "", endDate: "" });
     setRfq({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "", terms: "" });
+    setWanted({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "" });
     setCategoryId("");
     setCategoryPath([]);
     setBrandId("");
@@ -380,6 +387,17 @@ export default function NewListingPage() {
           (min === null || min >= 0n) &&
           (max === null || max >= 0n) &&
           (min === null || max === null || min <= max);
+      }
+      if (transactionType === "WANTED") {
+        const quantity = Number(wanted.quantity);
+        const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\\d]/g, "")) : null;
+        const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\\d]/g, "")) : null;
+        const deadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
+        return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
+          (min === null || min >= 0n) &&
+          (max === null || max >= 0n) &&
+          (min === null || max === null || min <= max) &&
+          (!deadline || (!Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now()));
       }
       if (isRequestFlow) return true;
       if (isRent) return Boolean(form.price && form.rentalPeriod && images.length >= 1);
@@ -436,6 +454,14 @@ export default function NewListingPage() {
         images: images.map((url) => ({ url })),
       };
 
+      if (transactionType === "WANTED") {
+        body.quantity = Number(wanted.quantity);
+        body.budgetMin = wanted.budgetMin || undefined;
+        body.budgetMax = wanted.budgetMax || undefined;
+        body.deadline = wanted.deadline
+          ? new Date(`${wanted.deadline}T23:59:00`).toISOString()
+          : undefined;
+      }
       if (transactionType === "QUOTE") {
         body.rfq = {
           quantity: Number(rfq.quantity),
@@ -466,13 +492,14 @@ export default function NewListingPage() {
         body.availabilityEnd = rental.availabilityEnd || undefined;
       }
 
-      const res = await fetch("/api/listings", {
+      const endpoint = transactionType === "WANTED" ? "/api/wanted" : "/api/listings";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
+      if (!res.ok || !(data.ok || data.success)) {
         setSubmitError(data.error ?? "ثبت آگهی ناموفق بود. لطفاً دوباره تلاش کنید.");
         return;
       }
@@ -1042,6 +1069,31 @@ export default function NewListingPage() {
                         </div>
                       )}
 
+                      {transactionType === "WANTED" && (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className={labelCls}>تعداد موردنیاز *</label>
+                              <input value={wanted.quantity} onChange={(e) => setWanted((v) => ({ ...v, quantity: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>مهلت موردنیاز (اختیاری)</label>
+                              <input type="date" value={wanted.deadline} onChange={(e) => setWanted((v) => ({ ...v, deadline: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل بودجه (تومان)</label>
+                              <input value={wanted.budgetMin} onChange={(e) => setWanted((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداکثر بودجه (تومان)</label>
+                              <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                          <p className="mt-3 text-xs text-white/55">تعداد فعلاً در سابقه ممیزی نگهداری می‌شود؛ ذخیره ساختاریافته تعداد نیازمند تکمیل مدل داده است.</p>
+                        </div>
+                      )}
+
                       {transactionType === "QUOTE" && (
                         <div className="rounded-2xl border border-sky-400/20 bg-sky-400/[0.04] p-5">
                           <p className="mb-3 text-sm font-black text-sky-300">جزئیات استعلام قیمت (RFQ)</p>
@@ -1298,8 +1350,14 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای درخواست خرید و استعلام قیمت، افزودن تصویر اختیاری است.</p>}
-                      <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
+                      {transactionType === "WANTED" ? (
+                        <p className="text-xs leading-6 text-white/45">پیوست تصویر برای درخواست خرید هنوز در مسیر کانونیکال ذخیره‌سازی نشده است؛ برای جلوگیری از بارگذاری بی‌اثر، فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است.</p>
+                      ) : (
+                        <>
+                          {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
+                          <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1315,6 +1373,13 @@ export default function NewListingPage() {
                     <div className="mt-6 space-y-4">
                       <ReviewRow label="نوع معامله" value={transactionType} />
                       {isServiceFlow && <ReviewRow label="نوع خدمت" value={serviceTypes.find((item) => item.id === serviceTypeId)?.nameFa ?? "—"} />}
+                      {transactionType === "WANTED" && (
+                        <>
+                          <ReviewRow label="تعداد موردنیاز" value={wanted.quantity || "—"} />
+                          <ReviewRow label="بازه بودجه" value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || "توافقی"} />
+                          <ReviewRow label="مهلت درخواست" value={wanted.deadline || "—"} />
+                        </>
+                      )}
                       {transactionType === "QUOTE" && (
                         <>
                           <ReviewRow label="تعداد موردنیاز" value={rfq.quantity || "—"} />
