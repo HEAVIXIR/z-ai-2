@@ -1,6 +1,6 @@
 {
   "datasetFile": "iran-locations-1404.json",
-  "sha256": "e12c51e0a040e3a59ea500fc970b0f9ecc74893c80faa44db9f263389f04bc44",
+  "sha256": "24bc80788b7114d86c5e860486da9f09927e65be5f3d4ed78cdffda1cc00098c",
   "sourceFile": "prisma/data/iran-cities-1404.json",
   "sourceBlobSha": "c263180e617a23360255b2acd08c8333a76d5bb8",
   "sourceUrl": "https://github.com/sajaddp/list-of-cities-in-Iran",
