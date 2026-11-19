@@ -611,12 +611,15 @@ model BuyRequest {
   modelId         String?
   serviceTypeId   String?
   intent          String?
-  idempotencyKey  String?  @unique
+  idempotencyKey  String?
   categoryRef     Category?        @relation("BuyRequestCategory", fields: [categoryId],    references: [id], onDelete: SetNull)
   brandRef        Brand?           @relation("BuyRequestBrand",   fields: [brandId],       references: [id], onDelete: SetNull)
   modelRef        ProductModel?    @relation("BuyRequestModel",   fields: [modelId],       references: [id], onDelete: SetNull)
   serviceTypeRef  ServiceType?     @relation("BuyRequestService", fields: [serviceTypeId], references: [id], onDelete: SetNull)
   attributeValues BuyRequestAttributeValue[]
+  // Idempotency keys are scoped to the authenticated owner; different users
+  // may legitimately generate the same client-side key without colliding.
+  @@unique([userId, idempotencyKey])
   @@index([categoryId])
   @@index([brandId])
   @@index([modelId])
