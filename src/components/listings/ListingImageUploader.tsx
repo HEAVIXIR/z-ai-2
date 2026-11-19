@@ -1,8 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
+import {
+  FREE_LISTING_IMAGE_POLICY,
+  type ListingImagePolicy,
+} from "@/lib/listing-image-policy-shared";
 
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -10,24 +14,53 @@ type Props = {
   images: string[];
   onChange: (images: string[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
-  maxImages?: number;
 };
 
 export default function ListingImageUploader({
   images,
   onChange,
   onUploadingChange,
-  maxImages = 10,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<ListingImagePolicy>(FREE_LISTING_IMAGE_POLICY);
+  const [policyReady, setPolicyReady] = useState(false);
+  const maxImages = policy.maxImages;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/media/staging", { method: "GET", cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("policy unavailable");
+        const payload = await response.json();
+        const next = payload?.policy as ListingImagePolicy | undefined;
+        if (
+          next &&
+          (next.tier === "FREE" || next.tier === "PAID") &&
+          Number.isInteger(next.maxImages) &&
+          Number.isInteger(next.maxImageBytes)
+        ) {
+          setPolicy({
+            tier: next.tier,
+            maxImages: Math.min(8, Math.max(1, next.maxImages)),
+            maxImageBytes: Math.min(2 * 1024 * 1024, Math.max(1, next.maxImageBytes)),
+          });
+        }
+      })
+      .catch(() => {
+        // Fail closed to the free UI policy; the upload and listing APIs
+        // independently resolve and enforce the authoritative entitlement.
+      })
+      .finally(() => setPolicyReady(true));
+    return () => controller.abort();
+  }, []);
 
   const uploadFiles = async (selected: FileList | File[]) => {
     const files = Array.from(selected);
-    if (!files.length) return;
+    if (!files.length || !policyReady) return;
     setError(null);
     setNotice(null);
 
@@ -55,7 +88,7 @@ export default function ListingImageUploader({
           throw new Error(`فرمت «${source.name}» پشتیبانی نمی‌شود. فقط JPG، PNG و WebP مجاز هستند.`);
         }
 
-        const prepared = await prepareImageForUpload(source);
+        const prepared = await prepareImageForUpload(source, policy.maxImageBytes);
         const body = new FormData();
         body.append("file", prepared.file);
 
@@ -101,7 +134,7 @@ export default function ListingImageUploader({
       </label>
       <button
         type="button"
-        disabled={uploading || images.length >= maxImages}
+        disabled={uploading || !policyReady || images.length >= maxImages}
         onClick={() => inputRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
@@ -116,10 +149,10 @@ export default function ListingImageUploader({
           <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
         )}
         <span className="text-sm font-bold text-white/60">
-          {uploading ? "در حال آپلود تصاویر واقعی..." : "تصاویر دستگاه را انتخاب کنید"}
+          {uploading ? "در حال آپلود تصاویر واقعی..." : !policyReady ? "در حال بررسی سطح اشتراک..." : "تصاویر دستگاه را انتخاب کنید"}
         </span>
         <span className="mt-1 text-[11px] text-white/30">
-          JPG، PNG و WebP · تصاویر حجیم خودکار بهینه می‌شوند (حداکثر ورودی ۲۰ مگابایت)
+          {policy.tier === "PAID" ? "حساب ویژه" : "حساب رایگان"} · حداکثر {maxImages} عکس · هر عکس تا {policy.maxImageBytes / (1024 * 1024)} مگابایت · بهینه‌سازی خودکار
         </span>
         {uploading && (
           <span className="mt-2 text-xs text-[#F58220]">
@@ -133,7 +166,7 @@ export default function ListingImageUploader({
         multiple
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
-        disabled={uploading || images.length >= maxImages}
+        disabled={uploading || !policyReady || images.length >= maxImages}
         onChange={(event) => {
           if (event.target.files) void uploadFiles(event.target.files);
         }}
