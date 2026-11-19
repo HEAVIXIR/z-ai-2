@@ -9,12 +9,12 @@ The current branch contains:
 - **271 selectable terminal machine categories** (167 terminal L2 + 104 L3).
 - `prisma/seed-category-specific-attributes.ts` defines 258 unique templates across the audited catalog roots.
 - **271 of 271 machine terminal categories now have direct templates** after adding 88 subtype-specific leaf forms.
-- A further **72 of 72 terminal categories** across vehicles (12), attachments (13), agriculture (12), industrial equipment (20), and parts (15) also have direct templates.
-- **All 343 terminal categories across the six configured CATALOG roots are covered** in the static source comparison.
-- The form registry contains 361 unique template slugs across the broader configured catalog roots.
+- A further **73 of 73 terminal categories** across vehicles (12), attachments (13), agriculture (12), industrial equipment (20), and parts (16) also have direct templates.
+- **All 344 terminal categories across the six configured CATALOG roots are covered** in the static source comparison.
+- The form registry contains 362 unique template slugs across the broader configured catalog roots.
 - `tests/unit/machine-leaf-form-coverage.test.ts` enforces machine-tree coverage, the five additional root coverages, and duplicate-slug rejection.
 
-The 88 machine additions cover excavator, loader, grader, backhoe, scraper, roller, mining shovel/LHD, drilling, crushing, concrete/asphalt, crane, material handling, haulage, port, recycling, tunnel and generator subtypes. A further 15 direct forms cover engine, transmission, hydraulic, electrical, undercarriage, pump, valve, final-drive, swing-motor, filter, cooling, wear-part, tire/track, bearing and other-parts categories. Each generated leaf template has a required primary technical field and keeps family-level fields inherited from its parent category. Existing direct templates cover the other 72 terminal categories across vehicles, attachments, agriculture, industrial equipment and parts.
+The 88 machine additions cover excavator, loader, grader, backhoe, scraper, roller, mining shovel/LHD, drilling, crushing, concrete/asphalt, crane, material handling, haulage, port, recycling, tunnel and generator subtypes. A further 16 direct forms cover general spare parts plus engine, transmission, hydraulic, electrical, undercarriage, pump, valve, final-drive, swing-motor, filter, cooling, wear-part, tire/track, bearing and other-parts categories. Each generated leaf template has a required primary technical field and keeps family-level fields inherited from its parent category. Existing direct templates cover the other 72 terminal categories across vehicles, attachments, agriculture, industrial equipment and parts.
 
 These counts are a static comparison of the checked-in machine TREE and template registry. The seed's runtime preflight is stricter and evaluates active terminal categories across its five configured CATALOG roots in the target database. It remains fail-closed and must not be run against Preview or Production as part of this work. The previous 198-missing and 88-missing snapshots are historical and must not be used as current status.
 
