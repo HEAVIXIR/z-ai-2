@@ -159,7 +159,7 @@ export function assertPreviewLocationSeedApproval(
 export async function applyIranLocationSeed(
   db: PrismaClient,
   dataset: LocationDataset,
-): Promise<{ countriesUpdated: number; provincesCreated: number; provincesUpdated: number; citiesCreated: number; citiesUpdated: number }> {
+): Promise<{ countriesCreated: number; countriesUpdated: number; provincesCreated: number; provincesUpdated: number; citiesCreated: number; citiesUpdated: number }> {
   return db.$transaction(async (tx) => {
     const countryMatches = await tx.country.findMany({
       where: { OR: [{ code: "IR" }, { name: "ایران" }] },
@@ -270,6 +270,7 @@ export async function applyIranLocationSeed(
     }
 
     return {
+      countriesCreated: countryMatches.length ? 0 : 1,
       countriesUpdated: countryMatches.length ? 1 : 0,
       provincesCreated,
       provincesUpdated,
