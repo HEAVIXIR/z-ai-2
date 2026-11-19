@@ -375,7 +375,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع خدمت فقط برای تقاضای خدمات مجاز است." }, { status: 400 });
     }
 
-    const [categoryRow, brandRow, modelRow, serviceTypeRow] = await Promise.all([
+    const [categoryRow, brandRow, modelRow, serviceTypeRow, brandCategoryRow] = await Promise.all([
       requestedCategoryId
         ? db.category.findUnique({
             where: { id: requestedCategoryId },
@@ -400,6 +400,12 @@ export async function POST(req: Request) {
             select: { id: true, key: true },
           })
         : Promise.resolve(null),
+      requestedCategoryId && requestedBrandId
+        ? db.brandCategory.findUnique({
+            where: { brandId_categoryId: { brandId: requestedBrandId, categoryId: requestedCategoryId } },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (requestedCategoryId && (!categoryRow || !categoryRow.active)) {
@@ -407,6 +413,9 @@ export async function POST(req: Request) {
     }
     if (requestedBrandId && (!brandRow || !brandRow.active || brandRow.status !== "ACTIVE")) {
       return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+    }
+    if (requestedCategoryId && requestedBrandId && !brandCategoryRow) {
+      return NextResponse.json({ error: "برند انتخاب‌شده به این دسته‌بندی متصل نیست." }, { status: 400 });
     }
     if (requestedModelId) {
       if (!modelRow || modelRow.status !== "ACTIVE") {
@@ -420,12 +429,10 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
-      // Category/model compatibility: if a category was also supplied and
-      // the model carries a direct categoryId, they must match. (Models
-      // may also be linked via ProductModelAttributeCategory — that path
-      // is not enforced here to avoid an extra join, but the existence +
-      // brand checks above already close the common abuse vector.)
-      if (requestedCategoryId && modelRow.categoryId && modelRow.categoryId !== requestedCategoryId) {
+      // The wizard's model selector is category-scoped through
+      // ProductModel.categoryId; require the exact same canonical category
+      // at the API boundary rather than accepting an unlinked model.
+      if (requestedCategoryId && modelRow.categoryId !== requestedCategoryId) {
         return NextResponse.json(
           { error: "مدل انتخاب‌شده با دسته‌بندی انتخاب‌شده سازگار نیست." },
           { status: 400 },
