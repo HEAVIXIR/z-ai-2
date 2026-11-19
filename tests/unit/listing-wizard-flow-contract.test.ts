@@ -75,4 +75,15 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     expect(listings).toContain('transactionType.key !== "QUOTE"');
     expect(listings).toContain("/api/wanted");
   });
+
+  it("validates WANTED country/province hierarchy and provides a dashboard destination for service demand", () => {
+    const wantedApi = read("src/app/api/wanted/route.ts");
+    const wizard = read("src/app/listings/new/page.tsx");
+    expect(wantedApi).toContain("const requestedCountryId = countryId ? String(countryId) : null");
+    expect(wantedApi).toContain("selectedProvince.countryId !== requestedCountryId");
+    expect(wantedApi).toContain("استان انتخاب‌شده با کشور انتخاب‌شده مطابقت ندارد.");
+    expect(wizard).toContain('transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? "درخواست شما ثبت شد!"');
+    expect(wizard).toContain('createdId && (transactionType === "WANTED" || transactionType === "SERVICE_REQUEST")');
+    expect(wizard).toContain('href="/dashboard/wanted"');
+  });
 });
