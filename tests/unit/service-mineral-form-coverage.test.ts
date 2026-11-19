@@ -27,6 +27,49 @@ describe("service and mineral terminal form coverage", () => {
     expect(serviceLeaves.filter((slug) => !formSlugs.includes(slug))).toEqual([]);
   });
 
+  it("covers every legacy terminal service category in the V1.1 service tree", () => {
+    const lines = taxonomyV11.split("\n");
+    const rootIndex = lines.findIndex((line) => line.match(/slug:\\s*"([^"]+)"/)?.[1] === "services");
+    expect(rootIndex).toBeGreaterThanOrEqual(0);
+    const rootIndent = lines[rootIndex].match(/^ */)?.[0].length ?? 0;
+    let rootEnd = lines.length;
+    for (let index = rootIndex + 1; index < lines.length; index += 1) {
+      const slug = lines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+      const indent = lines[index].match(/^ */)?.[0].length ?? 0;
+      if (slug && indent === rootIndent) {
+        rootEnd = index;
+        break;
+      }
+    }
+    const rootLines = lines.slice(rootIndex + 1, rootEnd);
+    const terminalSlugs: string[] = [];
+    for (let index = 0; index < rootLines.length; index += 1) {
+      const slug = rootLines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+      if (!slug) continue;
+      const indent = rootLines[index].match(/^ */)?.[0].length ?? 0;
+      let nextSibling = rootLines.length;
+      for (let next = index + 1; next < rootLines.length; next += 1) {
+        const nextSlug = rootLines[next].match(/slug:\\s*"([^"]+)"/)?.[1];
+        const nextIndent = rootLines[next].match(/^ */)?.[0].length ?? 0;
+        if (nextSlug && nextIndent <= indent) {
+          nextSibling = next;
+          break;
+        }
+      }
+      if (!rootLines.slice(index, nextSibling).some((line) => /children:\\s*\\[/.test(line))) {
+        terminalSlugs.push(slug);
+      }
+    }
+
+    const generatedStart = formSeed.indexOf("const generatedFormEntries = [");
+    const generatedEnd = formSeed.indexOf("const generatedForms:", generatedStart);
+    const generatedBlock = formSeed.slice(generatedStart, generatedEnd);
+    const generatedSlugs = [...generatedBlock.matchAll(/\\["([^"]+)",\\s*\\[/g)].map((match) => match[1]);
+
+    expect(terminalSlugs).toHaveLength(19);
+    expect(terminalSlugs.filter((slug) => !generatedSlugs.includes(slug))).toEqual([]);
+  });
+
   it("provides dedicated forms for all terminal mineral/material categories", () => {
     const lines = taxonomyV11.split("\n");
     const rootIndex = lines.findIndex((line) => line.match(/slug:\s*"([^"]+)"/)?.[1] === "minerals-materials");
