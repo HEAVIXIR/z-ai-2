@@ -26,6 +26,15 @@ describe("Iran administrative CSV converter", () => {
     expect(() => convertIranDivisionsCsv(text)).toThrow(/Duplicate source Id/);
   });
 
+  it("rejects orphaned administrative rows outside the selected city levels", () => {
+    const text = [
+      "Id,ParentCountryDivisionId,Name,Code,DivisionType",
+      "1,,ایران,00,0",
+      "2,missing,شهرستان,01,2",
+    ].join("\\n");
+    expect(() => convertIranDivisionsCsv(text)).toThrow(/missing parent/);
+  });
+
   it("rejects a city whose ancestry cannot reach a province", () => {
     const text = [
       "Id,ParentCountryDivisionId,Name,Code,DivisionType",
