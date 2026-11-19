@@ -59,10 +59,19 @@ describe("guarded Iran location catalog seed plan", () => {
     )).toThrow("Explicit --confirm-preview-location-seed confirmation is required.");
   });
 
+  it("requires a separate explicit preview approval environment flag", () => {
+    const approvedPlan = { ...plan(), seedAllowed: true };
+    expect(() => assertPreviewLocationSeedApproval(
+      approvedPlan,
+      { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1" },
+      ["--apply", "--confirm-preview-location-seed"],
+    )).toThrow("HEAVIX_PREVIEW_LOCATION_SEED_APPROVED=YES is required for explicit approval.");
+  });
+
   it("keeps database writes blocked while the manifest approval is pending", () => {
     expect(() => assertPreviewLocationSeedApproval(
       plan(),
-      { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1" },
+      { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1", HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: "YES" },
       ["--apply", "--confirm-preview-location-seed"],
     )).toThrow("Location catalog import is blocked until manifest rights review is APPROVED and commercialUseAllowed=true.");
   });
@@ -71,7 +80,7 @@ describe("guarded Iran location catalog seed plan", () => {
     const approvedPlan = { ...plan(), seedAllowed: true };
     expect(() => assertPreviewLocationSeedApproval(
       approvedPlan,
-      { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1" },
+      { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1", HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: "YES" },
       ["--apply", "--confirm-preview-location-seed"],
     )).not.toThrow();
   });
