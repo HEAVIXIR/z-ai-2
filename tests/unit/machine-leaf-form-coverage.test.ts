@@ -51,6 +51,6 @@ describe("definitive machine terminal form coverage", () => {
     expect(formSeed).toContain("const missingTerminalLeafForms: Template[] = [");
     expect(formSeed).toContain("required: fields.length ? [fields[0].key] : []");
     expect(formSeed).toContain("templates.push(...missingTerminalLeafForms)");
-    expect(formSeed).toContain("if (missingTerminalLeafForms.length)");
+    expect(formSeed).toContain("if (duplicateAddedLeafSlugs.length)");
   });
 });
