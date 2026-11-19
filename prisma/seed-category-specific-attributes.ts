@@ -3265,6 +3265,93 @@ if (duplicateAddedLeafSlugs.length) {
 }
 templates.push(...missingTerminalLeafForms);
 
+// Dedicated technical forms for all terminal spare-parts categories.
+// Shared equipment identity fields remain in the common listing flow.
+const partsLeafForms: Template[] = [
+  leafForm("engine-parts", "قطعات موتور", [
+    { key: "part_family", fa: "خانواده قطعه موتور", en: "Engine Part Family", type: "SELECT", options: ["پیستون و رینگ", "یاتاقان", "سوپاپ و متعلقات", "میل‌لنگ", "سرسیلندر", "توربوشارژر", "سیستم سوخت‌رسانی", "سایر"] },
+    { key: "oem_part_number", fa: "شماره فنی سازنده", en: "OEM Part Number", type: "TEXT", filterable: true },
+    { key: "compatible_engine_models", fa: "مدل‌های موتور سازگار", en: "Compatible Engine Models", type: "LONG_TEXT" },
+  ]),
+  leafForm("transmission-parts", "قطعات گیربکس و انتقال قدرت", [
+    { key: "transmission_type", fa: "نوع سیستم انتقال قدرت", en: "Transmission Type", type: "SELECT", options: ["دستی", "اتوماتیک", "Power Shift", "CVT", "هیدرواستاتیک", "گیربکس صنعتی"] },
+    { key: "torque_rating_nm", fa: "ظرفیت گشتاور", en: "Torque Rating", type: "DECIMAL", unit: "NM", filterable: true },
+    { key: "compatible_transmission_models", fa: "مدل‌های گیربکس سازگار", en: "Compatible Transmission Models", type: "TEXT" },
+  ]),
+  leafForm("hydraulic-parts", "قطعات هیدرولیک", [
+    { key: "hydraulic_component_type", fa: "نوع قطعه هیدرولیک", en: "Hydraulic Component Type", type: "SELECT", options: ["پمپ", "موتور", "شیر", "جک و سیلندر", "آکومولاتور", "فیلتر", "شیلنگ و اتصال"] },
+    { key: "maximum_pressure_bar", fa: "حداکثر فشار کاری", en: "Maximum Working Pressure", type: "DECIMAL", unit: "BAR", filterable: true },
+    { key: "rated_flow_lpm", fa: "دبی نامی", en: "Rated Flow", type: "DECIMAL", unit: "LPM" },
+  ]),
+  leafForm("electrical-parts", "قطعات الکتریکی و الکترونیکی", [
+    { key: "electrical_component_type", fa: "نوع قطعه الکتریکی", en: "Electrical Component Type", type: "SELECT", options: ["ECU و کنترلر", "سنسور", "استارت و آلترناتور", "سیم‌کشی", "رله و فیوز", "نمایشگر", "موتور الکتریکی"] },
+    { key: "rated_voltage_v", fa: "ولتاژ نامی", en: "Rated Voltage", type: "DECIMAL", unit: "V", filterable: true },
+    { key: "compatible_systems", fa: "سامانه‌ها و مدل‌های سازگار", en: "Compatible Systems and Models", type: "TEXT" },
+  ]),
+  leafForm("undercarriage", "قطعات زیربندی", [
+    { key: "undercarriage_component", fa: "نوع قطعه زیربندی", en: "Undercarriage Component", type: "SELECT", options: ["زنجیر", "رولیک", "چرخ جلو", "دنده اسپراکت", "کفشک", "پین و بوش", "تنشنر"] },
+    { key: "track_pitch_mm", fa: "گام زنجیر", en: "Track Pitch", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "shoe_width_mm", fa: "عرض کفشک", en: "Track Shoe Width", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("hydraulic-pump", "پمپ هیدرولیک", [
+    { key: "pump_type", fa: "نوع پمپ", en: "Pump Type", type: "SELECT", options: ["دنده‌ای", "پیستونی محوری", "پیستونی شعاعی", "پره‌ای", "دوبل", "متغیر"] },
+    { key: "displacement_cc_rev", fa: "حجم جابه‌جایی", en: "Displacement", type: "DECIMAL", unit: "CC/REV", filterable: true },
+    { key: "maximum_pressure_bar", fa: "حداکثر فشار", en: "Maximum Pressure", type: "DECIMAL", unit: "BAR" },
+  ]),
+  leafForm("hydraulic-valve", "شیر هیدرولیک", [
+    { key: "valve_type", fa: "نوع شیر", en: "Valve Type", type: "SELECT", options: ["کنترل جهت", "کنترل فشار", "کنترل دبی", "تناسبی", "برقی", "چندراهه"] },
+    { key: "maximum_pressure_bar", fa: "حداکثر فشار کاری", en: "Maximum Working Pressure", type: "DECIMAL", unit: "BAR", filterable: true },
+    { key: "rated_flow_lpm", fa: "دبی نامی", en: "Rated Flow", type: "DECIMAL", unit: "LPM" },
+  ]),
+  leafForm("final-drive", "فاینال درایو و انتقال نهایی", [
+    { key: "reduction_ratio", fa: "نسبت تبدیل", en: "Reduction Ratio", type: "TEXT", filterable: true },
+    { key: "maximum_output_torque_nm", fa: "حداکثر گشتاور خروجی", en: "Maximum Output Torque", type: "DECIMAL", unit: "NM" },
+    { key: "compatible_machine_models", fa: "مدل‌های ماشین سازگار", en: "Compatible Machine Models", type: "TEXT" },
+  ]),
+  leafForm("swing-motor", "موتور گردان", [
+    { key: "rated_torque_nm", fa: "گشتاور نامی", en: "Rated Torque", type: "DECIMAL", unit: "NM", filterable: true },
+    { key: "displacement_cc_rev", fa: "حجم جابه‌جایی", en: "Displacement", type: "DECIMAL", unit: "CC/REV" },
+    { key: "maximum_pressure_bar", fa: "حداکثر فشار", en: "Maximum Pressure", type: "DECIMAL", unit: "BAR" },
+  ]),
+  leafForm("filters", "فیلترهای صنعتی و ماشین‌آلات", [
+    { key: "filter_type", fa: "نوع فیلتر", en: "Filter Type", type: "SELECT", options: ["روغن موتور", "سوخت", "هیدرولیک", "هوا", "گیربکس", "آب و خنک‌کننده", "جداکننده آب"] },
+    { key: "micron_rating", fa: "درجه فیلتراسیون", en: "Micron Rating", type: "DECIMAL", unit: "MICRON", filterable: true },
+    { key: "bypass_valve", fa: "دارای سوپاپ بای‌پس", en: "Bypass Valve", type: "BOOLEAN" },
+  ]),
+  leafForm("cooling-system", "قطعات سیستم خنک‌کننده", [
+    { key: "cooling_component_type", fa: "نوع قطعه خنک‌کننده", en: "Cooling Component Type", type: "SELECT", options: ["رادیاتور", "اینترکولر", "واترپمپ", "ترموستات", "فن", "اویل‌کولر", "مخزن انبساط"] },
+    { key: "heat_rejection_kw", fa: "ظرفیت دفع حرارت", en: "Heat Rejection Capacity", type: "DECIMAL", unit: "KW", filterable: true },
+    { key: "coolant_capacity_l", fa: "ظرفیت سیال خنک‌کننده", en: "Coolant Capacity", type: "DECIMAL", unit: "L" },
+  ]),
+  leafForm("wear-parts", "قطعات مصرفی و ضدسایش", [
+    { key: "wear_part_type", fa: "نوع قطعه ضدسایش", en: "Wear Part Type", type: "SELECT", options: ["ناخن و آداپتور", "لبه برش", "لنت", "لاینر", "ورق ضدسایش", "بوش", "تیغه"] },
+    { key: "material_grade", fa: "گرید مواد", en: "Material Grade", type: "TEXT", filterable: true },
+    { key: "hardness_hb", fa: "سختی برینل", en: "Brinell Hardness", type: "DECIMAL", unit: "HB" },
+  ]),
+  leafForm("tires-tracks", "لاستیک و زنجیر", [
+    { key: "product_type", fa: "نوع محصول", en: "Product Type", type: "SELECT", options: ["لاستیک بادی", "لاستیک توپر", "زنجیر فولادی", "زنجیر لاستیکی", "پد زنجیر"] },
+    { key: "size_specification", fa: "سایز یا مشخصه ابعادی", en: "Size Specification", type: "TEXT", filterable: true },
+    { key: "tread_pattern", fa: "طرح آج یا الگوی زنجیر", en: "Tread / Track Pattern", type: "TEXT" },
+  ]),
+  leafForm("bearings", "بلبرینگ و رولبرینگ", [
+    { key: "bearing_type", fa: "نوع بیرینگ", en: "Bearing Type", type: "SELECT", options: ["شیار عمیق", "تماس زاویه‌ای", "رولبرینگ استوانه‌ای", "رولبرینگ مخروطی", "کف‌گرد", "سوزنی", "یاتاقان"] },
+    { key: "bore_diameter_mm", fa: "قطر داخلی", en: "Bore Diameter", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "outer_diameter_mm", fa: "قطر خارجی", en: "Outer Diameter", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("other-parts", "سایر قطعات و لوازم یدکی", [
+    { key: "part_family", fa: "خانواده قطعه", en: "Part Family", type: "TEXT", filterable: true },
+    { key: "oem_part_number", fa: "شماره فنی سازنده", en: "OEM Part Number", type: "TEXT" },
+    { key: "technical_specification", fa: "مشخصات فنی و سازگاری", en: "Technical Specification and Compatibility", type: "LONG_TEXT" },
+  ]),
+];
+const duplicatePartsLeafSlugs = partsLeafForms
+  .map((template) => template.slug)
+  .filter((slug, index, all) => all.indexOf(slug) !== index);
+if (duplicatePartsLeafSlugs.length) {
+  throw new Error(`Duplicate parts leaf form slugs: ${duplicatePartsLeafSlugs.join(", ")}`);
+}
+templates.push(...partsLeafForms);
+
 // AttributeDefinition.key is globally unique. Preserve an existing compatible. Preserve an existing compatible
 // definition; namespace incompatible variants by category to prevent global clobbering.
 const fieldSignature = (field: Pick<Field, "type" | "unit" | "fa" | "en" | "options" | "filterable" | "searchable" | "sortable" | "card">): string =>
@@ -3442,7 +3529,7 @@ async function main() {
     throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
   }
 
-  const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment"];
+  const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];
   const coverageRoots = await db.category.findMany({
     where: { slug: { in: coverageRootSlugs }, active: true, layer: "CATALOG" },
     select: { id: true, slug: true },
@@ -3482,7 +3569,7 @@ async function main() {
   const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
 
   // Enforce one dedicated template for every active terminal equipment category
-  // under machinery, vehicles, attachments, agriculture and industrial equipment.
+  // under machinery, vehicles, attachments, agriculture, industrial equipment and parts.
   const activeCatalogCategories = await db.category.findMany({
     where: { active: true, layer: "CATALOG" },
     select: { id: true, slug: true, parentId: true },
