@@ -607,7 +607,12 @@ export function buildAttributePayload(
   for (const a of attributes) {
     const k = attrKey(a);
     const raw = values[k];
-    if (raw === undefined || raw === null || raw === "") continue;
+    if (
+      raw === undefined ||
+      raw === null ||
+      raw === "" ||
+      (Array.isArray(raw) && raw.length === 0)
+    ) continue;
     const entry: PayloadEntry = {
       attributeId: a.id,
       unit: a.unit ?? null,
