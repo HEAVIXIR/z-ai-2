@@ -42,6 +42,23 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
+        // Public DTO: never expose owner IDs, phone numbers, or admin notes.
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          category: true,
+          brandPref: true,
+          transaction: true,
+          budgetMin: true,
+          budgetMax: true,
+          city: true,
+          province: true,
+          deadline: true,
+          status: true,
+          verified: true,
+          createdAt: true,
+        },
       }),
       db.buyRequest.count({ where }),
     ]);
