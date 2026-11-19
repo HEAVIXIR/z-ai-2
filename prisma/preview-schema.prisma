@@ -50,6 +50,7 @@ model Brand {
   listings    Listing[]
   aliases     BrandAlias[]
   industries  BrandIndustry[]
+  buyRequests BuyRequest[]  @relation("BuyRequestBrand")
 
   // STEP 15-B.4.1: PROVEN via EXPLAIN ANALYZE before/after simulation in 15-B.2
   // Query: SELECT * FROM "Brand" WHERE active=true ORDER BY name ASC LIMIT 24 OFFSET 0
@@ -192,6 +193,7 @@ model Category {
   products    Product[]
   appIndustries CategoryApplicationIndustry[]
   priceObservations PriceObservation[]
+  buyRequests BuyRequest[]  @relation("BuyRequestCategory")
 }
 
 // HBR Taxonomy V1.1 §18: Transaction Layer (separate from Category)
@@ -220,6 +222,7 @@ model ServiceType {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   listings    Listing[]
+  buyRequests BuyRequest[]  @relation("BuyRequestService")
 }
 
 // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 3): homepage Services section.
@@ -339,6 +342,7 @@ model AttributeDefinition {
   categories  CategoryAttribute[]
   modelAttributes ProductModelAttribute[]
   values      ListingAttributeValue[]
+  buyRequestValues BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueAttribute")
 }
 
 model AttributeOption {
@@ -348,6 +352,8 @@ model AttributeOption {
   value       String
   label       String?
   sortOrder   Int      @default(0)
+  buyRequestValues     BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueOption")
+  buyRequestOptionRows BuyRequestAttributeOption[]  @relation("BuyRequestAttributeOptionOption")
 }
 
 model CategoryAttribute {
@@ -412,6 +418,7 @@ model ProductModel {
   generations   Generation[]
   listings      Listing[]
   products      Product[]
+  buyRequests BuyRequest[]  @relation("BuyRequestModel")
   @@unique([brandId, slug])
 }
 
@@ -598,6 +605,62 @@ model BuyRequest {
   updatedAt   DateTime  @updatedAt
   userId      String?
   user        User?     @relation("UserRequests", fields: [userId], references: [id], onDelete: SetNull)
+  quantity        Int?
+  categoryId      String?
+  brandId         String?
+  modelId         String?
+  serviceTypeId   String?
+  intent          String?
+  idempotencyKey  String?  @unique
+  categoryRef     Category?        @relation("BuyRequestCategory", fields: [categoryId],    references: [id], onDelete: SetNull)
+  brandRef        Brand?           @relation("BuyRequestBrand",   fields: [brandId],       references: [id], onDelete: SetNull)
+  modelRef        ProductModel?    @relation("BuyRequestModel",   fields: [modelId],       references: [id], onDelete: SetNull)
+  serviceTypeRef  ServiceType?     @relation("BuyRequestService", fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  attributeValues BuyRequestAttributeValue[]
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([modelId])
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@index([intent])
+}
+
+model BuyRequestAttributeValue {
+  id            String   @id @default(cuid())
+  buyRequestId  String
+  attributeId   String
+  attribute     AttributeDefinition @relation("BuyRequestAttributeValueAttribute", fields: [attributeId], references: [id], onDelete: Cascade)
+  optionId      String?
+  option        AttributeOption?  @relation("BuyRequestAttributeValueOption", fields: [optionId], references: [id], onDelete: SetNull)
+  textValue     String?
+  numberValue   Float?
+  booleanValue  Boolean?
+  dateValue     DateTime?
+  unit          String?
+  sourceType    String?
+  confidence    Float?
+  sourceReference String?
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  buyRequest    BuyRequest       @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+  selectedOptions BuyRequestAttributeOption[]
+  @@unique([buyRequestId, attributeId])
+  @@index([buyRequestId])
+  @@index([attributeId])
+}
+
+model BuyRequestAttributeOption {
+  id              String   @id @default(cuid())
+  attributeValueId String
+  attributeValue  BuyRequestAttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  optionId        String
+  option          AttributeOption @relation("BuyRequestAttributeOptionOption", fields: [optionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  @@unique([attributeValueId, optionId])
+  @@index([attributeValueId])
+  @@index([optionId])
 }
 
 // ════════════════════════════════════════════════════════════
