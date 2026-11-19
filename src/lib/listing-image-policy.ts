@@ -27,7 +27,7 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
   }
 
   const plan = await db.subscriptionPlan.findUnique({
-    where: { code: subscription.plan },
+    where: { code: subscription.plan.trim().toUpperCase() },
     select: { active: true, priceMonthly: true, priceYearly: true },
   });
 
