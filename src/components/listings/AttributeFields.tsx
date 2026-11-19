@@ -626,6 +626,9 @@ export function buildAttributePayload(
         // textValue makes type validation ambiguous and loses relational shape.
         const arr = Array.isArray(raw) ? raw : String(raw).split("|");
         entry.selectedOptionIds = arr.map(String).map((v) => v.trim()).filter(Boolean);
+        // Keep the legacy comma-separated slot for ListingAttributeValue;
+        // WANTED normalizes selectedOptionIds and ignores this transport copy.
+        entry.textValue = entry.selectedOptionIds.join(",");
         break;
       }
       case "RANGE": {
