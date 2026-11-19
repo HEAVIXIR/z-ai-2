@@ -1581,8 +1581,8 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      {transactionType === "WANTED" ? (
-                        <p className="text-xs leading-6 text-white/45">پیوست تصویر برای درخواست خرید هنوز در مسیر کانونیکال ذخیره‌سازی نشده است؛ برای جلوگیری از بارگذاری بی‌اثر، فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است.</p>
+                      {transactionType === "WANTED" || isServiceRequest ? (
+                        <p className="text-xs leading-6 text-white/45">پیوست تصویر برای درخواست خرید یا خدمات هنوز در مسیر کانونیکال ذخیره‌سازی نشده است؛ برای جلوگیری از بارگذاری بی‌اثر، فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است.</p>
                       ) : (
                         <>
                           {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
