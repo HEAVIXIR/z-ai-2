@@ -824,3 +824,46 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 ### Secret-handling evidence boundary
 
 - Repository code search did not return a literal GitHub token; it found only an older verification document mentioning a token prefix/length and a local path. The external agent's claim that its local token copy was deleted cannot be independently verified through the GitHub connection. If the actual token was exposed in plaintext, logs, or shell history, revoke/rotate it rather than relying on local file deletion.
+
+## 2026-11-19 — STEP 1: intent-aware demand↔supply matching for WANTED (exact-SHA green)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Continuation of the WANTED lifecycle track. Follows the independent audit that flagged the demand/supply intent mismatch as the most important remaining architectural defect (#345 ب).
+- The prior matching engine loaded every PUBLISHED supply listing as a candidate for a BuyRequest, with no regard for what the buyer wanted (buy vs rent vs service). Combined with the wizard sending the listing-type label "WANTED" (rather than a buy/rent/service intent) in `BuyRequest.transaction`, a rent-demand could be matched against a sale-supply and vice versa.
+
+### Demand-intent model (no migration)
+- Added `DemandIntent` (`SALE` | `RENT` | `SALE_AND_RENT` | `SERVICE_REQUEST`), `DEMAND_INTENT_TO_SUPPLY_TYPES`, `normalizeDemandIntent()`, `compatibleSupplyTypesForTransaction()` to `src/lib/transaction-type-routing.ts`.
+- Vocabulary deliberately reuses the existing demand-intent tokens the frontend already renders (`TRANSACTION_LABELS` in RequestsClient: SALE→خرید, RENT→اجاره, SALE_AND_RENT→خرید/اجاره; `ActiveRequestsSection` already branches on `transaction === "RENT"`).
+- Intent is stored in `BuyRequest.transaction` (a free-text String column — NO schema migration). Legacy rows that stored "WANTED" normalize onto the buy intent (SALE) and keep matching SALE+AUCTION supply — same surface as before, no regression.
+
+### Matching
+- `matchRequestToListings` now selects `req.transaction`, normalizes it to an intent, and constrains the candidate query to the compatible supply types only (buy→SALE+AUCTION, rent→RENT, flexible→SALE+RENT+AUCTION, service→SERVICE_OFFER). The result is always a subset of `SUPPLY_LISTING_TYPES`, so the public supply-surface filters (search, catalog, profiles, SEO) are untouched and their contracts hold.
+
+### Input path
+- `createWanted` accepts an `intent` param (preferred) with `transactionType` as a back-compat alias; stores `transaction: normalizeDemandIntent(intent ?? transactionType)` and records `intent` + `intentRequested` in the audit `after` payload.
+- `POST /api/wanted` reads `intent` from the body and passes it through.
+- The listing wizard's WANTED step now shows an intent selector (خرید/اجاره/خرید-اجاره/خدمات) and sends `body.intent`. Endpoint selector and existing `body.deadline`/`body.quantity` contracts preserved (additive only).
+
+### Commits
+- `8ab8c64` feat(matching): intent-aware demand↔supply matching for WANTED — routing model + matching filter + createWanted + route + wizard + 7 unit tests + 5 contract tests.
+- `3432da7` fix(wizard): include intent in handleTransactionTypeChange reset — fixed the TS2345 typecheck:worker regression that 8ab8c64 introduced (the wanted-state reset omitted the new required `intent` field).
+
+### Regression caught and fixed (important)
+- 8ab8c64 broke the worker typecheck (`bun run typecheck:worker` / `tsconfig.worker.json`): `handleTransactionTypeChange` reset the `wanted` state without the new required `intent` field → TS2345. CI `44502710944` (verify job, step "Typecheck Worker-specific Prisma clients") and `44502702584` (docker-build-proof) FAILED; Preview `44502702500` (build-and-preview step "Build OpenNext") FAILED. This was a genuine build regression, NOT the #346 runtime issue — reproduced locally, root-caused to the missing field, fixed in 3432da7. esbuild transform + ESLint do not catch this (they strip types); only `tsc --noEmit` does, which is why it surfaced in CI rather than locally. Lesson: run `typecheck:worker` locally before pushing changes that touch typed React state.
+
+### Local verification (single SHA `3432da7`)
+- `typecheck:worker` (tsconfig.worker.json): EXIT 0. ESLint on 5 changed files: clean. esbuild transpile: OK.
+- Non-DB test sweep (8 files / 169 tests): all PASS — incl. 7 new intent unit tests, 5 new `wanted-intent-matching` contract tests, and all existing contracts (`wanted-public-privacy-and-lifecycle` 14, `listing-domain-workflow` 5, `phase-p7-wanted-rfq` 36, `phase-p10-ai-intelligence` 45, `wanted-match-eligibility` 10, `admin-mutation-csrf-contract` 38, `transaction-type-routing` 9 original).
+
+### Exact-SHA validation on final HEAD `3432da7`
+- **CI `44503496239` → SUCCESS** — all jobs green: `verify` (incl. "Typecheck Worker-specific Prisma clients"), `docker-build-proof`, `phase-tests`, `audit-transaction`, `tls-proof`, `Workerd runtime smoke`, `Cloudflare compatibility`.
+- **OpenNext `44503496156` → SUCCESS** (`OpenNext real-route smoke`).
+- Both previously-failing on `8ab8c64`; now green on `3432da7`.
+
+### Remaining defects (NOT closed — tracked on #345)
+- (الف) quantity/model/attribute storage: still audit-only; needs schema migration (locked).
+- (ج) moderation: `createWanted` still publishes immediately (status=ACTIVE, publishedAt=now); no admin-approval gate yet — product policy decision pending.
+- (د) WANTED images: storage not implemented; wizard disables image upload for WANTED (already done).
+- Preview acceptance: still blocked by #346 (App Preview schema mismatch `Listing.serviceTypeId`, HTTP 500 on GET /). The Preview run on 3432da7 is the runtime #346 issue, independent of this work.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #347 remains open/unmerged.
