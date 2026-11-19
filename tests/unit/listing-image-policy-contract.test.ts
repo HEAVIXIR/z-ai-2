@@ -28,6 +28,9 @@ describe("listing image subscription policy", () => {
     const adminComparison = read("src/app/admin/subscriptions/page.tsx");
     expect(shared).toContain("maxListings: 4");
     expect(shared).toContain("maxListings: 10");
+    expect(shared).toContain("maxListings: 20");
+    expect(shared).toContain('tier: "PRO"');
+    expect(shared).toContain('tier: "PREMIUM"');
     expect(seed).toContain("maxListings: 4");
     expect(seed).toContain("maxListings: 10");
     expect(seed).toContain("maxListings: 20");
@@ -38,6 +41,9 @@ describe("listing image subscription policy", () => {
     expect(seed).toContain("سرنخ‌های اولویت‌دار");
     expect(resolver).toContain("maxListings: true");
     expect(resolver).toContain("plan?.maxListings");
+    expect(resolver).toContain("PREMIUM_LISTING_IMAGE_POLICY");
+    expect(resolver).toContain("PRO_LISTING_IMAGE_POLICY");
+    expect(resolver).toContain("Math.min(configuredMaxListings, tierPolicy.maxListings)");
     expect(adminComparison).toContain("تا ۴ آگهی فعال");
     expect(adminComparison).toContain("تا ۱۰ آگهی فعال");
     expect(adminComparison).toContain("تا ۲۰ آگهی فعال");
