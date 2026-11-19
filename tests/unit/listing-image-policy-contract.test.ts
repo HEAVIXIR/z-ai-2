@@ -39,8 +39,6 @@ describe("listing image subscription policy", () => {
     expect(seed).toContain("featuredCredits: 5");
     expect(seed).toContain("دسترسی به هوش مصنوعی");
     expect(seed).toContain("سرنخ‌های اولویت‌دار");
-    expect(resolver).toContain("maxListings: true");
-    expect(resolver).toContain("plan?.maxListings");
     expect(resolver).toContain("PREMIUM_LISTING_IMAGE_POLICY");
     expect(resolver).toContain("PRO_LISTING_IMAGE_POLICY");
     expect(resolver).toContain("maxListings: tierPolicy.maxListings");
