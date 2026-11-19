@@ -265,7 +265,8 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(schema).toContain("serviceTypeId   String?");
       expect(schema).toContain("intent          String?");
       // DB-enforced idempotency column (@unique).
-      expect(schema).toContain("idempotencyKey  String?  @unique");
+      expect(schema).toContain("idempotencyKey  String?");
+      expect(schema).toContain("@@unique([userId, idempotencyKey])");
     });
 
     it("schema.prisma declares the structured-spec FK relations (SetNull on taxonomy delete)", () => {
@@ -311,7 +312,7 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(sql).toContain('ADD COLUMN "categoryId"');
       expect(sql).toContain('ADD COLUMN "idempotencyKey"');
       // DB-enforced idempotency unique index.
-      expect(sql).toContain('CREATE UNIQUE INDEX "BuyRequest_idempotencyKey_key"');
+      expect(sql).toContain('CREATE UNIQUE INDEX "BuyRequest_userId_idempotencyKey_key"');
       // Parent table with real FK to AttributeDefinition (Cascade).
       expect(sql).toContain('CREATE TABLE "BuyRequestAttributeValue"');
       expect(sql).toContain('"BuyRequestAttributeValue_attributeId_fkey"');
@@ -405,5 +406,25 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(wf).toContain("table_name='BuyRequestAttributeValue'");
       expect(wf).toContain("table_name='BuyRequestAttributeOption'");
     });
+  });
+});
+
+describe("H.3 follow-up hardening: WANTED attribute transport and server enforcement", () => {
+  it("submits MULTI_SELECT option IDs as a typed array instead of textValue", () => {
+    const ui = read("src/components/listings/AttributeFields.tsx");
+    expect(ui).toContain("entry.selectedOptionIds = arr.map(String)");
+    expect(ui).not.toContain('entry.textValue = arr.filter(Boolean).join(",");');
+  });
+
+  it("normalizes legacy MULTI_SELECT text without treating it as the TEXT slot", () => {
+    const validator = read("src/lib/buy-request-attributes.ts");
+    expect(validator).toContain('attribute.type !== "MULTI_SELECT" && value.textValue');
+    expect(validator).toContain("new Set(selectedOptionIds).size !== selectedOptionIds.length");
+  });
+
+  it("enforces required attributes on the server even when the payload is empty", () => {
+    const svc = read("src/lib/wanted-service.ts");
+    expect(svc).toContain("Always run server-side validation");
+    expect(svc).toContain("true,  // enforceRequired");
   });
 });
