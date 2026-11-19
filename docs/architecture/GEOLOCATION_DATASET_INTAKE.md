@@ -81,7 +81,7 @@ Run after obtaining the exact source CSV from
 
 ```sh
 node scripts/geospatial/convert-iran-divisions.mjs \
-  ./iran.csv ./build/iran-1404 2025-03-21
+  ./iran.csv ./build/iran-1404 YYYY-MM-DD
 node scripts/geospatial/validate-location-dataset.mjs \
   ./build/iran-1404/dataset.json ./build/iran-1404/manifest.json
 ```
