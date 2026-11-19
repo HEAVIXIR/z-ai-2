@@ -48,6 +48,7 @@ describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain("قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)");
     expect(page).toContain("const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null)");
+    expect(page).toContain("const exactPriceConflictsWithRange = hasExactPrice && (wmin !== null || wmax !== null)");
     expect(page).toContain("!exactPriceConflictsWithRange");
     expect(page).toContain("{!isRequestFlow && (");
   });
