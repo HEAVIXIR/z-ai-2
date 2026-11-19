@@ -18,7 +18,7 @@ export interface LocationDatasetReport {
 export function validateLocationDataset(
   dataset: unknown,
   manifest: LocationDatasetManifest,
-  actualSha256?: string,
+  actualSha256: string,
 ): LocationDatasetReport;
 export function validateLocationDatasetFiles(
   datasetPath: string,
