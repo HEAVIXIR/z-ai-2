@@ -135,7 +135,7 @@ jobs:
           test -s "$WORK/app-preview.dump"
           pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
           test -s "$WORK/restore.list"
-          sha256sum "$WORK/app-preview.dump" > "$WORK/SHA256SUMS"
+          (cd "$WORK" && sha256sum app-preview.dump > SHA256SUMS)
           {
             echo "format=heavix-app-preview-backup-v1"
             echo "created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -146,7 +146,7 @@ jobs:
           } > "$WORK/manifest.txt"
           age -r "$AGE_RECIPIENT" -o "$WORK/app-preview.dump.age" "$WORK/app-preview.dump"
           age -r "$AGE_RECIPIENT" -o "$WORK/manifest.txt.age" "$WORK/manifest.txt"
-          sha256sum "$WORK/app-preview.dump.age" "$WORK/manifest.txt.age" > "$WORK/ENCRYPTED_SHA256SUMS"
+          (cd "$WORK" && sha256sum app-preview.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS)
           rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
           echo "PASS: App Preview dump created, listed, checksummed and encrypted."
 
