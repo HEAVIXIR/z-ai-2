@@ -668,17 +668,21 @@ async function preflightTaxonomyHierarchy(): Promise<void> {
 import IRAN_LOCATION_DATA from "./data/iran-locations-1404.json";
 import IRAN_LOCATION_MANIFEST from "./data/iran-locations-1404.manifest.json";
 
-type ProvinceSeed = { name: string; cities: string[] };
+type ProvinceSeed = {
+  sourceCode: string;
+  name: string;
+  cities: Array<{ sourceCode: string; name: string; sortOrder: number }>;
+};
 
-// Complete real-city list generated from the official administrative divisions
-// workbook through year 1404. The source and its GPL-3.0 terms are documented
-// in prisma/data/README-iran-cities.md.
+// Canonical Country → Province → City catalog. County/district/village rows
+// are intentionally absent from the listing selector's normalized dataset.
 const IRAN_PROVINCES: ProvinceSeed[] = IRAN_LOCATION_DATA.provinces.map((province) => ({
+  sourceCode: province.sourceCode,
   name: province.name,
   cities: IRAN_LOCATION_DATA.cities
     .filter((city) => city.provinceCode === province.sourceCode)
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((city) => city.name),
+    .map((city) => ({ sourceCode: city.sourceCode, name: city.name, sortOrder: city.sortOrder })),
 }));
 
 // ════════════════════════════════════════════════════════════
@@ -847,14 +851,19 @@ async function main() {
     const pr = IRAN_PROVINCES[p];
     const prov = await db.province.upsert({
       where: { countryId_name: { countryId: iran.id, name: pr.name } },
-      create: { countryId: iran.id, name: pr.name, sortOrder: p + 1 },
-      update: {},
+      create: { countryId: iran.id, name: pr.name, sourceCode: pr.sourceCode, sortOrder: p + 1 },
+      update: { sourceCode: pr.sourceCode },
     });
-    for (let c = 0; c < pr.cities.length; c++) {
+    for (const city of pr.cities) {
       await db.city.upsert({
-        where: { provinceId_name: { provinceId: prov.id, name: pr.cities[c] } },
-        create: { provinceId: prov.id, name: pr.cities[c], sortOrder: c + 1 },
-        update: {},
+        where: { provinceId_name: { provinceId: prov.id, name: city.name } },
+        create: {
+          provinceId: prov.id,
+          name: city.name,
+          sourceCode: city.sourceCode,
+          sortOrder: city.sortOrder,
+        },
+        update: { sourceCode: city.sourceCode },
       });
       totalCities++;
     }
