@@ -665,7 +665,7 @@ async function preflightTaxonomyHierarchy(): Promise<void> {
   }
 }
 
-import IRAN_LOCATION_DATA from "./data/iran-cities-1404.json";
+import IRAN_LOCATION_DATA from "./data/iran-locations-1404.json";
 
 type ProvinceSeed = { name: string; cities: string[] };
 
@@ -674,7 +674,10 @@ type ProvinceSeed = { name: string; cities: string[] };
 // in prisma/data/README-iran-cities.md.
 const IRAN_PROVINCES: ProvinceSeed[] = IRAN_LOCATION_DATA.provinces.map((province) => ({
   name: province.name,
-  cities: province.cities,
+  cities: IRAN_LOCATION_DATA.cities
+    .filter((city) => city.provinceCode === province.sourceCode)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((city) => city.name),
 }));
 
 // ════════════════════════════════════════════════════════════
@@ -801,7 +804,7 @@ async function main() {
   // name from the official-source-year-1404 dataset. Two same-name records
   // occur in different counties of the same province; the current City model
   // is province/name unique, so identical selectable names are deduplicated.
-  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces + ${IRAN_LOCATION_DATA.cityCount} distinct city names)...`);
+  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces + ${IRAN_LOCATION_DATA.metadata.distinctCityCount} distinct city names)...`);
   const iran = await db.country.upsert({
     where: { name: "ایران" },
     create: { name: "ایران", nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
@@ -846,8 +849,8 @@ async function main() {
       totalCities++;
     }
   }
-  if (totalCities !== IRAN_LOCATION_DATA.cityCount) {
-    throw new Error(`Location seed count mismatch: expected ${IRAN_LOCATION_DATA.cityCount}, processed ${totalCities}`);
+  if (totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount) {
+    throw new Error(`Location seed count mismatch: expected ${IRAN_LOCATION_DATA.metadata.distinctCityCount}, processed ${totalCities}`);
   }
 
   // 6. Final counts
