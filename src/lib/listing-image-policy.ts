@@ -30,7 +30,7 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
   const planCode = subscription.plan.trim().toUpperCase();
   const plan = await db.subscriptionPlan.findUnique({
     where: { code: planCode },
-    select: { active: true, priceMonthly: true, priceYearly: true, maxListings: true, maxImages: true },
+    select: { active: true, priceMonthly: true, priceYearly: true, maxImages: true },
   });
 
   const isPaidPlan = Boolean(
