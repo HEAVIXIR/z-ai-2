@@ -80,7 +80,7 @@ describe("definitive machine terminal form coverage", () => {
             break;
           }
         }
-        const hasChildren = lines.slice(index, nextSibling).some((line) => /children:\s*\\[/.test(line));
+        const hasChildren = lines.slice(index, nextSibling).some((line) => /children:\s*\[/.test(line));
         if (!hasChildren) terminalSlugs.push(slug);
       }
     }
