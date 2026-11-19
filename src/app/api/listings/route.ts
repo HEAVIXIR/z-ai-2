@@ -1,6 +1,7 @@
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
@@ -956,7 +957,7 @@ export async function POST(req: Request) {
         });
       }
       return created;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if (!listingResult) {
       return NextResponse.json(
@@ -1070,6 +1071,12 @@ export async function POST(req: Request) {
       rfqId: listing.rfq?.id ?? null,
     });
   } catch (err: any) {
+    if (err?.code === "P2034") {
+      return NextResponse.json(
+        { error: "درخواست هم‌زمان دیگری در حال ثبت است؛ لطفاً دوباره تلاش کنید.", code: "LISTING_CREATE_CONFLICT" },
+        { status: 409 },
+      );
+    }
     trackError(err, { endpoint: "POST /api/listings" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
