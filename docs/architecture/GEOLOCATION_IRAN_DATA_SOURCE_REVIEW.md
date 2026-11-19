@@ -1,6 +1,6 @@
 # Iran administrative dataset source review
 
-## Selected primary candidate
+## Alternative source reviewed (not used for current catalog)
 
 - Repository: https://github.com/Hameds/IranCountryDivisions
 - Dataset path: `data/1404/iran.csv` and `data/1404/metadata.json`
@@ -10,7 +10,7 @@
 - Dataset version: Solar Hijri 1404
 - Source repository README documents the original workbook and address-standard document in the repository.
 
-This is the strongest candidate found so far because it exposes the original annual source workbook, a normalized machine-readable export, stable source codes, explicit division types, and a metadata count report. The MIT declaration is recorded as the repository's declared license; source provenance is also retained separately rather than treating the license badge as a substitute for recording the original publisher.
+This alternative is documented because it exposes the original annual workbook, a normalized machine-readable export, stable source codes, explicit division types, and metadata counts. It was not used to generate the current bundled HEAVIX catalog. Its repository-declared MIT license is recorded only as that repository's declaration and is not automatically attributed to the original publisher's source data.
 
 ## Published 1404 counts
 
@@ -49,10 +49,10 @@ The HEAVIX location selector currently targets Country → Province → City. A 
 
 ## Execution status and boundaries
 
-- Source review only; no dataset has been imported into HEAVIX.
+- This alternative source review is documentation only; the current bundled catalog was generated from the existing `sajaddp` snapshot described below.
 - No database, Preview, or Production writes were performed.
 - No Prisma migration, seed, deploy, or merge was performed.
-- Next technical stage: build a deterministic converter/validator for the 1404 source export, verify the 1,481 city rows and parent ancestry, then commit the normalized intake artifact and its manifest to a dedicated review branch.
+- A deterministic converter and validator for this alternative CSV format have been implemented and unit-tested with synthetic fixtures. The actual `Hameds/IranCountryDivisions/data/1404/iran.csv` file has not been acquired or converted; no claim is made that its 1,481 source rows were processed.
 - The data source is for the canonical location catalog only. It is not a source of precise listing/equipment coordinates.
 
 
