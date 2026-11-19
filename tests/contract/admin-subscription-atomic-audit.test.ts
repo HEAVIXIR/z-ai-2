@@ -12,6 +12,23 @@ describe("admin subscription mutation transaction contract", () => {
     expect(source).toContain("checkCsrf(req)");
     expect(source).toContain("Unknown request field");
   });
+
+  it("preserves omitted entitlement fields during an existing subscription update", () => {
+    const source = read("src/app/api/admin/subscriptions/route.ts");
+    expect(source).toContain("const createData: any =");
+    expect(source).toContain("const updateData: any = {};");
+    expect(source).toContain('if ("featuredCredits" in body) updateData.featuredCredits = featuredCredits;');
+    expect(source).toContain('if (field in body) updateData[field] = body[field];');
+    expect(source).toContain("create: createData");
+    expect(source).toContain("update: updateData");
+    expect(source).not.toContain("update: data");
+  });
+  it("rejects requests that contain no subscription mutation fields", () => {
+    const source = read("src/app/api/admin/subscriptions/route.ts");
+    expect(source).toContain('mutableFields.length === 0');
+    expect(source).toContain("At least one subscription field is required");
+  });
+
   it("commits subscription upsert and audit evidence in one transaction", () => {
     const source = read("src/app/api/admin/subscriptions/route.ts");
     expect(source).toContain("db.$transaction(async (tx)");
