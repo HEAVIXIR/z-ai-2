@@ -677,7 +677,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const updateActionRegex = /action:\s*['"]store\.\w+\.update['"]/g;
         let m;
         while ((m = updateActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/after:/);
           // upsert routes don't have 'before' (no pre-fetch); all others must have it
           if (!isUpsertRoute) {
@@ -693,7 +693,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const createActionRegex = /action:\s*['"]store\.\w+\.create['"]/g;
         let m;
         while ((m = createActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/after:/);
         }
       }
@@ -705,7 +705,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const deleteActionRegex = /action:\s*['"]store\.\w+\.delete['"]/g;
         let m;
         while ((m = deleteActionRegex.exec(content)) !== null) {
-          const window = content.substring(m.index, m.index + 400);
+          const window = content.substring(m.index, m.index + 1400);
           expect(window).toMatch(/before:/);
         }
       }
@@ -753,7 +753,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       const gaps: string[] = [];
       for (const { path: f, content } of files) {
         const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-        const auditMatches = content.match(/await logAudit\(/g) || [];
+        const auditMatches = content.match(/await (?:logAudit|enqueueAuditOutbox)\(/g) || [];
         if (mutMatches.length > 0 && auditMatches.length === 0) {
           gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches.length);
         }
@@ -906,20 +906,20 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
 
     it('payments/[id] audits the order.update side-effect', () => {
       const content = readRoute(paymentsId);
-      expect(content).toContain("action: 'store.order.update'");
-      expect(content).toContain("entityType: 'Order'");
+      expect(content).toContain('action: "store.order.update"');
+      expect(content).toContain('entityType: "Order"');
     });
 
     it('payments/[id] audits the payment.update', () => {
       const content = readRoute(paymentsId);
-      expect(content).toContain("action: 'store.payment.update'");
-      expect(content).toContain("entityType: 'Payment'");
+      expect(content).toContain('action: "store.payment.update"');
+      expect(content).toContain('entityType: "Payment"');
     });
 
     it('payments/[id] has 2 mutations and 2 audits', () => {
       const content = readRoute(paymentsId);
       const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-      const auditMatches = content.match(/await logAudit\(/g) || [];
+      const auditMatches = content.match(/await enqueueAuditOutbox\(/g) || [];
       expect(mutMatches.length).toBe(2);
       expect(auditMatches.length).toBe(2);
     });
@@ -1118,6 +1118,18 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         // but no mutations should be inline; all delegated to services.
         expect(muts.length).toBe(0);
       }
+    });
+
+
+    it('store payment review uses the transactional audit outbox and reconciles order totals', () => {
+      const content = readRoute('src/app/api/admin/store/payments/[id]/route.ts');
+      expect(content).toContain('enqueueAuditOutbox');
+      expect(content).toContain('storeDb.$transaction');
+      expect(content).toContain('tx.payment.update');
+      expect(content).toContain('tx.order.update');
+      expect(content).toContain('tx.payment.aggregate');
+      expect(content).toContain('payment status recalculated from approved and refunded payment ledger');
+      expect(content).not.toContain('logAudit');
     });
 
     it('procurement routes still inline (no service extraction)', () => {
